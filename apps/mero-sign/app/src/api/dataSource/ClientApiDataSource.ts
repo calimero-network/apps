@@ -378,12 +378,8 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   /**
-   * Change an EXISTING participant's permission level.
-   *
-   * ⚠️ Raising only. The contract refuses a demotion because permissions merge
-   * by taking the higher rank, so a lowered level would apply on the admin's
-   * node and be discarded everywhere else. The refusal comes back as the
-   * contract's own message; see `lib/participants.ts`.
+   * Change an EXISTING participant's permission level, up or down. The
+   * contract refuses to demote the last admin, with its own message.
    */
   async setParticipantPermission(
     userIdStr: UserId,

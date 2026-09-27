@@ -3,18 +3,14 @@
   "types": {
     "DrawOffer": {
       "kind": "record",
+      "doc": "A draw offer, or an answer to one, keyed `\"<account>/<game>/<nonce>\"`.\n\n`ply` is what makes it expire: an offer is good only for the position it was\nmade in, exactly as at a board, so a move made after it silently voids it.",
       "fields": [
-        {
-          "name": "open",
-          "type": {
-            "kind": "bool"
-          }
-        },
         {
           "name": "declined",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Set when this row REFUSES the opponent's offer rather than making one.\nOnly an entry's owner may write it, so a refusal cannot close the\nofferer's row; it is recorded here and the reader reads the pair."
         },
         {
           "name": "ply",
@@ -32,24 +28,28 @@
     },
     "Ending": {
       "kind": "record",
+      "doc": "A game ended by a PERSON, keyed `\"<account>/<game>/<nonce>\"`.\n\nBoard endings (checkmate, stalemate, dead position, fivefold, seventy-five\nmoves) are derived from the move list and never stored.",
       "fields": [
         {
           "name": "result",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`1-0`, `0-1` or `1/2-1/2`."
         },
         {
           "name": "reason",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`resignation`, `agreement`, `threefold`, `fiftyMove`."
         },
         {
           "name": "ply",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The ply the game stood at when this was written.\n\nLoad-bearing, not bookkeeping: the reader re-checks the ending against\nthe position at this ply, and a valid one ENDS the game here — a move\nwritten at this ply afterwards cannot un-resign anybody."
         },
         {
           "name": "at",
@@ -61,13 +61,8 @@
     },
     "GameRecord": {
       "kind": "record",
+      "doc": "A claim that this player started a rematch, keyed `\"<account>/<game>/<nonce>\"`.",
       "fields": [
-        {
-          "name": "index",
-          "type": {
-            "kind": "u32"
-          }
-        },
         {
           "name": "started_at",
           "type": {
@@ -78,24 +73,26 @@
     },
     "MeroChess": {
       "kind": "record",
+      "doc": "Every map a player writes is owned and every key names its author, so a\nmember can only ever write rows about themselves — and, outside presence,\nnever change or remove one. Both are enforced by core at apply time, not by\nthis code. The reader elects and re-derives; see the module docs for why\nthat split is the whole security model.",
       "fields": [
         {
           "name": "title",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Fixed when the table is created: nobody can relabel it or move the\ndate game 0 began."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "u64"
             }
@@ -110,9 +107,9 @@
             },
             "value": {
               "$ref": "Player"
-            },
-            "crdt_type": "authored_map"
-          }
+            }
+          },
+          "doc": "One slot per account — only that account writes it, and nobody can\nfile rows under anyone else's name to crowd it."
         },
         {
           "name": "seat_claims",
@@ -125,7 +122,22 @@
               "$ref": "Seat"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "`\"<seat>/<account>/<nonce>\"` -> one person's claim on that chair."
+        },
+        {
+          "name": "vacated",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<claim nonce>/<nonce>\"` -> when that claim was given\nup. Honoured only for a claimant who never acted at the table."
         },
         {
           "name": "games",
@@ -138,7 +150,8 @@
               "$ref": "GameRecord"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> a claim that this player started game."
         },
         {
           "name": "moves",
@@ -151,7 +164,8 @@
               "$ref": "MoveRecord"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "`\"<account>/<game>/<ply>/<nonce>\"` -> the move that player wrote there."
         },
         {
           "name": "endings",
@@ -164,7 +178,8 @@
               "$ref": "Ending"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> how that player says the game ended."
         },
         {
           "name": "draw_offers",
@@ -177,36 +192,42 @@
               "$ref": "DrawOffer"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> that player's offers and refusals."
         }
       ]
     },
     "MoveRecord": {
       "kind": "record",
+      "doc": "One played move, keyed `\"<account>/<game>/<ply>/<nonce>\"`.\n\nThe game, the ply and the author come from the key and core's owner stamp;\nthe SAN comes from the replay. What is left is what only the mover knows.",
       "fields": [
         {
           "name": "uci",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The move, and the only thing here a reader cannot work out for itself."
         },
         {
           "name": "at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When its author says they played it. Display only: nothing is ordered\nby it, because its author could set it to anything."
+        },
+        {
+          "name": "opponent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member the mover saw in the other chair.\n\nLoad-bearing: it is how a player's own, unforgeable rows vouch for who\nthey were playing, which is what locks the chairs once a game is under\nway — see [`MeroChess::chairs`]."
         }
       ]
     },
     "Player": {
       "kind": "record",
+      "doc": "A person's presence row — the one thing they keep RE-stating, so it lives in\ntheir own [`UserStorage`] slot and resolves to the newest copy.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -229,13 +250,8 @@
     },
     "Seat": {
       "kind": "record",
+      "doc": "One person's claim on one chair, keyed `\"<seat>/<account>/<nonce>\"`.\n\nWhose claim WINS is the reader's question (see [`MeroChess::chairs`]); the\nrow carries no member id, because the owner stamp already says who wrote it.",
       "fields": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -244,12 +260,6 @@
         },
         {
           "name": "claimed_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "vacated_at",
           "type": {
             "kind": "u64"
           }

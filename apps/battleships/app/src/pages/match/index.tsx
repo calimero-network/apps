@@ -610,8 +610,19 @@ export default function MatchPage() {
       // Forbidden) and each player's board lives in `UserStorage`, which is
       // per-identity. So this trades a second lock on the same door for a match
       // result that is recorded by the contract instead of not at all.
+      // The game checks every row player 2 writes against the ACCOUNT the lobby
+      // recorded for their key — so it is read back from the match, not
+      // guessed here.
+      const created = (await lobbyApi.getMatches()).find((m) => m.match_id === id);
+      if (!created) throw new Error('unknown match_id');
       const executorKey = lobby.executorPublicKey ?? contextIdentity;
-      const initParams = JSON.stringify({ player1: executorKey, player2, lobby_context_id: currentContext.contextId, match_id: id });
+      const initParams = JSON.stringify({
+        player1: executorKey,
+        player2,
+        player2_account: created.player2_account,
+        lobby_context_id: currentContext.contextId,
+        match_id: id,
+      });
       const initBytes = Array.from(new TextEncoder().encode(initParams));
 
       const { contextId: newContextId } = await mero.admin.createContext({

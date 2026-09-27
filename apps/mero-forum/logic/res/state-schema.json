@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A reply on a thread. Deliberately flat — one level, no nesting. Like a post,\nits author is the owner stamp. `thread` is one post's live comments, oldest\nfirst, so a page and a count are seeks.",
       "fields": [
         {
           "name": "id",
@@ -12,12 +13,6 @@
         },
         {
           "name": "post_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -50,6 +45,7 @@
     },
     "CommentVote": {
       "kind": "record",
+      "doc": "One account's vote on one COMMENT.\n\nA separate type and a separate map from {@link Vote}, rather than widening\n`Vote` to carry either kind of subject. Two reasons, and the second is the\nload-bearing one:\n\n  * `Vote.post_id` holding a comment id would be a lie in the field name,\n    and the ABI is a public surface that clients read;\n  * a post's tally reads the `post_id` index; folding comment votes into\n    the same map would put every comment vote into that index too, on a\n    page that never displays one.",
       "fields": [
         {
           "name": "comment_id",
@@ -58,16 +54,11 @@
           }
         },
         {
-          "name": "voter",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "value",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "+1, -1, or 0 for retracted."
         },
         {
           "name": "updated_at",
@@ -90,8 +81,9 @@
             "value": {
               "$ref": "Post"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Post id → post. Its author edits and tombstones it; a moderator removes\nit. The founder is the first moderator."
         },
         {
           "name": "comments",
@@ -103,8 +95,9 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Every comment in one map, carrying its `post_id`, rather than a nested\ncollection per post. A nested CRDT created independently on two nodes\nneeds deterministic re-keying to converge; one flat map has no such\nhazard, and the `thread` index makes one post's comments a seek."
         },
         {
           "name": "votes",
@@ -116,8 +109,9 @@
             "value": {
               "$ref": "Vote"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed `\"<post_id>|<account>\"` — one row per voter per post, owned by the\nvoter."
         },
         {
           "name": "comment_votes",
@@ -129,8 +123,9 @@
             "value": {
               "$ref": "CommentVote"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed `\"<comment_id>|<account>\"` — one row per voter per comment."
         },
         {
           "name": "profiles",
@@ -141,23 +136,18 @@
             },
             "value": {
               "$ref": "Profile"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "The display name each account chose, in that account's own slot."
         }
       ]
     },
     "Post": {
       "kind": "record",
+      "doc": "A thread.\n\nEdits are last-writer-wins over a TOTAL order, not over `edited_at` alone:\ntwo authors' devices editing while partitioned can land the same millisecond,\nand a tie resolved by \"take other\" would pick a different winner on each side\nand leave the replicas permanently disagreeing. `deleted` is separate — it is\nan OR-flag, so a delete can never be undone by a concurrent edit arriving\nlater. Content LWW plus a monotone tombstone is the whole merge. Only the\nauthor writes a post (see `MeroForum::posts`), so these conflicts are\nbetween one person's own devices.\n\nThere is no author field: the author is the entry's owner stamp, the one\nthing a patched node cannot forge. `feed` is the live feed, newest first.",
       "fields": [
         {
           "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -196,13 +186,8 @@
     },
     "Profile": {
       "kind": "record",
+      "doc": "The display name one ACCOUNT chose for itself.\n\n── Why this is in the contract and not just localStorage ────────────────────\n\nA nickname kept only in the browser is a nickname only its owner can see:\nevery other reader still gets a 64-hex account id, which is the thing the\nname was supposed to replace. localStorage remains the source for the input\n(so the field is pre-filled and survives a reload before you ever post), but\nthe value has to reach the contract for anyone else's feed to render it.\n\nOne `UserStorage` slot per ACCOUNT, matching a post's owner stamp — so one\nperson is one name across their laptop and their phone, and only they can\nwrite it.\n\nThis is a claim, not an identity. Names are not unique and are not verified;\nthe account id remains the only thing that authorises anything, and every\nauthor-gated check below still compares accounts, never names.",
       "fields": [
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -219,6 +204,7 @@
     },
     "Vote": {
       "kind": "record",
+      "doc": "One account's vote on one post.\n\nKeyed per ACCOUNT rather than per device, which is what makes \"one person,\none vote\" true: a bare counter would let the same person vote once from each\nmachine, and there would be no way to take it back.\n\nThe voter is the row's owner stamp, and the row counts only when its key is\n`vote_key(post_id, owner)` — see `MeroForum::tally`.",
       "fields": [
         {
           "name": "post_id",
@@ -227,16 +213,11 @@
           }
         },
         {
-          "name": "voter",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "value",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "+1, -1, or 0 for retracted."
         },
         {
           "name": "updated_at",

@@ -11,7 +11,7 @@ export interface NewDealDefaults {
 /** Everything the routed CRM views read, passed down via <Outlet context>. */
 export interface AppCtx {
   data: UseCrmReturn;
-  /** Executor key: what `created_by` / `author` hold. Authorship gates use this. */
+  /** Account id: what `created_by` / `author` hold. Authorship gates use this. */
   currentUser: string;
   /** The signed-in member's display name — what `owner` holds. */
   myName: string;

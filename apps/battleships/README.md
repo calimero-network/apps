@@ -80,16 +80,44 @@ merobox bootstrap run workflow-battleships-e2e.yml --e2e-mode
 3. **Invite Player** — recursive namespace invitation covers root + all subgroups
 4. **Player Joins** — `joinNamespace` → auto-gets identity → joins lobby context
 5. **Create Match** — lobby allocates match ID → create subgroup → add P2 → create game context (`service_name: game`)
-6. **Place Ships** — both players place ships in private storage; `placed_p1`/`placed_p2` flags synced
-7. **Take Turns** — `propose_shot` → `acknowledge_shot_handler` on target node → resolves against private board → result synced
-8. **Game Ends** — all ships sunk → winner set → `xcall` to lobby → stats/history updated
+6. **Place Ships** — both players place ships in private storage and publish a SHA-256 commitment (write-once)
+7. **Take Turns** — `propose_shot` → `acknowledge_shot_handler` on target node → resolves against private board → answer synced
+8. **Game Ends** — the answers show a fleet sunk → both boards are revealed and every reader audits them → the audited winner is reported by `xcall` to the lobby → stats/history derived from it
+
+## What holds against a patched node
+
+A member can run a node that skips every check in the contract, so the game
+rests on storage types every node enforces:
+
+- **Who plays is `Frozen` at init** — player keys, their accounts, the match id
+  and the lobby. Nobody can swap a player or point the result elsewhere.
+- **Every commitment, shot, answer and reveal is a `WriteOnce` row**, owned by
+  its author's account and immutable for everyone, the author included. Turn,
+  pending shot, placement and winner are derived from those rows, never stored.
+- **Equivocation loses.** A second, different shot, answer or commitment from
+  one player is a forfeit rather than a choice.
+- **The commit-reveal is audited by every reader.** At match end both players
+  publish `(board, salt)`; each node checks it against the commitment, checks
+  it is a legal fleet, and replays every answer. The declared winner must pass
+  to win; a winner who lied loses. A defender who never admits a hit runs out
+  of misses: the 84th miss on a 100-cell board is a lie on its face.
+- **The lobby** keeps each member's account → player key pairing in their own
+  `UserStorage` slot, each match owned by its creator, and results write-once.
+  A result counts only if the match's own game context reported it, it names
+  the match's two players, and every report agrees.
+
+What remains: a player who stops answering, or a winner who never reveals,
+stalls the match (no timeouts); a member can register someone else's player key
+as their own, which blocks matches against that key rather than stealing them;
+and two devices of one account writing different rows at the same millisecond
+collide on one write-once key.
 
 ## Game Rules
 
 - **Fleet**: 1x5 (carrier), 1x4 (battleship), 2x3 (cruiser, submarine), 1x2 (destroyer)
 - **Placement**: Ships must be straight, contiguous, and non-adjacent
 - **Turns**: Players alternate shots. Target node resolves hit/miss against their private board
-- **Win**: First player to sink all opponent ships wins
+- **Win**: First player to sink all opponent ships wins — once their own revealed board passes the audit
 
 ## Development
 

@@ -190,8 +190,8 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<boolean>;
-  // Contract expects: user_id_str (HEX account id) — raising only; the contract
-  // refuses a demotion because permissions merge by taking the higher rank.
+  // Contract expects: user_id_str (HEX account id). Up or down; the contract
+  // refuses to demote the last admin.
   setParticipantPermission(
     userIdStr: UserId,
     permission: PermissionLevel,

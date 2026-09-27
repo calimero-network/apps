@@ -8,7 +8,8 @@ import React, { useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { C } from '../theme';
 
-export interface LinkOut { id: string; name: string; where: string | null; target: string }
+/** `canStop`: whoever linked it, or an owner, may stop it. */
+export interface LinkOut { id: string; name: string; where: string | null; target: string; canStop: boolean }
 export interface LinkIn { sheetId: string; name: string; from: string }
 
 export default function LinksPanel({
@@ -85,7 +86,9 @@ export default function LinksPanel({
               {canEdit && (
                 <div className="actions">
                   <button type="button" disabled={busy} onClick={() => void run(() => onPush(l.id), 'Pushed.')}>Push now</button>
-                  <button type="button" disabled={busy} onClick={() => void run(() => onUnpublish(l.id))}>Stop</button>
+                  {l.canStop && (
+                    <button type="button" disabled={busy} onClick={() => void run(() => onUnpublish(l.id))}>Stop</button>
+                  )}
                 </div>
               )}
             </Item>

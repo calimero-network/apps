@@ -66,7 +66,7 @@ nodes:
   # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
   # discovery changed at the image bump with nothing here changing.
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.53
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.54
   prefix: calimero-node
 
 steps:
@@ -131,9 +131,9 @@ steps:
       reg_ctx: contextId
       alice_key: memberPublicKey
 
-  # The registry permissions layer is fail-closed until the owner is claimed.
-  # The namespace creator claims it right after creating the context (mirrors
-  # the frontend bootstrap).
+  # The registry's owner is whoever created its context, fixed in `init`.
+  # `claim_owner` confirms it: it succeeds for the creator and is refused for
+  # anyone else (mirrors the frontend bootstrap).
   - name: Alice claims registry ownership
     type: call
     node: calimero-node-1
@@ -144,14 +144,14 @@ steps:
   # ⚠️ This returns Alice's ACCOUNT, which is NOT `alice_key`.
   #
   # `alice_key` is the context executor key merobox minted; `get_owner` returns
-  # what `claim_owner` stored, which the contract derives itself from
+  # what `init` stored, which the contract derives itself from
   # `env::account_id()`. Three different 32-byte ids are in play across this
   # file (account, device, executor key) and they all print as 64 hex, so do
   # NOT "tighten" this into `registry_owner == alice_key` — that assertion is
   # false and would red the run.
   #
   # Note what this step therefore does and does not prove. It proves the
-  # registry is claimable and that the owner-gated writes below work, because
+  # registry's owner is its creator and that the owner-gated writes below work, because
   # `require_admin` compares the caller against the stored value using the SAME
   # derivation on both sides — which held even when that derivation was
   # `device_id`. What it does not prove is the property the account switch

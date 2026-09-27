@@ -36,10 +36,11 @@ export default function AppPage(): React.ReactElement | null {
 
   // Two different ids, and they are NOT interchangeable since core rc.21.
   //
-  // `currentUser` is the identity writes execute as: the backend stamps
-  // created_by/author with the executor key and enforces delete/edit against
-  // it, so every authorship and "is this mine" gate must use this one.
-  const currentUser = ws.executorPublicKey ?? ws.selfIdentity ?? contextIdentity ?? '';
+  // `currentUser` is who authorship is attributed to: the contract reports
+  // created_by/author as the ACCOUNT on the entry's owner stamp (one person,
+  // any device) and every node enforces edit/delete against it, so every
+  // "is this mine" gate must compare against the account, never the executor key.
+  const currentUser = ws.selfIdentity ?? contextIdentity ?? '';
   // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
   // metadata - the display names behind `aliases` - is stored and keyed by it,
   // so every name lookup must use this one. It used to be safe to resolve a

@@ -49,7 +49,8 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
+    AccessControl, Authored, Frozen, LwwRegister, Mergeable as MergeableTrait, Moderated, Ownable,
+    SortedMap, UnorderedMap,
 };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -197,7 +198,8 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Fragment {
-    /// Global monotone frame sequence; key `frag-{seq}-{chunk}`, NEVER reused (C3).
+    /// Global monotone frame sequence; key `frag-{from}-{seq}-{chunk}`, NEVER
+    /// reused (C3).
     pub seq: u64,
     pub from: String,
     /// 0 = video luma, 1 = audio (future).
@@ -270,7 +272,7 @@ impl MergeableTrait for Fragment {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct MediaChunk {
-    /// Global monotone sequence; key `chunk-{seq}`, NEVER reused (C3).
+    /// Per-sender monotone sequence; key `chunk-{from}-{seq}`, NEVER reused (C3).
     pub seq: u64,
     pub from: String,
     /// 0 = video, 1 = audio. Both ride the same ring, interleaved by seq.
@@ -339,6 +341,10 @@ pub struct ChunkCursor {
     pub newest_at: u64,
     /// How many of their chunks have been reaped (tombstone pressure, C3).
     pub pruned: u64,
+    /// How many of their approach-3 FRAMES they have pruned. Per sender for the
+    /// same reason as the rest: a shared counter lost concurrent increments and
+    /// was anyone's to rewrite.
+    pub frames_pruned: u64,
 }
 
 impl MergeableTrait for ChunkCursor {
@@ -349,6 +355,7 @@ impl MergeableTrait for ChunkCursor {
         self.last_keyframe = self.last_keyframe.max(other.last_keyframe);
         self.newest_at = self.newest_at.max(other.newest_at);
         self.pruned = self.pruned.max(other.pruned);
+        self.frames_pruned = self.frames_pruned.max(other.frames_pruned);
         Ok(())
     }
 }
@@ -519,45 +526,35 @@ pub struct MeroStream {
     /// **`Ownable::insert` cannot be used inside `init` on core rc.20.** The cell
     /// is still detached from the state tree at that point: the writer set is
     /// carried through by the constructor, but the inserted VALUE is silently
-    /// dropped — `insert` returns `Ok`, and a later read returns `Ok("")`. Core's
-    /// own tests only ever insert into an already-rooted cell
-    /// (`Root::new(...)` then `.insert(...)`), and `apps/components-demo`
-    /// constructs its `Ownable` without seeding it, so nothing upstream exercises
-    /// the seed-at-init path. mero-meet has the identical `let _ =
-    /// room_name.insert(...)` in its `init` and is equally affected; no test
-    /// there reads the name back, so it goes unnoticed.
+    /// dropped — `insert` returns `Ok`, and a later read returns `Ok("")`.
     ///
-    /// So the init name lives here, in a plain register that persists normally,
-    /// and `stream_name` takes over from the first owner rename onwards. Written
-    /// once at init and never again.
-    initial_name: LwwRegister<String>,
-    /// Context members, by identity. Membership gates `encode_frame`.
-    members: UnorderedMap<String, Member>,
-    /// The media buffer. Keyed `frag-{seq}-{chunk}`; all chunks of a frame share
-    /// `seq`. Pruned to a rolling `FRAME_WINDOW` of the most recent frames.
-    fragments: UnorderedMap<String, Fragment>,
+    /// So the init name lives here, and `stream_name` takes over from the first
+    /// owner rename onwards. `Frozen`, because it is the name everyone sees until
+    /// that rename: as a plain register any member's patched node could rewrite
+    /// it, walking straight around the `Ownable` gate.
+    initial_name: Frozen<String>,
+    /// Context members, keyed by DEVICE. `Authored`: the account that first
+    /// joins with a device owns its row, and `owner_of` is the account that
+    /// device speaks for — the verified device→account pairing every node
+    /// enforces, which a field or a side table could not be.
+    members: Authored<UnorderedMap<String, Member>>,
+    /// The approach-3 buffer. Keyed `frag-{from}-{seq:020}-{chunk:05}`; owned by
+    /// the sender, so only they can overwrite or prune it, and `from` in the key
+    /// keeps two senders that mint one `seq` apart.
+    fragments: Authored<SortedMap<String, Fragment>>,
     /// Global monotone frame sequence. LwwRegister: two senders may mint the
-    /// same base seq concurrently — that is fine here because fragment keys also
-    /// embed the chunk and each frame stands alone (no cross-frame diff in codec
-    /// #1). A colliding base seq merely groups two senders' chunks under one
-    /// frame id; `from` disambiguates on read.
+    /// same base seq concurrently — that is fine here because fragment keys
+    /// embed the sender and each frame stands alone (no cross-frame diff in
+    /// codec #1).
+    ///
+    /// ⚠️ Still shared, so a member's patched node can jump it (to `u64::MAX`,
+    /// say) and stall approach 3 for everyone. A shared counter cannot be
+    /// protected against its members' own contributions; the fix is per-sender
+    /// seq spaces with per-sender read cursors, which approach 2 has and this
+    /// deliberately-wrong probe path does not.
     next_seq: LwwRegister<u64>,
-    /// Lowest frame seq we still retain — advanced by pruning. Together with
-    /// `next_seq` this bounds the live window and reports tombstone pressure.
-    oldest_live_seq: LwwRegister<u64>,
-    /// Count of frames pruned so far (a proxy for tombstone accumulation, C3).
-    pruned_frames: LwwRegister<u64>,
     /// Role registry: the creator is the sole initial admin.
     roles: AccessControl,
-    /// member key → the account that device speaks for, self-registered on join.
-    ///
-    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20
-    /// (one person, many devices — the gate is the person), while member ids and
-    /// everything the frontend compares are device keys. Nothing on the wire maps
-    /// one to the other, and a device can only ever assert its OWN pairing (both
-    /// halves come from the host), so this is a self-registration rather than an
-    /// admin-maintained table.
-    accounts: UnorderedMap<String, LwwRegister<AccountId>>,
 
     // ── Approach 2: opaque chunks encoded by a REAL codec in the browser ──────
     //
@@ -572,18 +569,25 @@ pub struct MeroStream {
     // blob without any node having to *compute* it. That is precisely what makes
     // a real codec (and therefore a realistic resolution) legal here and illegal
     // in approach 3.
-    /// Opaque encoded chunks, keyed `chunk-{from}-{seq}`.
+    /// Opaque encoded chunks, keyed `chunk-{from}-{seq:020}`.
     ///
     /// `from` is in the key on purpose. Without it, two senders that minted the
     /// same seq collided on one key and last-writer-wins destroyed one of them —
-    /// the defect behind the one-directional video in `retro/review.md`. Sender
-    /// ids are hex public keys, which never contain `-`, so the delimiter is
-    /// unambiguous.
-    chunks: UnorderedMap<String, MediaChunk>,
-    /// Per-sender sequence / keyframe / pruning state. See [`ChunkCursor`] for
-    /// why this is per sender and merges by `max` rather than being a handful of
-    /// shared `LwwRegister`s.
-    chunk_cursors: UnorderedMap<String, ChunkCursor>,
+    /// the defect behind the one-directional video in `retro/review.md`. The seq
+    /// is zero-padded so key order is seq order and a sender's window is one
+    /// range read.
+    ///
+    /// `Moderated`: a chunk is owned by its sender's account, so nobody else can
+    /// overwrite or delete it, and the moderators (the creator) may reap a
+    /// departed sender's buffer. Readers still check each chunk's owner against
+    /// the sender's member row, because anyone can INSERT a new key under
+    /// someone else's `from`.
+    chunks: Moderated<SortedMap<String, MediaChunk>>,
+    /// Per-sender sequence / keyframe / pruning state, keyed by device and owned
+    /// by its sender. See [`ChunkCursor`] for why this is per sender and merges
+    /// by `max`; `Authored` is what stops another member from pushing someone
+    /// else's `max` to `u64::MAX` and freezing their stream for good.
+    chunk_cursors: Authored<UnorderedMap<String, ChunkCursor>>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -593,26 +597,23 @@ impl MeroStream {
     #[app::init]
     pub fn init(name: String) -> MeroStream {
         // Ownership and the admin tier are ACCOUNT-scoped since rc.20; member ids
-        // stay device-scoped (see the `accounts` field).
+        // stay device-scoped (see the `members` field).
         let me = Self::caller_account();
         // Deliberately NOT `stream_name.insert(name)` — see `initial_name`. The
         // value would be silently dropped here and the stream would come up
         // nameless.
         let stream_name = Ownable::new_owned_by(me);
-        let mut accounts = UnorderedMap::new();
-        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroStream {
             stream_name,
-            initial_name: LwwRegister::new(name),
-            members: UnorderedMap::new(),
-            fragments: UnorderedMap::new(),
+            initial_name: Frozen::new(name),
+            members: Authored::new(),
+            fragments: Authored::new(),
             next_seq: LwwRegister::new(0),
-            oldest_live_seq: LwwRegister::new(0),
-            pruned_frames: LwwRegister::new(0),
             roles: AccessControl::new(me),
-            chunks: UnorderedMap::new(),
-            chunk_cursors: UnorderedMap::new(),
-            accounts,
+            // The creator is the first moderator: the one account allowed to
+            // reap a departed sender's chunks.
+            chunks: Moderated::new(),
+            chunk_cursors: Authored::new(),
         }
     }
 
@@ -624,8 +625,8 @@ impl MeroStream {
     /// state — one person broadcasting from a laptop and watching on a phone is
     /// genuinely two peers — and it is what the frontend reads back from
     /// `identities-owned`. Authorization is the opposite case and gates on
-    /// [`Self::caller_account`]; see the `accounts` field, which records the
-    /// device→account pairing so two devices of one person share permissions.
+    /// [`Self::caller_account`]; the `members` row's owner stamp records the
+    /// device→account pairing, so two devices of one person share permissions.
     ///
     /// Do NOT reach for `env::executor_id()` to get this. rc.20 split identity
     /// into account + device (core #3320) and left that shim meaning the
@@ -635,31 +636,24 @@ impl MeroStream {
         sdk_env::device_id().into()
     }
 
-    /// The account this call is authorized as — what `AccessControl` and
-    /// `Ownable` gate on. Two devices belonging to one person report the same
-    /// account.
+    /// The account this call is authorized as — what `AccessControl`,
+    /// `Ownable` and every owner stamp gate on. Two devices belonging to one
+    /// person report the same account.
     fn caller_account() -> AccountId {
         AccountId::from(sdk_env::account_id())
     }
 
-    /// Record the caller's device→account pairing. Idempotent: an unchanged
-    /// pairing writes nothing, so the hot post path adds no CRDT delta.
-    fn remember_account(&mut self) {
-        let me = Self::caller_id();
-        let account = Self::caller_account();
-        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
-            return;
-        }
-        let _ = self.accounts.insert(me, LwwRegister::new(account));
+    /// The account a member's device speaks for: the owner stamp on its member
+    /// row, which every node verified when it applied the join.
+    fn account_of(&self, member: &str) -> Option<AccountId> {
+        self.members.owner_of(&member.to_owned()).ok().flatten()
     }
 
-    /// The account a member's device speaks for, if that member has ever
-    /// written to this stream.
-    fn account_of(&self, member: &str) -> Option<AccountId> {
-        match self.accounts.get(member) {
-            Ok(Some(reg)) => Some(*reg.get()),
-            _ => None,
-        }
+    /// Whether the entry at `key` was written by the account that owns
+    /// `from`'s member row. Anyone can insert a NEW key under someone else's
+    /// `from`, so every read of another sender's media checks this.
+    fn written_by(&self, owner: Option<AccountId>, from: &str) -> bool {
+        owner.is_some() && owner == self.account_of(from)
     }
 
     fn caller_id() -> String {
@@ -682,7 +676,7 @@ impl MeroStream {
             .map(|r| r.get().clone())
             .unwrap_or_default();
         if renamed.is_empty() {
-            self.initial_name.get().clone()
+            self.initial_name.get().cloned().unwrap_or_default()
         } else {
             renamed
         }
@@ -690,10 +684,25 @@ impl MeroStream {
 
     fn require_member(&self) -> app::Result<String> {
         let id = Self::caller_id();
-        if self.members.get(&id)?.is_none() {
+        if !self.members.owned_by_me(&id)? {
             app::bail!("join the stream before this operation");
         }
         Ok(id)
+    }
+
+    /// The caller's own cursor row, created on first use. A row under this
+    /// device that another account created is refused rather than written
+    /// through — nobody but its owner can change it anyway.
+    fn own_cursor(&mut self, from: &str) -> app::Result<ChunkCursor> {
+        let key = from.to_owned();
+        match self.chunk_cursors.get(&key)? {
+            Some(cursor) if self.chunk_cursors.owned_by_me(&key)? => Ok(cursor),
+            Some(_) => app::bail!("this device's stream is claimed by another account"),
+            None => {
+                self.chunk_cursors.insert(key, ChunkCursor::default())?;
+                Ok(ChunkCursor::default())
+            }
+        }
     }
 
     // ── Membership ───────────────────────────────────────────────────────────
@@ -701,22 +710,32 @@ impl MeroStream {
     /// Join the stream context. Idempotent (re-join updates the display name).
     pub fn join(&mut self, username: String, now: u64) -> app::Result<Member> {
         let id = Self::caller_id();
-        // Read the prior row into an owned local, then drop the borrow before
-        // the mutating insert (mirrors mero-meet's join). `joined_at` is
-        // immutable after first join.
-        let existing = self.members.get(&id)?;
-        let joined_at = existing.as_ref().map(|m| m.joined_at).unwrap_or(now);
-        drop(existing);
-        let member = Member {
-            member_id: id.clone(),
-            username,
-            joined_at,
-            updated_at: now,
+        let member = match self.members.get(&id)? {
+            Some(existing) => {
+                if !self.members.owned_by_me(&id)? {
+                    app::bail!("this device is registered to another account");
+                }
+                // `joined_at` is immutable after first join.
+                let member = Member {
+                    member_id: id.clone(),
+                    username,
+                    joined_at: existing.joined_at,
+                    updated_at: now,
+                };
+                self.members.update(&id, member.clone())?;
+                member
+            }
+            None => {
+                let member = Member {
+                    member_id: id.clone(),
+                    username,
+                    joined_at: now,
+                    updated_at: now,
+                };
+                self.members.insert(id.clone(), member.clone())?;
+                member
+            }
         };
-        self.members.insert(id.clone(), member.clone())?;
-        // Self-register the device→account pairing, so a later admin check on
-        // this member can resolve the account `AccessControl` actually gates on.
-        self.remember_account();
         app::emit!(Event::MemberJoined(id));
         Ok(member)
     }
@@ -732,7 +751,7 @@ impl MeroStream {
 
     /// Encode one raw luma frame **inside the WASM runtime**, split it into
     /// `≤ MAX_CHUNK_BYTES` fragments, store them under monotone never-reused
-    /// keys, prune the live window, and emit `FramePosted(base_seq)`.
+    /// keys, prune the caller's live window, and emit `FramePosted(base_seq)`.
     ///
     /// `raw` is `width * height` luma bytes (1 byte/pixel). It is a mutation
     /// argument, so it is local to THIS node — only the compressed fragments
@@ -798,19 +817,23 @@ impl MeroStream {
                 data: ch.to_vec(),
                 created_at: now,
             };
-            self.fragments.insert(Self::frag_key(seq, i as u16), frag)?;
+            self.fragments
+                .insert(Self::frag_key(&from, seq, i as u16), frag)?;
         }
 
-        self.prune_frames_internal(seq);
+        // Keep only our own most recent `FRAME_WINDOW` frames.
+        let threshold = seq.saturating_sub(FRAME_WINDOW);
+        self.prune_own_frames(&from, threshold)?;
         app::emit!(Event::FramePosted(seq));
         Ok(seq)
     }
 
-    /// Fragment storage key. Monotone `seq` + `chunk` → globally unique and NEVER
-    /// reused, so a re-send after a prune lands on a fresh key and converges
-    /// (C3: a reused key would be permanently shadowed by the prune's tombstone).
-    fn frag_key(seq: u64, chunk: u16) -> String {
-        format!("frag-{}-{}", seq, chunk)
+    /// Fragment storage key. Sender + monotone `seq` + `chunk` → globally unique
+    /// and NEVER reused, so a re-send after a prune lands on a fresh key and
+    /// converges (C3: a reused key would be permanently shadowed by the prune's
+    /// tombstone). Zero-padded, so one sender's frames are one ordered range.
+    fn frag_key(from: &str, seq: u64, chunk: u16) -> String {
+        format!("frag-{from}-{seq:020}-{chunk:05}")
     }
 
     // ── Decode (view — reconstructs frames in WASM) ──────────────────────────────
@@ -818,13 +841,21 @@ impl MeroStream {
     /// Reassemble + decode every frame with `seq > after_seq`, oldest first.
     /// Read-only (no delta). The frontend tracks the highest seq it has rendered
     /// and passes it back. Frames whose chunks are not all present yet are
-    /// skipped (a partially-gossiped frame is not decodable).
+    /// skipped (a partially-gossiped frame is not decodable), and so is any
+    /// fragment its sender did not write.
     pub fn get_frame(&self, after_seq: u64) -> Vec<DecodedFrame> {
-        // Collect live fragments above the cursor, grouped by (seq, from).
+        // Collect live fragments above the cursor.
         let mut frags: Vec<Fragment> = self
             .fragments
             .entries()
-            .map(|e| e.map(|(_, f)| f).filter(|f| f.seq > after_seq).collect())
+            .map(|e| {
+                e.filter(|(key, f)| {
+                    f.seq > after_seq
+                        && self.written_by(self.fragments.owner_of(key).ok().flatten(), &f.from)
+                })
+                .map(|(_, f)| f)
+                .collect()
+            })
             .unwrap_or_default();
         // Deterministic order: by seq, then sender, then chunk.
         frags.sort_by(|a, b| {
@@ -947,11 +978,7 @@ impl MeroStream {
 
         // Mint from OUR OWN counter. Nothing another sender does can move it, so
         // two peers posting at the same instant can no longer mint the same seq.
-        let mut cursor = self
-            .chunk_cursors
-            .get(&from)?
-            .map(|c| (*c).clone())
-            .unwrap_or_default();
+        let mut cursor = self.own_cursor(&from)?;
         let seq = cursor.next_seq.saturating_add(1);
         cursor.next_seq = seq;
         if is_keyframe {
@@ -975,7 +1002,7 @@ impl MeroStream {
             created_at: now,
         };
         self.chunks.insert(Self::chunk_key(&from, seq), chunk)?;
-        self.chunk_cursors.insert(from.clone(), cursor)?;
+        self.chunk_cursors.update(&from, cursor)?;
 
         // Reap our own trailing chunks, then collect anyone who has gone away.
         self.prune_own_chunks(&from, now)?;
@@ -985,9 +1012,39 @@ impl MeroStream {
     }
 
     /// Chunk storage key. Per sender, monotone within that sender, NEVER reused
-    /// (C3). See the `chunks` field for why `from` is part of the key.
+    /// (C3). See the `chunks` field for why `from` is part of the key; the seq is
+    /// zero-padded so key order is seq order.
     fn chunk_key(from: &str, seq: u64) -> String {
-        format!("chunk-{}-{}", from, seq)
+        format!("chunk-{from}-{seq:020}")
+    }
+
+    /// Every genuine live chunk of `from` with `seq >= from_seq`, oldest first:
+    /// one range read over that sender's keys, dropping any chunk the sender's
+    /// account did not write.
+    fn sender_chunks(&self, from: &str, from_seq: u64) -> Vec<MediaChunk> {
+        // `:` sorts right after `9`, so this bounds every zero-padded seq.
+        let end = format!("chunk-{from}-:");
+        self.chunks
+            .range(Self::chunk_key(from, from_seq)..end)
+            .map(|e| {
+                e.filter(|(key, _)| self.written_by(self.chunks.owner_of(key).ok().flatten(), from))
+                    .map(|(_, c)| c)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Senders whose cursor row their own account wrote, with that cursor.
+    fn genuine_cursors(&self) -> Vec<(String, ChunkCursor)> {
+        self.chunk_cursors
+            .entries()
+            .map(|e| {
+                e.filter(|(from, _)| {
+                    self.written_by(self.chunk_cursors.owner_of(from).ok().flatten(), from)
+                })
+                .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Every live chunk newer than the caller's per-sender cursor, oldest first
@@ -1003,60 +1060,66 @@ impl MeroStream {
     /// That folds in the old `keyframe_cursor()` round-trip — joining is now one
     /// call instead of "ask for the cursor, then ask for chunks".
     ///
-    /// Returns base64 so the JSON transport stays ~1.37x rather than ~3x.
+    /// Each sender is one range read from its own start, so the cost is what is
+    /// returned, not the whole buffer. Returns base64 so the JSON transport
+    /// stays ~1.37x rather than ~3x.
     pub fn get_chunks(&self, cursors: Vec<SenderCursor>) -> Vec<ChunkView> {
-        let mut out: Vec<ChunkView> = self
-            .chunks
-            .entries()
-            .map(|e| {
-                e.map(|(_, c)| c)
-                    .filter(|c| match cursors.iter().find(|k| k.from == c.from) {
-                        Some(k) => c.seq > k.after_seq,
-                        // Unknown sender: start at their newest live keyframe.
-                        // A zero floor means they have no live keyframe at all,
-                        // so there is nothing decodable to hand over yet — send
-                        // none of it rather than deltas the decoder will throw on.
-                        None => {
-                            let floor = self.live_keyframe_of(&c.from);
-                            floor != 0 && c.seq >= floor
-                        }
-                    })
+        let mut senders = self.genuine_cursors();
+        // Decoders are order-sensitive: a delta frame fed before its reference
+        // produces garbage or throws. Group by sender, ascending within each, so
+        // the caller can feed every decoder straight through.
+        senders.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut out = Vec::new();
+        for (from, _) in senders {
+            let start = match cursors.iter().find(|k| k.from == from) {
+                Some(k) => k.after_seq.saturating_add(1),
+                // Unknown sender: start at their newest live keyframe. A zero
+                // floor means they have no live keyframe at all, so there is
+                // nothing decodable to hand over yet — send none of it rather
+                // than deltas the decoder will throw on.
+                None => match self.live_keyframe_of(&from) {
+                    0 => continue,
+                    floor => floor,
+                },
+            };
+            out.extend(
+                self.sender_chunks(&from, start)
+                    .into_iter()
                     .map(|c| ChunkView {
                         seq: c.seq,
-                        from: c.from.clone(),
+                        from: c.from,
                         track: c.track,
                         is_keyframe: c.is_keyframe,
-                        codec: c.codec.clone(),
+                        codec: c.codec,
                         width: c.width,
                         height: c.height,
                         timestamp_us: c.timestamp_us,
                         data_b64: BASE64.encode(&c.data),
                         created_at: c.created_at,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Decoders are order-sensitive: a delta frame fed before its reference
-        // produces garbage or throws. Group by sender, ascending within each, so
-        // the caller can feed every decoder straight through.
-        out.sort_by(|a, b| a.from.cmp(&b.from).then(a.seq.cmp(&b.seq)));
+                    }),
+            );
+        }
         out
     }
 
     /// That sender's newest keyframe seq if it is still live, else 0.
     fn live_keyframe_of(&self, from: &str) -> u64 {
-        let seq = match self.chunk_cursors.get(from) {
+        let key = from.to_owned();
+        let seq = match self.chunk_cursors.get(&key) {
             Ok(Some(c)) => c.last_keyframe,
             _ => return 0,
         };
-        if seq == 0 {
+        if seq == 0 || !self.written_by(self.chunk_cursors.owner_of(&key).ok().flatten(), from) {
             return 0;
         }
-        // Confirm it is still live rather than trusting the cursor — the reaper
-        // protects it, but a peer that has not synced yet may legitimately not
-        // hold it.
-        match self.chunks.get(&Self::chunk_key(from, seq)) {
-            Ok(Some(_)) => seq,
+        // Confirm it is still live, and the sender's own, rather than trusting
+        // the cursor — the reaper protects it, but a peer that has not synced
+        // yet may legitimately not hold it.
+        let chunk = Self::chunk_key(from, seq);
+        match self.chunks.get(&chunk) {
+            Ok(Some(_)) if self.written_by(self.chunks.owner_of(&chunk).ok().flatten(), from) => {
+                seq
+            }
             _ => 0,
         }
     }
@@ -1068,73 +1131,50 @@ impl MeroStream {
     /// path no longer needs to call it. Kept for diagnostics and e2e assertions.
     pub fn keyframe_cursors(&self) -> Vec<SenderCursor> {
         let mut out: Vec<SenderCursor> = self
-            .chunk_cursors
-            .entries()
-            .map(|e| {
-                e.map(|(from, _)| from)
-                    .filter_map(|from| {
-                        let seq = self.live_keyframe_of(&from);
-                        (seq != 0).then_some(SenderCursor {
-                            from,
-                            after_seq: seq,
-                        })
-                    })
-                    .collect()
+            .genuine_cursors()
+            .into_iter()
+            .filter_map(|(from, _)| {
+                let seq = self.live_keyframe_of(&from);
+                (seq != 0).then_some(SenderCursor {
+                    from,
+                    after_seq: seq,
+                })
             })
-            .unwrap_or_default();
+            .collect();
         out.sort_by(|a, b| a.from.cmp(&b.from));
         out
     }
 
     pub fn get_live_stats(&self) -> LiveStats {
-        let live_bytes = self
-            .chunks
-            .entries()
-            .map(|e| e.map(|(_, c)| c.data.len() as u64).sum::<u64>())
-            .unwrap_or(0);
-
         let mut senders: Vec<SenderStats> = self
-            .chunk_cursors
-            .entries()
-            .map(|e| {
-                e.map(|(from, cur)| {
-                    let (live_chunks, sender_bytes) = self.live_totals_of(&from);
-                    SenderStats {
-                        from,
-                        next_seq: cur.next_seq,
-                        oldest_live: cur.oldest_live,
-                        last_keyframe: cur.last_keyframe,
-                        newest_at: cur.newest_at,
-                        pruned: cur.pruned,
-                        live_chunks,
-                        live_bytes: sender_bytes,
-                    }
-                })
-                .collect()
+            .genuine_cursors()
+            .into_iter()
+            // A cursor that only ever counted approach-3 frames has no chunks.
+            .filter(|(_, cur)| cur.next_seq != 0)
+            .map(|(from, cur)| {
+                let live = self.sender_chunks(&from, 0);
+                SenderStats {
+                    live_chunks: live.len() as u32,
+                    live_bytes: live
+                        .iter()
+                        .fold(0u64, |bytes, c| bytes.saturating_add(c.data.len() as u64)),
+                    from,
+                    next_seq: cur.next_seq,
+                    oldest_live: cur.oldest_live,
+                    last_keyframe: cur.last_keyframe,
+                    newest_at: cur.newest_at,
+                    pruned: cur.pruned,
+                }
             })
-            .unwrap_or_default();
+            .collect();
         senders.sort_by(|a, b| a.from.cmp(&b.from));
 
         LiveStats {
-            live_chunks: self.chunks.len().unwrap_or(0) as u32,
-            live_bytes,
+            live_chunks: senders.iter().map(|s| s.live_chunks).sum(),
+            live_bytes: senders.iter().map(|s| s.live_bytes).sum(),
             pruned_chunks: senders.iter().map(|s| s.pruned).sum(),
             senders,
         }
-    }
-
-    /// `(count, bytes)` of one sender's live chunks.
-    fn live_totals_of(&self, from: &str) -> (u32, u64) {
-        self.chunks
-            .entries()
-            .map(|e| {
-                e.map(|(_, c)| c)
-                    .filter(|c| c.from == from)
-                    .fold((0u32, 0u64), |(n, bytes), c| {
-                        (n + 1, bytes.saturating_add(c.data.len() as u64))
-                    })
-            })
-            .unwrap_or((0, 0))
     }
 
     /// Age out **our own** trailing chunks. Time-based, keyframe-safe.
@@ -1155,10 +1195,14 @@ impl MeroStream {
     /// delta with no reference — live, replicating, and undecodable, which is the
     /// worst failure mode available because nothing looks broken from the
     /// sender's side.
+    ///
+    /// Every seq visited counts against `MAX_PRUNE_PER_CALL`, holes included: a
+    /// cursor whose `next_seq` sits far past its live chunks must cost one
+    /// bounded call, not a walk over every empty seq in between.
     fn prune_own_chunks(&mut self, from: &str, now: u64) -> app::Result<()> {
-        let mut cursor = match self.chunk_cursors.get(from)? {
-            Some(c) => (*c).clone(),
-            None => return Ok(()),
+        let key = from.to_owned();
+        let Some(mut cursor) = self.chunk_cursors.get(&key)? else {
+            return Ok(());
         };
 
         let cutoff = now.saturating_sub(LIVE_WINDOW_MS);
@@ -1171,8 +1215,10 @@ impl MeroStream {
 
         let start = cursor.oldest_live.max(1);
         let mut removed = 0u64;
+        let mut steps = 0u64;
         let mut seq = start;
-        while seq < cursor.next_seq && removed < MAX_PRUNE_PER_CALL {
+        while seq < cursor.next_seq && steps < MAX_PRUNE_PER_CALL {
+            steps += 1;
             let over_count = seq < count_floor;
             // Never step on or past our own newest keyframe — *unless* the count
             // backstop demands it.
@@ -1187,8 +1233,14 @@ impl MeroStream {
             if !over_count && cursor.last_keyframe != 0 && seq >= cursor.last_keyframe {
                 break;
             }
-            let key = Self::chunk_key(from, seq);
-            let too_old = match self.chunks.get(&key)? {
+            let chunk_key = Self::chunk_key(from, seq);
+            let too_old = match self.chunks.get(&chunk_key)? {
+                // Somebody else's key under our `from` is not ours to remove:
+                // step over it like a hole.
+                Some(_) if !self.chunks.owned_by_me(&chunk_key)? => {
+                    seq += 1;
+                    continue;
+                }
                 Some(c) => c.created_at < cutoff,
                 // Already gone — advance over the hole.
                 None => {
@@ -1199,7 +1251,7 @@ impl MeroStream {
             if !(too_old || over_count) {
                 break;
             }
-            if self.chunks.remove(&key)?.is_some() {
+            if self.chunks.remove(&chunk_key)?.is_some() {
                 removed += 1;
             }
             seq += 1;
@@ -1208,7 +1260,7 @@ impl MeroStream {
         if removed > 0 || seq > cursor.oldest_live {
             cursor.oldest_live = seq;
             cursor.pruned = cursor.pruned.saturating_add(removed);
-            self.chunk_cursors.insert(from.to_owned(), cursor)?;
+            self.chunk_cursors.update(&key, cursor)?;
         }
         Ok(())
     }
@@ -1216,39 +1268,53 @@ impl MeroStream {
     /// Collect the buffer of any sender that has stopped posting.
     ///
     /// Self-pruning bounds a *live* sender, but a peer who closes the tab leaves
-    /// their last window pinned forever, so someone else has to collect it. This
-    /// is the one place a node touches another sender's chunks, and it is safe
-    /// because `STALE_SENDER_MS` (30 s) is five times the live window: by the
-    /// time it fires the owner has not written for half a minute, so the delete
-    /// cannot realistically race a live insert.
+    /// their last window pinned forever, so someone else has to collect it. That
+    /// someone is a MODERATOR of `chunks` (the creator): a chunk is owned by its
+    /// sender, and every node refuses anyone else's delete. It is safe because
+    /// `STALE_SENDER_MS` (30 s) is five times the live window: by the time it
+    /// fires the owner has not written for half a minute, so the delete cannot
+    /// realistically race a live insert.
+    ///
+    /// The departed sender's cursor is theirs, so it is left as it is; the sweep
+    /// reads their live chunks as one range instead of walking seqs from it,
+    /// which also means a cursor claiming `next_seq = u64::MAX` costs nothing.
     fn sweep_stale_senders(&mut self, me: &str, now: u64) -> app::Result<()> {
+        if !self.chunks.is_moderator(&Self::caller_account()) {
+            return Ok(());
+        }
         let cutoff = now.saturating_sub(STALE_SENDER_MS);
-        let stale: Vec<(String, ChunkCursor)> = self
+        let stale: Vec<String> = self
             .chunk_cursors
             .entries()
             .map(|e| {
-                e.filter(|(from, cur)| {
-                    from != me && cur.newest_at < cutoff && cur.oldest_live < cur.next_seq
-                })
-                .collect()
+                // `next_seq != 0`: the sender has posted chunks. Not
+                // `oldest_live < next_seq`, which skipped a sender who left
+                // with exactly one live chunk.
+                e.filter(|(from, cur)| from != me && cur.newest_at < cutoff && cur.next_seq != 0)
+                    .map(|(from, _)| from)
+                    .collect()
             })
             .unwrap_or_default();
 
-        for (from, mut cursor) in stale {
-            let start = cursor.oldest_live.max(1);
-            let mut removed = 0u64;
-            let mut seq = start;
+        let mut budget = MAX_PRUNE_PER_CALL;
+        for from in stale {
             // No keyframe clamp: the sender is gone, so there is no stream left
             // to keep decodable.
-            while seq <= cursor.next_seq && removed < MAX_PRUNE_PER_CALL {
-                if self.chunks.remove(&Self::chunk_key(&from, seq))?.is_some() {
-                    removed += 1;
+            let end = format!("chunk-{from}-:");
+            let keys: Vec<String> = self
+                .chunks
+                .range(Self::chunk_key(&from, 0)..end)?
+                .map(|(key, _)| key)
+                .take(budget as usize)
+                .collect();
+            for key in keys {
+                if self.chunks.remove(&key)?.is_some() {
+                    budget -= 1;
                 }
-                seq += 1;
             }
-            cursor.oldest_live = seq;
-            cursor.pruned = cursor.pruned.saturating_add(removed);
-            self.chunk_cursors.insert(from, cursor)?;
+            if budget == 0 {
+                break;
+            }
         }
         Ok(())
     }
@@ -1256,12 +1322,18 @@ impl MeroStream {
     /// Explicit reaper (membership-gated). Prunes **only the caller's own**
     /// chunks, and still honours their keyframe clamp — an operator cannot ask
     /// for an undecodable stream, nor reach into someone else's buffer.
+    ///
+    /// At most `MAX_PRUNE_PER_CALL` chunks per call, read as one range over the
+    /// live ones: `before_seq = u64::MAX` is one bounded call, not a walk.
     pub fn prune_chunks(&mut self, before_seq: u64) -> app::Result<()> {
         let me = self.require_member()?;
-        let mut cursor = match self.chunk_cursors.get(&me)? {
-            Some(c) => (*c).clone(),
-            None => return Ok(()),
+        let key = me.clone();
+        let Some(mut cursor) = self.chunk_cursors.get(&key)? else {
+            return Ok(());
         };
+        if !self.chunk_cursors.owned_by_me(&key)? {
+            return Ok(());
+        }
         let clamped = if cursor.last_keyframe == 0 {
             before_seq
         } else {
@@ -1271,90 +1343,97 @@ impl MeroStream {
             return Ok(());
         }
 
-        let start = cursor.oldest_live.max(1);
+        let doomed: Vec<(String, u64)> = self
+            .chunks
+            .range(Self::chunk_key(&me, cursor.oldest_live.max(1))..Self::chunk_key(&me, clamped))?
+            .map(|(key, c)| (key, c.seq))
+            .collect();
         let mut removed = 0u64;
-        for seq in start..clamped {
-            if self.chunks.remove(&Self::chunk_key(&me, seq))?.is_some() {
+        let mut reached = clamped;
+        for (key, seq) in doomed {
+            if !self.chunks.owned_by_me(&key)? {
+                continue;
+            }
+            if removed == MAX_PRUNE_PER_CALL {
+                reached = seq;
+                break;
+            }
+            if self.chunks.remove(&key)?.is_some() {
                 removed += 1;
             }
         }
-        if clamped > cursor.oldest_live {
-            cursor.oldest_live = clamped;
+        if reached > cursor.oldest_live {
+            cursor.oldest_live = reached;
         }
         cursor.pruned = cursor.pruned.saturating_add(removed);
-        self.chunk_cursors.insert(me, cursor)?;
+        self.chunk_cursors.update(&key, cursor)?;
         Ok(())
     }
 
     // ── Prune (explicit reaper; every removal is a tombstone — C3) ────────────────
 
-    /// Remove all fragments belonging to frames with `seq < before_seq`.
+    /// Remove the CALLER'S fragments of frames with `seq < before_seq`.
     /// Callable explicitly (an experiment may drive it) and also inline after
-    /// every `encode_frame`. Requires membership.
+    /// every `encode_frame`. Requires membership, and reaches only the caller's
+    /// own frames: every node refuses a delete of anyone else's.
     pub fn prune_frames(&mut self, before_seq: u64) -> app::Result<()> {
-        self.require_member()?;
-        self.prune_below(before_seq);
-        Ok(())
+        let me = self.require_member()?;
+        self.prune_own_frames(&me, before_seq)
     }
 
-    /// Keep only the most recent `FRAME_WINDOW` frames relative to `latest_seq`.
-    fn prune_frames_internal(&mut self, latest_seq: u64) {
-        let threshold = latest_seq.saturating_sub(FRAME_WINDOW);
-        if threshold > *self.oldest_live_seq.get() {
-            self.prune_below(threshold);
-        }
-    }
-
-    /// Remove every fragment whose frame seq is `< before_seq`. Each removal is a
-    /// replicated tombstone (C3) — that cost is exactly what Task 3 measures.
-    fn prune_below(&mut self, before_seq: u64) {
+    /// Remove `from`'s own fragments below `before_seq`: one range read over
+    /// that sender's keys, at most `MAX_PRUNE_PER_CALL` removals. Each removal
+    /// is a replicated tombstone (C3) — that cost is exactly what Task 3
+    /// measures.
+    fn prune_own_frames(&mut self, from: &str, before_seq: u64) -> app::Result<()> {
         if before_seq == 0 {
-            return;
+            return Ok(());
         }
-        let doomed: Vec<String> = self
+        let doomed: Vec<(String, u64)> = self
             .fragments
-            .entries()
-            .map(|e| {
-                e.map(|(k, f)| (k, f.seq))
-                    .filter(|(_, seq)| *seq < before_seq)
-                    .map(|(k, _)| k)
-                    .collect()
-            })
-            .unwrap_or_default();
-        if doomed.is_empty() {
-            return;
-        }
-        // Count distinct pruned frame seqs for the stats counter.
+            .range(Self::frag_key(from, 0, 0)..Self::frag_key(from, before_seq, 0))?
+            .map(|(key, f)| (key, f.seq))
+            .take(MAX_PRUNE_PER_CALL as usize)
+            .collect();
         let mut pruned_seqs: Vec<u64> = Vec::new();
-        for key in &doomed {
-            if let Ok(Some(f)) = self.fragments.get(key) {
-                if !pruned_seqs.contains(&f.seq) {
-                    pruned_seqs.push(f.seq);
-                }
+        for (key, seq) in doomed {
+            if !self.fragments.owned_by_me(&key)? {
+                continue;
+            }
+            if self.fragments.remove(&key)?.is_some() && !pruned_seqs.contains(&seq) {
+                pruned_seqs.push(seq);
             }
         }
-        for key in doomed {
-            let _ = self.fragments.remove(&key);
+        if pruned_seqs.is_empty() {
+            return Ok(());
         }
-        self.oldest_live_seq.set(before_seq);
-        let total = self
-            .pruned_frames
-            .get()
+        let mut cursor = self.own_cursor(from)?;
+        cursor.frames_pruned = cursor
+            .frames_pruned
             .saturating_add(pruned_seqs.len() as u64);
-        self.pruned_frames.set(total);
+        self.chunk_cursors.update(&from.to_owned(), cursor)?;
         app::emit!(Event::FramesPruned(before_seq));
+        Ok(())
     }
 
     // ── Instrumentation ──────────────────────────────────────────────────────
 
     pub fn get_stats(&self) -> StreamStats {
+        let frames: Vec<u64> = self
+            .fragments
+            .entries()
+            .map(|e| e.map(|(_, f)| f.seq).collect())
+            .unwrap_or_default();
         StreamStats {
             name: self.stream_name_str(),
             member_count: self.members.len().unwrap_or(0) as u32,
-            live_fragments: self.fragments.len().unwrap_or(0) as u32,
+            live_fragments: frames.len() as u32,
             next_seq: *self.next_seq.get(),
-            oldest_live_seq: *self.oldest_live_seq.get(),
-            pruned_frames: *self.pruned_frames.get(),
+            oldest_live_seq: frames.iter().copied().min().unwrap_or(0),
+            pruned_frames: self
+                .genuine_cursors()
+                .iter()
+                .fold(0u64, |n, (_, c)| n.saturating_add(c.frames_pruned)),
         }
     }
 
@@ -1371,10 +1450,11 @@ impl MeroStream {
 
     /// Whether the given MEMBER key's owner is an admin.
     ///
-    /// Takes a device key (what the frontend has) but resolves it through
-    /// `accounts` to the `AccountId` that `AccessControl` is keyed by since
-    /// rc.20. A member who has never joined has no known account, so this is
-    /// `false` rather than an error — the caller asked a yes/no question.
+    /// Takes a device key (what the frontend has) but resolves it through the
+    /// member row's owner stamp to the `AccountId` that `AccessControl` is keyed
+    /// by since rc.20. A member who has never joined has no known account, so
+    /// this is `false` rather than an error — the caller asked a yes/no
+    /// question.
     pub fn is_member_admin(&self, member: String) -> bool {
         if Self::parse_pk(&member).is_err() {
             return false;
@@ -1547,8 +1627,29 @@ mod tests {
             .unwrap_or_else(|| panic!("no stats for sender {want}"))
     }
 
+    /// A fresh stream whose creator is also the `chunks` moderator, as on a
+    /// node.
+    ///
+    /// `TestHost` runs `init` with the storage layer's writer left at its own
+    /// default rather than the SDK account, so `Moderated::new()` names that
+    /// default as the first moderator while `roles` and `stream_name` name the
+    /// SDK account. On a node the two are one account. Rotating the moderators
+    /// to the creator restores that, so the tests exercise the real split: the
+    /// creator sweeps, anyone else does not.
     fn new_stream() -> TestHost<MeroStream> {
-        TestHost::new(|| MeroStream::init("probe".to_owned()))
+        let mut app = TestHost::new(|| MeroStream::init("probe".to_owned()));
+        let creator = calimero_sdk::AccountId::from(app.account_id());
+        let genesis = *app
+            .view(|s| s.chunks.moderators())
+            .iter()
+            .next()
+            .expect("init names a moderator")
+            .as_bytes();
+        app.call_as_account(genesis, genesis, |s| {
+            s.chunks.set_moderators([creator].into_iter().collect())
+        })
+        .expect("rotate the moderators to the creator");
+        app
     }
 
     /// A frame whose pixels are all of the form (q<<4)|q, so quantize→reconstruct
@@ -2665,6 +2766,7 @@ mod tests {
             last_keyframe: 8,
             newest_at: 5_000,
             pruned: 2,
+            frames_pruned: 1,
         };
         let b = ChunkCursor {
             next_seq: 7,
@@ -2672,6 +2774,7 @@ mod tests {
             last_keyframe: 6,
             newest_at: 9_000,
             pruned: 4,
+            frames_pruned: 0,
         };
 
         let mut ab = a.clone();
@@ -2698,6 +2801,7 @@ mod tests {
         );
         assert_eq!((ab.next_seq, ab.oldest_live), (10, 5));
         assert_eq!((ab.last_keyframe, ab.newest_at, ab.pruned), (8, 9_000, 4));
+        assert_eq!((ab.frames_pruned, ba.frames_pruned), (1, 1));
 
         // Idempotent — re-delivering the same update changes nothing.
         let mut again = ab.clone();
@@ -3010,5 +3114,211 @@ mod tests {
                 .unwrap_or_else(|| panic!("roster is missing {}", id_of(*w)));
             assert_eq!(m.username, format!("peer{i}"));
         }
+    }
+
+    // ── Storage-enforced ownership (holds against a patched node) ─────────────
+    //
+    // Each of these writes through the collections directly, the way a patched
+    // node would, and checks what every node's apply step lets through.
+
+    /// A different PERSON (account and device of their own), who has joined.
+    const MALLORY: [u8; 32] = [0x4D; 32];
+    const MALLORY_ACCOUNT: [u8; 32] = [0x4A; 32];
+
+    fn with_mallory() -> TestHost<MeroStream> {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+            s.join("Mallory".to_owned(), 1000)
+        })
+        .unwrap();
+        app
+    }
+
+    #[test]
+    fn a_forged_cursor_cannot_stall_the_reaper_or_the_sweep() {
+        // The sweep used to count only chunks it actually removed, so a cursor
+        // claiming `next_seq = u64::MAX` over an empty buffer walked ~2^64 empty
+        // seqs on every post. Both loops are now bounded by steps.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        post(&mut app, ALICE, b"alice", true, 1000).unwrap();
+        // Alice's own node pushes her cursor to the ceiling (her row, so storage
+        // allows it) — the worst her cursor can look to anyone else.
+        app.call_as(ALICE, |s| {
+            s.chunk_cursors.modify(&id_of(ALICE), |c| {
+                c.next_seq = u64::MAX - 1;
+                c.last_keyframe = 0;
+            })
+        })
+        .unwrap();
+        // Her own reaper finishes in one bounded call...
+        post(&mut app, ALICE, b"alice", false, 1001).unwrap();
+        // ...and so does the creator's sweep of her once she goes quiet.
+        let late = 1001 + STALE_SENDER_MS + 1000;
+        post(&mut app, BOB, b"bob", true, late).unwrap();
+        assert_eq!(sender_stats(&mut app, ALICE).live_chunks, 0);
+    }
+
+    #[test]
+    fn nobody_but_the_sender_rewrites_or_removes_their_chunks_or_cursor() {
+        let mut app = with_mallory();
+        let seq = post(&mut app, ALICE, b"alice", true, 1000).unwrap();
+        let key = MeroStream::chunk_key(&id_of(ALICE), seq);
+        let alice = id_of(ALICE);
+
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| s.chunks.remove(&key))
+            .is_err());
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+                s.chunks.modify(&key, |c| c.data = b"forged".to_vec())
+            })
+            .is_err());
+        assert!(
+            app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+                s.chunk_cursors.modify(&alice, |c| c.next_seq = u64::MAX)
+            })
+            .is_err(),
+            "a max-merged cursor pushed to u64::MAX would freeze her stream for good"
+        );
+        assert_eq!(sender_stats(&mut app, ALICE).next_seq, seq);
+
+        // Her own prune still works.
+        app.call_as(ALICE, |s| s.prune_chunks(u64::MAX)).unwrap();
+    }
+
+    #[test]
+    fn a_chunk_planted_under_someone_elses_id_is_never_served() {
+        let mut app = with_mallory();
+        let seq = post(&mut app, ALICE, b"alice", true, 1000).unwrap();
+        // A NEW key under Alice's id is Mallory's to insert — storage stamps it
+        // as Mallory's, and every read drops it.
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+            s.chunks.insert(
+                MeroStream::chunk_key(&id_of(ALICE), seq + 1),
+                super::MediaChunk {
+                    seq: seq + 1,
+                    from: id_of(ALICE),
+                    track: 0,
+                    is_keyframe: true,
+                    codec: "avc1.42001f".to_owned(),
+                    width: 640,
+                    height: 480,
+                    timestamp_us: 0,
+                    data: b"fake keyframe".to_vec(),
+                    created_at: 1001,
+                },
+            )
+        })
+        .unwrap();
+
+        let served = app.view(|s| s.get_chunks(at(ALICE, 0)));
+        assert_eq!(served.len(), 1);
+        assert_eq!(served[0].data_b64, BASE64.encode(b"alice"));
+        assert_eq!(sender_stats(&mut app, ALICE).live_chunks, 1);
+    }
+
+    #[test]
+    fn only_a_moderator_sweeps_a_departed_sender() {
+        let mut app = with_mallory();
+        post(&mut app, ALICE, b"alice", true, 1000).unwrap();
+        let late = 1000 + STALE_SENDER_MS + 1000;
+        // Mallory is live and posting, but not a moderator: Alice's buffer is
+        // not hers to reap.
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+            s.post_chunk(
+                b64(b"m"),
+                0,
+                true,
+                "avc1.42001f".to_owned(),
+                640,
+                480,
+                0,
+                late,
+            )
+        })
+        .unwrap();
+        assert_eq!(sender_stats(&mut app, ALICE).live_chunks, 1);
+        // The creator's post sweeps it.
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        post(&mut app, BOB, b"bob", true, late).unwrap();
+        assert_eq!(sender_stats(&mut app, ALICE).live_chunks, 0);
+    }
+
+    #[test]
+    fn a_member_prunes_only_their_own_frames() {
+        let mut app = with_mallory();
+        let f = quant_aligned_frame(4, 4);
+        app.call_as(ALICE, |s| s.encode_frame(f.clone(), 4, 4, 0, 1001))
+            .unwrap();
+        // `prune_frames(u64::MAX)` used to wipe every sender's frames.
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| s.prune_frames(u64::MAX))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_frame(0)).len(), 1);
+        app.call_as(ALICE, |s| s.prune_frames(u64::MAX)).unwrap();
+        assert!(app.view(|s| s.get_frame(0)).is_empty());
+        assert_eq!(app.view(|s| s.get_stats()).pruned_frames, 1);
+    }
+
+    #[test]
+    fn a_frame_planted_under_someone_elses_id_is_never_decoded() {
+        let mut app = with_mallory();
+        let f = quant_aligned_frame(4, 4);
+        let seq = app
+            .call_as(ALICE, |s| s.encode_frame(f.clone(), 4, 4, 0, 1001))
+            .unwrap();
+        let key = MeroStream::frag_key(&id_of(ALICE), seq, 0);
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+                s.fragments.modify(&key, |frag| frag.data = vec![255, 15])
+            })
+            .is_err());
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+            s.fragments.insert(
+                MeroStream::frag_key(&id_of(ALICE), seq + 1, 0),
+                super::Fragment {
+                    seq: seq + 1,
+                    from: id_of(ALICE),
+                    track: 0,
+                    chunk: 0,
+                    chunks: 1,
+                    width: 4,
+                    height: 4,
+                    codec: 1,
+                    data: vec![16, 15],
+                    created_at: 1002,
+                },
+            )
+        })
+        .unwrap();
+        let frames = app.view(|s| s.get_frame(0));
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].pixels, f);
+    }
+
+    #[test]
+    fn a_device_row_belongs_to_the_account_that_joined_with_it() {
+        let mut app = with_mallory();
+        // Mallory cannot re-register Alice's device (to rename it, or to be
+        // resolved as its account).
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, ALICE, |s| s
+                .join("Alice?".to_owned(), 2000))
+            .is_err());
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+                s.members.remove(&id_of(ALICE))
+            })
+            .is_err());
+        // The admin check reads the owner stamp.
+        assert!(app.view(|s| s.is_member_admin(id_of(ALICE))));
+        assert!(!app.view(|s| s.is_member_admin(id_of(MALLORY))));
+        assert_eq!(app.view(|s| s.get_stats()).name, "probe");
     }
 }

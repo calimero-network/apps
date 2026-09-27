@@ -461,7 +461,8 @@ function WsInit({ onDone }: { onDone: () => void }) {
     <CardWrap>
       <CardTitle>ws_init</CardTitle>
       <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-        The caller becomes the workspace admin. Can only be called once.
+        Names the workspace and records the caller as its admin. Only the context
+        creator (or an admin they appointed) can call it, and only once.
       </p>
       <FieldGroup label="Workspace name">
         <div className="input-row">

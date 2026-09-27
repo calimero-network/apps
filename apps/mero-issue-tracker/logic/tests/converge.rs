@@ -8,12 +8,12 @@
 //! id and converges as a child entity, then assert every replica lands on the
 //! same Merkle root.
 //!
-//! Surface under test: the `issues: UnorderedMap<String, Issue>` field. It (and
-//! the `comments`/`labels` maps) are all plain `UnorderedMap`s — there is no
-//! `AuthoredMap`/`SharedStorage` in state, so the bare `converge_app` harness
-//! (which has no signing identity) can reconcile every field. We still seed the
-//! issue at genesis (single identity) and drive only `set_status`, which touches
-//! the `issues` map, to keep the test focused on the nested-register merge.
+//! Surface under test: the public `issues: IndexedMap<String, Issue>` triage
+//! map. The owned `headers` and `comments` maps are written only at genesis
+//! (single identity, snapshotted into every replica), and the concurrent ops
+//! drive only `set_status`, which touches the public `issues` map — so the bare
+//! `converge_app` harness (which has no signing identity) reconciles every
+//! field, and the test stays focused on the nested-register merge.
 //!
 //! `#[serial]`: `converge_app` clears/repopulates the process-global merge
 //! registry per run. Own integration binary so it is isolated from the

@@ -422,7 +422,7 @@ export default function Toolbar({
                     className={styles.memberDot}
                     style={{ background: colorForIdentity(m.identity) }}
                   />
-                  <span className={styles.memberLabel}>{resolveName(memberList, m.identity)}</span>
+                  <span className={styles.memberLabel}>{resolveName(memberList, m.account ?? m.identity)}</span>
                 </div>
               ))
             )}

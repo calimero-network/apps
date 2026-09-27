@@ -17,7 +17,7 @@ design-duplicated foundation app.
 | --- | --- | --- |
 | **private-rooms/** | Public (`open`) vs private (`restricted`) rooms as **subgroups** with visibility — real per-room membership (the base's flat rooms auto-join everyone) | `useSubgroupRooms.ts` |
 | **authored-feed/** | `AuthoredVector<T>` — an **ordered, author-owned** log (vs the base's hash-ordered `AuthoredMap`) | `feed.rs` |
-| **counters/** | `GCounter` / `PNCounter` CRDT — likes / votes / tallies | `counter.rs` |
+| **counters/** | `GCounter` / `PNCounter` CRDT tallies, and one-vote-per-person votes as owned `Authored` rows | `counter.rs` |
 | **dms/** | 1:1 **direct messages** as a 2-member restricted subgroup (builds on private-rooms) | `useDms.ts` |
 | **context-metadata/** | `setContextMetadata` — propagated room topic/description every member sees | `useRoomMetadata.ts` |
 

@@ -50,8 +50,8 @@ use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::permissioned::{Op, ProtocolAuthorizer};
 use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
-    AccessControl, AuthoredMap, AuthoredVector, LwwRegister, MergeStrategy,
-    Mergeable as MergeableTrait, PermissionedStorage, UnorderedMap,
+    AccessControl, AuthoredMap, AuthoredVector, Frozen, LwwRegister, MergeStrategy,
+    Mergeable as MergeableTrait, PermissionedStorage, SortedMap, UnorderedMap,
 };
 use calimero_storage::entities::OpMask;
 
@@ -129,7 +129,6 @@ pub struct Secret {
 #[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Revision {
-    secret_id: String,
     /// The field that changed; `name` and `tags` use those reserved names.
     field: String,
     /// The value it held before, still encrypted (under whichever vault key it
@@ -142,8 +141,10 @@ pub struct Revision {
 /// A device public key the vault key may be wrapped to.
 ///
 /// Stored in an [`AuthoredMap`], so only the account that registered it can
-/// remove it. The account and device fields are taken from the host, never
-/// from the caller, so a member cannot register a key in someone else's name.
+/// remove it. Its account is the entry's owner stamp (`devices.owner_of`),
+/// which every node verifies — never a field in the value, which a modified
+/// node could fill with anyone's account to be handed the vault key in their
+/// name.
 #[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DeviceKey {
@@ -153,18 +154,17 @@ pub struct DeviceKey {
     /// `browser` for a browser's device key; `recovery` for an account's
     /// offline recovery key, whose private half exists only on paper.
     kind: String,
-    account: String,
     node_device: String,
     added_at: u64,
 }
 
 /// The vault key, wrapped to one device key by one wrapper.
 ///
-/// Keyed by `key_id:recipient:wrapper`, and stored in an [`AuthoredMap`] so a
-/// wrap can be neither overwritten nor squatted by another member: each wrapper
-/// owns its own slot. A forged wrap is detectable anyway — the recipient checks
-/// that the unwrapped key hashes to `key_id` — but it must not be able to
-/// displace a genuine one.
+/// Keyed by `recipient:key_id:nonce` in an authored map: the random nonce
+/// means nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped
+/// it. A forged wrap is detectable anyway — the recipient checks that the
+/// unwrapped key hashes to `key_id` — but it must not be able to displace a
+/// genuine one, nor make a device look approved (see `wrapped_pairs`).
 #[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct KeyWrap {
@@ -173,11 +173,11 @@ pub struct KeyWrap {
     wrapper: String,
     /// ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON.
     envelope: String,
-    wrapped_by: String,
     wrapped_at: u64,
 }
 
-/// One line of the activity trail.
+/// One line of the activity trail. Who wrote it is the slot's owner stamp,
+/// not a field: an author can claim anything in their own entry.
 #[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct AuditLogEntry {
@@ -186,7 +186,7 @@ pub struct AuditLogEntry {
     /// Never a secret's name — names are ciphertext, and a trail that echoed
     /// them in the clear would undo the encryption.
     target: String,
-    account: String,
+    /// The author's node device, as the author's node reported it.
     device: String,
     timestamp: u64,
 }
@@ -203,6 +203,9 @@ const ADMIN_REVOKED: &str = "revoked:";
 /// Prefix of a removed account's entry. Clients never auto-admit it again; only
 /// an explicit `set_role` does.
 const ADMIN_REMOVED: &str = "removed:";
+
+/// Key of the vault's name in `settings`, once someone has renamed it.
+const SETTING_VAULT_NAME: &str = "vault_name";
 
 // Written-once values: every write uses a fresh random key, so two replicas
 // never contend for one entry, and if one ever did, the copy already present
@@ -320,18 +323,23 @@ pub struct AuditView {
 
 #[app::state(emits = Event)]
 pub struct MeroPassApp {
-    /// The vault's human name, readable by every member on every node. The
-    /// frontend also writes it to the subgroup's metadata, for members who have
-    /// not entered the vault yet; this copy is the authoritative one.
-    vault_name: LwwRegister<String>,
+    /// The vault's human name as created, readable by every member on every
+    /// node. The frontend also writes it to the subgroup's metadata, for
+    /// members who have not entered the vault yet; this copy (or a rename in
+    /// `settings`) is the authoritative one.
+    vault_name: Frozen<String>,
     roles: AccessControl,
     secrets: PermissionedStorage<UnorderedMap<String, Secret>, ProtocolAuthorizer>,
-    history: PermissionedStorage<UnorderedMap<String, Revision>, ProtocolAuthorizer>,
+    /// `secret_id/rev_id` → superseded value, so a secret's history is one
+    /// prefix read.
+    history: PermissionedStorage<SortedMap<String, Revision>, ProtocolAuthorizer>,
     /// Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`.
     admin: PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
+    /// Editor-writable settings: the vault's name after a rename.
+    settings: PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
     /// Device fingerprint → public key. Any member may register their own.
     devices: AuthoredMap<String, DeviceKey>,
-    /// `key_id:recipient:wrapper` → wrapped vault key.
+    /// `recipient:key_id:nonce` → wrapped vault key.
     key_wraps: AuthoredMap<String, KeyWrap>,
     /// Append-only. Entries can be blanked only by their own author, and a
     /// blanked slot stays visible as a redaction.
@@ -359,11 +367,12 @@ impl MeroPassApp {
         let me = Self::me();
         let only_me: BTreeSet<AccountId> = BTreeSet::from([me]);
         MeroPassApp {
-            vault_name: LwwRegister::new(name),
+            vault_name: Frozen::new(name),
             roles: AccessControl::new(me),
             secrets: PermissionedStorage::new(only_me.clone(), false),
             history: PermissionedStorage::new(only_me.clone(), false),
-            admin: PermissionedStorage::new(only_me, false),
+            admin: PermissionedStorage::new(only_me.clone(), false),
+            settings: PermissionedStorage::new(only_me, false),
             devices: AuthoredMap::new(),
             key_wraps: AuthoredMap::new(),
             audit: AuthoredVector::new(),
@@ -442,7 +451,6 @@ impl MeroPassApp {
         let _ = self.audit.push(AuditLogEntry {
             action: action.to_owned(),
             target: target.to_owned(),
-            account: Self::me_str(),
             device: hex::encode(env::device_id()),
             timestamp: env::time_now(),
         })?;
@@ -455,6 +463,8 @@ impl MeroPassApp {
     fn project_roles(&mut self) -> app::Result<()> {
         self.roles.project_onto(&CONTENT_ROLES, &mut self.secrets)?;
         self.roles.project_onto(&CONTENT_ROLES, &mut self.history)?;
+        self.roles
+            .project_onto(&CONTENT_ROLES, &mut self.settings)?;
         self.roles.project_onto(&ADMIN_ONLY, &mut self.admin)?;
         Ok(())
     }
@@ -468,7 +478,7 @@ impl MeroPassApp {
         };
         let me = Self::me();
         Ok(VaultInfo {
-            name: self.vault_name.get().clone(),
+            name: self.vault_name()?,
             current_key: self.admin_setting(ADMIN_CURRENT_KEY)?,
             default_role,
             my_account: me.to_string(),
@@ -477,14 +487,21 @@ impl MeroPassApp {
     }
 
     pub fn vault_name(&self) -> app::Result<String> {
-        Ok(self.vault_name.get().clone())
+        match self.settings.get()?.get(SETTING_VAULT_NAME)? {
+            Some(renamed) => Ok(renamed.get().clone()),
+            None => Ok(self.vault_name.get()?.clone()),
+        }
     }
 
-    /// Rename the vault. Editors and admins; concurrent renames resolve by
-    /// last writer.
+    /// Rename the vault. Editors and admins — the name lives in a guarded
+    /// store, so a pending or removed member's rename is refused everywhere;
+    /// concurrent renames resolve by last writer.
     pub fn rename_vault(&mut self, name: String) -> app::Result<()> {
         self.require_editor()?;
-        self.vault_name.set(name);
+        let _ = self
+            .settings
+            .get_mut()?
+            .insert(SETTING_VAULT_NAME.to_owned(), LwwRegister::new(name))?;
         self.audit("vault_renamed", "vault")?;
         app::emit!(Event::VaultRenamed);
         Ok(())
@@ -508,17 +525,18 @@ impl MeroPassApp {
         }
         let removed = self.prefixed_set(ADMIN_REMOVED)?;
         let revoked = self.revoked_set()?;
-        for (fingerprint, device) in self.devices.entries()? {
+        for (fingerprint, _) in self.devices.entries()? {
             if revoked.contains(&fingerprint) {
                 continue;
             }
-            let fallback = if removed.contains(&device.account) {
+            let account = self.device_account(&fingerprint)?;
+            let fallback = if removed.contains(&account) {
                 "removed"
             } else {
                 "pending"
             };
             let row = rows
-                .entry(device.account.clone())
+                .entry(account)
                 .or_insert_with(|| (fallback.to_owned(), 0));
             row.1 += 1;
         }
@@ -598,12 +616,12 @@ impl MeroPassApp {
             }
         }
         self.project_roles()?;
-        let theirs: Vec<String> = self
-            .devices
-            .entries()?
-            .filter(|(_, d)| d.account == account)
-            .map(|(fp, _)| fp)
-            .collect();
+        let mut theirs = Vec::new();
+        for (fp, _) in self.devices.entries()? {
+            if self.device_account(&fp)? == account {
+                theirs.push(fp);
+            }
+        }
         let admin = self.admin.get_mut()?;
         let _ = admin.insert(
             format!("{ADMIN_REMOVED}{account}"),
@@ -660,6 +678,15 @@ impl MeroPassApp {
         self.prefixed_set(ADMIN_REVOKED)
     }
 
+    /// The account that registered a device: its owner stamp.
+    fn device_account(&self, fingerprint: &String) -> app::Result<String> {
+        Ok(self
+            .devices
+            .owner_of(fingerprint)?
+            .map(|a| a.to_string())
+            .unwrap_or_default())
+    }
+
     /// Register this browser's public key so the vault key can be wrapped to
     /// it. `fingerprint` must be the hex SHA-256 of the raw key; the client
     /// derives both, and the contract checks the shape, not the hash (a wrong
@@ -687,7 +714,6 @@ impl MeroPassApp {
                 public_key,
                 label,
                 kind,
-                account: Self::me_str(),
                 node_device: hex::encode(env::device_id()),
                 added_at: env::time_now(),
             },
@@ -697,21 +723,24 @@ impl MeroPassApp {
         Ok(())
     }
 
+    /// Every registered device, with the account that registered it read
+    /// from the entry's owner stamp. Clients decide whom to wrap the vault key
+    /// to by this account, so it must be one nobody can claim for someone else.
     pub fn list_devices(&self) -> app::Result<Vec<DeviceView>> {
         let revoked = self.revoked_set()?;
-        Ok(self
-            .devices
-            .entries()?
-            .map(|(fingerprint, d)| DeviceView {
+        let mut out = Vec::new();
+        for (fingerprint, d) in self.devices.entries()? {
+            out.push(DeviceView {
                 revoked: revoked.contains(&fingerprint),
+                account: self.device_account(&fingerprint)?,
                 fingerprint,
                 public_key: d.public_key,
                 label: d.label,
                 kind: d.kind,
-                account: d.account,
                 added_at: d.added_at,
-            })
-            .collect())
+            });
+        }
+        Ok(out)
     }
 
     /// Revoke a device. Your own device you may always revoke; anyone else's
@@ -749,21 +778,30 @@ impl MeroPassApp {
         let mut added = 0;
         for w in wraps {
             Self::check_envelope(&w.envelope)?;
-            if revoked.contains(&w.recipient) || !self.devices.contains(&w.recipient)? {
+            if w.key_id.contains(':')
+                || revoked.contains(&w.recipient)
+                || !self.devices.contains(&w.recipient)?
+            {
                 continue;
             }
-            let slot = format!("{}:{}:{}", w.key_id, w.recipient, w.wrapper);
-            if self.key_wraps.contains(&slot)? {
+            // One wrap per wrapper, key and recipient: a repeat is a no-op.
+            let prefix = format!("{}:{}:", w.recipient, w.key_id);
+            let mut repeat = false;
+            for (slot, existing) in self.key_wraps.entries()? {
+                repeat |= slot.starts_with(&prefix)
+                    && existing.wrapper == w.wrapper
+                    && self.key_wraps.owned_by_me(&slot)?;
+            }
+            if repeat {
                 continue;
             }
             self.key_wraps.insert(
-                slot,
+                format!("{prefix}{}", Self::fresh_id("wrap")),
                 KeyWrap {
                     key_id: w.key_id,
                     recipient: w.recipient,
                     wrapper: w.wrapper,
                     envelope: w.envelope,
-                    wrapped_by: Self::me_str(),
                     wrapped_at: env::time_now(),
                 },
             )?;
@@ -775,31 +813,52 @@ impl MeroPassApp {
         Ok(added)
     }
 
-    /// Every wrap addressed to `recipient`.
+    /// Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner
+    /// stamp.
     pub fn key_wraps_for(&self, recipient: String) -> app::Result<Vec<KeyWrapView>> {
-        Ok(self
-            .key_wraps
-            .entries()?
-            .filter(|(_, w)| w.recipient == recipient)
-            .map(|(_, w)| KeyWrapView {
+        let mut out = Vec::new();
+        let prefix = format!("{recipient}:");
+        for (slot, w) in self.key_wraps.entries()? {
+            if !slot.starts_with(&prefix) {
+                continue;
+            }
+            out.push(KeyWrapView {
+                wrapped_by: self.wrap_author(&slot)?,
                 key_id: w.key_id,
                 recipient: w.recipient,
                 wrapper: w.wrapper,
                 envelope: w.envelope,
-                wrapped_by: w.wrapped_by,
-            })
-            .collect())
+            });
+        }
+        Ok(out)
     }
 
-    /// Which `key_id:recipient` pairs already have a wrap, so a key holder
-    /// only wraps what is missing.
+    /// Which `key_id:recipient` pairs already have a wrap from a member who
+    /// holds a role, so a key holder only wraps what is missing.
+    ///
+    /// Clients also treat a device in this list as approved, so a wrap from
+    /// anyone else — a pending or removed account, which never held the key,
+    /// writing a garbage wrap to its own device — must not count.
     pub fn wrapped_pairs(&self) -> app::Result<Vec<String>> {
-        let pairs: BTreeSet<String> = self
-            .key_wraps
-            .entries()?
-            .map(|(_, w)| format!("{}:{}", w.key_id, w.recipient))
-            .collect();
+        let mut pairs = BTreeSet::new();
+        for (slot, w) in self.key_wraps.entries()? {
+            let by_member = self
+                .key_wraps
+                .owner_of(&slot)?
+                .is_some_and(|who| self.role_of(&who) != "pending");
+            if by_member {
+                let _ = pairs.insert(format!("{}:{}", w.key_id, w.recipient));
+            }
+        }
         Ok(pairs.into_iter().collect())
+    }
+
+    fn wrap_author(&self, slot: &String) -> app::Result<String> {
+        Ok(self
+            .key_wraps
+            .owner_of(slot)?
+            .map(|a| a.to_string())
+            .unwrap_or_default())
     }
 
     /// Make `key_id` the key new writes use. The first call bootstraps the
@@ -970,9 +1029,8 @@ impl MeroPassApp {
                     continue;
                 }
                 let _ = history.insert(
-                    Self::fresh_id("rev"),
+                    format!("{id}/{}", Self::fresh_id("rev")),
                     Revision {
-                        secret_id: id.clone(),
                         field,
                         previous,
                         replaced_at: now,
@@ -998,8 +1056,7 @@ impl MeroPassApp {
         let mut out: Vec<RevisionView> = self
             .history
             .get()?
-            .entries()?
-            .filter(|(_, r)| r.secret_id == id)
+            .prefix(format!("{id}/").as_bytes())?
             .map(|(_, r)| RevisionView {
                 field: r.field,
                 previous: r.previous,
@@ -1058,8 +1115,7 @@ impl MeroPassApp {
         let revisions: Vec<String> = self
             .history
             .get()?
-            .entries()?
-            .filter(|(_, r)| r.secret_id == id)
+            .prefix(format!("{id}/").as_bytes())?
             .map(|(k, _)| k)
             .collect();
         let history = self.history.get_mut()?;
@@ -1092,19 +1148,27 @@ impl MeroPassApp {
     // ── Audit ───────────────────────────────────────────────────────────────
 
     /// The trail, newest first.
+    /// The trail, newest first. Each line's account is its slot's owner
+    /// stamp, so nobody can write a line in someone else's name.
     pub fn get_audit_logs(&self) -> app::Result<Vec<AuditView>> {
-        let mut logs: Vec<AuditView> = self
-            .audit
-            .iter()?
-            .map(|e| AuditView {
+        let mut logs = Vec::new();
+        for index in 0..self.audit.len()? {
+            let Some(e) = self.audit.get(index)? else {
+                continue;
+            };
+            logs.push(AuditView {
                 redacted: e.action.is_empty(),
                 action: e.action,
                 target: e.target,
-                account: e.account,
+                account: self
+                    .audit
+                    .owner_of(index)?
+                    .map(|a| a.to_string())
+                    .unwrap_or_default(),
                 device: e.device,
                 timestamp: e.timestamp,
-            })
-            .collect();
+            });
+        }
         logs.sort_by_key(|l| std::cmp::Reverse(l.timestamp));
         Ok(logs)
     }

@@ -23,7 +23,7 @@ e2e_mode: true
 nodes:
   count: 2
   prefix: app-node
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.53
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.54
   base_port: 12428
   base_rpc_port: 12528
 nuke_on_start: true
@@ -580,6 +580,15 @@ steps:
       - "json_subset({{comment_1}}, {\"text\": \"Yes\", \"parent\": \"{{comment}}\"})"
 
   - type: call
+    name: "Bob cannot delete Ada's comment (its author or an owner only)"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: delete_comment
+    args:
+      id: '{{comment}}'
+    expected_failure: true
+
+  - type: call
     name: "delete_comment (the reply, by its author)"
     node: app-node-2
     context_id: '{{ctx}}'
@@ -1133,6 +1142,15 @@ steps:
       row_id: "5"
       col_id: "0"
       raw_value: "42"
+
+  - type: call
+    name: "an editor cannot remove a protection (owners only)"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: remove_protection
+    args:
+      id: '{{protection}}'
+    expected_failure: true
 
   - type: call
     name: "remove_protection"

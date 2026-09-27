@@ -102,17 +102,25 @@ and tested. **→** means designed but not built yet (see [Roadmap](#roadmap)).
 ```
 Company (namespace) ─ invite link ─▶ investors join
  └── Audience (subgroup + context)  "All investors"
-      ├── roles        AccessControl         admin tier + "team" role, verified at merge
-      ├── settings     company name, cadence
-      ├── categories   id → Category          archive is permanent
-      ├── posts        id → Post              kind = update | question
-      ├── asks         id → Ask               carries post_id
-      ├── offers       ask|account → Offer    one per person per ask
-      ├── comments     id → Comment           carries post_id, parent_id
-      ├── reactions    post|account|emoji → Reaction
-      ├── reads        post|account → Read    first = min, latest = max
-      ├── profiles     account → Profile      name, firm, muted categories
-      └── (private)    Drafts                 on the author's node only
+      ├── roles            AccessControl        admin tier + "team" role, verified at merge
+      │   team-written (SharedStorage, writer set = the team, rotated with it)
+      ├── settings         company name, cadence
+      ├── categories       id → Category         archive is permanent
+      ├── updates          id → Post
+      ├── asks             id → Ask              indexed by post_id
+      ├── question_status  question id → Triage  the team's answer/re-open
+      ├── offer_status     ask|account → Triage  the team's accept/decline
+      │   member-written, the team moderates (Moderated)
+      ├── questions        id → Post             author = owner stamp
+      ├── comments         id → Comment          indexed by (post_id, created_at)
+      │   member-written, keyed by account (Authored)
+      ├── offers           ask|account → Offer   indexed by ask_id and account
+      ├── reactions        post|account|emoji → Reaction
+      ├── reads            post|account → Read   indexed by post_id and account
+      │   one slot per account (UserStorage)
+      ├── profiles         name, firm
+      ├── mutes            muted categories
+      └── (private)        Drafts                on the author's node only
 ```
 
 A few decisions do most of the work:
@@ -120,9 +128,10 @@ A few decisions do most of the work:
 - **Flat maps with parent IDs**, never a nested collection per parent. When two nodes each create
   a nested CRDT on their own, the copies only merge if they get deterministic keys. A flat map
   avoids that problem.
-- **Independent merge axes.** An author's edit (`edited_at`), the team's triage (`status_at`) and a
-  deletion are merged separately. So a typo fix cannot reopen an answered question, and a helper
-  editing their note cannot undo "accepted".
+- **Independent merge axes.** An author's edit (`edited_at`) and a deletion are merged
+  separately, and the team's triage of a question or an offer is a separate team-written record.
+  So a typo fix cannot reopen an answered question, and a helper can neither undo "accepted" by
+  editing their note nor accept their own offer.
 - **Last-write-wins over a total order.** When two timestamps tie, the Borsh bytes decide, so every
   replica picks the same winner.
 - **Timestamps are milliseconds.** `env::time_now()` returns nanoseconds, which is past 2^53: a
@@ -140,29 +149,31 @@ These limits are stated here so nobody assumes something stronger:
 - **Every company member can open every audience in it**, because audiences are open subgroups. For
   something truly confidential, such as a board, create a **separate company** and invite only the
   board. The audiences page says this where you create one.
-- **Write gating runs on the writer's node.** The role registry itself is checked at merge. Publishing,
-  triage and moderation are guarded by the contract on the node that makes the call, using that node's
-  copy of the roles. Two consequences follow. A demotion takes effect only once it reaches the
-  demoted member's node; the two-node scenario found this and now waits for it explicitly. And a
-  deliberately modified node could bypass the guard. See the roadmap.
+- **Write gating is enforced by every node.** Team data lives in writer-set storage whose writers
+  are the team, rotated with the role registry, so a reader's (or a demoted teammate's) write to it is
+  refused when any node applies it, even from a modified node. Questions and comments are owned by
+  their author and moderated by the team; reads, reactions and offers are owned by the account they
+  name, and a row planted under someone else's account is ignored. The contract's own checks still
+  run first on the calling node, against that node's copy of the roles, so they produce the readable
+  error. Remaining gaps: a row planted early under someone else's account key (an offer, a read, a
+  reaction) blocks that account's own write for that key, and the team's records are last-writer-wins
+  by the writer's clock.
 
 ## Roadmap
 
 In rough priority order:
 
-1. **Enforce post writes at merge.** Put updates in a writer-set storage whose writers are rotated
-   along with the team, the way the role registry already works. This closes the modified-node gap.
-2. **Private 1:1 threads** between the team and one investor, using a restricted subgroup per
+1. **Private 1:1 threads** between the team and one investor, using a restricted subgroup per
    investor. This covers "reply privately", which is how Cabal's reply-by-email feels.
-3. **Restricted audiences** (board-only) inside one company, instead of a separate company.
-4. **Email and PDF export of an update**, for investors who will never run a node. Their reply
+2. **Restricted audiences** (board-only) inside one company, instead of a separate company.
+3. **Email and PDF export of an update**, for investors who will never run a node. Their reply
    would then be a manual paste.
-5. **Scheduled publish.** This needs the author's node to be online at the scheduled time, so it
+4. **Scheduled publish.** This needs the author's node to be online at the scheduled time, so it
    would probably be a desktop-app feature.
-6. **KPI import from CSV or Sheets**, plus a real chart on the KPIs tab.
-7. **Investor-side requests** (Visible's "Requests"): an investor asks the company for specific
+5. **KPI import from CSV or Sheets**, plus a real chart on the KPIs tab.
+6. **Investor-side requests** (Visible's "Requests"): an investor asks the company for specific
    metrics, and the answer is filed into the next update.
-8. **Draft co-editing** between teammates. Drafts are node-local today by design.
+7. **Draft co-editing** between teammates. Drafts are node-local today by design.
 
 ## Working on it
 

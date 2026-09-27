@@ -41,12 +41,18 @@
 //!
 //! ## What Calimero provides and what it doesn't
 //!
-//! * **Authorship** — ballots, transport keys, dealings, complaints and
-//!   partials live in the author's [`UserStorage`] slot, and polls in an
-//!   [`AuthoredMap`] owned by their creator. Both are signed and checked at
-//!   MERGE, so a modified node cannot write into someone else's slot.
-//! * **Immutability** — ballot bodies and poll definitions are
-//!   content-addressed in [`FrozenStorage`].
+//! * **Authorship** — ballot bodies, transport keys, dealings, complaints and
+//!   the creator's election and seal are [`WriteOnce`] entries owned by their
+//!   author; ballot pointers and partials live in the author's
+//!   [`UserStorage`] slot, and a poll's closing notice in an [`AuthoredMap`]
+//!   owned by its creator. All are signed and checked at MERGE, so a modified
+//!   node cannot write as someone else. Every read takes the author from the
+//!   entry's owner stamp, never from a field in the value.
+//! * **Immutability** — poll definitions are content-addressed in
+//!   [`FrozenStorage`]; everything the audit relies on is written once, so no
+//!   one — its author included — can change it later and fail the audit.
+//!   Write-once keys carry the content hash (or a random nonce), so nobody can
+//!   claim a key before its author writes it.
 //! * **Replication** — every member holds the whole ballot box.
 //! * **Secrecy from co-members** — NOT provided. That is what the
 //!   cryptography in `mero-vote-crypto` adds, with sigma protocols — no SNARK.
@@ -59,7 +65,8 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::{
-    AuthoredMap, FrozenStorage, LwwRegister, Mergeable, UnorderedMap, UserStorage,
+    AuthoredMap, FrozenStorage, LwwRegister, Mergeable, SortedMap, UnorderedMap, UserStorage,
+    WriteOnce,
 };
 use mero_vote_crypto as crypto;
 use sha2::{Digest, Sha256};
@@ -229,7 +236,17 @@ wire! {
         pub anchored_at: u64,
     }
 
-    /// The mutable part of a poll, owned by its creator.
+    /// The part of a poll its creator may still change: the closing notice
+    /// and the anchor. Everything else about a poll's lifecycle is written
+    /// once (see `elections` and `closures` in [`MeroVote`]).
+    pub struct PollControl {
+        /// When the close was announced (phase Closing onward).
+        pub closing_at: Option<u64>,
+        pub anchor: Option<Anchor>,
+    }
+
+    /// A poll's lifecycle as read: the phase is derived from what has been
+    /// written, so a sealed poll can never go back to voting.
     pub struct PollState {
         pub phase: Phase,
         pub election: Option<Election>,
@@ -258,8 +275,12 @@ wire! {
     }
 }
 
-/// Everything one account authors. Lives in [`UserStorage`], so only that
+/// What one account may still change. Lives in [`UserStorage`], so only that
 /// account can write it — enforced at merge, not just by this contract.
+///
+/// Nothing the audit requires to stay put is here: a voter re-pointing their
+/// ballot or a trustee re-publishing a partial after the seal changes no
+/// verdict. Ceremony material is write-once, in [`MeroVote`].
 #[derive(
     Debug, BorshSerialize, BorshDeserialize, Default, Mergeable, calimero_sdk::abi::AbiType,
 )]
@@ -267,10 +288,6 @@ wire! {
 pub struct MemberSlot {
     name: LwwRegister<String>,
     ballots: UnorderedMap<String, LwwRegister<BallotPointer>>,
-    transport: UnorderedMap<String, LwwRegister<TransportKey>>,
-    dealings: UnorderedMap<String, LwwRegister<WireDealing>>,
-    /// Keyed `"{poll_id}/{dealer}"`.
-    complaints: UnorderedMap<String, LwwRegister<Complaint>>,
     partials: UnorderedMap<String, LwwRegister<StoredPartials>>,
 }
 
@@ -370,13 +387,20 @@ view! {
         /// Digest of the canonical transcript. What gets anchored.
         pub transcript_digest: Option<String>,
         pub anchor: Option<Anchor>,
+        /// Eligible voters whose current ballot is not in the sealed count:
+        /// cast after the creator's node sealed, or left out by the creator.
+        /// Informational — a voter can always add one after the seal, so it
+        /// cannot fail the audit without letting any voter veto the result.
+        pub uncounted: Vec<String>,
     }
 
     pub struct TranscriptBallot {
         pub voter: String,
         pub digest: String,
         pub ballot: WireBallot,
-        /// Whether the voter's own signed slot still points at this ballot.
+        /// Whether the voter's own slot still points at this ballot.
+        /// Informational: authorship is the body's owner stamp, checked by
+        /// the audit as "ballot authorship".
         pub endorsed: bool,
     }
 
@@ -476,10 +500,25 @@ impl From<crypto::CryptoError> for VoteError {
 pub struct MeroVote {
     /// Immutable definitions; the key is the poll id.
     definitions: FrozenStorage<PollDefinition>,
-    /// Lifecycle, owned by the creator (checked at merge).
-    polls: AuthoredMap<String, LwwRegister<PollState>>,
-    /// Ballot bodies, content-addressed and immutable.
-    ballot_bodies: FrozenStorage<StoredBallot>,
+    /// Closing notice and anchor, owned by the creator (checked at merge). Its
+    /// owner stamp must name the definition's `creator`, or the poll is
+    /// ignored: the field alone is forgeable.
+    polls: AuthoredMap<String, LwwRegister<PollControl>>,
+    /// The frozen election, `"{poll_id}/{nonce}"`. Only the creator's entries
+    /// count; two of them is equivocation, and fails the audit.
+    elections: WriteOnce<SortedMap<String, Election>>,
+    /// The seal, keyed and read like `elections`.
+    closures: WriteOnce<SortedMap<String, Closure>>,
+    /// `"{poll_id}/{trustee}/{content hash}"`.
+    transport_keys: WriteOnce<SortedMap<String, TransportKey>>,
+    /// `"{poll_id}/{dealer}/{content hash}"`.
+    dealings: WriteOnce<SortedMap<String, WireDealing>>,
+    /// `"{poll_id}/{recipient}/{dealer}/{content hash}"`.
+    complaints: WriteOnce<SortedMap<String, Complaint>>,
+    /// Ballot bodies by the SHA-256 of their bytes, owned by the voter who
+    /// cast them. The owner stamp is what shows the voter, not the creator,
+    /// made a counted ballot.
+    ballot_bodies: WriteOnce<UnorderedMap<[u8; 32], StoredBallot>>,
     /// One signed slot per account.
     slots: UserStorage<MemberSlot>,
 }
@@ -507,8 +546,37 @@ fn parse_hash(s: &str) -> Result<[u8; 32], VoteError> {
         .ok_or_else(|| VoteError::Invalid(format!("not a 64-hex id: {s}")))
 }
 
-fn complaint_key(poll_id: &str, dealer: &str) -> String {
-    format!("{poll_id}/{dealer}")
+/// Hex SHA-256 of a value's borsh bytes: the tail of a write-once key, so
+/// nobody can take the key before its author has written the value.
+fn content_key<T: BorshSerialize>(value: &T) -> Result<String, VoteError> {
+    let bytes =
+        calimero_sdk::borsh::to_vec(value).map_err(|e| VoteError::Invalid(e.to_string()))?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+fn nonce() -> String {
+    let mut bytes = [0u8; 16];
+    env::random_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
+/// The values under `prefix` that `author` wrote. Anyone may write any key;
+/// only the owner stamp, checked by every node at merge, says who did.
+fn written_by<V>(
+    map: &WriteOnce<SortedMap<String, V>>,
+    prefix: &str,
+    author: &str,
+) -> app::Result<Vec<V>>
+where
+    V: BorshSerialize + BorshDeserialize + 'static,
+{
+    let mut out = Vec::new();
+    for (key, value) in map.prefix(prefix.as_bytes())? {
+        if map.owner_of(&key)?.is_some_and(|o| o.to_string() == author) {
+            out.push(value);
+        }
+    }
+    Ok(out)
 }
 
 fn branch(w: &WireBranch, what: &'static str) -> Result<crypto::Branch, crypto::CryptoError> {
@@ -702,7 +770,12 @@ impl MeroVote {
         MeroVote {
             definitions: FrozenStorage::new(),
             polls: AuthoredMap::new(),
-            ballot_bodies: FrozenStorage::new(),
+            elections: WriteOnce::new(),
+            closures: WriteOnce::new(),
+            transport_keys: WriteOnce::new(),
+            dealings: WriteOnce::new(),
+            complaints: WriteOnce::new(),
+            ballot_bodies: WriteOnce::new(),
             slots: UserStorage::new(),
         }
     }
@@ -834,11 +907,8 @@ impl MeroVote {
         let poll_id = hex::encode(self.definitions.insert(def)?);
         self.polls.insert(
             poll_id.clone(),
-            LwwRegister::new(PollState {
-                phase: Phase::KeyCeremony,
-                election: None,
+            LwwRegister::new(PollControl {
                 closing_at: None,
-                closure: None,
                 anchor: None,
             }),
         )?;
@@ -851,11 +921,10 @@ impl MeroVote {
     pub fn list_polls(&self) -> app::Result<Vec<PollSummary>> {
         let counts = self.ballot_counts()?;
         let mut out = Vec::new();
-        for (poll_id, state) in self.polls.entries()? {
-            let Some(def) = self.definition(&poll_id)? else {
+        for (poll_id, _) in self.polls.entries()? {
+            let Some((def, state)) = self.try_load(&poll_id)? else {
                 continue;
             };
-            let state = state.get().clone();
             let ballots = match &state.closure {
                 Some(c) => c.counted.len() as u32,
                 None => counts.get(&poll_id).copied().unwrap_or(0),
@@ -960,12 +1029,9 @@ impl MeroVote {
                 "transport key proof of knowledge does not verify".into()
             ));
         }
-        let mut slot = self.slots.get()?.unwrap_or_default();
-        slot.transport.insert(
-            poll_id.clone(),
-            LwwRegister::new(TransportKey { key, proof }),
-        )?;
-        self.slots.insert(slot)?;
+        let value = TransportKey { key, proof };
+        let entry = format!("{poll_id}/{caller}/{}", content_key(&value)?);
+        self.transport_keys.insert(entry, value)?;
         app::emit!(Event::TransportKeyPublished {
             poll_id,
             trustee: caller
@@ -994,10 +1060,8 @@ impl MeroVote {
         let d = decode_dealing(&dealing).map_err(VoteError::from)?;
         crypto::verify_dealing(&poll_id, &caller, def.threshold, def.trustees.len(), &d)
             .map_err(VoteError::from)?;
-        let mut slot = self.slots.get()?.unwrap_or_default();
-        slot.dealings
-            .insert(poll_id.clone(), LwwRegister::new(dealing))?;
-        self.slots.insert(slot)?;
+        let entry = format!("{poll_id}/{caller}/{}", content_key(&dealing)?);
+        self.dealings.insert(entry, dealing)?;
         app::emit!(Event::DealingPublished {
             poll_id,
             trustee: caller
@@ -1036,12 +1100,8 @@ impl MeroVote {
                 "the complaint does not prove a bad share".into()
             ));
         }
-        let mut slot = self.slots.get()?.unwrap_or_default();
-        slot.complaints.insert(
-            complaint_key(&poll_id, &dealer),
-            LwwRegister::new(complaint),
-        )?;
-        self.slots.insert(slot)?;
+        let entry = format!("{poll_id}/{caller}/{dealer}/{}", content_key(&complaint)?);
+        self.complaints.insert(entry, complaint)?;
         app::emit!(Event::ComplaintFiled {
             poll_id,
             recipient: caller,
@@ -1055,7 +1115,7 @@ impl MeroVote {
     /// at least `t` dealers — otherwise fewer than `t` colluders could know
     /// the whole key.
     pub fn open_voting(&mut self, poll_id: String) -> app::Result<String> {
-        let (def, mut state) = self.load(&poll_id)?;
+        let (def, state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         if state.phase != Phase::KeyCeremony {
             app::bail!(VoteError::Phase("voting is already open".into()));
@@ -1116,16 +1176,17 @@ impl MeroVote {
             .collect::<Result<_, _>>()
             .map_err(VoteError::from)?;
         let key = crypto::encode_point(&crypto::joint_key(&decoded.iter().collect::<Vec<_>>()));
-        state.phase = Phase::Voting;
-        state.election = Some(Election {
-            key: key.clone(),
-            threshold: def.threshold,
-            transport,
-            qualified,
-            disqualified,
-            opened_at: now_ms(),
-        });
-        self.polls.update(&poll_id, LwwRegister::new(state))?;
+        self.elections.insert(
+            format!("{poll_id}/{}", nonce()),
+            Election {
+                key: key.clone(),
+                threshold: def.threshold,
+                transport,
+                qualified,
+                disqualified,
+                opened_at: now_ms(),
+            },
+        )?;
         app::emit!(Event::VotingOpened { poll_id });
         Ok(key)
     }
@@ -1147,18 +1208,25 @@ impl MeroVote {
                 "you are not on this poll's voter roll".into()
             ));
         }
-        let election = state.election.as_ref().expect("voting implies an election");
+        let Some(election) = &state.election else {
+            app::bail!(VoteError::Phase("voting has no election key".into()));
+        };
         let pk = crypto::decode_point(&election.key, "election key").map_err(VoteError::from)?;
         let decoded = decode_ballot(&ballot).map_err(VoteError::from)?;
         crypto::verify_ballot(&pk, &poll_id, &voter, &rules(&def), &decoded)
             .map_err(VoteError::from)?;
         let digest = hex::encode(crypto::ballot_digest(&poll_id, &voter, &decoded));
 
-        let frozen = hex::encode(self.ballot_bodies.insert(StoredBallot {
+        let body = StoredBallot {
             poll_id: poll_id.clone(),
             voter: voter.clone(),
             ballot,
-        })?);
+        };
+        let frozen = content_key(&body)?;
+        let hash = parse_hash(&frozen)?;
+        if !self.ballot_bodies.contains(&hash)? {
+            self.ballot_bodies.insert(hash, body)?;
+        }
         let mut slot = self.slots.get()?.unwrap_or_default();
         slot.ballots.insert(
             poll_id.clone(),
@@ -1177,14 +1245,18 @@ impl MeroVote {
     /// ballots once it sees this; ballots cast before that keep syncing in,
     /// and the seal is what freezes the count.
     pub fn close_poll(&mut self, poll_id: String) -> app::Result<()> {
-        let (def, mut state) = self.load(&poll_id)?;
+        let (def, state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         if state.phase != Phase::Voting {
             app::bail!(VoteError::Phase("only an open poll can be closed".into()));
         }
-        state.phase = Phase::Closing;
-        state.closing_at = Some(now_ms());
-        self.polls.update(&poll_id, LwwRegister::new(state))?;
+        self.polls.update(
+            &poll_id,
+            LwwRegister::new(PollControl {
+                closing_at: Some(now_ms()),
+                anchor: state.anchor,
+            }),
+        )?;
         app::emit!(Event::PollClosing { poll_id });
         Ok(())
     }
@@ -1192,17 +1264,16 @@ impl MeroVote {
     /// Step two: freeze the ballots to count — every eligible voter's
     /// current, re-verified ballot as this node sees it now.
     pub fn seal_poll(&mut self, poll_id: String) -> app::Result<u32> {
-        let (def, mut state) = self.load(&poll_id)?;
+        let (def, state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         if state.phase != Phase::Closing {
             app::bail!(VoteError::Phase(
                 "close the poll before sealing the count".into()
             ));
         }
-        let election = state
-            .election
-            .as_ref()
-            .expect("closing implies an election");
+        let Some(election) = &state.election else {
+            app::bail!(VoteError::Phase("closing has no election key".into()));
+        };
         let pk = crypto::decode_point(&election.key, "election key").map_err(VoteError::from)?;
         let r = rules(&def);
 
@@ -1213,10 +1284,10 @@ impl MeroVote {
             }
             // Re-verify rather than trust the author's node: a ballot that got
             // here through a modified node is left out, not counted.
-            let Some(body) = self.ballot_bodies.get(&parse_hash(&pointer.frozen)?)? else {
+            let Some(body) = self.authored_body(&pointer.frozen, &voter)? else {
                 continue;
             };
-            if body.voter != voter || body.poll_id != poll_id {
+            if body.poll_id != poll_id {
                 continue;
             }
             let Ok(decoded) = decode_ballot(&body.ballot) else {
@@ -1235,12 +1306,13 @@ impl MeroVote {
             });
         }
         let n = counted.len() as u32;
-        state.phase = Phase::Closed;
-        state.closure = Some(Closure {
-            counted,
-            closed_at: now_ms(),
-        });
-        self.polls.update(&poll_id, LwwRegister::new(state))?;
+        self.closures.insert(
+            format!("{poll_id}/{}", nonce()),
+            Closure {
+                counted,
+                closed_at: now_ms(),
+            },
+        )?;
         app::emit!(Event::PollSealed {
             poll_id,
             counted: n
@@ -1283,7 +1355,9 @@ impl MeroVote {
         let Some(closure) = &state.closure else {
             app::bail!(VoteError::Phase("the count is not sealed yet".into()));
         };
-        let election = state.election.as_ref().expect("closed implies an election");
+        let Some(election) = &state.election else {
+            app::bail!(VoteError::Phase("a sealed poll has no election key".into()));
+        };
         let Some(index) = trustee_index(&def, &caller) else {
             app::bail!(VoteError::Forbidden(
                 "only a trustee can publish a partial decryption".into()
@@ -1346,7 +1420,7 @@ impl MeroVote {
         network: String,
         reference: String,
     ) -> app::Result<String> {
-        let (def, mut state) = self.load(&poll_id)?;
+        let (def, state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         let network = network.trim().to_owned();
         let reference = reference.trim().to_owned();
@@ -1365,13 +1439,18 @@ impl MeroVote {
                 "only a complete, verified result can be anchored".into()
             ));
         };
-        state.anchor = Some(Anchor {
-            digest: digest.clone(),
-            network,
-            reference,
-            anchored_at: now_ms(),
-        });
-        self.polls.update(&poll_id, LwwRegister::new(state))?;
+        self.polls.update(
+            &poll_id,
+            LwwRegister::new(PollControl {
+                closing_at: state.closing_at,
+                anchor: Some(Anchor {
+                    digest: digest.clone(),
+                    network,
+                    reference,
+                    anchored_at: now_ms(),
+                }),
+            }),
+        )?;
         app::emit!(Event::Anchored { poll_id });
         Ok(digest)
     }
@@ -1389,12 +1468,56 @@ impl MeroVote {
             .map_err(|e| VoteError::Invalid(e.to_string()))
     }
 
+    /// A poll as read: its definition, and its lifecycle derived from what its
+    /// creator wrote. `None` for an unknown poll, and for one whose control
+    /// entry is not owned by the account its definition names as creator: that
+    /// field is the definition's author's to write, so anyone can claim it.
+    ///
+    /// The phase only moves forward: an election makes it Voting, the closing
+    /// notice Closing, a seal Closed, and the election and seal are written
+    /// once, so no write of the creator's can take a sealed poll back.
+    fn try_load(&self, poll_id: &str) -> app::Result<Option<(PollDefinition, PollState)>> {
+        let Some(def) = self.definition(poll_id)? else {
+            return Ok(None);
+        };
+        let key = poll_id.to_owned();
+        let Some(control) = self.polls.get(&key)? else {
+            return Ok(None);
+        };
+        if self.polls.owner_of(&key)?.map(|o| o.to_string()) != Some(def.creator.clone()) {
+            return Ok(None);
+        }
+        let control = control.get().clone();
+        let prefix = format!("{poll_id}/");
+        let election = written_by(&self.elections, &prefix, &def.creator)?
+            .into_iter()
+            .next();
+        let closure = match election {
+            Some(_) => written_by(&self.closures, &prefix, &def.creator)?
+                .into_iter()
+                .next(),
+            None => None,
+        };
+        let phase = match (&election, &closure, control.closing_at) {
+            (None, _, _) => Phase::KeyCeremony,
+            (Some(_), Some(_), _) => Phase::Closed,
+            (Some(_), None, Some(_)) => Phase::Closing,
+            (Some(_), None, None) => Phase::Voting,
+        };
+        let state = PollState {
+            phase,
+            election,
+            closing_at: control.closing_at,
+            closure,
+            anchor: control.anchor,
+        };
+        Ok(Some((def, state)))
+    }
+
     fn load(&self, poll_id: &str) -> app::Result<(PollDefinition, PollState)> {
-        let def = self.definition(poll_id)?;
-        let state = self.polls.get(&poll_id.to_owned())?;
-        match (def, state) {
-            (Some(d), Some(s)) => Ok((d, s.get().clone())),
-            _ => app::bail!(VoteError::NotFound(poll_id.to_owned())),
+        match self.try_load(poll_id)? {
+            Some(loaded) => Ok(loaded),
+            None => app::bail!(VoteError::NotFound(poll_id.to_owned())),
         }
     }
 
@@ -1433,24 +1556,41 @@ impl MeroVote {
         Ok(self.slots.get_for_user(&AccountId::from(bytes))?)
     }
 
+    /// Every transport key `account` published for the poll. One, unless a
+    /// modified node published more; the election freezes the one it used.
+    fn transports_of(&self, account: &str, poll_id: &str) -> app::Result<Vec<TransportKey>> {
+        written_by(
+            &self.transport_keys,
+            &format!("{poll_id}/{account}/"),
+            account,
+        )
+    }
+
     fn transport_of(&self, account: &str, poll_id: &str) -> app::Result<Option<TransportKey>> {
-        match self.slot_of(account)? {
-            Some(slot) => Ok(slot
-                .transport
-                .get(&poll_id.to_owned())?
-                .map(|s| s.get().clone())),
-            None => Ok(None),
-        }
+        Ok(self.transports_of(account, poll_id)?.into_iter().next())
+    }
+
+    /// Every dealing `account` published for the poll; see `transports_of`.
+    fn dealings_of(&self, account: &str, poll_id: &str) -> app::Result<Vec<WireDealing>> {
+        written_by(&self.dealings, &format!("{poll_id}/{account}/"), account)
     }
 
     fn dealing_of(&self, account: &str, poll_id: &str) -> app::Result<Option<WireDealing>> {
-        match self.slot_of(account)? {
-            Some(slot) => Ok(slot
-                .dealings
-                .get(&poll_id.to_owned())?
-                .map(|s| s.get().clone())),
-            None => Ok(None),
-        }
+        Ok(self.dealings_of(account, poll_id)?.into_iter().next())
+    }
+
+    /// The complaints `recipient` filed against `dealer`.
+    fn complaints_of(
+        &self,
+        poll_id: &str,
+        recipient: &str,
+        dealer: &str,
+    ) -> app::Result<Vec<Complaint>> {
+        written_by(
+            &self.complaints,
+            &format!("{poll_id}/{recipient}/{dealer}/"),
+            recipient,
+        )
     }
 
     fn partials_of(&self, account: &str, poll_id: &str) -> app::Result<Option<StoredPartials>> {
@@ -1463,7 +1603,7 @@ impl MeroVote {
         }
     }
 
-    /// The ceremony from live slots, with every complaint adjudicated.
+    /// The ceremony from live entries, with every complaint adjudicated.
     fn ceremony_of(&self, poll_id: &str, def: &PollDefinition) -> app::Result<Ceremony> {
         let mut trustees = Vec::new();
         for (i, t) in def.trustees.iter().enumerate() {
@@ -1476,20 +1616,16 @@ impl MeroVote {
         }
         let mut complaints = Vec::new();
         for recipient in &trustees {
-            let Some(slot) = self.slot_of(&recipient.account)? else {
-                continue;
-            };
             for dealer in &trustees {
-                let Some(c) = slot
-                    .complaints
-                    .get(&complaint_key(poll_id, &dealer.account))?
-                else {
+                let filed = self.complaints_of(poll_id, &recipient.account, &dealer.account)?;
+                if filed.is_empty() {
                     continue;
-                };
-                let c = c.get().clone();
+                }
                 let valid = match (&dealer.dealing, &recipient.transport) {
                     (Some(w), Some(key)) => decode_dealing(w).is_ok_and(|d| {
-                        complaint_holds(poll_id, def, &recipient.account, &c, &d, key)
+                        filed
+                            .iter()
+                            .any(|c| complaint_holds(poll_id, def, &recipient.account, c, &d, key))
                     }),
                     _ => false,
                 };
@@ -1545,6 +1681,27 @@ impl MeroVote {
         Ok(self.ballot_bodies.get(&parse_hash(&counted.frozen)?)?)
     }
 
+    /// Whether the body at `frozen` is `voter`'s own entry. Anyone can build a
+    /// valid ballot proof for any voter id, so the proof alone does not show
+    /// the voter cast it; the owner stamp does.
+    fn wrote_body(&self, frozen: &str, voter: &str) -> app::Result<bool> {
+        Ok(self
+            .ballot_bodies
+            .owner_of(&parse_hash(frozen)?)?
+            .is_some_and(|o| o.to_string() == voter))
+    }
+
+    /// The body at `frozen`, if `voter` wrote it and it names them.
+    fn authored_body(&self, frozen: &str, voter: &str) -> app::Result<Option<StoredBallot>> {
+        if !self.wrote_body(frozen, voter)? {
+            return Ok(None);
+        }
+        Ok(self
+            .ballot_bodies
+            .get(&parse_hash(frozen)?)?
+            .filter(|b| b.voter == voter))
+    }
+
     fn aggregate(
         &self,
         def: &PollDefinition,
@@ -1592,6 +1749,7 @@ impl MeroVote {
                       digest,
                       decrypted_by: Vec<String>,
                       counted: u32,
+                      uncounted: Vec<String>,
                       ballots,
                       partials| {
             let verified = c.all_ok();
@@ -1606,6 +1764,7 @@ impl MeroVote {
                     decrypted_by: if verified { decrypted_by } else { Vec::new() },
                     transcript_digest: if verified { digest } else { None },
                     anchor: state.anchor.clone(),
+                    uncounted,
                 },
                 ballots,
                 partials,
@@ -1613,6 +1772,14 @@ impl MeroVote {
         };
 
         let n_trustees = def.trustees.len();
+        let prefix = format!("{poll_id}/");
+        let elections = written_by(&self.elections, &prefix, &def.creator)?.len();
+        let closures = written_by(&self.closures, &prefix, &def.creator)?.len();
+        c.push(
+            "written once",
+            elections <= 1 && closures <= 1,
+            format!("the creator wrote {elections} election(s) and {closures} seal(s)"),
+        );
         c.push(
             "definition",
             rules(&def).check().is_ok()
@@ -1632,7 +1799,16 @@ impl MeroVote {
         // 1. The key ceremony.
         let Some(election) = &state.election else {
             c.push("election key", true, "key ceremony in progress");
-            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
+            return finish(
+                c,
+                None,
+                None,
+                decrypted_by,
+                0,
+                Vec::new(),
+                ballots_out,
+                partials_out,
+            );
         };
         let mut dealings = Vec::new();
         let mut dealings_ok = election.threshold == def.threshold
@@ -1659,9 +1835,9 @@ impl MeroVote {
                 }
                 _ => dealings_ok = false,
             }
-            // The dealer's own signed slot must hold the same dealing — that
-            // is what shows the dealer, not the creator, made it.
-            if self.dealing_of(&q.dealer, poll_id)?.as_ref() != Some(&q.dealing) {
+            // The dealer's own write-once entry must hold the same dealing —
+            // that is what shows the dealer, not the creator, made it.
+            if !self.dealings_of(&q.dealer, poll_id)?.contains(&q.dealing) {
                 dealings_ok = false;
             }
         }
@@ -1675,37 +1851,46 @@ impl MeroVote {
             ),
         );
 
+        // The frozen transport keys are the ones the trustees published:
+        // complaints are adjudicated against them.
+        let mut transport_ok = election.transport.len() == n_trustees;
+        for (t, key) in def.trustees.iter().zip(&election.transport) {
+            transport_ok &= self
+                .transports_of(t, poll_id)?
+                .iter()
+                .any(|k| &k.key == key);
+        }
+        c.push(
+            "transport keys",
+            transport_ok,
+            "each frozen transport key was published by its trustee",
+        );
+
         // Complaints, against the frozen dealings and transport keys: every
         // disqualified dealer must stand accused by a valid complaint, and no
         // qualified dealer may be.
         let mut complaints_ok = true;
         let mut valid_against: BTreeSet<String> = BTreeSet::new();
         for (ri, recipient) in def.trustees.iter().enumerate() {
-            let Some(slot) = self.slot_of(recipient)? else {
-                continue;
-            };
             for dealer in &def.trustees {
-                let Some(cm) = slot.complaints.get(&complaint_key(poll_id, dealer))? else {
+                let filed = self.complaints_of(poll_id, recipient, dealer)?;
+                if filed.is_empty() {
                     continue;
-                };
+                }
                 let frozen = election
                     .qualified
                     .iter()
                     .find(|q| &q.dealer == dealer)
                     .map(|q| q.dealing.clone())
                     .or(self.dealing_of(dealer, poll_id)?);
-                let holds = frozen.is_some_and(|w| {
-                    decode_dealing(&w).is_ok_and(|d| {
-                        complaint_holds(
-                            poll_id,
-                            &def,
-                            recipient,
-                            cm.get(),
-                            &d,
-                            &election.transport[ri],
-                        )
-                    })
-                });
+                let holds = match (frozen, election.transport.get(ri)) {
+                    (Some(w), Some(key)) => decode_dealing(&w).is_ok_and(|d| {
+                        filed
+                            .iter()
+                            .any(|cm| complaint_holds(poll_id, &def, recipient, cm, &d, key))
+                    }),
+                    _ => false,
+                };
                 if holds {
                     valid_against.insert(dealer.clone());
                 }
@@ -1738,7 +1923,16 @@ impl MeroVote {
             "key = sum of qualified constant terms",
         );
         let Ok(pk) = crypto::decode_point(&election.key, "election key") else {
-            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
+            return finish(
+                c,
+                None,
+                None,
+                decrypted_by,
+                0,
+                Vec::new(),
+                ballots_out,
+                partials_out,
+            );
         };
 
         // 2. Every counted ballot.
@@ -1752,12 +1946,21 @@ impl MeroVote {
                     "voting in progress"
                 },
             );
-            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
+            return finish(
+                c,
+                None,
+                None,
+                decrypted_by,
+                0,
+                Vec::new(),
+                ballots_out,
+                partials_out,
+            );
         };
         let r = rules(&def);
         let mut agg = vec![crypto::Ciphertext::zero(); def.options.len()];
         let mut valid = 0usize;
-        let mut unendorsed = Vec::new();
+        let mut unauthored = Vec::new();
         let mut voters_seen = BTreeSet::new();
         let current = self.current_ballots(poll_id)?;
         for cb in &closure.counted {
@@ -1782,12 +1985,12 @@ impl MeroVote {
             if ok {
                 valid += 1;
             }
+            if !self.wrote_body(&cb.frozen, &cb.voter)? {
+                unauthored.push(cb.voter.clone());
+            }
             let endorsed = current
                 .get(&cb.voter)
                 .is_some_and(|p| p.digest == cb.digest);
-            if !endorsed {
-                unendorsed.push(cb.voter.clone());
-            }
             if let Some(b) = body {
                 ballots_out.push(TranscriptBallot {
                     voter: cb.voter.clone(),
@@ -1806,18 +2009,23 @@ impl MeroVote {
             ),
         );
         c.push(
-            "voter endorsement",
-            unendorsed.is_empty(),
-            if unendorsed.is_empty() {
-                format!("all {n} counted ballots match their voters' signed slots")
+            "ballot authorship",
+            unauthored.is_empty(),
+            if unauthored.is_empty() {
+                format!("all {n} counted ballots were written by their voters")
             } else {
                 format!(
-                    "{} counted ballots no longer match their voter's slot: {}",
-                    unendorsed.len(),
-                    unendorsed.join(", ")
+                    "{} counted ballots were not written by the voter they name: {}",
+                    unauthored.len(),
+                    unauthored.join(", ")
                 )
             },
         );
+        let uncounted: Vec<String> = current
+            .keys()
+            .filter(|v| eligible(&def, v) && !closure.counted.iter().any(|b| &b.voter == *v))
+            .cloned()
+            .collect();
 
         // 3. Partial decryptions. Robust: a bad partial (which the contract
         //    refuses, so only a modified node can produce one) is set aside and
@@ -1918,6 +2126,7 @@ impl MeroVote {
             digest,
             decrypted_by,
             n as u32,
+            uncounted,
             ballots_out,
             partials_out,
         )

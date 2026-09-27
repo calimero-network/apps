@@ -1,7 +1,14 @@
 /**
  * Who may change what: workbook roles and protected ranges, as the contract
- * enforces them, so the app can show a cell as locked before a write is
+ * checks them, so the app can show a cell as locked before a write is
  * refused. The contract is the authority; this only mirrors it.
+ *
+ * Two strengths of check. Owner-only actions (roles, protected ranges, the
+ * workbook's name, stopping others' links, deleting others' comments and
+ * files) are held by storage on every node, so a modified app cannot get
+ * round them. A viewer's or commenter's limits on the shared data itself
+ * (cells, sheets, styles, rules) are checked by the app a member runs: they
+ * keep honest members to their role, not a member who modifies their node.
  */
 import type { Protection } from '../api/spreadsheet/SpreadsheetClient';
 import type { Rect } from './refs';
@@ -12,9 +19,15 @@ export type WorkbookRole = (typeof WORKBOOK_ROLES)[number];
 export const ROLE_HELP: Record<WorkbookRole, string> = {
   owner: 'Edits everything, manages roles and protected ranges',
   editor: 'Edits cells, sheets and notes, except protected ranges',
-  commenter: 'Views and comments',
-  viewer: 'Views only',
+  commenter: 'Views and comments (a limit the app keeps, not a lock)',
+  viewer: 'Views only (a limit the app keeps, not a lock)',
 };
+
+/** Shown where roles are set: what a role does and does not guarantee. */
+export const ROLE_NOTE =
+  'Only owners can change roles, protected ranges and the workbook name, and remove others’ comments, files and links: '
+  + 'every member’s node enforces that. Viewer and commenter limits on cells and sheets are kept by the app, '
+  + 'so they stop honest mistakes, not someone who modifies their own node.';
 
 export const canEdit = (role: string) => role === 'owner' || role === 'editor';
 export const canComment = (role: string) => canEdit(role) || role === 'commenter';

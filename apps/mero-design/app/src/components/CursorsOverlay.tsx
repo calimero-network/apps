@@ -32,7 +32,8 @@ export default function CursorsOverlay({ cursors, myIdentity, members }: Props) 
     <div className={styles.overlay}>
       {active.map((c) => {
         const color = colorForIdentity(c.identity);
-        const member = members.find((m) => m.id === c.identity);
+        // Members are keyed by account; a cursor by device, with its account.
+        const member = members.find((m) => m.id === (c.account ?? c.identity));
         const label = member?.username ?? shortLabel(c.identity);
         return (
           <div

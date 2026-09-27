@@ -701,3 +701,150 @@ fn a_device_records_its_kind_and_unknown_kinds_are_refused() {
         app.call(|s| s.register_device(fp(5), "pk".to_owned(), String::new(), "phone".to_owned()));
     assert!(bad.is_err());
 }
+
+// ── Authorship comes from owner stamps ──────────────────────────────────────
+
+fn wrap_to(recipient: String, wrapper: String) -> KeyWrapInput {
+    KeyWrapInput {
+        key_id: "k1".to_owned(),
+        recipient,
+        wrapper,
+        envelope: "env".to_owned(),
+    }
+}
+
+/// Clients wrap the vault key to devices by the account listed with them, and
+/// treat a device in `wrapped_pairs` as approved. So a member with no role —
+/// pending, or removed — must be able to make neither claim: the account is
+/// the device's owner stamp, and only wraps written by role holders count.
+#[test]
+fn a_member_without_a_role_cannot_make_a_device_look_entitled() {
+    let mut app = new_vault();
+    app.call_as_account(BOB, BOB_LAPTOP, |s| {
+        s.register_device(fp(2), "pk".to_owned(), String::new(), "browser".to_owned())
+    })
+    .unwrap();
+    // Bob, pending, wraps "the key" to his own device.
+    let added = app
+        .call_as_account(BOB, BOB_LAPTOP, |s| {
+            s.add_key_wraps(vec![wrap_to(fp(2), fp(2))])
+        })
+        .unwrap();
+    assert_eq!(added, 1, "stored — anyone may write a wrap");
+    assert!(
+        app.view(|s| s.wrapped_pairs()).unwrap().is_empty(),
+        "but a wrap from someone without a role approves nothing"
+    );
+    let devices = app.view(|s| s.list_devices()).unwrap();
+    assert_eq!(devices[0].account, bob(), "the owner stamp, not a field");
+
+    // An admin's wrap to the same device does count.
+    app.call(|s| s.register_device(fp(1), "pk".to_owned(), String::new(), "browser".to_owned()))
+        .unwrap();
+    app.call(|s| s.add_key_wraps(vec![wrap_to(fp(2), fp(1))]))
+        .unwrap();
+    assert_eq!(
+        app.view(|s| s.wrapped_pairs()).unwrap(),
+        vec![format!("k1:{}", fp(2))]
+    );
+    let for_bob = app.view(|s| s.key_wraps_for(fp(2))).unwrap();
+    let authors: BTreeSet<String> = for_bob.into_iter().map(|w| w.wrapped_by).collect();
+    assert_eq!(authors, BTreeSet::from([bob(), creator(&app)]));
+
+    // Once removed, Bob's own wraps stop counting again.
+    make(&mut app, &bob(), "editor");
+    app.call_as_account(BOB, BOB_LAPTOP, |s| {
+        s.add_key_wraps(vec![KeyWrapInput {
+            key_id: "k2".to_owned(),
+            ..wrap_to(fp(2), fp(2))
+        }])
+    })
+    .unwrap();
+    assert!(app
+        .view(|s| s.wrapped_pairs())
+        .unwrap()
+        .contains(&format!("k2:{}", fp(2))));
+    app.call(|s| s.remove_member(bob())).unwrap();
+    assert!(!app
+        .view(|s| s.wrapped_pairs())
+        .unwrap()
+        .contains(&format!("k2:{}", fp(2))));
+}
+
+/// A wrap's slot carries a random nonce, so no member can occupy the slot a
+/// genuine wrap will be written under.
+#[test]
+fn a_wrap_slot_cannot_be_squatted() {
+    let mut app = new_vault();
+    app.call(|s| s.register_device(fp(1), "pk".to_owned(), String::new(), "browser".to_owned()))
+        .unwrap();
+    app.call_as_account(CAROL, CAROL_PHONE, |s| {
+        s.register_device(fp(3), "pk".to_owned(), String::new(), "browser".to_owned())
+    })
+    .unwrap();
+    // Bob writes a garbage wrap claiming to be the admin's device's, first.
+    app.call_as_account(BOB, BOB_LAPTOP, |s| {
+        s.add_key_wraps(vec![wrap_to(fp(3), fp(1))])
+    })
+    .unwrap();
+    let added = app
+        .call(|s| s.add_key_wraps(vec![wrap_to(fp(3), fp(1))]))
+        .unwrap();
+    assert_eq!(added, 1, "the admin's genuine wrap still lands");
+    assert_eq!(app.view(|s| s.key_wraps_for(fp(3))).unwrap().len(), 2);
+}
+
+#[test]
+fn a_device_and_an_audit_line_are_attributed_by_owner_stamp() {
+    let mut app = new_vault();
+    // Bob, running a modified node, writes straight to storage.
+    app.call_as_account(BOB, BOB_LAPTOP, |s| -> app::Result<()> {
+        s.devices.insert(
+            fp(2),
+            DeviceKey {
+                public_key: "pk".to_owned(),
+                kind: "browser".to_owned(),
+                ..DeviceKey::default()
+            },
+        )?;
+        s.audit.push(AuditLogEntry {
+            action: "secret_purged".to_owned(),
+            target: "vault".to_owned(),
+            device: hex::encode([0u8; 32]),
+            timestamp: 1,
+        })?;
+        Ok(())
+    })
+    .unwrap();
+
+    let devices = app.view(|s| s.list_devices()).unwrap();
+    assert_eq!(devices[0].account, bob());
+    let members = app.view(|s| s.list_members()).unwrap();
+    let bob_row = members.iter().find(|m| m.account == bob()).unwrap();
+    assert_eq!((bob_row.role.as_str(), bob_row.devices), ("pending", 1));
+
+    let logs = app.view(|s| s.get_audit_logs()).unwrap();
+    let forged = logs.iter().find(|l| l.action == "secret_purged").unwrap();
+    assert_eq!(forged.account, bob(), "the line is Bob's, whatever it says");
+
+    // Removing Bob revokes the device found by its owner stamp.
+    app.call(|s| s.remove_member(bob())).unwrap();
+    assert!(app.view(|s| s.list_devices()).unwrap()[0].revoked);
+}
+
+#[test]
+fn only_an_editor_renames_the_vault() {
+    let mut app = new_vault();
+    assert!(app
+        .call_as_account(BOB, BOB_LAPTOP, |s| s.rename_vault("Bob's now".to_owned()))
+        .is_err());
+    make(&mut app, &bob(), "editor");
+    app.call_as_account(BOB, BOB_LAPTOP, |s| s.rename_vault("Ops".to_owned()))
+        .unwrap();
+    assert_eq!(app.view(|s| s.vault_info()).unwrap().name, "Ops");
+    make(&mut app, &bob(), "viewer");
+    assert!(app
+        .call_as_account(BOB, BOB_LAPTOP, |s| s.rename_vault("again".to_owned()))
+        .is_err());
+    assert_eq!(app.view(|s| s.vault_name()).unwrap(), "Ops");
+}

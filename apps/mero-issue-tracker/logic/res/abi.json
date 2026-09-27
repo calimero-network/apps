@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A discussion entry on an issue. `id`, `issue_id`, `created_at` are\nimmutable; `body` and `edited_at` are LWW registers. The author is the\nentry's owner stamp, and only they may edit or delete it — on every node.\n`thread` is one issue's comments, oldest first.",
       "fields": [
         {
           "name": "id",
@@ -12,12 +13,6 @@
         },
         {
           "name": "issue_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -54,6 +49,7 @@
     },
     "CommentView": {
       "kind": "record",
+      "doc": "A comment as returned to the frontend/scripts.",
       "fields": [
         {
           "name": "id",
@@ -241,24 +237,8 @@
     },
     "Issue": {
       "kind": "record",
+      "doc": "An issue's shared triage state. Every field is a `LwwRegister` so concurrent\nedits converge last-writer-wins. Labels live in a separate index (see\n`IssueTracker`).",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "title",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
         {
           "name": "summary",
           "type": {
@@ -335,23 +315,12 @@
               "kind": "string"
             }
           }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
         }
       ]
     },
     "IssueDetail": {
       "kind": "record",
+      "doc": "A full issue plus its comment thread (named struct — never a tuple return).",
       "fields": [
         {
           "name": "issue",
@@ -370,9 +339,41 @@
         }
       ]
     },
+    "IssueHeader": {
+      "kind": "record",
+      "doc": "Who filed an issue, and what they called it. Set once at creation. The filer\nis the entry's owner stamp, not a field, so nobody can re-attribute an issue.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "IssueTracker": {
       "kind": "record",
       "fields": [
+        {
+          "name": "headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "IssueHeader"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Issue id → header, owned by whoever filed it. An issue exists while its\nheader does."
+        },
         {
           "name": "issues",
           "type": {
@@ -384,7 +385,8 @@
               "$ref": "Issue"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Issue id → triage state. Shared — any teammate may triage."
         },
         {
           "name": "comments",
@@ -396,8 +398,9 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "All comments across all issues, keyed by generated id, each owned by\nits author."
         },
         {
           "name": "labels",
@@ -407,15 +410,11 @@
               "kind": "string"
             },
             "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "u64"
-              }
+              "$ref": "LabelTag"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Key `\"{issue_id}\\u{1}{label}\"` → the label. Concurrent adds of the same\nlabel collapse to one entry (no duplicates); removal is a conflict-free\nkey delete."
         },
         {
           "name": "repo_url",
@@ -426,12 +425,14 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The GitHub repository URL this context (repo) tracks. Empty until set;\nLWW so concurrent edits from teammates converge last-writer-wins."
         }
       ]
     },
     "IssueView": {
       "kind": "record",
+      "doc": "An issue as returned to the frontend/scripts.",
       "fields": [
         {
           "name": "id",
@@ -511,8 +512,48 @@
         }
       ]
     },
+    "LabelTag": {
+      "kind": "record",
+      "doc": "One label on one issue.",
+      "fields": [
+        {
+          "name": "issue_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
     "RepoInfo": {
       "kind": "record",
+      "doc": "This context's repository metadata. `repo_url` is empty until `set_repo_url`.",
       "fields": [
         {
           "name": "repo_url",
@@ -524,6 +565,7 @@
     },
     "StatusCount": {
       "kind": "record",
+      "doc": "One board column's live count (named struct — never a `(String, u64)` tuple).",
       "fields": [
         {
           "name": "status",
@@ -543,6 +585,7 @@
   "methods": [
     {
       "name": "add_comment",
+      "doc": "Post a comment to an issue's thread. Returns the generated comment id.",
       "params": [
         {
           "name": "issue_id",
@@ -564,6 +607,7 @@
     },
     {
       "name": "add_label",
+      "doc": "Add a label to an issue. Idempotent — a duplicate (even concurrent) add\ncollapses to a single index entry.",
       "params": [
         {
           "name": "issue_id",
@@ -585,6 +629,7 @@
     },
     {
       "name": "create_issue",
+      "doc": "Create an issue. Returns its generated id. Starts in status `Open`.",
       "params": [
         {
           "name": "title",
@@ -640,6 +685,7 @@
     },
     {
       "name": "delete_comment",
+      "doc": "Delete a comment. Only the original author may delete.",
       "params": [
         {
           "name": "comment_id",
@@ -655,6 +701,7 @@
     },
     {
       "name": "delete_issue",
+      "doc": "Delete an issue with its triage state, its labels and the caller's own\ncomments on it. Only the issue's creator may delete it.\n\nOther people's comments stay: each belongs to its author, and only they\nmay remove it. Every comment read goes through a live issue, so those\norphans are never shown.",
       "params": [
         {
           "name": "issue_id",
@@ -670,6 +717,7 @@
     },
     {
       "name": "edit_comment",
+      "doc": "Edit a comment's body. Only the original author may edit.",
       "params": [
         {
           "name": "comment_id",
@@ -691,6 +739,7 @@
     },
     {
       "name": "get_issue",
+      "doc": "Read a single issue plus its full comment thread (ordered by created_at).",
       "params": [
         {
           "name": "issue_id",
@@ -706,6 +755,7 @@
     },
     {
       "name": "get_repo_info",
+      "doc": "Read this context's repository metadata (empty `repo_url` until set).",
       "params": [],
       "returns": {
         "$ref": "RepoInfo"
@@ -714,6 +764,7 @@
     },
     {
       "name": "get_status_counts",
+      "doc": "Live count of issues per status column, in fixed column order. Each\ncolumn is a seek on the `status` index; a row counts only if its issue\nstill has a header.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -732,6 +783,7 @@
     },
     {
       "name": "list_issues",
+      "doc": "List issues, optionally filtered by status, assignee, and/or label.\nResults are ordered by creation time then id for stability.\n\nThe first filter given is a seek on its index; the others are checked on\nthe rows it returns. With no filter every issue is read.",
       "params": [
         {
           "name": "status",
@@ -765,6 +817,7 @@
     },
     {
       "name": "remove_label",
+      "doc": "Remove a label from an issue. No-op if the label was not present.",
       "params": [
         {
           "name": "issue_id",
@@ -786,6 +839,7 @@
     },
     {
       "name": "set_assignee",
+      "doc": "Set or clear an issue's assignee.",
       "params": [
         {
           "name": "issue_id",
@@ -808,6 +862,7 @@
     },
     {
       "name": "set_impact",
+      "doc": "Update an issue's impact. Rejects an empty value.",
       "params": [
         {
           "name": "issue_id",
@@ -829,6 +884,7 @@
     },
     {
       "name": "set_priority",
+      "doc": "Change an issue's priority. Rejects any value outside the allowed set.",
       "params": [
         {
           "name": "issue_id",
@@ -850,6 +906,7 @@
     },
     {
       "name": "set_repo_url",
+      "doc": "Set (or change) the GitHub repository URL this context tracks. Rejects an\nempty value or one that is not an `http(s)://` URL.",
       "params": [
         {
           "name": "url",
@@ -865,6 +922,7 @@
     },
     {
       "name": "set_repro",
+      "doc": "Update an issue's reproduction steps. Rejects an empty value.",
       "params": [
         {
           "name": "issue_id",
@@ -886,6 +944,7 @@
     },
     {
       "name": "set_resolution_criteria",
+      "doc": "Update an issue's resolution criteria. Rejects an empty value.",
       "params": [
         {
           "name": "issue_id",
@@ -907,6 +966,7 @@
     },
     {
       "name": "set_status",
+      "doc": "Change an issue's status. Rejects any value outside the allowed set.",
       "params": [
         {
           "name": "issue_id",
@@ -928,6 +988,7 @@
     },
     {
       "name": "set_summary",
+      "doc": "Update an issue's summary. Rejects an empty value.",
       "params": [
         {
           "name": "issue_id",
@@ -953,67 +1014,78 @@
       "name": "CommentAdded",
       "payload": {
         "$ref": "Event_CommentAdded"
-      }
+      },
+      "doc": "A comment was posted to an issue's thread."
     },
     {
       "name": "CommentDeleted",
       "payload": {
         "$ref": "Event_CommentDeleted"
-      }
+      },
+      "doc": "A comment was deleted by its author."
     },
     {
       "name": "CommentEdited",
       "payload": {
         "$ref": "Event_CommentEdited"
-      }
+      },
+      "doc": "A comment was edited by its author."
     },
     {
       "name": "IssueAssigneeChanged",
       "payload": {
         "$ref": "Event_IssueAssigneeChanged"
-      }
+      },
+      "doc": "An issue's assignee changed."
     },
     {
       "name": "IssueCreated",
       "payload": {
         "$ref": "Event_IssueCreated"
-      }
+      },
+      "doc": "A new issue was created on the board."
     },
     {
       "name": "IssueDeleted",
       "payload": {
         "$ref": "Event_IssueDeleted"
-      }
+      },
+      "doc": "An issue was deleted, along with its comments and labels."
     },
     {
       "name": "IssueEdited",
       "payload": {
         "$ref": "Event_IssueEdited"
-      }
+      },
+      "doc": "One of an issue's text sections changed (summary/impact/repro/resolution)."
     },
     {
       "name": "IssueLabelsChanged",
       "payload": {
         "$ref": "Event_IssueLabelsChanged"
-      }
+      },
+      "doc": "A label was added to or removed from an issue."
     },
     {
       "name": "IssuePriorityChanged",
       "payload": {
         "$ref": "Event_IssuePriorityChanged"
-      }
+      },
+      "doc": "An issue's priority changed."
     },
     {
       "name": "IssueStatusChanged",
       "payload": {
         "$ref": "Event_IssueStatusChanged"
-      }
+      },
+      "doc": "An issue's status changed (moved columns)."
     },
     {
       "name": "RepoUrlChanged",
       "payload": {
         "$ref": "Event_RepoUrlChanged"
-      }
+      },
+      "doc": "The repository URL this context tracks was set or changed."
     }
   ],
   "state_root": "IssueTracker",

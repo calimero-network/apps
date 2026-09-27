@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import styled from 'styled-components';
-import { useMero } from '@calimero-network/mero-react';
 import { useToast } from '@calimero-network/mero-ui';
 import { tokens as t } from '../../theme';
 import { useWorkspace } from '../../hooks/useWorkspace';
@@ -27,16 +26,17 @@ import type { AppCtx, NewDealDefaults } from './appContext';
  * with no name -> blocking alias gate.
  */
 export default function AppPage(): React.ReactElement | null {
-  const { contextIdentity } = useMero();
   const ws = useWorkspace();
   const toast = useToast();
 
   // Two different ids, and they are NOT interchangeable since core rc.21.
   //
-  // `currentUser` is the identity writes execute as: the backend stamps
-  // created_by/author with the executor key and enforces delete/edit against
-  // it, so every authorship and "is this mine" gate must use this one.
-  const currentUser = ws.executorPublicKey ?? ws.selfIdentity ?? contextIdentity ?? '';
+  // `currentUser` is the ACCOUNT writes are authorised as: the backend records
+  // created_by/author as the account's owner stamp and enforces delete against
+  // it, so every authorship and "is this mine" gate must use this one. It is
+  // the same account `selfMember` names (one person, every device), not the
+  // context executor key, which is per device.
+  const currentUser = ws.selfIdentity ?? '';
   // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
   // metadata - the display names behind `aliases` - is stored and keyed by it,
   // so every name lookup must use this one. It used to be safe to resolve a

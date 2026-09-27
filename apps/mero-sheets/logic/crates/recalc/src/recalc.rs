@@ -1,6 +1,6 @@
 //! Pure recalculation engine: workbook inputs -> computed values.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::formula;
 
@@ -69,41 +69,35 @@ pub(crate) fn order(
 /// formula reachable from it. Sheet-level (not cell-level) reachability — a
 /// touched sheet is included in full, so the result is robust to `precedents()`
 /// under-reporting a range/whole-column ref and stays identical to a
-/// whole-workbook evaluation. Terminates: `closure` grows monotonically and is
-/// bounded by the finite set of sheet ids present in `cells`.
-pub fn sheet_closure(
-    cells: &BTreeMap<CellRef, String>,
+/// whole-workbook evaluation.
+///
+/// `raw_values_of` is asked for each sheet's raw inputs once, and only for the
+/// sheets the walk reaches, so a caller can load a sheet's cells when it is
+/// needed instead of reading the whole workbook up front. Terminates:
+/// `closure` grows monotonically and each sheet is loaded at most once.
+pub fn sheet_closure<E>(
     env: &formula::Env,
     requested_sheet: &str,
-) -> HashSet<String> {
-    // Adjacency: sheet -> the set of sheets its formulas reference. Built in one
-    // pass over the cells (each formula's precedents parsed exactly once).
-    let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
-    for (cell, raw) in cells {
-        if !is_formula(raw) {
-            continue;
-        }
-        let targets = refs.entry(cell.sheet_id.clone()).or_default();
-        for (sid, _row, _col) in formula::precedents_with(raw, &cell.sheet_id, env) {
-            targets.insert(sid);
-        }
-    }
-
+    mut raw_values_of: impl FnMut(&str) -> Result<Vec<String>, E>,
+) -> Result<HashSet<String>, E> {
     // BFS over the sheet reference graph from the requested sheet. The `closure`
     // set doubles as the visited set, so cross-sheet cycles terminate.
     let mut closure: HashSet<String> = HashSet::new();
     closure.insert(requested_sheet.to_string());
     let mut queue: Vec<String> = vec![requested_sheet.to_string()];
     while let Some(sheet) = queue.pop() {
-        if let Some(targets) = refs.get(&sheet) {
-            for target in targets {
+        for raw in raw_values_of(&sheet)? {
+            if !is_formula(&raw) {
+                continue;
+            }
+            for (target, _row, _col) in formula::precedents_with(&raw, &sheet, env) {
                 if closure.insert(target.clone()) {
-                    queue.push(target.clone());
+                    queue.push(target);
                 }
             }
         }
     }
-    closure
+    Ok(closure)
 }
 
 pub struct WorkbookInputs {
@@ -204,6 +198,19 @@ mod tests {
             .collect()
     }
 
+    fn closure_of(cells: &BTreeMap<CellRef, String>, sheet: &str) -> HashSet<String> {
+        sheet_closure(&formula::Env::default(), sheet, |s| {
+            Ok::<_, ()>(
+                cells
+                    .iter()
+                    .filter(|(k, _)| k.sheet_id == s)
+                    .map(|(_, v)| v.clone())
+                    .collect(),
+            )
+        })
+        .unwrap()
+    }
+
     #[test]
     fn closure_excludes_independent_sheets() {
         // S1 only self-references; S2 is unrelated → closure(S1) = {S1}.
@@ -213,7 +220,7 @@ mod tests {
             (cr("S2", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, &formula::Env::default(), "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -222,7 +229,7 @@ mod tests {
     fn closure_includes_directly_referenced_sheet() {
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "5")]);
         assert_eq!(
-            sheet_closure(&cells, &formula::Env::default(), "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }
@@ -237,7 +244,7 @@ mod tests {
             (cr("S4", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, &formula::Env::default(), "S1"),
+            closure_of(&cells, "S1"),
             ["S1", "S2", "S3"].iter().map(|s| s.to_string()).collect()
         );
     }
@@ -246,7 +253,7 @@ mod tests {
     fn closure_of_sheet_with_no_cells_is_self() {
         let cells = inputs(&[(cr("S2", 0, 0), "9")]);
         assert_eq!(
-            sheet_closure(&cells, &formula::Env::default(), "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -256,7 +263,7 @@ mod tests {
         // S1 ↔ S2 mutually reference; closure(S1) must include both and terminate.
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "=[S1]!A1")]);
         assert_eq!(
-            sheet_closure(&cells, &formula::Env::default(), "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }

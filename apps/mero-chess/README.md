@@ -44,21 +44,22 @@ in the room, and it is the only way to use the app before anyone else has a node
 ## The design, in three decisions
 
 **Moves are stored; a board never is.** State is
-`AuthoredMap<"<game>/<ply>/<author>/<nonce>", MoveRecord>`, and every position in
-the app is derived by replaying it. That is what makes a chess game a CRDT: two
-nodes that concurrently write the same ply — both players moving in the same
-instant, each valid against the state their own node could see — land on
-different keys, and the READER elects one of them by a total order over
-(timestamp, encoded bytes). Both replicas elect the same winner and the game
-continues from it. A stored board could not do this; it would merge field by
-field into a position no game ever reached.
+`WriteOnce<SortedMap<"<author>/<game>/<ply>/<nonce>", MoveRecord>>`, and every
+position in the app is derived by replaying it. A move, once written, cannot be
+edited or removed by anyone — its author included — and every node enforces
+that on apply. A stored board could not converge; it would merge field by field
+into a position no game ever reached.
 
-The record itself is two fields, `{ uci, at }`, and that is deliberate. Which
-game a move belongs to, which ply it is, who played it and how it reads in
-notation were all stored once — and every one of them was a value a forger could
-set while the reader was working the same thing out for itself. A stored value
-that nothing reads is not harmless; it is an invitation for the next reader to
-trust it.
+A ply is decided by being the ONLY legal move its author wrote there. Two
+different legal moves at one ply is **equivocation**, and the player who wrote
+them loses the game: rows cannot be taken back, so choosing between them by
+their clock — a value their author sets — would let a player file a backdated
+second move at an old ply and rewrite the game from there.
+
+The record carries the move, its author's clock (display only) and the
+opponent its author saw. Which game a move belongs to, which ply it is, who
+played it and how it reads in notation are all the reader's arithmetic, from the
+key, the owner stamp and the replay.
 
 **The contract hands out the legal moves.** `table()` returns the position AND
 every legal move in it, so the frontend contains no chess engine at all — it
@@ -92,8 +93,10 @@ folds it into a position. That is quarantine at interpretation, not prevention
 at write — the write cannot be prevented, because nothing re-executes at receive
 time.
 
-**Everything else is owned.** Every row a player writes lives in an
-`AuthoredMap`, whose entries carry a `StorageType::User { owner }` stamp. Core
+**Everything else is owned, and written once.** Every row a player writes lives
+in a `WriteOnce` map (presence alone in the player's own `UserStorage` slot), whose
+entries carry a `StorageType::User { owner }` stamp and, for `WriteOnce`, an
+immutable rule — nobody edits or removes the row, its owner included. Core
 verifies a per-action signature against that owner inside
 `Interface::apply_action` on every receive path — an unsigned remote `User`
 action is refused outright — so a member cannot author a row as someone else.
@@ -108,22 +111,28 @@ the key the next move needs and wedge the table permanently).
 | a row that describes a different game than the one it is in | there is nothing on it to lie with: the ply, the notation and the attribution are all the reader's arithmetic |
 | a move authored for the other player | they cannot sign as that account; the key/stamp mismatch drops the row |
 | moving twice, or slotting a row in at any ply | the ply sequence is the reader's arithmetic, and each ply expects one specific author |
+| taking a move back, or filing a backdated second one | rows are write-once; two different legal moves at one ply lose the game for their author |
+| un-resigning by playing on, or withdrawing an agreed draw | a valid ending pins the game at its ply, so later moves are never reached; an agreement needs only the offer, so a later refusal from either side changes nothing |
 | a forged resignation, draw or result | endings are re-derived: a resignation must lose, an agreement needs the offer it answered, a claimed draw must be available in that position |
 | a rematch that erases a live game | the game index is counted, not read: it advances only past a finished game, claimed by a seat holder |
-| seat theft | claims are per-claimant rows, elected by the reader, and only their author can write one |
-| burying the table under junk rows | a read scans the move map ONCE and buckets by ply, and tests a row's named author before paying for its owner stamp — so the rows nobody can delete cost a string compare each, not a full rescan per ply |
+| seat theft | claims are per-claimant rows only their author can write; once each player has moved naming the other, that pair holds the chairs whatever anyone files later, and a chair someone has played from cannot be given up |
+| relabelling the table | the title and creation date are `Frozen` at init |
+| burying the table under junk rows | every map is a `SortedMap` keyed by author first, so a read seeks the two players' rows and never loads rows filed under anybody else's name |
 
-One thing remains. A player can **stall**, and because `stand` is refused once a
-game has started, a member who sits down and walks away leaves that table
-unusable — griefing rather than a breach (a table is a context; another costs
-nothing), and an abandon rule is the honest fix. Nothing above lets anyone
-change a result.
+What remains:
 
-A read is still linear in the total rows a member has written, because
-`AuthoredMap` offers no way to iterate a prefix. That one is fixed upstream
-rather than here — `AuthoredSortedMap` landed in core for exactly this shape —
-and this app adopts it when a release carrying it ships. See
-[`docs/trust-model.md`](docs/trust-model.md), finding 14.
+- A player can **stall**, and because `stand` is refused once they have played,
+  a member who sits down and walks away leaves that table unusable — griefing
+  rather than a breach (a table is a context; another costs nothing), and an
+  abandon rule is the honest fix.
+- **Seats before both players have moved.** Until each player has moved naming
+  the other, a chair goes to its earliest claim, and `claimed_at` is the
+  claimant's own clock — so a patched member can still displace a seated player
+  who has not yet played. The same holds for a table one person plays alone,
+  and against two members colluding to confirm a pair of their own.
+- **Two devices, one instant.** Two devices of one account writing two
+  different moves at the same millisecond land on the same key with different
+  bytes, which a write-once entry refuses to reconcile.
 
 **[`docs/trust-model.md`](docs/trust-model.md) is the long version**, and it is
 written for someone building their own app rather than for someone reading this
@@ -179,7 +188,7 @@ node emitting a delta) has no automated coverage here; it is enforced by core's
 | `table(now)` | the whole table in one read: position, legal moves, seats, status, result, scoresheet |
 | `history()` | every game played at this table, with its result |
 | `join(name, now)` / `heartbeat(now)` | presence, so the other player's dot is honest |
-| `sit(seat, name, now)` / `stand(now)` | take or leave a chair (leaving only before the first move) |
+| `sit(seat, name, now)` / `stand(now)` | take or leave a chair (leaving only before you have played at this table) |
 | `play(uci, now)` | play a move; returns its SAN |
 | `resign(now)` | hand the game to the other side |
 | `offer_draw(now)` / `accept_draw(now)` / `decline_draw(now)` | a draw offer, good only for the position it was made in |

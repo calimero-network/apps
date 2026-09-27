@@ -16,7 +16,7 @@ e2e_mode: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.53
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.54
   prefix: calimero-node
 
 steps:
@@ -337,6 +337,7 @@ steps:
       images: null
     outputs:
       alice_msg: result
+      alice_msg_id: result.output.id
 
   - name: Assert Alice Message Sent
     type: assert
@@ -492,6 +493,8 @@ steps:
       - "contains({{search_result}}, 'carol-unique-keyword joining the chat!')"
 
   # ── Reactions ─────────────────────────────────────────────────────────────
+  # A reaction needs a message to attach to (the contract refuses one on an
+  # unknown id), so Bob reacts to Alice's first message, synced above.
   - name: Bob Reacts to a Message
     type: call
     node: calimero-node-2
@@ -499,7 +502,7 @@ steps:
     executor_public_key: "{{bob_key}}"
     method: update_reaction
     args:
-      message_id: "placeholder_id_for_reaction_test"
+      message_id: "{{alice_msg_id}}"
       emoji: "👍"
       add: true
     outputs:
@@ -517,7 +520,7 @@ steps:
     executor_public_key: "{{bob_key}}"
     method: update_reaction
     args:
-      message_id: "placeholder_id_for_reaction_test"
+      message_id: "{{alice_msg_id}}"
       emoji: "👍"
       add: false
     outputs:

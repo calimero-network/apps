@@ -31,7 +31,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "u64"
             }
@@ -45,33 +45,25 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "MatchSummary"
+              "$ref": "MatchEntry"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "match id -> the match, owned by the member who created it."
         },
         {
-          "name": "player_stats",
+          "name": "results",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "PlayerStats"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "history",
-          "type": {
-            "kind": "list",
-            "items": {
               "$ref": "MatchRecord"
             },
-            "crdt_type": "vector"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<match_id>/<nonce>\"` -> a result a game context reported."
         },
         {
           "name": "players",
@@ -87,14 +79,53 @@
               "inner_type": {
                 "kind": "string"
               }
-            },
-            "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "account -> the player key that account plays as, written only by it.\n\n`LwwRegister` so a member who rejoins with a fresh context identity\nconverges on the newer key."
+        }
+      ]
+    },
+    "MatchEntry": {
+      "kind": "record",
+      "doc": "A match as its creator recorded it, keyed by match id and owned by them.",
+      "fields": [
+        {
+          "name": "player1",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2_account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The ACCOUNT player 2 registered their key under — what the game\ncontext checks player 2's rows against."
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "created_ms",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
     },
     "MatchRecord": {
       "kind": "record",
+      "doc": "One reported result, keyed `\"<match_id>/<nonce>\"`.\n\nIndexed by winner and loser, so a player's stats are two index seeks rather\nthan a scan of every match, and by match, so the reader can gather every\nreport of one match.",
       "fields": [
         {
           "name": "match_id",
@@ -138,6 +169,7 @@
     },
     "MatchSummary": {
       "kind": "record",
+      "doc": "A match as a client sees it. `status` and `winner` are derived from the\nresults, never stored.",
       "fields": [
         {
           "name": "match_id",
@@ -153,6 +185,12 @@
         },
         {
           "name": "player2",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2_account",
           "type": {
             "kind": "string"
           }
@@ -187,44 +225,27 @@
     },
     "PlayerEntry": {
       "kind": "record",
+      "doc": "One member's account paired with the player key they play as.\n\n⚠️ THESE ARE TWO DIFFERENT ID SPACES AND NOTHING ELSE JOINS THEM. Group\nmembership — what `/admin-api/groups/{id}/members` returns and what the\nlobby lists as a row — is keyed by ACCOUNT. A player is a CONTEXT MEMBER,\nidentified by the device/context key that `create_match` takes and that\n`from_executor_id` reads. Both are 64 hex since rc.27, so mixing them up is\nsilent.\n\nThe node cannot supply the mapping: a node that JOINS a context only ever\nlists its OWN context identity and never learns the ones already there\n(measured across three local nodes — the creator saw all three keys, each\njoiner saw exactly one, and that does not change with time). So the pairing\nhas to be recorded by the one party who knows both halves — the caller,\nabout itself — and replicated as ordinary contract state.",
       "fields": [
         {
           "name": "account",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The member's ACCOUNT id, as group membership keys it."
         },
         {
           "name": "player",
           "type": {
             "kind": "string"
-          }
-        }
-      ]
-    },
-    "PlayerStats": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "wins",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          }
-        },
-        {
-          "name": "losses",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          }
+          },
+          "doc": "The key that member plays as — what `create_match` expects."
         }
       ]
     },
     "PlayerStatsView": {
       "kind": "record",
+      "doc": "Flat snapshot of a player's stats — what consumers see over the wire.",
       "fields": [
         {
           "name": "wins",
@@ -265,6 +286,7 @@
     },
     {
       "name": "get_history",
+      "doc": "Every finished match, oldest first — one result per match.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -287,6 +309,7 @@
     },
     {
       "name": "get_player_stats",
+      "doc": "A player's record, derived from the results: two index seeks, then one\ncheck per match that the result counts.",
       "params": [
         {
           "name": "player",
@@ -302,6 +325,7 @@
     },
     {
       "name": "get_players",
+      "doc": "Every account -> player key pairing recorded so far.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -320,6 +344,7 @@
     },
     {
       "name": "on_match_finished",
+      "doc": "Recorded by the game context when a match ends.\n\n⚠️ `#[app::xcall]` is what makes this reachable from another context at\nall. Without it the ABI carries no `xcall_callable` for any method and\nthe node rejects the dispatch as \"not an xcall entry point\" — which is\nhow a finished match silently recorded no winner, no history and no\nstats. `from_same_app` narrows callers to contexts running this same\napplication id, enforced by the node — but ANY such context, including\none a member creates to report a match it is not, so the method also\nchecks the call came from THIS match's game context.",
       "params": [
         {
           "name": "match_id",
@@ -349,6 +374,7 @@
     },
     {
       "name": "register_player",
+      "doc": "Record the caller's own account -> player key pairing.\n\nCalled when a member opens the lobby. Idempotent: re-registering the\nsame pair is a no-op write, and it is cheap enough to call on every\nopen, which is what makes it self-healing for members who joined before\nthis method existed.\n\nThis is the ONLY way the other nodes ever learn the pairing — see\n`PlayerEntry`. The slot is the caller's own, so nobody else can write it.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -382,22 +408,27 @@
       "name": "MatchCreated",
       "payload": {
         "$ref": "Event_MatchCreated"
-      }
+      },
+      "doc": "A new match was allocated in the Lobby."
     },
     {
       "name": "MatchIdCollision",
       "payload": {
         "$ref": "Event_MatchIdCollision"
-      }
+      },
+      "doc": "A create_match call lost a race — the composed id already existed."
     },
     {
-      "name": "MatchListUpdated"
+      "name": "MatchListUpdated",
+      "doc": "The Lobby match list changed (created, linked, or finished)."
     },
     {
-      "name": "PlayerStatsUpdated"
+      "name": "PlayerStatsUpdated",
+      "doc": "Lobby player stats were updated after a match finished."
     },
     {
-      "name": "PlayersUpdated"
+      "name": "PlayersUpdated",
+      "doc": "A member registered the player key they play as."
     }
   ],
   "state_root": "LobbyState",

@@ -1,8 +1,28 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Avatars": {
+      "kind": "record",
+      "doc": "One account's avatars, keyed by device (see `caller`). The slot belongs to\nthe account, and so does the map nested in it: every node refuses another\naccount's write to either, so nobody can move, rename or evict someone\nelse's avatar, or squat a device id before its owner first joins.",
+      "fields": [
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "BlockOverride": {
       "kind": "record",
+      "doc": "One block override: `b` is the block id (0 = air / broken).",
       "fields": [
         {
           "name": "b",
@@ -11,10 +31,11 @@
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "room-time stamp for LWW convergence when two peers edit the same block"
         }
       ]
     },
@@ -22,37 +43,16 @@
       "kind": "record",
       "fields": [
         {
-          "name": "name",
+          "name": "meta",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "WorldMeta"
             }
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "name + seed + day-clock anchor. Every client derives the terrain from\nthe seed, so changing it after creation would rebuild the world under\neveryone's edits: frozen, nobody (the creator included) can."
         },
         {
           "name": "overrides",
@@ -65,7 +65,8 @@
               "$ref": "BlockOverride"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed. Public on\npurpose: the world is collaborative."
         },
         {
           "name": "players",
@@ -75,35 +76,16 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "reap_marks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ReapMark"
-            },
-            "crdt_type": "unordered_map"
+              "$ref": "Avatars"
+            }
           }
         }
       ]
     },
     "Player": {
       "kind": "record",
+      "doc": "A player row: identity-keyed presence + last known transform.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -144,39 +126,47 @@
           "name": "sel",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "selected hotbar slot (cosmetic — lets peers render what you hold)"
         },
         {
           "name": "left",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "explicitly left; row is kept, never removed"
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
         }
       ]
     },
-    "ReapMark": {
+    "WorldMeta": {
       "kind": "record",
       "fields": [
         {
-          "name": "marked_at",
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seed",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "row_ts",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }

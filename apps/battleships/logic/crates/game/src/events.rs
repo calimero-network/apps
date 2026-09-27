@@ -10,6 +10,8 @@ pub enum Event<'a> {
     },
     /// A player revealed their board post-match and the audit passed/failed.
     BoardRevealed { id: &'a str, player: &'a str },
+    /// The answers ended the match: the other player's node opens its board.
+    RevealRequested { id: &'a str },
     /// Audit (commitment check + shot replay) passed for a player.
     AuditPassed { id: &'a str, player: &'a str },
     /// Audit failed for a player; reason gives the specific failure.

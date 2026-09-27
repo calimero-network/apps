@@ -31,14 +31,28 @@
 //!   replicated. An unpublished update cannot leak to investors because it never
 //!   leaves the author's node.
 //!
-//! ⚠️ What "team only" means for WRITES. The role REGISTRY is merge-verified
-//! (a forged grant does not converge). The checks on publishing, triage and
-//! moderation are the contract's own guards, and they run on the WRITER'S node
-//! against that node's copy of the registry — so a demotion binds only once it
-//! has replicated to the demoted member's node (logic/workflows/e2e.yml waits
-//! for exactly that, after a run showed a publish slipping through without
-//! it). Gating the post maps themselves at merge (a writer set rotated with the
-//! team) is the next step, and is listed in the app README.
+//! ── Who can write what (enforced by every node, not the API) ─────────────────
+//!
+//! A member can run a patched node that skips every check in this file, so the
+//! checks here only fail early. What holds is the storage type of each field:
+//!
+//! * **Team data** — settings, categories, updates, asks, and the team's triage
+//!   of questions and offers — lives in `SharedStorage` whose writer set is the
+//!   team (admins plus the `team` role). `add_teammate` / `remove_teammate`
+//!   rotate every one of those writer sets with the registry, so a reader's
+//!   write to any of them, or a demoted teammate's later one, is refused on
+//!   apply.
+//! * **Questions and comments** are `Moderated`: owned by the account that wrote
+//!   them, which alone edits; the team, as moderators, can remove any. The
+//!   author shown is the owner stamp, never a field.
+//! * **Reactions, reads and offers** are `Authored`, keyed by the account they
+//!   are about; a row whose stamp is not that account is ignored, so nobody can
+//!   react, read or volunteer in someone else's name.
+//! * **Profiles** are `UserStorage`: one slot per account, written only by it.
+//!
+//! So the triage axes that used to share a record with the author's content
+//! (`Post.status` for a question, `Offer.status`) are separate team-written
+//! records now: a helper can no longer accept their own offer.
 //!
 //! ⚠️ Everything outside drafts replicates to every member of the context.
 //! "Team only" views (offer lists, engagement) are a presentation filter, not
@@ -48,13 +62,18 @@
 
 use std::str::FromStr;
 
+use std::collections::BTreeSet;
+
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{AccessControl, Mergeable, UnorderedMap};
+use calimero_storage::collections::{
+    AccessControl, Authored, IndexedMap, LwwRegister, Mergeable, Moderated, SharedStorage,
+    UnorderedMap, UserStorage,
+};
 
 // ── Limits ───────────────────────────────────────────────────────────────────
 //
@@ -217,11 +236,15 @@ impl Mergeable for Post {
 
 /// A structured request inside an update. Same three axes as `Post`.
 #[app::mergeable(id = "mero_updates::Ask")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Ask {
     pub id: String,
+    /// An update's asks are one seek, not a scan of every ask.
+    #[index]
     pub post_id: String,
     pub content: AskContent,
     pub edited_at: u64,
@@ -264,23 +287,46 @@ impl Mergeable for Ask {
     }
 }
 
-/// One reader's offer to help with one ask. Keyed `"<ask_id>|<account>"`.
+/// One reader's offer to help with one ask. Keyed `"<ask_id>|<account>"`, and
+/// owned by that account.
 ///
-/// Two writers, two axes: the HELPER owns `note`/`withdrawn` (by `updated_at`),
-/// the TEAM owns `status` (by `status_at`). Accepting an offer must not be
-/// undone by the helper fixing a typo in their note, and vice versa.
+/// Two writers, so two records: the HELPER owns this one (`note`/`withdrawn`,
+/// by `updated_at`), the TEAM owns its [`Triage`] under the same key. Accepting
+/// an offer must not be undone by the helper fixing a typo in their note, and a
+/// helper must not be able to accept their own.
 #[app::mergeable(id = "mero_updates::Offer")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Offer {
+    #[index]
     pub ask_id: String,
+    #[index]
     pub account: String,
     pub helper: OfferByHelper,
     pub updated_at: u64,
     pub created_at: u64,
+}
+
+/// The team's decision on something a reader wrote: a question's status, an
+/// offer's. Kept apart from the reader's record, in team-written storage.
+#[app::mergeable(id = "mero_updates::Triage")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Triage {
     pub status: String,
     pub status_at: u64,
+}
+
+impl Mergeable for Triage {
+    fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
+        let at = self.status_at;
+        lww(self, at, other, other.status_at);
+        Ok(())
+    }
 }
 
 #[derive(
@@ -302,42 +348,37 @@ impl Mergeable for Offer {
             other.updated_at,
         );
         self.updated_at = self.updated_at.max(other.updated_at);
-        lww(
-            &mut self.status,
-            self.status_at,
-            &other.status,
-            other.status_at,
-        );
-        self.status_at = self.status_at.max(other.status_at);
         self.created_at = self.created_at.min(other.created_at);
         Ok(())
     }
 }
 
 /// A reply on a post. One level of nesting via `parent_id` ("" for top level).
+///
+/// No author field: the author is the entry's owner stamp. Deleting removes the
+/// entry — its owner, or a moderator, may.
 #[app::mergeable(id = "mero_updates::Comment")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
+#[index(post_thread(post_id, created_at))]
 pub struct Comment {
     pub id: String,
     pub post_id: String,
     pub parent_id: String,
-    pub author: String,
     pub body: String,
     pub created_at: u64,
     pub edited_at: u64,
-    pub deleted: bool,
 }
 
 impl Mergeable for Comment {
     fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
-        let deleted = self.deleted || other.deleted;
         let mut body = self.body.clone();
         lww(&mut body, self.edited_at, &other.body, other.edited_at);
         self.body = body;
         self.edited_at = self.edited_at.max(other.edited_at);
-        self.deleted = deleted;
         Ok(())
     }
 }
@@ -345,10 +386,13 @@ impl Mergeable for Comment {
 /// One account's one emoji on one post. Keyed `"<post_id>|<account>|<emoji>"`,
 /// so reacting twice cannot count twice and a second device is the same person.
 #[app::mergeable(id = "mero_updates::Reaction")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Reaction {
+    #[index]
     pub post_id: String,
     pub account: String,
     pub emoji: String,
@@ -371,11 +415,15 @@ impl Mergeable for Reaction {
 /// (first read = min, latest = max), so this merges without any clock
 /// tie-break at all.
 #[app::mergeable(id = "mero_updates::Read")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Read {
+    #[index]
     pub post_id: String,
+    #[index]
     pub account: String,
     pub first_at: u64,
     pub last_at: u64,
@@ -400,8 +448,6 @@ pub struct Profile {
     pub name: String,
     /// Fund, firm or company — "Seed Capital", "Angel".
     pub firm: String,
-    /// Which categories this reader has muted.
-    pub muted: Vec<String>,
     pub joined_at: u64,
     pub updated_at: u64,
 }
@@ -742,18 +788,30 @@ pub struct DraftView {
 pub struct MeroUpdates {
     /// Admin tier = the signed writer set; `team` grants are verified at merge.
     roles: AccessControl,
-    settings: UnorderedMap<String, Settings>,
-    categories: UnorderedMap<String, Category>,
+    // ── Team-written: each a writer set of admins + `team`, rotated with it ──
+    settings: SharedStorage<UnorderedMap<String, Settings>>,
+    categories: SharedStorage<UnorderedMap<String, Category>>,
     /// Flat maps keyed by id, carrying their parent's id — never a nested
     /// collection per parent, which would need deterministic re-keying to
     /// converge when two nodes create it independently.
-    posts: UnorderedMap<String, Post>,
-    asks: UnorderedMap<String, Ask>,
-    offers: UnorderedMap<String, Offer>,
-    comments: UnorderedMap<String, Comment>,
-    reactions: UnorderedMap<String, Reaction>,
-    reads: UnorderedMap<String, Read>,
-    profiles: UnorderedMap<String, Profile>,
+    updates: SharedStorage<UnorderedMap<String, Post>>,
+    asks: SharedStorage<IndexedMap<String, Ask>>,
+    /// The team's status for a question, keyed by the question's id.
+    question_status: SharedStorage<UnorderedMap<String, Triage>>,
+    /// The team's status for an offer, keyed like the offer.
+    offer_status: SharedStorage<UnorderedMap<String, Triage>>,
+    // ── Member-written, moderated by the team ──
+    questions: Moderated<UnorderedMap<String, Post>>,
+    comments: Moderated<IndexedMap<String, Comment>>,
+    // ── Member-written, keyed by the account they are about ──
+    offers: Authored<IndexedMap<String, Offer>>,
+    reactions: Authored<IndexedMap<String, Reaction>>,
+    reads: Authored<IndexedMap<String, Read>>,
+    profiles: UserStorage<Profile>,
+    /// Which categories each reader has muted. Its own slot, not a profile
+    /// field, so renaming yourself on one device and muting on another both
+    /// survive: a `UserStorage` slot resolves last-writer-wins as a whole.
+    mutes: UserStorage<LwwRegister<Vec<String>>>,
 }
 
 #[app::event]
@@ -774,6 +832,16 @@ pub enum Event<'a> {
     Read { post_id: &'a str },
 }
 
+/// Whether a stamp names `account`. A row keyed by an account is only that
+/// account's if the storage layer stamped it so.
+fn stamped_by(owner: Option<AccountId>, account: &str) -> bool {
+    owner.is_some_and(|o| o.to_string() == account)
+}
+
+fn owner_hex(owner: Option<AccountId>) -> String {
+    owner.map(|o| o.to_string()).unwrap_or_default()
+}
+
 // ── Logic ────────────────────────────────────────────────────────────────────
 
 #[app::logic]
@@ -782,21 +850,28 @@ impl MeroUpdates {
     /// creator becomes the first admin; everything else is configured after.
     #[app::init]
     pub fn init() -> MeroUpdates {
+        // `new(caller)`, not `new_admin_caller()`: the latter reads the
+        // STORAGE layer's executor, which the SDK's TestHost does not align
+        // during init, so under test the creator came out a non-admin. The
+        // SDK's account is the one every gate below compares against.
+        let creator = Self::caller_account();
+        let team: BTreeSet<AccountId> = [creator].into_iter().collect();
         MeroUpdates {
-            // `new(caller)`, not `new_admin_caller()`: the latter reads the
-            // STORAGE layer's executor, which the SDK's TestHost does not align
-            // during init, so under test the creator came out a non-admin. The
-            // SDK's account is the one every gate below compares against.
-            roles: AccessControl::new(Self::caller_account()),
-            settings: UnorderedMap::new(),
-            categories: UnorderedMap::new(),
-            posts: UnorderedMap::new(),
-            asks: UnorderedMap::new(),
-            offers: UnorderedMap::new(),
-            comments: UnorderedMap::new(),
-            reactions: UnorderedMap::new(),
-            reads: UnorderedMap::new(),
-            profiles: UnorderedMap::new(),
+            roles: AccessControl::new(creator),
+            settings: SharedStorage::new(team.clone(), false),
+            categories: SharedStorage::new(team.clone(), false),
+            updates: SharedStorage::new(team.clone(), false),
+            asks: SharedStorage::new(team.clone(), false),
+            question_status: SharedStorage::new(team.clone(), false),
+            offer_status: SharedStorage::new(team, false),
+            // The creator is the first moderator of both.
+            questions: Moderated::new(),
+            comments: Moderated::new(),
+            offers: Authored::new(),
+            reactions: Authored::new(),
+            reads: Authored::new(),
+            profiles: UserStorage::new(),
+            mutes: UserStorage::new(),
         }
     }
 
@@ -845,6 +920,34 @@ impl MeroUpdates {
         }
     }
 
+    /// Admins plus the `team` role: the writer set of every team-written field
+    /// and the moderators of questions and comments.
+    fn team_accounts(&self) -> app::Result<BTreeSet<AccountId>> {
+        let mut team = self.roles.admins();
+        team.extend(
+            self.roles
+                .members_of(ROLE_TEAM)
+                .map_err(|e| AppError::msg(format!("roles.members_of failed: {e}")))?,
+        );
+        Ok(team)
+    }
+
+    /// Point every team-guarded field at the current team. Every node checks a
+    /// write against the writer set as of that write, so a new teammate's
+    /// writes converge from here on, and a removed one's stop converging.
+    fn sync_team_writers(&mut self) -> app::Result<()> {
+        let team = self.team_accounts()?;
+        self.settings.rotate_writers(team.clone())?;
+        self.categories.rotate_writers(team.clone())?;
+        self.updates.rotate_writers(team.clone())?;
+        self.asks.rotate_writers(team.clone())?;
+        self.question_status.rotate_writers(team.clone())?;
+        self.offer_status.rotate_writers(team.clone())?;
+        self.questions.set_moderators(team.clone())?;
+        self.comments.set_moderators(team)?;
+        Ok(())
+    }
+
     fn fresh_id() -> String {
         let mut buffer = [0u8; 16];
         env::random_bytes(&mut buffer);
@@ -878,38 +981,32 @@ impl MeroUpdates {
     /// The caller's profile, or a fresh one. Every write a member makes
     /// registers them, so the team's people list includes readers who never
     /// set a name.
-    fn touch_profile(&mut self, account: &str) -> app::Result<()> {
-        if self
-            .profiles
-            .get(&account.to_owned())
-            .map_err(|e| AppError::msg(format!("profiles.get failed: {e}")))?
-            .is_some()
-        {
+    fn touch_profile(&mut self) -> app::Result<()> {
+        if self.profiles.contains_current_user()? {
             return Ok(());
         }
         let now = now_ms();
-        self.profiles
-            .insert(
-                account.to_owned(),
-                Profile {
-                    account: account.to_owned(),
-                    name: String::new(),
-                    firm: String::new(),
-                    muted: Vec::new(),
-                    joined_at: now,
-                    updated_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("profiles.insert failed: {e}")))?;
+        self.profiles.insert(Profile {
+            account: Self::caller(),
+            name: String::new(),
+            firm: String::new(),
+            joined_at: now,
+            updated_at: now,
+        })?;
         Ok(())
     }
 
     fn profile_of(&self, account: &str) -> Option<Profile> {
-        self.profiles
-            .get(&account.to_owned())
+        let account = AccountId::from_str(account).ok()?;
+        self.profiles.get_for_user(&account).ok().flatten()
+    }
+
+    fn muted_of(&self, account: &str) -> Vec<String> {
+        AccountId::from_str(account)
             .ok()
-            .flatten()
-            .map(|p| (*p).clone())
+            .and_then(|a| self.mutes.get_for_user(&a).ok().flatten())
+            .map(|m| m.get().clone())
+            .unwrap_or_default()
     }
 
     fn name_of(&self, account: &str) -> (String, String) {
@@ -926,12 +1023,13 @@ impl MeroUpdates {
             is_team: self.is_team_str(&account),
             name: profile.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
             firm: profile.as_ref().map(|p| p.firm.clone()).unwrap_or_default(),
-            muted: profile.map(|p| p.muted).unwrap_or_default(),
+            muted: self.muted_of(&account),
             account,
         })
     }
 
-    /// Name yourself. No `account` argument: you can only describe yourself.
+    /// Name yourself. No `account` argument: you can only describe yourself,
+    /// and `UserStorage` is what makes that true on every node.
     pub fn set_profile(&mut self, name: String, firm: String) -> app::Result<()> {
         let name = name.trim().to_owned();
         let firm = firm.trim().to_owned();
@@ -943,16 +1041,13 @@ impl MeroUpdates {
             account: account.clone(),
             name: String::new(),
             firm: String::new(),
-            muted: Vec::new(),
             joined_at: now,
             updated_at: now,
         });
         profile.name = name;
         profile.firm = firm;
         profile.updated_at = now;
-        self.profiles
-            .insert(account.clone(), profile)
-            .map_err(|e| AppError::msg(format!("profiles.insert failed: {e}")))?;
+        self.profiles.insert(profile)?;
         app::emit!(Event::ProfileSet { account: &account });
         Ok(())
     }
@@ -964,18 +1059,45 @@ impl MeroUpdates {
             return Err(AppError::msg("too many categories"));
         }
         let account = Self::caller();
-        self.touch_profile(&account)?;
-        let mut profile = self.profile_of(&account).expect("touched above");
+        self.touch_profile()?;
         let mut ids = category_ids;
         ids.sort();
         ids.dedup();
-        profile.muted = ids;
-        profile.updated_at = now_ms();
-        self.profiles
-            .insert(account.clone(), profile)
-            .map_err(|e| AppError::msg(format!("profiles.insert failed: {e}")))?;
+        self.mutes.insert(LwwRegister::new(ids))?;
         app::emit!(Event::ProfileSet { account: &account });
         Ok(())
+    }
+
+    /// Every read receipt, genuine ones only: a row keyed `"<post>|<account>"`
+    /// counts only if that account wrote it.
+    fn genuine_reads(&self, rows: Vec<(String, Read)>) -> Vec<Read> {
+        rows.into_iter()
+            .filter(|(key, r)| {
+                *key == format!("{}|{}", r.post_id, r.account)
+                    && stamped_by(self.reads.owner_of(key).ok().flatten(), &r.account)
+            })
+            .map(|(_, r)| r)
+            .collect()
+    }
+
+    /// The same for offers, keyed `"<ask>|<account>"`.
+    fn genuine_offers(&self, rows: Vec<(String, Offer)>) -> Vec<Offer> {
+        rows.into_iter()
+            .filter(|(key, o)| {
+                *key == format!("{}|{}", o.ask_id, o.account)
+                    && stamped_by(self.offers.owner_of(key).ok().flatten(), &o.account)
+            })
+            .map(|(_, o)| o)
+            .collect()
+    }
+
+    fn offer_status_of(&self, ask_id: &str, account: &str) -> String {
+        self.offer_status
+            .get()
+            .ok()
+            .and_then(|m| m.get(&format!("{ask_id}|{account}")).ok().flatten())
+            .map(|t| t.status.clone())
+            .unwrap_or_else(|| "offered".to_owned())
     }
 
     /// Everyone this audience knows about: every admin and teammate, and every
@@ -983,60 +1105,40 @@ impl MeroUpdates {
     pub fn list_people(&self) -> app::Result<Vec<PersonView>> {
         let updates: Vec<Post> = self.live_posts(Some(KIND_UPDATE))?;
         let total = updates.len() as u64;
-        let update_ids: std::collections::BTreeSet<String> =
-            updates.iter().map(|p| p.id.clone()).collect();
+        let update_ids: BTreeSet<String> = updates.iter().map(|p| p.id.clone()).collect();
 
-        let mut accounts: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for a in self.roles.admins() {
-            let _ = accounts.insert(a.to_string());
-        }
-        for a in self
-            .roles
-            .members_of(ROLE_TEAM)
-            .map_err(|e| AppError::msg(format!("roles.members_of failed: {e}")))?
-        {
-            let _ = accounts.insert(a.to_string());
-        }
-        for (k, _) in self
-            .profiles
-            .entries()
-            .map_err(|e| AppError::msg(format!("profiles.entries failed: {e}")))?
-        {
-            let _ = accounts.insert(k);
+        let mut accounts: BTreeSet<String> = self
+            .team_accounts()?
+            .into_iter()
+            .map(|a| a.to_string())
+            .collect();
+        for (account, _) in self.profiles.entries()? {
+            let _ = accounts.insert(account.to_string());
         }
 
-        let reads: Vec<Read> = self
-            .reads
-            .entries()
-            .map_err(|e| AppError::msg(format!("reads.entries failed: {e}")))?
-            .map(|(_, r)| r)
-            .collect();
-        let comments: Vec<Comment> = self
-            .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries failed: {e}")))?
-            .map(|(_, c)| c)
-            .filter(|c| !c.deleted)
-            .collect();
-        let offers: Vec<Offer> = self
-            .offers
-            .entries()
-            .map_err(|e| AppError::msg(format!("offers.entries failed: {e}")))?
-            .map(|(_, o)| o)
-            .filter(|o| !o.helper.withdrawn)
-            .collect();
+        // One pass over comments, by owner stamp — a comment has no author field.
+        let mut comments_by: std::collections::BTreeMap<String, u64> =
+            std::collections::BTreeMap::new();
+        for (id, _) in self.comments.entries()? {
+            *comments_by
+                .entry(owner_hex(self.comments.owner_of(&id)?))
+                .or_default() += 1;
+        }
 
         let mut out = Vec::with_capacity(accounts.len());
         for account in accounts {
             let profile = self.profile_of(&account);
-            let mine = reads
-                .iter()
-                .filter(|r| r.account == account && update_ids.contains(&r.post_id));
+            let reads = self.genuine_reads(self.reads.query("account").eq(&account).entries()?);
             let (mut read, mut last) = (0u64, 0u64);
-            for r in mine {
+            for r in reads.iter().filter(|r| update_ids.contains(&r.post_id)) {
                 read += 1;
                 last = last.max(r.last_at);
             }
+            let offers: Vec<Offer> = self
+                .genuine_offers(self.offers.query("account").eq(&account).entries()?)
+                .into_iter()
+                .filter(|o| !o.helper.withdrawn)
+                .collect();
             out.push(PersonView {
                 is_admin: self.is_admin_str(&account),
                 is_team: self.is_team_str(&account),
@@ -1046,11 +1148,11 @@ impl MeroUpdates {
                 updates_read: read,
                 updates_total: total,
                 last_read_at: last,
-                comments: comments.iter().filter(|c| c.author == account).count() as u64,
-                offers: offers.iter().filter(|o| o.account == account).count() as u64,
+                comments: comments_by.get(&account).copied().unwrap_or(0),
+                offers: offers.len() as u64,
                 accepted_offers: offers
                     .iter()
-                    .filter(|o| o.account == account && o.status == "accepted")
+                    .filter(|o| self.offer_status_of(&o.ask_id, &o.account) == "accepted")
                     .count() as u64,
                 account,
             });
@@ -1068,24 +1170,28 @@ impl MeroUpdates {
 
     /// Make a member part of the team. Admin only — and enforced at MERGE by
     /// `AccessControl`, so a forged grant from a non-admin does not converge.
+    /// Rotates every team-guarded writer set to include them.
     pub fn add_teammate(&mut self, account: String) -> app::Result<()> {
         self.require_admin()?;
         let who = Self::parse_account(&account)?;
         self.roles
             .grant(ROLE_TEAM, who)
             .map_err(|e| AppError::msg(format!("grant failed: {e}")))?;
+        self.sync_team_writers()?;
         let account = who.to_string();
-        self.touch_profile(&account)?;
         app::emit!(Event::TeamChanged { account: &account });
         Ok(())
     }
 
+    /// Take a member off the team, and out of every team-guarded writer set:
+    /// their later writes to team data are refused on apply, on every node.
     pub fn remove_teammate(&mut self, account: String) -> app::Result<()> {
         self.require_admin()?;
         let who = Self::parse_account(&account)?;
         self.roles
             .revoke(ROLE_TEAM, &who)
             .map_err(|e| AppError::msg(format!("revoke failed: {e}")))?;
+        self.sync_team_writers()?;
         let account = who.to_string();
         app::emit!(Event::TeamChanged { account: &account });
         Ok(())
@@ -1095,9 +1201,9 @@ impl MeroUpdates {
 
     fn settings_or_default(&self) -> Settings {
         self.settings
-            .get(&"main".to_owned())
+            .get()
             .ok()
-            .flatten()
+            .and_then(|m| m.get(&"main".to_owned()).ok().flatten())
             .map(|s| (*s).clone())
             .unwrap_or(Settings {
                 company_name: String::new(),
@@ -1118,6 +1224,7 @@ impl MeroUpdates {
             return Err(AppError::msg("cadence must be at most 366 days"));
         }
         self.settings
+            .get_mut()?
             .insert(
                 "main".to_owned(),
                 Settings {
@@ -1142,10 +1249,19 @@ impl MeroUpdates {
     fn load_category(&self, id: &str) -> app::Result<Category> {
         let c = self
             .categories
+            .get()?
             .get(&id.to_owned())
             .map_err(|e| AppError::msg(format!("categories.get failed: {e}")))?
             .ok_or_else(|| AppError::msg(format!("no such category: {id}")))?;
         Ok((*c).clone())
+    }
+
+    fn put_category(&mut self, c: Category) -> app::Result<()> {
+        self.categories
+            .get_mut()?
+            .insert(c.id.clone(), c)
+            .map_err(|e| AppError::msg(format!("categories.insert failed: {e}")))?;
+        Ok(())
     }
 
     pub fn create_category(
@@ -1159,6 +1275,7 @@ impl MeroUpdates {
         Self::check_category_fields(&name, &emoji, &color)?;
         let live = self
             .categories
+            .get()?
             .entries()
             .map_err(|e| AppError::msg(format!("categories.entries failed: {e}")))?
             .filter(|(_, c)| !c.archived)
@@ -1170,20 +1287,15 @@ impl MeroUpdates {
         }
         let now = now_ms();
         let id = Self::fresh_id();
-        self.categories
-            .insert(
-                id.clone(),
-                Category {
-                    id: id.clone(),
-                    name,
-                    emoji,
-                    color,
-                    created_at: now,
-                    edited_at: now,
-                    archived: false,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("categories.insert failed: {e}")))?;
+        self.put_category(Category {
+            id: id.clone(),
+            name,
+            emoji,
+            color,
+            created_at: now,
+            edited_at: now,
+            archived: false,
+        })?;
         app::emit!(Event::CategoryChanged { id: &id });
         Ok(id)
     }
@@ -1206,9 +1318,7 @@ impl MeroUpdates {
         c.emoji = emoji;
         c.color = color;
         c.edited_at = now_ms();
-        self.categories
-            .insert(category_id.clone(), c)
-            .map_err(|e| AppError::msg(format!("categories.insert failed: {e}")))?;
+        self.put_category(c)?;
         app::emit!(Event::CategoryChanged { id: &category_id });
         Ok(())
     }
@@ -1220,9 +1330,7 @@ impl MeroUpdates {
         let mut c = self.load_category(&category_id)?;
         c.archived = true;
         c.edited_at = now_ms();
-        self.categories
-            .insert(category_id.clone(), c)
-            .map_err(|e| AppError::msg(format!("categories.insert failed: {e}")))?;
+        self.put_category(c)?;
         app::emit!(Event::CategoryChanged { id: &category_id });
         Ok(())
     }
@@ -1230,10 +1338,11 @@ impl MeroUpdates {
     /// Live categories, oldest first, with per-caller unread counts.
     pub fn list_categories(&self) -> app::Result<Vec<CategoryView>> {
         let me = Self::caller();
-        let muted = self.profile_of(&me).map(|p| p.muted).unwrap_or_default();
+        let muted = self.muted_of(&me);
         let updates = self.live_posts(Some(KIND_UPDATE))?;
         let mut cats: Vec<Category> = self
             .categories
+            .get()?
             .entries()
             .map_err(|e| AppError::msg(format!("categories.entries failed: {e}")))?
             .map(|(_, c)| c)
@@ -1265,27 +1374,67 @@ impl MeroUpdates {
 
     // ── posts ────────────────────────────────────────────────────────────────
 
-    fn load_post(&self, post_id: &str) -> app::Result<Post> {
-        let post = self
-            .posts
-            .get(&post_id.to_owned())
-            .map_err(|e| AppError::msg(format!("posts.get failed: {e}")))?
-            .ok_or_else(|| AppError::msg(format!("no such post: {post_id}")))?;
-        let post = (*post).clone();
-        if post.deleted {
-            return Err(AppError::msg(format!("post is deleted: {post_id}")));
+    /// A question as the rest of the contract sees it: its author is the
+    /// owner stamp and its status the team's triage record, whatever the
+    /// author's own row says.
+    fn question_of(&self, mut q: Post) -> Post {
+        q.kind = KIND_QUESTION.to_owned();
+        q.author = owner_hex(self.questions.owner_of(&q.id).ok().flatten());
+        match self
+            .question_status
+            .get()
+            .ok()
+            .and_then(|m| m.get(&q.id).ok().flatten())
+        {
+            Some(t) => {
+                q.status = t.status.clone();
+                q.status_at = t.status_at;
+            }
+            None => q.status = "open".to_owned(),
         }
-        Ok(post)
+        q
+    }
+
+    fn load_update(&self, post_id: &str) -> app::Result<Option<Post>> {
+        Ok(self
+            .updates
+            .get()?
+            .get(&post_id.to_owned())
+            .map_err(|e| AppError::msg(format!("updates.get failed: {e}")))?
+            .map(|p| (*p).clone()))
+    }
+
+    fn load_post(&self, post_id: &str) -> app::Result<Post> {
+        if let Some(post) = self.load_update(post_id)? {
+            if post.deleted {
+                return Err(AppError::msg(format!("post is deleted: {post_id}")));
+            }
+            return Ok(post);
+        }
+        match self.questions.get(&post_id.to_owned())? {
+            Some(q) => Ok(self.question_of(q)),
+            None => Err(AppError::msg(format!("no such post: {post_id}"))),
+        }
     }
 
     fn live_posts(&self, kind: Option<&str>) -> app::Result<Vec<Post>> {
-        Ok(self
-            .posts
-            .entries()
-            .map_err(|e| AppError::msg(format!("posts.entries failed: {e}")))?
-            .map(|(_, p)| p)
-            .filter(|p| !p.deleted && kind.is_none_or(|k| p.kind == k))
-            .collect())
+        let mut out = Vec::new();
+        if kind.is_none_or(|k| k == KIND_UPDATE) {
+            out.extend(
+                self.updates
+                    .get()?
+                    .entries()
+                    .map_err(|e| AppError::msg(format!("updates.entries failed: {e}")))?
+                    .map(|(_, p)| p)
+                    .filter(|p| !p.deleted),
+            );
+        }
+        if kind.is_none_or(|k| k == KIND_QUESTION) {
+            for (_, q) in self.questions.entries()? {
+                out.push(self.question_of(q));
+            }
+        }
+        Ok(out)
     }
 
     fn validate_update(&self, input: &UpdateInput) -> app::Result<()> {
@@ -1349,32 +1498,36 @@ impl MeroUpdates {
         }
     }
 
-    /// Publish an update to this audience. Team only.
+    fn put_update(&mut self, post: Post) -> app::Result<()> {
+        self.updates
+            .get_mut()?
+            .insert(post.id.clone(), post)
+            .map_err(|e| AppError::msg(format!("updates.insert failed: {e}")))?;
+        Ok(())
+    }
+
+    /// Publish an update to this audience. Team only — and the updates map is
+    /// the team's writer set, so a reader's forged update does not converge.
     pub fn publish_update(&mut self, input: UpdateInput) -> app::Result<String> {
         self.require_team()?;
         self.validate_update(&input)?;
         let now = now_ms();
         let id = Self::fresh_id();
         let author = Self::caller();
-        self.posts
-            .insert(
-                id.clone(),
-                Post {
-                    id: id.clone(),
-                    kind: KIND_UPDATE.to_owned(),
-                    author: author.clone(),
-                    content: Self::content_of(&input),
-                    edited_at: now,
-                    created_at: now,
-                    status: "published".to_owned(),
-                    status_at: now,
-                    deleted: false,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+        self.put_update(Post {
+            id: id.clone(),
+            kind: KIND_UPDATE.to_owned(),
+            author: author.clone(),
+            content: Self::content_of(&input),
+            edited_at: now,
+            created_at: now,
+            status: "published".to_owned(),
+            status_at: now,
+            deleted: false,
+        })?;
         self.sync_asks(&id, &input.asks, now)?;
         // The author has, by definition, read it.
-        self.record_read(&id, &author, now)?;
+        self.record_read(&id, now)?;
         app::emit!(Event::UpdatePublished { id: &id });
         Ok(id)
     }
@@ -1392,22 +1545,22 @@ impl MeroUpdates {
         let now = now_ms();
         post.content = Self::content_of(&input);
         post.edited_at = now;
-        self.posts
-            .insert(post_id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+        self.put_update(post)?;
         self.sync_asks(&post_id, &input.asks, now)?;
         app::emit!(Event::PostEdited { id: &post_id });
         Ok(())
     }
 
+    fn put_ask(&mut self, ask: Ask) -> app::Result<()> {
+        self.asks
+            .get_mut()?
+            .insert(ask.id.clone(), ask)
+            .map_err(|e| AppError::msg(format!("asks.insert failed: {e}")))?;
+        Ok(())
+    }
+
     fn sync_asks(&mut self, post_id: &str, asks: &[AskInput], now: u64) -> app::Result<()> {
-        let existing: Vec<Ask> = self
-            .asks
-            .entries()
-            .map_err(|e| AppError::msg(format!("asks.entries failed: {e}")))?
-            .map(|(_, a)| a)
-            .filter(|a| a.post_id == post_id && !a.deleted)
-            .collect();
+        let existing: Vec<Ask> = self.asks_of(post_id)?;
         let kept: Vec<&str> = asks.iter().filter_map(|a| a.id.as_deref()).collect();
 
         for mut gone in existing
@@ -1417,10 +1570,7 @@ impl MeroUpdates {
         {
             gone.deleted = true;
             gone.edited_at = now;
-            let id = gone.id.clone();
-            self.asks
-                .insert(id, gone)
-                .map_err(|e| AppError::msg(format!("asks.insert failed: {e}")))?;
+            self.put_ask(gone)?;
         }
 
         for input in asks {
@@ -1456,16 +1606,14 @@ impl MeroUpdates {
                     deleted: false,
                 },
             };
-            let id = ask.id.clone();
-            self.asks
-                .insert(id, ask)
-                .map_err(|e| AppError::msg(format!("asks.insert failed: {e}")))?;
+            self.put_ask(ask)?;
         }
         Ok(())
     }
 
     /// Ask the team something. Anyone in the audience may — this is the half of
-    /// the conversation a newsletter tool does not have.
+    /// the conversation a newsletter tool does not have. The question is the
+    /// asker's own entry; the team can remove it, and triages it separately.
     pub fn ask_question(
         &mut self,
         title: String,
@@ -1481,7 +1629,7 @@ impl MeroUpdates {
         let now = now_ms();
         let id = Self::fresh_id();
         let author = Self::caller();
-        self.touch_profile(&author)?;
+        self.touch_profile()?;
         let sections = if body.trim().is_empty() {
             Vec::new()
         } else {
@@ -1491,74 +1639,83 @@ impl MeroUpdates {
                 body,
             }]
         };
-        self.posts
-            .insert(
-                id.clone(),
-                Post {
-                    id: id.clone(),
-                    kind: KIND_QUESTION.to_owned(),
-                    author: author.clone(),
-                    content: PostContent {
-                        title: title.trim().to_owned(),
-                        summary: String::new(),
-                        category_id,
-                        sections,
-                        metrics: Vec::new(),
-                    },
-                    edited_at: now,
-                    created_at: now,
-                    status: "open".to_owned(),
-                    status_at: now,
-                    deleted: false,
+        self.questions.insert(
+            id.clone(),
+            Post {
+                id: id.clone(),
+                kind: KIND_QUESTION.to_owned(),
+                author,
+                content: PostContent {
+                    title: title.trim().to_owned(),
+                    summary: String::new(),
+                    category_id,
+                    sections,
+                    metrics: Vec::new(),
                 },
-            )
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
-        self.record_read(&id, &author, now)?;
+                edited_at: now,
+                created_at: now,
+                status: "open".to_owned(),
+                status_at: now,
+                deleted: false,
+            },
+        )?;
+        self.record_read(&id, now)?;
         app::emit!(Event::QuestionAsked { id: &id });
         Ok(id)
     }
 
-    /// Mark a question answered (or re-open it). Team only.
+    /// Mark a question answered (or re-open it). Team only: the status is a
+    /// team-written record, not a field of the asker's entry.
     pub fn set_question_status(&mut self, post_id: String, status: String) -> app::Result<()> {
         self.require_team()?;
         Self::check_one_of("status", &status, QUESTION_STATUSES)?;
-        let mut post = self.load_post(&post_id)?;
+        let post = self.load_post(&post_id)?;
         if post.kind != KIND_QUESTION {
             return Err(AppError::msg("not a question"));
         }
-        post.status = status;
-        post.status_at = now_ms();
-        self.posts
-            .insert(post_id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+        self.question_status
+            .get_mut()?
+            .insert(
+                post_id.clone(),
+                Triage {
+                    status,
+                    status_at: now_ms(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("question_status.insert failed: {e}")))?;
         app::emit!(Event::StatusChanged { post_id: &post_id });
         Ok(())
     }
 
-    /// Tombstone a post. An update may be removed by any teammate; a question
-    /// by its author or by the team (moderation).
+    /// Delete a post. An update is tombstoned by any teammate; a question is
+    /// removed by its author or by the team (its moderators).
     pub fn delete_post(&mut self, post_id: String) -> app::Result<()> {
         let mut post = self.load_post(&post_id)?;
         let me = Self::caller();
-        let allowed = self.is_team_str(&me) || (post.kind == KIND_QUESTION && post.author == me);
-        if !allowed {
-            return Err(AppError::msg("you cannot delete this post"));
+        if post.kind == KIND_UPDATE {
+            if !self.is_team_str(&me) {
+                return Err(AppError::msg("you cannot delete this post"));
+            }
+            post.deleted = true;
+            post.edited_at = now_ms();
+            self.put_update(post)?;
+        } else {
+            let key = post_id.clone();
+            if !self.questions.owned_by_me(&key)?
+                && !self.questions.is_moderator(&Self::caller_account())
+            {
+                return Err(AppError::msg("you cannot delete this post"));
+            }
+            let _ = self.questions.remove(&key)?;
         }
-        post.deleted = true;
-        post.edited_at = now_ms();
-        self.posts
-            .insert(post_id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
         app::emit!(Event::PostDeleted { id: &post_id });
         Ok(())
     }
 
     fn has_read(&self, post_id: &str, account: &str) -> bool {
-        self.reads
-            .get(&format!("{post_id}|{account}"))
-            .ok()
-            .flatten()
-            .is_some()
+        let key = format!("{post_id}|{account}");
+        matches!(self.reads.get(&key), Ok(Some(_)))
+            && stamped_by(self.reads.owner_of(&key).ok().flatten(), account)
     }
 
     fn reactions_for(&self, post_id: &str, me: &str) -> app::Result<Vec<ReactionCount>> {
@@ -1570,12 +1727,12 @@ impl MeroUpdates {
                 mine: false,
             })
             .collect();
-        for (_, r) in self
-            .reactions
-            .entries()
-            .map_err(|e| AppError::msg(format!("reactions.entries failed: {e}")))?
-        {
-            if r.post_id != post_id || !r.on {
+        for (key, r) in self.reactions.query("post_id").eq(post_id).entries()? {
+            // One row per account per emoji, and only that account's own.
+            if !r.on
+                || key != format!("{}|{}|{}", r.post_id, r.account, r.emoji)
+                || !stamped_by(self.reactions.owner_of(&key)?, &r.account)
+            {
                 continue;
             }
             if let Some(slot) = counts.iter_mut().find(|c| c.emoji == r.emoji) {
@@ -1587,19 +1744,11 @@ impl MeroUpdates {
     }
 
     fn card_of(&self, post: &Post, me: &str) -> app::Result<PostCard> {
-        let comment_count = self
-            .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries failed: {e}")))?
-            .filter(|(_, c)| c.post_id == post.id && !c.deleted)
-            .count() as u64;
+        let comment_count = self.comments.query("post_thread").eq(&post.id).count()? as u64;
         let asks: Vec<Ask> = self.asks_of(&post.id)?;
         let read_count = self
-            .reads
-            .entries()
-            .map_err(|e| AppError::msg(format!("reads.entries failed: {e}")))?
-            .filter(|(_, r)| r.post_id == post.id)
-            .count() as u64;
+            .genuine_reads(self.reads.query("post_id").eq(&post.id).entries()?)
+            .len() as u64;
         let (author_name, _) = self.name_of(&post.author);
         Ok(PostCard {
             id: post.id.clone(),
@@ -1626,10 +1775,13 @@ impl MeroUpdates {
     fn asks_of(&self, post_id: &str) -> app::Result<Vec<Ask>> {
         let mut asks: Vec<Ask> = self
             .asks
-            .entries()
-            .map_err(|e| AppError::msg(format!("asks.entries failed: {e}")))?
+            .get()?
+            .query("post_id")
+            .eq(post_id)
+            .entries()?
+            .into_iter()
             .map(|(_, a)| a)
-            .filter(|a| a.post_id == post_id && !a.deleted)
+            .filter(|a| !a.deleted)
             .collect();
         asks.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
         Ok(asks)
@@ -1643,7 +1795,7 @@ impl MeroUpdates {
             name,
             firm,
             note: o.helper.note.clone(),
-            status: o.status.clone(),
+            status: self.offer_status_of(&o.ask_id, &o.account),
             created_at: o.created_at,
             updated_at: o.updated_at,
         }
@@ -1651,11 +1803,9 @@ impl MeroUpdates {
 
     fn ask_view(&self, ask: &Ask, post_title: &str, me: &str, team: bool) -> app::Result<AskView> {
         let mut offers: Vec<Offer> = self
-            .offers
-            .entries()
-            .map_err(|e| AppError::msg(format!("offers.entries failed: {e}")))?
-            .map(|(_, o)| o)
-            .filter(|o| o.ask_id == ask.id && !o.helper.withdrawn)
+            .genuine_offers(self.offers.query("ask_id").eq(&ask.id).entries()?)
+            .into_iter()
+            .filter(|o| !o.helper.withdrawn)
             .collect();
         offers.sort_by(|a, b| (a.created_at, &a.account).cmp(&(b.created_at, &b.account)));
         let my_offer = offers
@@ -1738,25 +1888,29 @@ impl MeroUpdates {
         Ok(PostPage { items, next_cursor })
     }
 
-    fn record_read(&mut self, post_id: &str, account: &str, now: u64) -> app::Result<()> {
+    /// The caller's own read receipt for a post. Keyed by the caller's account
+    /// and owned by it, so nobody records a read in someone else's name.
+    fn record_read(&mut self, post_id: &str, now: u64) -> app::Result<()> {
+        let account = Self::caller();
         let key = format!("{post_id}|{account}");
-        let first_at = self
-            .reads
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("reads.get failed: {e}")))?
-            .map(|r| r.first_at)
-            .unwrap_or(now);
-        self.reads
-            .insert(
-                key,
-                Read {
-                    post_id: post_id.to_owned(),
-                    account: account.to_owned(),
-                    first_at,
-                    last_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("reads.insert failed: {e}")))?;
+        if self.reads.contains(&key)? {
+            if !self.reads.owned_by_me(&key)? {
+                return Err(AppError::msg(
+                    "this read receipt belongs to another account",
+                ));
+            }
+            self.reads.modify(&key, |r| r.last_at = now)?;
+            return Ok(());
+        }
+        self.reads.insert(
+            key,
+            Read {
+                post_id: post_id.to_owned(),
+                account,
+                first_at: now,
+                last_at: now,
+            },
+        )?;
         Ok(())
     }
 
@@ -1764,9 +1918,8 @@ impl MeroUpdates {
     /// post is shown — a read receipt the reader can see being taken.
     pub fn mark_read(&mut self, post_id: String) -> app::Result<()> {
         let _ = self.load_post(&post_id)?;
-        let me = Self::caller();
-        self.touch_profile(&me)?;
-        self.record_read(&post_id, &me, now_ms())?;
+        self.touch_profile()?;
+        self.record_read(&post_id, now_ms())?;
         app::emit!(Event::Read { post_id: &post_id });
         Ok(())
     }
@@ -1776,19 +1929,29 @@ impl MeroUpdates {
         Self::check_one_of("reaction", &emoji, REACTIONS)?;
         let _ = self.load_post(&post_id)?;
         let me = Self::caller();
-        self.touch_profile(&me)?;
-        self.reactions
-            .insert(
-                format!("{post_id}|{me}|{emoji}"),
+        self.touch_profile()?;
+        let key = format!("{post_id}|{me}|{emoji}");
+        let now = now_ms();
+        if self.reactions.contains(&key)? {
+            if !self.reactions.owned_by_me(&key)? {
+                return Err(AppError::msg("this reaction belongs to another account"));
+            }
+            self.reactions.modify(&key, |r| {
+                r.on = on;
+                r.updated_at = now;
+            })?;
+        } else {
+            self.reactions.insert(
+                key,
                 Reaction {
                     post_id: post_id.clone(),
                     account: me,
                     emoji,
                     on,
-                    updated_at: now_ms(),
+                    updated_at: now,
                 },
-            )
-            .map_err(|e| AppError::msg(format!("reactions.insert failed: {e}")))?;
+            )?;
+        }
         app::emit!(Event::Reacted { post_id: &post_id });
         Ok(())
     }
@@ -1796,16 +1959,9 @@ impl MeroUpdates {
     // ── comments ─────────────────────────────────────────────────────────────
 
     fn load_comment(&self, comment_id: &str) -> app::Result<Comment> {
-        let c = self
-            .comments
-            .get(&comment_id.to_owned())
-            .map_err(|e| AppError::msg(format!("comments.get failed: {e}")))?
-            .ok_or_else(|| AppError::msg(format!("no such comment: {comment_id}")))?;
-        let c = (*c).clone();
-        if c.deleted {
-            return Err(AppError::msg(format!("comment is deleted: {comment_id}")));
-        }
-        Ok(c)
+        self.comments
+            .get(&comment_id.to_owned())?
+            .ok_or_else(|| AppError::msg(format!("no such comment: {comment_id}")))
     }
 
     /// Reply on a post. `parent_id` threads one level deep: replying to a reply
@@ -1834,23 +1990,18 @@ impl MeroUpdates {
         };
         let now = now_ms();
         let id = Self::fresh_id();
-        let author = Self::caller();
-        self.touch_profile(&author)?;
-        self.comments
-            .insert(
-                id.clone(),
-                Comment {
-                    id: id.clone(),
-                    post_id: post_id.clone(),
-                    parent_id,
-                    author,
-                    body,
-                    created_at: now,
-                    edited_at: now,
-                    deleted: false,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+        self.touch_profile()?;
+        self.comments.insert(
+            id.clone(),
+            Comment {
+                id: id.clone(),
+                post_id: post_id.clone(),
+                parent_id,
+                body,
+                created_at: now,
+                edited_at: now,
+            },
+        )?;
         app::emit!(Event::Commented {
             post_id: &post_id,
             id: &id
@@ -1860,70 +2011,62 @@ impl MeroUpdates {
 
     pub fn edit_comment(&mut self, comment_id: String, body: String) -> app::Result<()> {
         Self::check_len("comment", &body, MAX_BODY, true)?;
-        let mut c = self.load_comment(&comment_id)?;
-        if c.author != Self::caller() {
+        let c = self.load_comment(&comment_id)?;
+        if !self.comments.owned_by_me(&comment_id)? {
             return Err(AppError::msg("only the author can edit this comment"));
         }
-        c.body = body;
-        c.edited_at = now_ms();
-        let post_id = c.post_id.clone();
-        self.comments
-            .insert(comment_id.clone(), c)
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+        let now = now_ms();
+        self.comments.modify(&comment_id, |c| {
+            c.body = body;
+            c.edited_at = now;
+        })?;
         app::emit!(Event::Commented {
-            post_id: &post_id,
+            post_id: &c.post_id,
             id: &comment_id
         });
         Ok(())
     }
 
-    /// The author may delete their comment; the team may moderate any.
+    /// The author may delete their comment; the team (its moderators) may
+    /// remove any.
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
-        let mut c = self.load_comment(&comment_id)?;
-        let me = Self::caller();
-        if c.author != me && !self.is_team_str(&me) {
+        let c = self.load_comment(&comment_id)?;
+        if !self.comments.owned_by_me(&comment_id)?
+            && !self.comments.is_moderator(&Self::caller_account())
+        {
             return Err(AppError::msg("you cannot delete this comment"));
         }
-        c.deleted = true;
-        c.edited_at = now_ms();
-        let post_id = c.post_id.clone();
-        self.comments
-            .insert(comment_id.clone(), c)
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+        let _ = self.comments.remove(&comment_id)?;
         app::emit!(Event::Commented {
-            post_id: &post_id,
+            post_id: &c.post_id,
             id: &comment_id
         });
         Ok(())
     }
 
-    /// A post's whole thread, oldest first. Replies follow their parent.
+    /// A post's whole thread, oldest first. Replies follow their parent. One
+    /// seek on the `post_thread` index; the author is each entry's owner stamp.
     pub fn list_comments(&self, post_id: String) -> app::Result<Vec<CommentView>> {
-        let mut rows: Vec<Comment> = self
-            .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries failed: {e}")))?
-            .map(|(_, c)| c)
-            .filter(|c| c.post_id == post_id && !c.deleted)
-            .collect();
-        rows.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        Ok(rows
-            .into_iter()
-            .map(|c| {
-                let (author_name, _) = self.name_of(&c.author);
-                CommentView {
-                    author_is_team: self.is_team_str(&c.author),
-                    id: c.id,
-                    post_id: c.post_id,
-                    parent_id: c.parent_id,
-                    author: c.author,
-                    author_name,
-                    body: c.body,
-                    created_at: c.created_at,
-                    edited_at: c.edited_at,
-                }
-            })
-            .collect())
+        let mut rows: Vec<(String, Comment)> =
+            self.comments.query("post_thread").eq(&post_id).entries()?;
+        rows.sort_by(|(_, a), (_, b)| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        let mut out = Vec::with_capacity(rows.len());
+        for (key, c) in rows {
+            let author = owner_hex(self.comments.owner_of(&key)?);
+            let (author_name, _) = self.name_of(&author);
+            out.push(CommentView {
+                author_is_team: self.is_team_str(&author),
+                id: c.id,
+                post_id: c.post_id,
+                parent_id: c.parent_id,
+                author,
+                author_name,
+                body: c.body,
+                created_at: c.created_at,
+                edited_at: c.edited_at,
+            });
+        }
+        Ok(out)
     }
 
     // ── asks & offers ────────────────────────────────────────────────────────
@@ -1931,6 +2074,7 @@ impl MeroUpdates {
     fn load_ask(&self, ask_id: &str) -> app::Result<Ask> {
         let a = self
             .asks
+            .get()?
             .get(&ask_id.to_owned())
             .map_err(|e| AppError::msg(format!("asks.get failed: {e}")))?
             .ok_or_else(|| AppError::msg(format!("no such ask: {ask_id}")))?;
@@ -1948,6 +2092,7 @@ impl MeroUpdates {
         let team = self.is_team_str(&me);
         let mut asks: Vec<Ask> = self
             .asks
+            .get()?
             .entries()
             .map_err(|e| AppError::msg(format!("asks.entries failed: {e}")))?
             .map(|(_, a)| a)
@@ -1972,14 +2117,22 @@ impl MeroUpdates {
         ask.status = status;
         ask.status_at = now_ms();
         let post_id = ask.post_id.clone();
-        self.asks
-            .insert(ask_id.clone(), ask)
-            .map_err(|e| AppError::msg(format!("asks.insert failed: {e}")))?;
+        self.put_ask(ask)?;
         app::emit!(Event::AskChanged {
             post_id: &post_id,
             ask_id: &ask_id
         });
         Ok(())
+    }
+
+    /// The caller's own offer on an ask, if they have one. `Err` if a row sits
+    /// under the caller's key that another account wrote.
+    fn own_offer(&self, key: &String) -> app::Result<Option<Offer>> {
+        match self.offers.get(key)? {
+            Some(o) if self.offers.owned_by_me(key)? => Ok(Some(o)),
+            Some(_) => Err(AppError::msg("this offer belongs to another account")),
+            None => Ok(None),
+        }
     }
 
     /// "I can help." One click, optional note. Offering again edits the note;
@@ -1991,39 +2144,30 @@ impl MeroUpdates {
             return Err(AppError::msg("this ask is resolved"));
         }
         let me = Self::caller();
-        self.touch_profile(&me)?;
+        self.touch_profile()?;
         let key = format!("{ask_id}|{me}");
         let now = now_ms();
-        let existing = self
-            .offers
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("offers.get failed: {e}")))?
-            .map(|o| (*o).clone());
-        let offer = match existing {
-            Some(mut o) => {
-                o.helper = OfferByHelper {
-                    note,
-                    withdrawn: false,
-                };
-                o.updated_at = now;
-                o
-            }
-            None => Offer {
-                ask_id: ask_id.clone(),
-                account: me,
-                helper: OfferByHelper {
-                    note,
-                    withdrawn: false,
-                },
-                updated_at: now,
-                created_at: now,
-                status: "offered".to_owned(),
-                status_at: now,
-            },
+        let helper = OfferByHelper {
+            note,
+            withdrawn: false,
         };
-        self.offers
-            .insert(key, offer)
-            .map_err(|e| AppError::msg(format!("offers.insert failed: {e}")))?;
+        if self.own_offer(&key)?.is_some() {
+            self.offers.modify(&key, |o| {
+                o.helper = helper;
+                o.updated_at = now;
+            })?;
+        } else {
+            self.offers.insert(
+                key,
+                Offer {
+                    ask_id: ask_id.clone(),
+                    account: me,
+                    helper,
+                    updated_at: now,
+                    created_at: now,
+                },
+            )?;
+        }
         app::emit!(Event::OfferChanged {
             post_id: &ask.post_id,
             ask_id: &ask_id
@@ -2034,17 +2178,14 @@ impl MeroUpdates {
     pub fn withdraw_offer(&mut self, ask_id: String) -> app::Result<()> {
         let ask = self.load_ask(&ask_id)?;
         let key = format!("{ask_id}|{}", Self::caller());
-        let mut offer = self
-            .offers
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("offers.get failed: {e}")))?
-            .map(|o| (*o).clone())
-            .ok_or_else(|| AppError::msg("you have not offered to help with this"))?;
-        offer.helper.withdrawn = true;
-        offer.updated_at = now_ms();
-        self.offers
-            .insert(key, offer)
-            .map_err(|e| AppError::msg(format!("offers.insert failed: {e}")))?;
+        if self.own_offer(&key)?.is_none() {
+            return Err(AppError::msg("you have not offered to help with this"));
+        }
+        let now = now_ms();
+        self.offers.modify(&key, |o| {
+            o.helper.withdrawn = true;
+            o.updated_at = now;
+        })?;
         app::emit!(Event::OfferChanged {
             post_id: &ask.post_id,
             ask_id: &ask_id
@@ -2052,8 +2193,9 @@ impl MeroUpdates {
         Ok(())
     }
 
-    /// Accept or decline someone's offer. Team only. Accepted offers become
-    /// contributions (`list_contributions`).
+    /// Accept or decline someone's offer. Team only: the decision is a
+    /// team-written record beside the offer, so the helper cannot write it.
+    /// Accepted offers become contributions (`list_contributions`).
     pub fn set_offer_status(
         &mut self,
         ask_id: String,
@@ -2065,17 +2207,23 @@ impl MeroUpdates {
         let ask = self.load_ask(&ask_id)?;
         let account = Self::parse_account(&account)?.to_string();
         let key = format!("{ask_id}|{account}");
-        let mut offer = self
+        let offer = self
             .offers
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("offers.get failed: {e}")))?
-            .map(|o| (*o).clone())
+            .get(&key)?
             .ok_or_else(|| AppError::msg("no such offer"))?;
-        offer.status = status;
-        offer.status_at = now_ms();
-        self.offers
-            .insert(key, offer)
-            .map_err(|e| AppError::msg(format!("offers.insert failed: {e}")))?;
+        if self.genuine_offers(vec![(key.clone(), offer)]).is_empty() {
+            return Err(AppError::msg("no such offer"));
+        }
+        self.offer_status
+            .get_mut()?
+            .insert(
+                key,
+                Triage {
+                    status,
+                    status_at: now_ms(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("offer_status.insert failed: {e}")))?;
         app::emit!(Event::OfferChanged {
             post_id: &ask.post_id,
             ask_id: &ask_id
@@ -2087,12 +2235,22 @@ impl MeroUpdates {
     /// next update's "Thank you" section is written from.
     pub fn list_contributions(&self, since: u64) -> app::Result<Vec<ContributionView>> {
         let mut out = Vec::new();
-        for (_, o) in self
-            .offers
+        for (key, t) in self
+            .offer_status
+            .get()?
             .entries()
-            .map_err(|e| AppError::msg(format!("offers.entries failed: {e}")))?
+            .map_err(|e| AppError::msg(format!("offer_status.entries failed: {e}")))?
         {
-            if o.status != "accepted" || o.helper.withdrawn || o.status_at < since {
+            if t.status != "accepted" || t.status_at < since {
+                continue;
+            }
+            let Some(o) = self.offers.get(&key)? else {
+                continue;
+            };
+            let Some(o) = self.genuine_offers(vec![(key, o)]).pop() else {
+                continue;
+            };
+            if o.helper.withdrawn {
                 continue;
             }
             let Ok(ask) = self.load_ask(&o.ask_id) else {
@@ -2107,7 +2265,7 @@ impl MeroUpdates {
                 name,
                 firm,
                 note: o.helper.note.clone(),
-                accepted_at: o.status_at,
+                accepted_at: t.status_at,
             });
         }
         out.sort_by(|a, b| (a.accepted_at, &a.account).cmp(&(b.accepted_at, &b.account)));
@@ -2156,7 +2314,7 @@ impl MeroUpdates {
     pub fn get_overview(&self) -> app::Result<Overview> {
         let me = Self::caller();
         let settings = self.settings_or_default();
-        let muted = self.profile_of(&me).map(|p| p.muted).unwrap_or_default();
+        let muted = self.muted_of(&me);
         let posts = self.live_posts(None)?;
         let updates: Vec<&Post> = posts.iter().filter(|p| p.kind == KIND_UPDATE).collect();
         let last_update_at = updates.iter().map(|p| p.created_at).max().unwrap_or(0);
@@ -2173,21 +2331,17 @@ impl MeroUpdates {
             .iter()
             .filter(|p| p.kind == KIND_QUESTION && p.status == "open")
             .count() as u64;
-        let live_post_ids: std::collections::BTreeSet<&str> =
-            updates.iter().map(|p| p.id.as_str()).collect();
+        let live_post_ids: BTreeSet<&str> = updates.iter().map(|p| p.id.as_str()).collect();
         let open_asks = self
             .asks
+            .get()?
             .entries()
             .map_err(|e| AppError::msg(format!("asks.entries failed: {e}")))?
             .filter(|(_, a)| {
                 !a.deleted && a.status == "open" && live_post_ids.contains(a.post_id.as_str())
             })
             .count() as u64;
-        let people = self
-            .profiles
-            .entries()
-            .map_err(|e| AppError::msg(format!("profiles.entries failed: {e}")))?
-            .count() as u64;
+        let people = self.profiles.entries()?.count() as u64;
         Ok(Overview {
             company_name: settings.company_name,
             cadence_days: settings.cadence_days,
@@ -2207,29 +2361,27 @@ impl MeroUpdates {
         self.require_team()?;
         let mut updates = self.live_posts(Some(KIND_UPDATE))?;
         updates.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
-        let reads: Vec<Read> = self
-            .reads
-            .entries()
-            .map_err(|e| AppError::msg(format!("reads.entries failed: {e}")))?
-            .map(|(_, r)| r)
-            .collect();
         let readers_pool: Vec<Profile> = self
             .profiles
-            .entries()
-            .map_err(|e| AppError::msg(format!("profiles.entries failed: {e}")))?
-            .map(|(_, p)| p)
+            .entries()?
+            .map(|(account, mut p)| {
+                // The slot's key is the account; the field is only a claim.
+                p.account = account.to_string();
+                p
+            })
             .filter(|p| !self.is_team_str(&p.account))
             .collect();
 
         let mut out = Vec::with_capacity(updates.len());
         for p in updates {
-            let mut readers: Vec<ReaderView> = reads
-                .iter()
-                .filter(|r| r.post_id == p.id && !self.is_team_str(&r.account))
+            let mut readers: Vec<ReaderView> = self
+                .genuine_reads(self.reads.query("post_id").eq(&p.id).entries()?)
+                .into_iter()
+                .filter(|r| !self.is_team_str(&r.account))
                 .map(|r| {
                     let (name, firm) = self.name_of(&r.account);
                     ReaderView {
-                        account: r.account.clone(),
+                        account: r.account,
                         name,
                         firm,
                         first_at: r.first_at,
@@ -2248,13 +2400,14 @@ impl MeroUpdates {
                 })
                 .collect();
             let card = self.card_of(&p, "")?;
-            let ask_ids: Vec<String> = self.asks_of(&p.id)?.into_iter().map(|a| a.id).collect();
-            let offers = self
-                .offers
-                .entries()
-                .map_err(|e| AppError::msg(format!("offers.entries failed: {e}")))?
-                .filter(|(_, o)| !o.helper.withdrawn && ask_ids.contains(&o.ask_id))
-                .count() as u64;
+            let mut offers = 0u64;
+            for a in self.asks_of(&p.id)? {
+                offers += self
+                    .genuine_offers(self.offers.query("ask_id").eq(&a.id).entries()?)
+                    .iter()
+                    .filter(|o| !o.helper.withdrawn)
+                    .count() as u64;
+            }
             out.push(EngagementRow {
                 post_id: p.id.clone(),
                 title: p.content.title.clone(),

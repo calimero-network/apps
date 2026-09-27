@@ -89,9 +89,19 @@ fragment propagates.
 | `encode_frame(raw, width, height, track, now) -> seq` | mutation | **Task-3 core.** Encode raw luma in WASM, chunk, store, prune, emit `FramePosted`. |
 | `get_frame(after_seq) -> DecodedFrame[]` | view | Reassemble chunks + decode in WASM. |
 | `frame_checksum(seq) -> u64?` | view | FNV-1a over the decoded pixels, computed in WASM. Two nodes agreeing on it **is** the C1 bit-identity proof; `null` = frame not live. |
-| `prune_frames(before_seq)` | mutation | Explicit reaper (also inline in `encode_frame`). |
+| `prune_frames(before_seq)` | mutation | Explicit reaper (also inline in `encode_frame`); reaches only the caller's own frames. |
 | `get_stats() -> StreamStats` | view | §4 instrumentation: live fragments, next/oldest seq, pruned count. |
 | `rename_stream(name)` | mutation | Owner-only. |
+
+> **Who can write what.** Every node enforces it, not just the API: a member
+> row, a sender's cursor, its chunks and its fragments are owned by the account
+> that wrote them (`Authored` / `Moderated`), so nobody else can rewrite or
+> delete them, and reads drop any chunk or fragment planted under another
+> sender's id. Only the stream's creator (the `chunks` moderator) sweeps a
+> departed sender's buffer. The init name is `Frozen`. Still open: approach 3's
+> global `next_seq` is shared, so a member's patched node can stall that probe
+> path for everyone, and a device id registered first by another account cannot
+> be used by its real owner.
 
 > **Timestamp units.** `encode_frame`'s `now` is unix **milliseconds**; every
 > other `now` is **seconds**. Fragments are the one thing whose timestamp gets

@@ -121,6 +121,12 @@ export function AuditPanel({
           Your node recomputed all of this from the frozen ballots just now. Nothing here is a stored conclusion.
         </p>
         <CheckList checks={report.checks} />
+        {report.uncounted.length > 0 && (
+          <p className="hint warn">
+            Not in the sealed count: {report.uncounted.map(label).join(", ")} — their ballot reached this node after
+            the seal, or the creator left it out.
+          </p>
+        )}
         {report.transcript_digest && (
           <p className="empty">
             Transcript digest <code className="mono digest">{report.transcript_digest}</code>

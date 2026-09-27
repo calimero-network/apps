@@ -1,8 +1,7 @@
 {
   "battleships": [
     "get_history",
-    "get_players",
-    "register_player"
+    "get_players"
   ],
   "mero-blocks": [
     "heartbeat",
