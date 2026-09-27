@@ -35,6 +35,7 @@ import type { Peer } from './PeerAvatars';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { presencePlugin } from './presence/presencePlugin';
+import { blockDecorations } from './blocknote/blockDecorations';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -79,18 +80,6 @@ export interface EditorShellProps {
   peers?: Peer[];
 }
 
-// BlockNote renders its own block ids as `data-id`, which are the backend's
-// block tokens here; the browser suites address blocks through a stable testid.
-export function stampBlocks(root: HTMLElement | null): void {
-  if (!root) return;
-  for (const block of root.querySelectorAll<HTMLElement>('[data-id]')) {
-    const id = block.getAttribute('data-id');
-    if (!id || block.dataset.blockId === id) continue;
-    block.dataset.testid = 'doc-block';
-    block.dataset.blockId = id;
-  }
-}
-
 export const EditorShell: React.FC<EditorShellProps> = ({
   documentName,
   title,
@@ -131,11 +120,19 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       }),
     [],
   );
+  const blockAttrs = useMemo(
+    () =>
+      createExtension({
+        key: 'calimeroBlockAttrs',
+        prosemirrorPlugins: [blockDecorations()],
+      }),
+    [],
+  );
 
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialBlocks,
-    extensions: [presence],
+    extensions: [presence, blockAttrs],
   });
 
   useEffect(() => {
@@ -148,7 +145,6 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // True only while we are programmatically applying remote content, so
   // the resulting onChange does NOT round-trip back out as a local save.
   const applyingRemoteRef = useRef(false);
-  const editorRootRef = useRef<HTMLDivElement | null>(null);
   // The serialized content the editor is known to hold (last loaded /
   // applied / emitted). Two jobs:
   //   - onChange emits a save ONLY when the document genuinely differs
@@ -170,7 +166,6 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // wipe the document.
   useEffect(() => {
     if (!editor) return;
-    stampBlocks(editorRootRef.current);
     const text = blocksToPlainText(editor.document);
     setWordCount(countWords(text));
     setCharCount(countCharacters(text));
@@ -186,7 +181,6 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     if (!editor) return;
     const handler = () => {
       const doc = editor.document;
-      stampBlocks(editorRootRef.current);
       const text = blocksToPlainText(doc);
       setWordCount(countWords(text));
       setCharCount(countCharacters(text));
@@ -302,7 +296,6 @@ export const EditorShell: React.FC<EditorShellProps> = ({
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto bg-card">
             <div
-              ref={editorRootRef}
               data-testid="doc-editor"
               className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
             >
