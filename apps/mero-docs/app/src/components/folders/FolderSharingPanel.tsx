@@ -24,7 +24,7 @@
 // the Role radio) — a follow-up; today only the preset dropdown ships.
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { UserPlus, Link2, Globe } from 'lucide-react';
+import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';
@@ -279,7 +279,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     aria-label={`Remove ${label}`}
                     onClick={() => onRemove(m.identity, label)}
                   >
-                    <span aria-hidden>×</span>
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 )}
               </div>
