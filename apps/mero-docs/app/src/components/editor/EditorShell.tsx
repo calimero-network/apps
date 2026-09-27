@@ -22,7 +22,7 @@
 // then we clear it. ProseMirror dispatches transactions synchronously,
 // so the flag is reliably down again before any real user edit.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { createExtension } from '@blocknote/core';
 import { SideMenuController, useCreateBlockNote } from '@blocknote/react';
@@ -35,8 +35,15 @@ import type { Peer } from './PeerAvatars';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { presencePlugin } from './presence/presencePlugin';
-import { blockDecorations } from './blocknote/blockDecorations';
-import { BlockSideMenu, SectionLinksContext, type SectionLinks } from './blocknote/BlockMenu';
+import { blockDecorations, setSectionWash } from './blocknote/blockDecorations';
+import {
+  BlockSideMenu,
+  SectionLinksContext,
+  sectionName,
+  type SectionLinks,
+} from './blocknote/BlockMenu';
+import { SectionBanner } from './SectionBanner';
+import { useSectionFocus } from '@/hooks/useSectionFocus';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -81,6 +88,10 @@ export interface EditorShellProps {
   peers?: Peer[];
   /** Backs the block menu's Copy link to section. */
   sectionLinks?: SectionLinks;
+  /** The block a `#b=` link opened the document at, by the editor's id. */
+  focusBlock?: string;
+  /** The navigation that carried `focusBlock`; a new one focuses again. */
+  focusKey?: string;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -103,6 +114,8 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   onEditorReady,
   peers,
   sectionLinks,
+  focusBlock,
+  focusKey,
 }) => {
   const { theme } = useTheme();
 
@@ -271,6 +284,27 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     }
   }, [editor, initialContent]);
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sectionOf = useCallback(
+    (id: string) => sectionName(editor.getBlock(id) ?? { type: 'paragraph' }),
+    [editor],
+  );
+  const wash = useCallback(
+    (id: string | null) => {
+      if (editor.prosemirrorView) setSectionWash(editor.prosemirrorView, id);
+    },
+    [editor],
+  );
+  // Declared after the content effect, so the loaded blocks are in the DOM when it runs.
+  const section = useSectionFocus({
+    block: focusBlock,
+    navKey: focusKey,
+    ready: !isLoading && initialContent !== undefined,
+    scrollRef,
+    sectionOf,
+    wash,
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-background">
@@ -297,8 +331,17 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           peers={peers}
         />
 
+        {section.banner && (
+          <SectionBanner
+            variant={section.banner.variant}
+            section={section.banner.section}
+            onTop={section.goTop}
+            onDismiss={section.dismiss}
+          />
+        )}
+
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto bg-card">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto bg-card">
             <div
               data-testid="doc-editor"
               className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"

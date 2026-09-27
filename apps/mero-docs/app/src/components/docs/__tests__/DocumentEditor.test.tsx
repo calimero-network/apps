@@ -44,6 +44,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
   }),
 }));
+let location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
+vi.mock('react-router-dom', () => ({ useLocation: () => location }));
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs: true }),
@@ -70,6 +72,8 @@ vi.mock('@/components/editor/EditorShell', () => ({
     isAppReady,
     isOffline,
     sectionLinks,
+    focusBlock,
+    focusKey,
   }: {
     isLoading: boolean;
     documentName: string;
@@ -81,8 +85,10 @@ vi.mock('@/components/editor/EditorShell', () => ({
       copy: (blockId: string, section: string) => void;
       isConfirmed: (blockId: string) => boolean;
     };
+    focusBlock?: string;
+    focusKey?: string;
   }) => (
-    <div>
+    <div data-testid="shell" data-focus-block={focusBlock} data-focus-key={focusKey}>
       <span data-testid="connection">
         {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
       </span>
@@ -120,6 +126,7 @@ function deferred<T>() {
 beforeEach(() => {
   vi.clearAllMocks();
   deliver = undefined;
+  location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
   contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
   getDoc.mockResolvedValue(DOC);
   getTitle.mockResolvedValue('Notes');
@@ -229,6 +236,21 @@ describe('DocumentEditor', () => {
     expect(writeText).toHaveBeenCalledWith(
       `${window.location.origin}/app/ns/f/f/d/doc-1#b=blk-9`,
     );
+  });
+
+  it('hands the shell the block a #b= link names, with this navigation', async () => {
+    location = { pathname: '/app/ns/f/f/d/doc-1', hash: '#b=blk-7', key: 'nav-2' };
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
+    await screen.findByText('Notes');
+    const shell = screen.getByTestId('shell');
+    expect(shell.dataset.focusBlock).toBe('blk-7');
+    expect(shell.dataset.focusKey).toBe('nav-2');
+  });
+
+  it('focuses no block without a #b= link', async () => {
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
+    await screen.findByText('Notes');
+    expect(screen.getByTestId('shell').dataset.focusBlock).toBeUndefined();
   });
 
   describe('connection state', () => {
