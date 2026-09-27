@@ -7,7 +7,6 @@ import {
 // Generated types
 
 export interface DrawOffer {
-  open: boolean;
   declined: boolean;
   ply: number;
   at: number;
@@ -58,7 +57,6 @@ export interface Event_Vacated {
 }
 
 export interface GameRecord {
-  index: number;
   started_at: number;
 }
 
@@ -77,6 +75,7 @@ export interface MeroChess {
   created_at: number;
   players: Record<string, Player>;
   seat_claims: Record<string, Seat>;
+  vacated: Record<string, number>;
   games: Record<string, GameRecord>;
   moves: Record<string, MoveRecord>;
   endings: Record<string, Ending>;
@@ -86,6 +85,7 @@ export interface MeroChess {
 export interface MoveRecord {
   uci: string;
   at: number;
+  opponent: string;
 }
 
 export interface MoveView {
@@ -97,7 +97,6 @@ export interface MoveView {
 }
 
 export interface Player {
-  id: string;
   name: string;
   joined_at: number;
   updated_at: number;
@@ -111,10 +110,8 @@ export interface PlayerView {
 }
 
 export interface Seat {
-  member: string;
   name: string;
   claimed_at: number;
-  vacated_at: number;
 }
 
 export interface SeatView {

@@ -13,8 +13,9 @@ description: >
   divergent move list all fail here.
 
   It also carries a load the Rust tests structurally cannot. Every row this
-  contract writes is an AuthoredMap entry — `StorageType::User`, signed
-  per-action and verified against its owner at apply — and `converge_app`
+  contract writes is an owned entry — `StorageType::User`, signed per-action
+  and verified against its owner at apply, and write-once for everything but
+  presence — and `converge_app`
   cannot carry those at all ("need the node's signing identity ... test those
   with merobox workflows"). So this scenario is the only place where authored
   state crossing a real network is exercised: if signing or owner verification
@@ -686,7 +687,7 @@ steps:
       now: 1700000027000
 
   # ⚠️ A decline cannot DELETE the offer: the row belongs to node-2 and only its
-  # owner may write it (AuthoredMap, enforced by core at apply). node-1 records
+  # owner may write it (an owned entry, enforced by core at apply). node-1 records
   # its own answer instead, and the READER stops counting an offer once the
   # other player has answered it at the same ply. So this step is what proves
   # the answer is honoured — if the reader only looked at the offer row, the
@@ -1112,12 +1113,13 @@ steps:
     statements:
       - 'json_subset({{n2_resigned}}, {"output": {"status": "finished", "result": "1-0", "reason": "resignation", "game": 3}})'
 
-  # ─── standing up ──────────────────────────────────────────────────────────
+  # ─── a chair that cannot be given up ──────────────────────────────────────
   #
-  # A chair is given up, not taken away, and only before the game it is in has
-  # started. `stand` removes the claims the caller wrote — which it can only do
-  # because they are the caller's own rows; core refuses a `remove` on someone
-  # else's authored entry.
+  # A chair someone has played from is the table's record of who played, so it
+  # is kept for good: every claim is a write-once row, and the reader ignores a
+  # "stood up" row from anyone who has acted at the table. node-1 has played
+  # four games, so its `stand` is refused — even in a game with no moves — and
+  # its chair is not free for node-2 to take.
 
   - name: node-1 starts game 4
     type: call
@@ -1127,6 +1129,25 @@ steps:
     method: rematch
     args:
       now: 1700000048000
+
+  - name: node-1 tries to leave the board
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: stand
+    args:
+      now: 1700000049000
+    # The flag alone never fails a call step; the error is captured and
+    # asserted below, so a `stand` that unexpectedly succeeds fails the run.
+    expected_failure: true
+    outputs:
+      stand_error: error
+
+  - name: Assert standing up was refused
+    type: assert
+    statements:
+      - "is_set({{stand_error}})"
 
   - name: Wait for game 4 to reach node-2
     type: wait_for_sync
@@ -1138,26 +1159,7 @@ steps:
     check_interval: 2
     trigger_sync: true
 
-  - name: node-1 leaves the board
-    type: call
-    node: chess-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{node1_key}}"
-    method: stand
-    args:
-      now: 1700000049000
-
-  - name: Wait for the empty chair to reach node-2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - chess-node-1
-      - chess-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: node-2 reads the half-empty table
+  - name: node-2 reads the table
     type: call
     node: chess-node-2
     context_id: "{{context_id}}"
@@ -1166,20 +1168,15 @@ steps:
     args:
       now: 1700000050000
     outputs:
-      n2_vacated: result
+      n2_kept: result
 
-  # Game 4 is even, so the vacated chair is White's. The table falls back to
-  # `awaitingPlayers` on BOTH nodes — a removal that replicated as an absence
-  # rather than as a tombstone would leave node-2 still seeing an opponent.
-  - name: Assert the chair is empty on the other node too
+  # Game 4 is even, so node-1's chair is White's again — and still node-1's.
+  - name: Assert both chairs are still held on the other node
     type: json_assert
     statements:
-      - 'json_subset({{n2_vacated}}, {"output": {"status": "awaitingPlayers", "game": 4, "white": {"member": "", "name": "", "online": false}}})'
-      - 'json_subset({{n2_vacated}}, {"output": {"black": {"name": "Node Two"}}})'
+      - 'json_subset({{n2_kept}}, {"output": {"status": "inProgress", "game": 4, "white": {"name": "Node One"}, "black": {"name": "Node Two"}}})'
 
-  # And the chair is genuinely free rather than merely blank: node-2 takes it,
-  # which the "seat is taken" rule refused at the top of this scenario.
-  - name: node-2 takes the empty chair
+  - name: node-2 tries to take node-1's chair
     type: call
     node: chess-node-2
     context_id: "{{context_id}}"
@@ -1189,24 +1186,14 @@ steps:
       seat: "white"
       name: "Node Two"
       now: 1700000051000
-
-  - name: node-2 reads the table it now owns both sides of
-    type: call
-    node: chess-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_chess-node-2}}"
-    method: table
-    args:
-      now: 1700000052000
+    expected_failure: true
     outputs:
-      n2_both_seats: result
+      kept_seat_error: error
 
-  # One player on both sides is allowed on purpose — it is how a position gets
-  # analysed, and how the app is usable before a second person has a node.
-  - name: Assert one player may hold both chairs
-    type: json_assert
+  - name: Assert the kept chair really was refused
+    type: assert
     statements:
-      - 'json_subset({{n2_both_seats}}, {"output": {"status": "inProgress", "my_turn": true, "white": {"name": "Node Two"}, "black": {"name": "Node Two"}}})'
+      - "is_set({{kept_seat_error}})"
 
 stop_all_nodes: false
 restart: false
