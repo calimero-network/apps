@@ -185,8 +185,8 @@ export interface DriveWorkspaceState {
 
   // namespace list + selection
   namespaces: Namespace[];
-  /** True once `namespaces` is a successful read for the current app id;
-   *  before that (or after a failed read) an absent id proves nothing. */
+  /** True once a namespace list read for the current app id has succeeded;
+   *  `namespaces` is that last good read, kept across a failed re-read. */
   namespacesListed: boolean;
   /** The latest namespace list read's failure, if it failed. */
   namespacesError: Error | null;
@@ -1234,10 +1234,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // it. `createContext` returns `{ contextId, memberPublicKey }`
         // (see mero-js admin-types `CreateContextResponseData`).
         //
-        // Best-effort: if this fails the registry is left unclaimed —
-        // the admin can re-run claim via the WorkspaceSettingsPanel
-        // "Claim ownership" button. We DON'T abort the create here;
-        // see Fix D in the code-review notes.
+        // Best-effort: a failure leaves the registry unclaimed, which the
+        // settings panel's "Claim ownership" button repairs, so never abort.
         if (reg?.contextId && reg?.memberPublicKey) {
           try {
             await new RegistryClient(
@@ -1423,16 +1421,25 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     return () => clearTimeout(timer);
   }, [selectedNsId, isJustJoined]);
 
-  // Clear the flag once sync has landed — registry resolved AND we
-  // successfully read the folder list for this namespace.
+  // Lift the gate once the registry resolved and the folder list read, but only
+  // after re-reading the workspace list: on events alone it can predate the join.
   useEffect(() => {
     if (!selectedNsId) return;
     if (!isJustJoined) return;
     if (!registryContextId) return;
     if (regFoldersLoadedForNs !== selectedNsId) return;
-    clearNamespaceJustJoined(selectedNsId);
-    setJustJoinedTick((t) => t + 1);
-  }, [selectedNsId, isJustJoined, registryContextId, regFoldersLoadedForNs]);
+    void refetchNamespaces().then((ok) => {
+      if (!ok) return; // a failed read leaves it to the watchdog above
+      clearNamespaceJustJoined(selectedNsId);
+      setJustJoinedTick((t) => t + 1);
+    });
+  }, [
+    selectedNsId,
+    isJustJoined,
+    registryContextId,
+    regFoldersLoadedForNs,
+    refetchNamespaces,
+  ]);
 
   // First-paint gate: we have folders to show but NONE have been
   // resolved by the getGroupInfo fan-out yet. Keep the rail in

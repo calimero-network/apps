@@ -101,7 +101,12 @@ function NameGate({
   // localStorage marker is gone (new device, cleared storage) AND the
   // hook returns null, the member rows still show the name, so we
   // must not ask the user to set it again.
-  if (!loaded || effectiveName !== null || dismissed || knownSet) return null;
+  if (!loaded) return null;
+  // The gate decides after an async read, so a wait for "gate or no gate"
+  // needs a definite end: this marker says the decision was "no gate".
+  if (effectiveName !== null || dismissed || knownSet) {
+    return <span hidden data-testid="name-gate-settled" />;
+  }
 
   const trimmed = draft.trim();
   const canSave =

@@ -123,7 +123,8 @@ export function WorkspaceLayout() {
   const showSettings = !!route?.settings;
   const navigate = useNavigate();
 
-  // Workspace ids this node belongs to; null until that list is a real answer.
+  // Workspace ids this node belongs to, from the last successful list read;
+  // null until one has landed. A failed re-read never blanks a working screen.
   const namespaceIds = useMemo(
     () => (namespacesListed ? namespaces.map((n) => n.namespaceId) : null),
     [namespacesListed, namespaces],
@@ -390,12 +391,19 @@ export function WorkspaceLayout() {
                 folderName={selectedFolder?.alias}
               />
             </Suspense>
-          ) : namespacesError ? (
+          ) : namespacesError && !namespacesListed ? (
+            // Only before any list has landed; a failed re-read keeps the last one.
             <EmptyState
               title="Couldn't load your workspaces"
               body="Check your connection to the node, then try again."
             >
               <Button variant="outline" onClick={() => void refetch()}>
+                Try again
+              </Button>
+            </EmptyState>
+          ) : docsFailed ? (
+            <EmptyState title="Couldn't load this folder's documents">
+              <Button variant="outline" onClick={() => void refetchDocs()}>
                 Try again
               </Button>
             </EmptyState>
@@ -405,12 +413,6 @@ export function WorkspaceLayout() {
               syncStatus={syncStatus}
               onRetry={onRetrySync}
             />
-          ) : docsFailed ? (
-            <EmptyState title="Couldn't load this folder's documents">
-              <Button variant="outline" onClick={() => void refetchDocs()}>
-                Try again
-              </Button>
-            </EmptyState>
           ) : linkTarget === 'syncing' ? (
             <QuietLoading />
           ) : !selectedFolderId ? (

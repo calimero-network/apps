@@ -94,15 +94,14 @@ export class WorkspaceDriver {
     await expect(gate).toBeHidden({ timeout: 20_000 });
   }
 
-  // Dismiss the gate only if it appears (joiner may already be named,
-  // e.g. re-join / future scenario). Falls back silently if no gate.
+  // Dismiss the gate if it is needed. The gate decides only once the workspace
+  // list includes this workspace and the name read has answered, so wait for
+  // that decision (the gate, or its settled marker) rather than a fixed time.
   async dismissNameGateIfPresent(displayName = this.label): Promise<void> {
     const gate = this.page.getByRole('dialog', { name: /Set your name/i });
-    try {
-      await expect(gate).toBeVisible({ timeout: 20_000 });
-    } catch {
-      return; // no gate — already named
-    }
+    const settled = this.page.getByTestId('name-gate-settled');
+    await expect(gate.or(settled)).toBeAttached({ timeout: 60_000 });
+    if (!(await gate.isVisible())) return;
     await gate.getByPlaceholder('Your display name').fill(displayName);
     await gate.getByRole('button', { name: /^Continue$/ }).click();
     await expect(gate).toBeHidden({ timeout: 20_000 });

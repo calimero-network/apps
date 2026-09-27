@@ -311,6 +311,30 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(workspaceRefetch).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps Home when a later workspace list read fails', () => {
+    workspace.namespacesListed = true;
+    workspace.namespacesError = new Error('node unreachable');
+    renderAt('/app/ns');
+    expect(screen.getByTestId('select-folder')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your workspaces")).toBeNull();
+  });
+
+  it('keeps the name gate mounted through a failed list re-read', () => {
+    workspace.namespacesListed = true;
+    workspace.namespacesError = new Error('node unreachable');
+    renderAt('/app/ns');
+    expect(screen.getByTestId('name-gate')).toBeTruthy();
+  });
+
+  it('shows a docs failure ahead of the post-join syncing copy', () => {
+    workspace.isJustJoined = true;
+    docs.listed = false;
+    docs.error = new Error('docs down');
+    renderAt('/app/ns/f/f1/d/doc-1');
+    expect(screen.getByText("Couldn't load this folder's documents")).toBeTruthy();
+    expect(screen.queryByText('Syncing workspace from peers…')).toBeNull();
+  });
+
   it('never mounts the name gate for a workspace this node is not in', () => {
     workspace.namespaces = [{ namespaceId: 'other' }];
     renderAt('/app/ns');

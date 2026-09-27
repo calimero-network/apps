@@ -67,6 +67,16 @@ describe('DisplayNameGate', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('marks itself settled once it knows no gate is needed', () => {
+    dnMock.mockReturnValue(hookState({ loading: true, loaded: false }));
+    const { rerender } = render(<DisplayNameGate />);
+    expect(screen.queryByTestId('name-gate-settled')).toBeNull();
+    dnMock.mockReturnValue(hookState({ name: 'ronit' }));
+    rerender(<DisplayNameGate />);
+    expect(screen.getByTestId('name-gate-settled')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('says the name could not load in plain words, with Try again', () => {
     dnMock.mockReturnValue(
       hookState({ error: new Error('HTTP 400 Bad Request: Invalid group id') }),

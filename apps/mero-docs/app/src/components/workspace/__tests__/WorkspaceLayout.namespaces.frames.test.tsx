@@ -2,10 +2,10 @@
 // and namespace read. The act environment is off so updates land as in a browser.
 import React, { useLayoutEffect, useSyncExternalStore } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { MeroContextValue } from '@calimero-network/mero-react';
-import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
+import { DriveWorkspaceProvider, useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 
 const h = vi.hoisted(() => {
@@ -81,7 +81,9 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
 }));
 vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
-vi.mock('../DisplayNameGate', () => ({ DisplayNameGate: () => null }));
+vi.mock('../DisplayNameGate', () => ({
+  DisplayNameGate: () => <div data-testid="name-gate" />,
+}));
 vi.mock('../NamespaceSettingsPanel', () => ({ NamespaceSettingsPanel: () => null }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 vi.mock('@/components/folders/NoFolderStates', () => ({
@@ -96,6 +98,12 @@ window.matchMedia = vi.fn().mockImplementation((query: string) => ({
 }));
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+// Stands in for the debounced SSE re-read of the workspace list.
+function Refetch() {
+  const { refetch } = useDriveWorkspace();
+  return <button onClick={() => void refetch()}>refetch</button>;
+}
 
 const meroValue = {
   mero: { admin: { listNamespacesForApplication: h.listNamespacesForApplication } },
@@ -116,6 +124,7 @@ async function reloadWorkspace() {
           <Routes>
             <Route path="/app/*" element={<WorkspaceLayout />} />
           </Routes>
+          <Refetch />
         </DriveWorkspaceProvider>
       </MemoryRouter>
     </MeroContext.Provider>,
@@ -154,6 +163,22 @@ describe('WorkspaceLayout workspace reload frames', () => {
     await tick();
     await tick();
     expect(h.cards).not.toContain('not-in-workspace');
+  });
+
+  it('keeps Home and the name gate when a later list read fails', async () => {
+    await reloadWorkspace();
+    h.resolveList([{ namespaceId: 'ns1' }]);
+    expect(await screen.findByTestId('select-folder')).toBeTruthy();
+    expect(await screen.findByTestId('name-gate')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'refetch' }));
+    await tick();
+    h.rejectList(new Error('node unreachable'));
+    await tick();
+    await tick();
+    expect(screen.getByTestId('select-folder')).toBeTruthy();
+    expect(screen.getByTestId('name-gate')).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your workspaces")).toBeNull();
+    expect(h.cards).toHaveLength(0);
   });
 
   it('shows not-in-workspace once a successful list leaves this workspace out', async () => {
