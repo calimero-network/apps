@@ -73,10 +73,9 @@ describe('SidebarNav', () => {
     const { props, user } = setup();
     const views = screen.getByRole('region', { name: 'Views' });
     await user.click(
-      within(views).getAllByRole('button', { name: /Q3 launch/ })[0],
+      within(views).getByRole('button', { name: 'Q3 launch, shared with everyone, 2' }),
     );
     expect(props.views[1].onSelect).toHaveBeenCalledTimes(1);
-    expect(within(views).getByLabelText('Shared with everyone')).toBeTruthy();
   });
 
   it('shows the top five tags and toggles the rest', async () => {
@@ -259,5 +258,13 @@ describe('SidebarNav', () => {
     expect(
       screen.getByRole('button', { name: 'Actions for Mine' }),
     ).toBeTruthy();
+  });
+
+  it('names each row by its name and count, never run together', () => {
+    setup();
+    expect(screen.getByRole('button', { name: 'Home, 10' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Design this week, 3' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Q3 launch, shared with everyone, 2' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'design, 3' })).toBeTruthy();
   });
 });

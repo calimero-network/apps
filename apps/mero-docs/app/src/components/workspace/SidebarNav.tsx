@@ -100,16 +100,13 @@ export function SidebarNav({
                 <NavRow
                   lead={
                     v.shared ? (
-                      <Users
-                        className="h-3.5 w-3.5"
-                        role="img"
-                        aria-label="Shared with everyone"
-                      />
+                      <Users className="h-3.5 w-3.5" aria-hidden />
                     ) : (
                       <Bookmark className="h-3.5 w-3.5" aria-hidden />
                     )
                   }
                   name={v.name}
+                  note={v.shared ? 'shared with everyone' : undefined}
                   count={v.count}
                   selected={v.selected}
                   onSelect={v.onSelect}
@@ -281,15 +278,19 @@ function ViewMenu({ view }: { view: ViewItem }) {
 interface NavRowProps {
   lead: React.ReactNode;
   name: string;
+  note?: string; // spoken between the name and the count
   count: number;
   selected: boolean;
   onSelect: () => void;
 }
 
-function NavRow({ lead, name, count, selected, onSelect }: NavRowProps) {
+function NavRow({ lead, name, note, count, selected, onSelect }: NavRowProps) {
   return (
     <button
       type="button"
+      aria-label={[name, note, count]
+        .filter((part) => part !== undefined)
+        .join(', ')}
       aria-current={selected ? 'page' : undefined}
       onClick={onSelect}
       className={cn(
@@ -309,6 +310,7 @@ function NavRow({ lead, name, count, selected, onSelect }: NavRowProps) {
       </span>
       <span className="min-w-0 flex-1 truncate">{name}</span>
       <span
+        aria-hidden
         className={cn(
           'shrink-0 text-[11.5px] font-normal tabular-nums',
           selected ? 'text-selected-foreground/70' : 'text-muted-foreground',

@@ -169,7 +169,13 @@ function chips({
   ];
 }
 
-function Sidebar({ selected }: { selected: string }) {
+function Sidebar({
+  selected,
+  className = 'hidden w-64 md:block',
+}: {
+  selected: string;
+  className?: string;
+}) {
   const [collapsed, setCollapsed] = React.useState({
     views: false,
     tags: false,
@@ -178,7 +184,9 @@ function Sidebar({ selected }: { selected: string }) {
   const toggle = (section: keyof typeof collapsed) =>
     setCollapsed((c) => ({ ...c, [section]: !c[section] }));
   return (
-    <aside className="hidden w-64 shrink-0 overflow-hidden border-r border-border bg-muted/20 md:block">
+    <aside
+      className={`shrink-0 overflow-hidden border-r border-border bg-muted/20 ${className}`}
+    >
       <SidebarNav
         home={{
           count: DOCS.length,
@@ -426,6 +434,18 @@ export function Gallery(): React.JSX.Element {
         <Frame state={state}>
           {COMPOSITIONS[state](() => setRenameOpen(true))}
         </Frame>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium text-muted-foreground">
+          Sidebar at the phone drawer's width
+        </h3>
+        <div data-frame="Drawer" className="w-fit rounded-xl border pb-2">
+          <Sidebar
+            selected="design"
+            className="block w-[min(20rem,85vw)] border-r-0"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

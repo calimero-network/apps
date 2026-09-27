@@ -32,24 +32,30 @@ export function TagChip({ name, color, size = 'sm', onRemove, className }: TagCh
   return (
     <span
       className={cn(
-        'group relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-secondary text-secondary-foreground',
+        'group inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-secondary text-secondary-foreground',
         size === 'lg' ? 'h-6 px-2 text-xs' : 'h-5 px-1.5 text-[11.5px]',
         className
       )}
     >
-      <TagDot color={color} size={size} />
+      {/* The X takes the dot's place on hover or focus; it is absolutely placed so nothing shifts and the name stays whole. */}
+      <span data-testid="tag-dot-slot" className="relative inline-flex shrink-0 items-center justify-center">
+        <TagDot
+          color={color}
+          size={size}
+          className={onRemove && 'transition-opacity group-focus-within:opacity-0 group-hover:opacity-0'}
+        />
+        {onRemove && (
+          <button
+            type="button"
+            aria-label={`Remove tag ${name}`}
+            onClick={onRemove}
+            className="absolute left-1/2 top-1/2 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full opacity-0 outline-none transition-opacity focus-visible:ring-1 focus-visible:ring-ring group-focus-within:opacity-100 group-hover:opacity-100"
+          >
+            <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+          </button>
+        )}
+      </span>
       {name}
-      {/* Overlays the trailing edge on hover or focus, so a removable chip is no wider than a plain one. */}
-      {onRemove && (
-        <button
-          type="button"
-          aria-label={`Remove tag ${name}`}
-          onClick={onRemove}
-          className="absolute inset-y-0 right-0 flex items-center rounded-r-full bg-secondary pl-0.5 pr-1 opacity-0 shadow-[-6px_0_6px_hsl(var(--secondary))] outline-none transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
     </span>
   );
 }
