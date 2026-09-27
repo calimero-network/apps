@@ -425,6 +425,11 @@ impl RegistryState {
         if already {
             return Err(DriveError::AlreadyExists(id.0));
         }
+        if let Some(c) = &color {
+            if !c.is_empty() && !is_hex_color(c) {
+                return Err(DriveError::Invalid(format!("invalid color: {c}")));
+            }
+        }
         let parent_str = parent_id.map(|p| p.0);
         let rec = FolderRecord::new(parent_str, color, alias);
         self.folders
@@ -1213,6 +1218,45 @@ mod tests {
     }
 
     #[test]
+    fn set_color_rejects_non_hex_color() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        for bad in ["red", "#0f0"] {
+            let err = app.set_color_inner("f1", bad.into()).unwrap_err();
+            assert!(matches!(err, DriveError::Invalid(_)), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn register_folder_rejects_non_hex_color() {
+        let mut app = RegistryState::init();
+        for bad in ["red", "#0f0"] {
+            let err = app
+                .register_folder_inner(fid("f1"), None, Some(bad.into()), None)
+                .unwrap_err();
+            assert!(matches!(err, DriveError::Invalid(_)), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn register_folder_allows_no_color() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("f2"), None, Some("".into()), None)
+            .unwrap();
+        app.register_folder_inner(fid("f3"), None, Some("#3b82f6".into()), None)
+            .unwrap();
+        assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
+        assert_eq!(app.get_folder(fid("f2")).unwrap().color, None);
+        assert_eq!(
+            app.get_folder(fid("f3")).unwrap().color.as_deref(),
+            Some("#3b82f6")
+        );
+    }
+
+    #[test]
     fn move_folder_updates_parent_id() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("p1"), None, None, None)
@@ -1297,7 +1341,7 @@ mod tests {
     #[test]
     fn full_lifecycle_register_bind_recolor_reorder_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, Some("#f00".into()), None)
+        app.register_folder_inner(fid("a"), None, Some("#ff0000".into()), None)
             .unwrap();
         app.register_folder_inner(fid("b"), None, None, None)
             .unwrap();
