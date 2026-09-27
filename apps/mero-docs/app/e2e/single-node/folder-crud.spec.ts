@@ -50,11 +50,13 @@ test.describe('Folder CRUD (single-node)', () => {
     await dialog.getByPlaceholder(/Folder name/i).fill('OnlyOne');
     const createButton = dialog.getByRole('button', { name: /^Create$/ });
 
-    // The guard in useFolderOperations.create dedupes this to one call,
-    // and the button disables while submitting is true.
-    await Promise.all([createButton.click(), createButton.click()]);
+    // Actionability is checked once, so the second click does not wait for re-enable.
+    await createButton.dblclick();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await alice.tree.expectFolderVisible('OnlyOne');
 
+    // A later create's refreshed tree also shows any duplicate of the first.
+    await alice.createFolder({ name: 'Settle', visibility: 'Open' });
     await expect(alice.tree.folderRow('OnlyOne')).toHaveCount(1);
   });
 

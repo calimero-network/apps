@@ -56,14 +56,13 @@ test.describe('Empty states (single-node)', () => {
     const newDocButton = row.getByRole('button', { name: 'New document' });
     await expect(newDocButton).toBeVisible({ timeout: 15_000 });
 
-    // Two rapid clicks before the first create settles: the row button
-    // disables for the full creation, and useCreateDocument's own guard
-    // collapses any that still slip through into a single document.
-    await Promise.all([newDocButton.click(), newDocButton.click()]);
+    // Actionability is checked once, so the second click does not wait for re-enable.
+    await newDocButton.dblclick();
     await alice.editor.expectMounted();
 
-    await expect(alice.docs.docRow('Untitled')).toHaveCount(1, {
-      timeout: 15_000,
-    });
+    // The list that shows the rename was fetched after it, so it also shows any duplicate.
+    await alice.editor.renameTitle('Settle');
+    await alice.docs.expectDocVisible('Settle');
+    await expect(alice.docs.docRow('Untitled')).toHaveCount(0);
   });
 });
