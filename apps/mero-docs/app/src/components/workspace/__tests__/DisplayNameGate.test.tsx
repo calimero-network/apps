@@ -81,6 +81,15 @@ describe('DisplayNameGate', () => {
     await waitFor(() => expect(setName).toHaveBeenCalledWith('Ana Ruiz'));
   });
 
+  it('explains the name without mentioning keys', () => {
+    dnMock.mockReturnValue(hookState());
+    render(<DisplayNameGate />);
+    const body = screen.getByText(/Members of this workspace see this name/);
+    expect(body.textContent).toBe(
+      'Members of this workspace see this name. You can change it later in settings.',
+    );
+  });
+
   it('stacks at the same layer as other modals, not below them', () => {
     dnMock.mockReturnValue(hookState());
     render(<DisplayNameGate />);

@@ -134,8 +134,8 @@ function NameGate({
           Set your name
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Members of this workspace see this name instead of your raw key. You
-          can change it later in settings.
+          Members of this workspace see this name. You can change it later in
+          settings.
         </p>
         <input
           type="text"

@@ -48,7 +48,7 @@ beforeEach(() => {
   addGroupMembers.mockResolvedValue(undefined);
 });
 
-describe('useFolderOperations.create — members', () => {
+describe('useFolderOperations.create - members', () => {
   it('adds each chosen member (core role "Member") after the folder is bound', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);
@@ -287,7 +287,7 @@ const CREATE_STEPS = [
   'bindFolderContext',
 ] as const;
 
-describe('useFolderOperations.create — drift on partial failure', () => {
+describe('useFolderOperations.create - drift on partial failure', () => {
   it.each(CREATE_STEPS)('rolls back cleanly when %s fails', async (step) => {
     const registry = makeRegistry() as unknown as {
       registerFolder: ReturnType<typeof vi.fn>;
