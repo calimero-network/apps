@@ -40,6 +40,7 @@ const index = {
     parentId?: string;
     color?: string;
   }[],
+  foldersKnown: true,
   folderStatus: {} as Record<string, FolderIndexStatus>,
   contextOf: (id: string) => `ctx-${id}`,
   refetchFolder,
@@ -58,8 +59,6 @@ const ws = {
   rootGroupId: 'ws1',
   selfIdentity: 'me',
   namespaceMemberNames: { me: 'Ann', bob: 'Bob' } as Record<string, string>,
-  registryFolders: [] as { id: string }[] | null,
-  resolvedFolderIds: new Set<string>(),
 };
 
 vi.mock('@/context/WorkspaceIndexContext', () => ({
@@ -79,9 +78,16 @@ vi.mock('@/hooks/useFolderPermissions', () => ({
     canEditDocs: !!canEdit[folderId],
     loading: false,
     roleLoading: false,
+    error: permError,
+    roleError: null,
   }),
 }));
-let nsPerms = { canCreateFolder: true, loading: false };
+let permError: Error | null = null;
+let nsPerms: {
+  canCreateFolder: boolean;
+  loading: boolean;
+  error?: Error | null;
+} = { canCreateFolder: true, loading: false };
 vi.mock('@/hooks/useNamespacePermissions', () => ({
   useNamespacePermissions: () => nsPerms,
 }));
@@ -126,8 +132,7 @@ function settle(rows: IndexRow[]) {
   index.folderStatus = Object.fromEntries(
     index.folders.map((f) => [f.id, 'ready' as FolderIndexStatus]),
   );
-  ws.registryFolders = index.folders.map((f) => ({ id: f.id }));
-  ws.resolvedFolderIds = new Set(index.folders.map((f) => f.id));
+  index.foldersKnown = true;
 }
 
 const ROWS = [
@@ -159,6 +164,7 @@ beforeEach(() => {
   presence = new Map();
   canEdit = {};
   nsPerms = { canCreateFolder: true, loading: false };
+  permError = null;
   index.folders = FOLDERS;
   settle(ROWS);
 });
@@ -325,6 +331,27 @@ describe('HomePage', () => {
       expect(screen.queryByText(/owner needs to create/)).toBeNull();
     });
 
+    it('treats a failed permission read as unknown, never as read only', () => {
+      nsPerms = {
+        canCreateFolder: false,
+        loading: false,
+        error: new Error('502'),
+      };
+      index.folders = [];
+      settle([]);
+      const { unmount } = mount();
+      expect(screen.getByText('No folders yet')).toBeTruthy();
+      expect(screen.queryByText(/owner needs to create/)).toBeNull();
+      unmount();
+
+      index.folders = FOLDERS;
+      settle([]);
+      permError = new Error('502');
+      mount('/app/ws1/f/design', 'design');
+      expect(screen.getByText('No documents yet')).toBeTruthy();
+      expect(screen.queryByText(/They show up here/)).toBeNull();
+    });
+
     it('speaks about the folder on an empty folder route, by role', () => {
       settle([]);
       canEdit = { design: true };
@@ -357,24 +384,10 @@ describe('HomePage', () => {
     it('waits for the folder list before saying anything', () => {
       index.folders = [];
       settle([]);
-      ws.registryFolders = null;
+      index.foldersKnown = false;
       mount();
       expect(screen.queryByText('No folders yet')).toBeNull();
       expect(screen.queryByText('No documents yet')).toBeNull();
-    });
-
-    it('keeps the list and filters up while a new folder’s access is checked', () => {
-      const { rerender } = mount();
-      ws.registryFolders = [...ws.registryFolders!, { id: 'fresh' }];
-      rerender(
-        <MemoryRouter initialEntries={['/app/ws1']}>
-          <Routes>
-            <Route path="/app/:ws/*" element={<HomePage />} />
-          </Routes>
-        </MemoryRouter>,
-      );
-      expect(screen.getByText('3 documents across 3 folders')).toBeTruthy();
-      expect(chip(/^Tag$/)).toBeTruthy();
     });
 
     it('claims no count while a folder is still loading', () => {

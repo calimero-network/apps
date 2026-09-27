@@ -99,11 +99,11 @@ function CanCreateProbe({
   folderId: string;
   report: (folderId: string, can: boolean | undefined) => void;
 }) {
-  const { canEditDocs, loading, roleLoading } = useFolderPermissions(
-    namespaceId,
-    folderId,
-  );
-  const can = loading || roleLoading ? undefined : canEditDocs;
+  const perms = useFolderPermissions(namespaceId, folderId);
+  // A failed read is not a role: it stays unknown rather than reading as "viewer".
+  const unknown =
+    perms.loading || perms.roleLoading || !!perms.error || !!perms.roleError;
+  const can = unknown ? undefined : perms.canEditDocs;
   React.useEffect(() => report(folderId, can), [folderId, can, report]);
   React.useEffect(() => () => report(folderId, undefined), [folderId, report]);
   return null;
@@ -134,9 +134,8 @@ function CreateDoc({
 }
 
 export function HomePage({ folderId }: Props) {
-  const { namespaceId, rootGroupId, registryFolders, resolvedFolderIds } =
-    useDriveWorkspace();
-  const { rows, folders, folderStatus, refetchFolder } =
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
+  const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey } = useTags();
   const presence = usePresenceByDoc();
@@ -192,16 +191,6 @@ export function HomePage({ folderId }: Props) {
     (r) => scopeIds.has(r.folderId) && r.archived === q.archived,
   );
 
-  // A restricted folder is withheld until its access check lands, so the first
-  // answer waits for them all; a folder that arrives later must not blank the list.
-  const allResolved =
-    !!registryFolders &&
-    registryFolders.every((f) => resolvedFolderIds.has(f.id));
-  const [settledOnce, setSettledOnce] = React.useState(false);
-  React.useEffect(() => {
-    if (allResolved) setSettledOnce(true);
-  }, [allResolved]);
-  const foldersKnown = !!registryFolders && (allResolved || settledOnce);
   const statusOf = (id: string): FolderIndexStatus =>
     folderStatus[id] ?? 'loading';
   const loading =
@@ -312,11 +301,12 @@ export function HomePage({ folderId }: Props) {
               : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
   const emptyBody = {
-    'no-folders': nsPerms.loading
-      ? null
-      : nsPerms.canCreateFolder
-        ? undefined
-        : NO_FOLDERS_READ_ONLY,
+    'no-folders':
+      nsPerms.loading || nsPerms.error
+        ? null
+        : nsPerms.canCreateFolder
+          ? undefined
+          : NO_FOLDERS_READ_ONLY,
     'no-matches': undefined,
     'no-docs': !folderId
       ? undefined
