@@ -27,6 +27,7 @@ interface Props {
   onSelect: (id: string) => void;
   expanded: Set<string>;
   onToggleExpanded: (id: string) => void;
+  onExpand: (id: string) => void;
   selectedDocId: string | null;
   onOpenDoc: (folderId: string, docId: string) => void;
 }
@@ -38,6 +39,7 @@ export function FolderTreeItem({
   onSelect,
   expanded,
   onToggleExpanded,
+  onExpand,
   selectedDocId,
   onOpenDoc,
 }: Props) {
@@ -69,9 +71,9 @@ export function FolderTreeItem({
   );
 
   const requestNewDoc = useCallback(() => {
-    if (!isExpanded) onToggleExpanded(node.id);
+    onExpand(node.id);
     setNewDocPending(true);
-  }, [isExpanded, onToggleExpanded, node.id]);
+  }, [onExpand, node.id]);
 
   const clearNewDocPending = useCallback(() => setNewDocPending(false), []);
 
@@ -120,7 +122,7 @@ export function FolderTreeItem({
           // Selecting a folder also reveals its contents. Expand-only (not
           // toggle) so clicking an already-open folder doesn't collapse it —
           // the chevron remains the explicit collapse control.
-          if (!isExpanded) onToggleExpanded(node.id);
+          onExpand(node.id);
         }}
       >
         <button
@@ -192,7 +194,7 @@ export function FolderTreeItem({
             currentVisibility={folder.visibility}
             onRename={startRename}
             onNewSubfolder={() => {
-              if (!isExpanded) onToggleExpanded(node.id);
+              onExpand(node.id);
             }}
             onNewDocument={requestNewDoc}
             newDocPending={newDocPending}
@@ -223,6 +225,7 @@ export function FolderTreeItem({
               onSelect={onSelect}
               expanded={expanded}
               onToggleExpanded={onToggleExpanded}
+              onExpand={onExpand}
               selectedDocId={selectedDocId}
               onOpenDoc={onOpenDoc}
             />

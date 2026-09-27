@@ -53,6 +53,10 @@ export function FolderTree({
       return next;
     });
   }, []);
+  // Idempotent, so callers never read a possibly stale `expanded` to decide.
+  const expand = useCallback((id: string) => {
+    setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
 
   const tree = useMemo(
     () => buildTree(folders.map((f) => ({ id: f.id, parent_id: f.parent_id }))),
@@ -128,6 +132,7 @@ export function FolderTree({
               onSelect={onSelectFolder}
               expanded={expanded}
               onToggleExpanded={toggleExpanded}
+              onExpand={expand}
               selectedDocId={selectedDocId}
               onOpenDoc={onOpenDoc}
             />

@@ -38,19 +38,32 @@ vi.mock('../FolderContextMenu', () => ({
   FolderContextMenu: ({
     folderId,
     onNewSubfolder,
+    onNewDocument,
   }: {
     folderId: string;
     onNewSubfolder: () => void;
+    onNewDocument: () => void;
   }) => (
     // The real menu content stops propagation, so the row never sees the click.
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onNewSubfolder();
-      }}
-    >
-      New subfolder in {folderId}
-    </button>
+    <>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onNewSubfolder();
+        }}
+      >
+        New subfolder in {folderId}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onNewDocument();
+          onNewDocument();
+        }}
+      >
+        Two new documents in {folderId}
+      </button>
+    </>
   ),
 }));
 vi.mock('../FolderDocLeaves', () => ({ FolderDocLeaves: () => null }));
@@ -70,6 +83,16 @@ describe('New subfolder', () => {
     render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
     fireEvent.click(screen.getByText('New subfolder in f1'));
     fireEvent.click(screen.getByText('New subfolder in f1'));
+
+    expect(screen.getByText('Child')).toBeTruthy();
+  });
+});
+
+describe('New document', () => {
+  it('keeps the folder expanded when requested twice before a re-render', () => {
+    render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
+
+    fireEvent.click(screen.getByText('Two new documents in f1'));
 
     expect(screen.getByText('Child')).toBeTruthy();
   });
