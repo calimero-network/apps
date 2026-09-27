@@ -8,7 +8,7 @@ import { WorkspaceLayout } from '../WorkspaceLayout';
 
 const workspace = vi.hoisted(() => ({
   namespaces: [{ namespaceId: 'ns' }],
-  namespacesLoading: false,
+  namespacesListed: true,
   isJustJoined: false,
   registryFolders: [{ id: 'f1', parent_id: null, color: null, alias: 'Finance' }] as
     | { id: string; parent_id: string | null; color: string | null; alias?: string | null }[]
@@ -21,8 +21,10 @@ const docs = vi.hoisted(() => ({
   loading: false,
   listed: true,
   contextResolving: false,
+  error: null as Error | null,
 }));
 const useDocsSpy = vi.hoisted(() => vi.fn());
+const docsRefetch = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock('@/hooks/useDriveWorkspace', async () => {
   const { useAppRoute } = await import('@/hooks/useAppRoute');
@@ -30,7 +32,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
     useDriveWorkspace: () => ({
       namespaceId: useAppRoute().route?.ws ?? null,
       namespaces: workspace.namespaces,
-      namespacesLoading: workspace.namespacesLoading,
+      namespacesListed: workspace.namespacesListed,
       isJustJoined: workspace.isJustJoined,
       registryContextId: 'reg',
       selectedFolderId: useAppRoute().route?.folder ?? null,
@@ -55,8 +57,8 @@ vi.mock('@/hooks/useDocs', () => ({
       listed: docs.listed,
       contextResolving: docs.contextResolving,
       contextId: 'ctx',
-      error: null,
-      refetch: vi.fn(),
+      error: docs.error,
+      refetch: docsRefetch,
       create: vi.fn(),
       edit: vi.fn(),
       get: vi.fn(),
@@ -124,7 +126,7 @@ afterEach(() => {
   localStorage.clear();
   useDocsSpy.mockClear();
   workspace.namespaces = [{ namespaceId: 'ns' }];
-  workspace.namespacesLoading = false;
+  workspace.namespacesListed = true;
   workspace.isJustJoined = false;
   workspace.registryFolders = [
     { id: 'f1', parent_id: null, color: null, alias: 'Finance' },
@@ -135,6 +137,8 @@ afterEach(() => {
   docs.loading = false;
   docs.listed = true;
   docs.contextResolving = false;
+  docs.error = null;
+  docsRefetch.mockClear();
 });
 
 describe('WorkspaceLayout: routed target the caller cannot open', () => {
@@ -145,16 +149,16 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(screen.queryByTestId('select-folder')).toBeNull();
   });
 
-  it('does not treat an empty, still-loading namespace list as not-in-workspace', () => {
+  it('does not treat an empty, not yet listed namespace list as not-in-workspace', () => {
     workspace.namespaces = [];
-    workspace.namespacesLoading = true;
+    workspace.namespacesListed = false;
     renderAt('/app/ns');
     expect(screen.queryByText('You are not in this workspace')).toBeNull();
   });
 
-  it('treats a genuinely empty namespace list (loaded) as not-in-workspace', () => {
+  it('treats a genuinely empty namespace list (listed) as not-in-workspace', () => {
     workspace.namespaces = [];
-    workspace.namespacesLoading = false;
+    workspace.namespacesListed = true;
     renderAt('/app/ns');
     expect(screen.getByText('You are not in this workspace')).toBeTruthy();
   });
@@ -191,9 +195,11 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     ).toBeTruthy();
   });
 
-  it('shows the doc-worded deleted card for an unknown doc in a real folder', () => {
+  it('shows the doc-worded deleted card for an unknown doc in a real folder', async () => {
     renderAt('/app/ns/f/f1/d/gone');
-    expect(screen.getByText('This document was deleted or moved')).toBeTruthy();
+    expect(await screen.findByText('This document was deleted or moved')).toBeTruthy();
+    // Only after a fresh read, not straight off the cached list.
+    expect(docsRefetch).toHaveBeenCalledTimes(1);
   });
 
   it('opens the doc once it resolves', async () => {
@@ -212,18 +218,19 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
   });
 
   it('keeps an open doc mounted through a later syncing pulse', async () => {
-    const tree = (
+    // A fresh element each time, so rerender actually re-renders the layout.
+    const tree = () => (
       <MemoryRouter initialEntries={['/app/ns/f/f1/d/doc-1']}>
         <Routes>
           <Route path="/app/*" element={<WorkspaceLayout />} />
         </Routes>
       </MemoryRouter>
     );
-    const { rerender } = render(tree);
+    const { rerender } = render(tree());
     expect(await screen.findByTestId('editor')).toBeTruthy();
     // e.g. registryClient briefly churns identity mid-session.
     docs.listed = false;
-    rerender(tree);
+    rerender(tree());
     expect(screen.getByTestId('editor')).toBeTruthy();
   });
 
@@ -234,8 +241,42 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(screen.getByTestId('url').textContent).toBe('/app');
   });
 
-  it('leaves a deleted folder for workspace Home instead of parking on the dead link', () => {
-    renderAt('/app/ns/f/gone');
-    expect(screen.getByTestId('url').textContent).toBe('/app/ns');
+  it('keeps an absent folder link and shows the folder-worded card', () => {
+    renderAt('/app/ns/f/gone/d/doc-1');
+    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
+    expect(screen.getByTestId('url').textContent).toBe('/app/ns/f/gone/d/doc-1');
+  });
+
+  it('opens an absent folder once this node syncs it', () => {
+    // A fresh element each time, so rerender actually re-renders the layout.
+    const tree = () => (
+      <MemoryRouter initialEntries={['/app/ns/f/late']}>
+        <Routes>
+          <Route path="/app/*" element={<WorkspaceLayout />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const { rerender } = render(tree());
+    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
+    workspace.registryFolders = [
+      { id: 'late', parent_id: null, color: null, alias: 'Late' },
+    ];
+    workspace.resolvedFolderIds = new Set(['late']);
+    rerender(tree());
+    expect(screen.queryByText('This folder was deleted or moved')).toBeNull();
+  });
+
+  it('words the no-access card for a folder link', () => {
+    workspace.hiddenFolderIds = new Set(['f1']);
+    renderAt('/app/ns/f/f1');
+    expect(screen.getByText('Finance is a restricted folder')).toBeTruthy();
+  });
+
+  it('offers Retry after the docs read fails, and it re-reads the docs', () => {
+    docs.listed = false;
+    docs.error = new Error('docs down');
+    renderAt('/app/ns/f/f1/d/doc-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }));
+    expect(docsRefetch).toHaveBeenCalledTimes(1);
   });
 });

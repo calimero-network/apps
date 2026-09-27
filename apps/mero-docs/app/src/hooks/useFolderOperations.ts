@@ -166,11 +166,9 @@ export function useFolderOperations(
               ? null
               : FolderId(input.parentGroupId),
           color: input.color ?? null,
-          // Folder names come from core group metadata's `name` (list
-          // rows carry it as of #2338); the registry's `alias` field
-          // is kept readable for back-compat but is no longer
-          // written.
-          alias: null,
+          // Mirrors the group name for members who can't read a restricted
+          // folder's metadata, so a link card can still name it.
+          alias: input.alias,
         });
         registryEntryCreated = true;
 
@@ -271,13 +269,13 @@ export function useFolderOperations(
   const rename = useCallback(
     async (folderId: string, alias: string) => {
       if (!mero) throw new Error('workspace not connected');
-      // Folder names live in core group metadata (`metadata.name`) and
-      // are visible to every namespace member on the list rows as of
-      // #2338 — no registry alias mirror needed anymore.
+      if (!registryClient) throw new Error('registry not ready');
       await mero.admin.setGroupMetadata(folderId, { name: alias });
+      // Keep the registry mirror (see create) in step with the group name.
+      await registryClient.setFolderAlias({ id: FolderId(folderId), alias });
       await refetch();
     },
-    [mero, refetch],
+    [mero, registryClient, refetch],
   );
 
   const remove = useCallback(

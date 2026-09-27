@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
 import { DriveWorkspaceProvider, useDriveWorkspace } from '../useDriveWorkspace';
 
 const stub = vi.hoisted(() => {
@@ -14,6 +14,7 @@ const stub = vi.hoisted(() => {
     mero: { mero: null, applicationId: 'app', isAuthenticated: true, isLoading: false },
     namespaces: {
       namespaces: [{ namespaceId: 'ns1' }, { namespaceId: 'ns2' }],
+      listed: true,
       loading: false,
       error: null,
       refetch,
@@ -23,7 +24,6 @@ const stub = vi.hoisted(() => {
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => stub.mero,
-  useNamespacesForApplication: () => stub.namespaces,
   useGroupContexts: () => ({ contexts: stub.none, loading: false, refetch: stub.refetch }),
   useGroupInfo: () => ({ groupInfo: null, loading: false }),
   useGroupMembers: () => ({ members: stub.none, loading: false, refetch: stub.refetch }),
@@ -31,6 +31,9 @@ vi.mock('@calimero-network/mero-react', () => ({
   useSetGroupMetadata: () => ({ setGroupMetadata: stub.refetch }),
   useNodeIdentity: () => ({ identity: null, loading: false }),
   useSubgroups: () => ({ subgroups: stub.none, loading: false, refetch: stub.refetch }),
+}));
+vi.mock('../useAppNamespaces', () => ({
+  useAppNamespaces: () => stub.namespaces,
 }));
 vi.mock('../useApplicationId', () => ({
   useApplicationId: () => ({
@@ -47,11 +50,14 @@ vi.mock('../useSyncStatus', () => ({ useSyncStatus: () => null }));
 vi.mock('../useContextEvents', () => ({ useContextEvents: () => {} }));
 
 function Probe() {
-  const { selectNamespace } = useDriveWorkspace();
+  const { selectNamespace, setSelectedFolder } = useDriveWorkspace();
   const { pathname } = useLocation();
+  const navigationType = useNavigationType();
   return (
     <>
       <output data-testid="url">{pathname}</output>
+      <output data-testid="nav">{navigationType}</output>
+      <button onClick={() => setSelectedFolder(null, { replace: true })}>leave</button>
       <button onClick={() => selectNamespace('ns1')}>ns1</button>
       <button onClick={() => selectNamespace('ns2')}>ns2</button>
     </>
@@ -83,6 +89,13 @@ describe('useDriveWorkspace and the URL', () => {
     renderAt('/app/ns1/f/f1/d/doc-1');
     fireEvent.click(screen.getByRole('button', { name: 'ns1' }));
     expect(url()).toBe('/app/ns1/f/f1/d/doc-1');
+  });
+
+  it('leaving a folder with replace lands on workspace Home in its place', () => {
+    renderAt('/app/ns1/f/f1/d/doc-1');
+    fireEvent.click(screen.getByRole('button', { name: 'leave' }));
+    expect(url()).toBe('/app/ns1');
+    expect(screen.getByTestId('nav').textContent).toBe('REPLACE');
   });
 
   it('picking another workspace opens its Home', () => {

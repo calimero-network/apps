@@ -38,14 +38,20 @@ test.describe('Deep-link cards (single-node)', () => {
     await expect.poll(() => pathOf(alice.page)).toBe(home);
   });
 
-  test('a link to an unknown folder leaves for workspace Home', async ({
+  test('a link to an unknown folder keeps its URL and shows the folder-worded card', async ({
     alice,
   }) => {
     const home = homePathOf(alice.page);
+    const link = `${home}/f/does-not-exist/d/does-not-exist`;
 
-    await alice.page.goto(`${home}/f/does-not-exist`);
+    await alice.page.goto(link);
 
-    await expect.poll(() => pathOf(alice.page), { timeout: 30_000 }).toBe(home);
+    await expect(
+      alice.page.getByText('This folder was deleted or moved'),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(pathOf(alice.page)).toBe(link);
+    await alice.page.getByRole('button', { name: 'Go to Home' }).click();
+    await expect.poll(() => pathOf(alice.page)).toBe(home);
   });
 
   test('a link to a workspace this node is not in shows the not-in-workspace card', async ({

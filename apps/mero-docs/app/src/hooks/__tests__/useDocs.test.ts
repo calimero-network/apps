@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useDocs } from '../useDocs';
 
 // Regression layer for useDocs — the docs facade for a folder. The
@@ -19,6 +19,10 @@ const docsClientStub = {
   getDoc: vi.fn(),
   deleteDoc: vi.fn(),
 };
+// Per-context clients for tests that switch folders; others share the stub.
+const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
+const workspace = { selfIdentity: 'me' as string | null };
+const registryClient = { getFolderContext }; // stable, like the provider's memoized client
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
@@ -26,18 +30,25 @@ vi.mock('@calimero-network/mero-react', () => ({
 }));
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
-    registryClient: { getFolderContext },
-    selfIdentity: 'me',
+    registryClient,
+    selfIdentity: workspace.selfIdentity,
   }),
 }));
 // A client only once a context id has resolved — mirrors the real
 // useDocsClient so `refetch` doesn't fire before the context is known.
 vi.mock('../useDocsClient', () => ({
-  useDocsClient: (ctxId: string | null) => (ctxId ? docsClientStub : null),
+  useDocsClient: (ctxId: string | null, identity: string | null) =>
+    ctxId && identity ? (clientsByContext.get(ctxId) ?? docsClientStub) : null,
 }));
 vi.mock('../useDocEvents', () => ({
   useDocEvents: () => undefined,
 }));
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 const OWNED_IDENTITY_ERR = 'No owned identity found for this context';
 
@@ -59,6 +70,8 @@ function rpcFunctionCallError(data: string): Error {
 describe('useDocs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clientsByContext.clear();
+    workspace.selfIdentity = 'me';
     getFolderContext.mockResolvedValue('docs-ctx-1');
     listDocs.mockResolvedValue([]);
     joinContext.mockResolvedValue({});
@@ -112,6 +125,43 @@ describe('useDocs', () => {
     expect(listDocs).not.toHaveBeenCalled();
   });
 
+  it('a refetch asked for mid-read settles only on a read that began after it', async () => {
+    const first = deferred<{ id: string; title: string; updated_at: number }[]>();
+    const second = deferred<{ id: string; title: string; updated_at: number }[]>();
+    listDocs.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(listDocs).toHaveBeenCalledTimes(1));
+    let settled = false;
+    const asked = result.current.refetch().then(() => (settled = true));
+    await act(async () => first.resolve([{ id: 'old', title: 'Old', updated_at: 1 }]));
+    expect(settled).toBe(false);
+    await waitFor(() => expect(listDocs).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      second.resolve([
+        { id: 'old', title: 'Old', updated_at: 1 },
+        { id: 'new', title: 'New', updated_at: 2 },
+      ]);
+      await asked;
+    });
+    expect(result.current.list.map((d) => d.id)).toEqual(['new', 'old']);
+  });
+
+  it('shares one context join between instances that both lack an identity', async () => {
+    const join = deferred<object>();
+    joinContext.mockReturnValue(join.promise);
+    listDocs
+      .mockRejectedValueOnce(rpcFunctionCallError(OWNED_IDENTITY_ERR))
+      .mockRejectedValueOnce(rpcFunctionCallError(OWNED_IDENTITY_ERR))
+      .mockResolvedValue([{ id: 'd1', title: 'Alpha', updated_at: 1 }]);
+    const { result: first } = renderHook(() => useDocs('folder-1'));
+    const { result: second } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(listDocs).toHaveBeenCalledTimes(2));
+    await act(async () => join.resolve({}));
+    await waitFor(() => expect(first.current.list).toHaveLength(1));
+    await waitFor(() => expect(second.current.list).toHaveLength(1));
+    expect(joinContext).toHaveBeenCalledTimes(1);
+  });
+
   it('with no folder selected → empty list, not loading', async () => {
     const { result } = renderHook(() => useDocs(null));
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -138,6 +188,63 @@ describe('useDocs', () => {
       const { result } = renderHook(() => useDocs('folder-1'));
       await waitFor(() => expect(result.current.error).not.toBeNull());
       expect(result.current.listed).toBe(false);
+    });
+
+    it('is false while a bound folder has no client yet (no identity)', async () => {
+      workspace.selfIdentity = null;
+      const { result } = renderHook(() => useDocs('folder-1'));
+      await waitFor(() => expect(result.current.contextId).toBe('docs-ctx-1'));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.listed).toBe(false);
+    });
+
+    it('lists a newly selected folder even while the previous read is in flight', async () => {
+      const slow = deferred<{ id: string; title: string; updated_at: number }[]>();
+      clientsByContext.set('ctx-a', { listDocs: vi.fn(() => slow.promise) });
+      clientsByContext.set('ctx-b', {
+        listDocs: vi.fn().mockResolvedValue([{ id: 'b1', title: 'B', updated_at: 1 }]),
+      });
+      getFolderContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
+        Promise.resolve(folder_id === 'a' ? 'ctx-a' : 'ctx-b'),
+      );
+      const { result, rerender } = renderHook(({ f }) => useDocs(f), {
+        initialProps: { f: 'a' },
+      });
+      await waitFor(() => expect(result.current.contextId).toBe('ctx-a'));
+      rerender({ f: 'b' });
+      await waitFor(() => expect(result.current.listed).toBe(true));
+      expect(result.current.list.map((d) => d.id)).toEqual(['b1']);
+      // The first folder's late answer must not overwrite the current one.
+      await act(async () => slow.resolve([{ id: 'a1', title: 'A', updated_at: 1 }]));
+      expect(result.current.list.map((d) => d.id)).toEqual(['b1']);
+    });
+
+    it('re-lists a folder revisited through an unbound one', async () => {
+      clientsByContext.set('ctx-a', {
+        listDocs: vi.fn().mockResolvedValue([{ id: 'a1', title: 'A', updated_at: 1 }]),
+      });
+      getFolderContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
+        Promise.resolve(folder_id === 'a' ? 'ctx-a' : null),
+      );
+      const { result, rerender } = renderHook(({ f }) => useDocs(f), {
+        initialProps: { f: 'a' },
+      });
+      await waitFor(() => expect(result.current.list).toHaveLength(1));
+      rerender({ f: 'unbound' });
+      await waitFor(() => expect(result.current.listed).toBe(true));
+      expect(result.current.list).toEqual([]);
+      rerender({ f: 'a' });
+      await waitFor(() => expect(result.current.listed).toBe(true));
+      expect(result.current.list.map((d) => d.id)).toEqual(['a1']);
+    });
+
+    it('re-reads the docs context when retried after that read failed', async () => {
+      getFolderContext.mockRejectedValueOnce(new Error('registry down'));
+      const { result } = renderHook(() => useDocs('folder-1'));
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      await result.current.refetch();
+      await waitFor(() => expect(result.current.listed).toBe(true));
+      expect(getFolderContext).toHaveBeenCalledTimes(2);
     });
 
     it('stays false when the docs-context resolution itself fails', async () => {

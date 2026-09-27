@@ -64,7 +64,7 @@ export function WorkspaceLayout() {
   const {
     namespaceId,
     namespaces,
-    namespacesLoading,
+    namespacesListed,
     isJustJoined,
     registryContextId,
     selectedFolderId,
@@ -121,10 +121,10 @@ export function WorkspaceLayout() {
   const showSettings = !!route?.settings;
   const navigate = useNavigate();
 
-  // Workspace ids this node belongs to; null while that list is loading.
+  // Workspace ids this node belongs to; null until that list is a real answer.
   const namespaceIds = useMemo(
-    () => (namespacesLoading ? null : namespaces.map((n) => n.namespaceId)),
-    [namespacesLoading, namespaces],
+    () => (namespacesListed ? namespaces.map((n) => n.namespaceId) : null),
+    [namespacesListed, namespaces],
   );
   // Only fetched once access is confirmed open, so a hidden folder never
   // attempts a context join it has no right to. Archived still counts as existing.
@@ -135,6 +135,32 @@ export function WorkspaceLayout() {
   const routedDocs = useDocs(folderAccessible ? selectedFolderId : null, {
     includeArchived: true,
   });
+  const refetchDocs = routedDocs.refetch;
+  const docKey =
+    selectedFolderId && selectedDocId
+      ? `${selectedFolderId}:${selectedDocId}`
+      : null;
+  const docMissing =
+    routedDocs.listed &&
+    !!selectedDocId &&
+    !routedDocs.list.some((d) => d.id === selectedDocId);
+  // The cached list can predate a doc made or synced moments ago, so only a
+  // read that began after the doc was opened may report it gone.
+  const [recheckedDocKey, setRecheckedDocKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!docMissing || !docKey || recheckedDocKey === docKey) return;
+    let alive = true;
+    void refetchDocs().then(() => {
+      if (alive) setRecheckedDocKey(docKey);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [docMissing, docKey, recheckedDocKey, refetchDocs]);
+  const docsAnswer =
+    routedDocs.listed && (!docMissing || recheckedDocKey === docKey)
+      ? routedDocs.list
+      : null;
   const linkTarget = useMemo(
     () =>
       resolveLinkTarget({
@@ -144,7 +170,7 @@ export function WorkspaceLayout() {
         folderRegistry: registryFolders,
         resolvedFolderIds,
         hiddenFolderIds,
-        docs: routedDocs.listed ? routedDocs.list : null,
+        docs: docsAnswer,
       }),
     [
       route,
@@ -153,31 +179,24 @@ export function WorkspaceLayout() {
       registryFolders,
       resolvedFolderIds,
       hiddenFolderIds,
-      routedDocs.listed,
-      routedDocs.list,
+      docsAnswer,
     ],
   );
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
-  // 'deleted' covers two absences: the folder itself (or an ancestor) is
-  // gone, or the folder is fine and just its doc is gone.
-  const deletedKind = routedFolder ? 'doc' : 'folder';
+  // A card is about the doc only when its folder is known; an absent folder
+  // keeps its URL so it opens by itself if this node later syncs it.
+  const linkSubject = routedFolder && selectedDocId ? 'doc' : 'folder';
   const onLinkTargetGoHome = useCallback(
     () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
     [linkTarget, goWorkspace, goHome],
   );
-  // A deleted folder leaves nothing to stay on; leave for Home rather than
-  // parking on the dead link. A deleted DOC keeps the still-valid folder.
-  useEffect(() => {
-    if (linkTarget === 'deleted' && deletedKind === 'folder') {
-      goWorkspace(namespaceId, { replace: true });
-    }
-  }, [linkTarget, deletedKind, namespaceId, goWorkspace]);
+  const docsFailed = linkTarget === 'syncing' && !!routedDocs.error;
+  const onRetryLinkTarget = useCallback(() => {
+    onRetrySync();
+    void refetchDocs();
+  }, [onRetrySync, refetchDocs]);
   // Once a doc has genuinely opened, a later 'syncing' pulse must not
   // unmount it mid-edit; only a definitive outcome (branch above) does.
-  const docKey =
-    selectedFolderId && selectedDocId
-      ? `${selectedFolderId}:${selectedDocId}`
-      : null;
   const [openedDocKey, setOpenedDocKey] = useState<string | null>(null);
   useEffect(() => {
     if (docKey && linkTarget === 'ok') setOpenedDocKey(docKey);
@@ -338,7 +357,7 @@ export function WorkspaceLayout() {
             <div className="flex h-full items-center justify-center p-6">
               <LinkTargetCard
                 kind={linkTarget}
-                deletedKind={deletedKind}
+                subject={linkSubject}
                 folderName={routedFolder?.alias}
                 onGoHome={onLinkTargetGoHome}
                 linkUrl={window.location.href}
@@ -374,7 +393,8 @@ export function WorkspaceLayout() {
           ) : stage === 'syncing-from-peers' || linkTarget === 'syncing' ? (
             <SyncingWorkspaceState
               syncStatus={syncStatus}
-              onRetry={onRetrySync}
+              failed={docsFailed}
+              onRetry={docsFailed ? onRetryLinkTarget : onRetrySync}
             />
           ) : !selectedFolderId ? (
             <SelectFolderState />
@@ -462,16 +482,19 @@ function describeSync(snap: SyncSnapshot | null): {
 // until the first SyncStatus event arrives.
 function SyncingWorkspaceState({
   syncStatus,
+  failed,
   onRetry,
 }: {
   syncStatus: SyncSnapshot | null;
+  /** A read this screen waits on failed, so waiting longer won't help. */
+  failed: boolean;
   onRetry: () => void;
 }) {
   const phase = syncStatus?.phase;
   // `backingOff` is the authoritative "stuck" signal. A `lastError` can
   // linger on the wire during an active phase, so it must NOT hide the
   // spinner / show Retry — it's rendered separately as informational text.
-  const stalled = phase === 'backingOff';
+  const stalled = failed || phase === 'backingOff';
   const percent = phase === 'receivingSnapshot' ? syncStatus?.percent : null;
   const { title, body } = describeSync(syncStatus);
 

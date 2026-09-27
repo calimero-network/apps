@@ -48,7 +48,6 @@ import {
 } from 'react';
 import {
   useMero,
-  useNamespacesForApplication,
   useGroupContexts,
   useGroupInfo,
   useGroupMembers,
@@ -64,6 +63,7 @@ import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
+import { useAppNamespaces } from './useAppNamespaces';
 import { useAppRoute } from './useAppRoute';
 import {
   deriveDriveStage,
@@ -185,9 +185,9 @@ export interface DriveWorkspaceState {
 
   // namespace list + selection
   namespaces: Namespace[];
-  /** True until the namespace list read has settled; an empty `namespaces`
-   *  while this is true is not yet a definitive "no workspaces". */
-  namespacesLoading: boolean;
+  /** True once `namespaces` is a successful read for the current app id;
+   *  before that (or after a failed read) an absent id proves nothing. */
+  namespacesListed: boolean;
   /** True while the selected workspace is a fresh join not yet reflected
    *  elsewhere (namespace list, registry). */
   isJustJoined: boolean;
@@ -238,7 +238,7 @@ export interface DriveWorkspaceState {
 
   // selected folder (from the URL)
   selectedFolderId: string | null;
-  setSelectedFolder: (id: string | null) => void;
+  setSelectedFolder: (id: string | null, opts?: { replace?: boolean }) => void;
 
   // status
   loading: boolean;
@@ -295,10 +295,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Namespace list + persisted selection ---
   const {
     namespaces: rawNamespaces,
+    listed: namespacesListed,
     loading: nsLoading,
     error: nsError,
     refetch: refetchNamespaces,
-  } = useNamespacesForApplication(applicationId ?? undefined);
+  } = useAppNamespaces(applicationId);
 
   // `listNamespacesForApplication` omits a namespace's `name` until the
   // node has synced its root-group metadata — which lags a join by a
@@ -1126,7 +1127,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   const selectedFolderId = route?.folder ?? null;
   const setSelectedFolder = useCallback(
-    (id: string | null) => (id ? goFolder(id) : goHome()),
+    (id: string | null, opts?: { replace?: boolean }) =>
+      id ? goFolder(id, opts) : goHome(undefined, opts),
     [goFolder, goHome],
   );
   // Raw registry rows, unfiltered by access; null until the first load
@@ -1493,7 +1495,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       namespaceMemberNames,
 
       namespaces,
-      namespacesLoading: nsLoading,
+      namespacesListed,
       isJustJoined,
       selectedNamespaceId: selectedNsId,
       namespaceId: selectedNsId,
@@ -1530,7 +1532,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       selfIdentity,
       namespaceMemberNames,
       namespaces,
-      nsLoading,
+      namespacesListed,
       isJustJoined,
       selectedNsId,
       rootGroupId,

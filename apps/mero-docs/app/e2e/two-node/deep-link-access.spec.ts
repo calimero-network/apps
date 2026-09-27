@@ -1,6 +1,5 @@
-// A link into a restricted folder shows a card naming it instead of
-// silently dropping the visitor on Home; the same link opens the doc once
-// the folder owner adds them.
+// A link into a restricted folder shows a card naming it; the same link
+// opens the doc once the folder owner adds the visitor.
 
 import { test, expect } from '../fixtures/two-user';
 

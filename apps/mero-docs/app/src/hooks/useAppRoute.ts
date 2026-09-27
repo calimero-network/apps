@@ -38,8 +38,8 @@ export function useAppRoute() {
   );
   // Screens inside a workspace are no-ops until the URL names one.
   const goHome = useCallback(
-    (homeSearch?: string) => {
-      if (ws) go({ ws }, { search: homeSearch });
+    (homeSearch?: string, opts: { replace?: boolean } = {}) => {
+      if (ws) go({ ws }, { search: homeSearch, replace: opts.replace });
     },
     [go, ws],
   );

@@ -30,11 +30,10 @@ test.describe('Visibility toggle (two-node)', () => {
     await alice.toggleVisibility('Mutable');
 
     // Restricted folders are hidden from non-members, so once the op reaches
-    // Bob's node the folder leaves his tree and his pane drops the selection,
-    // leaving him with no folders at all.
+    // Bob's node the folder leaves his tree and his open link says why.
     await bob.tree.expectFolderHidden('Mutable', { timeout: 60_000 });
     await expect(
-      bob.page.getByRole('heading', { name: 'No folders yet' }),
+      bob.page.getByRole('heading', { name: 'Mutable is a restricted folder' }),
     ).toBeVisible({ timeout: 15_000 });
   });
 

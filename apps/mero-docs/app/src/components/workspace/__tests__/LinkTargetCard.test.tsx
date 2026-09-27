@@ -37,6 +37,24 @@ describe('LinkTargetCard', () => {
     ).toBeTruthy();
   });
 
+  it('words no-access for a folder link without naming a document', () => {
+    render(
+      <LinkTargetCard
+        kind="no-access"
+        subject="folder"
+        folderName="Finance"
+        onGoHome={vi.fn()}
+        linkUrl="https://x/f"
+      />,
+    );
+    expect(screen.getByText('Finance is a restricted folder')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'You are not a member yet. Ask a folder manager to add you, then open this link again.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('shows the doc-worded deleted copy by default', () => {
     render(<LinkTargetCard kind="deleted" onGoHome={vi.fn()} linkUrl="https://x/doc" />);
     expect(screen.getByText('This document was deleted or moved')).toBeTruthy();
@@ -46,7 +64,7 @@ describe('LinkTargetCard', () => {
     render(
       <LinkTargetCard
         kind="deleted"
-        deletedKind="folder"
+        subject="folder"
         onGoHome={vi.fn()}
         linkUrl="https://x/doc"
       />,

@@ -30,6 +30,7 @@ vi.mock('@calimero-network/mero-react', () => ({
 function makeRegistry() {
   return {
     registerFolder: vi.fn().mockResolvedValue(undefined),
+    setFolderAlias: vi.fn().mockResolvedValue(undefined),
     bindFolderContext: vi.fn().mockResolvedValue(undefined),
     unregisterFolder: vi.fn().mockResolvedValue(undefined),
     getFolderContext: vi.fn(),
@@ -85,6 +86,22 @@ describe('useFolderOperations.create - members', () => {
     expect(addGroupMembers.mock.invocationCallOrder[0]).toBeLessThan(
       refetch.mock.invocationCallOrder[0],
     );
+  });
+
+  it('records the name in the registry, so a no-access card can name the folder', async () => {
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Finance',
+      visibility: 'Restricted',
+    });
+    expect(
+      (registry as unknown as { registerFolder: ReturnType<typeof vi.fn> }).registerFolder,
+    ).toHaveBeenCalledWith(expect.objectContaining({ alias: 'Finance' }));
   });
 
   it('does not call addGroupMembers when no members are given', async () => {
@@ -200,6 +217,17 @@ describe('useFolderOperations.rename', () => {
     await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
     expect(setGroupMetadata).toHaveBeenCalledWith('f1', { name: 'New name' });
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it('mirrors the new name into the registry for members who cannot read the folder', async () => {
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.rename('f1', 'New name');
+    expect(
+      (registry as unknown as { setFolderAlias: ReturnType<typeof vi.fn> }).setFolderAlias,
+    ).toHaveBeenCalledWith({ id: 'f1', alias: 'New name' });
   });
 });
 

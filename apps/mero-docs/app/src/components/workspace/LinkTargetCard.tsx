@@ -18,8 +18,8 @@ const ICONS = {
 
 interface Props {
   kind: LinkTargetCardKind;
-  /** For 'deleted': whether the folder itself is gone, or just the doc in it. */
-  deletedKind?: 'folder' | 'doc';
+  /** Whether the link names a doc, or only a folder. */
+  subject?: 'folder' | 'doc';
   /** Folder name for the 'no-access' copy; falls back when unknown. */
   folderName?: string | null;
   onGoHome: () => void;
@@ -28,20 +28,27 @@ interface Props {
 
 function copyFor(
   kind: LinkTargetCardKind,
-  deletedKind: 'folder' | 'doc',
+  subject: 'folder' | 'doc',
   folderName?: string | null,
 ): { title: string; body: string } {
   switch (kind) {
     case 'no-access': {
       const name = folderName?.trim();
-      const subject = name || 'This folder';
+      const askToJoin =
+        'Ask a folder manager to add you, then open this link again.';
+      if (subject === 'folder') {
+        return {
+          title: `${name || 'This'} is a restricted folder`,
+          body: `You are not a member yet. ${askToJoin}`,
+        };
+      }
       return {
         title: `This document is in ${name || RESTRICTED_FOLDER_FALLBACK}`,
-        body: `${subject} is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.`,
+        body: `${name || 'This folder'} is a restricted folder, and you are not a member yet. ${askToJoin}`,
       };
     }
     case 'deleted':
-      return deletedKind === 'folder'
+      return subject === 'folder'
         ? {
             title: 'This folder was deleted or moved',
             body: "It's no longer at this link.",
@@ -60,12 +67,12 @@ function copyFor(
 
 export function LinkTargetCard({
   kind,
-  deletedKind = 'doc',
+  subject = 'doc',
   folderName,
   onGoHome,
   linkUrl,
 }: Props) {
-  const { title, body } = copyFor(kind, deletedKind, folderName);
+  const { title, body } = copyFor(kind, subject, folderName);
   const Icon = ICONS[kind];
   return (
     <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">

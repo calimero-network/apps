@@ -35,6 +35,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { folderLabel } from '@/lib/folderLabel';
+import { ancestorsOf } from '@/utils/ancestry';
 import { FolderInfoPanel } from './FolderInfoPanel';
 import { NewFolderDialog } from './NewFolderDialog';
 
@@ -68,6 +69,9 @@ export function FolderContextMenu({
     applicationId,
     refetch,
     folders,
+    allFolderNodes,
+    selectedFolderId,
+    setSelectedFolder,
   } = useDriveWorkspace();
 
   const folder = folders.find((f) => f.id === folderId);
@@ -101,8 +105,15 @@ export function FolderContextMenu({
       destructive: true,
     });
     if (!ok) return;
+    // Read before the delete: the open folder may be this one or inside it.
+    const leavesOpenFolder =
+      !!selectedFolderId &&
+      (selectedFolderId === folderId ||
+        ancestorsOf(allFolderNodes, selectedFolderId).includes(folderId));
     try {
       await ops.remove(folderId);
+      // Its URL is dead now, so it must not stay in history.
+      if (leavesOpenFolder) setSelectedFolder(null, { replace: true });
     } catch (e: unknown) {
       console.error('folder delete failed', e);
       toast.error("Couldn't delete folder");

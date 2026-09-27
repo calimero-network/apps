@@ -86,6 +86,21 @@ function notifyDocsRefetch(contextId: string | null) {
   for (const fn of bucket) fn();
 }
 
+// One self-heal join per docs context at a time, shared by every instance
+// that hits the missing identity together, so they never race each other.
+const healsByContext = new Map<string, Promise<unknown>>();
+function healContext(
+  contextId: string,
+  join: (id: string) => Promise<unknown>,
+): Promise<unknown> {
+  let heal = healsByContext.get(contextId);
+  if (!heal) {
+    heal = join(contextId).finally(() => healsByContext.delete(contextId));
+    healsByContext.set(contextId, heal);
+  }
+  return heal;
+}
+
 // core's `execute` (jsonrpc/execute.rs) rejects with this when the
 // node holds no owned `ContextIdentity` for the target context.
 //
@@ -150,7 +165,13 @@ export function useDocs(
   // folders pre-Phase-7), the hook surfaces contextId=null and
   // loading=false rather than retrying — the UI decides whether to
   // show an empty-state or force a reconcile.
+  // The folder whose context read last succeeded; a null contextId only
+  // means "unbound" when this matches the current folder.
+  const [resolvedFolder, setResolvedFolder] = useState<string | null>(null);
+  // Bumped by an explicit retry after a failed context read.
+  const [resolveAttempt, setResolveAttempt] = useState(0);
   useEffect(() => {
+    setResolvedFolder(null);
     if (!registryClient || !folderId) {
       setContextId(null);
       setResolveError(null);
@@ -164,7 +185,9 @@ export function useDocs(
     registryClient
       .getFolderContext({ folder_id: FolderId(folderId) })
       .then((ctxId) => {
-        if (alive) setContextId(ctxId ?? null);
+        if (!alive) return;
+        setContextId(ctxId ?? null);
+        setResolvedFolder(folderId);
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -178,22 +201,29 @@ export function useDocs(
     return () => {
       alive = false;
     };
-  }, [registryClient, folderId]);
+  }, [registryClient, folderId, resolveAttempt]);
 
   const docsClient = useDocsClient(contextId, identity);
 
   const [list, setList] = useState<DocDto[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(true);
   const [listError, setListError] = useState<Error | null>(null);
-  // The client `list` reflects a completed read for, or 'none' for a
-  // confirmed unbound folder; a folder switch hands a new client before
-  // `list` is overwritten, so a raw `!loading` alone is not enough.
-  const [listedFor, setListedFor] = useState<DocsClient | 'none' | null>(
-    null,
-  );
-  // Guards `refetch` from double-fetching under Strict Mode
-  // double-mount + useDocEvents firing on the same tick.
-  const inFlightRef = useRef(false);
+  // What `list` is a completed read of: a folder's client, or null for a
+  // folder confirmed unbound. Anything else is a read still to come.
+  const [listedFor, setListedFor] = useState<{
+    folderId: string;
+    client: DocsClient | null;
+  } | null>(null);
+  // The client's read in flight. A refetch asked for meanwhile joins it and
+  // queues one more read, so its answer always postdates the ask.
+  const readRef = useRef<{
+    client: DocsClient;
+    again: boolean;
+    done: Promise<void>;
+  } | null>(null);
+  // The current client, so a read that lands after a folder switch is dropped.
+  const clientRef = useRef<DocsClient | null>(null);
+  clientRef.current = docsClient;
   // Last rendered list signature — lets refetch skip a no-op setList when
   // an SSE-driven refetch returns visually-identical data (diff-guard).
   const lastListSigRef = useRef<string>('');
@@ -204,81 +234,114 @@ export function useDocs(
     if (contextResolving) return;
     if (!docsClient) {
       setList([]);
+      lastListSigRef.current = '';
       setListLoading(false);
-      // A resolution error is not a confirmed "no docs"; leave unlisted.
-      if (!resolveError) setListedFor('none');
+      if (folderId && resolvedFolder === folderId && !contextId) {
+        setListedFor({ folderId, client: null });
+      }
       return;
     }
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-    setListError(null);
-    try {
-      let result: DocDto[];
-      try {
-        result = await docsClient.listDocs({ include_archived: includeArchived });
-      } catch (e) {
-        // Self-heal. A node can be a folder-SUBGROUP member without an
-        // owned identity in the docs CONTEXT: core's join-via-
-        // inheritance is subgroup-scoped and never provisions a
-        // child-context `ContextIdentity` (see RestrictedFolderCard +
-        // core `join_context.rs`). RestrictedFolderCard joins the
-        // context proactively, but that card only renders for non-
-        // members — a node that became a subgroup member by any other
-        // path (or before that card existed) has no way to trigger the
-        // context join. So when `list_docs` reports the missing
-        // identity, join the docs context once and retry. core's
-        // join_context persists the identity, so this heal runs at
-        // most once per context per node, ever.
-        if (
-          contextId &&
-          healedContextRef.current !== contextId &&
-          isMissingOwnedIdentityError(e)
-        ) {
-          healedContextRef.current = contextId;
-          // One-time recovery breadcrumb. If `joinContext` throws it
-          // propagates to the outer catch and surfaces as `error`,
-          // same as any other list failure.
-          console.warn(
-            '[useDocs] docs context has no owned identity — ' +
-              'self-healing via joinContext',
-            contextId,
-          );
-          await joinContextRef.current(contextId);
-          result = await docsClient.listDocs({ include_archived: includeArchived });
-        } else {
-          throw e;
-        }
-      }
-      // Sort most-recent first so the list's default cursor lands
-      // on what the user likely wants to read.
-      result.sort((a, b) => b.updated_at - a.updated_at);
-      // Diff-guard: only push new state when the rendered signature differs, so
-      // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
-      // updated_at — the list shows title + structure, not timestamps, so a
-      // remote CONTENT edit (which only bumps updated_at) must NOT re-render
-      // the other window's folder pane. Structural changes (create / delete /
-      // rename / archive) still change the signature and refresh. Trade-off:
-      // most-recent-first order re-sorts on the next structural change, not live
-      // on content edits — the desired stable behaviour.
-      const sig = result
-        .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
-        .join('|');
-      if (sig !== lastListSigRef.current) {
-        lastListSigRef.current = sig;
-        setList(result);
-      }
-      setListLoading(false);
-      setListedFor(docsClient);
-    } catch (e: unknown) {
-      // A failed read leaves `listedFor` as-is: a prior success for this
-      // same client still stands; otherwise this stays unlisted.
-      const err = e instanceof Error ? e : new Error(String(e));
-      setListError(err);
-      setListLoading(false);
-    } finally {
-      inFlightRef.current = false;
+    const pending = readRef.current;
+    if (pending?.client === docsClient) {
+      pending.again = true;
+      return pending.done;
     }
-  }, [docsClient, contextId, contextResolving, resolveError, includeArchived]);
+    const stale = () => clientRef.current !== docsClient;
+    const readList = async () => {
+      setListError(null);
+      try {
+        let result: DocDto[];
+        try {
+          result = await docsClient.listDocs({ include_archived: includeArchived });
+        } catch (e) {
+          // Self-heal. A node can be a folder-SUBGROUP member without an
+          // owned identity in the docs CONTEXT: core's join-via-
+          // inheritance is subgroup-scoped and never provisions a
+          // child-context `ContextIdentity` (see RestrictedFolderCard +
+          // core `join_context.rs`). RestrictedFolderCard joins the
+          // context proactively, but that card only renders for non-
+          // members — a node that became a subgroup member by any other
+          // path (or before that card existed) has no way to trigger the
+          // context join. So when `list_docs` reports the missing
+          // identity, join the docs context once and retry. core's
+          // join_context persists the identity, so this heal runs at
+          // most once per context per node, ever.
+          if (
+            contextId &&
+            healedContextRef.current !== contextId &&
+            isMissingOwnedIdentityError(e)
+          ) {
+            healedContextRef.current = contextId;
+            // One-time recovery breadcrumb. If `joinContext` throws it
+            // propagates to the outer catch and surfaces as `error`,
+            // same as any other list failure.
+            console.warn(
+              '[useDocs] docs context has no owned identity — ' +
+                'self-healing via joinContext',
+              contextId,
+            );
+            await healContext(contextId, joinContextRef.current);
+            result = await docsClient.listDocs({ include_archived: includeArchived });
+          } else {
+            throw e;
+          }
+        }
+        if (stale()) return;
+        // Sort most-recent first so the list's default cursor lands
+        // on what the user likely wants to read.
+        result.sort((a, b) => b.updated_at - a.updated_at);
+        // Diff-guard: only push new state when the rendered signature differs, so
+        // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
+        // updated_at — the list shows title + structure, not timestamps, so a
+        // remote CONTENT edit (which only bumps updated_at) must NOT re-render
+        // the other window's folder pane. Structural changes (create / delete /
+        // rename / archive) still change the signature and refresh. Trade-off:
+        // most-recent-first order re-sorts on the next structural change, not live
+        // on content edits — the desired stable behaviour.
+        const sig = result
+          .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
+          .join('|');
+        if (sig !== lastListSigRef.current) {
+          lastListSigRef.current = sig;
+          setList(result);
+        }
+        setListLoading(false);
+        if (folderId) setListedFor({ folderId, client: docsClient });
+      } catch (e: unknown) {
+        if (stale()) return;
+        // A failed read leaves `listedFor` as-is: a prior success for this
+        // same client still stands; otherwise this stays unlisted.
+        const err = e instanceof Error ? e : new Error(String(e));
+        setListError(err);
+        setListLoading(false);
+      }
+    };
+    const read = { client: docsClient, again: false, done: Promise.resolve() };
+    read.done = (async () => {
+      do {
+        read.again = false;
+        await readList();
+      } while (read.again && !stale());
+    })().finally(() => {
+      if (readRef.current === read) readRef.current = null;
+    });
+    readRef.current = read;
+    return read.done;
+  }, [
+    docsClient,
+    folderId,
+    contextId,
+    contextResolving,
+    resolvedFolder,
+    includeArchived,
+  ]);
+
+
+  // A failed context read has nothing to list against, so a retry re-reads it.
+  const retry = useCallback(async () => {
+    if (resolveError) setResolveAttempt((n) => n + 1);
+    else await refetch();
+  }, [resolveError, refetch]);
 
   useEffect(() => {
     setListLoading(true);
@@ -368,9 +431,11 @@ export function useDocs(
     [docsClient, refetch, contextId],
   );
 
-  const listed = docsClient
-    ? listedFor === docsClient
-    : listedFor === 'none';
+  const listed =
+    !!folderId &&
+    resolvedFolder === folderId &&
+    listedFor?.folderId === folderId &&
+    listedFor.client === docsClient;
 
   return {
     contextId,
@@ -379,7 +444,7 @@ export function useDocs(
     loading: listLoading,
     listed,
     error: resolveError ?? listError,
-    refetch,
+    refetch: retry,
     create,
     edit,
     get,
