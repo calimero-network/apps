@@ -127,7 +127,7 @@ function NameGate({
       role="dialog"
       aria-modal="true"
       aria-labelledby="name-gate-title"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
     >
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
         <h2 id="name-gate-title" className="text-lg font-semibold text-foreground">
