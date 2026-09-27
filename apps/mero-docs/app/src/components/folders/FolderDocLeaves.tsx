@@ -13,9 +13,11 @@ interface Props {
   folderId: string;
   selectedDocId: string | null;
   onOpenDoc: (folderId: string, docId: string) => void;
-  /** A "New document" request is waiting; cleared through onCreateStarted. */
+  /** A "New document" request is waiting or in flight; cleared through
+   *  onCreateSettled once the create resolves, so the triggering button
+   *  stays disabled for the full duration, not just until it starts. */
   createPending: boolean;
-  onCreateStarted: () => void;
+  onCreateSettled: () => void;
 }
 
 export function FolderDocLeaves({
@@ -23,7 +25,7 @@ export function FolderDocLeaves({
   selectedDocId,
   onOpenDoc,
   createPending,
-  onCreateStarted,
+  onCreateSettled,
 }: Props) {
   const docs = useDocs(folderId);
   const newDoc = useCreateDocument(docs, folderId, onOpenDoc);
@@ -33,9 +35,8 @@ export function FolderDocLeaves({
   // Waits for the context: a request can arrive before a just-expanded folder resolves it.
   useEffect(() => {
     if (!contextId || !createPending) return;
-    onCreateStarted();
-    void create();
-  }, [contextId, createPending, onCreateStarted, create]);
+    void create().finally(onCreateSettled);
+  }, [contextId, createPending, onCreateSettled, create]);
 
   // Context not yet bound: a brief muted hint, never a red error —
   // folders sync from peers and the context lands a moment later.

@@ -44,4 +44,26 @@ test.describe('Empty states (single-node)', () => {
       timeout: 15_000,
     });
   });
+
+  test('double-clicking the row New document button creates exactly one document', async ({
+    alice,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace(`Empty WS ${Date.now()}`);
+    await alice.createFolder({ name: 'Pad', visibility: 'Open' });
+    const row = alice.tree.folderRow('Pad').first();
+    await row.hover();
+    const newDocButton = row.getByRole('button', { name: 'New document' });
+    await expect(newDocButton).toBeVisible({ timeout: 15_000 });
+
+    // Two rapid clicks before the first create settles: the row button
+    // disables for the full creation, and useCreateDocument's own guard
+    // collapses any that still slip through into a single document.
+    await Promise.all([newDocButton.click(), newDocButton.click()]);
+    await alice.editor.expectMounted();
+
+    await expect(alice.docs.docRow('Untitled')).toHaveCount(1, {
+      timeout: 15_000,
+    });
+  });
 });

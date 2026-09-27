@@ -39,7 +39,7 @@ function Harness({
           selectedDocId={selectedDocId}
           onOpenDoc={onOpenDoc}
           createPending={pending}
-          onCreateStarted={() => setPending(false)}
+          onCreateSettled={() => setPending(false)}
         />
       </ul>
     </>

@@ -195,6 +195,7 @@ export function FolderTreeItem({
               if (!isExpanded) onToggleExpanded(node.id);
             }}
             onNewDocument={requestNewDoc}
+            newDocPending={newDocPending}
           />
         )}
       </div>
@@ -211,7 +212,7 @@ export function FolderTreeItem({
             selectedDocId={isSelected ? selectedDocId : null}
             onOpenDoc={onOpenDoc}
             createPending={newDocPending}
-            onCreateStarted={clearNewDocPending}
+            onCreateSettled={clearNewDocPending}
           />
           {node.children.map((c) => (
             <FolderTreeItem

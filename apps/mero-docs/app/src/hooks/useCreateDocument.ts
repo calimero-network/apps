@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { UseDocsState } from './useDocs';
 
 const NEW_DOC_TITLE = 'Untitled'; // renamed in the editor header right after opening
@@ -11,8 +11,13 @@ export function useCreateDocument(
 ) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guards every caller (button, context menu, pending-then-expand flow) at
+  // the one place they all go through, so a double click can't create twice.
+  const inFlightRef = useRef(false);
 
   const create = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setCreating(true);
     setError(null);
     try {
@@ -21,6 +26,7 @@ export function useCreateDocument(
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      inFlightRef.current = false;
       setCreating(false);
     }
   }, [docs, folderId, onOpenDoc]);
