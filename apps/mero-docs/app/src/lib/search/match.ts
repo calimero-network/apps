@@ -1,12 +1,17 @@
 export const QUERY_MAX = 200; // longer input is cut so a paste cannot stall the palette
 const TAGS_ONLY_PREFIX = '#';
 const MARKS = /\p{M}/gu;
+const FINAL_SIGMA = /ς/g; // lowercasing a whole string yields ς at word ends, per code point σ
 const EMPTY_QUERY = /^[\p{P}\s]*$/u; // symbols such as emoji still count as a query
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
 /** Case, accent and width folded text; NFKD also maps full-width and ligature forms. */
 export function foldForSearch(s: string): string {
-  return s.normalize('NFKD').toLowerCase().replace(MARKS, '');
+  return s
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(FINAL_SIGMA, 'σ')
+    .replace(MARKS, '');
 }
 
 function cutToMax(s: string): string {

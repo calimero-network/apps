@@ -77,6 +77,14 @@ describe('parseDocHref (L-15)', () => {
     }
   });
 
+  it('accepts an origin passed with a trailing slash or path', () => {
+    const target = { ws: 'w1', folder: 'f1', doc: 'd1' };
+    expect(parseDocHref('/app/w1/f/f1/d/d1', `${ORIGIN}/`)).toEqual(target);
+    expect(
+      parseDocHref(`${ORIGIN}/app/w1/f/f1/d/d1`, `${ORIGIN}/app/x`),
+    ).toEqual(target);
+  });
+
   it('rejects input that is not a URL', () => {
     expect(parseDocHref('http://[::1', ORIGIN)).toBeNull();
     expect(parseDocHref('/app/w1/f/f1/d/d1', 'not an origin')).toBeNull();

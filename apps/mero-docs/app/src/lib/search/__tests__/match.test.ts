@@ -92,6 +92,12 @@ describe('matchRanges', () => {
     expect(matchRanges('🚀', '\ud83d')).toEqual([[0, 2]]);
   });
 
+  it('agrees with foldForSearch on a word-final sigma', () => {
+    expect(foldForSearch('ΟΔΟΣ ΜΑΣ')).toBe(foldForSearch('οδοσ μασ'));
+    expect(matchRanges('ΟΔΟΣ ΜΑΣ', 'οδος')).toEqual([[0, 4]]);
+    expect(matchRanges('οδός', 'ΟΔΟΣ')).toEqual([[0, 4]]);
+  });
+
   it('folds astral characters as whole code points', () => {
     expect(matchRanges('𝐀𝐁 x', 'ab')).toEqual([[0, 4]]);
   });

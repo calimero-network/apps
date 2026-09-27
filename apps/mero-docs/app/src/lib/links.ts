@@ -14,12 +14,14 @@ export function parseDocHref(
   origin: string,
 ): DocHrefTarget | null {
   let url: URL;
+  let current: string;
   try {
-    url = new URL(href, origin);
+    current = new URL(origin).origin;
+    url = new URL(href, current);
   } catch {
     return null;
   }
-  if (url.origin !== origin && !KNOWN_APP_ORIGINS.includes(url.origin)) {
+  if (url.origin !== current && !KNOWN_APP_ORIGINS.includes(url.origin)) {
     return null;
   }
   const route = parseAppPath(url.pathname, url.hash);

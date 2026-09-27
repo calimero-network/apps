@@ -1,3 +1,4 @@
+import { nameCollator } from '../collate';
 import { docLabel } from '../docLabel';
 import { folderLabel } from '../folderLabel';
 import { tagCounts } from '../tags';
@@ -10,7 +11,6 @@ import {
 } from './match';
 
 const DEFAULT_LIMITS = { docs: 8, folders: 4, tags: 5 }; // rows per palette group
-const nameCollator = new Intl.Collator(undefined, { sensitivity: 'accent' });
 
 export type PaletteResult =
   | { kind: 'doc'; row: IndexRow; ranges: [number, number][] }

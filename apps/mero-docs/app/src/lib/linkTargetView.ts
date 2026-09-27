@@ -4,12 +4,12 @@ import {
   type IndexRow,
 } from './workspaceIndex/types';
 
-export type DocLinkCard =
-  | { kind: 'other-workspace' }
-  | { kind: 'no-access' }
-  | { kind: 'loading' }
-  | { kind: 'deleted' }
-  | { kind: 'ok'; row: IndexRow };
+export type DocLinkCardState =
+  | { state: 'other-workspace' }
+  | { state: 'no-access' }
+  | { state: 'loading' }
+  | { state: 'deleted' }
+  | { state: 'ok'; row: IndexRow };
 
 export type DocLinkCardContext = {
   ws: string;
@@ -22,10 +22,10 @@ export type DocLinkCardContext = {
 export function docLinkCardState(
   target: DocHrefTarget,
   ctx: DocLinkCardContext,
-): DocLinkCard {
-  if (target.ws !== ctx.ws) return { kind: 'other-workspace' };
-  if (!ctx.readableFolders.has(target.folder)) return { kind: 'no-access' };
-  if (!ctx.loadedFolders.has(target.folder)) return { kind: 'loading' };
+): DocLinkCardState {
+  if (target.ws !== ctx.ws) return { state: 'other-workspace' };
+  if (!ctx.readableFolders.has(target.folder)) return { state: 'no-access' };
+  if (!ctx.loadedFolders.has(target.folder)) return { state: 'loading' };
   const row = ctx.rows.get(rowKey(target.folder, target.doc));
-  return row ? { kind: 'ok', row } : { kind: 'deleted' };
+  return row ? { state: 'ok', row } : { state: 'deleted' };
 }

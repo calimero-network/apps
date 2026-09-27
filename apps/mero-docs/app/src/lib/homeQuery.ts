@@ -1,6 +1,7 @@
 // The Home list's filters live in the URL, so a pasted link shows the same list.
 // Parsing drops anything it does not understand; serializing is canonical.
 
+import { nameCollator } from './collate';
 import { docLabel } from './docLabel';
 import { rowKey, type FolderInfo, type IndexRow } from './workspaceIndex/types';
 
@@ -9,7 +10,6 @@ const UPDATED_WINDOWS = ['1d', '7d', '30d'] as const; // 1d is "today", the othe
 const SORTS = ['updated', 'name', 'created'] as const;
 const DEFAULT_SORT: HomeQuery['sort'] = 'updated';
 const LIST_SEPARATOR = ',';
-const nameCollator = new Intl.Collator(undefined, { sensitivity: 'accent' }); // case-insensitive
 
 export type HomeQuery = {
   folders: string[];

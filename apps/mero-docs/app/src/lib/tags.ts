@@ -1,6 +1,7 @@
 // A tag is a stable key on each doc; the registry maps the key to a name and a
 // colour, so renames never touch docs and a deleted key is never reused.
 
+import { nameCollator } from './collate';
 import { foldForSearch } from './search/match';
 import type { IndexRow, Tag } from './workspaceIndex/types';
 
@@ -23,8 +24,8 @@ const KEY_SUFFIX_ROOM = 6; // "-99999" still fits inside TAG_KEY_MAX
 const RANDOM_KEY_PREFIX = 't-'; // for names with no latin letters or digits
 const RANDOM_KEY_LEN = 6;
 const RANDOM_KEY_RADIX = 36;
+const RANDOM_KEY_TRIES = 8; // then number the last random key, so a stuck `random` still ends
 const VALID_KEY = /^[a-z0-9-]+$/;
-const nameCollator = new Intl.Collator(undefined, { sensitivity: 'accent' });
 
 /** Trimmed, inner whitespace collapsed, cut to TAG_NAME_MAX characters. */
 export function normalizeTagName(raw: string): string {
@@ -59,13 +60,12 @@ export function tagKeyFor(
     .replace(/[^a-z0-9]+/g, '-')
     .slice(0, TAG_KEY_MAX - KEY_SUFFIX_ROOM)
     .replace(/^-+|-+$/g, '');
-  if (!base) {
-    let key = randomKey(random);
-    while (taken.has(key)) key = randomKey(random);
-    return key;
+  let key = base || randomKey(random);
+  for (let i = 1; !base && i < RANDOM_KEY_TRIES && taken.has(key); i++) {
+    key = randomKey(random);
   }
-  let key = base;
-  for (let n = 2; taken.has(key); n++) key = `${base}-${n}`;
+  const stem = key;
+  for (let n = 2; taken.has(key); n++) key = `${stem}-${n}`;
   return key;
 }
 

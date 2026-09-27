@@ -81,6 +81,11 @@ describe('findTagByName (T-02)', () => {
     expect(findTagByName(tags, '日本')?.key).toBe('t-abc123');
   });
 
+  it('treats a word-final sigma like any other sigma', () => {
+    expect(findTagByName([tag('g', 'ΟΔΟΣ')], 'οδοσ')?.key).toBe('g');
+    expect(findTagByName([tag('g', 'οδοσ')], 'ΟΔΟΣ')?.key).toBe('g');
+  });
+
   it('ignores deleted tags', () => {
     expect(findTagByName(tags, 'old')).toBeUndefined();
   });
@@ -123,6 +128,11 @@ describe('tagKeyFor (T-05)', () => {
   it('retries the random key on a collision', () => {
     const random = sequence(...Array(6).fill(0), ...Array(6).fill(0.999));
     expect(tagKeyFor('日本', new Set(['t-000000']), random)).toBe('t-zzzzzz');
+  });
+
+  it('falls back to a numbered suffix when random keys keep colliding', () => {
+    const taken = new Set(['t-000000', 't-000000-2']);
+    expect(tagKeyFor('日本', taken, () => 0)).toBe('t-000000-3');
   });
 
   it('always produces a key the contract accepts', () => {

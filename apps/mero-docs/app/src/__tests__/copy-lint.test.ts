@@ -16,7 +16,8 @@ const tsFiles = import.meta.glob(
 ) as Record<string, string>;
 
 const TS_COPY_FILE_COUNT = 5; // entries in the tsFiles glob; a rename must not drop one silently
-const TEMPLATE_PART_KINDS: ts.SyntaxKind[] = [ // template literal chunks around ${} holes
+const TEMPLATE_PART_KINDS: ts.SyntaxKind[] = [
+  // template literal chunks around ${} holes
   ts.SyntaxKind.TemplateHead,
   ts.SyntaxKind.TemplateMiddle,
   ts.SyntaxKind.TemplateTail,
