@@ -565,7 +565,6 @@
       },
       "returns_doc": "How many edits were applied; skipped out-of-bounds edits are not counted.",
       "intent": "mutating",
-      "destructive": true,
       "idempotent": true
     },
     {

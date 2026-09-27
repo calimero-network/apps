@@ -413,7 +413,6 @@ impl MeroBlocks {
     /// ```json
     /// {"edits":[{"x":5,"y":20,"z":5,"b":3}],"now":1727000000}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn set_blocks(&mut self, edits: Vec<Edit>, now: u64) -> app::Result<u32> {
         if edits.len() > MAX_EDITS_PER_CALL {
