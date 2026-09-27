@@ -126,6 +126,12 @@ describe('workspace member row', () => {
     expect((selects[0] as HTMLSelectElement).value).toBe('Editor');
   });
 
+  it('offers Guest, not the folder-only Read only', () => {
+    renderWorkspaceRow();
+    expect(screen.getByRole('option', { name: 'Guest' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Read only' })).toBeNull();
+  });
+
   it('shows Custom for a mask no role describes', () => {
     caps.value = 4;
     renderWorkspaceRow();

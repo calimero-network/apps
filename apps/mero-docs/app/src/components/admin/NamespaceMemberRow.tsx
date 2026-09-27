@@ -36,7 +36,7 @@ import {
   roleDisplayLabel,
   workspaceRoleOf,
   WORKSPACE_ROLES,
-  type AccessRole,
+  type WorkspaceAccessRole,
   type GroupRole,
 } from '@/lib/roles';
 
@@ -165,7 +165,7 @@ export function NamespaceMemberRow({
   const [roleWarnings, setRoleWarnings] = useState<string[]>([]);
 
   const roleVeto = useCallback(
-    (nextRole: AccessRole): string | null => {
+    (nextRole: WorkspaceAccessRole): string | null => {
       const verdict = canChangeRole({
         nextRole,
         currentRole: currentAccess ?? 'Custom',
@@ -179,7 +179,7 @@ export function NamespaceMemberRow({
     [currentAccess, isSelf, actorRole, actorCaps, adminCount],
   );
 
-  const onRoleChange = async (nextRole: AccessRole) => {
+  const onRoleChange = async (nextRole: WorkspaceAccessRole) => {
     const veto = roleVeto(nextRole);
     if (veto || !currentAccess) {
       setUpdateError(veto);

@@ -9,25 +9,25 @@ import {
   type ShownRole,
 } from '@/lib/roles';
 
-interface Props {
+interface Props<R extends AccessRole> {
   /** `null` while the underlying state is loading. */
   value: ShownRole | null;
-  options: readonly AccessRole[];
-  onChange: (next: AccessRole) => void;
+  options: readonly R[];
+  onChange: (next: R) => void;
   /** Per-option veto: `null` means selectable, a string is the reason it is not. */
-  reasonFor?: (role: AccessRole) => string | null;
+  reasonFor?: (role: R) => string | null;
   disabled?: boolean;
   ariaLabel: string;
 }
 
-export function RoleSelect({
+export function RoleSelect<R extends AccessRole>({
   value,
   options,
   onChange,
   reasonFor,
   disabled,
   ariaLabel,
-}: Props) {
+}: Props<R>) {
   const outside = value !== null && !options.some((r) => r === value);
   return (
     <select

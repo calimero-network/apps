@@ -150,7 +150,7 @@ export function FolderMemberRoleRow({
             value={current}
             options={FOLDER_ROLES}
             onChange={(next) => {
-              if (next !== 'Admin') void onRoleChange(next);
+              void onRoleChange(next);
             }}
             disabled={!canManage || updating || core !== 'Member'}
             ariaLabel={`Role for ${label}`}

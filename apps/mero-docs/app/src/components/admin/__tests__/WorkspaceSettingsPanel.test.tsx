@@ -52,7 +52,7 @@ vi.mock('@/components/common/MemberPicker', () => ({
   ),
 }));
 
-describe('WorkspaceSettingsPanel managers', () => {
+describe('WorkspaceSettingsPanel folder role setters', () => {
   afterEach(() => {
     registryAdmin.error = null;
     registryAdmin.managers = [NAMED, UNNAMED];
@@ -67,9 +67,9 @@ describe('WorkspaceSettingsPanel managers', () => {
 
   it('names each remove button by display name or the shared fallback', () => {
     render(<WorkspaceSettingsPanel />);
-    expect(screen.getByRole('button', { name: 'Remove manager Dana' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove Dana from people who can set folder roles' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Remove manager Unnamed member' }),
+      screen.getByRole('button', { name: 'Remove Unnamed member from people who can set folder roles' }),
     ).toBeTruthy();
   });
 
@@ -77,7 +77,7 @@ describe('WorkspaceSettingsPanel managers', () => {
     registryAdmin.managers = [NAMED, UNNAMED, SELF];
     render(<WorkspaceSettingsPanel />);
     expect(
-      screen.getByRole('button', { name: 'Remove manager Fresh Self Name' }),
+      screen.getByRole('button', { name: 'Remove Fresh Self Name from people who can set folder roles' }),
     ).toBeTruthy();
     expect(screen.getByText('Fresh Self Name')).toBeTruthy();
   });
@@ -87,5 +87,13 @@ describe('WorkspaceSettingsPanel managers', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     expect(screen.getByText('Carol')).toBeTruthy();
     expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+
+  // "Manager" is the member role; this list must not borrow the word.
+  it('describes the list without the word manager', () => {
+    render(<WorkspaceSettingsPanel />);
+    expect(screen.getByText('People who can set folder roles')).toBeTruthy();
+    expect(screen.queryByText(/manager/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /manager/i })).toBeNull();
   });
 });

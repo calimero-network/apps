@@ -76,9 +76,16 @@ describe('workspaceRoleOf', () => {
     });
   });
 
-  // A ReadOnly member's bits ARE consulted, so the grant clears them.
-  it('grants Read only an empty mask', () => {
-    expect(WORKSPACE_ROLE_GRANTS.ReadOnly).toEqual({ role: 'ReadOnly', caps: 0 });
+  // A ReadOnly member's bits ARE consulted, so the grant clears them. Without
+  // the join bit they see only folders they were added to, hence Guest.
+  it('grants Guest core ReadOnly and an empty mask', () => {
+    expect(WORKSPACE_ROLE_GRANTS.Guest).toEqual({ role: 'ReadOnly', caps: 0 });
+    expect(workspaceRoleOf('ReadOnly', 0)).toBe('Guest');
+  });
+
+  it('never offers the folder-only Read only role on the workspace', () => {
+    expect(WORKSPACE_ROLES).not.toContain('ReadOnly');
+    expect(FOLDER_ROLES).not.toContain('Guest');
   });
 });
 
@@ -128,22 +135,29 @@ describe('folderRoleOfRegistryRole', () => {
 describe('describeRoleChange', () => {
   it('says what a promotion adds', () => {
     expect(describeRoleChange('Editor', 'Manager', 'workspace')).toBe(
-      'They will be able to manage people and settings in this workspace.',
+      'In this workspace, they will be able to invite, rename and remove people.',
     );
   });
 
   it('says what a demotion takes away', () => {
     expect(describeRoleChange('Manager', 'ReadOnly', 'folder')).toBe(
-      'They will no longer be able to create and edit documents or manage people and settings in this folder.',
+      'In this folder, they will no longer be able to edit its documents, invite and remove its members or rename, restrict or delete it. They can open its documents but not edit them.',
+    );
+  });
+
+  // Guest does not stop edits in folders they were added to; say what it does.
+  it('says a Guest sees only folders shared with them directly', () => {
+    expect(describeRoleChange('Editor', 'Guest', 'workspace')).toBe(
+      'In this workspace, they will no longer be able to open folders shared with the whole workspace or create folders and documents. They will see only folders shared with them directly.',
     );
   });
 
   it('replaces custom permissions with the whole new role', () => {
     expect(describeRoleChange('Custom', 'Editor', 'workspace')).toBe(
-      'Their custom permissions are replaced. They will be able to create and edit documents in this workspace.',
+      'Their custom permissions are replaced. In this workspace, they will be able to open folders shared with the whole workspace and create folders and documents.',
     );
     expect(describeRoleChange('Custom', 'ReadOnly', 'folder')).toBe(
-      'Their custom permissions are replaced. They will not be able to change anything in this folder.',
+      'Their custom permissions are replaced. In this folder, they can open its documents but not edit them.',
     );
   });
 });
@@ -192,7 +206,7 @@ describe('canChangeRole', () => {
       ...base,
       actorRole: 'Member',
       actorCaps: C.MANAGE_MEMBERS,
-      nextRole: 'ReadOnly',
+      nextRole: 'Guest',
     });
     expect(v.allowed).toBe(true);
   });
@@ -370,6 +384,7 @@ describe('roleDisplayLabel', () => {
   });
 
   it('leaves the other roles as they are spelled', () => {
+    expect(roleDisplayLabel('Guest')).toBe('Guest');
     expect(roleDisplayLabel('Admin')).toBe('Admin');
     expect(roleDisplayLabel('Manager')).toBe('Manager');
     expect(roleDisplayLabel('Editor')).toBe('Editor');

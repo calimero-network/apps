@@ -93,8 +93,9 @@ describe('promotion to Admin', () => {
     });
     expect(out.ok).toBe(true);
     expect(addManager).not.toHaveBeenCalled();
-    expect(out.warnings).toHaveLength(1);
-    expect(out.warnings[0]).toMatch(/owner/i);
+    expect(out.warnings).toEqual([
+      'They are a workspace admin, but only the workspace owner can let them set folder roles. Ask the owner to add them under Settings → People who can set folder roles.',
+    ]);
   });
 
   it('reports a failed manager append without losing the role change', async () => {
@@ -157,7 +158,7 @@ describe('demotion from Admin', () => {
   });
 });
 
-describe('demotion to ReadOnly', () => {
+describe('demotion to Guest', () => {
   // A ReadOnly member's bits are still read by the server, so the label is
   // only true once the mask is cleared.
   it('clears the bitmask', async () => {
@@ -165,7 +166,7 @@ describe('demotion to ReadOnly', () => {
     await act(async () => {
       await result.current.setRole(
         ACCOUNT,
-        'ReadOnly',
+        'Guest',
         DEFAULT_NEW_MEMBER_CAPS,
         'Member',
       );
@@ -176,7 +177,7 @@ describe('demotion to ReadOnly', () => {
   it('does not touch the registry when Admin-ness did not change', async () => {
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     await act(async () => {
-      await result.current.setRole(ACCOUNT, 'ReadOnly', 4, 'Member');
+      await result.current.setRole(ACCOUNT, 'Guest', 4, 'Member');
     });
     expect(addManager).not.toHaveBeenCalled();
     expect(removeManager).not.toHaveBeenCalled();

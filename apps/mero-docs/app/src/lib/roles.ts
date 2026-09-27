@@ -50,16 +50,19 @@ export function parseGroupRole(raw: string | undefined | null): GroupRole {
   return 'Member';
 }
 
-/** The one role vocabulary people see, on workspace and folder rows alike. */
-export type AccessRole = 'Admin' | 'Manager' | 'Editor' | 'ReadOnly';
+/** The one role vocabulary people see. Guest is workspace-only, Read only is folder-only. */
+export type WorkspaceAccessRole = 'Admin' | 'Manager' | 'Editor' | 'Guest';
+export type FolderAccessRole = 'Manager' | 'Editor' | 'ReadOnly';
+export type AccessRole = WorkspaceAccessRole | FolderAccessRole;
 /** A row's role, or 'Custom' when no role describes the underlying state. */
-export type ShownRole = AccessRole | 'Custom';
+export type ShownRole = AccessRole | 'Admin' | 'Custom';
 
 export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
   Admin: 'Full control, including who else is an admin.',
-  Manager: 'Can manage people and settings, and edit.',
+  Manager: 'Can invite and remove people, and edit.',
   Editor: 'Can create and edit documents.',
-  ReadOnly: 'Can look but cannot change anything.',
+  Guest: 'Sees only folders shared with them directly.',
+  ReadOnly: 'Can open documents but not edit them.',
   Custom: 'Permissions that match none of the roles. Pick a role to replace them.',
 };
 
@@ -84,19 +87,21 @@ export const MANAGER_FOLDER_CAPS =
   CAPABILITIES.CAN_DELETE_SUBGROUP |
   CAPABILITIES.CAN_MANAGE_METADATA;
 
-export const WORKSPACE_ROLES: readonly AccessRole[] = ['Admin', 'Manager', 'Editor', 'ReadOnly'];
-export const FOLDER_ROLES = ['Manager', 'Editor', 'ReadOnly'] as const;
-export type FolderAccessRole = (typeof FOLDER_ROLES)[number];
+export const WORKSPACE_ROLES: readonly WorkspaceAccessRole[] = ['Admin', 'Manager', 'Editor', 'Guest'];
+export const FOLDER_ROLES: readonly FolderAccessRole[] = ['Manager', 'Editor', 'ReadOnly'];
 
 /**
  * What each workspace role writes. `caps: null` leaves the bitmask alone: the
  * server skips it for an Admin, and widening it would outlive a demotion.
  */
-export const WORKSPACE_ROLE_GRANTS: Record<AccessRole, { role: GroupRole; caps: number | null }> = {
+export const WORKSPACE_ROLE_GRANTS: Record<
+  WorkspaceAccessRole,
+  { role: GroupRole; caps: number | null }
+> = {
   Admin: { role: 'Admin', caps: null },
   Manager: { role: 'Member', caps: WORKSPACE_MANAGER_CAPS },
   Editor: { role: 'Member', caps: DEFAULT_NEW_MEMBER_CAPS },
-  ReadOnly: { role: 'ReadOnly', caps: 0 },
+  Guest: { role: 'ReadOnly', caps: 0 },
 };
 
 /** What each folder role writes: the registry folder Role plus folder caps. */
@@ -139,40 +144,58 @@ export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role
   return FOLDER_ROLES.find((r) => FOLDER_ROLE_GRANTS[r].role === registryRole) ?? 'Custom';
 }
 
-const ROLE_RANK: readonly AccessRole[] = ['ReadOnly', 'Editor', 'Manager', 'Admin'];
-const ROLE_ABILITIES: Record<AccessRole, string> = {
-  ReadOnly: '',
-  Editor: 'create and edit documents',
-  Manager: 'manage people and settings',
-  Admin: 'make other people admins',
+// Lowest role first; each level lists what it adds over the one below.
+const ROLE_LADDERS: Record<'workspace' | 'folder', [AccessRole, string[]][]> = {
+  workspace: [
+    ['Guest', []],
+    ['Editor', ['open folders shared with the whole workspace', 'create folders and documents']],
+    ['Manager', ['invite, rename and remove people']],
+    ['Admin', ['make other people admins']],
+  ],
+  folder: [
+    ['ReadOnly', []],
+    ['Editor', ['edit its documents']],
+    ['Manager', ['invite and remove its members', 'rename, restrict or delete it']],
+  ],
+};
+const LOWEST_ROLE_CLAUSE: Record<'workspace' | 'folder', string> = {
+  workspace: 'they will see only folders shared with them directly',
+  folder: 'they can open its documents but not edit them',
 };
 
-function joinAbilities(roles: readonly AccessRole[], conjunction: string): string {
-  const parts = roles.map((r) => ROLE_ABILITIES[r]);
+function listOf(parts: string[], conjunction: string): string {
   return parts.length < 2
     ? parts.join('')
     : `${parts.slice(0, -1).join(', ')} ${conjunction} ${parts[parts.length - 1]}`;
 }
 
-/** The confirmation body for a role change: what the member gains or loses. */
+/** The confirmation body for a role change: what the node will let them do, gained or lost. */
 export function describeRoleChange(
   from: ShownRole,
   to: AccessRole,
   place: 'workspace' | 'folder',
 ): string {
-  const at = ROLE_RANK.indexOf(to);
-  if (from === 'Custom') {
-    const gained = ROLE_RANK.slice(1, at + 1);
-    return `Their custom permissions are replaced. ${
-      gained.length
-        ? `They will be able to ${joinAbilities(gained, 'and')}`
-        : 'They will not be able to change anything'
-    } in this ${place}.`;
+  const ladder = ROLE_LADDERS[place];
+  const at = ladder.findIndex(([r]) => r === to);
+  const was = ladder.findIndex(([r]) => r === from);
+  const abilities = (lo: number, hi: number) =>
+    ladder.slice(lo, hi).flatMap(([, a]) => a);
+  const clauses: string[] = [];
+  if (was < 0) {
+    if (at > 0) clauses.push(`they will be able to ${listOf(abilities(1, at + 1), 'and')}`);
+  } else if (at > was) {
+    clauses.push(`they will be able to ${listOf(abilities(was + 1, at + 1), 'and')}`);
+  } else {
+    clauses.push(`they will no longer be able to ${listOf(abilities(at + 1, was + 1), 'or')}`);
   }
-  const was = ROLE_RANK.indexOf(from);
-  return at > was
-    ? `They will be able to ${joinAbilities(ROLE_RANK.slice(was + 1, at + 1), 'and')} in this ${place}.`
-    : `They will no longer be able to ${joinAbilities(ROLE_RANK.slice(at + 1, was + 1), 'or')} in this ${place}.`;
+  if (at === 0) clauses.push(LOWEST_ROLE_CLAUSE[place]);
+  const [first, ...rest] = clauses;
+  const sentences = [
+    `In this ${place}, ${first}.`,
+    ...rest.map((c) => `${c[0].toUpperCase()}${c.slice(1)}.`),
+  ];
+  if (from === 'Custom') sentences.unshift('Their custom permissions are replaced.');
+  return sentences.join(' ');
 }
 
 /** Mirrors the server's `is_group_admin_or_has_capability`. */
