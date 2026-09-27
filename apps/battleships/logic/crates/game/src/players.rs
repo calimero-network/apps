@@ -258,8 +258,11 @@ impl Default for PrivateBoards {
 }
 
 impl PrivateBoards {
-    pub fn key(match_id: &str) -> String {
-        match_id.to_string()
+    /// Keyed by the person as well as the match: private storage is per node,
+    /// and one node can hold both players' identities (two accounts on one
+    /// machine, or a test host), which would otherwise share one board.
+    pub fn key(match_id: &str, account: &[u8; 32]) -> String {
+        format!("{match_id}/{}", hex::encode(account))
     }
 }
 

@@ -16,10 +16,17 @@ export interface Event_MatchIdCollision {
 
 export interface LobbyState {
   created_ms: number;
-  matches: Record<string, MatchSummary>;
-  player_stats: Record<string, PlayerStats>;
-  history: MatchRecord[];
+  matches: Record<string, MatchEntry>;
+  results: Record<string, MatchRecord>;
   players: Record<string, string>;
+}
+
+export interface MatchEntry {
+  player1: string;
+  player2: string;
+  player2_account: string;
+  context_id: string | null;
+  created_ms: number;
 }
 
 export interface MatchRecord {
@@ -35,6 +42,7 @@ export interface MatchSummary {
   match_id: string;
   player1: string;
   player2: string;
+  player2_account: string;
   status: MatchStatus;
   context_id: string | null;
   winner: string | null;
@@ -44,11 +52,6 @@ export interface MatchSummary {
 export interface PlayerEntry {
   account: string;
   player: string;
-}
-
-export interface PlayerStats {
-  wins: {  };
-  losses: {  };
 }
 
 export interface PlayerStatsView {

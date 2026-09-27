@@ -6,6 +6,10 @@ import {
 
 // Generated types
 
+export interface Answer {
+  hit: boolean;
+}
+
 export interface Event_AuditFailed {
   id: string;
   player: string;
@@ -29,6 +33,10 @@ export interface Event_BoardRevealed {
 }
 
 export interface Event_MatchEnded {
+  id: string;
+}
+
+export interface Event_RevealRequested {
   id: string;
 }
 
@@ -58,19 +66,18 @@ export interface ExportedSeed {
   salt: CalimeroBytes;
 }
 
+export interface GameConfig {
+  lobby_context_id: string | null;
+  match_id: string | null;
+  players: Player[];
+}
+
 export interface GameState {
-  lobby_context_id: string;
-  match_id: string;
-  player1: PublicKey;
-  player2: PublicKey;
-  turn: PublicKey;
-  winner: PublicKey;
-  placed_p1: boolean;
-  placed_p2: boolean;
-  pending: PendingShot;
-  shots_p1: Record<string, number>;
-  shots_p2: Record<string, number>;
+  config: GameConfig;
   commitments: Record<string, CalimeroBytes>;
+  shots: Record<string, Shot>;
+  answers: Record<string, Answer>;
+  reveals: Record<string, Reveal>;
 }
 
 export interface OwnBoardView {
@@ -78,19 +85,28 @@ export interface OwnBoardView {
   board: CalimeroBytes;
 }
 
-export interface PendingShot {
-  x: number;
-  y: number;
-  shooter: PublicKey;
-  target: PublicKey;
+export interface Player {
+  key: PublicKey;
+  account: CalimeroBytes;
 }
 
 export type PublicKey = CalimeroBytes;
+
+export interface Reveal {
+  board_bytes: CalimeroBytes;
+  salt: CalimeroBytes;
+}
+
+export interface Shot {
+  x: number;
+  y: number;
+}
 
 export interface ShotsView {
   size: number;
   shots: CalimeroBytes;
 }
+
 
 
 
@@ -107,6 +123,7 @@ export type AbiEvent =
   | { name: "BoardCommitted"; payload: Event_BoardCommitted }
   | { name: "BoardRevealed"; payload: Event_BoardRevealed }
   | { name: "MatchEnded"; payload: Event_MatchEnded }
+  | { name: "RevealRequested"; payload: Event_RevealRequested }
   | { name: "ShipsPlaced"; payload: Event_ShipsPlaced }
   | { name: "ShotFired"; payload: Event_ShotFired }
   | { name: "ShotProposed"; payload: Event_ShotProposed }
@@ -273,6 +290,16 @@ export class GameClient {
   }
 
   /**
+   * get_winner
+   *
+   * @intent read_only
+   */
+  public async getWinner(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_winner', argsJson: {} });
+    return response as string;
+  }
+
+  /**
    * import_board_seed
    *
    * @intent mutating
@@ -285,7 +312,7 @@ export class GameClient {
   /**
    * init
    */
-  public async init(params: { player1: string; player2: string; lobby_context_id: string | null; match_id: string }): Promise<void> {
+  public async init(params: { player1: string; player2: string; player2_account: string; lobby_context_id: string | null; match_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params });
     return response as void;
   }
@@ -313,10 +340,20 @@ export class GameClient {
   /**
    * reveal_board
    *
-   * @intent read_only
+   * @intent mutating
    */
   public async revealBoard(params: { match_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * reveal_board_handler
+   *
+   * @intent mutating
+   */
+  public async revealBoardHandler(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reveal_board_handler', argsJson: params });
     return response as void;
   }
 
