@@ -121,7 +121,7 @@ describe('DocumentEditor', () => {
     const body = deferred<unknown[]>();
     getDocument.mockReturnValue(body.promise);
 
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     expect(screen.getByText('Loading document...')).toBeTruthy();
 
     await act(async () => {
@@ -131,34 +131,36 @@ describe('DocumentEditor', () => {
   });
 
   it('renders the title the title CRDT answered', async () => {
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText('Notes');
     expect(getTitle).toHaveBeenCalledWith({ doc: 'doc-1' });
   });
 
   it('falls back to Untitled when the document has no title yet', async () => {
     getTitle.mockResolvedValue('');
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText('Untitled');
   });
 
   it('subscribes to the docs context so a peer edit can reach it', async () => {
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText('Notes');
     expect(deliver).toBeTypeOf('function');
   });
 
   it('surfaces a failed metadata read instead of an empty editor', async () => {
     getDoc.mockRejectedValue(new Error('context unreachable'));
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText("Couldn't load document");
     expect(screen.getByText('context unreachable')).toBeTruthy();
   });
 
   it('toasts when the delete call fails, instead of failing silently', async () => {
     docsRemove.mockRejectedValue(new Error('delete boom'));
-    const onClose = vi.fn();
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={onClose} />);
+    const onDeleted = vi.fn();
+    render(
+      <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={onDeleted} />,
+    );
     await screen.findByText('Notes');
 
     fireEvent.click(screen.getByText('Delete'));
@@ -166,13 +168,33 @@ describe('DocumentEditor', () => {
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith("Couldn't delete document"),
     );
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it('reports a successful delete as deleted, not as a close', async () => {
+    docsRemove.mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const onDeleted = vi.fn();
+    render(
+      <DocumentEditor
+        folderId="f"
+        docId="doc-1"
+        onClose={onClose}
+        onDeleted={onDeleted}
+      />,
+    );
+    await screen.findByText('Notes');
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('copies the URL of this document in its folder', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
-    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText('Notes');
 
     fireEvent.click(screen.getByText('Copy link'));
@@ -189,24 +211,24 @@ describe('DocumentEditor', () => {
     it('goes from connecting to offline once the folder context fails to resolve', () => {
       contextState = { contextId: null, contextResolving: true, error: null };
       const { rerender } = render(
-        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />,
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
       );
       expect(connection()).toBe('connecting');
 
       contextState = { contextId: null, contextResolving: false, error: new Error('denied') };
-      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
       expect(connection()).toBe('offline');
     });
 
     it('goes from connecting to ready once the folder context resolves', async () => {
       contextState = { contextId: null, contextResolving: true, error: null };
       const { rerender } = render(
-        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />,
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
       );
       expect(connection()).toBe('connecting');
 
       contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
-      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
       expect(connection()).toBe('ready');
       await screen.findByText('Notes');
     });

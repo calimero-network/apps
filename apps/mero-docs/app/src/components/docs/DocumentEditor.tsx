@@ -20,7 +20,8 @@ import { useTitleCursors } from '@/hooks/useTitleCursors';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
-import { copyLink, docUrl } from '@/lib/routes';
+import { copyLink } from '@/lib/copyLink';
+import { docUrl } from '@/lib/routes';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
@@ -28,6 +29,7 @@ interface Props {
   folderId: string;
   docId: string;
   onClose: () => void;
+  onDeleted: () => void;
   folderName?: string;
 }
 
@@ -35,6 +37,7 @@ export function DocumentEditor({
   folderId,
   docId,
   onClose,
+  onDeleted,
   folderName,
 }: Props) {
   const { namespaceId, selfIdentity, namespaceMemberNames } =
@@ -148,12 +151,12 @@ export function DocumentEditor({
     if (!ok) return;
     try {
       await docsRemove(doc.id);
-      onClose();
+      onDeleted();
     } catch (cause) {
       console.error('delete failed', cause);
       toast.error("Couldn't delete document");
     }
-  }, [confirm, doc, docsRemove, onClose, title.title]);
+  }, [confirm, doc, docsRemove, onDeleted, title.title]);
 
   if (loadError) {
     return (

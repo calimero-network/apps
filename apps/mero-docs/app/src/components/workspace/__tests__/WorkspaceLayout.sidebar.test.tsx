@@ -8,7 +8,14 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import {
+  BrowserRouter,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 
 const setSelectedFolder = vi.fn();
@@ -50,8 +57,22 @@ vi.mock('../NamespaceSettingsPanel', () => ({
   NamespaceSettingsPanel: () => <div data-testid="settings-panel" />,
 }));
 vi.mock('@/components/docs/DocumentEditor', () => ({
-  DocumentEditor: ({ folderId, docId }: { folderId: string; docId: string }) => (
-    <div data-testid="editor">{`${folderId}/${docId}`}</div>
+  DocumentEditor: ({
+    folderId,
+    docId,
+    onClose,
+    onDeleted,
+  }: {
+    folderId: string;
+    docId: string;
+    onClose: () => void;
+    onDeleted: () => void;
+  }) => (
+    <div>
+      <div data-testid="editor">{`${folderId}/${docId}`}</div>
+      <button onClick={onClose}>Back to folder</button>
+      <button onClick={onDeleted}>Delete doc</button>
+    </div>
   ),
 }));
 vi.mock('@/components/folders/FolderTree', () => ({
@@ -71,7 +92,13 @@ vi.mock('@/components/folders/FolderTree', () => ({
 
 function Url() {
   const l = useLocation();
-  return <output data-testid="url">{l.pathname + l.search + l.hash}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="url">{l.pathname + l.search + l.hash}</output>
+      <button onClick={() => navigate(-1)}>History back</button>
+    </>
+  );
 }
 
 function renderAt(...entries: string[]) {
@@ -93,6 +120,19 @@ function renderAt(...entries: string[]) {
 }
 
 const url = () => screen.getByTestId('url').textContent;
+
+// Settings close reads the browser's own history index, which MemoryRouter never writes.
+function renderInBrowser(path: string, state: unknown = {}) {
+  window.history.replaceState({}, '', '/prior');
+  window.history.pushState(state, '', path);
+  return render(
+    <BrowserRouter>
+      <Routes>
+        <Route path="/app/*" element={<WorkspaceLayout />} />
+      </Routes>
+    </BrowserRouter>,
+  );
+}
 
 type MediaChange = (e: { matches: boolean }) => void;
 let mediaListeners: MediaChange[] = [];
@@ -230,23 +270,50 @@ describe('WorkspaceLayout screens come from the URL', () => {
     expect(url()).toBe('/app/ns/f/f1/d/d1');
   });
 
-  it('shows settings at their URL and closing returns to the previous screen', () => {
+  it('shows settings at their URL and closing returns to the previous screen', async () => {
     setDesktop(true);
-    renderAt('/app/ns/f/f1');
+    renderInBrowser('/app/ns/f/f1');
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(url()).toBe('/app/ns/settings');
+    expect(window.location.pathname).toBe('/app/ns/settings');
     expect(screen.getByTestId('settings-panel')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(url()).toBe('/app/ns/f/f1');
+    await waitFor(() => expect(window.location.pathname).toBe('/app/ns/f/f1'));
     expect(screen.queryByTestId('settings-panel')).toBeNull();
   });
 
   it('closes settings opened cold to the workspace Home', () => {
     setDesktop(true);
-    renderAt('/app/ns/settings');
+    renderInBrowser('/app/ns/settings');
     expect(screen.getByTestId('settings-panel')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(window.location.pathname).toBe('/app/ns');
+  });
+
+  // Signing in replaces the landing entry with the saved link, so the settings
+  // entry has a router key but nothing of this app behind it.
+  it('closes settings reached by a replace on the first entry to Home', async () => {
+    setDesktop(true);
+    renderInBrowser('/app/ns/settings', { usr: null, key: 'signin', idx: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/app/ns'));
+  });
+
+  it('after deleting the open doc, back skips the deleted doc', () => {
+    setDesktop(true);
+    renderAt('/app/ns', '/app/ns/f/f1/d/doc-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete doc' }));
+    expect(url()).toBe('/app/ns/f/f1');
+    fireEvent.click(screen.getByRole('button', { name: 'History back' }));
     expect(url()).toBe('/app/ns');
+  });
+
+  it('the editor back button is its own history entry', () => {
+    setDesktop(true);
+    renderAt('/app/ns', '/app/ns/f/f1/d/doc-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to folder' }));
+    expect(url()).toBe('/app/ns/f/f1');
+    fireEvent.click(screen.getByRole('button', { name: 'History back' }));
+    expect(url()).toBe('/app/ns/f/f1/d/doc-2');
   });
 });

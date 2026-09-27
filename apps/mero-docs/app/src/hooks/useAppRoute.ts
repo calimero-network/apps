@@ -44,8 +44,8 @@ export function useAppRoute() {
     [go, ws],
   );
   const goFolder = useCallback(
-    (folder: string) => {
-      if (ws) go({ ws, folder });
+    (folder: string, opts: { replace?: boolean } = {}) => {
+      if (ws) go({ ws, folder }, opts);
     },
     [go, ws],
   );

@@ -1263,10 +1263,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const selectNamespace = useCallback(
     (nsId: string | null) => {
       userCleared.current = false;
+      // Re-picking the open workspace must not close the open doc.
+      if (nsId === selectedNsId) return;
       goWorkspace(nsId);
       setStoredNsId(nsId);
     },
-    [goWorkspace, setStoredNsId],
+    [selectedNsId, goWorkspace, setStoredNsId],
   );
 
   const clearNamespace = useCallback(() => {

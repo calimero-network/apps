@@ -61,6 +61,15 @@ describe('useAppRoute', () => {
     expect(result.current.url).toBe('/app/w/f/f1');
   });
 
+  it('replaces a doc with its folder when asked', () => {
+    const { result } = setup('/app/w');
+    act(() => result.current.app.goDoc('f1', 'doc-1'));
+    act(() => result.current.app.goFolder('f1', { replace: true }));
+    expect(result.current.url).toBe('/app/w/f/f1');
+    act(() => result.current.navigate(-1));
+    expect(result.current.url).toBe('/app/w');
+  });
+
   it('keeps the dev node param and drops every other one', () => {
     const { result } = setup('/app/w?node=2&q=old');
     act(() => result.current.app.goFolder('f1'));

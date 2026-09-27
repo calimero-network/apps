@@ -11,7 +11,7 @@ const tsxFiles = import.meta.glob('../**/*.tsx', {
 
 // Most .ts strings are internal keys or diagnostics, so only the copy tables that reach the screen are scanned.
 const tsFiles = import.meta.glob(
-  '../{pages/landing/landing.config,lib/roles,lib/folderLoadError,lib/routes}.ts',
+  '../{pages/landing/landing.config,lib/roles,lib/folderLoadError,lib/copyLink}.ts',
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>;
 

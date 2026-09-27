@@ -14,7 +14,7 @@
 // reload, back/forward and shared links all land on the same screen.
 
 import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
@@ -103,7 +103,6 @@ export function WorkspaceLayout() {
   const selectedDocId = route?.doc ?? null;
   const showSettings = !!route?.settings;
   const navigate = useNavigate();
-  const location = useLocation();
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     'mero-sidebar-width',
     256,
@@ -136,12 +135,12 @@ export function WorkspaceLayout() {
     [goDoc],
   );
 
-  // Closing settings returns to the screen it was opened from; a settings
-  // URL opened cold has no such screen in this app, so it goes Home.
+  // Closing settings returns to the screen it was opened from. The router's
+  // history index is 0 on the first in-app entry, even one reached by replace.
   const closeSettings = useCallback(() => {
-    if (location.key !== 'default') navigate(-1);
+    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
     else goHome();
-  }, [location.key, navigate, goHome]);
+  }, [navigate, goHome]);
 
   const folderTree = (
     <FolderTree
@@ -271,6 +270,8 @@ export function WorkspaceLayout() {
                 folderId={selectedFolderId}
                 docId={selectedDocId}
                 onClose={() => goFolder(selectedFolderId)}
+                // The deleted doc's URL is dead, so it must not stay in history.
+                onDeleted={() => goFolder(selectedFolderId, { replace: true })}
                 folderName={selectedFolder?.alias}
               />
             </Suspense>
