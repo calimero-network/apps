@@ -36,7 +36,10 @@ export function blockDecorations(): Plugin<BlockAttrs> {
   return new Plugin<BlockAttrs>({
     key: blockAttrsKey,
     state: {
-      init: (_config, state) => ({ wash: null, decorations: build(state.doc, null) }),
+      init: (_config, state) => ({
+        wash: null,
+        decorations: build(state.doc, null),
+      }),
       apply(tr, current, _old, state) {
         const meta = tr.getMeta(blockAttrsKey) as string | null | undefined;
         const wash = meta === undefined ? current.wash : meta;

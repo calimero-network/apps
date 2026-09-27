@@ -18,7 +18,11 @@ vi.mock('@blocknote/react', () => ({
           onClick?: () => void;
           disabled?: boolean;
         }) => (
-          <button role="menuitem" disabled={props.disabled} onClick={props.onClick}>
+          <button
+            role="menuitem"
+            disabled={props.disabled}
+            onClick={props.onClick}
+          >
             {props.icon}
             {props.children}
           </button>
@@ -33,10 +37,18 @@ vi.mock('@blocknote/react', () => ({
   useDictionary: () => ({
     drag_handle: { delete_menuitem: 'Delete', colors_menuitem: 'Colors' },
   }),
-  SideMenu: ({ dragHandleMenu: Menu }: { dragHandleMenu: () => ReactNode }) => <Menu />,
-  DragHandleMenu: ({ children }: { children: ReactNode }) => <div role="menu">{children}</div>,
-  RemoveBlockItem: ({ children }: { children: ReactNode }) => <button role="menuitem">{children}</button>,
-  BlockColorsItem: ({ children }: { children: ReactNode }) => <button role="menuitem">{children}</button>,
+  SideMenu: ({ dragHandleMenu: Menu }: { dragHandleMenu: () => ReactNode }) => (
+    <Menu />
+  ),
+  DragHandleMenu: ({ children }: { children: ReactNode }) => (
+    <div role="menu">{children}</div>
+  ),
+  RemoveBlockItem: ({ children }: { children: ReactNode }) => (
+    <button role="menuitem">{children}</button>
+  ),
+  BlockColorsItem: ({ children }: { children: ReactNode }) => (
+    <button role="menuitem">{children}</button>
+  ),
 }));
 
 const block = (type: string, text: string) => ({
@@ -66,41 +78,59 @@ describe('BlockSideMenu', () => {
   it('offers Copy link to section first, then the default items', () => {
     sideMenuBlock = block('heading', 'Milestones');
     renderMenu();
-    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    const items = screen
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent);
     expect(items).toEqual(['Copy link to section', 'Delete', 'Colors']);
   });
 
   it('names a heading by its text', () => {
     sideMenuBlock = block('heading', 'Milestones');
     renderMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to section' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Copy link to section' }),
+    );
     expect(copy).toHaveBeenCalledWith('blk-1', 'Milestones');
   });
 
   it('names a paragraph by its first 40 characters', () => {
-    sideMenuBlock = block('paragraph', 'Pricing follows the model in Pricing notes, and more');
+    sideMenuBlock = block(
+      'paragraph',
+      'Pricing follows the model in Pricing notes, and more',
+    );
     renderMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to section' }));
-    expect(copy).toHaveBeenCalledWith('blk-1', 'Pricing follows the model in Pricing not…');
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Copy link to section' }),
+    );
+    expect(copy).toHaveBeenCalledWith(
+      'blk-1',
+      'Pricing follows the model in Pricing not…',
+    );
   });
 
   it('names an empty block "this section"', () => {
     sideMenuBlock = block('paragraph', '');
     renderMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link to section' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Copy link to section' }),
+    );
     expect(copy).toHaveBeenCalledWith('blk-1', 'this section');
   });
 
   it('is disabled and says Saving… until the node has the block', () => {
     sideMenuBlock = block('heading', 'Milestones');
     const view = renderMenu(false);
-    const pending = screen.getByRole('menuitem', { name: /Copy link to section/ });
+    const pending = screen.getByRole('menuitem', {
+      name: /Copy link to section/,
+    });
     expect(pending.textContent).toBe('Copy link to sectionSaving…');
     expect((pending as HTMLButtonElement).disabled).toBe(true);
 
     view.unmount();
     renderMenu(true);
-    const ready = screen.getByRole('menuitem', { name: 'Copy link to section' });
+    const ready = screen.getByRole('menuitem', {
+      name: 'Copy link to section',
+    });
     expect((ready as HTMLButtonElement).disabled).toBe(false);
   });
 

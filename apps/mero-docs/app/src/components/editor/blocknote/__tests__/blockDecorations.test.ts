@@ -11,7 +11,12 @@ const mounted: BlockNoteEditor<never, never, never>[] = [];
 function mountEditor() {
   const editor = BlockNoteEditor.create({
     schema,
-    extensions: [createExtension({ key: 'blockAttrs', prosemirrorPlugins: [blockDecorations()] })],
+    extensions: [
+      createExtension({
+        key: 'blockAttrs',
+        prosemirrorPlugins: [blockDecorations()],
+      }),
+    ],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -26,7 +31,9 @@ function mountEditor() {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
 const stamped = (root: HTMLElement) =>
-  [...root.querySelectorAll<HTMLElement>('[data-testid="doc-block"]')].map((el) => el.dataset.blockId);
+  [...root.querySelectorAll<HTMLElement>('[data-testid="doc-block"]')].map(
+    (el) => el.dataset.blockId,
+  );
 
 afterEach(() => {
   for (const editor of mounted.splice(0)) editor.unmount();
@@ -42,7 +49,11 @@ describe('blockDecorations', () => {
 
   it('addresses a block added later', async () => {
     const { editor, root } = mountEditor();
-    editor.insertBlocks([{ id: 'blk-3', type: 'paragraph', content: 'More' }], 'blk-2', 'after');
+    editor.insertBlocks(
+      [{ id: 'blk-3', type: 'paragraph', content: 'More' }],
+      'blk-2',
+      'after',
+    );
     await flush();
     expect(stamped(root)).toEqual(['blk-1', 'blk-2', 'blk-3']);
   });
@@ -53,7 +64,9 @@ describe('blockDecorations', () => {
     setSectionWash(view, 'blk-2');
     await flush();
     const washed = () =>
-      [...root.querySelectorAll<HTMLElement>('.section-wash')].map((el) => el.dataset.blockId);
+      [...root.querySelectorAll<HTMLElement>('.section-wash')].map(
+        (el) => el.dataset.blockId,
+      );
     expect(washed()).toEqual(['blk-2']);
 
     setSectionWash(view, null);

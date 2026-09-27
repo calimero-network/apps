@@ -25,7 +25,10 @@ export interface SectionLinks {
 export const SectionLinksContext = createContext<SectionLinks | null>(null);
 
 /** What a link to this block calls it: a heading's text, else its opening words. */
-export function sectionName(block: { type: string; content?: unknown }): string {
+export function sectionName(block: {
+  type: string;
+  content?: unknown;
+}): string {
   const text = inlineToText(block.content).trim();
   const chars = Array.from(text);
   if (chars.length === 0) return 'this section';
@@ -45,12 +48,16 @@ function CopySectionLinkItem() {
     <Components.Generic.Menu.Item
       className="bn-menu-item"
       icon={<Link className="h-4 w-4" />}
-      onClick={confirmed ? () => links.copy(block.id, sectionName(block)) : undefined}
+      onClick={
+        confirmed ? () => links.copy(block.id, sectionName(block)) : undefined
+      }
       // BlockNote's item type omits `disabled`; the Mantine item it renders takes it.
       {...{ disabled: !confirmed }}
     >
       Copy link to section
-      {!confirmed && <span className="ml-2 text-muted-foreground">Saving…</span>}
+      {!confirmed && (
+        <span className="ml-2 text-muted-foreground">Saving…</span>
+      )}
     </Components.Generic.Menu.Item>
   );
 }

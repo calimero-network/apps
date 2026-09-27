@@ -2,7 +2,13 @@
 // washed briefly and explained by a banner. It acts once per navigation, so
 // later edits and re-renders never pull the reader back.
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 
 export const WASH_MS = 1600; // the .section-wash animation in index.css
 const TOP_GAP_PX = 24; // room above the block so it does not sit flush on the edge
@@ -24,25 +30,37 @@ interface Options {
   wash: (block: string | null) => void;
 }
 
-export function useSectionFocus({ block, navKey, ready, scrollRef, sectionOf, wash }: Options) {
+export function useSectionFocus({
+  block,
+  navKey,
+  ready,
+  scrollRef,
+  sectionOf,
+  wash,
+}: Options) {
   const key = `${navKey ?? ''}#${block ?? ''}`;
   const handledRef = useRef<string | null>(null);
   const washTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [banner, setBanner] = useState<(SectionBannerState & { key: string }) | null>(null);
+  const [shown, setShown] = useState<{
+    key: string;
+    banner: SectionBannerState;
+  } | null>(null);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (!block || !ready || !container || handledRef.current === key) return;
     handledRef.current = key;
-    const target = [...container.querySelectorAll<HTMLElement>('[data-block-id]')].find(
-      (el) => el.dataset.blockId === block,
-    );
+    const target = [
+      ...container.querySelectorAll<HTMLElement>('[data-block-id]'),
+    ].find((el) => el.dataset.blockId === block);
     if (!target) {
       container.scrollTop = 0;
-      setBanner({ key, variant: 'missing' });
+      setShown({ key, banner: { variant: 'missing' } });
       return;
     }
-    const offset = target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    const offset =
+      target.getBoundingClientRect().top -
+      container.getBoundingClientRect().top;
     container.scrollTop += offset - TOP_GAP_PX;
     wash(block);
     if (washTimerRef.current) clearTimeout(washTimerRef.current);
@@ -50,7 +68,10 @@ export function useSectionFocus({ block, navKey, ready, scrollRef, sectionOf, wa
       washTimerRef.current = null;
       wash(null);
     }, WASH_MS);
-    setBanner({ key, variant: 'opened', section: sectionOf(block) });
+    setShown({
+      key,
+      banner: { variant: 'opened', section: sectionOf(block) },
+    });
   }, [block, key, ready, scrollRef, sectionOf, wash]);
 
   useEffect(
@@ -63,12 +84,8 @@ export function useSectionFocus({ block, navKey, ready, scrollRef, sectionOf, wa
   const goTop = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [scrollRef]);
-  const dismiss = useCallback(() => setBanner(null), []);
+  const dismiss = useCallback(() => setShown(null), []);
 
-  const visible = banner?.key === key ? banner : null;
-  return {
-    banner: visible && { variant: visible.variant, ...(visible.section ? { section: visible.section } : {}) },
-    goTop,
-    dismiss,
-  };
+  const banner = shown?.key === key ? shown.banner : null;
+  return { banner, goTop, dismiss };
 }

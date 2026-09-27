@@ -7,7 +7,11 @@ import { useSectionFocus, WASH_MS } from '../useSectionFocus';
 
 // Read as text through the glob: a plain CSS import is empty under vitest.
 const [css] = Object.values(
-  import.meta.glob('../../index.css', { query: '?raw', import: 'default', eager: true }),
+  import.meta.glob('../../index.css', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }),
 ) as string[];
 
 let container: HTMLElement;
@@ -31,8 +35,7 @@ interface Props {
 function mount(initial: Props) {
   const scrollRef = { current: container };
   return renderHook(
-    (props: Props) =>
-      useSectionFocus({ ...props, scrollRef, sectionOf, wash }),
+    (props: Props) => useSectionFocus({ ...props, scrollRef, sectionOf, wash }),
     { initialProps: initial },
   );
 }
@@ -62,7 +65,10 @@ describe('useSectionFocus', () => {
 
     expect(container.scrollTop).toBe(700 - 100 - 24);
     expect(wash).toHaveBeenLastCalledWith('blk-2');
-    expect(view.result.current.banner).toEqual({ variant: 'opened', section: 'Milestones' });
+    expect(view.result.current.banner).toEqual({
+      variant: 'opened',
+      section: 'Milestones',
+    });
   });
 
   it('ends the wash after the CSS animation runs', () => {
@@ -139,7 +145,9 @@ describe('section wash styles', () => {
     rule.walkDecls('animation', (decl) => {
       value = decl.value;
     });
-    const seconds = value.split(/\s+/).find((part) => /^\d+(\.\d+)?s$/.test(part));
+    const seconds = value
+      .split(/\s+/)
+      .find((part) => /^\d+(\.\d+)?s$/.test(part));
     return seconds ? parseFloat(seconds) * 1000 : NaN;
   };
 
