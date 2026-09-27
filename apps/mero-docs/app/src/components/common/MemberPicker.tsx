@@ -159,7 +159,11 @@ export function MemberPicker({
               e.preventDefault();
               pick(query.trim());
             }
-          } else if (e.key === 'Escape') {
+          } else if (e.key === 'Escape' && open) {
+            // Stop here so a picker inside a dialog only dismisses its own
+            // suggestion list, not the dialog underneath it.
+            e.preventDefault();
+            e.stopPropagation();
             setOpen(false);
             setActiveIndex(-1);
           }
