@@ -286,7 +286,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     )}
                   </div>
                 </div>
-                {removable && (
+                {removable ? (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -297,6 +297,8 @@ export function FolderSharingPanel({ folderId }: Props) {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
+                ) : (
+                  <span aria-hidden data-testid="remove-slot" className="h-7 w-7 shrink-0" />
                 )}
               </div>
               {rowErr && (
