@@ -1,26 +1,10 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "AccountData": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "ActivityData": {
       "kind": "record",
+      "doc": "One entry of the workbook's activity log: what was done, when. Keyed by\n`\"{at:020}|{author}|{nonce}\"`; its author is the entry's owner stamp, and a\n\"since\" query is a seek on the `at` index.",
       "fields": [
-        {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "at",
           "type": {
@@ -31,13 +15,15 @@
           "name": "sheet_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Empty for workbook-level actions (a named range)."
         },
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`cells`, `rows`, `cols`, `sheet` or `name`."
         },
         {
           "name": "summary",
@@ -49,7 +35,8 @@
           "name": "count",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many cells changed; `changes` holds at most [`MAX_LOGGED_CHANGES`]."
         },
         {
           "name": "changes",
@@ -64,6 +51,7 @@
     },
     "ActivityEntry": {
       "kind": "record",
+      "doc": "An activity-log entry, newest first from `get_activity`.",
       "fields": [
         {
           "name": "id",
@@ -120,6 +108,7 @@
     },
     "AlertState": {
       "kind": "record",
+      "doc": "Which cells of an alert rule met its condition when last checked, so it\ntells only about cells that start meeting it. Keyed by rule id.",
       "fields": [
         {
           "name": "cells",
@@ -140,6 +129,7 @@
     },
     "Attachment": {
       "kind": "record",
+      "doc": "A live attachment.",
       "fields": [
         {
           "name": "id",
@@ -205,6 +195,7 @@
     },
     "AttachmentData": {
       "kind": "record",
+      "doc": "A file attached to a cell. The bytes are a blob in the node's blob store,\nannounced to this context so members' nodes can fetch it; this is its\nrecord. Keyed by id, owned by whoever attached it (`attachments`).",
       "fields": [
         {
           "name": "sheet_id",
@@ -249,25 +240,7 @@
           }
         },
         {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "deleted",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "updated_at",
           "type": {
             "kind": "u64"
           }
@@ -276,12 +249,14 @@
     },
     "AxisData": {
       "kind": "record",
+      "doc": "One row or column added to a sheet, or one deleted. Keyed by\n`\"{sheet_id}|r|{id}\"` / `\"{sheet_id}|c|{id}\"`; see the recalc crate's\n`layout` module for how entries order a sheet.",
       "fields": [
         {
           "name": "pos",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Fractional position: decimal digits, compared as strings."
         },
         {
           "name": "deleted",
@@ -299,6 +274,7 @@
     },
     "AxisEntryView": {
       "kind": "record",
+      "doc": "One explicit row or column entry of a sheet.",
       "fields": [
         {
           "name": "id",
@@ -322,6 +298,7 @@
     },
     "AxisOp": {
       "kind": "variant",
+      "doc": "A structural edit: add a row or column at a fractional position, delete\none by id, or restore a deleted one (an undo). Every op is one write,\nhowever many cells the sheet holds.",
       "variants": [
         {
           "name": "InsertRow",
@@ -359,7 +336,9 @@
             "$ref": "AxisOp_RestoreCol"
           }
         }
-      ]
+      ],
+      "tag": "name",
+      "content": "payload"
     },
     "AxisOp_DeleteCol": {
       "kind": "record",
@@ -441,6 +420,7 @@
     },
     "AxisSize": {
       "kind": "record",
+      "doc": "A row's or column's size: `axis` is `row` or `col`.",
       "fields": [
         {
           "name": "axis",
@@ -464,6 +444,7 @@
     },
     "Cell": {
       "kind": "record",
+      "doc": "A cell, by row and column id. An implicit id is a 0-based position\n(`\"3\"` is the fourth row until rows move); the client places ids with the\nsheet's layout (`get_layouts`).",
       "fields": [
         {
           "name": "id",
@@ -493,7 +474,8 @@
           "name": "raw_value",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "As stored: references name rows and columns by id."
         },
         {
           "name": "computed_value",
@@ -517,7 +499,8 @@
           "name": "last_editor",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Member id of whoever last changed the cell; empty for a cell last\nwritten before the activity log existed."
         },
         {
           "name": "last_edited_at",
@@ -529,6 +512,7 @@
     },
     "CellChange": {
       "kind": "record",
+      "doc": "One cell's change within an activity entry: its raw value and format\nbefore and after.",
       "fields": [
         {
           "name": "row_id",
@@ -570,12 +554,14 @@
     },
     "CellData": {
       "kind": "record",
+      "doc": "A cell's value, stored in the shared UnorderedMap under\n`\"{sheet_id}|{row_id}|{col_id}\"`. Its format is a separate field\n(`formats`), so a value edit and a format edit never overwrite each other.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Mirrors the map key for ABI convenience."
         },
         {
           "name": "sheet_id",
@@ -587,7 +573,8 @@
           "name": "raw_value",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Raw user input (may be a formula like `=SUM(A1:A5)`)."
         },
         {
           "name": "updated_at",
@@ -599,12 +586,14 @@
     },
     "CellMeta": {
       "kind": "record",
+      "doc": "Who last changed a cell and when, keyed like the cell.",
       "fields": [
         {
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Member id (`whoami`)."
         },
         {
           "name": "at",
@@ -635,7 +624,9 @@
             "$ref": "CellOp_Clear"
           }
         }
-      ]
+      ],
+      "tag": "name",
+      "content": "payload"
     },
     "CellOp_Clear": {
       "kind": "record",
@@ -702,6 +693,7 @@
     },
     "CellStyle": {
       "kind": "record",
+      "doc": "A styled cell.",
       "fields": [
         {
           "name": "sheet_id",
@@ -737,6 +729,7 @@
     },
     "Chart": {
       "kind": "record",
+      "doc": "A live chart.",
       "fields": [
         {
           "name": "id",
@@ -760,6 +753,7 @@
     },
     "ChartData": {
       "kind": "record",
+      "doc": "A chart of a range, anchored on corner row and column ids. Keyed by id.",
       "fields": [
         {
           "name": "sheet_id",
@@ -795,7 +789,8 @@
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`bar` or `line`."
         },
         {
           "name": "title",
@@ -825,6 +820,7 @@
     },
     "ChartInput": {
       "kind": "record",
+      "doc": "A chart as written or read: its range by corner ids, its kind and title.\nThe range's first column labels the points; each other column is a\nseries, named by the first row when that row is text.",
       "fields": [
         {
           "name": "sheet_id",
@@ -872,6 +868,7 @@
     },
     "Comment": {
       "kind": "record",
+      "doc": "A live (not deleted) comment.",
       "fields": [
         {
           "name": "id",
@@ -946,6 +943,7 @@
     },
     "CommentData": {
       "kind": "record",
+      "doc": "A comment on a cell, or a reply to one. Keyed by comment id, owned by its\nauthor (`comments`). Whether its thread is resolved is kept apart\n(`resolved`), since anyone may resolve and only the author edits.",
       "fields": [
         {
           "name": "sheet_id",
@@ -966,12 +964,6 @@
           }
         },
         {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "text",
           "type": {
             "kind": "string"
@@ -984,25 +976,15 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Member ids named with `@nickname` in the text."
         },
         {
           "name": "parent",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "resolved",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "deleted",
-          "type": {
-            "kind": "bool"
-          }
+          },
+          "doc": "The comment this replies to; empty for a thread's first comment."
         },
         {
           "name": "created_at",
@@ -1404,15 +1386,35 @@
     },
     "FormatData": {
       "kind": "record",
+      "doc": "A cell's display format, kept apart from its value so that formatting a\ncell and typing in it at the same moment both survive. Keyed like the cell.",
       "fields": [
         {
           "name": "format",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Empty means Automatic, and overrides a format the cell carried from v1."
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Founding": {
+      "kind": "record",
+      "doc": "What a workbook is from the moment it exists: its id and creation time,\nfixed in `init` and changeable by nobody (`founding`).",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
           "type": {
             "kind": "u64"
           }
@@ -1456,12 +1458,14 @@
     },
     "Link": {
       "kind": "record",
+      "doc": "A live incoming link.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Also the linked sheet's id."
         },
         {
           "name": "source_context",
@@ -1503,6 +1507,7 @@
     },
     "LinkedData": {
       "kind": "record",
+      "doc": "A range pushed here from another workbook (the receiving side of a link),\nshown as a read-only sheet whose id is the key. Values are row-major.",
       "fields": [
         {
           "name": "source_context",
@@ -1553,13 +1558,15 @@
           "name": "blocked",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Removed here: later pushes are ignored."
         },
         {
           "name": "deleted",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Withdrawn by the source."
         },
         {
           "name": "updated_at",
@@ -1571,12 +1578,14 @@
     },
     "Member": {
       "kind": "record",
+      "doc": "One collaborator, by the name they chose.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Account hex (`whoami`) — the same key `Cursor.author` carries, so a\nroster and the live cursors join on it without a translation step."
         },
         {
           "name": "nickname",
@@ -1600,18 +1609,21 @@
           "name": "account",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The member's account (hex), as core's group roster names them: the\nsame value as `id`."
         },
         {
           "name": "role",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`owner`, `editor`, `commenter` or `viewer`."
         }
       ]
     },
     "MemberData": {
       "kind": "record",
+      "doc": "A collaborator's chosen nickname, in their account's own slot (`members`),\nso only they can set it.\n\nThis exists because the only thing the app could previously put next to a\ncursor was a raw 64-hex device key, which answers no question anyone has.\nA nickname has to live HERE and not in `localStorage`: localStorage is\nper-browser, so a name kept there is visible to exactly the one person who\ndoes not need it.",
       "fields": [
         {
           "name": "nickname",
@@ -1623,7 +1635,8 @@
           "name": "joined_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "First time this member announced themselves. Earliest wins on merge — a\nlater rename must not look like a later arrival."
         },
         {
           "name": "updated_at",
@@ -1646,24 +1659,28 @@
           "name": "target",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A reference in stored form."
         }
       ]
     },
     "NamedRangeData": {
       "kind": "record",
+      "doc": "A named range: a name that formulas can use in place of a reference.\nKeyed by the upper-case name; an empty target means deleted (a removed key\nwould tombstone the name and block defining it again).",
       "fields": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The name as it was typed, for display."
         },
         {
           "name": "target",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A reference in stored form (`[sheet-id]!A1:B9`)."
         },
         {
           "name": "updated_at",
@@ -1675,6 +1692,7 @@
     },
     "NoteChange": {
       "kind": "variant",
+      "doc": "One step of a note edit, in the Quill delta shape: keep, insert or delete\ncharacters, with formatting on kept or inserted text. Mirrors `DeltaOp`,\nwhich has no `AbiType`.",
       "variants": [
         {
           "name": "Retain",
@@ -1694,7 +1712,8 @@
             "$ref": "NoteChange_Delete"
           }
         }
-      ]
+      ],
+      "untagged": true
     },
     "NoteChange_Delete": {
       "kind": "record",
@@ -1726,7 +1745,8 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "nullable": true
         }
       ]
     },
@@ -1749,12 +1769,14 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "nullable": true
         }
       ]
     },
     "NotedCell": {
       "kind": "record",
+      "doc": "A cell that has a note, with the start of its text.",
       "fields": [
         {
           "name": "sheet_id",
@@ -1784,18 +1806,21 @@
     },
     "Project": {
       "kind": "record",
+      "doc": "The project's own identity, as the UI titles it.\n\n`init_project` has always written `project_name`, and until now NOTHING\ncould read it back — there was no view method over the register at all. That\nis the whole reason the workspace list fell back to names cached in\n`localStorage`, which meant every peer but the creator saw \"Workspace 1\".",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Fixed when the workbook is created."
         },
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Empty until `init_project` runs."
         },
         {
           "name": "created_at",
@@ -1807,6 +1832,7 @@
     },
     "Protection": {
       "kind": "record",
+      "doc": "A live protected range.",
       "fields": [
         {
           "name": "id",
@@ -1869,6 +1895,7 @@
     },
     "ProtectionData": {
       "kind": "record",
+      "doc": "A protected range: only owners and the listed editors may change its cells.\nCorners are row and column ids, so the range follows its cells as rows and\ncolumns move; all four empty protects the whole sheet. Keyed by id.",
       "fields": [
         {
           "name": "sheet_id",
@@ -1913,7 +1940,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Member ids allowed to edit it besides owners."
         },
         {
           "name": "created_by",
@@ -1937,6 +1965,7 @@
     },
     "Publication": {
       "kind": "record",
+      "doc": "A live publication.",
       "fields": [
         {
           "name": "id",
@@ -1996,6 +2025,7 @@
     },
     "PublicationData": {
       "kind": "record",
+      "doc": "A range this workbook pushes to another workbook in the workspace (the\nsource side of a link). Keyed by id, owned by whoever linked it.",
       "fields": [
         {
           "name": "sheet_id",
@@ -2031,59 +2061,21 @@
           "name": "target_context",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The receiving workbook's context id, hex."
         },
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "deleted",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "RoleData": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "role",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
+          },
+          "doc": "What the linked sheet is called there."
         }
       ]
     },
     "Rule": {
       "kind": "record",
+      "doc": "A live rule.",
       "fields": [
         {
           "name": "id",
@@ -2107,6 +2099,7 @@
     },
     "RuleData": {
       "kind": "record",
+      "doc": "A conditional format, colour scale or validation over a range, anchored on\ncorner row and column ids like a protected range. Keyed by id.",
       "fields": [
         {
           "name": "sheet_id",
@@ -2142,7 +2135,8 @@
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`format`, `scale` or `validate`."
         },
         {
           "name": "condition",
@@ -2166,13 +2160,15 @@
             "items": {
               "$ref": "StylePair"
             }
-          }
+          },
+          "doc": "The style a matching `format` rule applies, as (field, value) pairs."
         },
         {
           "name": "strict",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "A `validate` rule that refuses values instead of marking them."
         },
         {
           "name": "recipients",
@@ -2181,7 +2177,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Who an `alert` rule tells (member ids)."
         },
         {
           "name": "created_by",
@@ -2205,6 +2202,7 @@
     },
     "RuleInput": {
       "kind": "record",
+      "doc": "A rule as written or read: its range by corner ids, and what it does.",
       "fields": [
         {
           "name": "sheet_id",
@@ -2240,7 +2238,8 @@
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`format` (style cells that meet the condition), `scale` (shade numbers\nfrom `args[0]` at the lowest to `args[1]` at the highest), `validate`\n(values must meet the condition) or `alert` (tell `recipients` when a\nvalue starts meeting it)."
         },
         {
           "name": "condition",
@@ -2317,12 +2316,14 @@
           "name": "linked_from",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "For a linked sheet (read-only, pushed from another workbook), that\nworkbook's name; empty otherwise."
         }
       ]
     },
     "SheetData": {
       "kind": "record",
+      "doc": "A sheet tab stored in the shared UnorderedMap.",
       "fields": [
         {
           "name": "id",
@@ -2340,7 +2341,8 @@
           "name": "position",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Tab ordering hint (lower = further left)."
         },
         {
           "name": "created_at",
@@ -2352,12 +2354,14 @@
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Timestamp of the last rename — used for LWW name merge."
         }
       ]
     },
     "SheetLayout": {
       "kind": "record",
+      "doc": "A sheet's explicit row and column entries. A sheet with none has the\nimplicit layout: row id `k` at row `k`.",
       "fields": [
         {
           "name": "sheet_id",
@@ -2387,6 +2391,7 @@
     },
     "SheetView": {
       "kind": "record",
+      "doc": "A sheet's frozen rows and columns and resized rows and columns.",
       "fields": [
         {
           "name": "sheet_id",
@@ -2419,6 +2424,7 @@
     },
     "SheetViewData": {
       "kind": "record",
+      "doc": "How a sheet is shown: its frozen rows and columns. Keyed by sheet id.",
       "fields": [
         {
           "name": "frozen_rows",
@@ -2442,12 +2448,14 @@
     },
     "SizeData": {
       "kind": "record",
+      "doc": "A resized row or column. Keyed `\"{sheet_id}|r|{id}\"` or `\"{sheet_id}|c|{id}\"`.",
       "fields": [
         {
           "name": "size",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Pixels."
         },
         {
           "name": "updated_at",
@@ -2484,37 +2492,47 @@
       "kind": "record",
       "fields": [
         {
-          "name": "project_id",
+          "name": "founding",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "Founding"
             }
-          }
+          },
+          "doc": "The workbook's id and creation time, fixed in `init`."
         },
         {
           "name": "project_name",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
             }
-          }
+          },
+          "doc": "The workbook's name, set by `init_project`; empty until then. Only\nowners write it."
         },
         {
-          "name": "project_created_at",
+          "name": "acl",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Workbook roles. Its admins are the owners; `viewer` and `commenter`\nare named roles. A member with neither and not an owner is an editor."
         },
         {
           "name": "sheets",
@@ -2527,7 +2545,8 @@
               "$ref": "SheetData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Sheet tabs keyed by sheet id."
         },
         {
           "name": "cells",
@@ -2539,8 +2558,9 @@
             "value": {
               "$ref": "CellData"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Cell values keyed by `\"{sheet_id}|{row_id}|{col_id}\"`, so one sheet's\ncells are one prefix."
         },
         {
           "name": "members",
@@ -2551,9 +2571,9 @@
             },
             "value": {
               "$ref": "MemberData"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "Chosen nicknames, one slot per account that only it writes."
         },
         {
           "name": "axes",
@@ -2565,8 +2585,9 @@
             "value": {
               "$ref": "AxisData"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Added and deleted rows and columns, keyed `\"{sheet_id}|r|{id}\"` and\n`\"{sheet_id}|c|{id}\"`."
         },
         {
           "name": "formats",
@@ -2578,8 +2599,9 @@
             "value": {
               "$ref": "FormatData"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Cell formats, keyed like `cells`."
         },
         {
           "name": "names",
@@ -2592,7 +2614,8 @@
               "$ref": "NamedRangeData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Named ranges keyed by upper-case name."
         },
         {
           "name": "cell_meta",
@@ -2604,8 +2627,9 @@
             "value": {
               "$ref": "CellMeta"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Who last changed each cell, keyed like `cells`."
         },
         {
           "name": "activity",
@@ -2617,8 +2641,9 @@
             "value": {
               "$ref": "ActivityData"
             },
-            "crdt_type": "sorted_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "The activity log: each entry owned by its author and never changed."
         },
         {
           "name": "comments",
@@ -2630,8 +2655,28 @@
             "value": {
               "$ref": "CommentData"
             },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Cell comments and replies, keyed by comment id: the author edits and\ndeletes, owners (the moderators) delete."
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Whether a comment's thread is resolved, keyed by comment id. Anyone\nin the workbook may resolve, so it is not part of the comment."
         },
         {
           "name": "notes",
@@ -2650,46 +2695,27 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "AccountData"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "roles",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "RoleData"
-            },
-            "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Cell notes, keyed like `cells`: rich text that merges concurrent edits\ncharacter by character."
         },
         {
           "name": "protections",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ProtectionData"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "ProtectionData"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Protected ranges, keyed by id. Only owners write them."
         },
         {
           "name": "sizes",
@@ -2702,7 +2728,8 @@
               "$ref": "SizeData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Resized rows and columns, keyed like `axes`."
         },
         {
           "name": "views",
@@ -2715,7 +2742,8 @@
               "$ref": "SheetViewData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Frozen rows and columns per sheet."
         },
         {
           "name": "styles",
@@ -2728,7 +2756,8 @@
               "$ref": "StyleData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Cell styles, keyed like `cells`."
         },
         {
           "name": "rules",
@@ -2741,7 +2770,8 @@
               "$ref": "RuleData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Conditional formats, colour scales and validations, keyed by id."
         },
         {
           "name": "charts",
@@ -2754,7 +2784,8 @@
               "$ref": "ChartData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Charts, keyed by id."
         },
         {
           "name": "attachments",
@@ -2766,8 +2797,9 @@
             "value": {
               "$ref": "AttachmentData"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Files attached to cells, keyed by id: whoever attached one removes\nit, and owners (the moderators) may."
         },
         {
           "name": "publications",
@@ -2779,8 +2811,9 @@
             "value": {
               "$ref": "PublicationData"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Ranges this workbook pushes to others, keyed by id: whoever linked\none stops it, and owners (the moderators) may."
         },
         {
           "name": "linked",
@@ -2793,7 +2826,8 @@
               "$ref": "LinkedData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Ranges pushed here from other workbooks, keyed by linked sheet id."
         },
         {
           "name": "alert_state",
@@ -2806,12 +2840,14 @@
               "$ref": "AlertState"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Alert rules' last matching cells, keyed by rule id."
         }
       ]
     },
     "StyleData": {
       "kind": "record",
+      "doc": "A cell's style, one last-writer-wins value per field, so one person\nmaking a cell bold and another colouring it both keep their change.\nKeyed like `cells`.",
       "fields": [
         {
           "name": "fields",
@@ -2820,7 +2856,8 @@
             "items": {
               "$ref": "StyleField"
             }
-          }
+          },
+          "doc": "One entry per field, sorted by field. An empty value is a cleared field."
         }
       ]
     },
@@ -2849,6 +2886,7 @@
     },
     "StyleOp": {
       "kind": "record",
+      "doc": "One style change: set `field` of a cell to `value` (empty clears it).",
       "fields": [
         {
           "name": "row_id",
@@ -2897,6 +2935,7 @@
   "methods": [
     {
       "name": "add_attachment",
+      "doc": "Record a file attached to a cell. Upload the bytes as a blob announced\nto this context first; this stores what the cell shows. Returns its id.",
       "params": [
         {
           "name": "sheet_id",
@@ -2948,6 +2987,7 @@
     },
     {
       "name": "add_chart",
+      "doc": "Chart a range. Returns the chart's id.",
       "params": [
         {
           "name": "chart",
@@ -2963,6 +3003,7 @@
     },
     {
       "name": "add_comment",
+      "doc": "Comment on a cell, or reply to a comment (`parent`). `@nickname` in the\ntext mentions that member: the `CommentAdded` event carries their ids,\nand their client tells them. Returns the comment id.",
       "params": [
         {
           "name": "sheet_id",
@@ -3002,6 +3043,7 @@
     },
     {
       "name": "add_rule",
+      "doc": "Add a conditional format, colour scale or validation. Returns its id.",
       "params": [
         {
           "name": "rule",
@@ -3017,6 +3059,7 @@
     },
     {
       "name": "apply_axis_ops",
+      "doc": "Insert or delete rows and columns. Each op is one write, whatever the\nsheet holds: cells keep their keys, and formulas that name rows by id\nkeep pointing at the same cells. A deleted row's cells stay stored but\nout of the layout, so references to them read `#REF!`.\n\nThe client picks ids (letters first, never an implicit number) and\npositions (see the recalc crate's `layout`).",
       "params": [
         {
           "name": "sheet_id",
@@ -3041,6 +3084,7 @@
     },
     {
       "name": "apply_cell_ops",
+      "doc": "Apply a batch of cell operations to one sheet in a single mutation, with\nONE `CellsChanged` event for the whole batch.\n\nAt most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget\n(1e9 points on 0.11.0-rc.43), and a batch that exhausts it fails as a\nwhole with nothing written. Refusing early says why; callers split\nlarger range ops.",
       "params": [
         {
           "name": "sheet_id",
@@ -3065,6 +3109,7 @@
     },
     {
       "name": "apply_private_cell_ops",
+      "doc": "Write cells of a private sheet: the same ops as `apply_cell_ops`.",
       "params": [
         {
           "name": "sheet_id",
@@ -3089,6 +3134,7 @@
     },
     {
       "name": "apply_style_ops",
+      "doc": "Change cells' styles: bold, italic, underline, strike, wrap (`1`),\ncolor and fill (`#rrggbb`), align (`left`, `center`, `right`); an\nempty value clears the field. Each field merges on its own.",
       "params": [
         {
           "name": "sheet_id",
@@ -3140,6 +3186,7 @@
     },
     {
       "name": "create_private_sheet",
+      "doc": "Make a private sheet on this node. Returns its id.",
       "params": [
         {
           "name": "name",
@@ -3170,6 +3217,7 @@
     },
     {
       "name": "delete_comment",
+      "doc": "Delete a comment. Its author or an owner may; storage refuses anyone\nelse on every node.",
       "params": [
         {
           "name": "id",
@@ -3200,6 +3248,7 @@
     },
     {
       "name": "delete_private_sheet",
+      "doc": "Delete a private sheet and its cells.",
       "params": [
         {
           "name": "sheet_id",
@@ -3230,6 +3279,7 @@
     },
     {
       "name": "drop_link",
+      "doc": "The source withdrew a link: remove its sheet.",
       "params": [
         {
           "name": "from_context",
@@ -3254,6 +3304,7 @@
     },
     {
       "name": "edit_comment",
+      "doc": "Change a comment's text. Only its author may: storage refuses anyone\nelse's edit on every node.",
       "params": [
         {
           "name": "id",
@@ -3275,6 +3326,7 @@
     },
     {
       "name": "edit_note",
+      "doc": "Edit a cell's note: one editor transaction (text and formatting) in the\nQuill delta shape, counted against the note as this node holds it.\nConcurrent edits from others merge character by character. Formatting\nkeys are `bold`, `italic`, `underline`, `strike`, `code`, `highlight`\nand `link`.",
       "params": [
         {
           "name": "sheet_id",
@@ -3311,6 +3363,7 @@
     },
     {
       "name": "export_all",
+      "doc": "Returns all sheets (same as list_sheets). The frontend assembles CSV\nby calling get_cells per sheet.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3322,6 +3375,7 @@
     },
     {
       "name": "get_activity",
+      "doc": "Activity since `since` (nanoseconds), newest first, at most `limit`\n(capped at 500) entries: one seek on the `at` index. The author is the\nentry's owner stamp.",
       "params": [
         {
           "name": "since",
@@ -3346,6 +3400,7 @@
     },
     {
       "name": "get_all_cells",
+      "doc": "Every non-blank cell across all sheets, raw and computed: the client's\nwarm store, read in one call.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3357,6 +3412,7 @@
     },
     {
       "name": "get_attachments",
+      "doc": "Every attachment, oldest first. `created_by` is the owner stamp.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3368,6 +3424,7 @@
     },
     {
       "name": "get_cells",
+      "doc": "One sheet's cells with computed values. Reads and evaluates only the\nsheet and the sheets it transitively references, which gives the same\nvalues as evaluating the whole workbook.",
       "params": [
         {
           "name": "sheet_id",
@@ -3386,6 +3443,7 @@
     },
     {
       "name": "get_charts",
+      "doc": "Every live chart.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3397,6 +3455,7 @@
     },
     {
       "name": "get_comments",
+      "doc": "Every comment, oldest first. The author is the entry's owner stamp.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3408,6 +3467,7 @@
     },
     {
       "name": "get_functions",
+      "doc": "Every formula function, sorted by name.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3419,6 +3479,7 @@
     },
     {
       "name": "get_layouts",
+      "doc": "Every sheet's explicit row and column entries.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3430,6 +3491,7 @@
     },
     {
       "name": "get_links",
+      "doc": "Every live link into this workbook.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3441,6 +3503,7 @@
     },
     {
       "name": "get_members",
+      "doc": "Everyone who has ever announced themselves, oldest arrival first.\n\nSorted here rather than in the UI so every peer renders the same order;\nthe map's own iteration order is not a stable thing to show a person.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3452,6 +3515,7 @@
     },
     {
       "name": "get_named_ranges",
+      "doc": "Every defined named range, sorted by name.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3463,6 +3527,7 @@
     },
     {
       "name": "get_note",
+      "doc": "A cell's note as formatted runs; empty when it has none.",
       "params": [
         {
           "name": "sheet_id",
@@ -3493,6 +3558,7 @@
     },
     {
       "name": "get_noted_cells",
+      "doc": "Every cell with a non-empty note, with the start of its text.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3504,6 +3570,7 @@
     },
     {
       "name": "get_private_cells",
+      "doc": "Every cell of this node's private sheets. `computed_value` is empty:\nthe client evaluates them, with the shared sheets they read.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3515,6 +3582,7 @@
     },
     {
       "name": "get_private_sheets",
+      "doc": "This node's private sheets, in the order they were made.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3526,6 +3594,7 @@
     },
     {
       "name": "get_project",
+      "doc": "The project's id, name and creation time.\n\nNew. `init_project` wrote the name into `project_name` from the first\nversion of this contract and no method ever read it, so the name was\nreplicated to every peer and visible to none of them.\n\nNever 404s: an unnamed project is a real, transient state (a context\nexists the moment it is created, `init_project` lands a round-trip\nlater) and it answers with an empty name so a caller can render a\nplaceholder instead of an error.",
       "params": [],
       "returns": {
         "$ref": "Project"
@@ -3534,6 +3603,7 @@
     },
     {
       "name": "get_protections",
+      "doc": "Every live protected range.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3545,6 +3615,7 @@
     },
     {
       "name": "get_publications",
+      "doc": "Every live link from this workbook: those an editor or owner made.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3556,6 +3627,7 @@
     },
     {
       "name": "get_rules",
+      "doc": "Every live rule.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3567,6 +3639,7 @@
     },
     {
       "name": "get_sheet_views",
+      "doc": "Every sheet's frozen panes and resized rows and columns (sheets with\nneither are left out).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3578,6 +3651,7 @@
     },
     {
       "name": "get_styles",
+      "doc": "Every styled cell, with its set fields.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3596,6 +3670,7 @@
     },
     {
       "name": "init_project",
+      "doc": "Name the workbook, once. Owners only; the creator is the first owner.\nReturns the workbook's id, fixed when it was created.",
       "params": [
         {
           "name": "name",
@@ -3611,6 +3686,7 @@
     },
     {
       "name": "join",
+      "doc": "Announce this member under a chosen nickname, or rename it.\n\nIdempotent by design — it is called on every open, not only on the first\none, because there is no reliable \"first\" for a replicated context and a\njoin that only registers once leaves anyone whose first attempt failed\npermanently anonymous. `joined_at` is preserved across re-calls so a\nrename does not reorder the roster.",
       "params": [
         {
           "name": "nickname",
@@ -3637,6 +3713,7 @@
     },
     {
       "name": "protect_range",
+      "doc": "Protect a range (corner row and column ids; all four empty for the\nwhole sheet). Only owners and `editors` may then change its cells.\nOwners only. Returns the protection id.",
       "params": [
         {
           "name": "sheet_id",
@@ -3691,6 +3768,7 @@
     },
     {
       "name": "publish_range",
+      "doc": "Link a range to another workbook (its context id, hex), where it\nappears as a read-only sheet called `name`. Returns the link's id.",
       "params": [
         {
           "name": "sheet_id",
@@ -3742,6 +3820,7 @@
     },
     {
       "name": "push_publication",
+      "doc": "Push a link's values again now.",
       "params": [
         {
           "name": "id",
@@ -3757,6 +3836,7 @@
     },
     {
       "name": "receive_link",
+      "doc": "Receive a linked range from another workbook running this app. Only\nthe node calls it, from the source's `xcall`; the origin it sets must\nbe the workbook the call says it is from.",
       "params": [
         {
           "name": "from_context",
@@ -3814,6 +3894,7 @@
     },
     {
       "name": "remove_attachment",
+      "doc": "Remove an attachment. Whoever attached it, or an owner, may: storage\nrefuses anyone else on every node.",
       "params": [
         {
           "name": "id",
@@ -3844,6 +3925,7 @@
     },
     {
       "name": "remove_protection",
+      "doc": "Remove a protection. Owners only.",
       "params": [
         {
           "name": "id",
@@ -3967,6 +4049,7 @@
     },
     {
       "name": "set_cell_format",
+      "doc": "Set only the display format of a cell, preserving its value. `format`\nis a keyword like \"number\"/\"currency\"/\"percent\"/\"date\" (\"\" = Automatic).",
       "params": [
         {
           "name": "sheet_id",
@@ -4000,6 +4083,7 @@
     },
     {
       "name": "set_comment_resolved",
+      "doc": "Resolve or reopen a comment thread. Anyone in the workbook may.",
       "params": [
         {
           "name": "id",
@@ -4021,6 +4105,7 @@
     },
     {
       "name": "set_frozen",
+      "doc": "Freeze the first `rows` rows and `cols` columns of a sheet (0 unfreezes).",
       "params": [
         {
           "name": "sheet_id",
@@ -4048,6 +4133,7 @@
     },
     {
       "name": "set_named_range",
+      "doc": "Define or redefine a named range. `target` is a reference in stored form.",
       "params": [
         {
           "name": "name",
@@ -4069,6 +4155,7 @@
     },
     {
       "name": "set_role",
+      "doc": "Set a member's workbook role: `owner`, `editor`, `commenter` or\n`viewer`. Owners only.",
       "params": [
         {
           "name": "member_id",
@@ -4090,6 +4177,7 @@
     },
     {
       "name": "set_sizes",
+      "doc": "Resize rows and columns (`axis` `row` or `col`, size in pixels).",
       "params": [
         {
           "name": "sheet_id",
@@ -4114,6 +4202,7 @@
     },
     {
       "name": "unlink",
+      "doc": "Remove a linked sheet here; later pushes of it are ignored.",
       "params": [
         {
           "name": "id",
@@ -4129,6 +4218,7 @@
     },
     {
       "name": "unpublish",
+      "doc": "Stop a link, and remove its sheet from the other workbook. Whoever\nlinked it, or an owner, may: storage refuses anyone else.",
       "params": [
         {
           "name": "id",
@@ -4144,6 +4234,7 @@
     },
     {
       "name": "update_chart",
+      "doc": "Replace a chart's range, kind or title.",
       "params": [
         {
           "name": "id",
@@ -4165,6 +4256,7 @@
     },
     {
       "name": "update_protection",
+      "doc": "Change who may edit a protected range, and its description. Owners only.",
       "params": [
         {
           "name": "id",
@@ -4195,6 +4287,7 @@
     },
     {
       "name": "update_rule",
+      "doc": "Replace a rule.",
       "params": [
         {
           "name": "id",
@@ -4216,6 +4309,7 @@
     },
     {
       "name": "whoami",
+      "doc": "The id THIS caller is known by in here — the key its cursor is authored\nby and its roster row is stored under.\n\nExists so the frontend never has to guess which row is \"me\". It had been\ncomparing `Cursor.author` against the context's executor public key,\nwhich is a different value from a different family: a device key and a\ncontext identity are both 64 hex, so the comparison type-checks, returns\nfalse forever, and shows the local user as a stranger in their own\nspreadsheet. Asking the contract costs one read and cannot be wrong.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -4228,145 +4322,169 @@
       "name": "AlertTriggered",
       "payload": {
         "$ref": "Event_AlertTriggered"
-      }
+      },
+      "doc": "Cells in an alert rule's range started meeting its condition."
     },
     {
       "name": "AttachmentsChanged",
       "payload": {
         "$ref": "Event_AttachmentsChanged"
-      }
+      },
+      "doc": "A file was attached to a cell, or removed."
     },
     {
       "name": "AxesChanged",
       "payload": {
         "$ref": "Event_AxesChanged"
-      }
+      },
+      "doc": "Rows or columns were inserted or deleted via `apply_axis_ops`."
     },
     {
       "name": "CellCleared",
       "payload": {
         "$ref": "Event_CellCleared"
-      }
+      },
+      "doc": "A cell was cleared."
     },
     {
       "name": "CellUpdated",
       "payload": {
         "$ref": "Event_CellUpdated"
-      }
+      },
+      "doc": "A cell's value was set or updated."
     },
     {
       "name": "CellsChanged",
       "payload": {
         "$ref": "Event_CellsChanged"
-      }
+      },
+      "doc": "A batch of cells was applied via `apply_cell_ops`. ONE event per batch\n(not one per cell) so a large batch stays under the runtime's per-commit\nevent cap (`max_events`); subscribers refresh once for the whole apply."
     },
     {
       "name": "ChartsChanged",
       "payload": {
         "$ref": "Event_ChartsChanged"
-      }
+      },
+      "doc": "A chart was added, changed or removed."
     },
     {
       "name": "CommentAdded",
       "payload": {
         "$ref": "Event_CommentAdded"
-      }
+      },
+      "doc": "A comment or reply was added; `mentions` are the member ids it names."
     },
     {
       "name": "CommentChanged",
       "payload": {
         "$ref": "Event_CommentChanged"
-      }
+      },
+      "doc": "A comment was edited, resolved, reopened or deleted."
     },
     {
       "name": "LinkedChanged",
       "payload": {
         "$ref": "Event_LinkedChanged"
-      }
+      },
+      "doc": "A linked sheet (pushed from another workbook) arrived, changed or went."
     },
     {
       "name": "MemberJoined",
       "payload": {
         "$ref": "Event_MemberJoined"
-      }
+      },
+      "doc": "A device announced itself under a nickname for the first time."
     },
     {
       "name": "MemberRenamed",
       "payload": {
         "$ref": "Event_MemberRenamed"
-      }
+      },
+      "doc": "A member changed the nickname they are shown under."
     },
     {
       "name": "NamedRangesChanged",
       "payload": {
         "$ref": "Event_NamedRangesChanged"
-      }
+      },
+      "doc": "A named range was defined, redefined or deleted."
     },
     {
       "name": "NoteChanged",
       "payload": {
         "$ref": "Event_NoteChanged"
-      }
+      },
+      "doc": "A cell's note was edited."
     },
     {
       "name": "ProjectInitialized",
       "payload": {
         "$ref": "Event_ProjectInitialized"
-      }
+      },
+      "doc": "A new spreadsheet project was initialized."
     },
     {
       "name": "ProtectionsChanged",
       "payload": {
         "$ref": "Event_ProtectionsChanged"
-      }
+      },
+      "doc": "A protected range was added, changed or removed."
     },
     {
       "name": "PublicationsChanged",
       "payload": {
         "$ref": "Event_PublicationsChanged"
-      }
+      },
+      "doc": "A link from this workbook was made or stopped."
     },
     {
       "name": "RolesChanged",
       "payload": {
         "$ref": "Event_RolesChanged"
-      }
+      },
+      "doc": "A member's workbook role changed."
     },
     {
       "name": "RulesChanged",
       "payload": {
         "$ref": "Event_RulesChanged"
-      }
+      },
+      "doc": "A conditional format, colour scale or validation changed."
     },
     {
       "name": "SheetCreated",
       "payload": {
         "$ref": "Event_SheetCreated"
-      }
+      },
+      "doc": "A new sheet tab was created."
     },
     {
       "name": "SheetDeleted",
       "payload": {
         "$ref": "Event_SheetDeleted"
-      }
+      },
+      "doc": "A sheet (and all its cells) was deleted."
     },
     {
       "name": "SheetRenamed",
       "payload": {
         "$ref": "Event_SheetRenamed"
-      }
+      },
+      "doc": "A sheet was renamed."
     },
     {
       "name": "SheetViewChanged",
       "payload": {
         "$ref": "Event_SheetViewChanged"
-      }
+      },
+      "doc": "A sheet's frozen panes or row and column sizes changed."
     },
     {
       "name": "StylesChanged",
       "payload": {
         "$ref": "Event_StylesChanged"
-      }
+      },
+      "doc": "Cells' styles changed."
     }
   ],
   "state_root": "Spreadsheet",

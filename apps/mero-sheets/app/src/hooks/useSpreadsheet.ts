@@ -1362,17 +1362,6 @@ export function useSpreadsheet({
     await reloadPrivate();
   }, [client, enqueue, reloadPrivate]);
 
-  // A member who joined before accounts were recorded: record theirs, so the
-  // People panel can match them to the group roster. Once per workbook.
-  const backfilled = useRef(false);
-  useEffect(() => { backfilled.current = false; }, [client]);
-  useEffect(() => {
-    const me = members.find((m) => m.id === selfId);
-    if (!client || !me || me.account || backfilled.current) return;
-    backfilled.current = true;
-    void enqueue(() => client.join({ nickname: me.nickname })).catch(() => undefined);
-  }, [client, members, selfId, enqueue]);
-
   const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
     if (!client) return [];
     // Nanoseconds; a float's precision loss here is well under a second.

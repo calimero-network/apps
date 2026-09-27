@@ -18,7 +18,7 @@ import React, { useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { C } from '../theme';
 import type { Member } from '../hooks/useSpreadsheet';
-import { ROLE_HELP, WORKBOOK_ROLES } from '../spreadsheet/access';
+import { ROLE_HELP, ROLE_NOTE, WORKBOOK_ROLES } from '../spreadsheet/access';
 
 /** One entry of core's group roster. */
 export interface GroupPerson {
@@ -97,6 +97,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
           <CloseBtn onClick={onClose} aria-label="Close people">×</CloseBtn>
         </Header>
         {error && <Err role="alert">{error}</Err>}
+        <Note data-testid="role-note">{ROLE_NOTE}</Note>
         <List>
           {rows.map(({ key, member, person }) => {
             const self = !!member && member.id === selfId;
@@ -261,6 +262,7 @@ const CloseBtn = styled.button`
   &:hover { background: ${C.paper2}; color: ${C.ink}; }
 `;
 const Err = styled.p`margin: 0; padding: 8px 18px; font-size: 12.5px; color: ${C.danger}; border-bottom: 1px solid ${C.line};`;
+const Note = styled.p`margin: 0; padding: 8px 18px; font-size: 12px; color: ${C.muted}; border-bottom: 1px solid ${C.line};`;
 const List = styled.ul`list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1;`;
 const Item = styled.li`
   padding: 12px 18px; border-bottom: 1px solid ${C.line}; font-size: 13px; color: ${C.ink};

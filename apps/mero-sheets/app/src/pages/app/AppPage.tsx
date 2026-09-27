@@ -491,7 +491,6 @@ export default function AppPage() {
   const selfMember = ss.members.find((m) => m.id === ss.selfId);
   const myRole = selfMember?.role ?? 'editor';
   const isOwner = myRole === 'owner';
-  const hasOwner = ss.members.some((m) => m.role === 'owner');
   const isGroupAdmin = !!selfMember?.account &&
     groupMembers.some((g) => g.identity === selfMember.account && g.role === 'Admin');
   const placed = activeSheetId && !isPrivateActive
@@ -1828,6 +1827,7 @@ export default function AppPage() {
             return {
               id: p.id,
               name: p.name,
+              canStop: p.created_by === ss.selfId || isOwner,
               target: ws.workspaces.find((w) => w.contextId === p.target_context)?.name ?? `${p.target_context.slice(0, 8)}…`,
               where: a && b ? `${sheet ? sheetPrefix(sheet) : ''}${rangeRef(a, b)}` : null,
             };
@@ -1968,7 +1968,7 @@ export default function AppPage() {
           selfId={ss.selfId}
           workspaceName={ws.namespaceName}
           nameOf={personName}
-          canManageRoles={isOwner || !hasOwner}
+          canManageRoles={isOwner}
           isGroupAdmin={isGroupAdmin}
           onSetRole={ss.setRole}
           onSetGroupRole={async (account, role) => {

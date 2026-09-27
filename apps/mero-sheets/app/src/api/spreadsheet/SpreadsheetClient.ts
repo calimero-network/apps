@@ -6,12 +6,7 @@ import {
 
 // Generated types
 
-export interface AccountData {
-  account: string;
-}
-
 export interface ActivityData {
-  author: string;
   at: number;
   sheet_id: string;
   kind: string;
@@ -57,10 +52,7 @@ export interface AttachmentData {
   name: string;
   size: number;
   mime: string;
-  created_by: string;
   created_at: number;
-  deleted: boolean;
-  updated_at: number;
 }
 
 export interface AxisData {
@@ -240,12 +232,9 @@ export interface CommentData {
   sheet_id: string;
   row_id: string;
   col_id: string;
-  author: string;
   text: string;
   mentions: string[];
   parent: string;
-  resolved: boolean;
-  deleted: boolean;
   created_at: number;
   updated_at: number;
 }
@@ -368,6 +357,11 @@ export interface Event_StylesChanged {
 export interface FormatData {
   format: string;
   updated_at: number;
+}
+
+export interface Founding {
+  id: string;
+  created_at: number;
 }
 
 export interface FunctionDef {
@@ -510,15 +504,6 @@ export interface PublicationData {
   right_col_id: string;
   target_context: string;
   name: string;
-  created_by: string;
-  deleted: boolean;
-  updated_at: number;
-}
-
-export interface RoleData {
-  role: string;
-  by: string;
-  updated_at: number;
 }
 
 export interface Rule {
@@ -604,9 +589,9 @@ export interface Span {
 }
 
 export interface Spreadsheet {
-  project_id: string;
+  founding: Founding;
   project_name: string;
-  project_created_at: number;
+  acl: Record<string, boolean>;
   sheets: Record<string, SheetData>;
   cells: Record<string, CellData>;
   members: Record<string, MemberData>;
@@ -616,9 +601,8 @@ export interface Spreadsheet {
   cell_meta: Record<string, CellMeta>;
   activity: Record<string, ActivityData>;
   comments: Record<string, CommentData>;
+  resolved: Record<string, boolean>;
   notes: Record<string, Record<string, Span>>;
-  accounts: Record<string, AccountData>;
-  roles: Record<string, RoleData>;
   protections: Record<string, ProtectionData>;
   sizes: Record<string, SizeData>;
   views: Record<string, SheetViewData>;
