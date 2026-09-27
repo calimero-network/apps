@@ -1421,23 +1421,30 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     return () => clearTimeout(timer);
   }, [selectedNsId, isJustJoined]);
 
-  // Lift the gate once the registry resolved and the folder list read, but only
-  // after re-reading the workspace list: on events alone it can predate the join.
+  // Lift the gate once the registry resolved, the folder list read, and the
+  // workspace list includes this workspace: read on events, it can predate the join.
+  const joinListAskedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedNsId) return;
     if (!isJustJoined) return;
     if (!registryContextId) return;
     if (regFoldersLoadedForNs !== selectedNsId) return;
-    void refetchNamespaces().then((ok) => {
-      if (!ok) return; // a failed read leaves it to the watchdog above
-      clearNamespaceJustJoined(selectedNsId);
-      setJustJoinedTick((t) => t + 1);
-    });
+    if (!namespaces.some((n) => n.namespaceId === selectedNsId)) {
+      // One explicit re-read; the event-driven ones and the watchdog cover the rest.
+      if (joinListAskedFor.current !== selectedNsId) {
+        joinListAskedFor.current = selectedNsId;
+        void refetchNamespaces();
+      }
+      return;
+    }
+    clearNamespaceJustJoined(selectedNsId);
+    setJustJoinedTick((t) => t + 1);
   }, [
     selectedNsId,
     isJustJoined,
     registryContextId,
     regFoldersLoadedForNs,
+    namespaces,
     refetchNamespaces,
   ]);
 

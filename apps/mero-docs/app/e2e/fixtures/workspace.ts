@@ -101,7 +101,8 @@ export class WorkspaceDriver {
     const gate = this.page.getByRole('dialog', { name: /Set your name/i });
     const settled = this.page.getByTestId('name-gate-settled');
     await expect(gate.or(settled)).toBeAttached({ timeout: 60_000 });
-    if (!(await gate.isVisible())) return;
+    if ((await settled.count()) > 0) return;
+    await expect(gate).toBeVisible({ timeout: 10_000 });
     await gate.getByPlaceholder('Your display name').fill(displayName);
     await gate.getByRole('button', { name: /^Continue$/ }).click();
     await expect(gate).toBeHidden({ timeout: 20_000 });

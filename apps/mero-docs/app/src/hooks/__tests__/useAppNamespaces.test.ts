@@ -43,24 +43,9 @@ describe('useAppNamespaces', () => {
     const { result } = renderHook(() => useAppNamespaces('app'));
     await waitFor(() => expect(result.current.listed).toBe(true));
     list.mockRejectedValueOnce(new Error('down'));
-    let ok: boolean | undefined;
-    await act(async () => {
-      ok = await result.current.refetch();
-    });
-    expect(ok).toBe(false);
+    await act(() => result.current.refetch());
     expect(result.current.error).not.toBeNull();
     expect(result.current.listed).toBe(true);
     expect(result.current.namespaces).toEqual([{ namespaceId: 'ns1' }]);
-  });
-
-  it('reports a successful re-read', async () => {
-    list.mockResolvedValue([{ namespaceId: 'ns1' }]);
-    const { result } = renderHook(() => useAppNamespaces('app'));
-    await waitFor(() => expect(result.current.listed).toBe(true));
-    let ok: boolean | undefined;
-    await act(async () => {
-      ok = await result.current.refetch();
-    });
-    expect(ok).toBe(true);
   });
 });

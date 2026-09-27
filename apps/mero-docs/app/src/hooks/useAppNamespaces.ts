@@ -15,24 +15,21 @@ export function useAppNamespaces(applicationId: string | null) {
   const [error, setError] = useState<Error | null>(null);
   const seqRef = useRef(0);
 
-  /** Resolves to whether this read succeeded. */
-  const refetch = useCallback(async (): Promise<boolean> => {
+  const refetch = useCallback(async () => {
     const seq = ++seqRef.current;
     const current = () => seqRef.current === seq;
     if (!mero || !applicationId) {
       setLoading(false);
       setError(null);
-      return false;
+      return;
     }
     setLoading(true);
     setError(null);
     try {
       const namespaces = await mero.admin.listNamespacesForApplication(applicationId);
       if (current()) setRead({ appId: applicationId, namespaces });
-      return true;
     } catch (e: unknown) {
       if (current()) setError(e instanceof Error ? e : new Error(String(e)));
-      return false;
     } finally {
       if (current()) setLoading(false);
     }

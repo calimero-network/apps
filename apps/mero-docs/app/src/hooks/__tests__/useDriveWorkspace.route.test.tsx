@@ -1,5 +1,5 @@
 // The workspace provider against the URL, with every node read stubbed inert.
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
@@ -9,12 +9,13 @@ import { REGISTRY_CONTEXT_ALIAS } from '@/constants/config';
 const stub = vi.hoisted(() => {
   const refetch = () => Promise.resolve();
   const none: never[] = [];
+  const listeners = new Set<() => void>();
   const namespaces = () => ({
     namespaces: [{ namespaceId: 'ns1' }, { namespaceId: 'ns2' }],
     listed: true,
     loading: false,
     error: null,
-    refetch: () => Promise.resolve(true),
+    refetch,
   });
   return {
     none,
@@ -22,6 +23,15 @@ const stub = vi.hoisted(() => {
     mero: { mero: null, applicationId: 'app', isAuthenticated: true, isLoading: false },
     contexts: none as { contextId: string; name: string }[],
     namespaces: namespaces(),
+    // A list read landing: a new value, so the provider re-renders as in the app.
+    setNamespaces(list: { namespaceId: string }[]) {
+      this.namespaces = { ...this.namespaces, namespaces: list };
+      listeners.forEach((l) => l());
+    },
+    subscribe(l: () => void) {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
     resetNamespaces() {
       this.namespaces = namespaces();
     },
@@ -39,7 +49,7 @@ vi.mock('@calimero-network/mero-react', () => ({
   useSubgroups: () => ({ subgroups: stub.none, loading: false, refetch: stub.refetch }),
 }));
 vi.mock('../useAppNamespaces', () => ({
-  useAppNamespaces: () => stub.namespaces,
+  useAppNamespaces: () => useSyncExternalStore(stub.subscribe, () => stub.namespaces),
 }));
 vi.mock('../useApplicationId', () => ({
   useApplicationId: () => ({
@@ -116,34 +126,46 @@ describe('useDriveWorkspace and the URL', () => {
     expect(url()).toBe('/app/ns2');
   });
 
-  it('re-reads the workspace list before a just-joined workspace stops syncing', async () => {
-    // The list is read on events only, so right after a join it can still predate it.
+  // A just-joined workspace with the registry resolved but a list that predates the join.
+  function joinedBeforeListed(refetch: () => Promise<void>) {
     sessionStorage.setItem('mero-drive:justJoined', JSON.stringify(['ns1']));
     stub.namespaces.namespaces = [{ namespaceId: 'ns2' }];
-    let answer: (ok: boolean) => void = () => {};
-    const refetch = vi.fn(() => new Promise<boolean>((r) => (answer = r)));
     stub.namespaces.refetch = refetch;
     stub.contexts = [{ contextId: 'reg', name: REGISTRY_CONTEXT_ALIAS }];
     renderAt('/app/ns1');
+  }
+  const justJoined = () => screen.getByTestId('just-joined').textContent;
+
+  it('re-reads the workspace list when it lacks a just-joined workspace', async () => {
+    const refetch = vi.fn(() => Promise.resolve());
+    joinedBeforeListed(refetch);
     await waitFor(() => expect(refetch).toHaveBeenCalled());
-    expect(screen.getByTestId('just-joined').textContent).toBe('true');
-    stub.namespaces.namespaces = [{ namespaceId: 'ns1' }, { namespaceId: 'ns2' }];
-    await act(async () => answer(true));
-    await waitFor(() =>
-      expect(screen.getByTestId('just-joined').textContent).toBe('false'),
-    );
+  });
+
+  it('does not lift the just-joined gate on a read that left the workspace out', async () => {
+    // Models an overtaken or failed read: the promise settles, the list is unchanged.
+    const refetch = vi.fn(() => Promise.resolve());
+    joinedBeforeListed(refetch);
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(justJoined()).toBe('true');
+  });
+
+  it('lifts the just-joined gate once any list read includes the workspace', async () => {
+    joinedBeforeListed(() => new Promise(() => {}));
+    expect(justJoined()).toBe('true');
+    act(() => stub.setNamespaces([{ namespaceId: 'ns1' }, { namespaceId: 'ns2' }]));
+    await waitFor(() => expect(justJoined()).toBe('false'));
     expect(url()).toBe('/app/ns1');
   });
 
-  it('holds the just-joined gate when the list re-read fails', async () => {
-    sessionStorage.setItem('mero-drive:justJoined', JSON.stringify(['ns1']));
-    stub.namespaces.namespaces = [{ namespaceId: 'ns2' }];
-    const refetch = vi.fn(() => Promise.resolve(false));
-    stub.namespaces.refetch = refetch;
-    stub.contexts = [{ contextId: 'reg', name: REGISTRY_CONTEXT_ALIAS }];
-    renderAt('/app/ns1');
-    await waitFor(() => expect(refetch).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 0)); // let the failed read settle
-    expect(screen.getByTestId('just-joined').textContent).toBe('true');
+  it('asks for the list once, not on every read that still lacks the workspace', async () => {
+    const refetch = vi.fn(() => Promise.resolve());
+    joinedBeforeListed(refetch);
+    await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+    act(() => stub.setNamespaces([{ namespaceId: 'ns2' }]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(justJoined()).toBe('true');
   });
 });
