@@ -120,6 +120,10 @@ export function WorkspaceLayout() {
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const sidebarShown = isDesktop ? !sidebarCollapsed : drawerOpen;
+  // The drawer is phone-only, so a trip through a wide screen must not bring it back.
+  useEffect(() => {
+    if (isDesktop) setDrawerOpen(false);
+  }, [isDesktop]);
   // The folder the currently-open doc belongs to. Lets the reset
   // effect below distinguish "user clicked a different folder" (clear
   // the doc) from "user opened a doc in another folder" (keep it).

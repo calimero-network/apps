@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -55,14 +56,22 @@ vi.mock('@/components/folders/FolderTree', () => ({
   ),
 }));
 
+type MediaChange = (e: { matches: boolean }) => void;
+let mediaListeners: MediaChange[] = [];
+
 // jsdom has no matchMedia; the layout switches to the drawer below md.
 function setDesktop(matches: boolean) {
+  mediaListeners = [];
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches,
     media: query,
-    addEventListener: vi.fn(),
+    addEventListener: (_: string, cb: MediaChange) => mediaListeners.push(cb),
     removeEventListener: vi.fn(),
   }));
+}
+
+function resizeTo(desktop: boolean) {
+  act(() => mediaListeners.forEach((cb) => cb({ matches: desktop })));
 }
 
 afterEach(() => {
@@ -123,6 +132,17 @@ describe('WorkspaceLayout sidebar below md', () => {
     fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('does not reopen the drawer after a round trip through a wide screen', () => {
+    setDesktop(false);
+    render(<WorkspaceLayout />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
+
+    resizeTo(true);
+    resizeTo(false);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('ignores a collapse saved on a wide screen', () => {
