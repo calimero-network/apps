@@ -1,0 +1,53 @@
+import * as React from 'react';
+import { X } from 'lucide-react';
+
+import { cn } from '@/lib/utils';
+import { TAG_NEUTRAL } from '@/lib/tags';
+
+interface TagDotProps {
+  color?: string;
+  size?: 'sm' | 'lg';
+}
+
+export function TagDot({ color, size = 'sm' }: TagDotProps) {
+  return (
+    <span
+      data-testid="tag-dot"
+      className={cn('inline-block flex-shrink-0 rounded-full', size === 'lg' ? 'h-[7px] w-[7px]' : 'h-1.5 w-1.5')}
+      style={{ backgroundColor: color ?? TAG_NEUTRAL }}
+    />
+  );
+}
+
+interface TagChipProps {
+  name: string;
+  color?: string;
+  size?: 'sm' | 'lg';
+  onRemove?: () => void;
+  className?: string;
+}
+
+export function TagChip({ name, color, size = 'sm', onRemove, className }: TagChipProps) {
+  return (
+    <span
+      className={cn(
+        'group inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border bg-secondary text-secondary-foreground',
+        size === 'lg' ? 'h-6 px-2 text-xs' : 'h-5 px-1.5 text-[11.5px]',
+        className
+      )}
+    >
+      <TagDot color={color} size={size} />
+      {name}
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove tag ${name}`}
+          onClick={onRemove}
+          className="rounded-full opacity-0 outline-none transition-opacity focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  );
+}
