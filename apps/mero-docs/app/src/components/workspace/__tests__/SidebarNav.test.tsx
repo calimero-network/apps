@@ -34,6 +34,9 @@ function setup(over: Partial<NavProps> = {}) {
         shared: true,
         selected: false,
         onSelect: vi.fn(),
+        onRename: vi.fn(),
+        onCopyLink: vi.fn(),
+        onDelete: vi.fn(),
       },
     ],
     tags: [
@@ -48,6 +51,8 @@ function setup(over: Partial<NavProps> = {}) {
     onAddView: vi.fn(),
     onAddTag: vi.fn(),
     canManage: true,
+    collapsed: { views: false, tags: false },
+    onToggleSection: vi.fn(),
     ...over,
   };
   render(<SidebarNav {...props} />);
@@ -67,7 +72,9 @@ describe('SidebarNav', () => {
   it('lists views and selects one', async () => {
     const { props, user } = setup();
     const views = screen.getByRole('region', { name: 'Views' });
-    await user.click(within(views).getByRole('button', { name: /Q3 launch/ }));
+    await user.click(
+      within(views).getAllByRole('button', { name: /Q3 launch/ })[0],
+    );
     expect(props.views[1].onSelect).toHaveBeenCalledTimes(1);
     expect(within(views).getByLabelText('Shared with everyone')).toBeTruthy();
   });
@@ -146,5 +153,111 @@ describe('SidebarNav', () => {
     expect(screen.getByText(/A very long view name/).className).toContain(
       'truncate',
     );
+  });
+
+  it('toggles a section from its header, by mouse and keyboard', async () => {
+    const { props, user } = setup({ collapsed: { views: true, tags: false } });
+    const views = screen.getByRole('button', { name: 'Views' });
+    expect(views.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByRole('button', { name: /Design this week/ }),
+    ).toBeNull();
+    await user.click(views);
+    expect(props.onToggleSection).toHaveBeenLastCalledWith('views');
+    const tags = screen.getByRole('button', { name: 'Tags' });
+    expect(tags.getAttribute('aria-expanded')).toBe('true');
+    tags.focus();
+    await user.keyboard('{Enter}');
+    expect(props.onToggleSection).toHaveBeenLastCalledWith('tags');
+  });
+
+  it('keeps the add button on a collapsed section', () => {
+    setup({ collapsed: { views: true, tags: true } });
+    expect(screen.getByRole('button', { name: 'New view' })).toBeTruthy();
+  });
+
+  it('renames, copies a link to and deletes a view from its menu', async () => {
+    const { props, user } = setup();
+    const view = props.views[1];
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Q3 launch' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Q3 launch' }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Copy link' }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for Q3 launch' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    expect(view.onRename).toHaveBeenCalledTimes(1);
+    expect(view.onCopyLink).toHaveBeenCalledTimes(1);
+    expect(view.onDelete).toHaveBeenCalledTimes(1);
+    expect(view.onSelect).not.toHaveBeenCalled();
+  });
+
+  it('has no menu for a view without actions', () => {
+    setup();
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Design this week' }),
+    ).toBeNull();
+  });
+
+  it('offers only the actions the caller supplies', async () => {
+    const { user } = setup({
+      views: [
+        {
+          id: 'v',
+          name: 'Mine',
+          count: 1,
+          shared: false,
+          selected: false,
+          onSelect: () => {},
+          onCopyLink: () => {},
+        },
+      ],
+    });
+    await user.click(screen.getByRole('button', { name: 'Actions for Mine' }));
+    expect(
+      await screen.findByRole('menuitem', { name: 'Copy link' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+  });
+
+  it('hides view menus when the viewer cannot manage, except on views they own', () => {
+    setup({
+      canManage: false,
+      views: [
+        {
+          id: 'v1',
+          name: 'Shared one',
+          count: 1,
+          shared: true,
+          selected: false,
+          onSelect: () => {},
+          onRename: () => {},
+        },
+        {
+          id: 'v2',
+          name: 'Mine',
+          count: 1,
+          shared: false,
+          selected: false,
+          onSelect: () => {},
+          onRename: () => {},
+          canManage: true,
+        },
+      ],
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Actions for Shared one' }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Actions for Mine' }),
+    ).toBeTruthy();
   });
 });

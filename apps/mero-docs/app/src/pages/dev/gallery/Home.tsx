@@ -10,7 +10,10 @@ import { UpdatedMenu } from '@/components/home/UpdatedMenu';
 import { HomeEmpty } from '@/components/home/HomeEmpty';
 import { NewDocFolderPicker } from '@/components/home/NewDocFolderPicker';
 import type { DocRowView, FilterChipView } from '@/components/home/types';
-import { SidebarNav } from '@/components/workspace/SidebarNav';
+import {
+  SidebarNav,
+  SidebarSectionHeader,
+} from '@/components/workspace/SidebarNav';
 import { TagPageHeader } from '@/components/tags/TagPageHeader';
 import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
@@ -167,6 +170,13 @@ function chips({
 }
 
 function Sidebar({ selected }: { selected: string }) {
+  const [collapsed, setCollapsed] = React.useState({
+    views: false,
+    tags: false,
+    folders: false,
+  });
+  const toggle = (section: keyof typeof collapsed) =>
+    setCollapsed((c) => ({ ...c, [section]: !c[section] }));
   return (
     <aside className="hidden w-64 shrink-0 overflow-hidden border-r border-border bg-muted/20 md:block">
       <SidebarNav
@@ -183,14 +193,20 @@ function Sidebar({ selected }: { selected: string }) {
             shared: false,
             selected: false,
             onSelect: noop,
+            onRename: noop,
+            onCopyLink: noop,
+            onDelete: noop,
           },
           {
             id: 'v2',
             name: 'Q3 launch',
             count: 2,
-            shared: false,
+            shared: true,
             selected: false,
             onSelect: noop,
+            onRename: noop,
+            onCopyLink: noop,
+            onDelete: noop,
           },
         ]}
         tags={SORTED_TAGS.map((t) => ({
@@ -204,35 +220,46 @@ function Sidebar({ selected }: { selected: string }) {
         onAddView={noop}
         onAddTag={noop}
         canManage
+        collapsed={collapsed}
+        onToggleSection={toggle}
       />
       {/* Static copy of FolderTree's header and rows, so the sections can be checked for alignment. */}
-      <div className="mt-2.5 flex min-h-9 items-center justify-between border-y border-border/60 px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Folders
-        </span>
-        <Button variant="outline" size="sm" className="gap-1">
-          <Plus className="h-3.5 w-3.5" />
-          New
-        </Button>
-      </div>
-      <ul className="space-y-1.5 px-3 py-2">
-        {FOLDERS.filter((f) => !f.parent).map((f) => (
-          <li
-            key={f.name}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted/60"
+      <SidebarSectionHeader
+        title="Folders"
+        collapsed={collapsed.folders}
+        onToggle={() => toggle('folders')}
+        action={
+          <Button
+            variant="ghost"
+            className="h-6 gap-1 rounded-md px-1.5 text-xs [&_svg]:size-[13px]"
           >
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            <span
-              className="h-2.5 w-2.5 rounded-sm border border-border/50"
-              style={{ backgroundColor: f.color ?? undefined }}
-            />
-            <span className="flex-1 truncate">{f.name}</span>
-            {RESTRICTED.has(f.name) && (
-              <Lock className="h-3 w-3 text-muted-foreground" />
-            )}
-          </li>
-        ))}
-      </ul>
+            <Plus />
+            New
+          </Button>
+        }
+      />
+      {!collapsed.folders && (
+        <ul className="space-y-px px-2">
+          {FOLDERS.filter((f) => !f.parent).map((f) => (
+            <li
+              key={f.name}
+              className="flex h-[30px] items-center gap-1.5 rounded-md px-1.5 text-sm text-foreground hover:bg-muted/60"
+            >
+              <span className="flex h-4 w-4 items-center justify-center text-muted-foreground">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </span>
+              <span
+                className="h-2.5 w-2.5 rounded-sm border border-border/50"
+                style={{ backgroundColor: f.color ?? undefined }}
+              />
+              <span className="flex-1 truncate">{f.name}</span>
+              {RESTRICTED.has(f.name) && (
+                <Lock className="h-3 w-3 text-muted-foreground" />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </aside>
   );
 }
