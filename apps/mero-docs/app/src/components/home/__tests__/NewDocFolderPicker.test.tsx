@@ -67,4 +67,26 @@ describe('NewDocFolderPicker', () => {
     );
     expect(screen.getByText('No matches')).toBeTruthy();
   });
+
+  it('lists folders by name, case and accents aside', () => {
+    render(
+      <NewDocFolderPicker
+        open
+        folders={[
+          folder('p', 'Product'),
+          folder('d', 'design'),
+          folder('e', 'Éditorial'),
+          folder('s', 'Specs', ['Engineering', 'Specs']),
+        ]}
+        onPick={() => {}}
+        onOpenChange={() => {}}
+      />,
+    );
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'design',
+      'Éditorial',
+      'Engineering / Specs',
+      'Product',
+    ]);
+  });
 });

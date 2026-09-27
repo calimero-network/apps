@@ -78,10 +78,12 @@ vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: (_ns: string, folderId: string) => ({
     canEditDocs: !!canEdit[folderId],
     loading: false,
+    roleLoading: false,
   }),
 }));
+let nsPerms = { canCreateFolder: true, loading: false };
 vi.mock('@/hooks/useNamespacePermissions', () => ({
-  useNamespacePermissions: () => ({ canCreateFolder: true, loading: false }),
+  useNamespacePermissions: () => nsPerms,
 }));
 vi.mock('@/hooks/useDocs', () => ({
   useDocs: () => ({ contextId: 'ctx', create, error: null }),
@@ -156,6 +158,7 @@ beforeEach(() => {
   create.mockClear();
   presence = new Map();
   canEdit = {};
+  nsPerms = { canCreateFolder: true, loading: false };
   index.folders = FOLDERS;
   settle(ROWS);
 });
@@ -301,6 +304,44 @@ describe('HomePage', () => {
       expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
     });
 
+    it('tells read-only members an owner has to create or share a folder', () => {
+      nsPerms = { canCreateFolder: false, loading: false };
+      index.folders = [];
+      settle([]);
+      mount();
+      expect(
+        screen.getByText(/owner needs to create one or share one with you/),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'New folder' })).toBeNull();
+    });
+
+    it('holds the body copy until permissions are known', () => {
+      nsPerms = { canCreateFolder: false, loading: true };
+      index.folders = [];
+      settle([]);
+      mount();
+      expect(screen.getByText('No folders yet')).toBeTruthy();
+      expect(screen.queryByText(/Documents live in folders/)).toBeNull();
+      expect(screen.queryByText(/owner needs to create/)).toBeNull();
+    });
+
+    it('speaks about the folder on an empty folder route, by role', () => {
+      settle([]);
+      canEdit = { design: true };
+      const { unmount } = mount('/app/ws1/f/design', 'design');
+      expect(screen.getByText('No documents in this folder yet.')).toBeTruthy();
+      expect(screen.queryByText(/in every folder/)).toBeNull();
+      unmount();
+
+      canEdit = {};
+      mount('/app/ws1/f/design', 'design');
+      expect(
+        screen.getByText(
+          'No documents in this folder yet. They show up here when someone adds one.',
+        ),
+      ).toBeTruthy();
+    });
+
     it('says there are no documents only once every folder has been read', () => {
       settle([]);
       index.folderStatus.design = 'loading';
@@ -334,6 +375,22 @@ describe('HomePage', () => {
       );
       expect(screen.getByText('3 documents across 3 folders')).toBeTruthy();
       expect(chip(/^Tag$/)).toBeTruthy();
+    });
+
+    it('claims no count while a folder is still loading', () => {
+      index.folderStatus.design = 'loading';
+      mount();
+      expect(titles().length).toBeGreaterThan(0);
+      expect(screen.queryByText(/documents? across/)).toBeNull();
+    });
+
+    it('claims nothing when every folder failed or is syncing and nothing was read', () => {
+      settle([]);
+      index.folderStatus = { eng: 'error', specs: 'error', design: 'syncing' };
+      mount();
+      expect(screen.queryByText('No documents yet')).toBeNull();
+      expect(screen.queryByText('0 documents')).toBeNull();
+      expect(screen.getByText(/Couldn't load/)).toBeTruthy();
     });
 
     it('names a folder still syncing, and retries one that failed', () => {

@@ -39,7 +39,7 @@ interface ViewItem {
 }
 
 interface Props {
-  home: { count: number; selected: boolean; onSelect: () => void };
+  home: { count?: number; selected: boolean; onSelect: () => void }; // no count until it is known
   views: ViewItem[];
   tags: {
     key: string;
@@ -279,7 +279,7 @@ interface NavRowProps {
   lead: React.ReactNode;
   name: string;
   note?: string; // spoken between the name and the count
-  count: number;
+  count?: number;
   selected: boolean;
   onSelect: () => void;
 }
@@ -309,15 +309,17 @@ function NavRow({ lead, name, note, count, selected, onSelect }: NavRowProps) {
         {lead}
       </span>
       <span className="min-w-0 flex-1 truncate">{name}</span>
-      <span
-        aria-hidden
-        className={cn(
-          'shrink-0 text-[11.5px] font-normal tabular-nums',
-          selected ? 'text-selected-foreground/70' : 'text-muted-foreground',
-        )}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          aria-hidden
+          className={cn(
+            'shrink-0 text-[11.5px] font-normal tabular-nums',
+            selected ? 'text-selected-foreground/70' : 'text-muted-foreground',
+          )}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

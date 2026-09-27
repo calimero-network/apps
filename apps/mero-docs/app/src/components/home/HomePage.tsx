@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { QuietLoading } from '@/components/ui/empty-state';
-import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { DEV_NODE_PARAM, useAppRoute } from '@/hooks/useAppRoute';
@@ -20,7 +19,6 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { usePresenceByDoc, type DocPeer } from '@/hooks/usePresenceByDoc';
 import { useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
-import { nameCollator } from '@/lib/collate';
 import { folderLabel } from '@/lib/folderLabel';
 import {
   applyHomeQuery,
@@ -30,20 +28,19 @@ import {
 } from '@/lib/homeQuery';
 import { updatedLabel } from '@/lib/relativeTime';
 import { docUrl } from '@/lib/routes';
-import { sidebarTags, TAG_NEUTRAL } from '@/lib/tags';
-import {
-  rowKey,
-  type FolderInfo,
-  type IndexRow,
-} from '@/lib/workspaceIndex/types';
+import { TAG_NEUTRAL } from '@/lib/tags';
+import { rowKey } from '@/lib/workspaceIndex/types';
 import { DocTable } from './DocTable';
 import { FilterBar } from './FilterBar';
-import { FilterChecklist } from './FilterChecklist';
 import { HomeEmpty } from './HomeEmpty';
 import { HomeHeader, headerActionClass } from './HomeHeader';
 import { NewDocFolderPicker } from './NewDocFolderPicker';
-import { UPDATED_OPTIONS, UpdatedMenu } from './UpdatedMenu';
-import type { DocRowView, FilterChipView } from './types';
+import type { DocRowView } from './types';
+import {
+  UNKNOWN_FOLDER_LABEL,
+  useFolderPaths,
+  useHomeChips,
+} from './useHomeChips';
 
 const CLOCK_TICK_MS = 60_000; // "2 min ago" labels and the Updated window move on
 const SORT_CYCLE: HomeQuery['sort'][] = ['updated', 'name', 'created'];
@@ -52,10 +49,11 @@ const SORT_LABELS: Record<HomeQuery['sort'], string> = {
   name: 'Name',
   created: 'Created',
 };
-const SELF_LABEL = 'You';
-const UNKNOWN_TAG_LABEL = 'Unknown tag';
-const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
 const CREATE_FAILED = "Couldn't create a document. Try again.";
+const NO_FOLDERS_READ_ONLY =
+  'Documents live in folders. A workspace owner needs to create one or share one with you.';
+const EMPTY_FOLDER = 'No documents in this folder yet.';
+const EMPTY_FOLDER_READ_ONLY = `${EMPTY_FOLDER} They show up here when someone adds one.`;
 
 interface Props {
   folderId?: string; // the folder route: this folder and its subfolders
@@ -63,18 +61,6 @@ interface Props {
 
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
-}
-
-function toggled(list: string[], id: string): string[] {
-  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-}
-
-function countBy(rows: IndexRow[], keysOf: (r: IndexRow) => string[]) {
-  const counts = new Map<string, number>();
-  for (const r of rows) {
-    for (const k of keysOf(r)) counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  return counts;
 }
 
 function isFiltered(q: HomeQuery): boolean {
@@ -85,13 +71,6 @@ function isFiltered(q: HomeQuery): boolean {
     !!q.by ||
     q.archived
   );
-}
-
-/** A chip naming the first pick, "+N" for the rest. */
-function listChipLabel(noun: string, names: string[], unknown: string) {
-  if (names.length === 1 && names[0] === unknown) return unknown;
-  const more = names.length > 1 ? ` +${names.length - 1}` : '';
-  return `${noun}: ${names[0]}${more}`;
 }
 
 function hereLabel(here: DocPeer[]): string | undefined {
@@ -110,35 +89,6 @@ function useNow(): number {
   return now;
 }
 
-/** Each folder's names and ids from the root, and its colour, else its nearest ancestor's. */
-function useFolderPaths(folders: FolderInfo[]) {
-  return React.useMemo(() => {
-    const byId = new Map(folders.map((f) => [f.id, f]));
-    const chain = (id: string): FolderInfo[] => {
-      const out: FolderInfo[] = [];
-      let f = byId.get(id);
-      while (f && !out.includes(f)) {
-        out.unshift(f);
-        f = f.parentId ? byId.get(f.parentId) : undefined;
-      }
-      return out;
-    };
-    const paths = new Map<
-      string,
-      { names: string[]; color?: string; ids: string[] }
-    >();
-    for (const f of folders) {
-      const c = chain(f.id);
-      paths.set(f.id, {
-        names: c.map((x) => folderLabel(x.name)),
-        color: [...c].reverse().find((x) => x.color)?.color,
-        ids: c.map((x) => x.id),
-      });
-    }
-    return paths;
-  }, [folders]);
-}
-
 // Probes one folder's write access; a hook per folder, so each gets a component.
 function CanCreateProbe({
   namespaceId,
@@ -147,14 +97,15 @@ function CanCreateProbe({
 }: {
   namespaceId: string;
   folderId: string;
-  report: (folderId: string, can: boolean) => void;
+  report: (folderId: string, can: boolean | undefined) => void;
 }) {
-  const { canEditDocs } = useFolderPermissions(namespaceId, folderId);
-  React.useEffect(
-    () => report(folderId, canEditDocs),
-    [folderId, canEditDocs, report],
+  const { canEditDocs, loading, roleLoading } = useFolderPermissions(
+    namespaceId,
+    folderId,
   );
-  React.useEffect(() => () => report(folderId, false), [folderId, report]);
+  const can = loading || roleLoading ? undefined : canEditDocs;
+  React.useEffect(() => report(folderId, can), [folderId, can, report]);
+  React.useEffect(() => () => report(folderId, undefined), [folderId, report]);
   return null;
 }
 
@@ -183,17 +134,11 @@ function CreateDoc({
 }
 
 export function HomePage({ folderId }: Props) {
-  const {
-    namespaceId,
-    rootGroupId,
-    selfIdentity,
-    namespaceMemberNames,
-    registryFolders,
-    resolvedFolderIds,
-  } = useDriveWorkspace();
+  const { namespaceId, rootGroupId, registryFolders, resolvedFolderIds } =
+    useDriveWorkspace();
   const { rows, folders, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
-  const { tags, byKey: tagsByKey } = useTags();
+  const { byKey: tagsByKey } = useTags();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();
   const { search } = useLocation();
@@ -265,9 +210,12 @@ export function HomePage({ folderId }: Props) {
   const failed = scope.filter((f) => statusOf(f.id) === 'error');
 
   // --- New document ---
-  const [creatable, setCreatable] = React.useState<Record<string, boolean>>({});
+  // Undefined while a folder's write access is still being checked.
+  const [creatable, setCreatable] = React.useState<
+    Record<string, boolean | undefined>
+  >({});
   const reportCreatable = React.useCallback(
-    (id: string, can: boolean) =>
+    (id: string, can: boolean | undefined) =>
       setCreatable((prev) =>
         prev[id] === can ? prev : { ...prev, [id]: can },
       ),
@@ -277,7 +225,7 @@ export function HomePage({ folderId }: Props) {
   const candidates = scope.filter(
     (f) => (!folderId || f.id === folderId) && statusOf(f.id) === 'ready',
   );
-  const writable = candidates.filter((f) => creatable[f.id]);
+  const writable = candidates.filter((f) => creatable[f.id] === true);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [creatingIn, setCreatingIn] = React.useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = React.useState(false);
@@ -319,156 +267,8 @@ export function HomePage({ folderId }: Props) {
     };
   });
 
-  // --- Chips ---
-  const personName = (id: string) =>
-    id === selfIdentity
-      ? SELF_LABEL
-      : namespaceMemberNames[id] || UNNAMED_MEMBER_LABEL;
-  const tagName = (key: string) => {
-    const t = tagsByKey.get(key);
-    return t && !t.deleted ? t.name : UNKNOWN_TAG_LABEL;
-  };
-  const folderName = (id: string) =>
-    paths.get(id)?.names.join(' / ') ?? UNKNOWN_FOLDER_LABEL;
-  const [openChip, setOpenChip] = React.useState<string | null>(null);
+  const chips = useHomeChips({ q, folderId, setQuery, folders, paths, base });
 
-  const folderCounts = countBy(base, (r) => paths.get(r.folderId)?.ids ?? []);
-  const folderItems = [...folders]
-    .map((f) => ({ id: f.id, label: folderName(f.id) }))
-    .sort((a, b) => nameCollator.compare(a.label, b.label))
-    .map((f) => ({
-      ...f,
-      count: folderCounts.get(f.id) ?? 0,
-      checked: q.folders.includes(f.id),
-    }));
-
-  const tagCountsInBase = countBy(base, (r) => r.tags);
-  const listedTags = sidebarTags(tags, tagCountsInBase);
-  const tagItems = [
-    ...listedTags.map((t) => ({ id: t.key, label: t.name, dotColor: t.color })),
-    ...q.tags
-      .filter((k) => !listedTags.some((t) => t.key === k))
-      .map((k) => ({
-        id: k,
-        label: tagName(k),
-        dotColor: tagsByKey.get(k)?.color ?? TAG_NEUTRAL,
-      })),
-  ].map((t) => ({
-    ...t,
-    count: tagCountsInBase.get(t.id) ?? 0,
-    checked: q.tags.includes(t.id),
-  }));
-
-  const byCounts = countBy(base, (r) => [r.createdBy]);
-  const people = [...new Set([...byCounts.keys(), ...(q.by ? [q.by] : [])])]
-    .map((id) => ({ id, label: personName(id) }))
-    .sort((a, b) =>
-      a.id === selfIdentity
-        ? -1
-        : b.id === selfIdentity
-          ? 1
-          : nameCollator.compare(a.label, b.label),
-    )
-    .map((p) => ({
-      ...p,
-      count: byCounts.get(p.id) ?? 0,
-      checked: q.by === p.id,
-    }));
-
-  const chips: FilterChipView[] = [
-    ...(folderId
-      ? []
-      : [
-          {
-            id: 'folder',
-            icon: 'folder' as const,
-            label: q.folders.length
-              ? listChipLabel(
-                  'Folder',
-                  q.folders.map(folderName),
-                  UNKNOWN_FOLDER_LABEL,
-                )
-              : 'Folder',
-            active: q.folders.length > 0,
-            onClear: () => setQuery({ ...q, folders: [] }),
-            popover: (
-              <FilterChecklist
-                placeholder="Filter folders"
-                items={folderItems}
-                onToggle={(id) =>
-                  setQuery({ ...q, folders: toggled(q.folders, id) })
-                }
-                onClear={() => setQuery({ ...q, folders: [] })}
-                footerHint="Includes subfolders"
-              />
-            ),
-          },
-        ]),
-    {
-      id: 'tag',
-      icon: 'tag',
-      label: q.tags.length
-        ? listChipLabel('Tag', q.tags.map(tagName), UNKNOWN_TAG_LABEL)
-        : 'Tag',
-      active: q.tags.length > 0,
-      onClear: () => setQuery({ ...q, tags: [] }),
-      popover: (
-        <FilterChecklist
-          placeholder="Filter tags"
-          items={tagItems}
-          onToggle={(id) => setQuery({ ...q, tags: toggled(q.tags, id) })}
-          onClear={() => setQuery({ ...q, tags: [] })}
-          footerHint="Match any selected tag"
-        />
-      ),
-    },
-    {
-      id: 'updated',
-      icon: 'calendar',
-      label: q.updated
-        ? `Updated: ${UPDATED_OPTIONS.find((o) => o.value === q.updated)?.label}`
-        : 'Updated',
-      active: !!q.updated,
-      onClear: () => setQuery({ ...q, updated: undefined }),
-      popover: (
-        <UpdatedMenu
-          value={q.updated}
-          onChange={(updated) => {
-            setOpenChip(null);
-            setQuery({ ...q, updated });
-          }}
-        />
-      ),
-      open: openChip === 'updated',
-      onOpenChange: (open) => setOpenChip(open ? 'updated' : null),
-    },
-    {
-      id: 'by',
-      icon: 'user',
-      label: q.by ? `Created by: ${personName(q.by)}` : 'Created by',
-      active: !!q.by,
-      onClear: () => setQuery({ ...q, by: undefined }),
-      popover: (
-        <FilterChecklist
-          placeholder="Filter people"
-          items={people}
-          onToggle={(id) =>
-            setQuery({ ...q, by: q.by === id ? undefined : id })
-          }
-          onClear={() => setQuery({ ...q, by: undefined })}
-          footerHint="Pick one person"
-        />
-      ),
-    },
-    {
-      id: 'archived',
-      icon: 'archive',
-      label: 'Archived',
-      active: q.archived,
-      toggle: true,
-      onToggle: () => setQuery({ ...q, archived: !q.archived }),
-    },
-  ];
   const nextSort =
     SORT_CYCLE[(SORT_CYCLE.indexOf(q.sort) + 1) % SORT_CYCLE.length];
 
@@ -494,6 +294,10 @@ export function HomePage({ folderId }: Props) {
     };
   });
 
+  // A number is a claim about every folder in scope, so none is made until they are all read.
+  const countKnown =
+    !loading &&
+    (view.length > 0 || (syncing.length === 0 && failed.length === 0));
   const emptyKind =
     !foldersKnown || view.length > 0
       ? null
@@ -506,6 +310,22 @@ export function HomePage({ folderId }: Props) {
             : syncing.length === 0 && failed.length === 0
               ? 'no-docs'
               : null;
+  const folderCanWrite = folderId ? creatable[folderId] : undefined;
+  const emptyBody = {
+    'no-folders': nsPerms.loading
+      ? null
+      : nsPerms.canCreateFolder
+        ? undefined
+        : NO_FOLDERS_READ_ONLY,
+    'no-matches': undefined,
+    'no-docs': !folderId
+      ? undefined
+      : folderCanWrite === undefined
+        ? null
+        : folderCanWrite
+          ? EMPTY_FOLDER
+          : EMPTY_FOLDER_READ_ONLY,
+  } as const;
   const emptyAction = {
     'no-folders': nsPerms.canCreateFolder
       ? () => setNewFolderOpen(true)
@@ -521,7 +341,11 @@ export function HomePage({ folderId }: Props) {
         onOpenInNewTab={(key) => openKey(key, true)}
       />
     ) : emptyKind ? (
-      <HomeEmpty kind={emptyKind} onAction={emptyAction[emptyKind]} />
+      <HomeEmpty
+        kind={emptyKind}
+        body={emptyBody[emptyKind]}
+        onAction={emptyAction[emptyKind]}
+      />
     ) : !foldersKnown || loading ? (
       <QuietLoading />
     ) : null;
@@ -530,7 +354,7 @@ export function HomePage({ folderId }: Props) {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-card">
       <HomeHeader
         title={title}
-        subtitle={foldersKnown ? subtitle : ''}
+        subtitle={countKnown ? subtitle : ''}
         actions={
           // An empty list carries New document itself, so it is offered once.
           writable.length > 0 &&

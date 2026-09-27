@@ -6,6 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useTags } from '@/hooks/useTags';
 import { parseHomeQuery, serializeHomeQuery } from '@/lib/homeQuery';
@@ -36,7 +37,8 @@ export function WorkspaceNav({
 }: Props) {
   const { route, goHome } = useAppRoute();
   const { search } = useLocation();
-  const { rows } = useWorkspaceIndexValue();
+  const { rows, folders, folderStatus } = useWorkspaceIndexValue();
+  const { registryFolders } = useDriveWorkspace();
   const { tags } = useTags();
   const [stored, setStored] = useLocalStorage<Partial<Sections> | null>(
     `${SECTIONS_KEY_PREFIX}${ws}`,
@@ -59,6 +61,12 @@ export function WorkspaceNav({
       ? q.tags[0]
       : null;
   const counts = tagCounts(rows);
+  // The Home count claims every folder was read; a failed one leaves nothing to claim from.
+  const statuses = folders.map((f) => folderStatus[f.id]);
+  const countKnown =
+    !!registryFolders &&
+    !statuses.includes('loading') &&
+    (rows.length > 0 || statuses.every((st) => st === 'ready'));
   const go = (homeSearch?: string) => {
     goHome(homeSearch);
     onNavigate();
@@ -68,7 +76,9 @@ export function WorkspaceNav({
     <div className="flex h-full flex-col overflow-y-auto">
       <SidebarNav
         home={{
-          count: rows.filter((r) => !r.archived).length,
+          count: countKnown
+            ? rows.filter((r) => !r.archived).length
+            : undefined,
           selected: onHome && !tagPage,
           onSelect: () => go(),
         }}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { WorkspaceNav } from '../WorkspaceNav';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
@@ -16,9 +17,16 @@ const tags = [
   { key: 'unused', name: 'Unused', color: '#10b981', deleted: false },
 ];
 
+const index = {
+  rows,
+  folders: [{ id: 'f1', name: 'One' }],
+  folderStatus: { f1: 'ready' } as Record<string, string>,
+};
 vi.mock('@/context/WorkspaceIndexContext', () => ({
-  useWorkspaceIndexValue: () => ({ rows }),
+  useWorkspaceIndexValue: () => index,
 }));
+const ws = { registryFolders: [{ id: 'f1' }] as { id: string }[] | null };
+vi.mock('@/hooks/useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('@/hooks/useTags', () => ({ useTags: () => ({ tags }) }));
 vi.mock('@/components/folders/FolderTree', () => ({
   FolderTree: ({
@@ -28,9 +36,12 @@ vi.mock('@/components/folders/FolderTree', () => ({
     collapsed: boolean;
     onToggleCollapsed: () => void;
   }) => (
-    <button aria-expanded={!collapsed} onClick={onToggleCollapsed}>
-      Folders
-    </button>
+    <>
+      <button aria-expanded={!collapsed} onClick={onToggleCollapsed}>
+        Folders
+      </button>
+      <input aria-label="Folder name" />
+    </>
   ),
 }));
 
@@ -66,7 +77,12 @@ function mount(url: string, ws = 'ws1') {
 
 const section = (name: string) => screen.getByRole('button', { name });
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  index.rows = rows;
+  index.folderStatus = { f1: 'ready' };
+  ws.registryFolders = [{ id: 'f1' }];
+});
 
 describe('WorkspaceNav', () => {
   it('counts readable, unarchived docs for Home and each tag, busiest tag first', () => {
@@ -126,5 +142,54 @@ describe('WorkspaceNav', () => {
 
     mount('/app/ws2', 'ws2');
     expect(section('Tags').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('shows no Home count until every folder has been read', () => {
+    index.folderStatus = { f1: 'loading' };
+    const { unmount } = mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
+    unmount();
+
+    ws.registryFolders = null;
+    index.folderStatus = { f1: 'ready' };
+    const view = mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
+    view.unmount();
+
+    index.rows = [];
+    ws.registryFolders = [{ id: 'f1' }];
+    index.folderStatus = { f1: 'error' };
+    mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
+  });
+
+  it('keeps the folder tree, and anything open in it, as new index data lands', async () => {
+    const user = userEvent.setup();
+    const { rerender } = mount('/app/ws1');
+    const input = screen.getByRole('textbox', { name: 'Folder name' });
+    input.focus();
+    index.rows = [...rows, row({ docId: 'd', tags: ['q3'] })];
+    index.folderStatus = { f1: 'loading' };
+    rerender(
+      <MemoryRouter initialEntries={['/app/ws1']}>
+        <Routes>
+          <Route
+            path="/app/:ws/*"
+            element={
+              <WorkspaceNav
+                ws="ws1"
+                selectedDocId={null}
+                onSelectFolder={() => {}}
+                onOpenDoc={() => {}}
+                onNavigate={() => {}}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('textbox', { name: 'Folder name' })).toBe(input);
+    await user.keyboard('x'); // lands in the field only if it kept focus
+    expect((input as HTMLInputElement).value).toBe('x');
   });
 });

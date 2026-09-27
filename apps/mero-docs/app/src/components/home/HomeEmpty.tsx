@@ -43,12 +43,18 @@ interface Props {
   kind: Kind;
   /** Omitted when the viewer cannot take the action (for example, no right to create). */
   onAction?: () => void;
+  body?: string | null; // replaces the default copy; null while it is not known yet
 }
 
-export function HomeEmpty({ kind, onAction }: Props) {
-  const { icon, title, body, action, primary } = COPY[kind];
+export function HomeEmpty({ kind, onAction, body }: Props) {
+  const copy = COPY[kind];
+  const { icon, title, action, primary } = copy;
   return (
-    <EmptyState icon={icon} title={title} body={body}>
+    <EmptyState
+      icon={icon}
+      title={title}
+      body={body === undefined ? copy.body : body ?? undefined}
+    >
       {onAction && (
         <Button
           variant={primary ? 'default' : 'outline'}

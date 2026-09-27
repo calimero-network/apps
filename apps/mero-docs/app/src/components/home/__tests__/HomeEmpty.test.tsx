@@ -22,4 +22,13 @@ describe('HomeEmpty', () => {
     render(<HomeEmpty kind="no-folders" />);
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('takes the caller’s body copy, or none while it is not known yet', () => {
+    const { rerender } = render(<HomeEmpty kind="no-docs" body="In here." />);
+    expect(screen.getByText('In here.')).toBeTruthy();
+    expect(screen.queryByText(/in every folder/)).toBeNull();
+    rerender(<HomeEmpty kind="no-docs" body={null} />);
+    expect(screen.queryByText('In here.')).toBeNull();
+    expect(screen.queryByText(/in every folder/)).toBeNull();
+  });
 });

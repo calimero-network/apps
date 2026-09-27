@@ -3,6 +3,7 @@ import { Folder } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { nameCollator } from '@/lib/collate';
 
 const FILTER_THRESHOLD = 6; // more folders than this and the list gets a filter field
 
@@ -29,9 +30,16 @@ export function NewDocFolderPicker({
   const [query, setQuery] = React.useState('');
   const showFilter = folders.length > FILTER_THRESHOLD;
   const needle = query.trim().toLowerCase();
+  const sorted = React.useMemo(
+    () =>
+      [...folders].sort((a, b) =>
+        nameCollator.compare(a.path.join(' / '), b.path.join(' / ')),
+      ),
+    [folders],
+  );
   const shown = needle
-    ? folders.filter((f) => f.path.join(' / ').toLowerCase().includes(needle))
-    : folders;
+    ? sorted.filter((f) => f.path.join(' / ').toLowerCase().includes(needle))
+    : sorted;
 
   React.useEffect(() => {
     if (!open) setQuery('');
