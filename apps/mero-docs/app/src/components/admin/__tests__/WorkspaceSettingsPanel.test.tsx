@@ -75,7 +75,7 @@ describe('WorkspaceSettingsPanel folder role setters', () => {
 
   it('uses the same remove icon as every other member row, not a bare glyph', () => {
     render(<WorkspaceSettingsPanel />);
-    const removeButton = screen.getByRole('button', { name: 'Remove manager Dana' });
+    const removeButton = screen.getByRole('button', { name: 'Remove Dana from people who can set folder roles' });
     // The icon carries no accessible role; identifying it requires direct DOM access.
     // eslint-disable-next-line testing-library/no-node-access
     expect(removeButton.querySelector('.lucide-trash-2')).toBeTruthy();
