@@ -34,6 +34,7 @@ import {
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { folderLabel } from '@/lib/folderLabel';
 import { FolderInfoPanel } from './FolderInfoPanel';
 import { NewFolderDialog } from './NewFolderDialog';
 
@@ -70,7 +71,7 @@ export function FolderContextMenu({
   } = useDriveWorkspace();
 
   const folder = folders.find((f) => f.id === folderId);
-  const folderAlias = folder?.alias ?? `${folderId.slice(0, 8)}…`;
+  const folderAlias = folderLabel(folder?.alias);
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,

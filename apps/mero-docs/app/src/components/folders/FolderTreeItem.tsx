@@ -17,6 +17,7 @@ import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import type { MergedFolder } from '@/hooks/useWorkspaceTree';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
+import { folderLabel } from '@/lib/folderLabel';
 import { FolderContextMenu } from './FolderContextMenu';
 import { FolderDocLeaves } from './FolderDocLeaves';
 
@@ -179,7 +180,7 @@ export function FolderTreeItem({
             type="button"
             className="flex-1 truncate text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {folder?.alias ?? node.id.slice(0, 8)}
+            {folderLabel(folder?.alias)}
           </button>
         )}
         {folder?.visibility === 'Restricted' && !renaming && (

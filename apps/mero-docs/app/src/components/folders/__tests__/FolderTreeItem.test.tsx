@@ -61,6 +61,14 @@ function renderRow(props: Partial<React.ComponentProps<typeof FolderTreeItem>> =
 
 beforeEach(() => vi.clearAllMocks());
 
+describe('folder row name', () => {
+  it('shows a folder it has no record for as Untitled folder, never its id', () => {
+    renderRow({ byId: new Map() as never });
+    expect(screen.getByRole('button', { name: 'Untitled folder' })).toBeTruthy();
+    expect(screen.queryByText('f1')).toBeNull();
+  });
+});
+
 describe('folder row keyboard access', () => {
   it('selects the folder when Enter is pressed on its name button', async () => {
     const onSelect = vi.fn();

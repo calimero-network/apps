@@ -17,6 +17,8 @@
 // FolderDto, which still carries `alias`). The merge reconciles the
 // two shapes.
 
+import { folderLabel } from '@/lib/folderLabel';
+
 export interface AdminSubgroup {
   groupId: string;
   parent_id: string | null;
@@ -52,7 +54,7 @@ export interface MergedFolder {
 // mero-js's listSubgroups is broken (it expects a `{data}` wrapper
 // but core returns `{subgroups}` — the folder body resolves to
 // undefined and admin comes back empty). The display name falls back
-// to the legacy registry `alias` mirror and finally a shortened id
+// to the legacy registry `alias` mirror and finally "Untitled folder"
 // so the folder still renders and is clickable with `admin` empty.
 // Visibility falls back to undefined while the per-folder
 // getGroupInfo fetch is in flight.
@@ -76,10 +78,8 @@ export function mergeAdminAndRegistry(
       // Preference order: admin-API `name` (authoritative — core
       // group metadata, visible to all namespace members on list rows
       // since #2338) → legacy registry `alias` mirror (back-compat for
-      // folders created before the mirror was retired) → truncated id
-      // stub (last-resort fallback).
-      const alias =
-        a?.name ?? r.alias ?? `folder-${r.id.slice(0, 8)}`;
+      // folders created before the mirror was retired) → "Untitled folder".
+      const alias = folderLabel(a?.name || r.alias);
       return {
         id: r.id,
         parent_id: r.parent_id,

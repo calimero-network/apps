@@ -43,6 +43,7 @@ import {
   roleDisplayLabel,
 } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
+import { folderLabel } from '@/lib/folderLabel';
 
 interface Props {
   folderId: string;
@@ -72,7 +73,7 @@ export function FolderSharingPanel({ folderId }: Props) {
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
 
   const folder = folders.find((f) => f.id === folderId);
-  const folderAlias = folder?.alias ?? `${folderId.slice(0, 8)}…`;
+  const folderAlias = folderLabel(folder?.alias);
   // Only an explicit 'Open' visibility takes the open layout; anything
   // else (Restricted, or not-yet-resolved) keeps the explicit-members
   // layout, which is the safe default.
