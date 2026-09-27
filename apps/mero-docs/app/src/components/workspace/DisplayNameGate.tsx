@@ -17,7 +17,7 @@ import {
 } from '@/hooks/useMemberDisplayName';
 
 // localStorage marker recording that a display name is already set for a
-// given (namespace, member). Bridges a mero-react bug (#42) where
+// given (namespace, member). Bridges a mero-react bug where
 // useMemberMetadata can return name=null on a fresh load even though the
 // name IS set server-side — without this, the gate re-appears on EVERY
 // page refresh. The marker is only ever written once we KNOW a name
@@ -54,23 +54,23 @@ function NameGate({
   selfIdentity: string;
 }) {
   const { namespaceMemberNames } = useDriveWorkspace();
-  const { name, loaded, error, setName } = useMemberDisplayName(
+  const { name, loaded, error, setName, refetch } = useMemberDisplayName(
     namespaceId,
     selfIdentity,
   );
   // The name as seen by the rest of the app's member surfaces: the
   // namespace GroupMember rows (keyed by identity), which reliably carry
   // the name even when `useMemberDisplayName` returns null on a cold load
-  // (mero-react rehydration gap #42). This is the same source the members
+  // (mero-react rehydration gap). This is the same source the members
   // list + the settings panel use, so the gate agrees with them.
   const memberRowName = namespaceMemberNames[selfIdentity] ?? null;
   // The effective name from ANY reliable source.
   const effectiveName = name ?? memberRowName;
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   // Close immediately once OUR OWN save succeeds — don't wait for `name`
-  // to flip non-null via refetch (see mero-drive#42 note above).
+  // to flip non-null via refetch (see the marker note above).
   const [dismissed, setDismissed] = useState(false);
 
   const markerKey = `${NAME_SET_PREFIX}${namespaceId}:${selfIdentity}`;
@@ -99,7 +99,7 @@ function NameGate({
   // Gating on `effectiveName` (not just the flaky hook `name`) is the fix
   // for the gate re-prompting on a cold/long-gap session: even if the
   // localStorage marker is gone (new device, cleared storage) AND the
-  // hook returns null (#42), the member rows still show the name, so we
+  // hook returns null, the member rows still show the name, so we
   // must not ask the user to set it again.
   if (!loaded || effectiveName !== null || dismissed || knownSet) return null;
 
@@ -110,13 +110,14 @@ function NameGate({
   const onSave = async () => {
     if (!canSave) return;
     setSaving(true);
-    setSaveError(null);
+    setSaveFailed(false);
     try {
       await setName(trimmed);
       rememberNameSet(markerKey);
       setDismissed(true);
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : String(e));
+      console.warn('display name save failed', e);
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -142,7 +143,7 @@ function NameGate({
           value={draft}
           onChange={(e) => {
             setDraft(e.target.value);
-            setSaveError(null);
+            setSaveFailed(false);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void onSave();
@@ -155,15 +156,20 @@ function NameGate({
         />
         {error && (
           <p className="mt-2 text-xs text-destructive" role="alert">
-            Couldn&apos;t load: {error.message}
+            Couldn&apos;t load your name. Try again.
           </p>
         )}
-        {saveError && (
+        {saveFailed && (
           <p className="mt-2 text-xs text-destructive" role="alert">
-            {saveError}
+            Couldn&apos;t save your name. Try again.
           </p>
         )}
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex justify-end gap-2">
+          {error && (
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>
+              Try again
+            </Button>
+          )}
           <Button size="sm" onClick={() => void onSave()} disabled={!canSave}>
             {saving ? 'Saving…' : 'Continue'}
           </Button>

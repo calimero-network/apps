@@ -188,6 +188,8 @@ export interface DriveWorkspaceState {
   /** True once `namespaces` is a successful read for the current app id;
    *  before that (or after a failed read) an absent id proves nothing. */
   namespacesListed: boolean;
+  /** The latest namespace list read's failure, if it failed. */
+  namespacesError: Error | null;
   /** True while the selected workspace is a fresh join not yet reflected
    *  elsewhere (namespace list, registry). */
   isJustJoined: boolean;
@@ -953,14 +955,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // response whose actual wire shape is `{subgroups: [...]}`) so we
   // can't read folder names from the subgroup list. `getGroupInfo`
   // IS correctly shaped (`{data: {..., metadata}}`) — unwrap works,
-  // and the human-readable name lives at `metadata.name` per core
-  // #2338. We fan out one getGroupInfo per folder and cache by id.
+  // and the human-readable name lives at `metadata.name`. We fan out
+  // one getGroupInfo per folder and cache by id.
   //
   // `aliasRevision` bumps on refetch() so rename flows re-fetch even
   // though the folder id set hasn't changed.
-  // Per-folder getGroupInfo also supplies subgroup_visibility (Open
-  // / Restricted, per core PR #2261), since the registry no longer
-  // stores it. Both the alias and visibility maps are populated from
+  // Per-folder getGroupInfo also supplies subgroup_visibility (Open /
+  // Restricted), which the registry does not store. Both maps come from
   // the same fetch to keep it cheap.
   const [aliases, setAliases] = useState<Map<string, string>>(new Map());
   const [visibilities, setVisibilities] = useState<
@@ -1040,9 +1041,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       for (const [id, alias, vis, denied] of entries) {
         if (denied) nextHidden.add(id);
         if (alias) nextAliases.set(id, alias);
-        // Server returns lowercase ("open" / "restricted") per core
-        // PR #2261; accept both casings so the toggle's optimistic
-        // uppercase write also lands cleanly.
+        // Core returns lowercase ("open" / "restricted"); accept both casings
+        // so the toggle's optimistic uppercase write also lands cleanly.
         const norm =
           vis === 'Open' || vis === 'open'
             ? 'Open'
@@ -1496,6 +1496,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
       namespaces,
       namespacesListed,
+      namespacesError: nsError,
       isJustJoined,
       selectedNamespaceId: selectedNsId,
       namespaceId: selectedNsId,
@@ -1533,6 +1534,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       namespaceMemberNames,
       namespaces,
       namespacesListed,
+      nsError,
       isJustJoined,
       selectedNsId,
       rootGroupId,

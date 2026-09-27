@@ -60,7 +60,7 @@ vi.mock('@calimero-network/mero-react', () => ({
 
 const identityMock: { value: string | null } = { value: 'me' };
 // useFolderPermissions no longer reads workspace state — capabilities
-// come straight from useMemberCaps now that core PR #2261 handles
+// come straight from useMemberCaps now that core handles
 // open-subgroup membership inheritance server-side. The mock stays so
 // any transitive consumer that imports useDriveWorkspace gets a stub.
 vi.mock('../useDriveWorkspace', () => ({
@@ -341,7 +341,7 @@ describe('useFolderPermissions', () => {
   });
 
   it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
-    // Per core PR #2261, listGroupMembers + getMemberCapabilities now
+    // listGroupMembers + getMemberCapabilities now
     // resolve via the parent-walk for Open subgroups. The hook just
     // forwards what core returns; no app-layer fallback. A namespace
     // member with the default-on join bit who's been granted real

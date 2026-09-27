@@ -20,7 +20,7 @@ export function safeColor(raw: string | null | undefined): string | undefined {
 }
 
 // Rough sanity-check on the pubkey format — Calimero identities are
-// Ed25519 device keys. core 0.11.0-rc.27 removed base58 (core#3691), so a
+// Ed25519 device keys. core 0.11.0-rc.27 removed base58, so a
 // 32-byte key is now exactly 64 hex characters. This is a client-side UX
 // guard (catch typos / truncated paste); the node validates the real format,
 // and the registry service lower-cases what it stores.

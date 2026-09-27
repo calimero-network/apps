@@ -1,8 +1,8 @@
 // Folder CRUD. Creates a subgroup under a parent, attaches a fresh
 // docs context, registers the folder in the namespace registry, and
 // sets `subgroup_visibility` on the new subgroup (Open by default —
-// namespace members inherit membership via core's parent-walk per
-// PR #2261; Restricted for explicit-invite-only folders).
+// namespace members inherit membership via core's parent-walk;
+// Restricted for explicit-invite-only folders).
 //
 // The previous app-layer membership cascade is gone: core handles
 // inheritance natively now, so we don't need to enumerate namespace
@@ -269,10 +269,14 @@ export function useFolderOperations(
   const rename = useCallback(
     async (folderId: string, alias: string) => {
       if (!mero) throw new Error('workspace not connected');
-      if (!registryClient) throw new Error('registry not ready');
       await mero.admin.setGroupMetadata(folderId, { name: alias });
-      // Keep the registry mirror (see create) in step with the group name.
-      await registryClient.setFolderAlias({ id: FolderId(folderId), alias });
+      // The group rename is what the user asked for; the registry copy (see
+      // create) is best-effort and only names the folder on no-access cards.
+      await registryClient
+        ?.setFolderAlias({ id: FolderId(folderId), alias })
+        .catch((e: unknown) =>
+          console.warn('folder renamed, but its registry name is stale', folderId, e),
+        );
       await refetch();
     },
     [mero, registryClient, refetch],

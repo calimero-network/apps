@@ -2,7 +2,7 @@
 // Gated by canManageVisibility (core's CAN_MANAGE_VISIBILITY bit) —
 // only folder admins see the option.
 //
-// As of core PR #2261, visibility is owned by Calimero core, not the
+// Visibility is owned by Calimero core, not the
 // app-layer registry. Open subgroups inherit membership from the
 // parent namespace via core's parent-walk; Restricted subgroups
 // require explicit invites. We call mero.admin.setSubgroupVisibility

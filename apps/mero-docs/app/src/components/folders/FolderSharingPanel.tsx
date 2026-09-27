@@ -1,5 +1,5 @@
 // Members + sharing controls for a single folder. Two layouts,
-// branched on the folder's subgroup visibility (core PR #2261):
+// branched on the folder's subgroup visibility (owned by core):
 //
 //   Restricted — explicit membership: add-by-identity / invite-link /
 //     remove, plus (for owner/managers) a per-member folder-role

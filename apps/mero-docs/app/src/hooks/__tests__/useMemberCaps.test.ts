@@ -115,7 +115,7 @@ describe('useMemberCaps', () => {
     await waitFor(() => expect(result.current.caps).toBe(7));
   });
 
-  // The behaviour core PR #2379 unblocks: an inherited Open-subgroup
+  // The behaviour core unblocks: an inherited Open-subgroup
   // member has no materialised GroupMember row, so listGroupMembers
   // omits them entirely. getMemberCapabilities resolves them (returns
   // 0) rather than throwing "not a member". The hook must treat that

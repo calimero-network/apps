@@ -2,8 +2,8 @@
 // selected folder. Three branches off `visibility`:
 //
 //   Open      → "Join folder" CTA. TWO core calls, in order:
-//               (1) `joinSubgroupInheritance` (#2360 /
-//                   POST /admin-api/groups/:id/join-via-inheritance)
+//               (1) `joinSubgroupInheritance`
+//                   (POST /admin-api/groups/:id/join-via-inheritance)
 //                   — materialises inherited subgroup membership +
 //                   delivers the subgroup key;
 //               (2) `joinContext` on the folder's docs context —
@@ -21,7 +21,7 @@
 //                action as Open (the call succeeds the moment
 //                inheritance becomes resolvable on this node).
 //
-// #2360's `join-via-inheritance` replaced the pre-#2360
+// Core's `join-via-inheritance` replaced the older
 // `listGroupContexts` enumeration for SUBGROUP membership — but the
 // per-docs-context `joinContext` is STILL required: core's
 // `join_subgroup_inheritance` handler is subgroup-scoped (subgroup
@@ -111,7 +111,7 @@ export function RestrictedFolderCard({
     setError(null);
     setJoining(true);
     try {
-      // 1) Materialise inherited subgroup membership (#2360):
+      // 1) Materialise inherited subgroup membership:
       //    delivers the subgroup key + publishes `MemberJoinedOpen`
       //    on the namespace DAG.
       await joinSubgroupInheritance(folderId);

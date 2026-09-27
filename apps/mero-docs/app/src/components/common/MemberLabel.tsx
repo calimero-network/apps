@@ -29,7 +29,7 @@ export function MemberLabel({
   // Two name sources:
   //   1. The per-(namespace, identity) metadata fetch — authoritative
   //      when it resolves with a name. Refreshes live via the
-  //      namespace SSE subscription added in PR #48.
+  //      namespace SSE subscription.
   //   2. The namespace-wide identity→name map in useDriveWorkspace.
   //      Sourced from the namespace's root-group GroupMember rows,
   //      so folder / sharing panels resolve names without each row

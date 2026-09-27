@@ -7,11 +7,11 @@
 //     setSubgroupVisibility before setGroupMetadata, useFolderOperations).
 //   - Alice generates a namespace invite; Bob accepts via /join.
 //   - core gossips the namespace governance op to Bob's node
-//     (#2261 inheritance walk recognises Bob as eligible).
+//     (its inheritance walk recognises Bob as eligible).
 //   - core auto-follow on Bob's node joins the Open folder's docs
 //     context, so the folder view opens without a Join click.
-//   - Bob reads Alice's doc; writes his own; Alice reads back (#2351
-//     KeyDelivery + the underlying gossip/sync stack).
+//   - Bob reads Alice's doc; writes his own; Alice reads back (key
+//     delivery + the underlying gossip/sync stack).
 //
 // Tests 27-29 from the design catalog.
 

@@ -109,7 +109,7 @@ test.describe('Document collab (two-node)', () => {
 
   // FIXME — no longer the core bug this was parked for. On rc.41 presence
   // itself failed ("no current group key": presence keyed off the Open folder's
-  // subgroup keyring); core#4027 in rc.42 fixed that, and on an rc.42 rig every
+  // subgroup keyring); core rc.42 fixed that, and on an rc.42 rig every
   // set_ephemeral now succeeds. What still fails is the caret's anchor:
   // `anchor_at` is refused with "provided string contained invalid character
   // '-' at byte 8" because useBodyCursors → useFugueBody.backendIdOf falls back

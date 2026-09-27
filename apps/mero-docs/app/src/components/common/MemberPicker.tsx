@@ -6,7 +6,7 @@
 // raw text via onSelect — the downstream form validates / sends).
 //
 // Filtering happens in the parent, on the *pre-loaded* `GroupMember.name`
-// field that `useGroupMembers` returns (core #2338 propagates each
+// field that `useGroupMembers` returns (core propagates each
 // member's MetadataRecord.name into the list rows). Only the rows that
 // matched render a <MemberLabel>, which itself calls useMemberDisplayName
 // — so the live-metadata lookup is bounded by what's actually visible,

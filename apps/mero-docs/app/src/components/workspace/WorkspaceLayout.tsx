@@ -50,6 +50,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
 
 const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
+const QUIET_LOADER_DELAY_MS = 300; // a shorter wait shows nothing rather than flash a loader
 
 // Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
 // only needed once a document is opened, so they must not weigh down the
@@ -65,6 +66,7 @@ export function WorkspaceLayout() {
     namespaceId,
     namespaces,
     namespacesListed,
+    namespacesError,
     isJustJoined,
     registryContextId,
     selectedFolderId,
@@ -191,10 +193,8 @@ export function WorkspaceLayout() {
     [linkTarget, goWorkspace, goHome],
   );
   const docsFailed = linkTarget === 'syncing' && !!routedDocs.error;
-  const onRetryLinkTarget = useCallback(() => {
-    onRetrySync();
-    void refetchDocs();
-  }, [onRetrySync, refetchDocs]);
+  // The name gate asks about this workspace, so only a confirmed member sees it.
+  const isMember = !!namespaceId && !!namespaceIds?.includes(namespaceId);
   // Once a doc has genuinely opened, a later 'syncing' pulse must not
   // unmount it mid-edit; only a definitive outcome (branch above) does.
   const [openedDocKey, setOpenedDocKey] = useState<string | null>(null);
@@ -390,12 +390,29 @@ export function WorkspaceLayout() {
                 folderName={selectedFolder?.alias}
               />
             </Suspense>
-          ) : stage === 'syncing-from-peers' || linkTarget === 'syncing' ? (
+          ) : namespacesError ? (
+            <EmptyState
+              title="Couldn't load your workspaces"
+              body="Check your connection to the node, then try again."
+            >
+              <Button variant="outline" onClick={() => void refetch()}>
+                Try again
+              </Button>
+            </EmptyState>
+          ) : stage === 'syncing-from-peers' ||
+            (linkTarget === 'syncing' && isJustJoined) ? (
             <SyncingWorkspaceState
               syncStatus={syncStatus}
-              failed={docsFailed}
-              onRetry={docsFailed ? onRetryLinkTarget : onRetrySync}
+              onRetry={onRetrySync}
             />
+          ) : docsFailed ? (
+            <EmptyState title="Couldn't load this folder's documents">
+              <Button variant="outline" onClick={() => void refetchDocs()}>
+                Try again
+              </Button>
+            </EmptyState>
+          ) : linkTarget === 'syncing' ? (
+            <QuietLoading />
           ) : !selectedFolderId ? (
             <SelectFolderState />
           ) : !selectedFolder ? (
@@ -424,7 +441,7 @@ export function WorkspaceLayout() {
             <FolderEmptyState folderId={selectedFolder.id} onOpenDoc={openDoc} />
           )}
         </main>
-        <DisplayNameGate />
+        {isMember && <DisplayNameGate />}
       </div>
     </div>
   );
@@ -482,19 +499,16 @@ function describeSync(snap: SyncSnapshot | null): {
 // until the first SyncStatus event arrives.
 function SyncingWorkspaceState({
   syncStatus,
-  failed,
   onRetry,
 }: {
   syncStatus: SyncSnapshot | null;
-  /** A read this screen waits on failed, so waiting longer won't help. */
-  failed: boolean;
   onRetry: () => void;
 }) {
   const phase = syncStatus?.phase;
   // `backingOff` is the authoritative "stuck" signal. A `lastError` can
   // linger on the wire during an active phase, so it must NOT hide the
   // spinner / show Retry — it's rendered separately as informational text.
-  const stalled = failed || phase === 'backingOff';
+  const stalled = phase === 'backingOff';
   const percent = phase === 'receivingSnapshot' ? syncStatus?.percent : null;
   const { title, body } = describeSync(syncStatus);
 
@@ -530,4 +544,14 @@ function SyncingWorkspaceState({
       </div>
     </div>
   );
+}
+
+// A wait for a link to resolve: blank at first, then a plain loader.
+function QuietLoading() {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShown(true), QUIET_LOADER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return shown ? <EmptyState title="Loading…" /> : null;
 }

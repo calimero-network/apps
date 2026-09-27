@@ -311,7 +311,7 @@ export function useJoinNamespaceByInvite() {
         ...(groupName ? { groupName } : {}),
       });
       // ⚠️ `groupId` was renamed to `namespaceId` in core 0.11.0-rc.25
-      // (core#3598) and this read was never updated: it returned `undefined`
+      // and this read was never updated: it returned `undefined`
       // on every current node, silently. mero-js back-fills `namespaceId` from
       // whichever spelling the node sent, so reading it works on both sides of
       // that release; the `groupId` fall-back is belt and braces.

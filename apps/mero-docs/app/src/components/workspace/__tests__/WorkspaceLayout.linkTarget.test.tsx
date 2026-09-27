@@ -10,6 +10,7 @@ const workspace = vi.hoisted(() => ({
   namespaces: [{ namespaceId: 'ns' }],
   namespacesListed: true,
   isJustJoined: false,
+  namespacesError: null as Error | null,
   registryFolders: [{ id: 'f1', parent_id: null, color: null, alias: 'Finance' }] as
     | { id: string; parent_id: string | null; color: string | null; alias?: string | null }[]
     | null,
@@ -25,6 +26,7 @@ const docs = vi.hoisted(() => ({
 }));
 const useDocsSpy = vi.hoisted(() => vi.fn());
 const docsRefetch = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const workspaceRefetch = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock('@/hooks/useDriveWorkspace', async () => {
   const { useAppRoute } = await import('@/hooks/useAppRoute');
@@ -34,6 +36,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       namespaces: workspace.namespaces,
       namespacesListed: workspace.namespacesListed,
       isJustJoined: workspace.isJustJoined,
+      namespacesError: workspace.namespacesError,
       registryContextId: 'reg',
       selectedFolderId: useAppRoute().route?.folder ?? null,
       setSelectedFolder: vi.fn(),
@@ -44,7 +47,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       selfIdentity: 'me',
       stage: 'ready',
       syncStatus: null,
-      refetch: vi.fn(),
+      refetch: workspaceRefetch,
     }),
   };
 });
@@ -83,7 +86,9 @@ vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
 vi.mock('@/components/folders/NoFolderStates', () => ({
   SelectFolderState: () => <div data-testid="select-folder" />,
 }));
-vi.mock('../DisplayNameGate', () => ({ DisplayNameGate: () => null }));
+vi.mock('../DisplayNameGate', () => ({
+  DisplayNameGate: () => <div data-testid="name-gate" />,
+}));
 vi.mock('../NamespaceSettingsPanel', () => ({
   NamespaceSettingsPanel: () => null,
 }));
@@ -128,6 +133,8 @@ afterEach(() => {
   workspace.namespaces = [{ namespaceId: 'ns' }];
   workspace.namespacesListed = true;
   workspace.isJustJoined = false;
+  workspace.namespacesError = null;
+  workspaceRefetch.mockClear();
   workspace.registryFolders = [
     { id: 'f1', parent_id: null, color: null, alias: 'Finance' },
   ];
@@ -186,13 +193,19 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(useDocsSpy).toHaveBeenCalledWith(null, { includeArchived: true });
   });
 
-  it('shows syncing, not a premature no-access, while a folder’s access is unresolved', () => {
+  it('waits quietly, not with a premature no-access, while a folder’s access is unresolved', async () => {
     workspace.resolvedFolderIds = new Set();
     renderAt('/app/ns/f/f1/d/doc-1');
     expect(screen.queryByText('This document is in Finance')).toBeNull();
-    expect(
-      screen.getByText('Syncing workspace from peers…'),
-    ).toBeTruthy();
+    expect(await screen.findByText('Loading…')).toBeTruthy();
+    expect(screen.queryByText('Syncing workspace from peers…')).toBeNull();
+  });
+
+  it('shows nothing for a short wait, then a quiet loader', async () => {
+    workspace.resolvedFolderIds = new Set();
+    renderAt('/app/ns/f/f1/d/doc-1');
+    expect(screen.queryByText('Loading…')).toBeNull();
+    expect(await screen.findByText('Loading…')).toBeTruthy();
   });
 
   it('shows the doc-worded deleted card for an unknown doc in a real folder', async () => {
@@ -207,14 +220,12 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(await screen.findByTestId('editor')).toBeTruthy();
   });
 
-  it('waits (shows syncing, never a premature deleted) while the folder list has not loaded', () => {
+  it('waits (never a premature deleted) while the folder list has not loaded', async () => {
     workspace.registryFolders = null;
     renderAt('/app/ns/f/f1/d/doc-1');
     expect(screen.queryByText('This document was deleted or moved')).toBeNull();
     expect(screen.queryByTestId('editor')).toBeNull();
-    expect(
-      screen.getByText('Syncing workspace from peers…'),
-    ).toBeTruthy();
+    expect(await screen.findByText('Loading…')).toBeTruthy();
   });
 
   it('keeps an open doc mounted through a later syncing pulse', async () => {
@@ -272,11 +283,48 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(screen.getByText('Finance is a restricted folder')).toBeTruthy();
   });
 
-  it('offers Retry after the docs read fails, and it re-reads the docs', () => {
+  it('says the docs failed to load and Try again re-reads them', () => {
     docs.listed = false;
     docs.error = new Error('docs down');
     renderAt('/app/ns/f/f1/d/doc-1');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }));
+    expect(screen.getByText("Couldn't load this folder's documents")).toBeTruthy();
+    expect(screen.queryByText('Syncing workspace from peers…')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(docsRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the post-join copy for a workspace still syncing after a join', () => {
+    workspace.isJustJoined = true;
+    workspace.resolvedFolderIds = new Set();
+    renderAt('/app/ns/f/f1/d/doc-1');
+    expect(screen.getByText('Syncing workspace from peers…')).toBeTruthy();
+  });
+
+  it('shows a plain error with Try again when the workspace list fails', () => {
+    workspace.namespacesListed = false;
+    workspace.namespacesError = new Error('HTTP 500 Internal Server Error');
+    renderAt('/app/ns');
+    expect(screen.getByText("Couldn't load your workspaces")).toBeTruthy();
+    expect(screen.queryByText(/HTTP 500/)).toBeNull();
+    expect(screen.queryByTestId('select-folder')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(workspaceRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('never mounts the name gate for a workspace this node is not in', () => {
+    workspace.namespaces = [{ namespaceId: 'other' }];
+    renderAt('/app/ns');
+    expect(screen.queryByTestId('name-gate')).toBeNull();
+  });
+
+  it('never mounts the name gate before membership is known', () => {
+    workspace.namespacesListed = false;
+    renderAt('/app/ns');
+    expect(screen.queryByTestId('name-gate')).toBeNull();
+  });
+
+  it('mounts the name gate for a workspace the caller is in', () => {
+    renderAt('/app/ns');
+    expect(screen.getByTestId('name-gate')).toBeTruthy();
   });
 });

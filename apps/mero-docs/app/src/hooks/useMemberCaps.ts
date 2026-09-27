@@ -198,7 +198,7 @@ export function useMemberCaps(
           //    `listGroupMembers` by core design (no materialised
           //    GroupMember row — see `execute_member_joined_open` in
           //    namespace_governance.rs), but `getMemberCapabilities`
-          //    resolves them via the parent-walk (core #2261/#2379)
+          //    resolves them via core's parent-walk
           //    and returns 0. A genuine non-member instead throws
           //    "identity is not a member" → propagation-lag retry.
           const result = await mero.admin.getMemberCapabilities(

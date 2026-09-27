@@ -20,7 +20,7 @@
 //     an owner/manager. Read from `useDriveWorkspace().registryAdmin`
 //     (fetched ONCE for the whole tree) — NOT via a per-row hook call.
 //
-// As of core PR #2261, Open subgroups inherit membership from the
+// Open subgroups inherit membership from the
 // parent namespace via the server's parent-walk, so a namespace member
 // with `CAN_JOIN_OPEN_SUBGROUPS` (default-on) gets real caps from the
 // admin API directly — no app-layer fallback needed.

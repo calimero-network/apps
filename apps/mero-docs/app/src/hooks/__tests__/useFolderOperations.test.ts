@@ -219,6 +219,31 @@ describe('useFolderOperations.rename', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  it('still renames and refreshes when only the registry name write fails', async () => {
+    const registry = makeRegistry();
+    (registry as unknown as { setFolderAlias: ReturnType<typeof vi.fn> }).setFolderAlias
+      .mockRejectedValue(new Error('registry down'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(refetch).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('renames without a registry client, skipping the registry name', async () => {
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(null, ROOT, 'app-1', refetch),
+    );
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(setGroupMetadata).toHaveBeenCalledWith('f1', { name: 'New name' });
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it('mirrors the new name into the registry for members who cannot read the folder', async () => {
     const registry = makeRegistry();
     const { result } = renderHook(() =>

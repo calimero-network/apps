@@ -67,7 +67,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
   // Default to Open: namespace members inherit access via core's
-  // parent-walk (PR #2261). Switch to Restricted for explicit-invite
+  // parent-walk. Switch to Restricted for explicit-invite
   // folders.
   const [visibility, setVisibility] = useState<'Open' | 'Restricted'>('Open');
   // Identities to add immediately (Restricted folders only). The

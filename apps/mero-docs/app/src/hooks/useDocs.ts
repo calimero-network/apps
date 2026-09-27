@@ -146,30 +146,19 @@ export function useDocs(
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
-  // True while getFolderContext is in flight for the current
-  // (registryClient, folderId). Set false on settle (success OR
-  // error) so the UI can tell "transient — wait for sync" apart
-  // from "settled to null — folder has no binding".
-  //
-  // Initial value derives from props directly so the very first
-  // paint of DocumentList already sees `contextResolving=true`
-  // when there's work pending. Without this, the useEffect runs
-  // post-paint and the legacy "no docs context bound yet" copy
-  // flashes for a frame.
+  // True while getFolderContext is in flight; seeded from props so the first
+  // paint already says "resolving" instead of flashing the unbound copy.
   const [contextResolving, setContextResolving] = useState<boolean>(
     () => !!registryClient && !!folderId,
   );
-
-  // Resolve the docs context id for this folder. The registry's
-  // folder-context binding is authoritative; if it's missing (legacy
-  // folders pre-Phase-7), the hook surfaces contextId=null and
-  // loading=false rather than retrying — the UI decides whether to
-  // show an empty-state or force a reconcile.
   // The folder whose context read last succeeded; a null contextId only
   // means "unbound" when this matches the current folder.
   const [resolvedFolder, setResolvedFolder] = useState<string | null>(null);
   // Bumped by an explicit retry after a failed context read.
   const [resolveAttempt, setResolveAttempt] = useState(0);
+
+  // The registry's folder-to-context binding is authoritative; an unbound
+  // folder settles to contextId=null without retrying.
   useEffect(() => {
     setResolvedFolder(null);
     if (!registryClient || !folderId) {

@@ -1,6 +1,6 @@
 // Workspace folder tree merge logic — merges admin-API subgroup
 // entries (source of truth for tree shape, aliases, and
-// subgroup_visibility per core PR #2261) with registry FolderDto
+// subgroup_visibility) with registry FolderDto
 // entries (source of truth for color + context binding + parent_id
 // index).
 //
@@ -12,9 +12,8 @@
 // FolderTreeItem UI component.
 //
 // Admin subgroup entries use `{ groupId, name? }` (per mero-js's
-// SubgroupEntry type — `alias` was renamed to `name` in core #2338).
-// Registry entries use `{ id, parent_id, … }` (per the generated
-// FolderDto, which still carries `alias`). The merge reconciles the
+// SubgroupEntry type). Registry entries use `{ id, parent_id, … }` (per the
+// generated FolderDto, which also carries `alias`). The merge reconciles the
 // two shapes.
 
 import { folderLabel } from '@/lib/folderLabel';
@@ -29,10 +28,8 @@ export interface RegistryFolderShape {
   id: string;
   parent_id: string | null;
   color: string | null;
-  /** Legacy registry-side alias mirror. No longer written (folder
-   *  names come from core group metadata's `name` since #2338) but
-   *  still read as a back-compat fallback for folders created before
-   *  the mirror was retired. Null / undefined otherwise. */
+  /** Copy of the group name, readable by members who can't read a restricted
+   *  folder's metadata; null for folders created before it was written. */
   alias?: string | null;
 }
 
@@ -40,24 +37,14 @@ export interface MergedFolder {
   id: string;
   parent_id: string | null;
   alias: string;
-  /** Sourced from core's GroupInfo.subgroupVisibility per PR #2261.
+  /** Sourced from core's GroupInfo.subgroupVisibility.
    *  `undefined` while the per-folder fetch is still in flight. */
   visibility: 'Open' | 'Restricted' | undefined;
   color: string | null;
 }
 
-// The registry WASM is the authoritative source of "which folders
-// exist" (it owns the tree shape + color + context binding). Admin-
-// side subgroups contribute `name` (human-readable name) and
-// `subgroup_visibility` (Open vs Restricted, per core PR #2261).
-// Iterate the registry list so that folders show up even when
-// mero-js's listSubgroups is broken (it expects a `{data}` wrapper
-// but core returns `{subgroups}` — the folder body resolves to
-// undefined and admin comes back empty). The display name falls back
-// to the legacy registry `alias` mirror and finally "Untitled folder"
-// so the folder still renders and is clickable with `admin` empty.
-// Visibility falls back to undefined while the per-folder
-// getGroupInfo fetch is in flight.
+// Iterates the registry (which folders exist) so a folder still renders when
+// the admin side, which adds the name and visibility, comes back empty.
 export function mergeAdminAndRegistry(
   admin: AdminSubgroup[],
   registry: RegistryFolderShape[],
@@ -75,10 +62,7 @@ export function mergeAdminAndRegistry(
     .filter((r) => r.id !== rootId && !(hiddenIds?.has(r.id) ?? false))
     .map((r) => {
       const a = adminById.get(r.id);
-      // Preference order: admin-API `name` (authoritative — core
-      // group metadata, visible to all namespace members on list rows
-      // since #2338) → legacy registry `alias` mirror (back-compat for
-      // folders created before the mirror was retired) → "Untitled folder".
+      // Group metadata name first, then the registry copy, then "Untitled folder".
       const alias = folderLabel(a?.name || r.alias);
       return {
         id: r.id,
