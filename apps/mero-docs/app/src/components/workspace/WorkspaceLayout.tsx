@@ -13,7 +13,14 @@
 // The open doc and the settings view come from the URL (useAppRoute), so
 // reload, back/forward and shared links all land on the same screen.
 
-import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import React, {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
@@ -27,14 +34,17 @@ import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard'
 import { FolderEmptyState } from './FolderEmptyState';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SelectFolderState } from '@/components/folders/NoFolderStates';
+import { LinkTargetCard } from './LinkTargetCard';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useAppRoute } from '@/hooks/useAppRoute';
+import { useDocs } from '@/hooks/useDocs';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { lacksFolderAccess } from '@/utils/accessDenied';
+import { resolveLinkTarget } from '@/lib/linkTarget';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
@@ -53,10 +63,13 @@ const DocumentEditor = lazy(() =>
 export function WorkspaceLayout() {
   const {
     namespaceId,
+    namespaces,
     registryContextId,
     selectedFolderId,
     setSelectedFolder,
     folders,
+    registryFolders,
+    hiddenFolderIds,
     selfIdentity,
     stage,
     syncStatus,
@@ -99,10 +112,59 @@ export function WorkspaceLayout() {
   // compactness, full URL kept in the title attribute for copy-paste.
   const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
-  const { route, goHome, goFolder, goDoc, goSettings } = useAppRoute();
+  const { route, goWorkspace, goHome, goFolder, goDoc, goSettings } =
+    useAppRoute();
   const selectedDocId = route?.doc ?? null;
   const showSettings = !!route?.settings;
   const navigate = useNavigate();
+
+  // Workspace ids this node belongs to, null while that list hasn't loaded —
+  // an empty read must never read as "you're not in this workspace".
+  const namespaceIds = useMemo(
+    () => (namespaces.length > 0 ? namespaces.map((n) => n.namespaceId) : null),
+    [namespaces],
+  );
+  // The routed folder's own docs, so a link to a deleted doc resolves to
+  // 'deleted' rather than mounting the editor on nothing. Sticky on the
+  // first successful load per folder: `useDocs.loading` pulses true on every
+  // background refetch (SSE, autosave), and re-arming this on each pulse
+  // would flip an *open* doc's card back to "syncing" mid-edit.
+  const routedDocs = useDocs(selectedFolderId);
+  const routedDocsStillLoading =
+    routedDocs.contextResolving || routedDocs.loading;
+  const [docsLoadedForFolder, setDocsLoadedForFolder] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (!selectedFolderId || routedDocsStillLoading) return;
+    setDocsLoadedForFolder(selectedFolderId);
+  }, [selectedFolderId, routedDocsStillLoading]);
+  const linkTarget = useMemo(
+    () =>
+      resolveLinkTarget({
+        route,
+        namespaceIds,
+        folderRegistry: registryFolders,
+        hiddenFolderIds,
+        docs: docsLoadedForFolder === selectedFolderId ? routedDocs.list : null,
+      }),
+    [
+      route,
+      namespaceIds,
+      registryFolders,
+      hiddenFolderIds,
+      docsLoadedForFolder,
+      selectedFolderId,
+      routedDocs.list,
+    ],
+  );
+  const routedFolderAlias = registryFolders?.find(
+    (f) => f.id === selectedFolderId,
+  )?.alias;
+  const onLinkTargetGoHome = useCallback(
+    () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
+    [linkTarget, goWorkspace, goHome],
+  );
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     'mero-sidebar-width',
     256,
@@ -248,7 +310,23 @@ export function WorkspaceLayout() {
               title="No workspace selected"
               body="Create or pick a workspace from the top bar to see your folders."
             />
-          ) : selectedFolderId && selectedDocId ? (
+          ) : linkTarget === 'no-access' ||
+            linkTarget === 'deleted' ||
+            linkTarget === 'not-in-workspace' ? (
+            // A routed folder/doc/workspace the caller can't open. Checked
+            // ahead of the editor so a dead or restricted link never mounts
+            // it; a genuine access loss on an already-open doc lands here too.
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="mx-auto max-w-3xl">
+                <LinkTargetCard
+                  kind={linkTarget}
+                  folderName={routedFolderAlias}
+                  onGoHome={onLinkTargetGoHome}
+                  linkUrl={window.location.href}
+                />
+              </div>
+            </div>
+          ) : selectedFolderId && selectedDocId && linkTarget === 'ok' ? (
             // Editor gated on selectedFolderId (stable persistent state),
             // NOT selectedFolder — `folders` is a useMemo that recomputes on
             // every workspace SSE refetch, and a momentary gap where the
@@ -275,7 +353,7 @@ export function WorkspaceLayout() {
                 folderName={selectedFolder?.alias}
               />
             </Suspense>
-          ) : stage === 'syncing-from-peers' ? (
+          ) : stage === 'syncing-from-peers' || linkTarget === 'syncing' ? (
             <SyncingWorkspaceState
               syncStatus={syncStatus}
               onRetry={onRetrySync}

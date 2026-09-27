@@ -64,7 +64,6 @@ import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
-import { useFolderSelection } from './useFolderSelection';
 import { useAppRoute } from './useAppRoute';
 import {
   deriveDriveStage,
@@ -219,6 +218,11 @@ export interface DriveWorkspaceState {
    *  undercount depth. (Deletion reads the tree directly from the
    *  registry for the same reason.) */
   allFolderNodes: { id: string; parent_id: string | null }[];
+  /** Raw registry rows for the active workspace (unfiltered by access),
+   *  null until the first load completes for the current registry client. */
+  registryFolders: RegistryFolderShape[] | null;
+  /** Folder ids hidden from this caller — restricted folders it isn't a member of. */
+  hiddenFolderIds: Set<string>;
   /** Registry owner/managers — fetched once here, read by
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
   registryAdmin: RegistryAdminSlice;
@@ -1116,16 +1120,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     (id: string | null) => (id ? goFolder(id) : goHome()),
     [goFolder, goHome],
   );
-  const dropGoneFolder = useCallback(
-    () => goWorkspace(routeNsId, { replace: true }),
-    [goWorkspace, routeNsId],
-  );
-  useFolderSelection(
-    selectedFolderId,
-    registryClient && regFoldersFor === registryClient ? regFolders : null,
-    hiddenFolderIds,
-    dropGoneFolder,
-  );
+  // Raw registry rows for the active workspace (unfiltered by access, alias
+  // included), null until the first load completes for the current client.
+  // `resolveLinkTarget` reads this to tell a hidden-but-real folder (no-access)
+  // from one that never existed (deleted) instead of dropping the route.
+  const registryFolders =
+    registryClient && regFoldersFor === registryClient ? regFolders : null;
 
   // --- Mutations ---
   const [createLoading, setCreateLoading] = useState(false);
@@ -1502,6 +1502,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       registryClient,
       folders,
       allFolderNodes,
+      registryFolders,
+      hiddenFolderIds,
       registryAdmin,
 
       selectedFolderId,
@@ -1531,6 +1533,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       registryClient,
       folders,
       allFolderNodes,
+      registryFolders,
+      hiddenFolderIds,
       registryAdmin,
       selectedFolderId,
       setSelectedFolder,

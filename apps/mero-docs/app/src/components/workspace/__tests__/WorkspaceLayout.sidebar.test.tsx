@@ -25,10 +25,13 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
   return {
     useDriveWorkspace: () => ({
       namespaceId: 'ns',
+      namespaces: [{ namespaceId: 'ns' }],
       registryContextId: 'reg',
       selectedFolderId: useAppRoute().route?.folder ?? null,
       setSelectedFolder,
       folders: [],
+      registryFolders: [{ id: 'f1', parent_id: null, color: null, alias: 'F1' }],
+      hiddenFolderIds: new Set<string>(),
       selfIdentity: 'me',
       stage: 'ready',
       syncStatus: null,
@@ -36,6 +39,23 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
     }),
   };
 });
+// Every doc these tests route to resolves, so the link-target gate opens the
+// (separately mocked) editor as before.
+vi.mock('@/hooks/useDocs', () => ({
+  useDocs: () => ({
+    list: [{ id: 'doc-2' }, { id: 'd1' }],
+    loading: false,
+    contextResolving: false,
+    contextId: 'ctx',
+    error: null,
+    refetch: vi.fn(),
+    create: vi.fn(),
+    edit: vi.fn(),
+    get: vi.fn(),
+    remove: vi.fn(),
+    client: null,
+  }),
+}));
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),

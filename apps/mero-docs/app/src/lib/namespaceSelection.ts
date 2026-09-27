@@ -36,6 +36,18 @@ export function syncWorkspaceRoute(i: RouteSyncInput): {
   goTo: string | null;
   remember: string | null;
 } {
+  // Two cases keep the URL exactly where it is rather than picking a
+  // fallback: a workspace just joined (still arriving in the list) and an
+  // explicit link to a workspace this node turns out not to be in (the
+  // card names it instead of a silent swap to another workspace).
+  const routeUnresolved =
+    !!i.routeNs &&
+    (i.justJoined.has(i.routeNs) ||
+      (i.listed.length > 0 &&
+        !i.listed.includes(i.routeNs) &&
+        i.routeNs !== i.created));
+  if (routeUnresolved) return { goTo: null, remember: null };
+
   const next = nextNamespaceSelection({
     listed: i.listed,
     selected: i.routeNs ?? i.stored,

@@ -141,10 +141,23 @@ describe('syncWorkspaceRoute', () => {
     ).toEqual({ goTo: null, remember: null });
   });
 
-  it('replaces a linked workspace this node is not in with the remembered one', () => {
+  // The card names the workspace instead of a silent swap (R-09).
+  it('does not redirect away from a linked workspace this node is not in', () => {
     expect(
       syncWorkspaceRoute({ ...base, listed: ['a', 's'], routeNs: 'x', stored: 's' }),
-    ).toEqual({ goTo: 's', remember: null });
+    ).toEqual({ goTo: null, remember: null });
+  });
+
+  it('does not redirect away from a workspace this node just joined, even before it is listed', () => {
+    expect(
+      syncWorkspaceRoute({
+        listed: ['a', 's'],
+        routeNs: 'x',
+        stored: 's',
+        justJoined: new Set(['x']),
+        created: null,
+      }),
+    ).toEqual({ goTo: null, remember: null });
   });
 
   it('changes nothing once the URL and memory agree', () => {
