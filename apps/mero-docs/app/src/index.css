@@ -57,6 +57,7 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --warning-ink: 26 90% 37%;
 
     /* Encryption/Security accent */
     --secure: 82 100% 19%;
@@ -111,6 +112,7 @@
     --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
     --warning-foreground: 260 8% 8%;
+    --warning-ink: 43 96% 56%;
 
     --secure: var(--primary-ink);
     --secure-foreground: 260 8% 8%;
