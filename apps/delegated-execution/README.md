@@ -52,18 +52,6 @@ Two things still have to be true beyond routing: the node's auth service must ha
 provider on), and the node's account must hold `CAN_AUTHOR_ON_BEHALF` on the group that
 owns the context — which the "Check first" button answers without signing anything.
 
-## It pins mero-js instead of using `catalog:`
-
-```json
-"@calimero-network/mero-js": "^19.13.0"
-```
-
-The workspace catalog is on `^18.3.0`, which predates `login()`, `RelayClient`,
-`generateAccountRoot` and `getAccountRelays` — the things this demo is built out of. Moving the catalog pin
-would re-resolve and re-test all sixteen apps for the benefit of this one, so the pin is
-local and this paragraph is the reason. **Fold it back into the catalog** the next time the
-catalog moves past this version.
-
 ## What you need running
 
 A node on **`merod 0.11.0-rc.38` or newer**. rc.38 is the first release carrying the
