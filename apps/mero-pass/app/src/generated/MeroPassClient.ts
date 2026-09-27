@@ -9,7 +9,6 @@ import {
 export interface AuditLogEntry {
   action: string;
   target: string;
-  account: string;
   device: string;
   timestamp: number;
 }
@@ -27,7 +26,6 @@ export interface DeviceKey {
   public_key: string;
   label: string;
   kind: string;
-  account: string;
   node_device: string;
   added_at: number;
 }
@@ -51,7 +49,6 @@ export interface KeyWrap {
   recipient: string;
   wrapper: string;
   envelope: string;
-  wrapped_by: string;
   wrapped_at: number;
 }
 
@@ -82,13 +79,13 @@ export interface MeroPassApp {
   secrets: Record<string, Secret>;
   history: Record<string, Revision>;
   admin: Record<string, string>;
+  settings: Record<string, string>;
   devices: Record<string, DeviceKey>;
   key_wraps: Record<string, KeyWrap>;
   audit: AuditLogEntry[];
 }
 
 export interface Revision {
-  secret_id: string;
   field: string;
   previous: string;
   replaced_at: number;
