@@ -93,9 +93,9 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <span className="truncate">{documentName}</span>
         </div>
         <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
-          <span>{wordCount} words</span>
+          <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
           <span className="text-border">•</span>
-          <span>{charCount} characters</span>
+          <span>{charCount} {charCount === 1 ? 'character' : 'characters'}</span>
         </div>
       </div>
 
