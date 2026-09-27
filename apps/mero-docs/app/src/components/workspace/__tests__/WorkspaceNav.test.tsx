@@ -20,13 +20,12 @@ const tags = [
 const index = {
   rows,
   folders: [{ id: 'f1', name: 'One' }],
+  foldersKnown: true,
   folderStatus: { f1: 'ready' } as Record<string, string>,
 };
 vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => index,
 }));
-const ws = { registryFolders: [{ id: 'f1' }] as { id: string }[] | null };
-vi.mock('@/hooks/useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('@/hooks/useTags', () => ({ useTags: () => ({ tags }) }));
 vi.mock('@/components/folders/FolderTree', () => ({
   FolderTree: ({
@@ -81,7 +80,8 @@ beforeEach(() => {
   localStorage.clear();
   index.rows = rows;
   index.folderStatus = { f1: 'ready' };
-  ws.registryFolders = [{ id: 'f1' }];
+  index.folders = [{ id: 'f1', name: 'One' }];
+  index.foldersKnown = true;
 });
 
 describe('WorkspaceNav', () => {
@@ -150,14 +150,17 @@ describe('WorkspaceNav', () => {
     expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
     unmount();
 
-    ws.registryFolders = null;
-    index.folderStatus = { f1: 'ready' };
+    // Between the folder list landing and its access checks, no folder is shown yet.
+    index.foldersKnown = false;
+    index.folders = [];
+    index.rows = [];
+    index.folderStatus = {};
     const view = mount('/app/ws1');
     expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
     view.unmount();
 
-    index.rows = [];
-    ws.registryFolders = [{ id: 'f1' }];
+    index.foldersKnown = true;
+    index.folders = [{ id: 'f1', name: 'One' }];
     index.folderStatus = { f1: 'error' };
     mount('/app/ws1');
     expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();

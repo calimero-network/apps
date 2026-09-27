@@ -20,6 +20,7 @@ export type FolderIndexStatus = 'loading' | 'ready' | 'syncing' | 'error';
 export type WorkspaceIndex = {
   rows: IndexRow[];
   folders: FolderInfo[];
+  foldersKnown: boolean; // every folder's access has resolved once for this workspace
   folderStatus: Record<string, FolderIndexStatus>;
   contextOf(folderId: string): string | undefined;
   refetchFolder(folderId: string): void;
@@ -51,6 +52,7 @@ export function useWorkspaceIndex(): WorkspaceIndex {
   const {
     folders: visible,
     registryFolders,
+    resolvedFolderIds,
     selfIdentity,
   } = useDriveWorkspace();
   const { mero } = useMero();
@@ -72,6 +74,17 @@ export function useWorkspaceIndex(): WorkspaceIndex {
         : [],
     [visible, registryFolders],
   );
+  // A restricted folder is withheld until its access check lands, so the first
+  // answer waits for them all; a folder that arrives later must not unknow the list.
+  const allResolved =
+    !!registryFolders &&
+    registryFolders.every((f) => resolvedFolderIds.has(f.id));
+  const [settledOnce, setSettledOnce] = useState(false);
+  useEffect(() => {
+    if (allResolved) setSettledOnce(true);
+  }, [allResolved]);
+  const foldersKnown = !!registryFolders && (allResolved || settledOnce);
+
   const contextById = useMemo(
     () =>
       new Map((registryFolders ?? []).map((f) => [f.id, f.context_id ?? null])),
@@ -268,7 +281,14 @@ export function useWorkspaceIndex(): WorkspaceIndex {
   );
 
   return useMemo(
-    () => ({ rows, folders, folderStatus, contextOf, refetchFolder }),
-    [rows, folders, folderStatus, contextOf, refetchFolder],
+    () => ({
+      rows,
+      folders,
+      foldersKnown,
+      folderStatus,
+      contextOf,
+      refetchFolder,
+    }),
+    [rows, folders, foldersKnown, folderStatus, contextOf, refetchFolder],
   );
 }

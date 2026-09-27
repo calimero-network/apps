@@ -6,7 +6,6 @@ import { useLocation } from 'react-router-dom';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
-import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useTags } from '@/hooks/useTags';
 import { parseHomeQuery, serializeHomeQuery } from '@/lib/homeQuery';
@@ -37,8 +36,8 @@ export function WorkspaceNav({
 }: Props) {
   const { route, goHome } = useAppRoute();
   const { search } = useLocation();
-  const { rows, folders, folderStatus } = useWorkspaceIndexValue();
-  const { registryFolders } = useDriveWorkspace();
+  const { rows, folders, foldersKnown, folderStatus } =
+    useWorkspaceIndexValue();
   const { tags } = useTags();
   const [stored, setStored] = useLocalStorage<Partial<Sections> | null>(
     `${SECTIONS_KEY_PREFIX}${ws}`,
@@ -64,7 +63,7 @@ export function WorkspaceNav({
   // The Home count claims every folder was read; a failed one leaves nothing to claim from.
   const statuses = folders.map((f) => folderStatus[f.id]);
   const countKnown =
-    !!registryFolders &&
+    foldersKnown &&
     !statuses.includes('loading') &&
     (rows.length > 0 || statuses.every((st) => st === 'ready'));
   const go = (homeSearch?: string) => {

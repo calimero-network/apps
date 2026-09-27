@@ -27,10 +27,12 @@ let eventIds: string[] = [];
 const ws: {
   folders: Folder[];
   registryFolders: Reg[] | null;
+  resolvedFolderIds: Set<string>;
   selfIdentity: string | null;
 } = {
   folders: [],
   registryFolders: null,
+  resolvedFolderIds: new Set(),
   selfIdentity: 'me',
 };
 const mero = {};
@@ -84,6 +86,7 @@ function workspace(folders: [string, string | null][]) {
     color: null,
     context_id: ctx,
   }));
+  ws.resolvedFolderIds = new Set(folders.map(([id]) => id));
 }
 
 function deferred<T>() {
@@ -320,5 +323,25 @@ describe('useWorkspaceIndex', () => {
     await act(async () => result.current.refetchFolder('f1'));
     await waitFor(() => expect(result.current.folderStatus.f1).toBe('ready'));
     expect(joinContext).toHaveBeenCalledTimes(2);
+  });
+
+  it('knows the folder list only once every folder’s access has resolved, then keeps knowing', () => {
+    workspace([['f1', 'c1']]);
+    ws.resolvedFolderIds = new Set();
+    ws.folders = [];
+    const { result, rerender } = renderHook(() => useWorkspaceIndex());
+    expect(result.current.foldersKnown).toBe(false);
+
+    workspace([['f1', 'c1']]);
+    rerender();
+    expect(result.current.foldersKnown).toBe(true);
+
+    // A folder that arrives later is withheld while its access resolves, but the list stays known.
+    ws.registryFolders = [
+      ...ws.registryFolders!,
+      { id: 'f2', parent_id: null, color: null, context_id: 'c2' },
+    ];
+    rerender();
+    expect(result.current.foldersKnown).toBe(true);
   });
 });

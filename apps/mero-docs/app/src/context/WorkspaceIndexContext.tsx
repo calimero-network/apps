@@ -23,6 +23,7 @@ import { TagsContext, useTagsSource } from '@/hooks/useTags';
 const WorkspaceIndexContext = createContext<WorkspaceIndex>({
   rows: [],
   folders: [],
+  foldersKnown: false,
   folderStatus: {},
   contextOf: () => undefined,
   refetchFolder: () => {},
