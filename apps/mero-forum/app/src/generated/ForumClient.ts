@@ -6,6 +6,11 @@ import {
 
 // Generated types
 
+/**
+ * A reply on a thread. Deliberately flat — one level, no nesting. Like a post,
+ * its author is the owner stamp. `thread` is one post's live comments, oldest
+ * first, so a page and a count are seeks.
+ */
 export interface Comment {
   id: string;
   post_id: string;
@@ -29,11 +34,30 @@ export interface CommentView {
   created_at: number;
   edited_at: number;
   score: number;
+  /**
+   * The CALLER's vote, so the UI can render the arrows without a second call.
+   */
   my_vote: number;
 }
 
+/**
+ * One account's vote on one COMMENT.
+ *
+ * A separate type and a separate map from {@link Vote}, rather than widening
+ * `Vote` to carry either kind of subject. Two reasons, and the second is the
+ * load-bearing one:
+ *
+ *   * `Vote.post_id` holding a comment id would be a lie in the field name,
+ *     and the ABI is a public surface that clients read;
+ *   * a post's tally reads the `post_id` index; folding comment votes into
+ *     the same map would put every comment vote into that index too, on a
+ *     page that never displays one.
+ */
 export interface CommentVote {
   comment_id: string;
+  /**
+   * +1, -1, or 0 for retracted.
+   */
   value: number;
   updated_at: number;
 }
@@ -83,13 +107,48 @@ export interface Event_Voted {
 }
 
 export interface MeroForum {
+  /**
+   * Post id → post. Its author edits and tombstones it; a moderator removes
+   * it. The founder is the first moderator.
+   */
   posts: Record<string, Post>;
+  /**
+   * Every comment in one map, carrying its `post_id`, rather than a nested
+   * collection per post. A nested CRDT created independently on two nodes
+   * needs deterministic re-keying to converge; one flat map has no such
+   * hazard, and the `thread` index makes one post's comments a seek.
+   */
   comments: Record<string, Comment>;
+  /**
+   * Keyed `"<post_id>|<account>"` — one row per voter per post, owned by the
+   * voter.
+   */
   votes: Record<string, Vote>;
+  /**
+   * Keyed `"<comment_id>|<account>"` — one row per voter per comment.
+   */
   comment_votes: Record<string, CommentVote>;
+  /**
+   * The display name each account chose, in that account's own slot.
+   */
   profiles: Record<string, Profile>;
 }
 
+/**
+ * A thread.
+ *
+ * Edits are last-writer-wins over a TOTAL order, not over `edited_at` alone:
+ * two authors' devices editing while partitioned can land the same millisecond,
+ * and a tie resolved by "take other" would pick a different winner on each side
+ * and leave the replicas permanently disagreeing. `deleted` is separate — it is
+ * an OR-flag, so a delete can never be undone by a concurrent edit arriving
+ * later. Content LWW plus a monotone tombstone is the whole merge. Only the
+ * author writes a post (see `MeroForum::posts`), so these conflicts are
+ * between one person's own devices.
+ *
+ * There is no author field: the author is the entry's owner stamp, the one
+ * thing a patched node cannot forge. `feed` is the live feed, newest first.
+ */
 export interface Post {
   id: string;
   title: string;
@@ -99,6 +158,13 @@ export interface Post {
   deleted: boolean;
 }
 
+/**
+ * One page, plus the cursor that fetches the next.
+ *
+ * `next_cursor` is `None` at the end of the list — which is how the frontend's
+ * infinite scroll knows to stop, rather than by getting a short page (a page
+ * can be short and still have more behind it once deleted rows are filtered).
+ */
 export interface PostPage {
   items: PostView[];
   next_cursor: string | null;
@@ -107,6 +173,11 @@ export interface PostPage {
 export interface PostView {
   id: string;
   author: string;
+  /**
+   * The author's chosen name, or "" when they have not set one. Empty is a
+   * real state — someone can post before naming themselves — so the UI falls
+   * back to a short id rather than rendering a blank byline.
+   */
   author_name: string;
   title: string;
   body: string;
@@ -114,16 +185,51 @@ export interface PostView {
   edited_at: number;
   score: number;
   comment_count: number;
+  /**
+   * The CALLER's vote, so the UI can render the arrows without a second call.
+   */
   my_vote: number;
 }
 
+/**
+ * The display name one ACCOUNT chose for itself.
+ *
+ * ── Why this is in the contract and not just localStorage ────────────────────
+ *
+ * A nickname kept only in the browser is a nickname only its owner can see:
+ * every other reader still gets a 64-hex account id, which is the thing the
+ * name was supposed to replace. localStorage remains the source for the input
+ * (so the field is pre-filled and survives a reload before you ever post), but
+ * the value has to reach the contract for anyone else's feed to render it.
+ *
+ * One `UserStorage` slot per ACCOUNT, matching a post's owner stamp — so one
+ * person is one name across their laptop and their phone, and only they can
+ * write it.
+ *
+ * This is a claim, not an identity. Names are not unique and are not verified;
+ * the account id remains the only thing that authorises anything, and every
+ * author-gated check below still compares accounts, never names.
+ */
 export interface Profile {
   name: string;
   updated_at: number;
 }
 
+/**
+ * One account's vote on one post.
+ *
+ * Keyed per ACCOUNT rather than per device, which is what makes "one person,
+ * one vote" true: a bare counter would let the same person vote once from each
+ * machine, and there would be no way to take it back.
+ *
+ * The voter is the row's owner stamp, and the row counts only when its key is
+ * `vote_key(post_id, owner)` — see `MeroForum::tally`.
+ */
 export interface Vote {
   post_id: string;
+  /**
+   * +1, -1, or 0 for retracted.
+   */
   value: number;
   updated_at: number;
 }
@@ -164,6 +270,9 @@ export class ForumClient {
   /**
    * create_comment
    *
+   * No `user` argument. `only-peers` took the author as a caller-supplied
+   * string, so anyone could comment as anyone.
+   *
    * @intent mutating
    */
   public async createComment(params: { post_id: string; body: string }): Promise<string> {
@@ -193,6 +302,13 @@ export class ForumClient {
 
   /**
    * delete_post
+   *
+   * Tombstone, not a removal.
+   *
+   * The row stays so the delete can replicate and so a concurrent edit from
+   * the author's other device cannot resurrect it. Removing the key would
+   * also re-open the insert-after-remove pattern that never converges. A
+   * moderator removes instead: see `moderate_post`.
    *
    * @intent mutating
    */
@@ -224,6 +340,8 @@ export class ForumClient {
   /**
    * get_nickname
    *
+   * The name this account chose, or "" when it has not chosen one.
+   *
    * @intent read_only
    */
   public async getNickname(params: { account: string }): Promise<string> {
@@ -252,6 +370,10 @@ export class ForumClient {
   /**
    * list_comments
    *
+   * One page of a post's comments, oldest first — a thread reads forwards.
+   *
+   * A seek on the `thread` index: other posts' comments are never read.
+   *
    * @intent read_only
    */
   public async listComments(params: { post_id: string; cursor: string | null; limit: number }): Promise<CommentPage> {
@@ -261,6 +383,20 @@ export class ForumClient {
 
   /**
    * list_posts
+   *
+   * One page of the feed.
+   *
+   * `sort` is `"new"` (default) or `"top"`. `cursor` is the `next_cursor` of
+   * the previous page, or `None` for the first.
+   *
+   * Keyset pagination, not offset: an offset shifts under you the moment a
+   * peer's post replicates in, so an infinite scroll would skip and repeat
+   * rows. The cursor names the last row seen, so a new arrival above it
+   * cannot disturb the page below.
+   *
+   * `"new"` is a seek on the `feed` index and reads only the page (plus any
+   * posts sharing the cursor's timestamp). `"top"` has to score every live
+   * post: a converging vote count cannot be an index key.
    *
    * @intent read_only
    */
@@ -272,6 +408,8 @@ export class ForumClient {
   /**
    * moderate_comment
    *
+   * Remove someone's comment as a moderator.
+   *
    * @intent mutating
    */
   public async moderateComment(params: { comment_id: string }): Promise<void> {
@@ -281,6 +419,9 @@ export class ForumClient {
 
   /**
    * moderate_post
+   *
+   * Remove someone's post as a moderator. The author's own delete is
+   * `delete_post`.
    *
    * @intent mutating
    */
@@ -292,6 +433,8 @@ export class ForumClient {
   /**
    * moderators
    *
+   * The accounts that may remove any post or comment.
+   *
    * @intent read_only
    */
   public async moderators(): Promise<string[]> {
@@ -301,6 +444,9 @@ export class ForumClient {
 
   /**
    * set_moderators
+   *
+   * Replace the moderators. Only a current moderator may; every node checks
+   * it as a writer-set rotation.
    *
    * @intent mutating
    */
@@ -312,6 +458,16 @@ export class ForumClient {
   /**
    * set_nickname
    *
+   * Claim a display name for the calling ACCOUNT.
+   *
+   * No `account` argument, for the same reason `create_post` takes no author:
+   * a caller-supplied identity is an impersonation hole. You can only name
+   * yourself — and `UserStorage` holds every node to that, not just this one.
+   *
+   * An empty name CLEARS the claim rather than storing a blank, so "I'd
+   * rather be anonymous" is expressible and does not leave a row that
+   * renders as an empty byline.
+   *
    * @intent mutating
    */
   public async setNickname(params: { name: string }): Promise<void> {
@@ -322,6 +478,8 @@ export class ForumClient {
   /**
    * vote
    *
+   * Up (+1), down (-1) or retract (0). Idempotent per account.
+   *
    * @intent mutating
    */
   public async vote(params: { post_id: string; value: number }): Promise<void> {
@@ -331,6 +489,13 @@ export class ForumClient {
 
   /**
    * vote_comment
+   *
+   * Up/down/retract one COMMENT, same contract as {@link vote}: +1, -1, or 0.
+   *
+   * Gated on the comment still existing, which also rejects a vote on a
+   * deleted one — `load_comment` treats a tombstone as absent. Without that
+   * check a vote row could outlive its subject and keep a score alive for
+   * something nobody can read.
    *
    * @intent mutating
    */

@@ -16,19 +16,45 @@ export interface Event_MatchIdCollision {
 
 export interface LobbyState {
   created_ms: number;
+  /**
+   * match id -> the match, owned by the member who created it.
+   */
   matches: Record<string, MatchEntry>;
+  /**
+   * `"<match_id>/<nonce>"` -> a result a game context reported.
+   */
   results: Record<string, MatchRecord>;
+  /**
+   * account -> the player key that account plays as, written only by it.
+   *
+   * `LwwRegister` so a member who rejoins with a fresh context identity
+   * converges on the newer key.
+   */
   players: Record<string, string>;
 }
 
+/**
+ * A match as its creator recorded it, keyed by match id and owned by them.
+ */
 export interface MatchEntry {
   player1: string;
   player2: string;
+  /**
+   * The ACCOUNT player 2 registered their key under — what the game
+   * context checks player 2's rows against.
+   */
   player2_account: string;
   context_id: string | null;
   created_ms: number;
 }
 
+/**
+ * One reported result, keyed `"<match_id>/<nonce>"`.
+ *
+ * Indexed by winner and loser, so a player's stats are two index seeks rather
+ * than a scan of every match, and by match, so the reader can gather every
+ * report of one match.
+ */
 export interface MatchRecord {
   match_id: string;
   winner: string;
@@ -38,6 +64,10 @@ export interface MatchRecord {
 
 export type MatchStatus = 'Pending' | 'Active' | 'Finished';
 
+/**
+ * A match as a client sees it. `status` and `winner` are derived from the
+ * results, never stored.
+ */
 export interface MatchSummary {
   match_id: string;
   player1: string;
@@ -49,11 +79,37 @@ export interface MatchSummary {
   created_ms: number;
 }
 
+/**
+ * One member's account paired with the player key they play as.
+ *
+ * ⚠️ THESE ARE TWO DIFFERENT ID SPACES AND NOTHING ELSE JOINS THEM. Group
+ * membership — what `/admin-api/groups/{id}/members` returns and what the
+ * lobby lists as a row — is keyed by ACCOUNT. A player is a CONTEXT MEMBER,
+ * identified by the device/context key that `create_match` takes and that
+ * `from_executor_id` reads. Both are 64 hex since rc.27, so mixing them up is
+ * silent.
+ *
+ * The node cannot supply the mapping: a node that JOINS a context only ever
+ * lists its OWN context identity and never learns the ones already there
+ * (measured across three local nodes — the creator saw all three keys, each
+ * joiner saw exactly one, and that does not change with time). So the pairing
+ * has to be recorded by the one party who knows both halves — the caller,
+ * about itself — and replicated as ordinary contract state.
+ */
 export interface PlayerEntry {
+  /**
+   * The member's ACCOUNT id, as group membership keys it.
+   */
   account: string;
+  /**
+   * The key that member plays as — what `create_match` expects.
+   */
   player: string;
 }
 
+/**
+ * Flat snapshot of a player's stats — what consumers see over the wire.
+ */
 export interface PlayerStatsView {
   wins: number;
   losses: number;
@@ -66,11 +122,38 @@ export interface PlayerStatsView {
 
 
 export type AbiEvent =
-  | { name: "MatchCreated"; payload: Event_MatchCreated }
-  | { name: "MatchIdCollision"; payload: Event_MatchIdCollision }
-  | { name: "MatchListUpdated" }
-  | { name: "PlayerStatsUpdated" }
-  | { name: "PlayersUpdated" }
+  | {
+    /**
+     * A new match was allocated in the Lobby.
+     */
+    name: "MatchCreated";
+    payload: Event_MatchCreated;
+  }
+  | {
+    /**
+     * A create_match call lost a race — the composed id already existed.
+     */
+    name: "MatchIdCollision";
+    payload: Event_MatchIdCollision;
+  }
+  | {
+    /**
+     * The Lobby match list changed (created, linked, or finished).
+     */
+    name: "MatchListUpdated";
+  }
+  | {
+    /**
+     * Lobby player stats were updated after a match finished.
+     */
+    name: "PlayerStatsUpdated";
+  }
+  | {
+    /**
+     * A member registered the player key they play as.
+     */
+    name: "PlayersUpdated";
+  }
 ;
 
 
@@ -96,6 +179,8 @@ export class LobbyClient {
   /**
    * get_history
    *
+   * Every finished match, oldest first — one result per match.
+   *
    * @intent read_only
    */
   public async getHistory(): Promise<MatchRecord[]> {
@@ -116,6 +201,9 @@ export class LobbyClient {
   /**
    * get_player_stats
    *
+   * A player's record, derived from the results: two index seeks, then one
+   * check per match that the result counts.
+   *
    * @intent read_only
    */
   public async getPlayerStats(params: { player: string }): Promise<PlayerStatsView> {
@@ -125,6 +213,8 @@ export class LobbyClient {
 
   /**
    * get_players
+   *
+   * Every account -> player key pairing recorded so far.
    *
    * @intent read_only
    */
@@ -144,6 +234,17 @@ export class LobbyClient {
   /**
    * on_match_finished
    *
+   * Recorded by the game context when a match ends.
+   *
+   * ⚠️ `#[app::xcall]` is what makes this reachable from another context at
+   * all. Without it the ABI carries no `xcall_callable` for any method and
+   * the node rejects the dispatch as "not an xcall entry point" — which is
+   * how a finished match silently recorded no winner, no history and no
+   * stats. `from_same_app` narrows callers to contexts running this same
+   * application id, enforced by the node — but ANY such context, including
+   * one a member creates to report a match it is not, so the method also
+   * checks the call came from THIS match's game context.
+   *
    * @intent mutating
    *
    * @xcall same_app (callers must run the same application id)
@@ -155,6 +256,16 @@ export class LobbyClient {
 
   /**
    * register_player
+   *
+   * Record the caller's own account -> player key pairing.
+   *
+   * Called when a member opens the lobby. Idempotent: re-registering the
+   * same pair is a no-op write, and it is cheap enough to call on every
+   * open, which is what makes it self-healing for members who joined before
+   * this method existed.
+   *
+   * This is the ONLY way the other nodes ever learn the pairing — see
+   * `PlayerEntry`. The slot is the caller's own, so nobody else can write it.
    *
    * @intent mutating
    */

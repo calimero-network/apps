@@ -6,9 +6,21 @@ import {
 
 // Generated types
 
+/**
+ * One line of the activity trail. Who wrote it is the slot's owner stamp,
+ * not a field: an author can claim anything in their own entry.
+ */
 export interface AuditLogEntry {
   action: string;
+  /**
+   * The object acted on: a secret id, an account, a device fingerprint.
+   * Never a secret's name — names are ciphertext, and a trail that echoed
+   * them in the clear would undo the encryption.
+   */
   target: string;
+  /**
+   * The author's node device, as the author's node reported it.
+   */
   device: string;
   timestamp: number;
 }
@@ -19,12 +31,32 @@ export interface AuditView {
   account: string;
   device: string;
   timestamp: number;
+  /**
+   * True when the author blanked this entry. The slot stays, so a redaction
+   * is itself visible in the trail.
+   */
   redacted: boolean;
 }
 
+/**
+ * A device public key the vault key may be wrapped to.
+ *
+ * Stored in an [`AuthoredMap`], so only the account that registered it can
+ * remove it. Its account is the entry's owner stamp (`devices.owner_of`),
+ * which every node verifies — never a field in the value, which a modified
+ * node could fill with anyone's account to be handed the vault key in their
+ * name.
+ */
 export interface DeviceKey {
+  /**
+   * Base64 of the raw (uncompressed) P-256 ECDH public key.
+   */
   public_key: string;
   label: string;
+  /**
+   * `browser` for a browser's device key; `recovery` for an account's
+   * offline recovery key, whose private half exists only on paper.
+   */
   kind: string;
   node_device: string;
   added_at: number;
@@ -44,10 +76,22 @@ export interface Event_SecretChanged {
   secret_id: string;
 }
 
+/**
+ * The vault key, wrapped to one device key by one wrapper.
+ *
+ * Keyed by `recipient:key_id:nonce` in an authored map: the random nonce
+ * means nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped
+ * it. A forged wrap is detectable anyway — the recipient checks that the
+ * unwrapped key hashes to `key_id` — but it must not be able to displace a
+ * genuine one, nor make a device look approved (see `wrapped_pairs`).
+ */
 export interface KeyWrap {
   key_id: string;
   recipient: string;
   wrapper: string;
+  /**
+   * ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON.
+   */
   envelope: string;
   wrapped_at: number;
 }
@@ -69,24 +113,65 @@ export interface KeyWrapView {
 
 export interface MemberView {
   account: string;
+  /**
+   * `admin`, `editor` or `viewer`; `pending` for an account that has
+   * registered a device but was never given a role; `removed` for one an
+   * admin removed, which clients must not auto-admit.
+   */
   role: string;
   devices: number;
 }
 
 export interface MeroPassApp {
+  /**
+   * The vault's human name as created, readable by every member on every
+   * node. The frontend also writes it to the subgroup's metadata, for
+   * members who have not entered the vault yet; this copy (or a rename in
+   * `settings`) is the authoritative one.
+   */
   vault_name: string;
   roles: Record<string, boolean>;
   secrets: Record<string, Secret>;
+  /**
+   * `secret_id/rev_id` → superseded value, so a secret's history is one
+   * prefix read.
+   */
   history: Record<string, Revision>;
+  /**
+   * Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`.
+   */
   admin: Record<string, string>;
+  /**
+   * Editor-writable settings: the vault's name after a rename.
+   */
   settings: Record<string, string>;
+  /**
+   * Device fingerprint → public key. Any member may register their own.
+   */
   devices: Record<string, DeviceKey>;
+  /**
+   * `recipient:key_id:nonce` → wrapped vault key.
+   */
   key_wraps: Record<string, KeyWrap>;
+  /**
+   * Append-only. Entries can be blanked only by their own author, and a
+   * blanked slot stays visible as a redaction.
+   */
   audit: AuditLogEntry[];
 }
 
+/**
+ * A superseded field value. Written once, never edited.
+ */
 export interface Revision {
+  /**
+   * The field that changed; `name` and `tags` use those reserved names.
+   */
   field: string;
+  /**
+   * The value it held before, still encrypted (under whichever vault key it
+   * was written with — the envelope names its key).
+   */
   previous: string;
   replaced_at: number;
   replaced_by: string;
@@ -99,15 +184,41 @@ export interface RevisionView {
   replaced_by: string;
 }
 
+/**
+ * One secret, as independent registers rather than one record.
+ *
+ * Field-level registers are the point: Alice fixing the URL while Bob rotates
+ * the password are writes to two different registers, so BOTH survive the
+ * merge. A single last-writer-wins record would keep one edit and silently
+ * discard the other. Within one field, last writer wins by HLC — there is no
+ * meaningful way to merge two different passwords.
+ */
 export interface Secret {
+  /**
+   * Cleartext kind — `login`, `totp`, … — so the UI can pick an icon.
+   */
   kind: string;
+  /**
+   * Encrypted display name.
+   */
   name: string;
+  /**
+   * Encrypted tag list (one envelope over a JSON array).
+   */
   tags: string;
+  /**
+   * Field name (`password`, `url`, …) → encrypted value.
+   */
   fields: Record<string, string>;
   created_at: number;
   created_by: string;
   updated_at: number;
   updated_by: string;
+  /**
+   * Tombstone. Trashing is a flag rather than a `remove`, because the map is
+   * add-wins: a hard remove loses to a concurrent edit and the secret comes
+   * back. The flag resolves edit-vs-trash by HLC instead.
+   */
   trashed: boolean;
   trashed_at: number;
 }
@@ -158,6 +269,10 @@ export class MeroPassClient {
   /**
    * add_key_wraps
    *
+   * Store wraps of a vault key. Any member holding the key may wrap it to
+   * any registered, unrevoked device — that is how a newcomer or a new
+   * device gets in without the creator being online.
+   *
    * @intent mutating
    */
   public async addKeyWraps(params: { wraps: KeyWrapInput[] }): Promise<number> {
@@ -168,6 +283,14 @@ export class MeroPassClient {
   /**
    * add_secret
    *
+   * Add a secret under an id the CLIENT chose.
+   *
+   * Client-chosen because the id is bound into every field's ciphertext as
+   * associated data, which is what stops a member from pasting one secret's
+   * password envelope into another secret: the id has to exist before the
+   * encryption does. It is 16 random bytes like before, and an id that is
+   * already taken is refused rather than upserted.
+   *
    * @intent mutating
    */
   public async addSecret(params: { id: string; kind: string; name: string; tags: string; fields: Record<string, string> }): Promise<string> {
@@ -177,6 +300,10 @@ export class MeroPassClient {
 
   /**
    * get_audit_logs
+   *
+   * The trail, newest first.
+   * The trail, newest first. Each line's account is its slot's owner
+   * stamp, so nobody can write a line in someone else's name.
    *
    * @intent read_only
    */
@@ -197,6 +324,9 @@ export class MeroPassClient {
 
   /**
    * init
+   *
+   * `name` arrives as the JSON `initializationParams` of `createContext`.
+   * The creator is the vault's first admin.
    */
   public async init(params: { name: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params });
@@ -205,6 +335,9 @@ export class MeroPassClient {
 
   /**
    * key_wraps_for
+   *
+   * Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner
+   * stamp.
    *
    * @intent read_only
    */
@@ -216,6 +349,10 @@ export class MeroPassClient {
   /**
    * list_devices
    *
+   * Every registered device, with the account that registered it read
+   * from the entry's owner stamp. Clients decide whom to wrap the vault key
+   * to by this account, so it must be one nobody can claim for someone else.
+   *
    * @intent read_only
    */
   public async listDevices(): Promise<DeviceView[]> {
@@ -225,6 +362,9 @@ export class MeroPassClient {
 
   /**
    * list_members
+   *
+   * Everyone this vault knows about: each role holder, plus every account
+   * that registered a device without being given a role (`pending`).
    *
    * @intent read_only
    */
@@ -236,6 +376,10 @@ export class MeroPassClient {
   /**
    * list_secrets
    *
+   * Every secret, trashed ones included — the client splits them. Search
+   * and filtering happen in the browser, after decryption: the contract
+   * holds ciphertext and has nothing to match against.
+   *
    * @intent read_only
    */
   public async listSecrets(): Promise<SecretView[]> {
@@ -245,6 +389,9 @@ export class MeroPassClient {
 
   /**
    * purge_secret
+   *
+   * Delete a trashed secret and its history for good. Admin only — this is
+   * the one operation that needs DELETE on the guarded store.
    *
    * @intent mutating
    */
@@ -256,6 +403,11 @@ export class MeroPassClient {
   /**
    * register_device
    *
+   * Register this browser's public key so the vault key can be wrapped to
+   * it. `fingerprint` must be the hex SHA-256 of the raw key; the client
+   * derives both, and the contract checks the shape, not the hash (a wrong
+   * fingerprint only hurts the registrant: nothing wrapped to it opens).
+   *
    * @intent mutating
    */
   public async registerDevice(params: { fingerprint: string; public_key: string; label: string; kind: string }): Promise<void> {
@@ -266,6 +418,11 @@ export class MeroPassClient {
   /**
    * remove_member
    *
+   * Remove an account from the vault: drop every role and revoke every
+   * device it registered. The caller must then rotate the vault key (the
+   * client does, via `rotate_key`) so nothing written afterwards is
+   * readable with the key the removed account already holds.
+   *
    * @intent mutating
    */
   public async removeMember(params: { account: string }): Promise<void> {
@@ -275,6 +432,10 @@ export class MeroPassClient {
 
   /**
    * rename_vault
+   *
+   * Rename the vault. Editors and admins — the name lives in a guarded
+   * store, so a pending or removed member's rename is refused everywhere;
+   * concurrent renames resolve by last writer.
    *
    * @intent mutating
    */
@@ -296,6 +457,9 @@ export class MeroPassClient {
   /**
    * revoke_device
    *
+   * Revoke a device. Your own device you may always revoke; anyone else's
+   * needs an admin. Follow with `rotate_key`.
+   *
    * @intent mutating
    */
   public async revokeDevice(params: { fingerprint: string }): Promise<void> {
@@ -305,6 +469,12 @@ export class MeroPassClient {
 
   /**
    * rotate_key
+   *
+   * Make `key_id` the key new writes use. The first call bootstraps the
+   * vault; every later one is a rotation, and both are admin only.
+   *
+   * The caller must have stored wraps of the new key before calling this,
+   * or members would be told to write with a key they cannot open.
    *
    * @intent mutating
    */
@@ -316,6 +486,8 @@ export class MeroPassClient {
   /**
    * secret_history
    *
+   * Superseded values of one secret, newest first.
+   *
    * @intent read_only
    */
   public async secretHistory(params: { id: string }): Promise<RevisionView[]> {
@@ -325,6 +497,8 @@ export class MeroPassClient {
 
   /**
    * set_default_role
+   *
+   * The role newcomers are admitted with.
    *
    * @intent mutating
    */
@@ -336,6 +510,11 @@ export class MeroPassClient {
   /**
    * set_role
    *
+   * Give `account` a role: `admin`, `editor` or `viewer`. Admin only.
+   *
+   * Writes the registry AND re-projects it onto the guarded stores, so the
+   * label and what peers enforce cannot disagree.
+   *
    * @intent mutating
    */
   public async setRole(params: { account: string; role: string }): Promise<void> {
@@ -346,6 +525,8 @@ export class MeroPassClient {
   /**
    * trash_secret
    *
+   * Move a secret to the trash. Recoverable until an admin purges it.
+   *
    * @intent mutating
    */
   public async trashSecret(params: { id: string }): Promise<void> {
@@ -355,6 +536,14 @@ export class MeroPassClient {
 
   /**
    * update_secret
+   *
+   * Change some of a secret's fields. Only what is passed is touched, so
+   * two members editing different fields concurrently both keep their edit.
+   * An empty string clears a field. Every superseded value is kept in the
+   * history, still encrypted.
+   *
+   * `rekey` marks a re-encryption under a rotated key: the plaintext did not
+   * change, so nothing is added to the history.
    *
    * @intent mutating
    */
@@ -385,6 +574,13 @@ export class MeroPassClient {
 
   /**
    * wrapped_pairs
+   *
+   * Which `key_id:recipient` pairs already have a wrap from a member who
+   * holds a role, so a key holder only wraps what is missing.
+   *
+   * Clients also treat a device in this list as approved, so a wrap from
+   * anyone else — a pending or removed account, which never held the key,
+   * writing a garbage wrap to its own device — must not count.
    *
    * @intent read_only
    */

@@ -6,15 +6,32 @@ import {
 
 // Generated types
 
+/**
+ * One entry of the workbook's activity log: what was done, when. Keyed by
+ * `"{at:020}|{author}|{nonce}"`; its author is the entry's owner stamp, and a
+ * "since" query is a seek on the `at` index.
+ */
 export interface ActivityData {
   at: number;
+  /**
+   * Empty for workbook-level actions (a named range).
+   */
   sheet_id: string;
+  /**
+   * `cells`, `rows`, `cols`, `sheet` or `name`.
+   */
   kind: string;
   summary: string;
+  /**
+   * How many cells changed; `changes` holds at most [`MAX_LOGGED_CHANGES`].
+   */
   count: number;
   changes: CellChange[];
 }
 
+/**
+ * An activity-log entry, newest first from `get_activity`.
+ */
 export interface ActivityEntry {
   id: string;
   author: string;
@@ -26,11 +43,18 @@ export interface ActivityEntry {
   changes: CellChange[];
 }
 
+/**
+ * Which cells of an alert rule met its condition when last checked, so it
+ * tells only about cells that start meeting it. Keyed by rule id.
+ */
 export interface AlertState {
   cells: string[];
   updated_at: number;
 }
 
+/**
+ * A live attachment.
+ */
 export interface Attachment {
   id: string;
   sheet_id: string;
@@ -44,6 +68,11 @@ export interface Attachment {
   created_at: number;
 }
 
+/**
+ * A file attached to a cell. The bytes are a blob in the node's blob store,
+ * announced to this context so members' nodes can fetch it; this is its
+ * record. Keyed by id, owned by whoever attached it (`attachments`).
+ */
 export interface AttachmentData {
   sheet_id: string;
   row_id: string;
@@ -55,34 +84,41 @@ export interface AttachmentData {
   created_at: number;
 }
 
+/**
+ * One row or column added to a sheet, or one deleted. Keyed by
+ * `"{sheet_id}|r|{id}"` / `"{sheet_id}|c|{id}"`; see the recalc crate's
+ * `layout` module for how entries order a sheet.
+ */
 export interface AxisData {
+  /**
+   * Fractional position: decimal digits, compared as strings.
+   */
   pos: string;
   deleted: boolean;
   updated_at: number;
 }
 
+/**
+ * One explicit row or column entry of a sheet.
+ */
 export interface AxisEntryView {
   id: string;
   pos: string;
   deleted: boolean;
 }
 
-export type AxisOpPayload =
-  | { name: 'InsertRow'; payload: AxisOp_InsertRow }
-  | { name: 'InsertCol'; payload: AxisOp_InsertCol }
-  | { name: 'DeleteRow'; payload: AxisOp_DeleteRow }
-  | { name: 'DeleteCol'; payload: AxisOp_DeleteCol }
-  | { name: 'RestoreRow'; payload: AxisOp_RestoreRow }
-  | { name: 'RestoreCol'; payload: AxisOp_RestoreCol }
-
-export const AxisOp = {
-  InsertRow: (insertrow: AxisOp_InsertRow): AxisOpPayload => ({ name: 'InsertRow', payload: insertrow }),
-  InsertCol: (insertcol: AxisOp_InsertCol): AxisOpPayload => ({ name: 'InsertCol', payload: insertcol }),
-  DeleteRow: (deleterow: AxisOp_DeleteRow): AxisOpPayload => ({ name: 'DeleteRow', payload: deleterow }),
-  DeleteCol: (deletecol: AxisOp_DeleteCol): AxisOpPayload => ({ name: 'DeleteCol', payload: deletecol }),
-  RestoreRow: (restorerow: AxisOp_RestoreRow): AxisOpPayload => ({ name: 'RestoreRow', payload: restorerow }),
-  RestoreCol: (restorecol: AxisOp_RestoreCol): AxisOpPayload => ({ name: 'RestoreCol', payload: restorecol }),
-} as const;
+/**
+ * A structural edit: add a row or column at a fractional position, delete
+ * one by id, or restore a deleted one (an undo). Every op is one write,
+ * however many cells the sheet holds.
+ */
+export type AxisOp =
+  | { name: "InsertRow"; payload: AxisOp_InsertRow }
+  | { name: "InsertCol"; payload: AxisOp_InsertCol }
+  | { name: "DeleteRow"; payload: AxisOp_DeleteRow }
+  | { name: "DeleteCol"; payload: AxisOp_DeleteCol }
+  | { name: "RestoreRow"; payload: AxisOp_RestoreRow }
+  | { name: "RestoreCol"; payload: AxisOp_RestoreCol };
 
 export interface AxisOp_DeleteCol {
   id: string;
@@ -110,25 +146,44 @@ export interface AxisOp_RestoreRow {
   id: string;
 }
 
+/**
+ * A row's or column's size: `axis` is `row` or `col`.
+ */
 export interface AxisSize {
   axis: string;
   id: string;
   size: number;
 }
 
+/**
+ * A cell, by row and column id. An implicit id is a 0-based position
+ * (`"3"` is the fourth row until rows move); the client places ids with the
+ * sheet's layout (`get_layouts`).
+ */
 export interface Cell {
   id: string;
   sheet_id: string;
   row_id: string;
   col_id: string;
+  /**
+   * As stored: references name rows and columns by id.
+   */
   raw_value: string;
   computed_value: string;
   format: string;
   updated_at: number;
+  /**
+   * Member id of whoever last changed the cell; empty for a cell last
+   * written before the activity log existed.
+   */
   last_editor: string;
   last_edited_at: number;
 }
 
+/**
+ * One cell's change within an activity entry: its raw value and format
+ * before and after.
+ */
 export interface CellChange {
   row_id: string;
   col_id: string;
@@ -138,28 +193,39 @@ export interface CellChange {
   after_format: string;
 }
 
+/**
+ * A cell's value, stored in the shared UnorderedMap under
+ * `"{sheet_id}|{row_id}|{col_id}"`. Its format is a separate field
+ * (`formats`), so a value edit and a format edit never overwrite each other.
+ */
 export interface CellData {
+  /**
+   * Mirrors the map key for ABI convenience.
+   */
   id: string;
   sheet_id: string;
+  /**
+   * Raw user input (may be a formula like `=SUM(A1:A5)`).
+   */
   raw_value: string;
   updated_at: number;
 }
 
+/**
+ * Who last changed a cell and when, keyed like the cell.
+ */
 export interface CellMeta {
+  /**
+   * Member id (`whoami`).
+   */
   author: string;
   at: number;
 }
 
-export type CellOpPayload =
-  | { name: 'Set'; payload: CellOp_Set }
-  | { name: 'Format'; payload: CellOp_Format }
-  | { name: 'Clear'; payload: CellOp_Clear }
-
-export const CellOp = {
-  Set: (set: CellOp_Set): CellOpPayload => ({ name: 'Set', payload: set }),
-  Format: (format: CellOp_Format): CellOpPayload => ({ name: 'Format', payload: format }),
-  Clear: (clear: CellOp_Clear): CellOpPayload => ({ name: 'Clear', payload: clear }),
-} as const;
+export type CellOp =
+  | { name: "Set"; payload: CellOp_Set }
+  | { name: "Format"; payload: CellOp_Format }
+  | { name: "Clear"; payload: CellOp_Clear };
 
 export interface CellOp_Clear {
   row_id: string;
@@ -178,6 +244,9 @@ export interface CellOp_Set {
   raw_value: string;
 }
 
+/**
+ * A styled cell.
+ */
 export interface CellStyle {
   sheet_id: string;
   row_id: string;
@@ -185,18 +254,27 @@ export interface CellStyle {
   style: Record<string, string>;
 }
 
+/**
+ * A live chart.
+ */
 export interface Chart {
   id: string;
   chart: ChartInput;
   created_by: string;
 }
 
+/**
+ * A chart of a range, anchored on corner row and column ids. Keyed by id.
+ */
 export interface ChartData {
   sheet_id: string;
   top_row_id: string;
   left_col_id: string;
   bottom_row_id: string;
   right_col_id: string;
+  /**
+   * `bar` or `line`.
+   */
   kind: string;
   title: string;
   created_by: string;
@@ -204,6 +282,11 @@ export interface ChartData {
   updated_at: number;
 }
 
+/**
+ * A chart as written or read: its range by corner ids, its kind and title.
+ * The range's first column labels the points; each other column is a
+ * series, named by the first row when that row is text.
+ */
 export interface ChartInput {
   sheet_id: string;
   top_row_id: string;
@@ -214,6 +297,9 @@ export interface ChartInput {
   title: string;
 }
 
+/**
+ * A live (not deleted) comment.
+ */
 export interface Comment {
   id: string;
   sheet_id: string;
@@ -228,12 +314,23 @@ export interface Comment {
   updated_at: number;
 }
 
+/**
+ * A comment on a cell, or a reply to one. Keyed by comment id, owned by its
+ * author (`comments`). Whether its thread is resolved is kept apart
+ * (`resolved`), since anyone may resolve and only the author edits.
+ */
 export interface CommentData {
   sheet_id: string;
   row_id: string;
   col_id: string;
   text: string;
+  /**
+   * Member ids named with `@nickname` in the text.
+   */
   mentions: string[];
+  /**
+   * The comment this replies to; empty for a thread's first comment.
+   */
   parent: string;
   created_at: number;
   updated_at: number;
@@ -354,11 +451,22 @@ export interface Event_StylesChanged {
   sheet_id: string;
 }
 
+/**
+ * A cell's display format, kept apart from its value so that formatting a
+ * cell and typing in it at the same moment both survive. Keyed like the cell.
+ */
 export interface FormatData {
+  /**
+   * Empty means Automatic, and overrides a format the cell carried from v1.
+   */
   format: string;
   updated_at: number;
 }
 
+/**
+ * What a workbook is from the moment it exists: its id and creation time,
+ * fixed in `init` and changeable by nobody (`founding`).
+ */
 export interface Founding {
   id: string;
   created_at: number;
@@ -372,7 +480,13 @@ export interface FunctionDef {
   example: string;
 }
 
+/**
+ * A live incoming link.
+ */
 export interface Link {
+  /**
+   * Also the linked sheet's id.
+   */
   id: string;
   source_context: string;
   source_name: string;
@@ -382,6 +496,10 @@ export interface Link {
   updated_at: number;
 }
 
+/**
+ * A range pushed here from another workbook (the receiving side of a link),
+ * shown as a read-only sheet whose id is the key. Values are row-major.
+ */
 export interface LinkedData {
   source_context: string;
   source_name: string;
@@ -390,62 +508,112 @@ export interface LinkedData {
   cols: number;
   values: string[];
   created_at: number;
+  /**
+   * Removed here: later pushes are ignored.
+   */
   blocked: boolean;
+  /**
+   * Withdrawn by the source.
+   */
   deleted: boolean;
   updated_at: number;
 }
 
+/**
+ * One collaborator, by the name they chose.
+ */
 export interface Member {
+  /**
+   * Account hex (`whoami`) — the same key `Cursor.author` carries, so a
+   * roster and the live cursors join on it without a translation step.
+   */
   id: string;
   nickname: string;
   joined_at: number;
   updated_at: number;
+  /**
+   * The member's account (hex), as core's group roster names them: the
+   * same value as `id`.
+   */
   account: string;
+  /**
+   * `owner`, `editor`, `commenter` or `viewer`.
+   */
   role: string;
 }
 
+/**
+ * A collaborator's chosen nickname, in their account's own slot (`members`),
+ * so only they can set it.
+ *
+ * This exists because the only thing the app could previously put next to a
+ * cursor was a raw 64-hex device key, which answers no question anyone has.
+ * A nickname has to live HERE and not in `localStorage`: localStorage is
+ * per-browser, so a name kept there is visible to exactly the one person who
+ * does not need it.
+ */
 export interface MemberData {
   nickname: string;
+  /**
+   * First time this member announced themselves. Earliest wins on merge — a
+   * later rename must not look like a later arrival.
+   */
   joined_at: number;
   updated_at: number;
 }
 
 export interface NamedRange {
   name: string;
+  /**
+   * A reference in stored form.
+   */
   target: string;
 }
 
+/**
+ * A named range: a name that formulas can use in place of a reference.
+ * Keyed by the upper-case name; an empty target means deleted (a removed key
+ * would tombstone the name and block defining it again).
+ */
 export interface NamedRangeData {
+  /**
+   * The name as it was typed, for display.
+   */
   name: string;
+  /**
+   * A reference in stored form (`[sheet-id]!A1:B9`).
+   */
   target: string;
   updated_at: number;
 }
 
-export type NoteChangePayload =
-  | { name: 'Retain'; payload: NoteChange_Retain }
-  | { name: 'Insert'; payload: NoteChange_Insert }
-  | { name: 'Delete'; payload: NoteChange_Delete }
-
-export const NoteChange = {
-  Retain: (retain: NoteChange_Retain): NoteChangePayload => ({ name: 'Retain', payload: retain }),
-  Insert: (insert: NoteChange_Insert): NoteChangePayload => ({ name: 'Insert', payload: insert }),
-  Delete: (delete_: NoteChange_Delete): NoteChangePayload => ({ name: 'Delete', payload: delete_ }),
-} as const;
+/**
+ * One step of a note edit, in the Quill delta shape: keep, insert or delete
+ * characters, with formatting on kept or inserted text. Mirrors `DeltaOp`,
+ * which has no `AbiType`.
+ */
+export type NoteChange =
+  | NoteChange_Retain
+  | NoteChange_Insert
+  | NoteChange_Delete;
 
 export interface NoteChange_Delete {
-  delete_: number;
+  delete: number;
 }
 
 export interface NoteChange_Insert {
   insert: string;
-  attributes: Record<string, string>;
+  attributes: Record<string, string> | null;
 }
 
 export interface NoteChange_Retain {
   retain: number;
-  attributes: Record<string, string>;
+  attributes: Record<string, string> | null;
 }
 
+/**
+ * A cell that has a note, with the start of its text.
+ */
 export interface NotedCell {
   sheet_id: string;
   row_id: string;
@@ -453,12 +621,29 @@ export interface NotedCell {
   preview: string;
 }
 
+/**
+ * The project's own identity, as the UI titles it.
+ *
+ * `init_project` has always written `project_name`, and until now NOTHING
+ * could read it back — there was no view method over the register at all. That
+ * is the whole reason the workspace list fell back to names cached in
+ * `localStorage`, which meant every peer but the creator saw "Workspace 1".
+ */
 export interface Project {
+  /**
+   * Fixed when the workbook is created.
+   */
   id: string;
+  /**
+   * Empty until `init_project` runs.
+   */
   name: string;
   created_at: number;
 }
 
+/**
+ * A live protected range.
+ */
 export interface Protection {
   id: string;
   sheet_id: string;
@@ -471,6 +656,11 @@ export interface Protection {
   created_by: string;
 }
 
+/**
+ * A protected range: only owners and the listed editors may change its cells.
+ * Corners are row and column ids, so the range follows its cells as rows and
+ * columns move; all four empty protects the whole sheet. Keyed by id.
+ */
 export interface ProtectionData {
   sheet_id: string;
   top_row_id: string;
@@ -478,12 +668,18 @@ export interface ProtectionData {
   bottom_row_id: string;
   right_col_id: string;
   description: string;
+  /**
+   * Member ids allowed to edit it besides owners.
+   */
   editors: string[];
   created_by: string;
   deleted: boolean;
   updated_at: number;
 }
 
+/**
+ * A live publication.
+ */
 export interface Publication {
   id: string;
   sheet_id: string;
@@ -496,45 +692,83 @@ export interface Publication {
   created_by: string;
 }
 
+/**
+ * A range this workbook pushes to another workbook in the workspace (the
+ * source side of a link). Keyed by id, owned by whoever linked it.
+ */
 export interface PublicationData {
   sheet_id: string;
   top_row_id: string;
   left_col_id: string;
   bottom_row_id: string;
   right_col_id: string;
+  /**
+   * The receiving workbook's context id, hex.
+   */
   target_context: string;
+  /**
+   * What the linked sheet is called there.
+   */
   name: string;
 }
 
+/**
+ * A live rule.
+ */
 export interface Rule {
   id: string;
   rule: RuleInput;
   created_by: string;
 }
 
+/**
+ * A conditional format, colour scale or validation over a range, anchored on
+ * corner row and column ids like a protected range. Keyed by id.
+ */
 export interface RuleData {
   sheet_id: string;
   top_row_id: string;
   left_col_id: string;
   bottom_row_id: string;
   right_col_id: string;
+  /**
+   * `format`, `scale` or `validate`.
+   */
   kind: string;
   condition: string;
   args: string[];
+  /**
+   * The style a matching `format` rule applies, as (field, value) pairs.
+   */
   style: StylePair[];
+  /**
+   * A `validate` rule that refuses values instead of marking them.
+   */
   strict: boolean;
+  /**
+   * Who an `alert` rule tells (member ids).
+   */
   recipients: string[];
   created_by: string;
   deleted: boolean;
   updated_at: number;
 }
 
+/**
+ * A rule as written or read: its range by corner ids, and what it does.
+ */
 export interface RuleInput {
   sheet_id: string;
   top_row_id: string;
   left_col_id: string;
   bottom_row_id: string;
   right_col_id: string;
+  /**
+   * `format` (style cells that meet the condition), `scale` (shade numbers
+   * from `args[0]` at the lowest to `args[1]` at the highest), `validate`
+   * (values must meet the condition) or `alert` (tell `recipients` when a
+   * value starts meeting it).
+   */
   kind: string;
   condition: string;
   args: string[];
@@ -548,23 +782,43 @@ export interface Sheet {
   name: string;
   position: number;
   created_at: number;
+  /**
+   * For a linked sheet (read-only, pushed from another workbook), that
+   * workbook's name; empty otherwise.
+   */
   linked_from: string;
 }
 
+/**
+ * A sheet tab stored in the shared UnorderedMap.
+ */
 export interface SheetData {
   id: string;
   name: string;
+  /**
+   * Tab ordering hint (lower = further left).
+   */
   position: number;
   created_at: number;
+  /**
+   * Timestamp of the last rename — used for LWW name merge.
+   */
   updated_at: number;
 }
 
+/**
+ * A sheet's explicit row and column entries. A sheet with none has the
+ * implicit layout: row id `k` at row `k`.
+ */
 export interface SheetLayout {
   sheet_id: string;
   rows: AxisEntryView[];
   cols: AxisEntryView[];
 }
 
+/**
+ * A sheet's frozen rows and columns and resized rows and columns.
+ */
 export interface SheetView {
   sheet_id: string;
   frozen_rows: number;
@@ -572,13 +826,22 @@ export interface SheetView {
   sizes: AxisSize[];
 }
 
+/**
+ * How a sheet is shown: its frozen rows and columns. Keyed by sheet id.
+ */
 export interface SheetViewData {
   frozen_rows: number;
   frozen_cols: number;
   updated_at: number;
 }
 
+/**
+ * A resized row or column. Keyed `"{sheet_id}|r|{id}"` or `"{sheet_id}|c|{id}"`.
+ */
 export interface SizeData {
+  /**
+   * Pixels.
+   */
   size: number;
   updated_at: number;
 }
@@ -589,33 +852,122 @@ export interface Span {
 }
 
 export interface Spreadsheet {
+  /**
+   * The workbook's id and creation time, fixed in `init`.
+   */
   founding: Founding;
+  /**
+   * The workbook's name, set by `init_project`; empty until then. Only
+   * owners write it.
+   */
   project_name: string;
+  /**
+   * Workbook roles. Its admins are the owners; `viewer` and `commenter`
+   * are named roles. A member with neither and not an owner is an editor.
+   */
   acl: Record<string, boolean>;
+  /**
+   * Sheet tabs keyed by sheet id.
+   */
   sheets: Record<string, SheetData>;
+  /**
+   * Cell values keyed by `"{sheet_id}|{row_id}|{col_id}"`, so one sheet's
+   * cells are one prefix.
+   */
   cells: Record<string, CellData>;
+  /**
+   * Chosen nicknames, one slot per account that only it writes.
+   */
   members: Record<string, MemberData>;
+  /**
+   * Added and deleted rows and columns, keyed `"{sheet_id}|r|{id}"` and
+   * `"{sheet_id}|c|{id}"`.
+   */
   axes: Record<string, AxisData>;
+  /**
+   * Cell formats, keyed like `cells`.
+   */
   formats: Record<string, FormatData>;
+  /**
+   * Named ranges keyed by upper-case name.
+   */
   names: Record<string, NamedRangeData>;
+  /**
+   * Who last changed each cell, keyed like `cells`.
+   */
   cell_meta: Record<string, CellMeta>;
+  /**
+   * The activity log: each entry owned by its author and never changed.
+   */
   activity: Record<string, ActivityData>;
+  /**
+   * Cell comments and replies, keyed by comment id: the author edits and
+   * deletes, owners (the moderators) delete.
+   */
   comments: Record<string, CommentData>;
+  /**
+   * Whether a comment's thread is resolved, keyed by comment id. Anyone
+   * in the workbook may resolve, so it is not part of the comment.
+   */
   resolved: Record<string, boolean>;
+  /**
+   * Cell notes, keyed like `cells`: rich text that merges concurrent edits
+   * character by character.
+   */
   notes: Record<string, Record<string, Span>>;
+  /**
+   * Protected ranges, keyed by id. Only owners write them.
+   */
   protections: Record<string, ProtectionData>;
+  /**
+   * Resized rows and columns, keyed like `axes`.
+   */
   sizes: Record<string, SizeData>;
+  /**
+   * Frozen rows and columns per sheet.
+   */
   views: Record<string, SheetViewData>;
+  /**
+   * Cell styles, keyed like `cells`.
+   */
   styles: Record<string, StyleData>;
+  /**
+   * Conditional formats, colour scales and validations, keyed by id.
+   */
   rules: Record<string, RuleData>;
+  /**
+   * Charts, keyed by id.
+   */
   charts: Record<string, ChartData>;
+  /**
+   * Files attached to cells, keyed by id: whoever attached one removes
+   * it, and owners (the moderators) may.
+   */
   attachments: Record<string, AttachmentData>;
+  /**
+   * Ranges this workbook pushes to others, keyed by id: whoever linked
+   * one stops it, and owners (the moderators) may.
+   */
   publications: Record<string, PublicationData>;
+  /**
+   * Ranges pushed here from other workbooks, keyed by linked sheet id.
+   */
   linked: Record<string, LinkedData>;
+  /**
+   * Alert rules' last matching cells, keyed by rule id.
+   */
   alert_state: Record<string, AlertState>;
 }
 
+/**
+ * A cell's style, one last-writer-wins value per field, so one person
+ * making a cell bold and another colouring it both keep their change.
+ * Keyed like `cells`.
+ */
 export interface StyleData {
+  /**
+   * One entry per field, sorted by field. An empty value is a cleared field.
+   */
   fields: StyleField[];
 }
 
@@ -625,6 +977,9 @@ export interface StyleField {
   updated_at: number;
 }
 
+/**
+ * One style change: set `field` of a cell to `value` (empty clears it).
+ */
 export interface StyleOp {
   row_id: string;
   col_id: string;
@@ -662,30 +1017,176 @@ export interface StylePair {
 
 
 export type AbiEvent =
-  | { name: "AlertTriggered"; payload: Event_AlertTriggered }
-  | { name: "AttachmentsChanged"; payload: Event_AttachmentsChanged }
-  | { name: "AxesChanged"; payload: Event_AxesChanged }
-  | { name: "CellCleared"; payload: Event_CellCleared }
-  | { name: "CellUpdated"; payload: Event_CellUpdated }
-  | { name: "CellsChanged"; payload: Event_CellsChanged }
-  | { name: "ChartsChanged"; payload: Event_ChartsChanged }
-  | { name: "CommentAdded"; payload: Event_CommentAdded }
-  | { name: "CommentChanged"; payload: Event_CommentChanged }
-  | { name: "LinkedChanged"; payload: Event_LinkedChanged }
-  | { name: "MemberJoined"; payload: Event_MemberJoined }
-  | { name: "MemberRenamed"; payload: Event_MemberRenamed }
-  | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
-  | { name: "NoteChanged"; payload: Event_NoteChanged }
-  | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
-  | { name: "ProtectionsChanged"; payload: Event_ProtectionsChanged }
-  | { name: "PublicationsChanged"; payload: Event_PublicationsChanged }
-  | { name: "RolesChanged"; payload: Event_RolesChanged }
-  | { name: "RulesChanged"; payload: Event_RulesChanged }
-  | { name: "SheetCreated"; payload: Event_SheetCreated }
-  | { name: "SheetDeleted"; payload: Event_SheetDeleted }
-  | { name: "SheetRenamed"; payload: Event_SheetRenamed }
-  | { name: "SheetViewChanged"; payload: Event_SheetViewChanged }
-  | { name: "StylesChanged"; payload: Event_StylesChanged }
+  | {
+    /**
+     * Cells in an alert rule's range started meeting its condition.
+     */
+    name: "AlertTriggered";
+    payload: Event_AlertTriggered;
+  }
+  | {
+    /**
+     * A file was attached to a cell, or removed.
+     */
+    name: "AttachmentsChanged";
+    payload: Event_AttachmentsChanged;
+  }
+  | {
+    /**
+     * Rows or columns were inserted or deleted via `apply_axis_ops`.
+     */
+    name: "AxesChanged";
+    payload: Event_AxesChanged;
+  }
+  | {
+    /**
+     * A cell was cleared.
+     */
+    name: "CellCleared";
+    payload: Event_CellCleared;
+  }
+  | {
+    /**
+     * A cell's value was set or updated.
+     */
+    name: "CellUpdated";
+    payload: Event_CellUpdated;
+  }
+  | {
+    /**
+     * A batch of cells was applied via `apply_cell_ops`. ONE event per batch
+     * (not one per cell) so a large batch stays under the runtime's per-commit
+     * event cap (`max_events`); subscribers refresh once for the whole apply.
+     */
+    name: "CellsChanged";
+    payload: Event_CellsChanged;
+  }
+  | {
+    /**
+     * A chart was added, changed or removed.
+     */
+    name: "ChartsChanged";
+    payload: Event_ChartsChanged;
+  }
+  | {
+    /**
+     * A comment or reply was added; `mentions` are the member ids it names.
+     */
+    name: "CommentAdded";
+    payload: Event_CommentAdded;
+  }
+  | {
+    /**
+     * A comment was edited, resolved, reopened or deleted.
+     */
+    name: "CommentChanged";
+    payload: Event_CommentChanged;
+  }
+  | {
+    /**
+     * A linked sheet (pushed from another workbook) arrived, changed or went.
+     */
+    name: "LinkedChanged";
+    payload: Event_LinkedChanged;
+  }
+  | {
+    /**
+     * A device announced itself under a nickname for the first time.
+     */
+    name: "MemberJoined";
+    payload: Event_MemberJoined;
+  }
+  | {
+    /**
+     * A member changed the nickname they are shown under.
+     */
+    name: "MemberRenamed";
+    payload: Event_MemberRenamed;
+  }
+  | {
+    /**
+     * A named range was defined, redefined or deleted.
+     */
+    name: "NamedRangesChanged";
+    payload: Event_NamedRangesChanged;
+  }
+  | {
+    /**
+     * A cell's note was edited.
+     */
+    name: "NoteChanged";
+    payload: Event_NoteChanged;
+  }
+  | {
+    /**
+     * A new spreadsheet project was initialized.
+     */
+    name: "ProjectInitialized";
+    payload: Event_ProjectInitialized;
+  }
+  | {
+    /**
+     * A protected range was added, changed or removed.
+     */
+    name: "ProtectionsChanged";
+    payload: Event_ProtectionsChanged;
+  }
+  | {
+    /**
+     * A link from this workbook was made or stopped.
+     */
+    name: "PublicationsChanged";
+    payload: Event_PublicationsChanged;
+  }
+  | {
+    /**
+     * A member's workbook role changed.
+     */
+    name: "RolesChanged";
+    payload: Event_RolesChanged;
+  }
+  | {
+    /**
+     * A conditional format, colour scale or validation changed.
+     */
+    name: "RulesChanged";
+    payload: Event_RulesChanged;
+  }
+  | {
+    /**
+     * A new sheet tab was created.
+     */
+    name: "SheetCreated";
+    payload: Event_SheetCreated;
+  }
+  | {
+    /**
+     * A sheet (and all its cells) was deleted.
+     */
+    name: "SheetDeleted";
+    payload: Event_SheetDeleted;
+  }
+  | {
+    /**
+     * A sheet was renamed.
+     */
+    name: "SheetRenamed";
+    payload: Event_SheetRenamed;
+  }
+  | {
+    /**
+     * A sheet's frozen panes or row and column sizes changed.
+     */
+    name: "SheetViewChanged";
+    payload: Event_SheetViewChanged;
+  }
+  | {
+    /**
+     * Cells' styles changed.
+     */
+    name: "StylesChanged";
+    payload: Event_StylesChanged;
+  }
 ;
 
 
@@ -770,6 +1271,9 @@ export class SpreadsheetClient {
   /**
    * add_attachment
    *
+   * Record a file attached to a cell. Upload the bytes as a blob announced
+   * to this context first; this stores what the cell shows. Returns its id.
+   *
    * @intent mutating
    */
   public async addAttachment(params: { sheet_id: string; row_id: string; col_id: string; blob_id: string; name: string; size: number; mime: string }): Promise<string> {
@@ -779,6 +1283,8 @@ export class SpreadsheetClient {
 
   /**
    * add_chart
+   *
+   * Chart a range. Returns the chart's id.
    *
    * @intent mutating
    */
@@ -790,6 +1296,10 @@ export class SpreadsheetClient {
   /**
    * add_comment
    *
+   * Comment on a cell, or reply to a comment (`parent`). `@nickname` in the
+   * text mentions that member: the `CommentAdded` event carries their ids,
+   * and their client tells them. Returns the comment id.
+   *
    * @intent mutating
    */
   public async addComment(params: { sheet_id: string; row_id: string; col_id: string; text: string; parent: string }): Promise<string> {
@@ -799,6 +1309,8 @@ export class SpreadsheetClient {
 
   /**
    * add_rule
+   *
+   * Add a conditional format, colour scale or validation. Returns its id.
    *
    * @intent mutating
    */
@@ -810,9 +1322,17 @@ export class SpreadsheetClient {
   /**
    * apply_axis_ops
    *
+   * Insert or delete rows and columns. Each op is one write, whatever the
+   * sheet holds: cells keep their keys, and formulas that name rows by id
+   * keep pointing at the same cells. A deleted row's cells stay stored but
+   * out of the layout, so references to them read `#REF!`.
+   *
+   * The client picks ids (letters first, never an implicit number) and
+   * positions (see the recalc crate's `layout`).
+   *
    * @intent mutating
    */
-  public async applyAxisOps(params: { sheet_id: string; ops: AxisOpPayload[] }): Promise<void> {
+  public async applyAxisOps(params: { sheet_id: string; ops: AxisOp[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_axis_ops', argsJson: params });
     return response as void;
   }
@@ -820,9 +1340,17 @@ export class SpreadsheetClient {
   /**
    * apply_cell_ops
    *
+   * Apply a batch of cell operations to one sheet in a single mutation, with
+   * ONE `CellsChanged` event for the whole batch.
+   *
+   * At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget
+   * (1e9 points on 0.11.0-rc.43), and a batch that exhausts it fails as a
+   * whole with nothing written. Refusing early says why; callers split
+   * larger range ops.
+   *
    * @intent mutating
    */
-  public async applyCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
+  public async applyCellOps(params: { sheet_id: string; ops: CellOp[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_cell_ops', argsJson: params });
     return response as void;
   }
@@ -830,15 +1358,21 @@ export class SpreadsheetClient {
   /**
    * apply_private_cell_ops
    *
+   * Write cells of a private sheet: the same ops as `apply_cell_ops`.
+   *
    * @intent mutating
    */
-  public async applyPrivateCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
+  public async applyPrivateCellOps(params: { sheet_id: string; ops: CellOp[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_private_cell_ops', argsJson: params });
     return response as void;
   }
 
   /**
    * apply_style_ops
+   *
+   * Change cells' styles: bold, italic, underline, strike, wrap (`1`),
+   * color and fill (`#rrggbb`), align (`left`, `center`, `right`); an
+   * empty value clears the field. Each field merges on its own.
    *
    * @intent mutating
    */
@@ -860,6 +1394,8 @@ export class SpreadsheetClient {
   /**
    * create_private_sheet
    *
+   * Make a private sheet on this node. Returns its id.
+   *
    * @intent mutating
    */
   public async createPrivateSheet(params: { name: string }): Promise<string> {
@@ -879,6 +1415,9 @@ export class SpreadsheetClient {
 
   /**
    * delete_comment
+   *
+   * Delete a comment. Its author or an owner may; storage refuses anyone
+   * else on every node.
    *
    * @intent mutating
    */
@@ -900,6 +1439,8 @@ export class SpreadsheetClient {
   /**
    * delete_private_sheet
    *
+   * Delete a private sheet and its cells.
+   *
    * @intent mutating
    */
   public async deletePrivateSheet(params: { sheet_id: string }): Promise<void> {
@@ -920,6 +1461,8 @@ export class SpreadsheetClient {
   /**
    * drop_link
    *
+   * The source withdrew a link: remove its sheet.
+   *
    * @intent mutating
    *
    * @xcall same_app (callers must run the same application id)
@@ -932,6 +1475,9 @@ export class SpreadsheetClient {
   /**
    * edit_comment
    *
+   * Change a comment's text. Only its author may: storage refuses anyone
+   * else's edit on every node.
+   *
    * @intent mutating
    */
   public async editComment(params: { id: string; text: string }): Promise<void> {
@@ -942,15 +1488,24 @@ export class SpreadsheetClient {
   /**
    * edit_note
    *
+   * Edit a cell's note: one editor transaction (text and formatting) in the
+   * Quill delta shape, counted against the note as this node holds it.
+   * Concurrent edits from others merge character by character. Formatting
+   * keys are `bold`, `italic`, `underline`, `strike`, `code`, `highlight`
+   * and `link`.
+   *
    * @intent mutating
    */
-  public async editNote(params: { sheet_id: string; row_id: string; col_id: string; ops: NoteChangePayload[] }): Promise<void> {
+  public async editNote(params: { sheet_id: string; row_id: string; col_id: string; ops: NoteChange[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_note', argsJson: params });
     return response as void;
   }
 
   /**
    * export_all
+   *
+   * Returns all sheets (same as list_sheets). The frontend assembles CSV
+   * by calling get_cells per sheet.
    *
    * @intent read_only
    */
@@ -962,6 +1517,10 @@ export class SpreadsheetClient {
   /**
    * get_activity
    *
+   * Activity since `since` (nanoseconds), newest first, at most `limit`
+   * (capped at 500) entries: one seek on the `at` index. The author is the
+   * entry's owner stamp.
+   *
    * @intent read_only
    */
   public async getActivity(params: { since: number; limit: number }): Promise<ActivityEntry[]> {
@@ -971,6 +1530,9 @@ export class SpreadsheetClient {
 
   /**
    * get_all_cells
+   *
+   * Every non-blank cell across all sheets, raw and computed: the client's
+   * warm store, read in one call.
    *
    * @intent read_only
    */
@@ -982,6 +1544,8 @@ export class SpreadsheetClient {
   /**
    * get_attachments
    *
+   * Every attachment, oldest first. `created_by` is the owner stamp.
+   *
    * @intent read_only
    */
   public async getAttachments(): Promise<Attachment[]> {
@@ -991,6 +1555,10 @@ export class SpreadsheetClient {
 
   /**
    * get_cells
+   *
+   * One sheet's cells with computed values. Reads and evaluates only the
+   * sheet and the sheets it transitively references, which gives the same
+   * values as evaluating the whole workbook.
    *
    * @intent read_only
    */
@@ -1002,6 +1570,8 @@ export class SpreadsheetClient {
   /**
    * get_charts
    *
+   * Every live chart.
+   *
    * @intent read_only
    */
   public async getCharts(): Promise<Chart[]> {
@@ -1011,6 +1581,8 @@ export class SpreadsheetClient {
 
   /**
    * get_comments
+   *
+   * Every comment, oldest first. The author is the entry's owner stamp.
    *
    * @intent read_only
    */
@@ -1022,6 +1594,8 @@ export class SpreadsheetClient {
   /**
    * get_functions
    *
+   * Every formula function, sorted by name.
+   *
    * @intent read_only
    */
   public async getFunctions(): Promise<FunctionDef[]> {
@@ -1031,6 +1605,8 @@ export class SpreadsheetClient {
 
   /**
    * get_layouts
+   *
+   * Every sheet's explicit row and column entries.
    *
    * @intent read_only
    */
@@ -1042,6 +1618,8 @@ export class SpreadsheetClient {
   /**
    * get_links
    *
+   * Every live link into this workbook.
+   *
    * @intent read_only
    */
   public async getLinks(): Promise<Link[]> {
@@ -1051,6 +1629,11 @@ export class SpreadsheetClient {
 
   /**
    * get_members
+   *
+   * Everyone who has ever announced themselves, oldest arrival first.
+   *
+   * Sorted here rather than in the UI so every peer renders the same order;
+   * the map's own iteration order is not a stable thing to show a person.
    *
    * @intent read_only
    */
@@ -1062,6 +1645,8 @@ export class SpreadsheetClient {
   /**
    * get_named_ranges
    *
+   * Every defined named range, sorted by name.
+   *
    * @intent read_only
    */
   public async getNamedRanges(): Promise<NamedRange[]> {
@@ -1071,6 +1656,8 @@ export class SpreadsheetClient {
 
   /**
    * get_note
+   *
+   * A cell's note as formatted runs; empty when it has none.
    *
    * @intent read_only
    */
@@ -1082,6 +1669,8 @@ export class SpreadsheetClient {
   /**
    * get_noted_cells
    *
+   * Every cell with a non-empty note, with the start of its text.
+   *
    * @intent read_only
    */
   public async getNotedCells(): Promise<NotedCell[]> {
@@ -1091,6 +1680,9 @@ export class SpreadsheetClient {
 
   /**
    * get_private_cells
+   *
+   * Every cell of this node's private sheets. `computed_value` is empty:
+   * the client evaluates them, with the shared sheets they read.
    *
    * @intent read_only
    */
@@ -1102,6 +1694,8 @@ export class SpreadsheetClient {
   /**
    * get_private_sheets
    *
+   * This node's private sheets, in the order they were made.
+   *
    * @intent read_only
    */
   public async getPrivateSheets(): Promise<Sheet[]> {
@@ -1111,6 +1705,17 @@ export class SpreadsheetClient {
 
   /**
    * get_project
+   *
+   * The project's id, name and creation time.
+   *
+   * New. `init_project` wrote the name into `project_name` from the first
+   * version of this contract and no method ever read it, so the name was
+   * replicated to every peer and visible to none of them.
+   *
+   * Never 404s: an unnamed project is a real, transient state (a context
+   * exists the moment it is created, `init_project` lands a round-trip
+   * later) and it answers with an empty name so a caller can render a
+   * placeholder instead of an error.
    *
    * @intent read_only
    */
@@ -1122,6 +1727,8 @@ export class SpreadsheetClient {
   /**
    * get_protections
    *
+   * Every live protected range.
+   *
    * @intent read_only
    */
   public async getProtections(): Promise<Protection[]> {
@@ -1131,6 +1738,8 @@ export class SpreadsheetClient {
 
   /**
    * get_publications
+   *
+   * Every live link from this workbook: those an editor or owner made.
    *
    * @intent read_only
    */
@@ -1142,6 +1751,8 @@ export class SpreadsheetClient {
   /**
    * get_rules
    *
+   * Every live rule.
+   *
    * @intent read_only
    */
   public async getRules(): Promise<Rule[]> {
@@ -1152,6 +1763,9 @@ export class SpreadsheetClient {
   /**
    * get_sheet_views
    *
+   * Every sheet's frozen panes and resized rows and columns (sheets with
+   * neither are left out).
+   *
    * @intent read_only
    */
   public async getSheetViews(): Promise<SheetView[]> {
@@ -1161,6 +1775,8 @@ export class SpreadsheetClient {
 
   /**
    * get_styles
+   *
+   * Every styled cell, with its set fields.
    *
    * @intent read_only
    */
@@ -1180,6 +1796,9 @@ export class SpreadsheetClient {
   /**
    * init_project
    *
+   * Name the workbook, once. Owners only; the creator is the first owner.
+   * Returns the workbook's id, fixed when it was created.
+   *
    * @intent mutating
    */
   public async initProject(params: { name: string }): Promise<string> {
@@ -1189,6 +1808,14 @@ export class SpreadsheetClient {
 
   /**
    * join
+   *
+   * Announce this member under a chosen nickname, or rename it.
+   *
+   * Idempotent by design — it is called on every open, not only on the first
+   * one, because there is no reliable "first" for a replicated context and a
+   * join that only registers once leaves anyone whose first attempt failed
+   * permanently anonymous. `joined_at` is preserved across re-calls so a
+   * rename does not reorder the roster.
    *
    * @intent mutating
    */
@@ -1210,6 +1837,10 @@ export class SpreadsheetClient {
   /**
    * protect_range
    *
+   * Protect a range (corner row and column ids; all four empty for the
+   * whole sheet). Only owners and `editors` may then change its cells.
+   * Owners only. Returns the protection id.
+   *
    * @intent mutating
    */
   public async protectRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; description: string; editors: string[] }): Promise<string> {
@@ -1219,6 +1850,9 @@ export class SpreadsheetClient {
 
   /**
    * publish_range
+   *
+   * Link a range to another workbook (its context id, hex), where it
+   * appears as a read-only sheet called `name`. Returns the link's id.
    *
    * @intent mutating
    */
@@ -1230,6 +1864,8 @@ export class SpreadsheetClient {
   /**
    * push_publication
    *
+   * Push a link's values again now.
+   *
    * @intent mutating
    */
   public async pushPublication(params: { id: string }): Promise<void> {
@@ -1239,6 +1875,10 @@ export class SpreadsheetClient {
 
   /**
    * receive_link
+   *
+   * Receive a linked range from another workbook running this app. Only
+   * the node calls it, from the source's `xcall`; the origin it sets must
+   * be the workbook the call says it is from.
    *
    * @intent mutating
    *
@@ -1251,6 +1891,9 @@ export class SpreadsheetClient {
 
   /**
    * remove_attachment
+   *
+   * Remove an attachment. Whoever attached it, or an owner, may: storage
+   * refuses anyone else on every node.
    *
    * @intent mutating
    */
@@ -1271,6 +1914,8 @@ export class SpreadsheetClient {
 
   /**
    * remove_protection
+   *
+   * Remove a protection. Owners only.
    *
    * @intent mutating
    */
@@ -1332,6 +1977,9 @@ export class SpreadsheetClient {
   /**
    * set_cell_format
    *
+   * Set only the display format of a cell, preserving its value. `format`
+   * is a keyword like "number"/"currency"/"percent"/"date" ("" = Automatic).
+   *
    * @intent mutating
    */
   public async setCellFormat(params: { sheet_id: string; row_id: string; col_id: string; format: string }): Promise<string> {
@@ -1341,6 +1989,8 @@ export class SpreadsheetClient {
 
   /**
    * set_comment_resolved
+   *
+   * Resolve or reopen a comment thread. Anyone in the workbook may.
    *
    * @intent mutating
    */
@@ -1352,6 +2002,8 @@ export class SpreadsheetClient {
   /**
    * set_frozen
    *
+   * Freeze the first `rows` rows and `cols` columns of a sheet (0 unfreezes).
+   *
    * @intent mutating
    */
   public async setFrozen(params: { sheet_id: string; rows: number; cols: number }): Promise<void> {
@@ -1361,6 +2013,8 @@ export class SpreadsheetClient {
 
   /**
    * set_named_range
+   *
+   * Define or redefine a named range. `target` is a reference in stored form.
    *
    * @intent mutating
    */
@@ -1372,6 +2026,9 @@ export class SpreadsheetClient {
   /**
    * set_role
    *
+   * Set a member's workbook role: `owner`, `editor`, `commenter` or
+   * `viewer`. Owners only.
+   *
    * @intent mutating
    */
   public async setRole(params: { member_id: string; role: string }): Promise<void> {
@@ -1381,6 +2038,8 @@ export class SpreadsheetClient {
 
   /**
    * set_sizes
+   *
+   * Resize rows and columns (`axis` `row` or `col`, size in pixels).
    *
    * @intent mutating
    */
@@ -1392,6 +2051,8 @@ export class SpreadsheetClient {
   /**
    * unlink
    *
+   * Remove a linked sheet here; later pushes of it are ignored.
+   *
    * @intent mutating
    */
   public async unlink(params: { id: string }): Promise<void> {
@@ -1401,6 +2062,9 @@ export class SpreadsheetClient {
 
   /**
    * unpublish
+   *
+   * Stop a link, and remove its sheet from the other workbook. Whoever
+   * linked it, or an owner, may: storage refuses anyone else.
    *
    * @intent mutating
    */
@@ -1412,6 +2076,8 @@ export class SpreadsheetClient {
   /**
    * update_chart
    *
+   * Replace a chart's range, kind or title.
+   *
    * @intent mutating
    */
   public async updateChart(params: { id: string; chart: ChartInput }): Promise<void> {
@@ -1421,6 +2087,8 @@ export class SpreadsheetClient {
 
   /**
    * update_protection
+   *
+   * Change who may edit a protected range, and its description. Owners only.
    *
    * @intent mutating
    */
@@ -1432,6 +2100,8 @@ export class SpreadsheetClient {
   /**
    * update_rule
    *
+   * Replace a rule.
+   *
    * @intent mutating
    */
   public async updateRule(params: { id: string; rule: RuleInput }): Promise<void> {
@@ -1441,6 +2111,16 @@ export class SpreadsheetClient {
 
   /**
    * whoami
+   *
+   * The id THIS caller is known by in here — the key its cursor is authored
+   * by and its roster row is stored under.
+   *
+   * Exists so the frontend never has to guess which row is "me". It had been
+   * comparing `Cursor.author` against the context's executor public key,
+   * which is a different value from a different family: a device key and a
+   * context identity are both 64 hex, so the comparison type-checks, returns
+   * false forever, and shows the local user as a stranger in their own
+   * spreadsheet. Asking the contract costs one read and cannot be wrong.
    *
    * @intent read_only
    */

@@ -6,6 +6,10 @@ import {
 
 // Generated types
 
+/**
+ * The defender's answer to the shot of the same turn, keyed
+ * `"<defender account>/<turn>/<nonce>"`.
+ */
 export interface Answer {
   hit: boolean;
 }
@@ -61,19 +65,33 @@ export interface Event_Winner {
   id: string;
 }
 
+/**
+ * Export payload for cross-device durability. Defined locally (not re-used from
+ * `battleships-types`) because the wasm-abi emitter resolves types by their
+ * local path and would otherwise not find it.
+ */
 export interface ExportedSeed {
   board_bytes: CalimeroBytes;
   salt: CalimeroBytes;
 }
 
+/**
+ * Everything fixed when the match is created.
+ */
 export interface GameConfig {
   lobby_context_id: string | null;
   match_id: string | null;
+  /**
+   * `[player1, player2]`, or empty when `init` was not given both.
+   */
   players: Player[];
 }
 
 export interface GameState {
   config: GameConfig;
+  /**
+   * `"<account>/<nonce>"` -> that player's SHA-256 board commitment.
+   */
   commitments: Record<string, CalimeroBytes>;
   shots: Record<string, Shot>;
   answers: Record<string, Answer>;
@@ -85,18 +103,37 @@ export interface OwnBoardView {
   board: CalimeroBytes;
 }
 
+/**
+ * One player: the context-member key the UI names them by, and the account
+ * core stamps their rows with.
+ *
+ * A player id is a context member (a device); a row's owner stamp is the
+ * PERSON. Both are recorded because both are true, and the account is the one
+ * the security rests on.
+ */
 export interface Player {
   key: PublicKey;
   account: CalimeroBytes;
 }
 
+/**
+ * Player public key — 32-byte Ed25519 key with base58 encoding.
+ *
+ * Note: `from_executor_id()` lives in each service crate (requires calimero-sdk).
+ */
 export type PublicKey = CalimeroBytes;
 
+/**
+ * A board opened at match end, keyed `"<account>/<nonce>"`.
+ */
 export interface Reveal {
   board_bytes: CalimeroBytes;
   salt: CalimeroBytes;
 }
 
+/**
+ * A shot, keyed `"<shooter account>/<turn>/<nonce>"`.
+ */
 export interface Shot {
   x: number;
   y: number;
@@ -118,16 +155,76 @@ export interface ShotsView {
 
 
 export type AbiEvent =
-  | { name: "AuditFailed"; payload: Event_AuditFailed }
-  | { name: "AuditPassed"; payload: Event_AuditPassed }
-  | { name: "BoardCommitted"; payload: Event_BoardCommitted }
-  | { name: "BoardRevealed"; payload: Event_BoardRevealed }
-  | { name: "MatchEnded"; payload: Event_MatchEnded }
-  | { name: "RevealRequested"; payload: Event_RevealRequested }
-  | { name: "ShipsPlaced"; payload: Event_ShipsPlaced }
-  | { name: "ShotFired"; payload: Event_ShotFired }
-  | { name: "ShotProposed"; payload: Event_ShotProposed }
-  | { name: "Winner"; payload: Event_Winner }
+  | {
+    /**
+     * Audit failed for a player; reason gives the specific failure.
+     */
+    name: "AuditFailed";
+    payload: Event_AuditFailed;
+  }
+  | {
+    /**
+     * Audit (commitment check + shot replay) passed for a player.
+     */
+    name: "AuditPassed";
+    payload: Event_AuditPassed;
+  }
+  | {
+    /**
+     * A player's SHA256 board commitment has been recorded.
+     */
+    name: "BoardCommitted";
+    payload: Event_BoardCommitted;
+  }
+  | {
+    /**
+     * A player revealed their board post-match and the audit passed/failed.
+     */
+    name: "BoardRevealed";
+    payload: Event_BoardRevealed;
+  }
+  | {
+    /**
+     * The match ended.
+     */
+    name: "MatchEnded";
+    payload: Event_MatchEnded;
+  }
+  | {
+    /**
+     * The answers ended the match: the other player's node opens its board.
+     */
+    name: "RevealRequested";
+    payload: Event_RevealRequested;
+  }
+  | {
+    /**
+     * A player placed their ships.
+     */
+    name: "ShipsPlaced";
+    payload: Event_ShipsPlaced;
+  }
+  | {
+    /**
+     * A shot was resolved.
+     */
+    name: "ShotFired";
+    payload: Event_ShotFired;
+  }
+  | {
+    /**
+     * A player proposed a shot.
+     */
+    name: "ShotProposed";
+    payload: Event_ShotProposed;
+  }
+  | {
+    /**
+     * A winner was determined.
+     */
+    name: "Winner";
+    payload: Event_Winner;
+  }
 ;
 
 
@@ -252,6 +349,8 @@ export class GameClient {
   /**
    * get_current_turn
    *
+   * The player whose turn it is to shoot, or `None` once the match is over.
+   *
    * @intent read_only
    */
   public async getCurrentTurn(): Promise<string> {
@@ -291,6 +390,10 @@ export class GameClient {
 
   /**
    * get_winner
+   *
+   * The winner, once the match is over AND the winner's revealed board has
+   * passed every reader's audit. `None` while playing, while waiting for a
+   * reveal, and for a match both players cheated in.
    *
    * @intent read_only
    */
@@ -340,6 +443,10 @@ export class GameClient {
   /**
    * reveal_board
    *
+   * Publish the caller's board for every reader to audit. Only once the
+   * match is over: a board opened mid-game is a board handed to the
+   * opponent.
+   *
    * @intent mutating
    */
   public async revealBoard(params: { match_id: string }): Promise<void> {
@@ -349,6 +456,9 @@ export class GameClient {
 
   /**
    * reveal_board_handler
+   *
+   * Runs on the other player's node when the answers end the match, so
+   * both boards are opened without either player having to ask.
    *
    * @intent mutating
    */

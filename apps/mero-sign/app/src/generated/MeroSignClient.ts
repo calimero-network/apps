@@ -6,10 +6,17 @@ import {
 
 // Generated types
 
+/**
+ * One account's consents, in that account's own [`UserStorage`] slot: only
+ * they can give (or forge) their consent, and nobody can occupy the entry.
+ */
 export interface Consents {
   documents: Record<string, boolean>;
 }
 
+/**
+ * Detailed information about a shared context
+ */
 export interface ContextDetails {
   context_id: CalimeroBytes;
   context_name: string;
@@ -21,6 +28,9 @@ export interface ContextDetails {
   created_at: number;
 }
 
+/**
+ * Metadata for tracking joined shared contexts
+ */
 export interface ContextMetadata {
   context_id: CalimeroBytes;
   context_name: string;
@@ -30,6 +40,9 @@ export interface ContextMetadata {
   shared_identity: CalimeroBytes;
 }
 
+/**
+ * Document chunk with its embedding
+ */
 export interface DocumentChunk {
   text: string;
   embedding: number[];
@@ -37,6 +50,15 @@ export interface DocumentChunk {
   end_position: number;
 }
 
+/**
+ * Document information as read: the uploaded document, its current version
+ * (the last signature's, or the upload's) and its status, derived every read
+ * from the write-once entries.
+ *
+ * `embeddings`, `extracted_text` and `chunks` are always `None` in
+ * `list_documents`, which returns every document; they stay in storage for
+ * `search_document_by_embedding`.
+ */
 export interface DocumentInfo {
   id: string;
   name: string;
@@ -52,13 +74,28 @@ export interface DocumentInfo {
   chunks: DocumentChunk[] | null;
 }
 
+/**
+ * A signature on a document, as read. `signer` is the entry's owner stamp.
+ */
 export interface DocumentSignature {
   signer: CalimeroBytes;
   signed_at: number;
 }
 
+/**
+ * Document status, derived from the document's signatures.
+ *
+ * `FullySigned` IS TERMINAL. Completion is a fact about the past: the
+ * signers a document waits for are fixed when it is uploaded, its signatures
+ * are written once, and a completed document refuses further signatures. A
+ * participant added later was not party to it; if they need to be, that is a
+ * new document.
+ */
 export type DocumentStatus = 'Pending' | 'PartiallySigned' | 'FullySigned';
 
+/**
+ * Identity mapping for tracking user identities across contexts
+ */
 export interface IdentityMapping {
   private_identity: CalimeroBytes;
   shared_identity: CalimeroBytes;
@@ -118,6 +155,24 @@ export interface MeroSignEvent_SignatureDeleted {
   id: number;
 }
 
+/**
+ * Every field that decides who may do what is guarded by a storage type,
+ * because a member running a modified node skips every check in the methods
+ * below and writes plain fields directly:
+ *
+ * | field | who may write it, on every node |
+ * |---|---|
+ * | `is_private`, `owner`, `context_name` | nobody after `init` (`Frozen`) |
+ * | `roles` | admins (`AccessControl`'s writer set) |
+ * | `joined` | each account its own slot (`UserStorage`) |
+ * | `documents` | anyone adds; nobody edits; admins remove (`ModeratedOnce`) |
+ * | `document_signatures` | each signer their own; nobody edits or removes (`WriteOnce`) |
+ * | `consents` | each account its own slot (`UserStorage`) |
+ *
+ * The private-context fields (`signatures`, `joined_contexts`,
+ * `identity_mappings`) are plain: a private context holds its owner's
+ * account alone.
+ */
 export interface MeroSignState {
   is_private: boolean;
   owner: CalimeroBytes;
@@ -125,22 +180,48 @@ export interface MeroSignState {
   signatures: Record<string, SignatureRecord>;
   joined_contexts: Record<string, ContextMetadata>;
   identity_mappings: Record<string, IdentityMapping>;
+  /**
+   * Admin, signer and viewer grants, and removals.
+   */
   roles: Record<string, boolean>;
+  /**
+   * Accounts that registered themselves through an open invitation: `Sign`
+   * unless an admin set another level or removed them.
+   */
   joined: Record<string, number>;
+  /**
+   * Moderated by the admins, kept equal to `roles.admins()`.
+   */
   documents: Record<string, StoredDocument>;
+  /**
+   * `"{document_id}/{signer hex}/{nonce}"`: a document's signatures are one
+   * prefix, and the nonce leaves no key for anyone to occupy first.
+   */
   document_signatures: Record<string, SignedVersion>;
   consents: Record<string, Consents>;
 }
 
+/**
+ * Participant information with permission level
+ */
 export interface ParticipantInfo {
   user_id: CalimeroBytes;
   permission_level: PermissionLevel;
 }
 
+/**
+ * Participant roles in shared contexts
+ */
 export type ParticipantRole = 'Owner' | 'Signer' | 'Viewer' | 'Unknown';
 
+/**
+ * Permission levels for participants
+ */
 export type PermissionLevel = 'Read' | 'Sign' | 'Admin';
 
+/**
+ * Signature record - uses LWW based on created_at timestamp
+ */
 export interface SignatureRecord {
   id: number;
   name: string;
@@ -149,6 +230,12 @@ export interface SignatureRecord {
   created_at: number;
 }
 
+/**
+ * One signature: the signer (the entry's owner stamp) took the version at
+ * `base_hash`, put their mark on it, and produced the version at `new_hash`,
+ * stored as `pdf_blob_id`. Written once, so a signature can be neither
+ * withdrawn nor edited, and the version it signed stays on record.
+ */
 export interface SignedVersion {
   base_hash: string;
   new_hash: string;
@@ -157,12 +244,25 @@ export interface SignedVersion {
   signed_at: number;
 }
 
+/**
+ * A document as uploaded. Written once: nobody, the uploader included, can
+ * change it afterwards, and only an admin (a moderator of `documents`) can
+ * remove it. The uploader is the entry's owner stamp.
+ *
+ * What signing changes is recorded beside it, one write-once
+ * [`SignedVersion`] per signature, never by rewriting this.
+ */
 export interface StoredDocument {
   name: string;
   hash: string;
   pdf_blob_id: CalimeroBytes;
   size: number;
   uploaded_at: number;
+  /**
+   * Who must sign it: every participant holding `Sign` or `Admin` when it
+   * was uploaded. Fixed with the document, so completion is a fact about
+   * the past — nobody who joins later reopens it.
+   */
   required_signers: CalimeroBytes[];
   embeddings: number[] | null;
   extracted_text: string | null;
@@ -189,7 +289,13 @@ export type AbiEvent =
   | { name: "ParticipantInvited"; payload: MeroSignEvent_ParticipantInvited }
   | { name: "ParticipantJoined"; payload: MeroSignEvent_ParticipantJoined }
   | { name: "ParticipantLeft"; payload: MeroSignEvent_ParticipantLeft }
-  | { name: "ParticipantPermissionChanged"; payload: MeroSignEvent_ParticipantPermissionChanged }
+  | {
+    /**
+     * An admin changed an existing participant's permission level.
+     */
+    name: "ParticipantPermissionChanged";
+    payload: MeroSignEvent_ParticipantPermissionChanged;
+  }
   | { name: "SignatureCreated"; payload: MeroSignEvent_SignatureCreated }
   | { name: "SignatureDeleted"; payload: MeroSignEvent_SignatureDeleted }
 ;
@@ -249,6 +355,8 @@ export class MeroSignClient {
   /**
    * add_participant
    *
+   * Add participant to shared context (admin only)
+   *
    * @intent mutating
    */
   public async addParticipant(params: { user_id_str: string; permission: PermissionLevel }): Promise<void> {
@@ -258,6 +366,8 @@ export class MeroSignClient {
 
   /**
    * create_signature
+   *
+   * Create a new signature and store its blob ID
    *
    * @intent mutating
    */
@@ -269,6 +379,9 @@ export class MeroSignClient {
   /**
    * delete_document
    *
+   * Delete a document by ID. Admins only: they are the documents'
+   * moderators, and every node refuses anyone else's removal.
+   *
    * @intent mutating
    */
   public async deleteDocument(params: { document_id: string }): Promise<void> {
@@ -278,6 +391,8 @@ export class MeroSignClient {
 
   /**
    * delete_signature
+   *
+   * Delete a signature by ID
    *
    * @intent mutating
    */
@@ -289,6 +404,8 @@ export class MeroSignClient {
   /**
    * get_context_details
    *
+   * Get detailed information about the shared context
+   *
    * @intent read_only
    */
   public async getContextDetails(params: { context_id_str: string }): Promise<ContextDetails> {
@@ -298,6 +415,8 @@ export class MeroSignClient {
 
   /**
    * get_context_id
+   *
+   * Get current context ID
    *
    * @intent read_only
    */
@@ -309,6 +428,8 @@ export class MeroSignClient {
   /**
    * get_document_signatures
    *
+   * The signatures on a document, in the order they were applied.
+   *
    * @intent read_only
    */
   public async getDocumentSignatures(params: { document_id: string }): Promise<DocumentSignature[]> {
@@ -318,6 +439,8 @@ export class MeroSignClient {
 
   /**
    * get_identity_mapping
+   *
+   * Get identity mapping for a specific context
    *
    * @intent read_only
    */
@@ -329,6 +452,8 @@ export class MeroSignClient {
   /**
    * get_shared_identity
    *
+   * Get shared identity for a specific context
+   *
    * @intent read_only
    */
   public async getSharedIdentity(params: { context_id_str: string }): Promise<CalimeroBytes> {
@@ -339,6 +464,8 @@ export class MeroSignClient {
   /**
    * get_user_permission
    *
+   * Get user permission level
+   *
    * @intent read_only
    */
   public async getUserPermission(params: { user_id_str: string }): Promise<PermissionLevel> {
@@ -348,6 +475,8 @@ export class MeroSignClient {
 
   /**
    * has_consented
+   *
+   * Check if user has given consent for a document (public API)
    *
    * @intent read_only
    */
@@ -377,6 +506,8 @@ export class MeroSignClient {
   /**
    * join_shared_context
    *
+   * Join a shared context with identity mapping
+   *
    * @intent mutating
    */
   public async joinSharedContext(params: { context_id_str: string; shared_identity_str: string; context_name: string }): Promise<void> {
@@ -386,6 +517,8 @@ export class MeroSignClient {
 
   /**
    * leave_shared_context
+   *
+   * Leave a shared context
    *
    * @intent mutating
    */
@@ -397,6 +530,8 @@ export class MeroSignClient {
   /**
    * list_documents
    *
+   * List all documents, without their search content (see [`DocumentInfo`]).
+   *
    * @intent read_only
    */
   public async listDocuments(): Promise<DocumentInfo[]> {
@@ -406,6 +541,8 @@ export class MeroSignClient {
 
   /**
    * list_joined_contexts
+   *
+   * List all joined contexts
    *
    * @intent read_only
    */
@@ -417,6 +554,8 @@ export class MeroSignClient {
   /**
    * list_participants
    *
+   * List all participants
+   *
    * @intent read_only
    */
   public async listParticipants(): Promise<CalimeroBytes[]> {
@@ -426,6 +565,8 @@ export class MeroSignClient {
 
   /**
    * list_signatures
+   *
+   * Get all signatures
    *
    * @intent read_only
    */
@@ -437,6 +578,12 @@ export class MeroSignClient {
   /**
    * mark_participant_signed
    *
+   * Confirm the CALLER's signature is on a document.
+   *
+   * The status is derived from the signatures on every read, so there is
+   * nothing left to recompute; this stays so a client can ask, after
+   * signing, whether its signature is the one on the document.
+   *
    * @intent mutating
    */
   public async markParticipantSigned(params: { document_id: string }): Promise<void> {
@@ -446,6 +593,8 @@ export class MeroSignClient {
 
   /**
    * register_self_as_participant
+   *
+   * Register self as participant (for users who joined via open invitation)
    *
    * @intent mutating
    */
@@ -457,6 +606,9 @@ export class MeroSignClient {
   /**
    * remove_participant
    *
+   * Remove participant from shared context. The removal outranks the
+   * participant's own registration, and is refused for the last admin.
+   *
    * @intent mutating
    */
   public async removeParticipant(params: { user_id_str: string }): Promise<void> {
@@ -466,6 +618,8 @@ export class MeroSignClient {
 
   /**
    * resolve_private_identity
+   *
+   * Resolve private identity from shared identity
    *
    * @intent read_only
    */
@@ -487,6 +641,11 @@ export class MeroSignClient {
   /**
    * set_consent
    *
+   * Record the CALLER's consent to sign a document, in their own slot.
+   *
+   * Consent is a personal act. Nobody can give it for you, so there is no
+   * parameter to give — and the slot is yours alone on every node.
+   *
    * @intent mutating
    */
   public async setConsent(params: { document_id: string }): Promise<void> {
@@ -496,6 +655,13 @@ export class MeroSignClient {
 
   /**
    * set_participant_permission
+   *
+   * Change an EXISTING participant's permission level, up or down.
+   *
+   * `add_participant` cannot do this: it refuses a user who is already a
+   * participant. Levels live in `AccessControl`, whose grants merge
+   * last-writer-wins, so a demotion converges like a promotion. The last
+   * admin cannot step down.
    *
    * @intent mutating
    */
@@ -507,6 +673,30 @@ export class MeroSignClient {
   /**
    * sign_document
    *
+   * Record the CALLER's signature on a document.
+   *
+   * The signer is the caller's ACCOUNT — a document is signed by a PERSON,
+   * and one signer on two machines must not read as two signatories — and on
+   * every other node it is the signature entry's owner stamp. There is no
+   * signer parameter.
+   *
+   * A signature is not a field value, it is a whole new PDF: the signer
+   * downloads the current version, flattens their mark into it in the
+   * browser, uploads the result as a NEW blob, and records it here as a
+   * write-once [`SignedVersion`] from `base_hash` to `new_hash`. Nothing is
+   * overwritten: the uploaded document and every signature stay on record,
+   * and the document's current version is the last one in the chain.
+   *
+   * `base_hash` is the hash the signer actually had in front of them. If it
+   * is not the current version, somebody else signed in the meantime and
+   * this PDF lacks their mark — refused, so the signer re-fetches and
+   * re-signs.
+   *
+   * ⚠️ `pdf_blob_id_str` must name a blob THIS node holds. The announce below
+   * fails the whole call otherwise, with
+   * `blob operations not supported (NodeClient not available)` — a message
+   * about the host, not about the blob, which reads like a misconfigured node.
+   *
    * @intent mutating
    */
   public async signDocument(params: { document_id: string; base_hash: string; pdf_blob_id_str: string; file_size: number; new_hash: string }): Promise<void> {
@@ -517,6 +707,8 @@ export class MeroSignClient {
   /**
    * upload_document
    *
+   * Upload a document
+   *
    * @intent mutating
    */
   public async uploadDocument(params: { name: string; hash: string; pdf_blob_id_str: string; file_size: number; embeddings: number[] | null; extracted_text: string | null; chunks: DocumentChunk[] | null }): Promise<string> {
@@ -526,6 +718,19 @@ export class MeroSignClient {
 
   /**
    * whoami
+   *
+   * The caller's ACCOUNT id, as this contract sees it.
+   *
+   * Exists because the frontend cannot work it out. A device key and an
+   * account id have both been 32 raw bytes — 64 hex characters — since core
+   * 0.11.0-rc.27, so the two are indistinguishable by inspection, and this
+   * app holds a DEVICE key in `localStorage` (`agreementContextUserID`, the
+   * context member public key from the join response) while participants
+   * are keyed by ACCOUNT. Comparing the two type-checks and silently matches
+   * nothing, which is how a UI ends up unable to tell an admin that they
+   * are one.
+   *
+   * One call removes the guess: the contract is the only thing that knows.
    *
    * @intent read_only
    */

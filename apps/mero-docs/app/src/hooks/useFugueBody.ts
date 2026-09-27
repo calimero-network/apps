@@ -11,7 +11,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
+import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
 import {
   diffBlocks,
   isPlaceholder,
@@ -477,13 +477,13 @@ export function useFugueBody({
             const anchor = anchorsRef.current.get(block);
             const typed = was && anchor && insertAt(was.inline, applyChanges(was.inline, call.ops), anchor.pos);
             const ops = typed ?? call.ops;
-            // The generated ChangePayload is a tagged union; the contract
-            // takes serde's untagged form, which is what `ops` already is.
+            // The editor's ops leave `attributes` out where the generated type sends
+            // `null`; serde reads a missing Option as None, so they go as they are.
             const result = await target.applyDeltaOn({
               doc,
               block,
               base: call.base,
-              ops: ops as unknown as ChangePayload[],
+              ops: ops as unknown as WireChange[],
               // The anchor claims the write is an insert at it, which the node checks.
               anchor: typed ? (anchor?.token ?? null) : null,
             });

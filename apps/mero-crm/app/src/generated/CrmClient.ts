@@ -6,8 +6,14 @@ import {
 
 // Generated types
 
+/**
+ * Something someone has to do: a call, a meeting, a task, an email, a deadline.
+ */
 export interface Activity {
   id: string;
+  /**
+   * A deal's activities are one seek; `None` puts no row in the index.
+   */
   deal_id: string | null;
   contact_id: string | null;
   kind: string;
@@ -17,6 +23,9 @@ export interface Activity {
   done_at: number;
   owner: string;
   note: string;
+  /**
+   * Set when an automation scheduled it rather than a person.
+   */
   automation_id: string | null;
   created_at: number;
 }
@@ -24,6 +33,9 @@ export interface Activity {
 export interface ActivityView {
   id: string;
   deal_id: string | null;
+  /**
+   * The deal's title, resolved here so the to-do list needs no join.
+   */
   deal_title: string | null;
   contact_id: string | null;
   kind: string;
@@ -38,6 +50,12 @@ export interface ActivityView {
   created_at: number;
 }
 
+/**
+ * "When a deal enters `stage_id`, schedule a `kind` activity called `subject`,
+ * due `due_in_days` later." The simple rule that covers most of what sales
+ * automation is actually used for: never letting a deal arrive somewhere with
+ * no next step.
+ */
 export interface Automation {
   id: string;
   stage_id: string;
@@ -59,6 +77,9 @@ export interface AutomationView {
   created_at: number;
 }
 
+/**
+ * A person the team sells to.
+ */
 export interface Contact {
   id: string;
   name: string;
@@ -89,11 +110,23 @@ export interface Crm {
   activities: Record<string, Activity>;
   notes: Record<string, Note>;
   automations: Record<string, Automation>;
+  /**
+   * Record id → when it was created, written once with the record by the
+   * account that created it. That owner stamp IS the record's `created_by`:
+   * no node accepts a rewrite of it, so neither can anyone take over a
+   * record's authorship by writing a field.
+   */
   created_by: Record<string, number>;
   currency: string;
   rotting_days: number;
 }
 
+/**
+ * A deal: an opportunity with a value, moving through the stages.
+ *
+ * Indexed by the fields the board filters on, so a stage column, an owner's
+ * deals or a person's deals is a seek rather than a scan of every deal.
+ */
 export interface Deal {
   id: string;
   title: string;
@@ -104,13 +137,25 @@ export interface Deal {
   stage_id: string;
   status: string;
   lost_reason: string;
+  /**
+   * Expected close date, ms since the epoch.
+   */
   expected_close: number;
+  /**
+   * Where the deal came from (referral, inbound, outbound, event, …).
+   */
   source: string;
+  /**
+   * When the deal entered its current stage — what "rotting" measures.
+   */
   stage_entered_at: number;
   closed_at: number;
   created_at: number;
 }
 
+/**
+ * A deal with everything the detail page shows (named struct, never a tuple).
+ */
 export interface DealDetail {
   deal: DealView;
   contact: ContactView | null;
@@ -124,6 +169,9 @@ export interface DealView {
   value: number;
   organization: string;
   contact_id: string | null;
+  /**
+   * The linked person's name, resolved here so the board needs no join.
+   */
   contact_name: string | null;
   owner: string | null;
   stage_id: string;
@@ -131,11 +179,17 @@ export interface DealView {
   lost_reason: string;
   expected_close: number | null;
   source: string;
+  /**
+   * Win probability: the stage's while open, 100 when won, 0 when lost.
+   */
   probability: number;
   stage_entered_at: number;
   closed_at: number | null;
   next_activity: NextActivity | null;
   open_activities: number;
+  /**
+   * The most recent completed activity or note, if any.
+   */
   last_touch_at: number | null;
   created_by: string;
   created_at: number;
@@ -182,6 +236,9 @@ export interface Event_NoteChanged {
   deal_id: string;
 }
 
+/**
+ * The earliest open activity on a deal — the "next step" the board shows.
+ */
 export interface NextActivity {
   id: string;
   kind: string;
@@ -189,6 +246,10 @@ export interface NextActivity {
   due_at: number;
 }
 
+/**
+ * A note on a deal. Immutable once written; only its author may delete it —
+ * the author being the entry's owner stamp, not a field.
+ */
 export interface Note {
   id: string;
   deal_id: string;
@@ -209,10 +270,19 @@ export interface Settings {
   rotting_days: number;
 }
 
+/**
+ * A column of the pipeline.
+ */
 export interface Stage {
   id: string;
   name: string;
+  /**
+   * Win probability in percent, 0..=100. Drives the weighted forecast.
+   */
   probability: number;
+  /**
+   * Sort key. Reordering rewrites every stage's position in one call.
+   */
   position: number;
   created_at: number;
 }
@@ -237,18 +307,87 @@ export interface StageView {
 
 
 export type AbiEvent =
-  | { name: "ActivityChanged"; payload: Event_ActivityChanged }
-  | { name: "AutomationFired"; payload: Event_AutomationFired }
-  | { name: "AutomationsChanged" }
-  | { name: "ContactChanged"; payload: Event_ContactChanged }
-  | { name: "DealCreated"; payload: Event_DealCreated }
-  | { name: "DealDeleted"; payload: Event_DealDeleted }
-  | { name: "DealMoved"; payload: Event_DealMoved }
-  | { name: "DealStatusChanged"; payload: Event_DealStatusChanged }
-  | { name: "DealUpdated"; payload: Event_DealUpdated }
-  | { name: "NoteChanged"; payload: Event_NoteChanged }
-  | { name: "SettingsChanged" }
-  | { name: "StagesChanged" }
+  | {
+    /**
+     * An activity was scheduled, completed, rescheduled or deleted.
+     */
+    name: "ActivityChanged";
+    payload: Event_ActivityChanged;
+  }
+  | {
+    /**
+     * An automation scheduled an activity when a deal entered a stage.
+     */
+    name: "AutomationFired";
+    payload: Event_AutomationFired;
+  }
+  | {
+    /**
+     * An automation rule was added, toggled or removed.
+     */
+    name: "AutomationsChanged";
+  }
+  | {
+    /**
+     * A person was added, edited or removed.
+     */
+    name: "ContactChanged";
+    payload: Event_ContactChanged;
+  }
+  | {
+    /**
+     * A deal was added to the pipeline.
+     */
+    name: "DealCreated";
+    payload: Event_DealCreated;
+  }
+  | {
+    /**
+     * A deal was deleted, with its activities and notes.
+     */
+    name: "DealDeleted";
+    payload: Event_DealDeleted;
+  }
+  | {
+    /**
+     * A deal moved to another stage.
+     */
+    name: "DealMoved";
+    payload: Event_DealMoved;
+  }
+  | {
+    /**
+     * A deal was closed as won, closed as lost, or reopened.
+     */
+    name: "DealStatusChanged";
+    payload: Event_DealStatusChanged;
+  }
+  | {
+    /**
+     * One of a deal's fields (title, value, contact, owner, …) changed.
+     */
+    name: "DealUpdated";
+    payload: Event_DealUpdated;
+  }
+  | {
+    /**
+     * A note was added to or removed from a deal.
+     */
+    name: "NoteChanged";
+    payload: Event_NoteChanged;
+  }
+  | {
+    /**
+     * The pipeline's currency or rotting threshold changed.
+     */
+    name: "SettingsChanged";
+  }
+  | {
+    /**
+     * A stage was added, renamed, re-weighted, reordered or removed.
+     */
+    name: "StagesChanged";
+  }
 ;
 
 
@@ -274,6 +413,9 @@ export class CrmClient {
   /**
    * add_automation
    *
+   * "When a deal enters `stage_id`, schedule a `kind` activity called
+   * `subject`, due in `due_in_days` days." Returns the rule's id.
+   *
    * @intent mutating
    */
   public async addAutomation(params: { stage_id: string; kind: string; subject: string; due_in_days: number }): Promise<string> {
@@ -294,6 +436,8 @@ export class CrmClient {
   /**
    * add_stage
    *
+   * Append a stage at the end of the pipeline. Returns its id.
+   *
    * @intent mutating
    */
   public async addStage(params: { name: string; probability: number }): Promise<string> {
@@ -313,6 +457,8 @@ export class CrmClient {
 
   /**
    * create_deal
+   *
+   * Add a deal to a stage. Returns its id. Runs the stage's automations.
    *
    * @intent mutating
    */
@@ -344,6 +490,10 @@ export class CrmClient {
   /**
    * delete_contact
    *
+   * Delete a person. Only their creator may (the creation stamp, again).
+   * Deals keep their history but lose the link, so no deal points at
+   * someone who no longer exists.
+   *
    * @intent mutating
    */
   public async deleteContact(params: { contact_id: string }): Promise<void> {
@@ -353,6 +503,11 @@ export class CrmClient {
 
   /**
    * delete_deal
+   *
+   * Delete a deal with its activities and its creator's notes. Only its
+   * creator may — checked against the creation stamp, which nobody can
+   * rewrite. Other members' notes are theirs to delete; they go dark with
+   * the deal.
    *
    * @intent mutating
    */
@@ -364,6 +519,9 @@ export class CrmClient {
   /**
    * delete_note
    *
+   * Delete a note. Only its author may — the entry's owner, which every
+   * node checks when it applies the removal.
+   *
    * @intent mutating
    */
   public async deleteNote(params: { note_id: string }): Promise<void> {
@@ -374,6 +532,11 @@ export class CrmClient {
   /**
    * delete_stage
    *
+   * Remove a stage. Refused while any open deal sits in it, and for the last
+   * remaining stage — a pipeline always has somewhere to put a deal. A deal
+   * moved into it concurrently is not lost: the board shows a deal whose
+   * stage is gone in the first stage (see `deal_view`).
+   *
    * @intent mutating
    */
   public async deleteStage(params: { stage_id: string }): Promise<void> {
@@ -383,6 +546,10 @@ export class CrmClient {
 
   /**
    * get_deal
+   *
+   * One deal with its person, activities (by due date) and notes (newest
+   * first). Reads only that deal's rows: its activities and notes are index
+   * seeks, its person one lookup.
    *
    * @intent read_only
    */
@@ -412,6 +579,9 @@ export class CrmClient {
   /**
    * list_activities
    *
+   * Activities, optionally for one deal and/or by done-ness, by due date.
+   * One deal's activities are an index seek.
+   *
    * @intent read_only
    */
   public async listActivities(params: { deal_id: string | null; done: boolean | null }): Promise<ActivityView[]> {
@@ -432,6 +602,8 @@ export class CrmClient {
   /**
    * list_contacts
    *
+   * Everyone in the address book, by name, with their deal totals.
+   *
    * @intent read_only
    */
   public async listContacts(): Promise<ContactView[]> {
@@ -441,6 +613,11 @@ export class CrmClient {
 
   /**
    * list_deals
+   *
+   * Deals, optionally filtered by status, stage and owner, newest first.
+   *
+   * The most selective filter given is an index seek; the others filter
+   * what it returns.
    *
    * @intent read_only
    */
@@ -452,6 +629,8 @@ export class CrmClient {
   /**
    * list_stages
    *
+   * Stages in pipeline order.
+   *
    * @intent read_only
    */
   public async listStages(): Promise<StageView[]> {
@@ -461,6 +640,8 @@ export class CrmClient {
 
   /**
    * mark_lost
+   *
+   * Close a deal as lost, with the reason (feeds the lost-reasons report).
    *
    * @intent mutating
    */
@@ -472,6 +653,8 @@ export class CrmClient {
   /**
    * mark_won
    *
+   * Close a deal as won.
+   *
    * @intent mutating
    */
   public async markWon(params: { deal_id: string }): Promise<void> {
@@ -481,6 +664,9 @@ export class CrmClient {
 
   /**
    * move_deal
+   *
+   * Move an open deal to another stage and run that stage's automations.
+   * Moving to the stage it is already in is a no-op.
    *
    * @intent mutating
    */
@@ -492,6 +678,8 @@ export class CrmClient {
   /**
    * reopen_deal
    *
+   * Put a closed deal back on the board, in the stage it closed from.
+   *
    * @intent mutating
    */
   public async reopenDeal(params: { deal_id: string }): Promise<void> {
@@ -501,6 +689,8 @@ export class CrmClient {
 
   /**
    * reorder_stages
+   *
+   * Reorder the pipeline. `stage_ids` must name every stage exactly once.
    *
    * @intent mutating
    */
@@ -512,6 +702,8 @@ export class CrmClient {
   /**
    * reschedule_activity
    *
+   * Move an activity to a new due time.
+   *
    * @intent mutating
    */
   public async rescheduleActivity(params: { activity_id: string; due_at: number }): Promise<void> {
@@ -521,6 +713,8 @@ export class CrmClient {
 
   /**
    * set_activity_done
+   *
+   * Mark an activity done (or undo that).
    *
    * @intent mutating
    */
@@ -542,6 +736,8 @@ export class CrmClient {
   /**
    * set_currency
    *
+   * Set the pipeline currency: a three-letter ISO 4217 code such as `EUR`.
+   *
    * @intent mutating
    */
   public async setCurrency(params: { currency: string }): Promise<void> {
@@ -551,6 +747,8 @@ export class CrmClient {
 
   /**
    * set_rotting_days
+   *
+   * Days without activity before an open deal is flagged as rotting (1..=365).
    *
    * @intent mutating
    */
@@ -572,6 +770,9 @@ export class CrmClient {
   /**
    * update_deal
    *
+   * Edit a deal's fields. Only fields whose value differs are written, so a
+   * concurrent teammate edit to another field survives.
+   *
    * @intent mutating
    */
   public async updateDeal(params: { deal_id: string; title: string; value: number; organization: string; contact_id: string | null; owner: string | null; expected_close: number | null; source: string }): Promise<void> {
@@ -581,6 +782,8 @@ export class CrmClient {
 
   /**
    * update_stage
+   *
+   * Rename a stage and/or change its win probability.
    *
    * @intent mutating
    */

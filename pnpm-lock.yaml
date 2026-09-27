@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@calimero-network/abi-codegen':
-      specifier: ^2.1.0
-      version: 2.1.0
+      specifier: ^2.3.0
+      version: 2.3.0
     '@calimero-network/mero-icons':
       specifier: ^0.0.5
       version: 0.0.5
@@ -173,7 +173,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -316,7 +316,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -713,7 +713,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -795,7 +795,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -1031,7 +1031,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: ^9.4.0
         version: 9.39.5
@@ -1155,7 +1155,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -1255,7 +1255,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1
@@ -1331,7 +1331,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -1537,7 +1537,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -1697,7 +1697,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -1909,7 +1909,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
@@ -2000,7 +2000,7 @@ importers:
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
-        version: 2.1.0
+        version: 2.3.0
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -2924,8 +2924,8 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@calimero-network/abi-codegen@2.1.0':
-    resolution: {integrity: sha512-605afgnFsxE0XJb4rU+YPXM3uJYfcYpMbpIBHHdY3QDAJ3o0DVRKMb+SqC5tTaQXytV18TxQjbA6i342vTYdqA==}
+  '@calimero-network/abi-codegen@2.3.0':
+    resolution: {integrity: sha512-Q9QOG3q26GGLBcGcGI5S2apnXLpwVpIvrxTClMi1fg4L8MorMFxq5aZMSR3E04qb6LolSDjLA5M0JqB75G9F8w==}
     hasBin: true
 
   '@calimero-network/mero-icons@0.0.5':
@@ -10074,7 +10074,7 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@calimero-network/abi-codegen@2.1.0':
+  '@calimero-network/abi-codegen@2.3.0':
     dependencies:
       ajv: 8.20.0
       ajv-formats: 2.1.1(ajv@8.20.0)
