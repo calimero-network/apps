@@ -17,8 +17,8 @@ description: >
   empty, uppercase, spaced or too long, list_docs with / without
   include_archived.
 
-  Tags merge per key: tags added and removed on the two nodes before a
-  sync all survive. A doc records who created it and who changed it last.
+  Tags merge per key: adds and removes made on both nodes while
+  partitioned all hold. A doc records who created it and who changed it last.
 
   Matches the user flow in DocumentEditor + DocumentList: a folder
   with multiple docs, open one, rename via title, archive
@@ -59,11 +59,11 @@ nodes:
   mdns: true
   image: ghcr.io/calimero-network/merod:0.11.0-rc.45
   docs-node-1:
-    port: 3920
-    rpc_port: 3921
+    port: 3940
+    rpc_port: 3941
   docs-node-2:
-    port: 3922
-    rpc_port: 3923
+    port: 3942
+    rpc_port: 3943
 
 steps:
   # =================================================================
@@ -461,11 +461,8 @@ steps:
       tag: anything
     expected_failure: true
 
-  # remove_tag is intentionally tolerant: the backend `tags.retain(...)`
-  # is a no-op when the tag isn't present (see docs/src/lib.rs:323-335).
-  # Asserting success here documents that contract — the app's
-  # useDocs.removeTag wrapper relies on it so repeated remove taps on an
-  # already-removed tag don't surface an error toast.
+  # Removing a tag the doc never had is a no-op, not an error: useDocs.removeTag
+  # relies on it so a repeated remove tap shows no error toast.
   - name: remove_tag for a tag not present is a success no-op
     type: call
     node: docs-node-1

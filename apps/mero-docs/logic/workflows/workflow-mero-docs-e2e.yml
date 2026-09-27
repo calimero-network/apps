@@ -316,15 +316,27 @@ steps:
     statements:
       - 'equal({{eng_color_after_reject}}, "#00ff00")'
 
-  - name: The rejected folder was never registered
+  # A `call` with expected_failure passes even when the call succeeds, so the
+  # proof is that the id is still free: this fails as a duplicate otherwise.
+  - name: colour-probe registers with a valid colour, so the named one never landed
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
-    method: get_folder
+    method: register_folder
     executor_public_key: '{{alice_key}}'
     args:
       id: colour-probe
-    expected_failure: true
+      parent_id: null
+      color: '#00ff00'
+
+  - name: Unregister colour-probe
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: unregister_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: colour-probe
 
   - name: set_color empty string clears the color
     type: call
