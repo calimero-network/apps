@@ -3,7 +3,12 @@
 //! Identical architecture to mero-blocks, one dimension lower: the world is
 //! generated deterministically from `seed` on every client; this contract
 //! carries only the tile-override diff (dig = 0/air, never a map-remove) and
-//! player presence with the mero-meet room-clock + two-pass mark/grace reap.
+//! player presence on the mero-meet room clock.
+//!
+//! Who may write what is held by storage, on every node: the world's
+//! name/seed/clock are `Frozen` at creation, and each account's avatars sit in
+//! that account's `UserStorage` slot. The overrides stay a public map on
+//! purpose — anyone may dig or build anywhere.
 
 use std::cmp::Ordering;
 
@@ -12,7 +17,9 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
+use calimero_storage::collections::{
+    Frozen, Mergeable as MergeableTrait, UnorderedMap, UserStorage,
+};
 
 type MemberId = String;
 
@@ -22,8 +29,10 @@ const WORLD_H: i32 = 200;
 
 const MAX_EDITS_PER_CALL: usize = 512;
 const PRESENCE_TTL_SECS: u64 = 10;
-const REAP_STALE_SECS: u64 = 30;
-const REAP_GRACE_SECS: u64 = 30;
+/// How far ahead of the caller's own clock a stored player stamp may be and
+/// still move room time (see mero-blocks): an honest fast laptop is followed,
+/// a patched `u64::MAX` stamp is ignored instead of freezing presence.
+const MAX_CLOCK_SKEW_SECS: u64 = 900;
 
 // ── Stored records ───────────────────────────────────────────────────────────
 
@@ -90,7 +99,6 @@ impl MergeableTrait for TileOverride {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
-    pub id: MemberId,
     pub name: String,
     pub x: f64,
     pub y: f64,
@@ -114,28 +122,20 @@ impl MergeableTrait for Player {
     }
 }
 
-#[app::mergeable(id = "merraria::ReapMark")]
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
+/// One account's avatars, keyed by device (see `caller`). The slot and the
+/// map nested in it belong to the account: every node refuses another
+/// account's write to either.
+#[derive(BorshSerialize, BorshDeserialize, AbiType, Default, app::Mergeable)]
 #[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-#[serde(rename_all = "camelCase")]
-pub struct ReapMark {
-    pub marked_at: u64,
-    pub row_ts: u64,
-}
-
-impl MergeableTrait for ReapMark {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if lww_take(self.marked_at, other.marked_at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
+pub struct Avatars {
+    devices: UnorderedMap<MemberId, Player>,
 }
 
 // ── Views / args ─────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug, Default,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -207,13 +207,13 @@ pub enum Event {
 
 #[app::state(emits = Event)]
 pub struct Merraria {
-    name: LwwRegister<String>,
-    seed: LwwRegister<u64>,
-    created_at: LwwRegister<u64>,
-    /// "x,y" -> override. Set-only (dig = t:0), never removed.
+    /// name + seed + day-clock anchor, frozen: the terrain is derived from the
+    /// seed, so nobody (the creator included) may change it after creation.
+    meta: Frozen<WorldMeta>,
+    /// "x,y" -> override. Set-only (dig = t:0), never removed. Public on
+    /// purpose: the world is collaborative.
     overrides: UnorderedMap<String, TileOverride>,
-    players: UnorderedMap<MemberId, Player>,
-    reap_marks: UnorderedMap<MemberId, ReapMark>,
+    players: UserStorage<Avatars>,
 }
 
 #[app::logic]
@@ -222,12 +222,13 @@ impl Merraria {
     pub fn init(name: String, seed: u64, now: u64) -> Merraria {
         app::emit!(Event::Initialized());
         Merraria {
-            name: LwwRegister::new(name),
-            seed: LwwRegister::new(seed),
-            created_at: LwwRegister::new(now),
+            meta: Frozen::new(WorldMeta {
+                name,
+                seed,
+                created_at: now,
+            }),
             overrides: UnorderedMap::new(),
-            players: UnorderedMap::new(),
-            reap_marks: UnorderedMap::new(),
+            players: UserStorage::new(),
         }
     }
 
@@ -249,6 +250,9 @@ impl Merraria {
     /// for per-person state" — a live avatar is per-writer state.
     /// `one_person_on_two_devices_gets_two_avatars` holds this down.
     ///
+    /// Ownership still goes by account: the rows live in the caller's
+    /// `UserStorage` slot, keyed inside it by this device id.
+    ///
     /// Same axis on the client: `sync.ts` suppresses its own echo by comparing an
     /// event's member id against the context identity the node handed it, which
     /// is a device key. "Is this the machine that wrote it" is a device question.
@@ -261,29 +265,40 @@ impl Merraria {
     }
 
     // room time (see mero-blocks / mero-meet)
-    fn latest_player_ts(&self) -> u64 {
-        self.players
-            .entries()
-            .map(|e| e.map(|(_, p)| p.updated_at).max().unwrap_or(0))
-            .unwrap_or(0)
+
+    /// Every avatar row, `(device id, row)`; the id is the map key, never a
+    /// field an account could fill in with someone else's.
+    fn all_players(&self) -> Vec<(MemberId, Player)> {
+        let mut rows = Vec::new();
+        if let Ok(slots) = self.players.entries() {
+            for (_, avatars) in slots {
+                if let Ok(devices) = avatars.devices.entries() {
+                    rows.extend(devices);
+                }
+            }
+        }
+        rows
     }
 
+    /// Room time: the fastest member's clock, up to `MAX_CLOCK_SKEW_SECS`
+    /// ahead of the caller's. Compute it once per call.
     fn room_now(&self, caller_now: u64) -> u64 {
-        caller_now.max(self.latest_player_ts())
+        let ceiling = caller_now.saturating_add(MAX_CLOCK_SKEW_SECS);
+        self.all_players()
+            .into_iter()
+            .map(|(_, p)| p.updated_at)
+            .filter(|ts| *ts <= ceiling)
+            .fold(caller_now, u64::max)
     }
 
-    fn stamp(&self, caller_now: u64, stored: u64) -> u64 {
-        self.room_now(caller_now).max(stored.saturating_add(1))
+    fn stamp(room_now: u64, stored: u64) -> u64 {
+        room_now.max(stored.saturating_add(1))
     }
 
     // ── World ─────────────────────────────────────────────────────────────────
 
-    pub fn world_meta(&self) -> WorldMeta {
-        WorldMeta {
-            name: self.name.get().clone(),
-            seed: *self.seed.get(),
-            created_at: *self.created_at.get(),
-        }
+    pub fn world_meta(&self) -> app::Result<WorldMeta> {
+        Ok(self.meta.get()?.clone())
     }
 
     fn in_bounds(x: i32, y: i32) -> bool {
@@ -295,6 +310,7 @@ impl Merraria {
             app::bail!("too many edits in one batch");
         }
         let id = Self::caller_id();
+        let room_now = self.room_now(now);
         let mut applied: u32 = 0;
         for e in edits {
             if !Self::in_bounds(e.x, e.y) {
@@ -305,16 +321,15 @@ impl Merraria {
                 Ok(Some(o)) => o.updated_at,
                 _ => 0,
             };
-            let updated_at = self.stamp(now, stored);
+            let updated_at = Self::stamp(room_now, stored);
             self.overrides
                 .insert(key, TileOverride { t: e.t, updated_at })?;
             applied += 1;
         }
         if applied > 0 {
-            self.touch_player(&id, now);
+            self.touch_player(&id, room_now)?;
             app::emit!(Event::TilesChanged(id));
         }
-        self.reap_stale_players(now);
         Ok(applied)
     }
 
@@ -327,17 +342,35 @@ impl Merraria {
 
     // ── Players ───────────────────────────────────────────────────────────────
 
+    /// This device's row, from the caller's own slot.
+    fn my_player(&self, id: &MemberId) -> app::Result<Option<Player>> {
+        Ok(match self.players.get()? {
+            Some(avatars) => avatars.devices.get(id)?.map(|p| p.clone()),
+            None => None,
+        })
+    }
+
+    /// Upsert this device's row into the caller's own slot.
+    fn put_player(&mut self, id: MemberId, player: Player) -> app::Result<()> {
+        if let Some(mut avatars) = self.players.get()? {
+            let _ = avatars.devices.insert(id, player)?;
+        } else {
+            let mut devices = UnorderedMap::new();
+            let _ = devices.insert(id, player)?;
+            let _ = self.players.insert(Avatars { devices })?;
+        }
+        Ok(())
+    }
+
     pub fn join(&mut self, name: String, now: u64) -> app::Result<PlayerView> {
         let id = Self::caller_id();
-        let existing = self.players.get(&id)?;
+        let existing = self.my_player(&id)?;
         let joined_at = existing.as_ref().map(|p| p.joined_at).unwrap_or(now);
         let stored = existing.as_ref().map(|p| p.updated_at).unwrap_or(0);
         let (x, y) = existing.as_ref().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
-        drop(existing);
-        let updated_at = self.stamp(now, stored);
+        let updated_at = Self::stamp(self.room_now(now), stored);
 
         let player = Player {
-            id: id.clone(),
             name,
             x,
             y,
@@ -348,24 +381,21 @@ impl Merraria {
             joined_at,
             updated_at,
         };
-        self.players.insert(id.clone(), player.clone())?;
-        let _ = self.reap_marks.remove(&id);
-        app::emit!(Event::PlayerJoined(id));
-        Ok(Self::view_of(&player, true))
+        self.put_player(id.clone(), player.clone())?;
+        app::emit!(Event::PlayerJoined(id.clone()));
+        Ok(Self::view_of(id, &player, true))
     }
 
-    /// Silent presence + transform write (no SSE churn); runs the reap pass.
+    /// Silent presence + transform write (no SSE churn).
     pub fn heartbeat(&mut self, t: Transform, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let existing = self.players.get(&id)?;
+        let existing = self.my_player(&id)?;
         let joined_at = existing.as_ref().map(|p| p.joined_at).unwrap_or(now);
         let stored = existing.as_ref().map(|p| p.updated_at).unwrap_or(0);
         let was_left = existing.as_ref().map(|p| p.left).unwrap_or(true);
-        drop(existing);
-        let updated_at = self.stamp(now, stored);
+        let updated_at = Self::stamp(self.room_now(now), stored);
 
         let player = Player {
-            id: id.clone(),
             name: t.name,
             x: t.x,
             y: t.y,
@@ -380,50 +410,41 @@ impl Merraria {
             joined_at,
             updated_at,
         };
-        self.players.insert(id.clone(), player)?;
-        let _ = self.reap_marks.remove(&id);
+        self.put_player(id.clone(), player)?;
         if was_left {
             app::emit!(Event::PlayerJoined(id));
         }
-        self.reap_stale_players(now);
         Ok(())
     }
 
     pub fn leave(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let stored = match self.players.get(&id)? {
-            Some(p) => p.updated_at,
-            None => return Ok(()),
+        let Some(mut p) = self.my_player(&id)? else {
+            return Ok(());
         };
-        let updated_at = self.stamp(now, stored);
-        if let Ok(Some(mut p)) = self.players.get_mut(&id) {
-            p.left = true;
-            p.updated_at = updated_at;
-            drop(p);
-        }
-        let _ = self.reap_marks.remove(&id);
+        p.left = true;
+        p.updated_at = Self::stamp(self.room_now(now), p.updated_at);
+        self.put_player(id.clone(), p)?;
         app::emit!(Event::PlayerLeft(id));
         Ok(())
     }
 
+    /// Roster with liveness. A player who vanished without `leave` ages out
+    /// of the TTL here; nobody writes to another account's row to mark it.
     pub fn get_players(&self, now: u64) -> Vec<PlayerView> {
         let room_now = self.room_now(now);
-        self.players
-            .entries()
-            .map(|e| {
-                e.map(|(_, p)| {
-                    let online =
-                        !p.left && room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS;
-                    Self::view_of(&p, online)
-                })
-                .collect()
+        self.all_players()
+            .into_iter()
+            .map(|(id, p)| {
+                let online = !p.left && room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS;
+                Self::view_of(id, &p, online)
             })
-            .unwrap_or_default()
+            .collect()
     }
 
-    fn view_of(p: &Player, online: bool) -> PlayerView {
+    fn view_of(id: MemberId, p: &Player, online: bool) -> PlayerView {
         PlayerView {
-            id: p.id.clone(),
+            id,
             name: p.name.clone(),
             x: p.x,
             y: p.y,
@@ -434,69 +455,12 @@ impl Merraria {
         }
     }
 
-    fn touch_player(&mut self, id: &MemberId, now: u64) {
-        let stored = match self.players.get(id) {
-            Ok(Some(p)) => p.updated_at,
-            _ => return,
+    fn touch_player(&mut self, id: &MemberId, room_now: u64) -> app::Result<()> {
+        let Some(mut p) = self.my_player(id)? else {
+            return Ok(());
         };
-        let stamp = self.stamp(now, stored);
-        if let Ok(Some(mut p)) = self.players.get_mut(id) {
-            p.updated_at = stamp;
-            drop(p);
-        }
-    }
-
-    /// Two-pass mark/grace reap (see mero-blocks / mero-meet for the rationale).
-    fn reap_stale_players(&mut self, now: u64) {
-        let room_now = self.room_now(now);
-        let me = Self::caller_id();
-
-        let rows: Vec<(MemberId, u64, bool)> = self
-            .players
-            .entries()
-            .map(|e| e.map(|(k, p)| (k, p.updated_at, p.left)).collect())
-            .unwrap_or_default();
-
-        let mut reaped: Vec<MemberId> = Vec::new();
-        for (id, row_ts, left) in rows {
-            if left || id == me {
-                continue;
-            }
-            if room_now.saturating_sub(row_ts) <= REAP_STALE_SECS {
-                let _ = self.reap_marks.remove(&id);
-                continue;
-            }
-            let mark = match self.reap_marks.get(&id) {
-                Ok(Some(m)) => Some((m.marked_at, m.row_ts)),
-                _ => None,
-            };
-            match mark {
-                Some((marked_at, mark_row)) if mark_row == row_ts => {
-                    if room_now.saturating_sub(marked_at) > REAP_GRACE_SECS {
-                        reaped.push(id);
-                    }
-                }
-                _ => {
-                    let _ = self.reap_marks.insert(
-                        id,
-                        ReapMark {
-                            marked_at: room_now,
-                            row_ts,
-                        },
-                    );
-                }
-            }
-        }
-
-        for id in reaped {
-            let _ = self.reap_marks.remove(&id);
-            if let Ok(Some(mut p)) = self.players.get_mut(&id) {
-                p.left = true;
-                p.updated_at = p.updated_at.saturating_add(1);
-                drop(p);
-            }
-            app::emit!(Event::PlayerLeft(id));
-        }
+        p.updated_at = Self::stamp(room_now, p.updated_at);
+        self.put_player(id.clone(), p)
     }
 }
 
@@ -506,6 +470,7 @@ impl Merraria {
 mod tests {
     use super::*;
     use calimero_sdk::testing::TestHost;
+    use calimero_sdk::AccountId;
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
@@ -542,7 +507,7 @@ mod tests {
     #[test]
     fn world_meta_returns_init_params() {
         let app = new_world();
-        let meta = app.view(|s| s.world_meta());
+        let meta = app.view(|s| s.world_meta()).unwrap();
         assert_eq!(meta.name, "surface");
         assert_eq!(meta.seed, 42);
         assert_eq!(meta.created_at, 1000);
@@ -628,17 +593,17 @@ mod tests {
     }
 
     #[test]
-    fn reap_needs_mark_plus_frozen_grace_and_self_heals() {
+    fn a_vanished_player_ages_out_and_self_heals() {
         let mut app = new_world();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
         app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
             .unwrap();
 
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1040))
-            .unwrap(); // marks Alice
+        // Alice goes silent without `leave`; nobody writes her row, she is
+        // offline because her stamp aged out.
         app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075))
-            .unwrap(); // grace passed -> reap
+            .unwrap();
         let alice = app
             .view(|s| s.get_players(1076))
             .into_iter()
@@ -653,11 +618,14 @@ mod tests {
             .into_iter()
             .find(|p| p.id == id_of(ALICE))
             .unwrap();
-        assert!(alice.online, "reaped player self-heals on next heartbeat");
+        assert!(
+            alice.online,
+            "a silent player is back on the next heartbeat"
+        );
     }
 
     #[test]
-    fn skewed_fast_clock_cannot_instantly_reap_peers() {
+    fn skewed_fast_clock_cannot_knock_peers_offline() {
         let mut app = new_world();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
@@ -845,5 +813,83 @@ mod tests {
             .unwrap();
         let overrides = app.view(|s| s.get_overrides());
         assert_eq!(overrides[0].t, 4, "later edit wins even with a slow clock");
+    }
+
+    /// Founding parameters are a `Frozen` cell written by the account that
+    /// ran `init`; there is no setter, and every node refuses a later write.
+    #[test]
+    fn world_meta_is_frozen_by_its_creator() {
+        let app = new_world();
+        assert!(app.view(|s| s.meta.writer()).is_some());
+        assert_eq!(app.view(|s| s.world_meta()).unwrap().seed, 42);
+    }
+
+    /// Another account writing into my slot, as a patched node would, is
+    /// refused by storage; my own heartbeat still lands.
+    #[test]
+    fn another_account_cannot_move_or_evict_my_avatar() {
+        let mut app = new_world();
+        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 10.0), 1000))
+            .unwrap();
+
+        let forged = app.call_as_account(BOB, BOB, |s| -> app::Result<()> {
+            let Some(mut alices) = s.players.get_for_user(&AccountId::from(ALICE))? else {
+                app::bail!("alice has a slot");
+            };
+            let mut row = alices.devices.get(&id_of(ALICE))?.unwrap().clone();
+            row.x = 999.0;
+            row.left = true;
+            let _ = alices.devices.insert(id_of(ALICE), row)?;
+            Ok(())
+        });
+        assert!(forged.is_err(), "bob cannot rewrite alice's row");
+
+        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 11.0), 1001))
+            .unwrap();
+        let players = app.view(|s| s.get_players(1002));
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0].x, 11.0);
+        assert!(players[0].online);
+    }
+
+    /// A row stamped `u64::MAX` must not drag room time with it.
+    #[test]
+    fn a_far_future_stamp_does_not_hijack_room_time() {
+        let mut app = new_world();
+        app.call_as_account(BOB, BOB, |s| {
+            s.put_player(
+                id_of(BOB),
+                Player {
+                    name: "Mallory".to_owned(),
+                    x: 0.0,
+                    y: 0.0,
+                    dir: 1.0,
+                    sel: 0,
+                    action: "idle".to_owned(),
+                    left: false,
+                    joined_at: 0,
+                    updated_at: u64::MAX,
+                },
+            )
+        })
+        .unwrap();
+        app.call_as_account(ALICE, ALICE, |s| s.heartbeat(t("Alice", 1.0), 1000))
+            .unwrap();
+
+        let alice = app
+            .view(|s| s.get_players(1003))
+            .into_iter()
+            .find(|p| p.id == id_of(ALICE))
+            .unwrap();
+        assert!(alice.online, "room time stayed on the real clock");
+        let stored = app
+            .call_as_account(ALICE, ALICE, |s| s.my_player(&id_of(ALICE)))
+            .unwrap()
+            .unwrap()
+            .updated_at;
+        assert!(
+            stored < 1000 + MAX_CLOCK_SKEW_SECS,
+            "stamp not dragged to u64::MAX"
+        );
     }
 }
