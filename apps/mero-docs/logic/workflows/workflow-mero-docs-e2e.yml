@@ -275,6 +275,57 @@ steps:
       id: '{{eng_group}}'
       color: '#00ff00'
 
+  # Folder colours are `#rrggbb` or empty. core returns an app error as a
+  # byte array, so the reads below show the rejected writes landed nowhere.
+  - name: Reject set_color with a 3-digit colour
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: set_color
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{eng_group}}'
+      color: '#0f0'
+    expected_failure: true
+
+  - name: Reject register_folder with a named colour
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: colour-probe
+      parent_id: null
+      color: red
+    expected_failure: true
+
+  - name: get_folder after the rejected recolour
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{eng_group}}'
+    outputs:
+      eng_color_after_reject: result.output.color
+
+  - name: Assert the colour is still the valid one
+    type: assert
+    statements:
+      - 'equal({{eng_color_after_reject}}, "#00ff00")'
+
+  - name: The rejected folder was never registered
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: colour-probe
+    expected_failure: true
+
   - name: set_color empty string clears the color
     type: call
     node: calimero-node-1
