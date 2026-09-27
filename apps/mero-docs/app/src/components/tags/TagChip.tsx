@@ -7,13 +7,14 @@ import { TAG_NEUTRAL } from '@/lib/tags';
 interface TagDotProps {
   color?: string;
   size?: 'sm' | 'lg';
+  className?: string;
 }
 
-export function TagDot({ color, size = 'sm' }: TagDotProps) {
+export function TagDot({ color, size = 'sm', className }: TagDotProps) {
   return (
     <span
       data-testid="tag-dot"
-      className={cn('inline-block flex-shrink-0 rounded-full', size === 'lg' ? 'h-[7px] w-[7px]' : 'h-1.5 w-1.5')}
+      className={cn('inline-block flex-shrink-0 rounded-full', size === 'lg' ? 'h-[7px] w-[7px]' : 'h-1.5 w-1.5', className)}
       style={{ backgroundColor: color ?? TAG_NEUTRAL }}
     />
   );
