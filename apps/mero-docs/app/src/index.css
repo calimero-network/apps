@@ -222,3 +222,45 @@ html .bn-container[data-color-scheme='dark'] {
     opacity: 0;
   }
 }
+
+/* A section opened from a link: a brief lime wash that fades out. */
+.section-wash {
+  --section-wash: hsl(var(--primary) / 0.2);
+  border-radius: 6px;
+  margin-inline: -10px;
+  padding-inline: 10px;
+  animation: section-wash 1.6s ease-out forwards;
+}
+
+.dark .section-wash {
+  --section-wash: hsl(var(--primary) / 0.1);
+}
+
+@keyframes section-wash {
+  0%,
+  40% {
+    background-color: var(--section-wash);
+    box-shadow: inset 3px 0 0 hsl(var(--primary));
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+/* Reduced motion: a static outline held for the same time, then gone. */
+@media (prefers-reduced-motion: reduce) {
+  .section-wash {
+    animation: section-wash-outline 1.6s steps(1, end) forwards;
+  }
+}
+
+@keyframes section-wash-outline {
+  0% {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  100% {
+    outline: none;
+  }
+}
