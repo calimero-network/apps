@@ -556,6 +556,25 @@ export class EditorDriver {
     await confirm.getByRole('button', { name: /^Delete$/ }).click();
     await expect(confirm).toBeHidden();
   }
+
+  block(text: string): Locator {
+    return this.page.getByTestId('doc-block').filter({ hasText: text }).first();
+  }
+
+  // BlockNote shows the drag handle beside the hovered block.
+  async openBlockMenu(text: string): Promise<void> {
+    await this.block(text).hover();
+    await this.page.getByRole('button', { name: 'Open block menu' }).click();
+  }
+
+  // The item stays disabled ("Saving…") until the node has the block's id.
+  async copySectionLink(text: string): Promise<string> {
+    await this.openBlockMenu(text);
+    const item = this.page.getByRole('menuitem', { name: /Copy link to section/ });
+    await expect(item).toBeEnabled({ timeout: 15_000 });
+    await item.click();
+    return this.page.evaluate(() => navigator.clipboard.readText());
+  }
 }
 
 export class SettingsDriver {
