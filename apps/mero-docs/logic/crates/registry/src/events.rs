@@ -45,4 +45,12 @@ pub enum Event<'a> {
         folder_id: &'a str,
         member: &'a str,
     },
+    /// A tag's name, colour, or tombstone flag changed.
+    TagChanged {
+        key: &'a str,
+    },
+    /// A saved view was created, edited, or deleted.
+    ViewChanged {
+        id: &'a str,
+    },
 }
