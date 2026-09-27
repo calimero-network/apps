@@ -9,7 +9,6 @@ import {
 export interface Comment {
   id: string;
   post_id: string;
-  author: string;
   body: string;
   created_at: number;
   edited_at: number;
@@ -35,7 +34,6 @@ export interface CommentView {
 
 export interface CommentVote {
   comment_id: string;
-  voter: string;
   value: number;
   updated_at: number;
 }
@@ -58,6 +56,10 @@ export interface Event_CommentEdited {
 export interface Event_CommentVoted {
   post_id: string;
   comment_id: string;
+}
+
+export interface Event_ModeratorsChanged {
+  count: number;
 }
 
 export interface Event_PostCreated {
@@ -90,7 +92,6 @@ export interface MeroForum {
 
 export interface Post {
   id: string;
-  author: string;
   title: string;
   body: string;
   created_at: number;
@@ -117,17 +118,16 @@ export interface PostView {
 }
 
 export interface Profile {
-  account: string;
   name: string;
   updated_at: number;
 }
 
 export interface Vote {
   post_id: string;
-  voter: string;
   value: number;
   updated_at: number;
 }
+
 
 
 
@@ -143,6 +143,7 @@ export type AbiEvent =
   | { name: "CommentDeleted"; payload: Event_CommentDeleted }
   | { name: "CommentEdited"; payload: Event_CommentEdited }
   | { name: "CommentVoted"; payload: Event_CommentVoted }
+  | { name: "ModeratorsChanged"; payload: Event_ModeratorsChanged }
   | { name: "PostCreated"; payload: Event_PostCreated }
   | { name: "PostDeleted"; payload: Event_PostDeleted }
   | { name: "PostEdited"; payload: Event_PostEdited }
@@ -266,6 +267,46 @@ export class ForumClient {
   public async listPosts(params: { sort: string | null; cursor: string | null; limit: number }): Promise<PostPage> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_posts', argsJson: params });
     return response as PostPage;
+  }
+
+  /**
+   * moderate_comment
+   *
+   * @intent mutating
+   */
+  public async moderateComment(params: { comment_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'moderate_comment', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * moderate_post
+   *
+   * @intent mutating
+   */
+  public async moderatePost(params: { post_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'moderate_post', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * moderators
+   *
+   * @intent read_only
+   */
+  public async moderators(): Promise<string[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'moderators', argsJson: {} });
+    return response as string[];
+  }
+
+  /**
+   * set_moderators
+   *
+   * @intent mutating
+   */
+  public async setModerators(params: { accounts: string[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_moderators', argsJson: params });
+    return response as void;
   }
 
   /**

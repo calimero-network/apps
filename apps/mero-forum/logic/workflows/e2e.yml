@@ -8,7 +8,9 @@ description: >
     2. the author gate is real — a non-author's edit is REJECTED on a signed
        delta path, which no single-node test can exercise;
     3. votes are one row per account and the tally converges;
-    4. a delete replicates as a tombstone rather than vanishing locally.
+    4. a delete replicates as a tombstone rather than vanishing locally;
+    5. only a moderator (the founder, Alice) removes someone else's post or
+       comment, and a member cannot appoint themselves.
 
 force_pull_image: true
 
@@ -414,3 +416,113 @@ steps:
     type: assert
     statements:
       - 'not_contains({{feed_after_delete}}, "Namespaces vs contexts")'
+
+  # ── 6. Moderation: the founder removes spam, nobody else can ────────────────
+  #
+  # Alice ran `init`, so she is the first moderator. Moderation is a
+  # `Moderated<IndexedMap>` rule every node checks on apply, not just this one.
+  - name: Bob posts spam
+    type: call
+    node: calimero-node-2
+    context_id: "{{forum_id}}"
+    method: create_post
+    args:
+      title: "Buy cheap tokens"
+      body: "Limited offer"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      spam_id: result.output
+
+  - name: Sync the spam
+    type: wait_for_sync
+    context_id: "{{forum_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the moderators
+    type: call
+    node: calimero-node-1
+    context_id: "{{forum_id}}"
+    method: moderators
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      moderator_list: result.output
+
+  - name: Assert the forum has a moderator
+    type: assert
+    statements:
+      - "is_set({{moderator_list}})"
+
+  - name: Bob tries to appoint himself a moderator
+    type: call
+    node: calimero-node-2
+    context_id: "{{forum_id}}"
+    method: set_moderators
+    args:
+      accounts: ["{{bob_key}}"]
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      appoint_error: error
+
+  - name: Bob tries to moderate Alice's post
+    type: call
+    node: calimero-node-2
+    context_id: "{{forum_id}}"
+    method: moderate_post
+    args:
+      post_id: "{{post_id}}"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      moderate_error: error
+
+  - name: Assert a non-moderator can neither appoint nor moderate
+    type: assert
+    statements:
+      - "is_set({{appoint_error}})"
+      - "is_set({{moderate_error}})"
+
+  - name: Alice removes Bob's comment as a moderator
+    type: call
+    node: calimero-node-1
+    context_id: "{{forum_id}}"
+    method: moderate_comment
+    args:
+      comment_id: "{{comment_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice removes Bob's spam as a moderator
+    type: call
+    node: calimero-node-1
+    context_id: "{{forum_id}}"
+    method: moderate_post
+    args:
+      post_id: "{{spam_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the removals
+    type: wait_for_sync
+    context_id: "{{forum_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob reads the feed after moderation
+    type: call
+    node: calimero-node-2
+    context_id: "{{forum_id}}"
+    method: list_posts
+    args: { sort: "new", cursor: null, limit: 20 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      feed_after_moderation: result
+
+  - name: Assert the removal reached Node 2
+    type: assert
+    statements:
+      - 'not_contains({{feed_after_moderation}}, "Buy cheap tokens")'

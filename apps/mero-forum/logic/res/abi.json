@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A reply on a thread. Deliberately flat — one level, no nesting. Like a post,\nits author is the owner stamp. `thread` is one post's live comments, oldest\nfirst, so a page and a count are seeks.",
       "fields": [
         {
           "name": "id",
@@ -12,12 +13,6 @@
         },
         {
           "name": "post_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -124,12 +119,14 @@
           "name": "my_vote",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "The CALLER's vote, so the UI can render the arrows without a second call."
         }
       ]
     },
     "CommentVote": {
       "kind": "record",
+      "doc": "One account's vote on one COMMENT.\n\nA separate type and a separate map from {@link Vote}, rather than widening\n`Vote` to carry either kind of subject. Two reasons, and the second is the\nload-bearing one:\n\n  * `Vote.post_id` holding a comment id would be a lie in the field name,\n    and the ABI is a public surface that clients read;\n  * a post's tally reads the `post_id` index; folding comment votes into\n    the same map would put every comment vote into that index too, on a\n    page that never displays one.",
       "fields": [
         {
           "name": "comment_id",
@@ -138,16 +135,11 @@
           }
         },
         {
-          "name": "voter",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "value",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "+1, -1, or 0 for retracted."
         },
         {
           "name": "updated_at",
@@ -225,6 +217,17 @@
         }
       ]
     },
+    "Event_ModeratorsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "Event_PostCreated": {
       "kind": "record",
       "fields": [
@@ -293,8 +296,9 @@
             "value": {
               "$ref": "Post"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Post id → post. Its author edits and tombstones it; a moderator removes\nit. The founder is the first moderator."
         },
         {
           "name": "comments",
@@ -306,8 +310,9 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Every comment in one map, carrying its `post_id`, rather than a nested\ncollection per post. A nested CRDT created independently on two nodes\nneeds deterministic re-keying to converge; one flat map has no such\nhazard, and the `thread` index makes one post's comments a seek."
         },
         {
           "name": "votes",
@@ -319,8 +324,9 @@
             "value": {
               "$ref": "Vote"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed `\"<post_id>|<account>\"` — one row per voter per post, owned by the\nvoter."
         },
         {
           "name": "comment_votes",
@@ -332,8 +338,9 @@
             "value": {
               "$ref": "CommentVote"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed `\"<comment_id>|<account>\"` — one row per voter per comment."
         },
         {
           "name": "profiles",
@@ -344,23 +351,18 @@
             },
             "value": {
               "$ref": "Profile"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "The display name each account chose, in that account's own slot."
         }
       ]
     },
     "Post": {
       "kind": "record",
+      "doc": "A thread.\n\nEdits are last-writer-wins over a TOTAL order, not over `edited_at` alone:\ntwo authors' devices editing while partitioned can land the same millisecond,\nand a tie resolved by \"take other\" would pick a different winner on each side\nand leave the replicas permanently disagreeing. `deleted` is separate — it is\nan OR-flag, so a delete can never be undone by a concurrent edit arriving\nlater. Content LWW plus a monotone tombstone is the whole merge. Only the\nauthor writes a post (see `MeroForum::posts`), so these conflicts are\nbetween one person's own devices.\n\nThere is no author field: the author is the entry's owner stamp, the one\nthing a patched node cannot forge. `feed` is the live feed, newest first.",
       "fields": [
         {
           "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -399,6 +401,7 @@
     },
     "PostPage": {
       "kind": "record",
+      "doc": "One page, plus the cursor that fetches the next.\n\n`next_cursor` is `None` at the end of the list — which is how the frontend's\ninfinite scroll knows to stop, rather than by getting a short page (a page\ncan be short and still have more behind it once deleted rows are filtered).",
       "fields": [
         {
           "name": "items",
@@ -437,7 +440,8 @@
           "name": "author_name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The author's chosen name, or \"\" when they have not set one. Empty is a\nreal state — someone can post before naming themselves — so the UI falls\nback to a short id rather than rendering a blank byline."
         },
         {
           "name": "title",
@@ -479,19 +483,15 @@
           "name": "my_vote",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "The CALLER's vote, so the UI can render the arrows without a second call."
         }
       ]
     },
     "Profile": {
       "kind": "record",
+      "doc": "The display name one ACCOUNT chose for itself.\n\n── Why this is in the contract and not just localStorage ────────────────────\n\nA nickname kept only in the browser is a nickname only its owner can see:\nevery other reader still gets a 64-hex account id, which is the thing the\nname was supposed to replace. localStorage remains the source for the input\n(so the field is pre-filled and survives a reload before you ever post), but\nthe value has to reach the contract for anyone else's feed to render it.\n\nOne `UserStorage` slot per ACCOUNT, matching a post's owner stamp — so one\nperson is one name across their laptop and their phone, and only they can\nwrite it.\n\nThis is a claim, not an identity. Names are not unique and are not verified;\nthe account id remains the only thing that authorises anything, and every\nauthor-gated check below still compares accounts, never names.",
       "fields": [
-        {
-          "name": "account",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -508,6 +508,7 @@
     },
     "Vote": {
       "kind": "record",
+      "doc": "One account's vote on one post.\n\nKeyed per ACCOUNT rather than per device, which is what makes \"one person,\none vote\" true: a bare counter would let the same person vote once from each\nmachine, and there would be no way to take it back.\n\nThe voter is the row's owner stamp, and the row counts only when its key is\n`vote_key(post_id, owner)` — see `MeroForum::tally`.",
       "fields": [
         {
           "name": "post_id",
@@ -516,16 +517,11 @@
           }
         },
         {
-          "name": "voter",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "value",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "+1, -1, or 0 for retracted."
         },
         {
           "name": "updated_at",
@@ -539,6 +535,7 @@
   "methods": [
     {
       "name": "create_comment",
+      "doc": "No `user` argument. `only-peers` took the author as a caller-supplied\nstring, so anyone could comment as anyone.",
       "params": [
         {
           "name": "post_id",
@@ -596,6 +593,7 @@
     },
     {
       "name": "delete_post",
+      "doc": "Tombstone, not a removal.\n\nThe row stays so the delete can replicate and so a concurrent edit from\nthe author's other device cannot resurrect it. Removing the key would\nalso re-open the insert-after-remove pattern that never converges. A\nmoderator removes instead: see `moderate_post`.",
       "params": [
         {
           "name": "post_id",
@@ -659,6 +657,7 @@
     },
     {
       "name": "get_nickname",
+      "doc": "The name this account chose, or \"\" when it has not chosen one.",
       "params": [
         {
           "name": "account",
@@ -696,6 +695,7 @@
     },
     {
       "name": "list_comments",
+      "doc": "One page of a post's comments, oldest first — a thread reads forwards.\n\nA seek on the `thread` index: other posts' comments are never read.",
       "params": [
         {
           "name": "post_id",
@@ -724,6 +724,7 @@
     },
     {
       "name": "list_posts",
+      "doc": "One page of the feed.\n\n`sort` is `\"new\"` (default) or `\"top\"`. `cursor` is the `next_cursor` of\nthe previous page, or `None` for the first.\n\nKeyset pagination, not offset: an offset shifts under you the moment a\npeer's post replicates in, so an infinite scroll would skip and repeat\nrows. The cursor names the last row seen, so a new arrival above it\ncannot disturb the page below.\n\n`\"new\"` is a seek on the `feed` index and reads only the page (plus any\nposts sharing the cursor's timestamp). `\"top\"` has to score every live\npost: a converging vote count cannot be an index key.",
       "params": [
         {
           "name": "sort",
@@ -752,7 +753,71 @@
       "intent": "read_only"
     },
     {
+      "name": "moderate_comment",
+      "doc": "Remove someone's comment as a moderator.",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "moderate_post",
+      "doc": "Remove someone's post as a moderator. The author's own delete is\n`delete_post`.",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "moderators",
+      "doc": "The accounts that may remove any post or comment.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "set_moderators",
+      "doc": "Replace the moderators. Only a current moderator may; every node checks\nit as a writer-set rotation.",
+      "params": [
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_nickname",
+      "doc": "Claim a display name for the calling ACCOUNT.\n\nNo `account` argument, for the same reason `create_post` takes no author:\na caller-supplied identity is an impersonation hole. You can only name\nyourself — and `UserStorage` holds every node to that, not just this one.\n\nAn empty name CLEARS the claim rather than storing a blank, so \"I'd\nrather be anonymous\" is expressible and does not leave a row that\nrenders as an empty byline.",
       "params": [
         {
           "name": "name",
@@ -768,6 +833,7 @@
     },
     {
       "name": "vote",
+      "doc": "Up (+1), down (-1) or retract (0). Idempotent per account.",
       "params": [
         {
           "name": "post_id",
@@ -789,6 +855,7 @@
     },
     {
       "name": "vote_comment",
+      "doc": "Up/down/retract one COMMENT, same contract as {@link vote}: +1, -1, or 0.\n\nGated on the comment still existing, which also rejects a vote on a\ndeleted one — `load_comment` treats a tombstone as absent. Without that\ncheck a vote row could outlive its subject and keep a score alive for\nsomething nobody can read.",
       "params": [
         {
           "name": "comment_id",
@@ -832,6 +899,12 @@
       "name": "CommentVoted",
       "payload": {
         "$ref": "Event_CommentVoted"
+      }
+    },
+    {
+      "name": "ModeratorsChanged",
+      "payload": {
+        "$ref": "Event_ModeratorsChanged"
       }
     },
     {
