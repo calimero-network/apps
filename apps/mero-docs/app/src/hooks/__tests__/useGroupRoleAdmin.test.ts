@@ -15,6 +15,7 @@ import { renderHook, act } from '@testing-library/react';
 // still resolve against the mocks declared below.
 import { useGroupRoleAdmin } from '../useGroupRoleAdmin';
 import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
+import { WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
 
 
 const updateMemberRole = vi.fn();
@@ -124,7 +125,7 @@ describe('demotion from Admin', () => {
   it('seeds the Editor default so the demoted admin can still work', async () => {
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     await act(async () => {
-      await result.current.setRole(ACCOUNT, 'Member', 0, 'Admin');
+      await result.current.setRole(ACCOUNT, 'Editor', 0, 'Admin');
     });
     const [groupId, identity, body] = setMemberCapabilities.mock.calls[0];
     expect(groupId).toBe('ns-1');
@@ -136,7 +137,7 @@ describe('demotion from Admin', () => {
   it('revokes their registry manager grant', async () => {
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     await act(async () => {
-      await result.current.setRole(ACCOUNT, 'Member', 0, 'Admin');
+      await result.current.setRole(ACCOUNT, 'Editor', 0, 'Admin');
     });
     expect(removeManager).toHaveBeenCalledWith(ACCOUNT);
     expect(addManager).not.toHaveBeenCalled();
@@ -147,7 +148,7 @@ describe('demotion from Admin', () => {
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     let out = { ok: false, warnings: [] as string[] };
     await act(async () => {
-      out = await result.current.setRole(ACCOUNT, 'Member', 0, 'Admin');
+      out = await result.current.setRole(ACCOUNT, 'Editor', 0, 'Admin');
     });
     expect(out.ok).toBe(true);
     expect(out.warnings.some((w) => /not be able to do anything/i.test(w))).toBe(
@@ -191,7 +192,7 @@ describe('ordering and failure', () => {
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     await act(async () => {
       await expect(
-        result.current.setRole(ACCOUNT, 'Member', 0, 'Admin'),
+        result.current.setRole(ACCOUNT, 'Editor', 0, 'Admin'),
       ).rejects.toThrow('boom');
     });
     expect(setMemberCapabilities).not.toHaveBeenCalled();
@@ -203,11 +204,58 @@ describe('ordering and failure', () => {
     await act(async () => {
       await result.current.setRole(
         ACCOUNT,
-        'Member',
+        'Editor',
         DEFAULT_NEW_MEMBER_CAPS,
         'ReadOnly',
       );
     });
     expect(setMemberCapabilities).not.toHaveBeenCalled();
+  });
+});
+
+// Manager and Editor share the core role Member; between them only the
+// bitmask moves, so that write is the whole change and must not be swallowed.
+describe('between Member-backed roles', () => {
+  it('writes only the bitmask', async () => {
+    const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
+    await act(async () => {
+      await result.current.setRole(
+        ACCOUNT,
+        'Manager',
+        DEFAULT_NEW_MEMBER_CAPS,
+        'Member',
+      );
+    });
+    expect(updateMemberRole).not.toHaveBeenCalled();
+    expect(setMemberCapabilities.mock.calls[0][2]).toEqual({
+      capabilities: WORKSPACE_ROLE_GRANTS.Manager.caps,
+    });
+    expect(addManager).not.toHaveBeenCalled();
+  });
+
+  it('throws when the bitmask write fails, since nothing else changed', async () => {
+    setMemberCapabilities.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
+    await act(async () => {
+      await expect(
+        result.current.setRole(
+          ACCOUNT,
+          'Editor',
+          WORKSPACE_ROLE_GRANTS.Manager.caps,
+          'Member',
+        ),
+      ).rejects.toThrow('nope');
+    });
+  });
+
+  it('gives an admin demoted to Manager the Manager mask', async () => {
+    const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
+    await act(async () => {
+      await result.current.setRole(ACCOUNT, 'Manager', 0, 'Admin');
+    });
+    expect(updateMemberRole.mock.calls[0][2]).toEqual({ role: 'Member' });
+    expect(setMemberCapabilities.mock.calls[0][2]).toEqual({
+      capabilities: WORKSPACE_ROLE_GRANTS.Manager.caps,
+    });
   });
 });

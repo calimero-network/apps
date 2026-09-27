@@ -18,10 +18,6 @@ import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityTog
 import { NewFolderButton } from '@/components/folders/NewFolderButton';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
-import {
-  FolderRoleSelect,
-  FOLDER_ROLE_PRESETS,
-} from '@/components/admin/FolderRoleSelect';
 
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
@@ -345,28 +341,6 @@ describe('permission-gating', () => {
     });
     render(<FolderSharingPanel folderId="f1" />);
     expect(screen.getByPlaceholderText('member ID')).toBeTruthy();
-  });
-
-  it('FolderRoleSelect lists the Viewer / Editor / Manager presets', () => {
-    render(
-      <FolderRoleSelect role="Editor" folderCaps={0} onChange={() => undefined} />,
-    );
-    for (const p of FOLDER_ROLE_PRESETS) {
-      expect(
-        screen.getByRole('option', { name: p.label }),
-      ).toBeTruthy();
-    }
-  });
-
-  it("FolderRoleSelect shows 'Custom' for an off-preset (role, caps) pair", () => {
-    render(
-      <FolderRoleSelect
-        role="Editor"
-        folderCaps={0xff}
-        onChange={() => undefined}
-      />,
-    );
-    expect(screen.getByRole('option', { name: 'Custom' })).toBeTruthy();
   });
 
   it('FolderVisibilityToggle renders nothing without canManageVisibility', () => {

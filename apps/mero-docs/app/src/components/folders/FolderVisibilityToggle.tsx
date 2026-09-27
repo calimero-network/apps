@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import { useSetSubgroupVisibility } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
@@ -30,6 +31,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const { namespaceId, refetch } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 
   if (!perms.canManageVisibility || !current) return null;
@@ -37,6 +39,18 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const next: 'Open' | 'Restricted' = current === 'Open' ? 'Restricted' : 'Open';
 
   const onToggle = async () => {
+    // Restricting revokes everyone who only had inherited access; opening takes nothing away.
+    if (
+      next === 'Restricted' &&
+      !(await confirm({
+        title: 'Make this folder restricted?',
+        body: 'Workspace members you have not added to this folder will lose access to it.',
+        confirmLabel: 'Make restricted',
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       // Core expects lowercase `"open"` / `"restricted"`; see

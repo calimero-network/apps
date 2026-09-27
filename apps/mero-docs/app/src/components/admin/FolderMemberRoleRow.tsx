@@ -1,19 +1,11 @@
-// One member row inside FolderSharingPanel — name + the folder-scope
-// FolderRoleSelect bound to that member's (registry Role, folder
-// capability bitmask), plus an optional remove (×) button.
-//
-// The member's folder caps are read/written via
-// useGroupCapabilities(folderId, member). The member's registry Role
-// comes from the parent (joined off useFolderRoles) — members with no
-// explicit row use the WASM default `Editor`. Selecting a preset
-// writes BOTH: setFolderRole(folder_id, member, preset.role) and
-// setCapabilities(preset.folderCaps).
+// One member row inside FolderSharingPanel: name, one RoleSelect bound to
+// the member's (registry Role, folder caps), and an optional remove button.
+// Picking a role writes BOTH setFolderRole and the folder caps (see
+// FOLDER_ROLE_GRANTS). A core Admin or ReadOnly role on the folder overrides
+// both on the server, so that row shows it and cannot be changed here.
 //
 // Permission-gating lives on the parent panel; this component trusts
 // `canManage` for "is the dropdown / remove button interactive".
-// Core group-admins bypass both the bitmask and the registry Role on
-// the server, so for an Admin member we show an "All permissions"
-// label instead of a (misleading) preset picker.
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
@@ -22,10 +14,17 @@ import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { MemberLabel } from '@/components/common/MemberLabel';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { RoleSelect } from './RoleSelect';
 import {
-  FolderRoleSelect,
-  type FolderRolePreset,
-} from './FolderRoleSelect';
+  describeRoleChange,
+  folderRoleOf,
+  FOLDER_ROLE_GRANTS,
+  FOLDER_ROLES,
+  parseGroupRole,
+  roleDisplayLabel,
+  type FolderAccessRole,
+} from '@/lib/roles';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
 // The generated constructor is the only way to make one, which is the point —
 // this fleet has had folder ids, context ids and account ids all be bare 64-hex
@@ -47,7 +46,7 @@ interface Props {
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
   canManage: boolean;
-  /** Called after the preset's registry role + folder caps are both
+  /** Called after the role's registry role + folder caps are both
    *  written, so the parent can refetch the role list. */
   onAfterRoleChange?: () => void;
   /** Remove this member from the folder. Undefined hides the button. */
@@ -70,6 +69,7 @@ export function FolderMemberRoleRow({
   const { registryClient, registryContextId, namespaceId } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
+  const confirm = useConfirm();
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   // Caps change without a context event; the registry's sync run is the tick.
@@ -84,24 +84,42 @@ export function FolderMemberRoleRow({
   }, [capsRefetch]);
   useContextEvents(registryContextId, onCapsEvent, { strict: true });
 
-  const onPreset = async (preset: FolderRolePreset) => {
+  // While loading OR on a caps-fetch error, keep the role unknown: a stand-in
+  // `0` would read as Read only or Editor and let a change overwrite real caps.
+  const core = parseGroupRole(coreRole);
+  const current = folderRoleOf(
+    core,
+    registryRole,
+    caps.loading || caps.error ? null : (caps.capabilities ?? null),
+  );
+
+  const onRoleChange = async (next: FolderAccessRole) => {
     if (!registryClient) {
       setUpdateError('Workspace not ready');
       return;
     }
+    if (!current) return;
+    const ok = await confirm({
+      title: `Change ${label}'s role to ${roleDisplayLabel(next)}?`,
+      body: describeRoleChange(current, next, 'folder'),
+      confirmLabel: 'Change role',
+      destructive: true,
+    });
+    if (!ok) return;
+    const grant = FOLDER_ROLE_GRANTS[next];
     setUpdating(true);
     setUpdateError(null);
     try {
       await registryClient.setFolderRole({
         folder_id: FolderId(folderId),
         member: identity,
-        role: preset.role,
+        role: grant.role,
       });
-      await caps.setCapabilities(preset.folderCaps);
+      await caps.setCapabilities(grant.folderCaps);
       // `useGroupCapabilities.setCapabilities` resolves with the new
       // bitmask but mero-react does NOT necessarily update the hook's
       // own `capabilities` state until the next read — and the
-      // FolderRoleSelect's "current preset" derives from that value.
+      // RoleSelect's current role derives from that value.
       // Explicitly refetching keeps the dropdown label honest after
       // the write lands.
       await caps.refetch();
@@ -128,29 +146,15 @@ export function FolderMemberRoleRow({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {coreRole === 'Admin' ? (
-            <span className="text-xs text-muted-foreground">
-              All permissions
-            </span>
-          ) : (
-            <FolderRoleSelect
-              role={registryRole}
-              folderCaps={
-                caps.capabilities ??
-                // While loading OR on a caps-fetch error, pass `null` so
-                // FolderRoleSelect renders its "Loading…" state instead
-                // of misleading the user with a `0` that would match the
-                // Viewer/Editor preset (both have `folderCaps: 0`).
-                // Passing `0` on error also lets a "change" click write
-                // `setCapabilities(0)` — a no-op that silently swallows
-                // the underlying error.
-                (caps.loading || caps.error ? null : 0)
-              }
-              onChange={onPreset}
-              disabled={!canManage || updating || caps.loading || !!caps.error}
-              ariaLabel={`Folder role for ${label}`}
-            />
-          )}
+          <RoleSelect
+            value={current}
+            options={FOLDER_ROLES}
+            onChange={(next) => {
+              if (next !== 'Admin') void onRoleChange(next);
+            }}
+            disabled={!canManage || updating || core !== 'Member'}
+            ariaLabel={`Role for ${label}`}
+          />
           {onRemove && canManage && (
             <Button
               variant="ghost"

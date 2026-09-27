@@ -1,7 +1,7 @@
-// Single-member row in NamespaceMembersPanel. Binds MemberRoleSelect
-// to useGroupCapabilities(groupId, identity) so reading the current
-// bitmask and setting a new one both flow through the same hook —
-// which in turn stays reactive to SSE capability-change events.
+// Single-member row in NamespaceMembersPanel. One RoleSelect shows the
+// role mapped from (core role, bitmask) and applies it through
+// useGroupRoleAdmin; the bitmask comes from useGroupCapabilities, which
+// stays reactive to SSE capability-change events.
 //
 // Permission-gating lives on the parent panel; this component trusts
 // its caller for "should this row be interactive." The only UI
@@ -27,13 +27,16 @@ import {
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
-import { MemberRoleSelect } from './MemberRoleSelect';
-import { GroupRoleSelect } from './GroupRoleSelect';
+import { RoleSelect } from './RoleSelect';
 import { useGroupRoleAdmin } from '@/hooks/useGroupRoleAdmin';
 import {
   canChangeRole,
+  describeRoleChange,
   parseGroupRole,
   roleDisplayLabel,
+  workspaceRoleOf,
+  WORKSPACE_ROLES,
+  type AccessRole,
   type GroupRole,
 } from '@/lib/roles';
 
@@ -62,21 +65,6 @@ interface Props {
   isPresent?: boolean;
   canManage: boolean;
   onRemove: (identity: string, label: string) => Promise<void>;
-}
-
-// Role → Tailwind badge classes. Admin is emphasised; the others
-// stay low-contrast so the list reads as a roster, not a traffic
-// light.
-function roleBadgeClasses(role: string | undefined): string {
-  switch (role) {
-    case 'Admin':
-      return 'bg-selected text-selected-foreground border-transparent';
-    case 'ReadOnly':
-      return 'bg-muted text-muted-foreground border-border';
-    case 'Member':
-    default:
-      return 'bg-accent text-accent-foreground border-border';
-  }
 }
 
 export function NamespaceMemberRow({
@@ -168,31 +156,19 @@ export function NamespaceMemberRow({
     }
   }, [renameValue, currentName, renameTo, refetchName, cancelRename]);
 
-  const onRoleChange = async (nextMask: number) => {
-    setUpdating(true);
-    setUpdateError(null);
-    try {
-      await caps.setCapabilities(nextMask);
-    } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setUpdateError(err.message);
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   // --- Core group role (promote / demote) ---
   const currentRole = parseGroupRole(role);
+  const currentAccess = workspaceRoleOf(currentRole, caps.capabilities);
   // `true`: this roster IS the workspace, so "Admin here" is the claim that
   // should also carry registry-manager rights. A folder roster passes false.
   const roleAdmin = useGroupRoleAdmin(groupId, true);
   const [roleWarnings, setRoleWarnings] = useState<string[]>([]);
 
   const roleVeto = useCallback(
-    (nextRole: GroupRole): string | null => {
+    (nextRole: AccessRole): string | null => {
       const verdict = canChangeRole({
         nextRole,
-        currentRole,
+        currentRole: currentAccess ?? 'Custom',
         isSelf: !!isSelf,
         actorRole,
         actorCaps,
@@ -200,15 +176,22 @@ export function NamespaceMemberRow({
       });
       return verdict.allowed ? null : (verdict.reason ?? 'Not permitted.');
     },
-    [currentRole, isSelf, actorRole, actorCaps, adminCount],
+    [currentAccess, isSelf, actorRole, actorCaps, adminCount],
   );
 
-  const onGroupRoleChange = async (nextRole: GroupRole) => {
+  const onRoleChange = async (nextRole: AccessRole) => {
     const veto = roleVeto(nextRole);
-    if (veto) {
+    if (veto || !currentAccess) {
       setUpdateError(veto);
       return;
     }
+    const ok = await confirm({
+      title: `Change ${currentName ?? label}'s role to ${roleDisplayLabel(nextRole)}?`,
+      body: describeRoleChange(currentAccess, nextRole, 'workspace'),
+      confirmLabel: 'Change role',
+      destructive: true,
+    });
+    if (!ok) return;
     setUpdating(true);
     setUpdateError(null);
     setRoleWarnings([]);
@@ -231,17 +214,26 @@ export function NamespaceMemberRow({
   };
 
   const onRemoveClick = async () => {
-    const ok = await confirm({
-      title: 'Remove member?',
-      body: (
-        <>
-          Remove <span className="font-medium">{label}</span> from this
-          workspace?
-        </>
-      ),
-      confirmLabel: 'Remove',
-      destructive: true,
-    });
+    const ok = await confirm(
+      isSelf
+        ? {
+            title: 'Leave this workspace?',
+            body: 'You will lose access to this workspace and need a new invite to come back.',
+            confirmLabel: 'Leave',
+            destructive: true,
+          }
+        : {
+            title: 'Remove member?',
+            body: (
+              <>
+                Remove <span className="font-medium">{label}</span> from this
+                workspace?
+              </>
+            ),
+            confirmLabel: 'Remove',
+            destructive: true,
+          },
+    );
     if (!ok) return;
     setRemoving(true);
     try {
@@ -331,54 +323,21 @@ export function NamespaceMemberRow({
                     <Pencil className="h-3 w-3" />
                   </button>
                 )}
-                {role && (
-                  <span
-                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${roleBadgeClasses(
-                      role,
-                    )}`}
-                  >
-                    {roleDisplayLabel(role)}
-                  </span>
-                )}
               </>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <GroupRoleSelect
-            value={currentRole}
+          <RoleSelect
+            value={currentAccess}
+            options={WORKSPACE_ROLES}
             onChange={(next) => {
-              void onGroupRoleChange(next);
+              void onRoleChange(next);
             }}
             reasonFor={roleVeto}
             disabled={!canManage || updating || roleAdmin.saving}
-            ariaLabel={`Access level for ${label}`}
+            ariaLabel={`Role for ${label}`}
           />
-          {currentRole === 'Admin' ? (
-            // Admins bypass the cap bitmask entirely on the server
-            // (is_group_admin_or_has_capability short-circuits role
-            // === Admin to "all caps allowed"), so exposing a
-            // cap-preset picker here would suggest a choice that
-            // wouldn't actually take effect.
-            <span className="text-xs text-muted-foreground">
-              All permissions
-            </span>
-          ) : currentRole === 'ReadOnly' ? (
-            // Same reasoning inverted: a ReadOnly member's bits would still
-            // be honoured by the server, so offering a preset picker here
-            // would let an admin build a "read-only" member who can write.
-            // Demoting to ReadOnly clears the bitmask (see
-            // `capabilitiesForRole`); switch them back to Member to grant
-            // anything.
-            <span className="text-xs text-muted-foreground">No permissions</span>
-          ) : (
-            <MemberRoleSelect
-              value={caps.capabilities}
-              onChange={onRoleChange}
-              disabled={!canManage || updating || caps.loading}
-              ariaLabel={`Permissions for ${label}`}
-            />
-          )}
           {canManage && (
             <Button
               variant="ghost"
