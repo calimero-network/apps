@@ -1,6 +1,12 @@
 import React from 'react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { WorkspaceLayout } from '../WorkspaceLayout';
 
 const setSelectedFolder = vi.fn();
@@ -104,6 +110,17 @@ describe('WorkspaceLayout sidebar below md', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('closes from its own close button', async () => {
+    setDesktop(false);
+    render(<WorkspaceLayout />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
+
+    const drawer = screen.getByRole('dialog', { name: 'Folders' });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });

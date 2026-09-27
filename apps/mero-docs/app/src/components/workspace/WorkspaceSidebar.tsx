@@ -5,8 +5,12 @@
 // Below md the parent renders SidebarDrawer instead.
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
+import { LogoWithText } from '@/components/icons/Logo';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -107,7 +111,22 @@ export function SidebarDrawer({
         className="inset-y-0 left-0 flex w-[min(20rem,85vw)] max-w-none max-h-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-y-0 border-l-0 p-0 data-[state=open]:animate-in data-[state=open]:slide-in-from-left data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left"
       >
         <DialogTitle className="sr-only">Folders</DialogTitle>
-        {children}
+        {/* Mirrors the top bar so Close sits where the toggle was; the dialog
+            hides the toggle and backdrop from screen readers while open. */}
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
+          <DialogClose asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogClose>
+          <LogoWithText size={22} textClassName="whitespace-nowrap" />
+        </div>
+        <div className="min-h-0 flex-1">{children}</div>
       </DialogContent>
     </Dialog>
   );
