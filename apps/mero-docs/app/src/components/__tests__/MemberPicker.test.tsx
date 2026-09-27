@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { MemberPicker } from '../common/MemberPicker';
 
 const members = [
@@ -111,31 +113,32 @@ describe('MemberPicker', () => {
     expect(screen.queryByText(/cathy-pubkey/)).toBeNull();
   });
 
-  it('Escape closes its own suggestion list without dismissing a parent dialog', () => {
-    const onParentEscape = vi.fn();
-    render(
-      <div onKeyDown={onParentEscape}>
-        <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
-      </div>,
-    );
+  it('Escape inside a dialog closes only the suggestion list, then the dialog', async () => {
+    const user = userEvent.setup();
+    function InDialog() {
+      const [open, setOpen] = useState(true);
+      return (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent aria-describedby={undefined}>
+            <DialogTitle>New folder</DialogTitle>
+            <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    render(<InDialog />);
     const input = screen.getByRole('combobox');
-    fireEvent.focus(input);
+    await user.click(input);
+    await user.keyboard('ali');
     expect(screen.getByRole('listbox')).toBeTruthy();
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(onParentEscape).not.toHaveBeenCalled();
-  });
 
-  it('lets Escape reach a parent dialog once its own list is already closed', () => {
-    const onParentEscape = vi.fn();
-    render(
-      <div onKeyDown={onParentEscape}>
-        <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
-      </div>,
-    );
-    const input = screen.getByRole('combobox');
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(onParentEscape).toHaveBeenCalled();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('ali');
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('accepts a free-form pubkey paste via Enter when no option matches', () => {

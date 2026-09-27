@@ -160,8 +160,7 @@ export function MemberPicker({
               pick(query.trim());
             }
           } else if (e.key === 'Escape' && open) {
-            // Stop here so a picker inside a dialog only dismisses its own
-            // suggestion list, not the dialog underneath it.
+            // Radix dialogs see Escape first; DialogContent ignores it while this list is open.
             e.preventDefault();
             e.stopPropagation();
             setOpen(false);
