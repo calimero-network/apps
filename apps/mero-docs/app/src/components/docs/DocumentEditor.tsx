@@ -5,10 +5,16 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import {
+  useSubscription,
+  type SubscriptionEventData,
+} from '@calimero-network/mero-react';
 import { toast } from 'sonner';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { DocDto } from '@/generated/docs/DocsClient';
+import { DocTags } from '@/components/tags/DocTags';
+import { isContextEvent } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -18,13 +24,17 @@ import { useFugueTitle } from '@/hooks/useFugueTitle';
 import { useBodyCursors, type CursorEditor } from '@/hooks/useBodyCursors';
 import { useDocPresence } from '@/hooks/useDocPresence';
 import { useTitleCursors } from '@/hooks/useTitleCursors';
+import { useCanManageTags } from '@/hooks/useTags';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
+import { parseTagChanges } from '@/lib/rich/events';
 import { docUrl, parseAppPath } from '@/lib/routes';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
+const TAG_ADD_FAILED = "Couldn't add the tag. Try again.";
+const TAG_REMOVE_FAILED = "Couldn't remove the tag. Try again.";
 
 interface Props {
   folderId: string;
@@ -51,8 +61,12 @@ export function DocumentEditor({
   // A caps-fetch failure leaves this false, so the editor opens read-only
   // rather than writable on error.
   const canEditDocs = perms.canEditDocs;
+  const canManageTags = useCanManageTags();
+  const canTag = canEditDocs && canManageTags;
   const docs = useDocs(folderId);
   const {
+    addTag: docsAddTag,
+    removeTag: docsRemoveTag,
     remove: docsRemove,
     get: docsGet,
     contextId: docsContextId,
@@ -146,6 +160,42 @@ export function DocumentEditor({
     };
   }, [docId, docsContextId, docsGet]);
 
+  // A failed re-read keeps the tags already shown.
+  const rereadDoc = useCallback(() => {
+    docsGet(docId).then(setDoc, (cause: unknown) =>
+      console.warn('[DocumentEditor] doc re-read failed', cause),
+    );
+  }, [docId, docsGet]);
+  const tagEventContexts = useMemo(
+    () => (docsContextId ? [docsContextId] : []),
+    [docsContextId],
+  );
+  // Doc ids repeat across folders, so the event must come from this doc's context.
+  const onTagEvent = useCallback(
+    (event: SubscriptionEventData) => {
+      if (!isContextEvent(event) || event.contextId !== docsContextId) return;
+      if (parseTagChanges(event.data).includes(docId)) rereadDoc();
+    },
+    [docsContextId, docId, rereadDoc],
+  );
+  useSubscription(tagEventContexts, onTagEvent);
+  const onAddTag = useCallback(
+    (key: string) =>
+      void docsAddTag(docId, key).then(rereadDoc, (cause: unknown) => {
+        console.warn('[DocumentEditor] add tag failed', cause);
+        toast.error(TAG_ADD_FAILED);
+      }),
+    [docsAddTag, docId, rereadDoc],
+  );
+  const onRemoveTag = useCallback(
+    (key: string) =>
+      void docsRemoveTag(docId, key).then(rereadDoc, (cause: unknown) => {
+        console.warn('[DocumentEditor] remove tag failed', cause);
+        toast.error(TAG_REMOVE_FAILED);
+      }),
+    [docsRemoveTag, docId, rereadDoc],
+  );
+
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
     if (!title.title) return;
@@ -233,6 +283,16 @@ export function DocumentEditor({
         sectionLinks={sectionLinks}
         focusBlock={linkedBlock && editorIdOf(linkedBlock)}
         focusKey={location.key}
+        tags={
+          doc && (
+            <DocTags
+              tagKeys={doc.tags}
+              canEdit={canTag}
+              onAdd={onAddTag}
+              onRemove={onRemoveTag}
+            />
+          )
+        }
       />
       <DocumentInspector client={client} docId={docId} />
     </>

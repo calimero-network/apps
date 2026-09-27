@@ -92,6 +92,8 @@ export interface EditorShellProps {
   focusBlock?: string;
   /** The navigation that carried `focusBlock`; a new one focuses again. */
   focusKey?: string;
+  /** The document's tag row, above the first line and outside the body. */
+  tags?: React.ReactNode;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -116,6 +118,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   sectionLinks,
   focusBlock,
   focusKey,
+  tags,
 }) => {
   const { theme } = useTheme();
 
@@ -350,6 +353,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
               data-testid="doc-editor"
               className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
             >
+              {tags}
               <SectionLinksContext.Provider value={sectionLinks ?? null}>
                 <BlockNoteView
                   editor={editor}
