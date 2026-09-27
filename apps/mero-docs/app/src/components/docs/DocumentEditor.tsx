@@ -4,6 +4,7 @@
 // event into a re-read. EditorShell owns every piece of visual chrome.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -21,7 +22,7 @@ import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
-import { docUrl } from '@/lib/routes';
+import { docUrl, parseAppPath } from '@/lib/routes';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
@@ -43,6 +44,8 @@ export function DocumentEditor({
   const { namespaceId, selfIdentity, namespaceMemberNames } =
     useDriveWorkspace();
   const isOnline = useOnlineStatus();
+  const location = useLocation();
+  const linkedBlock = parseAppPath(location.pathname, location.hash)?.block;
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   // Doc-edit ability is the registry Role, gated through useFolderPermissions.
   // A caps-fetch failure leaves this false, so the editor opens read-only
@@ -91,6 +94,21 @@ export function DocumentEditor({
     contextId: docsContextId,
     editor: editor as unknown as BodyEditor | null,
   });
+  const { backendIdOf, editorIdOf, isConfirmed } = body;
+  const sectionLinks = useMemo(
+    () =>
+      namespaceId
+        ? {
+            copy: (blockId: string, section: string) =>
+              void copyLink(
+                docUrl(namespaceId, folderId, docId, backendIdOf(blockId)),
+                `Link to "${section}" copied`,
+              ),
+            isConfirmed,
+          }
+        : undefined,
+    [namespaceId, folderId, docId, backendIdOf, isConfirmed],
+  );
   const onEditorReady = useCallback(
     (ready: DriveEditor) => setEditor(ready),
     [],
@@ -212,6 +230,9 @@ export function DocumentEditor({
         isLoading={body.loading}
         onEditorReady={onEditorReady}
         peers={peerList}
+        sectionLinks={sectionLinks}
+        focusBlock={linkedBlock && editorIdOf(linkedBlock)}
+        focusKey={location.key}
       />
       <DocumentInspector client={client} docId={docId} />
     </>

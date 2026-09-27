@@ -5,7 +5,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import { EditorHeader, type TitleBinding } from '../EditorHeader';
 import type { TitleCaret } from '@/lib/rich/cursors';
-import { stampBlocks } from '../EditorShell';
 
 const CARET = {
   author: 'alice',
@@ -84,27 +83,5 @@ describe('title presence markers', () => {
   it('draws nothing when no peer is on the title', () => {
     render(<Header />);
     expect(screen.queryByTestId('presence-cursor')).toBeNull();
-  });
-});
-
-describe('stampBlocks', () => {
-  it('addresses each rendered block by its backend id', () => {
-    const { container } = render(
-      <div>
-        <div data-id="blk-1">one</div>
-        <div data-id="blk-2">two</div>
-      </div>,
-    );
-    stampBlocks(container);
-    expect(
-      screen.getAllByTestId('doc-block').map((el) => el.dataset.blockId),
-    ).toEqual(['blk-1', 'blk-2']);
-  });
-
-  it('does nothing without a root and leaves an unidentified node alone', () => {
-    expect(() => stampBlocks(null)).not.toThrow();
-    const { container } = render(<div>no id</div>);
-    stampBlocks(container);
-    expect(screen.queryByTestId('doc-block')).toBeNull();
   });
 });

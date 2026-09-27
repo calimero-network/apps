@@ -66,7 +66,7 @@ interface InlineLinkNode {
 }
 type InlineNode = InlineTextNode | InlineLinkNode | { type: string };
 
-function inlineToText(content: unknown): string {
+export function inlineToText(content: unknown): string {
   if (!Array.isArray(content)) return ''; // table payload or no inline content
   return (content as InlineNode[])
     .map((node) => {
