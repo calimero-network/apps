@@ -14,6 +14,9 @@
   /* Calimero green on MeroDesign neutrals. --primary (#a5ff11) is a fill only,
      under --primary-foreground; green text, icons and rings use --primary-ink. */
   :root {
+    /* Native controls (scrollbars, checkboxes, date pickers) follow the theme instead of staying light. */
+    color-scheme: light;
+
     --background: 0 0% 98%;
     --foreground: 0 0% 7%;
 
@@ -69,6 +72,8 @@
   /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
      ink and fill are the same green. */
   .dark {
+    color-scheme: dark;
+
     --background: 240 7% 6%;
     --foreground: 0 0% 93%;
 
@@ -183,6 +188,13 @@ html .bn-container[data-color-scheme='dark'] {
 
 .ProseMirror {
   outline: none;
+}
+
+/* Browser focus lands on this contenteditable div directly; same ring
+   token as the other inputs, in place of the outline suppressed above. */
+.ProseMirror:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+  border-radius: var(--bn-border-radius);
 }
 
 

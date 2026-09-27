@@ -65,6 +65,14 @@ describe('FolderSharingPanel read-only rows', () => {
     expect(screen.getByText('Read only')).toBeTruthy();
   });
 
+  it('uses the same remove icon as every other member row, not a bare glyph', () => {
+    render(<FolderSharingPanel folderId="f1" />);
+    const removeButton = screen.getByRole('button', { name: 'Remove Bob' });
+    // The icon carries no accessible role; identifying it requires direct DOM access.
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(removeButton.querySelector('.lucide-trash-2')).toBeTruthy();
+  });
+
   it('echoes a picked member by name, not by key', () => {
     render(<FolderSharingPanel folderId="f1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));

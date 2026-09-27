@@ -73,6 +73,14 @@ describe('WorkspaceSettingsPanel managers', () => {
     ).toBeTruthy();
   });
 
+  it('uses the same remove icon as every other member row, not a bare glyph', () => {
+    render(<WorkspaceSettingsPanel />);
+    const removeButton = screen.getByRole('button', { name: 'Remove manager Dana' });
+    // The icon carries no accessible role; identifying it requires direct DOM access.
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(removeButton.querySelector('.lucide-trash-2')).toBeTruthy();
+  });
+
   it('names the remove button by the same fresh name shown on the row', () => {
     registryAdmin.managers = [NAMED, UNNAMED, SELF];
     render(<WorkspaceSettingsPanel />);

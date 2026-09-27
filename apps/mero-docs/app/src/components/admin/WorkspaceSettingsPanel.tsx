@@ -11,7 +11,7 @@
 // surface doesn't advertise actions the caller can't take.
 
 import React, { useState } from 'react';
-import { Crown, ShieldCheck, UserPlus } from 'lucide-react';
+import { Crown, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -56,7 +56,7 @@ function ManagerRow({
           aria-label={`Remove manager ${resolvedName}`}
           onClick={() => onRemove(memberId)}
         >
-          <span aria-hidden>×</span>
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       )}
     </li>

@@ -111,6 +111,33 @@ describe('MemberPicker', () => {
     expect(screen.queryByText(/cathy-pubkey/)).toBeNull();
   });
 
+  it('Escape closes its own suggestion list without dismissing a parent dialog', () => {
+    const onParentEscape = vi.fn();
+    render(
+      <div onKeyDown={onParentEscape}>
+        <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
+      </div>,
+    );
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(onParentEscape).not.toHaveBeenCalled();
+  });
+
+  it('lets Escape reach a parent dialog once its own list is already closed', () => {
+    const onParentEscape = vi.fn();
+    render(
+      <div onKeyDown={onParentEscape}>
+        <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
+      </div>,
+    );
+    const input = screen.getByRole('combobox');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onParentEscape).toHaveBeenCalled();
+  });
+
   it('accepts a free-form pubkey paste via Enter when no option matches', () => {
     const onSelect = vi.fn();
     render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);

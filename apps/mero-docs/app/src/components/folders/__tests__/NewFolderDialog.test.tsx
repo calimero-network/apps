@@ -76,6 +76,16 @@ describe('NewFolderDialog member-picker', () => {
     );
   });
 
+  it('uses the same remove icon as every other member row, not a bare glyph', () => {
+    render(<NewFolderDialog parentFolderId={null} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
+    fireEvent.click(screen.getByText('add-member-a'));
+    const removeButton = screen.getByRole('button', { name: 'Remove member-a' });
+    // The icon carries no accessible role; identifying it requires direct DOM access.
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(removeButton.querySelector('.lucide-trash-2')).toBeTruthy();
+  });
+
   it('sends no members when visibility stays Open', async () => {
     const onClose = vi.fn();
     render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
