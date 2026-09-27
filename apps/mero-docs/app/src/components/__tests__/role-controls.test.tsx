@@ -1,0 +1,297 @@
+// One role control per member row, and the confirmations in front of role
+// changes, leaving and restricting a folder: cancel writes nothing, confirm
+// writes once.
+
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
+import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
+import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
+import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityToggle';
+import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
+import { MANAGER_FOLDER_CAPS, WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
+
+const confirm = vi.fn();
+const setMemberCapabilities = vi.fn();
+const updateMemberRole = vi.fn();
+const setSubgroupVisibility = vi.fn();
+const setFolderRole = vi.fn();
+const setCapabilities = vi.fn();
+const removeMember = vi.fn();
+const caps = { value: DEFAULT_NEW_MEMBER_CAPS as number | null };
+
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  useConfirm: () => confirm,
+}));
+vi.mock('@calimero-network/mero-react', () => ({
+  useGroupCapabilities: () => ({
+    capabilities: caps.value,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+    setCapabilities,
+  }),
+  useMero: () => ({ mero: { admin: { setMemberCapabilities } } }),
+  useUpdateMemberRole: () => ({ updateMemberRole }),
+  useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
+  useGroupMembers: () => ({ members: [], loading: false, error: null, refetch: vi.fn() }),
+}));
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    selfIdentity: 'me',
+    registryContextId: 'ctx',
+    registryClient: { setFolderRole },
+    registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
+    namespaceMemberNames: {},
+    folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('@/hooks/useContextEvents', () => ({ useContextEvents: vi.fn() }));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null, refetch: vi.fn() }),
+}));
+vi.mock('@/hooks/useAdminRenameMember', () => ({
+  useAdminRenameMember: () => ({ canRename: false, renameTo: vi.fn() }),
+  MAX_DISPLAY_NAME_LEN: 64,
+}));
+vi.mock('@/hooks/useFolderPermissions', () => ({
+  useFolderPermissions: () => ({
+    canManageVisibility: true,
+    canManagePermissions: false,
+    canManageMembers: true,
+    canInviteMembers: false,
+  }),
+}));
+vi.mock('@/hooks/useFolderMembership', () => ({
+  useFolderMembership: () => ({
+    members: [{ identity: 'me', name: 'Me', role: 'Member' }],
+    loading: false,
+    error: null,
+    add: vi.fn(),
+    remove: removeMember,
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('@/hooks/useFolderRole', () => ({
+  useFolderRoles: () => ({ entries: [], refetch: vi.fn() }),
+}));
+vi.mock('@/hooks/useNamespaceInvitation', () => ({
+  useCreateFolderInvite: () => ({ create: vi.fn() }),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  caps.value = DEFAULT_NEW_MEMBER_CAPS;
+  for (const fn of [
+    setMemberCapabilities,
+    updateMemberRole,
+    setSubgroupVisibility,
+    setFolderRole,
+    setCapabilities,
+    removeMember,
+  ]) {
+    fn.mockResolvedValue(undefined);
+  }
+});
+
+function renderWorkspaceRow(overrides: Partial<React.ComponentProps<typeof NamespaceMemberRow>> = {}) {
+  const onRemove = vi.fn().mockResolvedValue(undefined);
+  render(
+    <ul>
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="alice"
+        label="Alice"
+        role="Member"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={1}
+        canManage
+        onRemove={onRemove}
+        {...overrides}
+      />
+    </ul>,
+  );
+  return { onRemove };
+}
+
+describe('workspace member row', () => {
+  it('has one role control, showing the mapped role', () => {
+    renderWorkspaceRow();
+    const selects = screen.getAllByRole('combobox');
+    expect(selects).toHaveLength(1);
+    expect((selects[0] as HTMLSelectElement).value).toBe('Editor');
+  });
+
+  it('offers Guest, not the folder-only Read only', () => {
+    renderWorkspaceRow();
+    expect(screen.getByRole('option', { name: 'Guest' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Read only' })).toBeNull();
+  });
+
+  it('shows Custom for a mask no role describes', () => {
+    caps.value = 4;
+    renderWorkspaceRow();
+    expect(screen.getByRole('option', { name: 'Custom' })).toBeTruthy();
+  });
+
+  it('writes nothing when the role change is cancelled', async () => {
+    confirm.mockResolvedValue(false);
+    renderWorkspaceRow();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Manager' } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0][0].title).toBe("Change Alice's role to Manager?");
+    expect(confirm.mock.calls[0][0].destructive).toBe(true);
+    expect(setMemberCapabilities).not.toHaveBeenCalled();
+    expect(updateMemberRole).not.toHaveBeenCalled();
+  });
+
+  it('applies the mapped writes once when confirmed', async () => {
+    confirm.mockResolvedValue(true);
+    renderWorkspaceRow();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Manager' } });
+    await waitFor(() => expect(setMemberCapabilities).toHaveBeenCalledTimes(1));
+    expect(setMemberCapabilities.mock.calls[0][2]).toEqual({
+      capabilities: WORKSPACE_ROLE_GRANTS.Manager.caps,
+    });
+    expect(updateMemberRole).not.toHaveBeenCalled();
+  });
+
+  it('asks before you leave the workspace, and cancel keeps you in', async () => {
+    confirm.mockResolvedValue(false);
+    const { onRemove } = renderWorkspaceRow({ isSelf: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Alice' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    const opts = confirm.mock.calls[0][0];
+    expect(opts.title).toBe('Leave this workspace?');
+    expect(opts.destructive).toBe(true);
+    render(<>{opts.body}</>);
+    expect(screen.getByText(/need a new invite/)).toBeTruthy();
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it('removes you once when you confirm leaving', async () => {
+    confirm.mockResolvedValue(true);
+    const { onRemove } = renderWorkspaceRow({ isSelf: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Alice' }));
+    await waitFor(() => expect(onRemove).toHaveBeenCalledTimes(1));
+  });
+});
+
+function renderFolderRow() {
+  render(
+    <ul>
+      <FolderMemberRoleRow
+        folderId="f1"
+        identity="bob"
+        label="Bob"
+        coreRole="Member"
+        registryRole="Editor"
+        canManage
+      />
+    </ul>,
+  );
+}
+
+describe('folder member row', () => {
+  it('uses the shared vocabulary, with Viewer shown as Read only', () => {
+    caps.value = 0;
+    renderFolderRow();
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: 'Read only' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Viewer' })).toBeNull();
+  });
+
+  it('writes nothing when the role change is cancelled', async () => {
+    caps.value = 0;
+    confirm.mockResolvedValue(false);
+    renderFolderRow();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ReadOnly' } });
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0][0].title).toBe("Change Bob's role to Read only?");
+    expect(setFolderRole).not.toHaveBeenCalled();
+    expect(setCapabilities).not.toHaveBeenCalled();
+  });
+
+  it('writes the folder role and caps once when confirmed', async () => {
+    caps.value = 0;
+    confirm.mockResolvedValue(true);
+    renderFolderRow();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Manager' } });
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledTimes(1));
+    expect(setFolderRole).toHaveBeenCalledTimes(1);
+    expect(setFolderRole.mock.calls[0][0].role).toBe('Manager');
+    expect(setCapabilities).toHaveBeenCalledWith(MANAGER_FOLDER_CAPS);
+  });
+
+  it('shows a core admin as Admin, not as a choice', () => {
+    render(
+      <ul>
+        <FolderMemberRoleRow
+          folderId="f1"
+          identity="bob"
+          label="Bob"
+          coreRole="Admin"
+          registryRole="Editor"
+          canManage
+        />
+      </ul>,
+    );
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.value).toBe('Admin');
+    expect(select.disabled).toBe(true);
+  });
+});
+
+describe('leaving a folder', () => {
+  it('asks first, and cancel keeps you in', async () => {
+    confirm.mockResolvedValue(false);
+    render(<FolderSharingPanel folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Me' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    const opts = confirm.mock.calls[0][0];
+    expect(opts.title).toBe('Leave this folder?');
+    expect(opts.destructive).toBe(true);
+    render(<>{opts.body}</>);
+    expect(screen.getByText(/need a new invite/)).toBeTruthy();
+    expect(removeMember).not.toHaveBeenCalled();
+  });
+
+  it('removes you once when confirmed', async () => {
+    confirm.mockResolvedValue(true);
+    render(<FolderSharingPanel folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Me' }));
+    await waitFor(() => expect(removeMember).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('making a folder restricted', () => {
+  it('asks first, and cancel leaves it open', async () => {
+    confirm.mockResolvedValue(false);
+    render(<FolderVisibilityToggle folderId="f1" current="Open" />);
+    fireEvent.click(screen.getByRole('button', { name: /Make restricted/ }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0][0].destructive).toBe(true);
+    expect(setSubgroupVisibility).not.toHaveBeenCalled();
+  });
+
+  it('restricts once when confirmed', async () => {
+    confirm.mockResolvedValue(true);
+    render(<FolderVisibilityToggle folderId="f1" current="Open" />);
+    fireEvent.click(screen.getByRole('button', { name: /Make restricted/ }));
+    await waitFor(() => expect(setSubgroupVisibility).toHaveBeenCalledTimes(1));
+    expect(setSubgroupVisibility).toHaveBeenCalledWith('f1', {
+      subgroupVisibility: 'restricted',
+    });
+  });
+
+  it('opens a folder without asking', async () => {
+    render(<FolderVisibilityToggle folderId="f1" current="Restricted" />);
+    fireEvent.click(screen.getByRole('button', { name: /Make open/ }));
+    await waitFor(() => expect(setSubgroupVisibility).toHaveBeenCalledTimes(1));
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});

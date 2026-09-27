@@ -417,7 +417,7 @@ export const DOCS = {
           { term: 'Workspace', def: 'The workspace you and your members share. It holds the folder tree.' },
           { term: 'Folder', def: 'A folder in the tree. It holds its own documents, and sharing it gives access to those documents only.' },
           { term: 'Document', def: 'A rich-text document with an id like `doc-3`, allocated by a counter that produces distinct ids even when two people create a document at the same moment.' },
-          { term: 'Owner / manager / folder role', def: 'The workspace has one owner and any number of managers who may set roles on any folder. Individual folders can also carry their own per-person roles.' },
+          { term: 'Owner / folder role', def: 'The workspace has one owner, who can let other people set roles on any folder. Individual folders can also carry their own per-person roles.' },
         ],
       },
       {
@@ -435,14 +435,14 @@ export const DOCS = {
         heading: 'Sharing a folder, not the workspace',
         paragraphs: [
           'Share at folder level. Someone given one folder gets that folder’s documents replicated to their node and has no copy of anything else in the workspace.',
-          'Managers may set roles on any folder; a folder role applies to that folder alone. Because each folder keeps its own membership, a revoked member stops receiving its documents rather than merely losing a menu item.',
+          'The owner, and anyone the owner allows, may set roles on any folder; a folder role applies to that folder alone. Because each folder keeps its own membership, a revoked member stops receiving its documents rather than merely losing a menu item.',
         ],
       },
       {
         id: 'storage',
         heading: 'What is stored, and where',
         bullets: [
-          'Workspace: folder records, display order, colours and aliases, the owner and managers, and per-folder roles.',
+          'Workspace: folder records, display order, colours and aliases, the owner and who may set folder roles, and per-folder roles.',
           'Each folder: its documents with their tags and archive state, plus comments, each owned by its author.',
           'Document edits are appended as updates, so concurrent typing merges rather than replacing.',
         ],

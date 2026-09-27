@@ -30,6 +30,7 @@
 // one (only the registry OWNER may appoint managers).
 
 import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS, hasCap } from '@/constants/config';
+import type { Role } from '@/generated/registry/RegistryClient';
 
 /** Core group role. The server's vocabulary, spelled as the server spells it. */
 export type GroupRole = 'Admin' | 'Member' | 'ReadOnly';
@@ -49,61 +50,152 @@ export function parseGroupRole(raw: string | undefined | null): GroupRole {
   return 'Member';
 }
 
-export const ROLE_DESCRIPTIONS: Record<GroupRole, string> = {
-  Admin:
-    'Full control of this workspace. Bypasses the permission list entirely.',
-  Member: 'Permissions come from the list beside the role.',
-  ReadOnly: 'Can see the workspace but cannot change anything.',
+/** The one role vocabulary people see. Guest is workspace-only, Read only is folder-only. */
+export type WorkspaceAccessRole = 'Admin' | 'Manager' | 'Editor' | 'Guest';
+export type FolderAccessRole = 'Manager' | 'Editor' | 'ReadOnly';
+export type AccessRole = WorkspaceAccessRole | FolderAccessRole;
+/** A row's role, or 'Custom' when no role describes the underlying state. */
+export type ShownRole = AccessRole | 'Admin' | 'Custom';
+
+export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
+  Admin: 'Full control, including who else is an admin.',
+  Manager: 'Can invite and remove people, and edit.',
+  Editor: 'Can create and edit documents.',
+  Guest: 'Sees only folders shared with them directly.',
+  ReadOnly: 'Can open documents but not edit them.',
+  Custom: 'Permissions that match none of the roles. Pick a role to replace them.',
 };
 
-/** Display label for a role name, sentence-cased. `role` values themselves
- *  (used as option/select values) stay the server's exact spelling. */
+/** Display label for a role, sentence-cased. Option values keep the code spelling. */
 export function roleDisplayLabel(role: string): string {
   return role === 'ReadOnly' ? 'Read only' : role;
 }
 
+const WORKSPACE_MANAGER_CAPS =
+  DEFAULT_NEW_MEMBER_CAPS |
+  CAPABILITIES.CAN_INVITE_MEMBERS |
+  CAPABILITIES.MANAGE_MEMBERS |
+  CAPABILITIES.CAN_MANAGE_VISIBILITY |
+  CAPABILITIES.CAN_DELETE_SUBGROUP |
+  CAPABILITIES.CAN_MANAGE_METADATA;
+
+/** Folder-scope Manager bits: the workspace Manager's, minus creating. */
+export const MANAGER_FOLDER_CAPS =
+  CAPABILITIES.CAN_INVITE_MEMBERS |
+  CAPABILITIES.MANAGE_MEMBERS |
+  CAPABILITIES.CAN_MANAGE_VISIBILITY |
+  CAPABILITIES.CAN_DELETE_SUBGROUP |
+  CAPABILITIES.CAN_MANAGE_METADATA;
+
+export const WORKSPACE_ROLES: readonly WorkspaceAccessRole[] = ['Admin', 'Manager', 'Editor', 'Guest'];
+export const FOLDER_ROLES: readonly FolderAccessRole[] = ['Manager', 'Editor', 'ReadOnly'];
+
 /**
- * The capability bitmask to write ALONGSIDE a role change, or `null` to leave
- * the member's existing bitmask untouched.
- *
- * ⚠️ This is the difference between a role change that works and one that only
- * relabels somebody.
- *
- * `role` and `capabilities` are separate server fields and changing one does
- * not touch the other. An Admin's bitmask is usually `0`, because while they
- * were an Admin nothing ever needed to set it — the admin short-circuit made
- * it irrelevant. Demote that Admin to Member and the short-circuit stops
- * applying, their `0` starts counting, and they land as a member who cannot
- * create a document, open a folder or invite anyone. Nothing errors: the
- * demotion succeeded, and the person simply cannot do anything. So a demotion
- * out of Admin seeds the Editor default rather than leaving the field alone.
- *
- * Promoting TO Admin returns `null` deliberately: the bitmask is not consulted
- * for an Admin, and widening it would leave a permanently over-granted mask
- * behind after a later demotion.
- *
- * ReadOnly returns `0`, because a ReadOnly member with capability bits is a
- * contradiction the server would honour — the bits, not the label, are what it
- * checks for a non-Admin.
+ * What each workspace role writes. `caps: null` leaves the bitmask alone: the
+ * server skips it for an Admin, and widening it would outlive a demotion.
  */
-export function capabilitiesForRole(
-  nextRole: GroupRole,
-  currentCaps: number | null,
-): number | null {
-  switch (nextRole) {
-    case 'Admin':
-      return null;
-    case 'ReadOnly':
-      return 0;
-    case 'Member':
-      // Only seed when they have nothing. A member who already carries a
-      // deliberate bitmask (Viewer, Manager, or a hand-picked set) keeps it —
-      // re-selecting 'Member' on someone who is already a Member must not
-      // silently reset their permissions to the default.
-      return currentCaps === null || currentCaps === 0
-        ? DEFAULT_NEW_MEMBER_CAPS
-        : null;
+export const WORKSPACE_ROLE_GRANTS: Record<
+  WorkspaceAccessRole,
+  { role: GroupRole; caps: number | null }
+> = {
+  Admin: { role: 'Admin', caps: null },
+  Manager: { role: 'Member', caps: WORKSPACE_MANAGER_CAPS },
+  Editor: { role: 'Member', caps: DEFAULT_NEW_MEMBER_CAPS },
+  Guest: { role: 'ReadOnly', caps: 0 },
+};
+
+/** What each folder role writes: the registry folder Role plus folder caps. */
+export const FOLDER_ROLE_GRANTS: Record<FolderAccessRole, { role: Role; folderCaps: number }> = {
+  Manager: { role: 'Manager', folderCaps: MANAGER_FOLDER_CAPS },
+  Editor: { role: 'Editor', folderCaps: 0 },
+  ReadOnly: { role: 'Viewer', folderCaps: 0 },
+};
+
+/** A workspace member's role; `null` while a non-admin's mask is loading. */
+export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole | null {
+  if (role === 'Admin') return 'Admin';
+  if (caps === null) return null;
+  const match = WORKSPACE_ROLES.find(
+    (r) => WORKSPACE_ROLE_GRANTS[r].role === role && WORKSPACE_ROLE_GRANTS[r].caps === caps,
+  );
+  return match ?? 'Custom';
+}
+
+/** A folder member's role. A core Admin or ReadOnly role on the folder
+ *  overrides both fields: core bypasses them, or discards the writes. */
+export function folderRoleOf(
+  coreRole: GroupRole,
+  registryRole: Role | null,
+  folderCaps: number | null,
+): ShownRole | null {
+  if (coreRole !== 'Member') return coreRole;
+  if (registryRole === null || folderCaps === null) return null;
+  const match = FOLDER_ROLES.find(
+    (r) =>
+      FOLDER_ROLE_GRANTS[r].role === registryRole &&
+      FOLDER_ROLE_GRANTS[r].folderCaps === folderCaps,
+  );
+  return match ?? 'Custom';
+}
+
+/** A folder member's role when only the registry Role is known, not the caps. */
+export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
+  if (coreRole !== 'Member') return coreRole;
+  return FOLDER_ROLES.find((r) => FOLDER_ROLE_GRANTS[r].role === registryRole) ?? 'Custom';
+}
+
+// Lowest role first; each level lists what it adds over the one below.
+const ROLE_LADDERS: Record<'workspace' | 'folder', [AccessRole, string[]][]> = {
+  workspace: [
+    ['Guest', []],
+    ['Editor', ['open folders shared with the whole workspace', 'create folders and documents']],
+    ['Manager', ['invite, rename and remove people']],
+    ['Admin', ['make other people admins']],
+  ],
+  folder: [
+    ['ReadOnly', []],
+    ['Editor', ['edit its documents']],
+    ['Manager', ['invite and remove its members', 'rename, restrict or delete it']],
+  ],
+};
+const LOWEST_ROLE_CLAUSE: Record<'workspace' | 'folder', string> = {
+  workspace: 'they will see only folders shared with them directly',
+  folder: 'they can open its documents but not edit them',
+};
+
+function listOf(parts: string[], conjunction: string): string {
+  return parts.length < 2
+    ? parts.join('')
+    : `${parts.slice(0, -1).join(', ')} ${conjunction} ${parts[parts.length - 1]}`;
+}
+
+/** The confirmation body for a role change: what the node will let them do, gained or lost. */
+export function describeRoleChange(
+  from: ShownRole,
+  to: AccessRole,
+  place: 'workspace' | 'folder',
+): string {
+  const ladder = ROLE_LADDERS[place];
+  const at = ladder.findIndex(([r]) => r === to);
+  const was = ladder.findIndex(([r]) => r === from);
+  const abilities = (lo: number, hi: number) =>
+    ladder.slice(lo, hi).flatMap(([, a]) => a);
+  const clauses: string[] = [];
+  if (was < 0) {
+    if (at > 0) clauses.push(`they will be able to ${listOf(abilities(1, at + 1), 'and')}`);
+  } else if (at > was) {
+    clauses.push(`they will be able to ${listOf(abilities(was + 1, at + 1), 'and')}`);
+  } else {
+    clauses.push(`they will no longer be able to ${listOf(abilities(at + 1, was + 1), 'or')}`);
   }
+  if (at === 0) clauses.push(LOWEST_ROLE_CLAUSE[place]);
+  const [first, ...rest] = clauses;
+  const sentences = [
+    `In this ${place}, ${first}.`,
+    ...rest.map((c) => `${c[0].toUpperCase()}${c.slice(1)}.`),
+  ];
+  if (from === 'Custom') sentences.unshift('Their custom permissions are replaced.');
+  return sentences.join(' ');
 }
 
 /** Mirrors the server's `is_group_admin_or_has_capability`. */
@@ -118,9 +210,9 @@ export function effectiveHasCap(
 
 export interface RoleChangeContext {
   /** The role being assigned. */
-  nextRole: GroupRole;
+  nextRole: AccessRole;
   /** The target member's current role. */
-  currentRole: GroupRole;
+  currentRole: ShownRole;
   /** True when the target row is the acting user. */
   isSelf: boolean;
   /** The acting user's own role on this group. */
@@ -225,7 +317,7 @@ export function countAdmins(
  *
  *   * An Admin's bitmask is not consulted, so writing one is noise at best;
  *     if the defaults are narrow it also leaves a trap primed for the day they
- *     are demoted (see `capabilitiesForRole`).
+ *     are demoted (see `WORKSPACE_ROLE_GRANTS`).
  *   * A ReadOnly member's bitmask IS consulted — the label is not a separate
  *     gate — so handing them the default mask makes a "read-only" member who
  *     can write. Silently.

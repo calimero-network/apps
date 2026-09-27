@@ -53,7 +53,7 @@ function ManagerRow({
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
           disabled={busy}
-          aria-label={`Remove manager ${resolvedName}`}
+          aria-label={`Remove ${resolvedName} from people who can set folder roles`}
           onClick={() => onRemove(memberId)}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -110,11 +110,11 @@ export function WorkspaceSettingsPanel() {
       return;
     }
     if (reg.managers.includes(m)) {
-      setAdminError('Already a manager');
+      setAdminError('Already on the list');
       return;
     }
     if (reg.owner && m === reg.owner) {
-      setAdminError('The owner is implicitly a manager');
+      setAdminError('The owner can always set folder roles');
       return;
     }
     setAdminError(null);
@@ -131,7 +131,7 @@ export function WorkspaceSettingsPanel() {
 
   const onRemoveManager = async (m: string) => {
     const ok = await confirm({
-      title: 'Remove manager?',
+      title: 'Stop them setting folder roles?',
       body: (
         <>
           Remove{' '}
@@ -140,9 +140,8 @@ export function WorkspaceSettingsPanel() {
             memberId={m}
             className="font-medium"
           />
-          {' '}from the managers? They'll keep any folder access they
-          have as a workspace member, but lose the ability to change
-          folder roles.
+          {' '}from the people who can set folder roles? They'll keep any
+          folder access they have as a workspace member.
         </>
       ),
       confirmLabel: 'Remove',
@@ -184,11 +183,11 @@ export function WorkspaceSettingsPanel() {
         data-testid="registry-owner-managers"
       >
         <div className="text-sm font-medium text-foreground">
-          Workspace owner &amp; managers
+          People who can set folder roles
         </div>
         <p className="text-xs text-muted-foreground">
-          The owner (and managers they appoint) can change per-folder
-          roles. Only the owner can change the manager list.
+          The workspace owner, and anyone the owner adds here, can change
+          anyone's role on any folder. Only the owner can change this list.
         </p>
 
         {reg.error && (
@@ -270,11 +269,11 @@ export function WorkspaceSettingsPanel() {
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-                Managers
+                Added by the owner
               </div>
               {reg.managers.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No managers. Only the owner can change folder roles.
+                  Nobody added yet. Only the owner can set folder roles.
                 </p>
               ) : (
                 <ul className="space-y-1">
@@ -310,7 +309,7 @@ export function WorkspaceSettingsPanel() {
                         (s): s is string => !!s,
                       )}
                       placeholder="Search members or paste a member ID…"
-                      ariaLabel="manager member ID"
+                      ariaLabel="member to add"
                       disabled={busy}
                       onSelect={(identity) => {
                         setManagerInput(identity);
@@ -337,13 +336,13 @@ export function WorkspaceSettingsPanel() {
                     }}
                   >
                     <UserPlus className="h-3.5 w-3.5" />
-                    Add manager
+                    Add
                   </Button>
                 </div>
               </div>
             ) : (
               <p className="pt-1 text-xs text-muted-foreground">
-                Only the workspace owner can change managers.
+                Only the workspace owner can change this list.
               </p>
             )}
           </>
