@@ -243,7 +243,7 @@ describe('folder member row', () => {
     expect(setCapabilities).toHaveBeenCalledWith(MANAGER_FOLDER_CAPS);
   });
 
-  it('shows a core admin as Admin, not as a choice', () => {
+  it('shows a core admin as the folder Owner, not as a choice', () => {
     render(
       <ul>
         <FolderMemberRoleRow
@@ -257,7 +257,8 @@ describe('folder member row', () => {
       </ul>,
     );
     const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('Admin');
+    expect(select.value).toBe('Owner');
+    expect(screen.getByRole('option', { name: 'Owner' })).toBeTruthy();
     expect(select.disabled).toBe(true);
   });
 });

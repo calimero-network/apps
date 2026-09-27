@@ -54,11 +54,13 @@ export function parseGroupRole(raw: string | undefined | null): GroupRole {
 export type WorkspaceAccessRole = 'Admin' | 'Manager' | 'Editor' | 'Guest';
 export type FolderAccessRole = 'Manager' | 'Editor' | 'ReadOnly';
 export type AccessRole = WorkspaceAccessRole | FolderAccessRole;
-/** A row's role, or 'Custom' when no role describes the underlying state. */
-export type ShownRole = AccessRole | 'Admin' | 'Custom';
+/** A row's role, or 'Custom' when no role describes the underlying state.
+ *  'Owner' is a folder's core admin, shown but never offered. */
+export type ShownRole = AccessRole | 'Admin' | 'Owner' | 'Custom';
 
 export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
   Admin: 'Full control, including who else is an admin.',
+  Owner: 'Full control of this folder.',
   Manager: 'Can invite and remove people, and edit.',
   Editor: 'Can create and edit documents.',
   Guest: 'Sees only folders shared with them directly.',
@@ -121,6 +123,11 @@ export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole
   return match ?? 'Custom';
 }
 
+/** A folder's core role as shown: an Admin is the folder's Owner. */
+function folderCoreRole(coreRole: 'Admin' | 'ReadOnly'): ShownRole {
+  return coreRole === 'Admin' ? 'Owner' : coreRole;
+}
+
 /** A folder member's role. A core Admin or ReadOnly role on the folder
  *  overrides both fields: core bypasses them, or discards the writes. */
 export function folderRoleOf(
@@ -128,7 +135,7 @@ export function folderRoleOf(
   registryRole: Role | null,
   folderCaps: number | null,
 ): ShownRole | null {
-  if (coreRole !== 'Member') return coreRole;
+  if (coreRole !== 'Member') return folderCoreRole(coreRole);
   if (registryRole === null || folderCaps === null) return null;
   const match = FOLDER_ROLES.find(
     (r) =>
@@ -140,7 +147,7 @@ export function folderRoleOf(
 
 /** A folder member's role when only the registry Role is known, not the caps. */
 export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
-  if (coreRole !== 'Member') return coreRole;
+  if (coreRole !== 'Member') return folderCoreRole(coreRole);
   return FOLDER_ROLES.find((r) => FOLDER_ROLE_GRANTS[r].role === registryRole) ?? 'Custom';
 }
 

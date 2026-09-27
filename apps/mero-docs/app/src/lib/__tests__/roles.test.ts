@@ -102,8 +102,11 @@ describe('folderRoleOf', () => {
     expect(roleDisplayLabel(folderRoleOf('Member', 'Viewer', 0)!)).toBe('Read only');
   });
 
-  it('reads a core admin of the folder as Admin', () => {
-    expect(folderRoleOf('Admin', 'Viewer', 0)).toBe('Admin');
+  // "Admin" is workspace vocabulary; in a folder the core admin is its owner.
+  it('reads a core admin of the folder as Owner', () => {
+    expect(folderRoleOf('Admin', 'Viewer', 0)).toBe('Owner');
+    expect(folderRoleOfRegistryRole('Admin', 'Editor')).toBe('Owner');
+    expect(roleDisplayLabel('Owner')).toBe('Owner');
   });
 
   // Core discards a ReadOnly member's writes to the folder's documents.
@@ -128,7 +131,7 @@ describe('folderRoleOfRegistryRole', () => {
     expect(folderRoleOfRegistryRole('Member', 'Viewer')).toBe('ReadOnly');
     expect(folderRoleOfRegistryRole('Member', 'Editor')).toBe('Editor');
     expect(folderRoleOfRegistryRole('Member', 'Manager')).toBe('Manager');
-    expect(folderRoleOfRegistryRole('Admin', 'Viewer')).toBe('Admin');
+    expect(folderRoleOfRegistryRole('Admin', 'Viewer')).toBe('Owner');
   });
 });
 
