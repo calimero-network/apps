@@ -3,6 +3,7 @@
   "types": {
     "CalendarEvent": {
       "kind": "record",
+      "doc": "A calendar event as returned to the frontend. `private` distinguishes\nnode-local entries from shared ones so the UI can render them uniformly.",
       "fields": [
         {
           "name": "id",
@@ -73,6 +74,7 @@
     },
     "CalendarEventState": {
       "kind": "record",
+      "doc": "One shared event. Its real owner is the entry's owner stamp; `owner` here is\nonly the key of the `owner` index, and a row whose field disagrees with the\nstamp — what a patched node would write — is dropped on read.",
       "fields": [
         {
           "name": "title",
@@ -125,7 +127,8 @@
               "kind": "bytes",
               "size": 32
             }
-          }
+          },
+          "doc": "One `peers` index row per invitee."
         },
         {
           "name": "created_at",
@@ -154,8 +157,9 @@
             "value": {
               "$ref": "CalendarEventState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Key is the event id; the value is the shared event, owned by the\naccount that created it. Only that account edits or deletes it."
         },
         {
           "name": "members",
@@ -166,9 +170,9 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "Each member's display name, in their own slot."
         }
       ]
     },
@@ -225,6 +229,7 @@
     },
     "Member": {
       "kind": "record",
+      "doc": "A context member with a human-readable display name, in the member's own\n`UserStorage` slot (keyed by ACCOUNT), so the UI can resolve `owner`/`peers`\nto names. `id` is filled from the slot's key on read, never trusted from\nthe stored value.",
       "fields": [
         {
           "name": "id",
@@ -239,16 +244,17 @@
           }
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Dedicated LWW clock for username edits. Merging on `joined_at` (which\nnever changes after first join) would freeze a username at its first\nvalue across nodes; this is the real last-writer-wins timestamp."
         }
       ]
     },
@@ -314,6 +320,7 @@
   "methods": [
     {
       "name": "create_event",
+      "doc": "Create an event, routing it to private or shared storage BY WHETHER\nANYONE ELSE IS IN IT.\n\nAn event with no peers is one person's own entry. Writing it to\n`#[app::state]` would replicate it to every node in the context and put\nit in the DAG permanently — for data that, by definition, nobody else is\nparty to. So it goes to `#[app::private]` instead: node-local, never\ngossiped, no DAG growth.\n\nPeers are what make an event shared. The moment there is someone to share\nit WITH, replication is the point, and it goes to the DAG.\n\n⚠️ This is enforced HERE and not in the client, deliberately. The\nfrontend already had a `private` flag it could route on, but a client\nchoosing whether data enters the permanent replicated log is a client\ndeciding someone else's privacy. The contract is the only place that\ncannot be bypassed.\n\n`create_private_event` remains for \"private even though peers were\nnamed\" — an explicit override rather than the default path.",
       "params": [
         {
           "name": "event_data",
@@ -335,6 +342,7 @@
     },
     {
       "name": "create_private_event",
+      "doc": "Private events live in `#[app::private]` storage, so they are never\nreplicated to peers. `peers` on the request is ignored — a private event\nis, by definition, not shared.\n\nTakes `&mut self` so the runtime commits and flushes the private write;\na `&self` method's private writes would be silently discarded.",
       "params": [
         {
           "name": "event_data",
@@ -386,6 +394,7 @@
     },
     {
       "name": "get_events",
+      "doc": "The shared events the caller owns or is invited to — two seeks, on the\n`owner` and `peers` indexes.\n\nThis is a view filter, not access control: every member's node holds\nevery shared event. See the module docs.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -426,6 +435,7 @@
     },
     {
       "name": "set_username",
+      "doc": "Register or refresh the caller's display name. Idempotent: first call\njoins, later calls rename. The id is the real signer, so a member can\nonly ever name themselves.",
       "params": [
         {
           "name": "username",
@@ -447,6 +457,7 @@
     },
     {
       "name": "update_event",
+      "doc": "Update a shared event.\n\n⚠️ Emptying `peers` does NOT move the event back to private storage.\nOnce shared, the event is in the DAG on every node in the context, and the\nDAG is append-only — nothing here can retract it. Moving the local copy\ninto private storage would leave that replicated history in place while\nmaking the UI report the event as private, which is worse than saying\nplainly that sharing is one-way.\n\nRemoving peers changes the audience, not who holds it: `get_events`\nlists an event only to its owner and peers, so it drops out of a\nremoved peer's calendar — but that is a view filter, and every member's\nnode still holds the event.\n\nOnly the owner may update it; every node refuses anyone else's edit.",
       "params": [
         {
           "name": "event_id",
@@ -474,6 +485,7 @@
     },
     {
       "name": "update_private_event",
+      "doc": "Update a private event — and PROMOTE it to shared storage if this update\nis what adds the first peer.\n\nThis is the other half of `create_event`'s routing. Without it, an event\ncreated alone and later shared with someone would stay node-local, so the\npeer would never receive it and the share would silently do nothing.\n\nPromotion is one-way, and that is not an omission. Removing every peer\nfrom a shared event does NOT move it back: by then the event is already in\nthe DAG on every node in the context, and the DAG is append-only. Moving\nthe local copy into private storage would leave the replicated history\nuntouched while making the UI claim the event had become private — which\nis a worse outcome than being honest that sharing cannot be undone. See\n`update_event`.",
       "params": [
         {
           "name": "event_id",

@@ -26,7 +26,7 @@ export const CONFIG: LandingConfig = {
   trust: ["Teams are namespaces", "Private events never sync", "Light and dark"],
   explainer: [
     "A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero namespace, so the people in it are exactly the people you invited, and the calendar lives on their nodes and yours.",
-    "Shared events are owner-gated, so a member sees what they own or were invited to rather than everything. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.",
+    "Shared events are owner-gated: only the person who created an event can change or delete it, and every node enforces that. Your calendar shows what you own or were invited to, but every shared event replicates to the whole team, so anything confidential belongs in a private event. Private events use node-local storage and never replicate at all — they exist on your machine and nowhere else.",
   ],
   features: [
     {
@@ -37,7 +37,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: Shield,
       title: "Owner-gated shared events",
-      body: "Members see events they own or were invited to, not the whole team’s diary by default.",
+      body: "Only an event’s owner can edit or delete it, on every node. Your view shows what you own or were invited to; the team can still read every shared event.",
     },
     {
       icon: EyeOff,
@@ -66,7 +66,7 @@ export const CONFIG: LandingConfig = {
       concepts: [
         { term: "Namespace", def: "A team. The people in it are the people who can be invited to events." },
         { term: "Context", def: "The team’s shared calendar. One per team." },
-        { term: "Shared event", def: "An event in replicated state, owned by whoever created it. Reads are gated in the contract: you see an event only if you own it or were invited to it." },
+        { term: "Shared event", def: "An event in replicated state, owned by whoever created it. Only its owner can change it. Every team member’s node holds it; your calendar lists it only if you own it or were invited to it." },
         { term: "Private event", def: "An event declared `#[app::private]`. It is stored on your node only and is never replicated to anyone — not even to other members of the team." },
         { term: "Username", def: "A display name you set, so the UI shows people rather than public keys. Last-writer-wins on its own clock." },
       ],
@@ -93,7 +93,7 @@ export const CONFIG: LandingConfig = {
       id: "storage",
       heading: "What is stored, and where",
       bullets: [
-        "Shared events: title, time, owner and invitee list, replicated to team members and read-gated per event.",
+        "Shared events: title, time, owner and invitee list, replicated to every team member and editable only by their owner.",
         "Private events: the same fields, stored only on the node that created them and never replicated.",
         "Members: one username per member, so names can change without touching events.",
       ],
