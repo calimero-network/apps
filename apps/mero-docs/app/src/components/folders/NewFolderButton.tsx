@@ -50,19 +50,21 @@ export function NewFolderButton({
     : nsPerms.canCreateFolder;
 
   if (!namespaceId || !rootGroupId) return null;
-  if (!allowed) return null;
 
+  // A permission re-read can briefly say no; an open dialog must not vanish mid-typing.
   return (
     <>
-      <Button
-        variant={variant}
-        size={size}
-        className={cn('gap-1', className)}
-        onClick={() => setOpen(true)}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {label}
-      </Button>
+      {allowed && (
+        <Button
+          variant={variant}
+          size={size}
+          className={cn('gap-1', className)}
+          onClick={() => setOpen(true)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {label}
+        </Button>
+      )}
       {open && (
         <NewFolderDialog
           parentFolderId={parentFolderId}

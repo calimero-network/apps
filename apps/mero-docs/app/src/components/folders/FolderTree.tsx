@@ -81,6 +81,15 @@ export function FolderTree({
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
+  // Loading flags pulse on every refetch. Once this workspace's tree has shown,
+  // a later pulse or failed re-read keeps it, and any dialog opened from it, mounted.
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  const settled = !loading && !error;
+  useEffect(() => {
+    if (settled && namespaceId) setShownFor(namespaceId);
+  }, [settled, namespaceId]);
+  const shown = !!namespaceId && shownFor === namespaceId;
+
   // The raw error is implementation detail; keep it in the console and show plain copy.
   useEffect(() => {
     if (error) console.error('Failed to load folders', error);
@@ -94,7 +103,7 @@ export function FolderTree({
     );
   }
 
-  if (loading) {
+  if (loading && !shown) {
     return (
       <div
         role="status"
@@ -106,7 +115,7 @@ export function FolderTree({
     );
   }
 
-  if (error) {
+  if (error && !shown) {
     return (
       <div className="p-3 text-xs text-destructive break-words">
         <div className="font-medium mb-1">Failed to load folders</div>
