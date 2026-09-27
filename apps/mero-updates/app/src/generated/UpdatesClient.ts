@@ -68,11 +68,9 @@ export interface Comment {
   id: string;
   post_id: string;
   parent_id: string;
-  author: string;
   body: string;
   created_at: number;
   edited_at: number;
-  deleted: boolean;
 }
 
 export interface CommentView {
@@ -185,13 +183,17 @@ export interface MeroUpdates {
   roles: Record<string, boolean>;
   settings: Record<string, Settings>;
   categories: Record<string, Category>;
-  posts: Record<string, Post>;
+  updates: Record<string, Post>;
   asks: Record<string, Ask>;
-  offers: Record<string, Offer>;
+  question_status: Record<string, Triage>;
+  offer_status: Record<string, Triage>;
+  questions: Record<string, Post>;
   comments: Record<string, Comment>;
+  offers: Record<string, Offer>;
   reactions: Record<string, Reaction>;
   reads: Record<string, Read>;
   profiles: Record<string, Profile>;
+  mutes: Record<string, string[]>;
 }
 
 export interface Metric {
@@ -219,8 +221,6 @@ export interface Offer {
   helper: OfferByHelper;
   updated_at: number;
   created_at: number;
-  status: string;
-  status_at: number;
 }
 
 export interface OfferByHelper {
@@ -324,7 +324,6 @@ export interface Profile {
   account: string;
   name: string;
   firm: string;
-  muted: string[];
   joined_at: number;
   updated_at: number;
 }
@@ -367,6 +366,11 @@ export interface Settings {
   company_name: string;
   cadence_days: number;
   updated_at: number;
+}
+
+export interface Triage {
+  status: string;
+  status_at: number;
 }
 
 export interface UpdateInput {

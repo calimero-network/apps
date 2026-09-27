@@ -251,7 +251,9 @@ steps:
   # SUCCEEDED. The team check runs on the WRITER'S node against its own copy
   # of the role registry, so a demotion only binds once it has reached the
   # demoted member's node. That is inherent to local-first — and the reason
-  # this step exists rather than a bare wait.
+  # this step exists rather than a bare wait. (The API check is the readable
+  # error; since the team data became writer-set storage rotated with the
+  # registry, a patched node's write after the demotion is refused on apply.)
   - name: Sync the demotion
     type: wait_for_sync
     context_id: "{{audience_id}}"
