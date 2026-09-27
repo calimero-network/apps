@@ -674,13 +674,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           // node that happened to create it.
           name: REGISTRY_CONTEXT_ALIAS,
         });
-        // Best-effort: claim the registry owner slot — but ONLY if the
-        // caller is a core namespace-admin. `claim_owner` in the WASM
-        // is first-come-first-served with NO authz gate (see
-        // logic/crates/registry/src/permissions.rs::claim_owner_inner —
-        // it sets the owner when unclaimed regardless of caller), so a
-        // non-admin member opening a legacy/half-set-up workspace would
-        // otherwise seize the registry. We mirror useMemberCaps's admin
+        // The registry's owner is whoever creates its context — fixed in the
+        // contract's `init`, where nobody can change it afterwards (see
+        // logic/crates/registry/src/permissions.rs::claim_owner_inner). That
+        // is why only a core namespace-admin may create it (checked above):
+        // creating it IS taking ownership. We mirror useMemberCaps's admin
         // check inline (we can't call useMemberCaps here — it consumes
         // this very hook's context, which isn't established yet).
         //
@@ -692,10 +690,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // `createContext` mint or pick a different one than the
         // identity that ranks as Admin in the namespace.
         if (reg?.contextId) {
-          // Caller is already known to be a namespace admin (checked above),
-          // so claiming is safe. `claim_owner` has no authz gate of its own —
-          // it takes the owner slot for whoever calls it first — which is why
-          // the admin check has to happen on this side.
+          // `claim_owner` only confirms the ownership `init` recorded: it
+          // succeeds for the creator and is refused for anyone else.
           await new RegistryClient(mero, reg.contextId)
             .claimOwner()
             .catch(() => {});
@@ -1193,17 +1189,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           initializationParams: [],
           name: REGISTRY_CONTEXT_ALIAS,
         });
-        // Step 4 — claim the registry's owner slot for the creator.
-        // The permissions layer is fail-closed (set_folder_role,
-        // add_manager etc. all require owner/manager) until this runs,
-        // so a freshly-created workspace would be unmanageable without
-        // it. `createContext` returns `{ contextId, memberPublicKey }`
-        // (see mero-js admin-types `CreateContextResponseData`).
+        // Step 4 — confirm the registry's owner. The contract records its
+        // creator as the owner in `init`, so this cannot change who owns it;
+        // it only surfaces a mismatch early. `createContext` returns
+        // `{ contextId, memberPublicKey }` (see mero-js admin-types
+        // `CreateContextResponseData`).
         //
-        // Best-effort: if this fails the registry is left unclaimed —
-        // the admin can re-run claim via the WorkspaceSettingsPanel
-        // "Claim ownership" button. We DON'T abort the create here;
-        // see Fix D in the code-review notes.
+        // Best-effort: we DON'T abort the create here; see Fix D in the
+        // code-review notes.
         if (reg?.contextId && reg?.memberPublicKey) {
           try {
             await new RegistryClient(

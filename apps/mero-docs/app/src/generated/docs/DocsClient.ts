@@ -63,6 +63,7 @@ export interface Comment {
 
 export interface CommentDto {
   id: string;
+  author: string;
   doc_id: string;
   body: string;
   created_at: number;
@@ -70,6 +71,7 @@ export interface CommentDto {
 
 export interface DocDto {
   id: string;
+  creator: string;
   title: string;
   tags: string[];
   archived: boolean;
@@ -82,12 +84,12 @@ export interface DocRecord {
   body: Record<string, BlockView>;
   tags: string[];
   archived: boolean;
-  created_at: number;
   updated_at: number;
 }
 
 export interface DocsState {
   docs: Record<string, DocRecord>;
+  origins: Record<string, number>;
   next_id: {  };
   comments: Record<string, Comment>;
   next_comment_id: {  };

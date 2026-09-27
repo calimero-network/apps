@@ -3,6 +3,7 @@
   "types": {
     "ContextId": {
       "kind": "alias",
+      "doc": "Wrapper around a Calimero context id. Same rationale as `FolderId`.",
       "target": {
         "kind": "string"
       }
@@ -153,6 +154,7 @@
     },
     "FolderDto": {
       "kind": "record",
+      "doc": "Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.",
       "fields": [
         {
           "name": "id",
@@ -172,21 +174,24 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`None` when color is unset / empty."
         },
         {
           "name": "context_id",
           "type": {
             "$ref": "ContextId"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`None` when no Docs context has been bound to this folder yet."
         },
         {
           "name": "alias",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`None` when no registry-side alias is stored (older folders,\nor folders created before the alias field existed). Clients\nfall back to the admin-API alias or a truncated id stub."
         },
         {
           "name": "visibility",
@@ -198,12 +203,14 @@
     },
     "FolderId": {
       "kind": "alias",
+      "doc": "Wrapper around a folder / group id string. Newtype so the generated TS\nclient surfaces `FolderId` instead of a bare `string`.",
       "target": {
         "kind": "string"
       }
     },
     "FolderRecord": {
       "kind": "record",
+      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.\n\n`Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`\nbecause `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a\ntrait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method\nresolution picks the inherent one from the derive expansion, which then\nfails the macro's `?` — same workaround battleships uses on\n`MatchSummary`.",
       "fields": [
         {
           "name": "parent_id",
@@ -214,7 +221,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Parent folder id, or None for top-level folders. Stored as an\nLWW index; admin-API remains the source of truth for the tree."
         },
         {
           "name": "color",
@@ -225,7 +233,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "`#rrggbb` color, or empty string for \"no color\"."
         },
         {
           "name": "alias",
@@ -236,7 +245,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Display name. Mirrored from admin-API's group alias so namespace\nmembers who can't read the subgroup yet (Restricted folder before\ninvite) can still see folder names. Empty string means \"no\nregistry-side alias — fall back to the admin-API alias or a\ntruncated id stub on the client\"."
         },
         {
           "name": "visibility",
@@ -247,18 +257,21 @@
             "inner_type": {
               "$ref": "Visibility"
             }
-          }
+          },
+          "doc": "Inherit = namespace-member cascade descends through this folder.\nRestricted = explicit-invite wall; cascade stops here."
         }
       ]
     },
     "FolderRoleEntry": {
       "kind": "record",
+      "doc": "One explicit per-member role row for a folder (what `list_folder_roles`\nreturns). Members not present have the implicit `Editor` role.",
       "fields": [
         {
           "name": "member",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "hex-encoded member public key."
         },
         {
           "name": "role",
@@ -281,8 +294,9 @@
             "value": {
               "$ref": "FolderRecord"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both."
         },
         {
           "name": "folder_contexts",
@@ -294,8 +308,9 @@
             "value": {
               "$ref": "ContextId"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "folder_id (string) → Docs context id bound to that folder. Written\nonce, by the folder's registrant; nobody can rebind or remove it, so a\nfolder cannot be pointed at someone else's context after the fact.\nA binding counts only while its writer owns the folder (see\n`binding_of`)."
         },
         {
           "name": "sort_order",
@@ -316,59 +331,74 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "parent_id-or-empty → LWW list of child folder ids in display order.\nDeliberately public: display order is collaborative, and a bad order\nis corrected by the next reorder."
         },
         {
           "name": "owner",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Hex account of the registry owner: whoever created the registry\ncontext (a namespace admin). Frozen at `init`; nobody can change it."
         },
         {
           "name": "managers",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bool"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Hex accounts granted manager rights over the whole registry (may set/\nclear any folder role). Writable by the owner only. The owner is\nimplicitly a manager and is NOT stored here. Value `true` = is a\nmanager, `false` = removed (kept around so the key is never\nCRDT-tombstoned — a `remove` would silently swallow a later re-add)."
         },
         {
           "name": "folder_roles",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "$ref": "Role"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "$ref": "Role"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nWritable by the registry admins only (see `sync_admins`)."
         }
       ]
     },
     "Role": {
       "kind": "variant",
+      "doc": "Per-folder collaborator role. Local copy of `mero_docs_types::Role`\n(same variants, same bytes); keep the two definitions in sync.",
       "variants": [
         {
           "name": "Viewer"
@@ -383,6 +413,7 @@
     },
     "Visibility": {
       "kind": "variant",
+      "doc": "Per-folder cascade flag. `Inherit` = namespace-member cascade descends\nthrough this folder (Open subgroup); `Restricted` = explicit-invite wall,\ncascade stops here. Mirrors the admin-API subgroup_visibility concept but\nis stored in the registry so clients can read it without a per-folder\nadmin-API call.",
       "variants": [
         {
           "name": "Inherit"
@@ -523,6 +554,7 @@
     },
     {
       "name": "get_owner",
+      "doc": "The base58 public key of the registry owner, or an empty string if\n`claim_owner` has not been called yet. (Empty-string-means-unclaimed\nkeeps the generated TS type honest — `Promise<string>`, not a lying\nnon-nullable Option.)",
       "params": [],
       "returns": {
         "kind": "string"
@@ -705,6 +737,7 @@
     },
     {
       "name": "set_folder_alias",
+      "doc": "Update the registry-side alias for a folder. Callers should mirror\nadmin-API's `setGroupAlias` with a call here so namespace members\nwho aren't subgroup members can still see the new name. Empty\nstring clears the registry alias and falls back to whatever the\nclient surfaces (admin API alias if visible, otherwise id stub).",
       "params": [
         {
           "name": "id",
@@ -823,7 +856,8 @@
       "name": "FolderRoleChanged",
       "payload": {
         "$ref": "Event_FolderRoleChanged"
-      }
+      },
+      "doc": "A folder's per-member role was set or cleared (UI re-fetches the row)."
     },
     {
       "name": "FolderSortOrderChanged",

@@ -86,6 +86,7 @@ vi.mock('@/components/editor/EditorShell', () => ({
 
 const DOC = {
   id: 'doc-1',
+  creator: 'a1'.repeat(32),
   title: 'Untitled',
   tags: [],
   archived: false,

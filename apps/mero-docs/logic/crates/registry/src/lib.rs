@@ -37,13 +37,17 @@
 //! it to drive parent-walk membership inheritance. The frontend reads it
 //! via the admin API and writes it via `mero.admin.setSubgroupVisibility`.
 
+use std::collections::BTreeSet;
+
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{FrozenValue, LwwRegister, Mergeable, UnorderedMap};
+use calimero_storage::collections::{
+    Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, UnorderedMap, WriteOnce,
+};
 use mero_docs_types::DriveError;
 
 pub mod events;
@@ -241,38 +245,54 @@ const ROOT_SORT_KEY: &str = "";
 
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct RegistryState {
-    /// folder_id (string) → FolderRecord
-    folders: UnorderedMap<String, FolderRecord>,
-    /// folder_id (string) → Docs context id bound to that folder.
-    /// Once bound, the value never changes — `FrozenValue` supplies the
-    /// no-op `Mergeable` impl required by `UnorderedMap` values.
-    folder_contexts: UnorderedMap<String, FrozenValue<ContextId>>,
-    /// parent_id-or-empty → LWW list of child folder ids in display order
+    /// folder_id (string) → FolderRecord. Owned by whoever registered the
+    /// folder, who alone edits it; the registry admins (owner and managers)
+    /// are its moderators and may also remove it. Every node enforces both.
+    folders: Moderated<UnorderedMap<String, FolderRecord>>,
+    /// folder_id (string) → Docs context id bound to that folder. Written
+    /// once, by the folder's registrant; nobody can rebind or remove it, so a
+    /// folder cannot be pointed at someone else's context after the fact.
+    /// A binding counts only while its writer owns the folder (see
+    /// `binding_of`).
+    folder_contexts: WriteOnce<UnorderedMap<String, ContextId>>,
+    /// parent_id-or-empty → LWW list of child folder ids in display order.
+    /// Deliberately public: display order is collaborative, and a bad order
+    /// is corrected by the next reorder.
     sort_order: UnorderedMap<String, LwwRegister<Vec<String>>>,
-    /// base58 public key of the registry owner (the namespace creator).
-    /// Empty until `claim_owner` is called once; never reassigned after that.
-    owner: LwwRegister<String>,
-    /// base58 public keys granted manager rights over the whole registry
-    /// (may set/clear any folder role). The owner is implicitly a manager
-    /// and is NOT stored here. Value `true` = is a manager, `false` =
-    /// removed (kept around so the key is never CRDT-tombstoned — a
-    /// `remove` would silently swallow a later re-add of the same key).
-    managers: UnorderedMap<String, LwwRegister<bool>>,
+    /// Hex account of the registry owner: whoever created the registry
+    /// context (a namespace admin). Frozen at `init`; nobody can change it.
+    owner: Frozen<String>,
+    /// Hex accounts granted manager rights over the whole registry (may set/
+    /// clear any folder role). Writable by the owner only. The owner is
+    /// implicitly a manager and is NOT stored here. Value `true` = is a
+    /// manager, `false` = removed (kept around so the key is never
+    /// CRDT-tombstoned — a `remove` would silently swallow a later re-add).
+    managers: SharedStorage<UnorderedMap<String, LwwRegister<bool>>>,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
-    folder_roles: UnorderedMap<String, LwwRegister<Role>>,
+    /// Writable by the registry admins only (see `sync_admins`).
+    folder_roles: SharedStorage<UnorderedMap<String, LwwRegister<Role>>>,
 }
 
 #[app::logic]
 impl RegistryState {
     #[app::init]
     pub fn init() -> RegistryState {
+        let me = permissions::caller_account();
         RegistryState {
-            folders: UnorderedMap::new_with_field_name("registry:folders"),
-            folder_contexts: UnorderedMap::new_with_field_name("registry:folder_contexts"),
+            folders: Moderated::new_with_field_name("registry:folders"),
+            folder_contexts: WriteOnce::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
-            owner: LwwRegister::new(String::new()),
-            managers: UnorderedMap::new_with_field_name("registry:managers"),
-            folder_roles: UnorderedMap::new_with_field_name("registry:folder_roles"),
+            owner: Frozen::new(hex::encode(me.as_bytes())),
+            managers: SharedStorage::new_with_field_name(
+                "registry:managers",
+                BTreeSet::from([me]),
+                false,
+            ),
+            folder_roles: SharedStorage::new_with_field_name(
+                "registry:folder_roles",
+                BTreeSet::from([me]),
+                false,
+            ),
         }
     }
 
@@ -325,24 +345,50 @@ impl RegistryState {
         Ok(())
     }
 
+    /// The folder's registrant, or a registry admin, may unregister it.
     pub(crate) fn unregister_folder_inner(&mut self, id: FolderId) -> Result<(), DriveError> {
-        let existed = self
+        if !self
             .folders
-            .remove(&id.0)
-            .map_err(|e| DriveError::Invalid(format!("folders.remove: {e}")))?;
-        if existed.is_none() {
+            .contains(&id.0)
+            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?
+        {
             return Err(DriveError::NotFound(id.0));
         }
-        // Removing the folder also clears any context binding.
-        let _ = self.folder_contexts.remove(&id.0);
-        // Drop any per-member role rows for this folder. These ARE
+        let _ = self.folders.remove(&id.0).map_err(|_| {
+            DriveError::Forbidden(format!(
+                "only the folder's creator or a registry admin may remove {}",
+                id.0
+            ))
+        })?;
+        // The context binding is written once and stays; it stops counting
+        // with the folder (see `binding_of`). Drop any per-member role rows
+        // for this folder when the caller may write them. These ARE
         // CRDT-tombstoned (unlike the live clear_folder_role path), which is
         // correct here: the folder id is tombstoned in `folders` alongside
-        // them. (Since core rc.10 a strictly-newer register lifts the
-        // tombstone and revives the id — the revived folder then starts
-        // with default roles, which is what we want.)
-        self.purge_folder_roles(&id.0)?;
+        // them. Rows a non-admin cannot purge are unreachable once the folder
+        // is gone, since folder ids are never reused.
+        let caller = permissions::caller_account_hex()?;
+        if self.is_admin(&caller)? {
+            self.purge_folder_roles(&id.0)?;
+        }
         Ok(())
+    }
+
+    /// The context bound to `folder`, if its folder exists and the binding
+    /// was written by the folder's registrant. A patched node could bind a
+    /// folder it does not own before its owner does; that binding is ignored.
+    fn binding_of(&self, folder: &String) -> Result<Option<ContextId>, DriveError> {
+        let err = |e| DriveError::Invalid(format!("folder_contexts: {e}"));
+        if !self.folders.contains(folder).map_err(err)? {
+            return Ok(None);
+        }
+        let Some(owner) = self.folders.owner_of(folder).map_err(err)? else {
+            return Ok(None);
+        };
+        if self.folder_contexts.owner_of(folder).map_err(err)? != Some(owner) {
+            return Ok(None);
+        }
+        self.folder_contexts.get(folder).map_err(err)
     }
 
     #[app::view]
@@ -353,10 +399,9 @@ impl RegistryState {
             .map_err(|e| AppError::msg(format!("folders.get: {e}")))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id.0)))?;
         let ctx = self
-            .folder_contexts
-            .get(&id.0)
-            .map_err(|e| AppError::msg(format!("folder_contexts.get: {e}")))?;
-        Ok(project(&id.0, &rec, ctx.as_ref().map(|f| &f.0)))
+            .binding_of(&id.0)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        Ok(project(&id.0, &rec, ctx.as_ref()))
     }
 
     #[app::view]
@@ -368,10 +413,9 @@ impl RegistryState {
         let mut out = Vec::new();
         for (id, rec) in entries {
             let ctx = self
-                .folder_contexts
-                .get(&id)
-                .map_err(|e| AppError::msg(format!("folder_contexts.get: {e}")))?;
-            out.push(project(&id, &rec, ctx.as_ref().map(|f| &f.0)));
+                .binding_of(&id)
+                .map_err(|e| AppError::msg(e.to_string()))?;
+            out.push(project(&id, &rec, ctx.as_ref()));
         }
         Ok(out)
     }
@@ -406,6 +450,16 @@ impl RegistryState {
         if !known {
             return Err(DriveError::NotFound(folder_id.0));
         }
+        let mine = self
+            .folders
+            .owned_by_me(&folder_id.0)
+            .map_err(|e| DriveError::Invalid(format!("folders.owned_by_me: {e}")))?;
+        if !mine {
+            return Err(DriveError::Forbidden(format!(
+                "only the folder's creator may bind {}",
+                folder_id.0
+            )));
+        }
         let bound = self
             .folder_contexts
             .contains(&folder_id.0)
@@ -417,18 +471,15 @@ impl RegistryState {
             )));
         }
         self.folder_contexts
-            .insert(folder_id.0, FrozenValue::from(context_id))
+            .insert(folder_id.0, context_id)
             .map_err(|e| DriveError::Invalid(format!("folder_contexts.insert: {e}")))?;
         Ok(())
     }
 
     #[app::view]
     pub fn get_folder_context(&self, folder_id: FolderId) -> app::Result<Option<ContextId>> {
-        let frozen = self
-            .folder_contexts
-            .get(&folder_id.0)
-            .map_err(|e| AppError::msg(format!("folder_contexts.get: {e}")))?;
-        Ok(frozen.map(|f| f.0.clone()))
+        self.binding_of(&folder_id.0)
+            .map_err(|e| AppError::msg(e.to_string()))
     }
 
     // ---- color / move ---------------------------------------------------
@@ -496,23 +547,23 @@ impl RegistryState {
         self.mutate_folder(id, |rec| rec.parent_id.set(new_parent))
     }
 
+    /// Only the folder's registrant may edit its record; storage refuses
+    /// anyone else on every node.
     fn mutate_folder<F>(&mut self, id: &str, edit: F) -> Result<(), DriveError>
     where
         F: FnOnce(&mut FolderRecord),
     {
-        let mut rec = self
+        let id = id.to_string();
+        if !self
             .folders
-            .get(&id.to_string())
-            .map_err(|e| DriveError::Invalid(format!("folders.get: {e}")))?
-            // `get` returns a read-only ValueRef; clone out an owned record to
-            // mutate and re-insert.
-            .map(|v| v.clone())
-            .ok_or_else(|| DriveError::NotFound(id.to_string()))?;
-        edit(&mut rec);
-        self.folders
-            .insert(id.to_string(), rec)
-            .map_err(|e| DriveError::Invalid(format!("folders.insert: {e}")))?;
-        Ok(())
+            .contains(&id)
+            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?
+        {
+            return Err(DriveError::NotFound(id));
+        }
+        self.folders.modify(&id, edit).map_err(|_| {
+            DriveError::Forbidden(format!("only the folder's creator may change {id}"))
+        })
     }
 
     // ---- sort order ------------------------------------------------------
@@ -713,23 +764,21 @@ mod tests {
     #[test]
     fn a_grant_written_for_an_account_authorises_that_caller() {
         let (account, device) = probe_ids();
-        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
-        host.set_account(account);
-        host.set_device(device);
+        let owner = calimero_sdk::env::account_id();
+        let mut host = calimero_sdk::testing::TestHost::new(|| {
+            calimero_storage::env::with_account_id(owner, RegistryState::init)
+        });
 
         // What a client can actually pass: the member's ACCOUNT, because that
         // is the only id `listGroupMembers` gives it.
-        let member_account = hex::encode(account);
-
-        let mut app = RegistryState::init();
-        let owner = hex::encode([0x77; 32]);
-        app.claim_owner_inner(&owner).unwrap();
-        app.add_manager_inner(&owner, &member_account).unwrap();
+        host.call(|s| s.add_manager(hex::encode(account))).unwrap();
 
         // And the caller the contract derives for that same person.
+        host.set_account(account);
+        host.set_device(device);
         let caller = permissions::caller_account_hex().unwrap();
         assert!(
-            app.is_admin(&caller).unwrap(),
+            host.view(|s| s.is_admin(&caller)).unwrap(),
             "a manager row written under the account a client can name must \
              authorise the caller the contract derives for that person",
         );
@@ -740,17 +789,16 @@ mod tests {
         // The shape of the old bug, kept as an executable description of it:
         // a row filed under any id the caller is not derived from is inert.
         let (account, device) = probe_ids();
-        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        let owner = calimero_sdk::env::account_id();
+        let mut host = calimero_sdk::testing::TestHost::new(|| {
+            calimero_storage::env::with_account_id(owner, RegistryState::init)
+        });
+        host.call(|s| s.add_manager(hex::encode(device))).unwrap();
+
         host.set_account(account);
         host.set_device(device);
-
-        let mut app = RegistryState::init();
-        let owner = hex::encode([0x77; 32]);
-        app.claim_owner_inner(&owner).unwrap();
-        app.add_manager_inner(&owner, &hex::encode(device)).unwrap();
-
         let caller = permissions::caller_account_hex().unwrap();
-        assert!(!app.is_admin(&caller).unwrap());
+        assert!(!host.view(|s| s.is_admin(&caller)).unwrap());
     }
     fn cid(s: &str) -> ContextId {
         ContextId(s.to_string())

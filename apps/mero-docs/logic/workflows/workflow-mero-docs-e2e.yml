@@ -1099,6 +1099,18 @@ steps:
     statements:
       - 'is_set({{roadmap_dto_bob}})'
 
+  # Bob co-edits Alice's docs, but deleting one is its creator's (or the
+  # folder founder's) call.
+  - name: Bob cannot delete Alice's Roadmap
+    type: call
+    node: calimero-node-2
+    context_id: '{{eng_docs_ctx}}'
+    method: delete_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{roadmap_id}}'
+    expected_failure: true
+
   - name: Bob creates his own doc
     type: call
     node: calimero-node-2
@@ -1243,22 +1255,15 @@ steps:
   # tie-break). This catches the "both nodes diverge and never
   # reconcile" failure mode that bit the old whole-snapshot body field earlier.
   #
+  # The divergent writes are to the root sort order, which any member may
+  # write. A folder's own record (its color, parent, visibility) is its
+  # creator's alone: Bob recoloring Alice's folder is refused, and every
+  # node would refuse it from a patched node too.
+  #
   # Absolute value of the winner doesn't matter — convergence does.
   # =================================================================
 
-  - name: Alice sets Engineering color red
-    type: call
-    node: calimero-node-1
-    context_id: '{{registry_ctx}}'
-    method: set_color
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{eng_group}}'
-      color: '#ff0000'
-
-  # No sync between the two writes — each node observes its own write
-  # and will learn about the other's only after the wait_for_sync below.
-  - name: Bob sets Engineering color green (no intervening sync)
+  - name: Bob cannot recolor Alice's folder
     type: call
     node: calimero-node-2
     context_id: '{{registry_ctx}}'
@@ -1267,6 +1272,29 @@ steps:
     args:
       id: '{{eng_group}}'
       color: '#00ff00'
+    expected_failure: true
+
+  - name: Alice orders the root Engineering first
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: reorder
+    executor_public_key: '{{alice_key}}'
+    args:
+      parent_id: null
+      folder_ids: ['{{eng_group}}', '{{design_group}}']
+
+  # No sync between the two writes — each node observes its own write
+  # and will learn about the other's only after the wait_for_sync below.
+  - name: Bob orders the root Design first (no intervening sync)
+    type: call
+    node: calimero-node-2
+    context_id: '{{registry_ctx}}'
+    method: reorder
+    executor_public_key: '{{bob_key}}'
+    args:
+      parent_id: null
+      folder_ids: ['{{design_group}}', '{{eng_group}}']
 
   - name: Force sync to converge divergent writes
     type: wait_for_sync
@@ -1274,42 +1302,40 @@ steps:
     context_id: '{{registry_ctx}}'
     timeout: 30
 
-  - name: Alice reads Engineering color
+  - name: Alice reads the root order
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
-    method: get_folder
+    method: get_sort_order
     executor_public_key: '{{alice_key}}'
     args:
-      id: '{{eng_group}}'
+      parent_id: null
     outputs:
-      eng_color_alice_after: result.output
+      root_order_alice_after: result.output
 
-  - name: Bob reads Engineering color
+  - name: Bob reads the root order
     type: call
     node: calimero-node-2
     context_id: '{{registry_ctx}}'
-    method: get_folder
+    method: get_sort_order
     executor_public_key: '{{bob_key}}'
     args:
-      id: '{{eng_group}}'
+      parent_id: null
     outputs:
-      eng_color_bob_after: result.output
+      root_order_bob_after: result.output
 
-  # Both DTOs must be present (sync completed) and — per `wait_for_sync`
+  # Both orders must be present (sync completed) and — per `wait_for_sync`
   # having returned OK — the root hashes already match, which implies
-  # the underlying LwwRegister states agree. The DTO assertions here
-  # are belt-and-braces: prove the read path still works on both sides
-  # post-convergence. Equality of the two `color` fields is proven by
-  # the root-hash match; we could also compare with an extra assert
-  # step that string-compares, but merobox's assert DSL doesn't express
-  # cross-variable equality cleanly, and root-hash convergence already
-  # subsumes field-equality.
-  - name: Assert both sides returned a folder DTO after convergence
+  # the underlying LwwRegister states agree. The assertions here are
+  # belt-and-braces: prove the read path still works on both sides
+  # post-convergence. Equality of the two orders is proven by the
+  # root-hash match; merobox's assert DSL doesn't express cross-variable
+  # equality cleanly, and root-hash convergence already subsumes it.
+  - name: Assert both sides returned an order after convergence
     type: assert
     statements:
-      - 'is_set({{eng_color_alice_after}})'
-      - 'is_set({{eng_color_bob_after}})'
+      - 'is_set({{root_order_alice_after}})'
+      - 'is_set({{root_order_bob_after}})'
 
   # =================================================================
   # Phase G4: Restricted-visibility wall
