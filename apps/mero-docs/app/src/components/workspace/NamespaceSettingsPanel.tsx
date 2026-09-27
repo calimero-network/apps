@@ -24,7 +24,7 @@ export function NamespaceSettingsPanel() {
           Workspace settings
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {namespaceId ? namespaceLabel(namespaceId, ns?.name) : 'Unknown workspace'}
+          {namespaceId ? namespaceLabel(ns?.name) : 'Unknown workspace'}
           {ns && (
             <>
               {' '}

@@ -69,7 +69,7 @@ export function NamespaceMembersPanel() {
     (n) => n.namespaceId === namespaceId,
   );
   const aliasLabel = namespaceId
-    ? namespaceLabel(namespaceId, currentNamespace?.name)
+    ? namespaceLabel(currentNamespace?.name)
     : 'this workspace';
 
   // Read-only viewers see the panel but can't mutate. We don't

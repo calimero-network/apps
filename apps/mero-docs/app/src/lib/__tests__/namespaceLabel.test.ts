@@ -3,11 +3,12 @@ import { namespaceLabel } from '../namespaceLabel';
 
 describe('namespaceLabel', () => {
   it('prefers the name', () => {
-    expect(namespaceLabel('0123456789abcdef', 'Acme')).toBe('Acme');
+    expect(namespaceLabel('Acme')).toBe('Acme');
   });
 
-  it('falls back to the first 8 id characters', () => {
-    expect(namespaceLabel('0123456789abcdef')).toBe('01234567');
-    expect(namespaceLabel('0123456789abcdef', null)).toBe('01234567');
+  it('falls back to a plain label, never the id', () => {
+    expect(namespaceLabel()).toBe('Untitled workspace');
+    expect(namespaceLabel(null)).toBe('Untitled workspace');
+    expect(namespaceLabel('  ')).toBe('Untitled workspace');
   });
 });
