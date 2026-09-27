@@ -2,8 +2,14 @@
 // via useLocalStorage in WorkspaceLayout); this component owns only
 // the drag interaction. Collapse is handled by the parent simply not
 // rendering this component, so there is no collapsed state here.
+// Below md the parent renders SidebarDrawer instead.
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Props {
   width: number;
@@ -80,5 +86,29 @@ export function WorkspaceSidebar({
         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-ring/40 focus-visible:bg-ring focus-visible:outline-none"
       />
     </aside>
+  );
+}
+
+// Modal overlay from the left edge; the dialog supplies the focus trap,
+// Escape / backdrop close and focus return to the toggle.
+export function SidebarDrawer({
+  open,
+  onOpenChange,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="inset-y-0 left-0 flex w-[min(20rem,85vw)] max-w-none max-h-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-y-0 border-l-0 p-0 data-[state=open]:animate-in data-[state=open]:slide-in-from-left data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left"
+      >
+        <DialogTitle className="sr-only">Folders</DialogTitle>
+        {children}
+      </DialogContent>
+    </Dialog>
   );
 }
