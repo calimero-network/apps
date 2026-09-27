@@ -30,7 +30,7 @@
 //     createWorkspace, createWorkspaceLoading, createWorkspaceError
 //   registry:
 //     registryContextId, registryClient, folders, registryAdmin
-//   selected folder (UI-only):
+//   selected folder (from the URL):
 //     selectedFolderId, setSelectedFolder
 //   status:
 //     loading, stage, error, refetch
@@ -65,12 +65,13 @@ import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
 import { useFolderSelection } from './useFolderSelection';
+import { useAppRoute } from './useAppRoute';
 import {
   deriveDriveStage,
   stageHidesContent,
   type DriveLoadingStage,
 } from '@/lib/driveStage';
-import { nextNamespaceSelection } from '@/lib/namespaceSelection';
+import { syncWorkspaceRoute } from '@/lib/namespaceSelection';
 import {
   pinnedMetadata,
   readPin,
@@ -222,7 +223,7 @@ export interface DriveWorkspaceState {
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
   registryAdmin: RegistryAdminSlice;
 
-  // selected folder (UI-only; not persisted)
+  // selected folder (from the URL)
   selectedFolderId: string | null;
   setSelectedFolder: (id: string | null) => void;
 
@@ -292,14 +293,20 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // workspace switcher shows the real name instead of the raw id.
   const namespaces = useNamespaceDisplayNames(rawNamespaces);
 
-  const [selectedNsId, setSelectedNsId] = useLocalStorage<string | null>(
+  // The URL names the workspace; the stored id is the last one used, which
+  // `/app` opens and a link to a workspace this node is not in falls back to.
+  const { route, goWorkspace, goFolder, goHome } = useAppRoute();
+  const routeNsId = route?.ws ?? null;
+  const [storedNsId, setStoredNsId] = useLocalStorage<string | null>(
     ACTIVE_NS_KEY,
     null,
   );
+  const selectedNsId = routeNsId ?? storedNsId;
 
-  // Auto-select a namespace when the list lands and we don't have a
-  // valid selection. Fall back to [0] if the persisted id isn't in
-  // the list (deleted remotely, user cleared storage, etc.).
+  // Auto-select a namespace when the list lands and the URL has no
+  // valid one, writing it into the URL. Fall back to the persisted id,
+  // then [0], if the linked id isn't in the list (deleted remotely,
+  // a link to a workspace this node is not in, etc.).
   //
   // Edge case (load-bearing for the post-/join flow): if the user just
   // joined a namespace via JoinPage, the just-joined set in
@@ -318,14 +325,16 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (createdNsId.current && listed.includes(createdNsId.current)) {
       createdNsId.current = null;
     }
-    const next = nextNamespaceSelection({
+    const { goTo, remember } = syncWorkspaceRoute({
       listed,
-      selected: selectedNsId,
+      routeNs: routeNsId,
+      stored: storedNsId,
       justJoined: readJustJoinedSet(),
       created: createdNsId.current,
     });
-    if (next !== selectedNsId) setSelectedNsId(next);
-  }, [namespaces, selectedNsId, setSelectedNsId]);
+    if (goTo) goWorkspace(goTo, { replace: true });
+    if (remember) setStoredNsId(remember);
+  }, [namespaces, routeNsId, storedNsId, goWorkspace, setStoredNsId]);
 
   const rootGroupId = selectedNsId;
 
@@ -876,6 +885,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // folders populate under the new one, from where they feed the
   // getGroupInfo fan-out and useFolderOperations' delete cascade.
   const regSeqRef = useRef(0);
+  // Which client `regFolders` was fetched with, so a folder URL is judged only
+  // against this workspace's loaded list, never the empty initial one.
+  const [regFoldersFor, setRegFoldersFor] = useState<RegistryClient | null>(
+    null,
+  );
 
   const loadRegFolders = useCallback(async () => {
     const seq = ++regSeqRef.current;
@@ -904,6 +918,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setRegFolders((prev) =>
         JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
       );
+      setRegFoldersFor(registryClient);
     } catch (e: unknown) {
       if (stale()) return;
       setRegError(e instanceof Error ? e : new Error(String(e)));
@@ -1096,10 +1111,20 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [regFolders],
   );
 
-  const [selectedFolderId, setSelectedFolder] = useFolderSelection(
-    selectedNsId,
-    regFolders,
+  const selectedFolderId = route?.folder ?? null;
+  const setSelectedFolder = useCallback(
+    (id: string | null) => (id ? goFolder(id) : goHome()),
+    [goFolder, goHome],
+  );
+  const dropGoneFolder = useCallback(
+    () => goWorkspace(routeNsId, { replace: true }),
+    [goWorkspace, routeNsId],
+  );
+  useFolderSelection(
+    selectedFolderId,
+    registryClient && regFoldersFor === registryClient ? regFolders : null,
     hiddenFolderIds,
+    dropGoneFolder,
   );
 
   // --- Mutations ---
@@ -1221,7 +1246,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         createdNsId.current = ns.namespaceId;
         await refetchNamespaces();
         userCleared.current = false;
-        setSelectedNsId(ns.namespaceId);
+        goWorkspace(ns.namespaceId);
+        setStoredNsId(ns.namespaceId);
         return ns.namespaceId;
       } catch (e: unknown) {
         const err = e instanceof Error ? e : new Error(String(e));
@@ -1231,21 +1257,23 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         setCreateLoading(false);
       }
     },
-    [mero, applicationId, refetchNamespaces, setSelectedNsId],
+    [mero, applicationId, refetchNamespaces, goWorkspace, setStoredNsId],
   );
 
   const selectNamespace = useCallback(
     (nsId: string | null) => {
       userCleared.current = false;
-      setSelectedNsId(nsId);
+      goWorkspace(nsId);
+      setStoredNsId(nsId);
     },
-    [setSelectedNsId],
+    [goWorkspace, setStoredNsId],
   );
 
   const clearNamespace = useCallback(() => {
     userCleared.current = true;
-    setSelectedNsId(null);
-  }, [setSelectedNsId]);
+    goWorkspace(null);
+    setStoredNsId(null);
+  }, [goWorkspace, setStoredNsId]);
 
   const refetch = useCallback(async () => {
     await Promise.all([

@@ -1,30 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { RegistryFolderShape } from './useWorkspaceTree';
 
-// UI-only selected folder, not persisted.
+// The selected folder lives in the URL. A deleted or access-revoked folder
+// leaves the tree for good, so drop it rather than leave "Loading folder…" up.
 export function useFolderSelection(
-  namespaceId: string | null,
-  registry: RegistryFolderShape[],
+  selectedFolderId: string | null,
+  registry: RegistryFolderShape[] | null, // null until this workspace's list has loaded
   hiddenIds: Set<string>,
-): [string | null, (id: string | null) => void] {
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  // Clear selected folder when the active namespace changes - stale
-  // IDs across namespaces leak the wrong folder into the right pane.
+  onGone: () => void,
+): void {
   useEffect(() => {
-    setSelectedFolderId(null);
-  }, [namespaceId]);
-
-  // A deleted or access-revoked folder leaves the tree for good, so drop it
-  // rather than leave the pane waiting for it on "Loading folder…".
-  useEffect(() => {
-    if (!selectedFolderId) return;
+    if (!selectedFolderId || !registry) return;
     if (
       hiddenIds.has(selectedFolderId) ||
       !registry.some((f) => f.id === selectedFolderId)
     ) {
-      setSelectedFolderId(null);
+      onGone();
     }
-  }, [selectedFolderId, registry, hiddenIds]);
-
-  return [selectedFolderId, setSelectedFolderId];
+  }, [selectedFolderId, registry, hiddenIds, onGone]);
 }

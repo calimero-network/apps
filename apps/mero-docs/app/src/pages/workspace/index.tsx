@@ -9,30 +9,26 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout';
 import { ACTIVE_NS_KEY } from '@/hooks/useDriveWorkspace';
+import { clearReturnTo, saveReturnTo } from '@/lib/routes';
 
 export default function WorkspacePage() {
   const { isAuthenticated, isLoading } = useMero();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Clear app-specific localStorage on logout so the next user on
-  // the same browser doesn't inherit the previous user's namespace
-  // selection. Mirrors battleships' lobby-state reset on disconnect.
+  // On logout, clear the namespace selection so the next user on the same
+  // browser doesn't inherit it; a signed-out visitor's link is kept instead,
+  // so sign-in (which returns to `/`) can carry on to it.
   const wasAuthenticatedRef = useRef(isAuthenticated);
   useEffect(() => {
-    if (wasAuthenticatedRef.current && !isAuthenticated && !isLoading) {
-      localStorage.removeItem(ACTIVE_NS_KEY);
+    if (isLoading) return;
+    if (isAuthenticated) clearReturnTo();
+    else {
+      if (wasAuthenticatedRef.current) localStorage.removeItem(ACTIVE_NS_KEY);
+      else saveReturnTo(location.pathname + location.search + location.hash);
+      navigate('/', { replace: true });
     }
     wasAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated, isLoading]);
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      navigate('/', {
-        replace: true,
-        state: { returnTo: location.pathname + location.search },
-      });
-    }
   }, [isLoading, isAuthenticated, navigate, location]);
 
   if (isLoading || !isAuthenticated) return null;

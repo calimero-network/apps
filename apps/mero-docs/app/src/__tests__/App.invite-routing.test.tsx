@@ -15,6 +15,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 // vitest hoists `vi.mock` above every import, so App can be imported here and
 // still see the mocks below.
 import App from '../App';
+import { saveReturnTo } from '@/lib/routes';
 
 const meroState = { isAuthenticated: false, isLoading: false };
 
@@ -61,6 +62,7 @@ function go(url: string) {
 beforeEach(() => {
   meroState.isAuthenticated = false;
   meroState.isLoading = false;
+  sessionStorage.clear();
   go('/');
 });
 
@@ -134,5 +136,29 @@ describe('ordinary routing is unchanged', () => {
     go('/nope');
     render(<App />);
     await waitFor(() => expect(window.location.pathname).toBe('/'));
+  });
+});
+
+// Sign-in returns to `/` (the SSO callback is the page login started on), so
+// the page a signed-out visitor was headed to is carried in sessionStorage.
+describe('a signed-out deep link survives sign-in', () => {
+  it('sends the signed-in visitor to the saved page with its query and hash', async () => {
+    saveReturnTo('/app/w/f/f1/d/doc-2?node=2#b=blk');
+    meroState.isAuthenticated = true;
+    go('/');
+    render(<App />);
+    expect(await screen.findByTestId('workspace')).toBeTruthy();
+    expect(window.location.pathname).toBe('/app/w/f/f1/d/doc-2');
+    expect(window.location.search).toBe('?node=2');
+    expect(window.location.hash).toBe('#b=blk');
+  });
+
+  it('ignores a saved target outside the app', async () => {
+    sessionStorage.setItem('mero-drive:returnTo', 'https://evil.example/app/w');
+    meroState.isAuthenticated = true;
+    go('/');
+    render(<App />);
+    expect(await screen.findByTestId('workspace')).toBeTruthy();
+    expect(window.location.pathname).toBe('/app');
   });
 });

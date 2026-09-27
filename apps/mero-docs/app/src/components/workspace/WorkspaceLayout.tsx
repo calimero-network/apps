@@ -10,18 +10,11 @@
 // auth-guarded shell). MeroProvider is the only app-level provider;
 // workspace + registry state comes from the useDriveWorkspace hook.
 //
-// Selected-document state is intentionally local: no other consumer
-// reads it, and keeping it out of useDriveWorkspace avoids unwiring
-// a folder's active doc on every workspace re-render.
+// The open doc and the settings view come from the URL (useAppRoute), so
+// reload, back/forward and shared links all land on the same screen.
 
-import React, {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
@@ -35,6 +28,7 @@ import { FolderEmptyState } from './FolderEmptyState';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SelectFolderState } from '@/components/folders/NoFolderStates';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useAppRoute } from '@/hooks/useAppRoute';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
@@ -105,7 +99,11 @@ export function WorkspaceLayout() {
   // compactness, full URL kept in the title attribute for copy-paste.
   const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const { route, goHome, goFolder, goDoc, goSettings } = useAppRoute();
+  const selectedDocId = route?.doc ?? null;
+  const showSettings = !!route?.settings;
+  const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     'mero-sidebar-width',
     256,
@@ -122,21 +120,8 @@ export function WorkspaceLayout() {
   useEffect(() => {
     if (isDesktop) setDrawerOpen(false);
   }, [isDesktop]);
-  // The folder the currently-open doc belongs to. Lets the reset
-  // effect below distinguish "user clicked a different folder" (clear
-  // the doc) from "user opened a doc in another folder" (keep it).
-  const selectedDocFolderRef = useRef<string | null>(null);
-
-  // Toggle between folder/editor view and the full-pane namespace
-  // settings. Closing settings preserves the previously-selected
-  // folder so the user lands back where they were.
-  const [showSettings, setShowSettings] = useState(false);
-
-  // Picking a folder or doc always leaves settings, even when it is the one
-  // already selected: settings shares <main> with them, so no state change fires.
   const selectFolder = useCallback(
     (folderId: string) => {
-      setShowSettings(false);
       setDrawerOpen(false);
       setSelectedFolder(folderId);
     },
@@ -145,33 +130,18 @@ export function WorkspaceLayout() {
 
   const openDoc = useCallback(
     (folderId: string, docId: string) => {
-      setShowSettings(false);
       setDrawerOpen(false);
-      selectedDocFolderRef.current = folderId;
-      setSelectedFolder(folderId);
-      setSelectedDocId(docId);
+      goDoc(folderId, docId);
     },
-    [setSelectedFolder],
+    [goDoc],
   );
 
-  // Clear the open doc when the active folder changes to a folder the
-  // doc does NOT belong to — i.e. a folder-row click, remote delete,
-  // or permission revoke. When openDoc set both folder + doc together
-  // (cross-folder doc open), the ref matches the new folder and the
-  // doc is preserved.
-  useEffect(() => {
-    if (selectedFolderId !== selectedDocFolderRef.current) {
-      setSelectedDocId(null);
-      selectedDocFolderRef.current = null;
-    }
-  }, [selectedFolderId]);
-
-  // Close settings when switching namespaces — the active
-  // namespace is the settings scope, so dangling on a different
-  // namespace's settings after a switch is stale UX.
-  useEffect(() => {
-    setShowSettings(false);
-  }, [namespaceId]);
+  // Closing settings returns to the screen it was opened from; a settings
+  // URL opened cold has no such screen in this app, so it goes Home.
+  const closeSettings = useCallback(() => {
+    if (location.key !== 'default') navigate(-1);
+    else goHome();
+  }, [location.key, navigate, goHome]);
 
   const folderTree = (
     <FolderTree
@@ -236,7 +206,7 @@ export function WorkspaceLayout() {
               className="gap-1.5"
               aria-label="Settings"
               aria-pressed={showSettings}
-              onClick={() => setShowSettings((v) => !v)}
+              onClick={showSettings ? closeSettings : goSettings}
             >
               <Settings className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Settings</span>
@@ -300,7 +270,7 @@ export function WorkspaceLayout() {
                 key={`${selectedFolderId}:${selectedDocId}`}
                 folderId={selectedFolderId}
                 docId={selectedDocId}
-                onClose={() => setSelectedDocId(null)}
+                onClose={() => goFolder(selectedFolderId)}
                 folderName={selectedFolder?.alias}
               />
             </Suspense>

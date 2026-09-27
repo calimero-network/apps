@@ -15,7 +15,7 @@
 //   /          → landing page (public)
 //   /login     → Authenticate (ConnectButton entry)
 //   /app/*     → WorkspacePage (auth-guarded shell, mounts
-//                 WorkspaceLayout)
+//                 WorkspaceLayout; screen URLs in lib/routes)
 //   *          → redirect to /
 
 import React, { type ReactNode } from 'react';
@@ -35,6 +35,7 @@ import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
+import { readReturnTo } from '@/lib/routes';
 
 import DevPanel from '@/components/dev/DevPanel';
 
@@ -114,6 +115,7 @@ const hashNodeUrl =
  * The app used to get this from a `RedirectIfAuthed` wrapped around its
  * `/login` route. Deleting that page took the redirect with it; the landing
  * routes need the same guard, because they are now where login begins and ends.
+ * A visitor bounced here from a deep link goes on to it (see WorkspacePage).
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -129,7 +131,7 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   // InviteRedirect's navigation the only one in flight.
   if (hasInvitePayload(new URLSearchParams(location.search))) return null;
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/app" replace />;
+  if (isAuthenticated) return <Navigate to={readReturnTo() ?? '/app'} replace />;
   return <>{children}</>;
 }
 
