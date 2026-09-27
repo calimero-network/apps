@@ -151,6 +151,28 @@
         }
       ]
     },
+    "Event_TagChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ViewChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "FolderDto": {
       "kind": "record",
       "fields": [
@@ -364,6 +386,32 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TagRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "views",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ViewRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     },
@@ -378,6 +426,140 @@
         },
         {
           "name": "Manager"
+        }
+      ]
+    },
+    "TagDto": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TagRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        }
+      ]
+    },
+    "ViewDto": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ViewRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
         }
       ]
     },
@@ -449,6 +631,36 @@
         },
         {
           "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_tag",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_view",
+      "params": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }
@@ -585,6 +797,28 @@
       "intent": "read_only"
     },
     {
+      "name": "list_tags",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TagDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_views",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ViewDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "move_folder",
       "params": [
         {
@@ -683,6 +917,33 @@
       "intent": "mutating"
     },
     {
+      "name": "save_view",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_color",
       "params": [
         {
@@ -743,6 +1004,33 @@
           "name": "role",
           "type": {
             "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_tag",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
           }
         }
       ],
@@ -859,6 +1147,18 @@
       "name": "OwnerClaimed",
       "payload": {
         "$ref": "Event_OwnerClaimed"
+      }
+    },
+    {
+      "name": "TagChanged",
+      "payload": {
+        "$ref": "Event_TagChanged"
+      }
+    },
+    {
+      "name": "ViewChanged",
+      "payload": {
+        "$ref": "Event_ViewChanged"
       }
     }
   ],

@@ -75,15 +75,19 @@ export interface DocDto {
   archived: boolean;
   created_at: number;
   updated_at: number;
+  created_by: string;
+  updated_by: string;
 }
 
 export interface DocRecord {
   title: {  };
   body: Record<string, BlockView>;
-  tags: string[];
+  tags: Record<string, boolean>;
   archived: boolean;
   created_at: number;
   updated_at: number;
+  created_by: string;
+  updated_by: string;
 }
 
 export interface DocsState {

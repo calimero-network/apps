@@ -91,6 +91,8 @@ const DOC = {
   archived: false,
   created_at: 1_700_000_000_000_000_000,
   updated_at: 1_700_000_000_000_000_000,
+  created_by: 'a1'.repeat(32),
+  updated_by: 'a1'.repeat(32),
 } satisfies DocDto;
 
 function deferred<T>() {

@@ -59,6 +59,14 @@ export interface Event_OwnerClaimed {
   owner: string;
 }
 
+export interface Event_TagChanged {
+  key: string;
+}
+
+export interface Event_ViewChanged {
+  id: string;
+}
+
 export interface FolderDto {
   id: FolderId;
   parent_id: FolderId | null;
@@ -90,11 +98,41 @@ export interface RegistryState {
   owner: string;
   managers: Record<string, boolean>;
   folder_roles: Record<string, Role>;
+  tags: Record<string, TagRecord>;
+  views: Record<string, ViewRecord>;
 }
 
 export type Role = 'Viewer' | 'Editor' | 'Manager';
 
+export interface TagDto {
+  key: string;
+  name: string;
+  color: string;
+  deleted: boolean;
+}
+
+export interface TagRecord {
+  name: string;
+  color: string;
+  deleted: boolean;
+}
+
+export interface ViewDto {
+  id: string;
+  name: string;
+  query: string;
+  created_by: string;
+}
+
+export interface ViewRecord {
+  name: string;
+  query: string;
+  created_by: string;
+}
+
 export type Visibility = 'Inherit' | 'Restricted';
+
+
 
 
 
@@ -121,6 +159,8 @@ export type AbiEvent =
   | { name: "ManagerAdded"; payload: Event_ManagerAdded }
   | { name: "ManagerRemoved"; payload: Event_ManagerRemoved }
   | { name: "OwnerClaimed"; payload: Event_OwnerClaimed }
+  | { name: "TagChanged"; payload: Event_TagChanged }
+  | { name: "ViewChanged"; payload: Event_ViewChanged }
 ;
 
 
@@ -170,6 +210,26 @@ export class RegistryClient {
    */
   public async clearFolderRole(params: { folder_id: FolderId; member: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_tag
+   *
+   * @intent mutating
+   */
+  public async deleteTag(params: { key: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_tag', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_view
+   *
+   * @intent mutating
+   */
+  public async deleteView(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_view', argsJson: params });
     return response as void;
   }
 
@@ -262,6 +322,26 @@ export class RegistryClient {
   }
 
   /**
+   * list_tags
+   *
+   * @intent read_only
+   */
+  public async listTags(): Promise<TagDto[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_tags', argsJson: {} });
+    return response as TagDto[];
+  }
+
+  /**
+   * list_views
+   *
+   * @intent read_only
+   */
+  public async listViews(): Promise<ViewDto[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_views', argsJson: {} });
+    return response as ViewDto[];
+  }
+
+  /**
    * move_folder
    *
    * @intent mutating
@@ -302,6 +382,16 @@ export class RegistryClient {
   }
 
   /**
+   * save_view
+   *
+   * @intent mutating
+   */
+  public async saveView(params: { id: string; name: string; query: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'save_view', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * set_color
    *
    * @intent mutating
@@ -328,6 +418,16 @@ export class RegistryClient {
    */
   public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_tag
+   *
+   * @intent mutating
+   */
+  public async setTag(params: { key: string; name: string; color: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_tag', argsJson: params });
     return response as void;
   }
 
