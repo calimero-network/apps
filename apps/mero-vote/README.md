@@ -17,8 +17,8 @@ auditable like Snapshot, with no server.
 
 | Property | Where it comes from |
 | --- | --- |
-| **Authenticity: one account, one ballot** | Calimero. Ballots, key shares and decryption shares live in the author's `UserStorage` slot, and polls in an `AuthoredMap`. Both are signed by the author and checked **at merge**, so a modified node cannot write into someone else's slot. The contract has no signature code of its own. |
-| **Immutability: no editing after the close** | Calimero. Ballot bodies and poll definitions are content-addressed in `FrozenStorage`. The poll id *is* the hash of its definition. |
+| **Authenticity: one account, one ballot** | Calimero. Ballot bodies, transport keys, dealings, complaints and the creator's election and seal are `WriteOnce` entries owned by their author; ballot pointers and decryption shares live in the author's `UserStorage` slot, and a poll's closing notice in an `AuthoredMap`. All are signed by the author and checked **at merge**, so a modified node cannot write as someone else, and every read takes the author from the owner stamp, never from a field. The contract has no signature code of its own. |
+| **Immutability: no editing after the close** | Calimero. Poll definitions are content-addressed in `FrozenStorage` (the poll id *is* the hash of its definition), and everything the audit relies on is `WriteOnce`: nobody, its author included, can change it later and so fail the audit. A sealed poll can never go back to voting. |
 | **Reproducible tally** | Calimero. Every member holds the whole ballot box and runs the same contract over it. `get_result` recomputes everything on the reader's own node every time. |
 | **Secrecy from other members** | **Not Calimero.** Replicated state goes to every member's node. A plaintext ballot in a context can be read by every member and every node operator. |
 | **Secrecy from your own node / a host** | **Not Calimero.** The contract runs on a node, and the node may be someone else's machine. So encryption has to happen in the browser. |
@@ -85,10 +85,12 @@ which helps a little against coercion.
 5. **Tally.** Any `t` trustees publish partial decryptions of the per-option aggregates. The
    counts come from Lagrange-combining the `t` lowest-indexed proven partials, so every verifier
    combines the same set. Late or extra partials don't change the result.
-6. **Audit.** `get_result` re-checks everything on your node: dealings (proven, and endorsed by
-   each dealer's signed slot), complaints (every disqualification backed by a proven one), the key, every
-   ballot proof and digest, voter endorsement (the voter's signed slot still points at the counted
-   ballot), every partial, and the decryption. **Re-verify in this browser** runs a second,
+6. **Audit.** `get_result` re-checks everything on your node: one election and one seal from the
+   creator, dealings and transport keys (proven, and each one its trustee's own write-once entry),
+   complaints (every disqualification backed by a proven one), the key, every ballot proof and
+   digest, ballot authorship (each counted ballot is its voter's own entry), every partial, and the
+   decryption. It also lists eligible voters whose current ballot is not in the count (`uncounted`),
+   without failing on them: anyone can add a ballot after the seal. **Re-verify in this browser** runs a second,
    independent TypeScript implementation over `get_transcript` and compares its counts and digest
    with the node's.
 7. **Public anchor (optional).** The canonical transcript has a SHA-256 digest. Publish it
@@ -141,10 +143,12 @@ MEROD_BINARY=… pnpm -F mero-vote test:e2e
   already cast arrive before the seal. But a ballot still in flight when the creator seals isn't
   counted. The voter can see this, because their receipt is missing from the counted set.
 - **Ballot stuffing by the creator is detectable, not preventable.** A creator can put a
-  self-made ballot for another account into the seal. The audit flags it, because that account's
-  signed slot doesn't endorse it, and the victim sees a receipt they never cast. Preventing it
-  outright would need voters to sign ballots with a key the creator can't reach. Calimero's
-  signed slots already play that role for everything except the seal itself.
+  self-made ballot for another account into the seal. The audit fails it ("ballot authorship"),
+  because the ballot body is the creator's entry, not that account's.
+- **Leaving ballots out is visible, not refused.** A creator's seal can omit ballots; `uncounted`
+  names those voters, but cannot fail the audit, since a voter could add one after any seal.
+  Likewise a creator can open voting without an honest trustee's dealing; the key still needs `t`
+  proven dealings.
 - **Deadlines are informational.** Node clocks are not a consensus source.
 - **Coercion resistance is out of scope.** A voter can prove how they voted by revealing their
   encryption randomness.

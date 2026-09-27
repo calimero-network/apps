@@ -23,6 +23,7 @@ export interface AuditReport {
   decrypted_by: string[];
   transcript_digest: string | null;
   anchor: Anchor | null;
+  uncounted: string[];
 }
 
 export interface BallotPointer {
@@ -146,20 +147,27 @@ export interface Member {
 export interface MemberSlot {
   name: string;
   ballots: Record<string, BallotPointer>;
-  transport: Record<string, TransportKey>;
-  dealings: Record<string, WireDealing>;
-  complaints: Record<string, Complaint>;
   partials: Record<string, StoredPartials>;
 }
 
 export interface MeroVote {
   definitions: Record<string, PollDefinition>;
-  polls: Record<string, PollState>;
+  polls: Record<string, PollControl>;
+  elections: Record<string, Election>;
+  closures: Record<string, Closure>;
+  transport_keys: Record<string, TransportKey>;
+  dealings: Record<string, WireDealing>;
+  complaints: Record<string, Complaint>;
   ballot_bodies: Record<string, StoredBallot>;
   slots: Record<string, MemberSlot>;
 }
 
 export type Phase = 'KeyCeremony' | 'Voting' | 'Closing' | 'Closed';
+
+export interface PollControl {
+  closing_at: number | null;
+  anchor: Anchor | null;
+}
 
 export interface PollDefinition {
   title: string;
