@@ -37,6 +37,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
   }),
 }));
+vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs: true }),
 }));

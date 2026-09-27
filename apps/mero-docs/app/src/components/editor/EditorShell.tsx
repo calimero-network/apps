@@ -65,6 +65,8 @@ export interface EditorShellProps {
   saveStatus?: SaveStatus;
   lastSavedAt?: Date | null;
   isAppReady?: boolean;
+  /** True only once the connection is known to be down; see EditorStatusBar. */
+  isOffline?: boolean;
   isLoading?: boolean;
   /** Handed the live editor once, so presence can read and decorate it. */
   onEditorReady?: (editor: DriveEditor) => void;
@@ -101,6 +103,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   saveStatus = 'saved',
   lastSavedAt = null,
   isAppReady = true,
+  isOffline = false,
   isLoading = false,
   readOnly = false,
   onEditorReady,
@@ -315,6 +318,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
             saveStatus={saveStatus}
             lastSavedAt={lastSavedAt}
             isAppReady={isAppReady}
+            isOffline={isOffline}
           />
         </div>
       </div>
