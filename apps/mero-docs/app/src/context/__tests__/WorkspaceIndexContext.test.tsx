@@ -24,6 +24,7 @@ const textIndex = {
   foldersDone: 1,
   foldersTotal: 2,
   pending: ['f2'],
+  failed: [],
 };
 
 vi.mock('@/hooks/useWorkspaceIndex', () => ({

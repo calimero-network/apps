@@ -35,6 +35,7 @@ const TextIndexContext = createContext<TextIndex>({
   foldersDone: 0,
   foldersTotal: 0,
   pending: [],
+  failed: [],
 });
 
 export function useWorkspaceIndexValue(): WorkspaceIndex {

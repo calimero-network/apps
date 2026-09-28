@@ -6,7 +6,10 @@ import { ArrowRight } from 'lucide-react';
 
 import { hereLabel, LivePill } from '@/components/common/LivePill';
 import { FolderPath } from '@/components/home/DocTable';
-import { useFolderPaths } from '@/components/home/useHomeChips';
+import {
+  useFolderPaths,
+  type FolderPaths,
+} from '@/components/home/useHomeChips';
 import { TagChip } from '@/components/tags/TagChip';
 import {
   useTextIndexValue,
@@ -14,7 +17,7 @@ import {
 } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
-import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
+import { usePresenceByDoc, type PresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { liveRecent, type RecentDoc } from '@/hooks/useRecentDocs';
 import { useTags } from '@/hooks/useTags';
 import type { AppRoute } from '@/lib/routes';
@@ -74,26 +77,33 @@ function folderList(names: string[]): React.ReactNode {
   ));
 }
 
+// One sentence per reason a member folder is missing from the results.
 function coverageWarning(
   syncing: string[],
   failed: string[],
+  partial: string[],
 ): React.ReactNode | undefined {
-  if (!syncing.length && !failed.length) return undefined;
-  const one = syncing.length === 1;
-  return (
-    <>
-      {syncing.length > 0 && (
-        <>
-          {folderList(syncing)}
-          {one
-            ? ' is still syncing, so it was not searched yet.'
-            : ' are still syncing, so they were not searched yet.'}
-        </>
-      )}
-      {syncing.length > 0 && failed.length > 0 && ' '}
-      {failed.length > 0 && <>{folderList(failed)} could not be searched.</>}
-    </>
-  );
+  const sentences: React.ReactNode[] = [];
+  if (syncing.length)
+    sentences.push(
+      <>
+        {folderList(syncing)}
+        {syncing.length === 1
+          ? ' is still syncing, so it was not searched yet.'
+          : ' are still syncing, so they were not searched yet.'}
+      </>,
+    );
+  if (failed.length)
+    sentences.push(<>{folderList(failed)} could not be searched.</>);
+  if (partial.length)
+    sentences.push(<>{folderList(partial)} could not be fully searched.</>);
+  if (!sentences.length) return undefined;
+  return sentences.map((sentence, i) => (
+    <React.Fragment key={i}>
+      {i > 0 && ' '}
+      {sentence}
+    </React.Fragment>
+  ));
 }
 
 // Parts of a row's second line, with the mockup's middle dots between them.
@@ -108,9 +118,50 @@ function dotted(...parts: React.ReactNode[]): React.ReactNode {
     ));
 }
 
+type RowContext = {
+  paths: FolderPaths;
+  presence: PresenceByDoc;
+  targets: Map<string, Target>;
+};
+
+function folderPathOf(paths: FolderPaths, folderId: string): React.ReactNode {
+  const path = paths.get(folderId);
+  return <FolderPath path={path?.names ?? []} color={path?.color} />;
+}
+
+// A doc row: its label, the live pill, and where it opens.
+function docItem(
+  ctx: RowContext,
+  id: string,
+  kind: PaletteItemView['kind'],
+  r: IndexRow,
+  extra: Partial<PaletteItemView>,
+  block?: string,
+): PaletteItemView {
+  ctx.targets.set(id, {
+    kind: 'doc',
+    folderId: r.folderId,
+    docId: r.docId,
+    block,
+  });
+  const label = hereLabel(ctx.presence.get(rowKey(r.folderId, r.docId)) ?? []);
+  return {
+    id,
+    kind,
+    title: docLabel(r.title),
+    right: label ? <LivePill label={label} /> : undefined,
+    ...extra,
+  };
+}
+
 export function SearchContainer({ open, onOpenChange, recent }: Props) {
   const { rows, folders, folderStatus } = useWorkspaceIndexValue();
-  const { texts, foldersDone, foldersTotal } = useTextIndexValue();
+  const {
+    texts,
+    foldersDone,
+    foldersTotal,
+    failed: partlyRead,
+  } = useTextIndexValue();
   const { tags, byKey: tagsByKey } = useTags();
   const presence = usePresenceByDoc();
   const { namespaceId, namespaces } = useDriveWorkspace();
@@ -122,53 +173,30 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   const scopeLabel = namespaceLabel(
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,
   );
+  const live = React.useMemo(
+    () =>
+      new Map(
+        rows
+          .filter((r) => !r.archived)
+          .map((r) => [rowKey(r.folderId, r.docId), r]),
+      ),
+    [rows],
+  );
 
-  const { groups, targets, warning } = React.useMemo(() => {
-    const targets = new Map<string, Target>();
+  // Recents, or title, folder and tag matches: from memory on every keystroke.
+  const titles = React.useMemo(() => {
+    const ctx: RowContext = { paths, presence, targets: new Map() };
     const groups: PaletteGroupView[] = [];
-    if (!open) return { groups, targets, warning: undefined };
-    const now = Date.now();
-    const live = new Map(
-      rows
-        .filter((r) => !r.archived)
-        .map((r) => [rowKey(r.folderId, r.docId), r]),
-    );
-    const folderPath = (folderId: string) => {
-      const path = paths.get(folderId);
-      return <FolderPath path={path?.names ?? []} color={path?.color} />;
-    };
-    const livePill = (key: string) => {
-      const label = hereLabel(presence.get(key) ?? []);
-      return label ? <LivePill label={label} /> : undefined;
-    };
-    const docItem = (
-      id: string,
-      kind: PaletteItemView['kind'],
-      r: IndexRow,
-      extra: Partial<PaletteItemView>,
-      block?: string,
-    ): PaletteItemView => {
-      targets.set(id, {
-        kind: 'doc',
-        folderId: r.folderId,
-        docId: r.docId,
-        block,
-      });
-      return {
-        id,
-        kind,
-        title: docLabel(r.title),
-        right: livePill(rowKey(r.folderId, r.docId)),
-        ...extra,
-      };
-    };
-
     const { text, tagsOnly } = normalizeQuery(query);
-    if (!text && !tagsOnly) {
+    const empty = !text && !tagsOnly;
+    if (!open) return { ...ctx, groups, tagsOnly, empty, warning: undefined };
+    const now = Date.now();
+
+    if (empty) {
       const recentItems = liveRecent(recent, rows).map(({ entry, row: r }) =>
-        docItem(`recent:${rowKey(r.folderId, r.docId)}`, 'recent', r, {
+        docItem(ctx, `recent:${rowKey(r.folderId, r.docId)}`, 'recent', r, {
           context: dotted(
-            folderPath(r.folderId),
+            folderPathOf(paths, r.folderId),
             openedLabel(entry.openedAt, now),
           ),
         }),
@@ -201,7 +229,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
           ],
         },
       );
-      return { groups, targets, warning: undefined };
+      return { ...ctx, groups, tagsOnly, empty, warning: undefined };
     }
 
     const docs: PaletteItemView[] = [];
@@ -217,10 +245,10 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
             : [<TagChip key={k} name={t?.name ?? k} color={t?.color} />];
         });
         docs.push(
-          docItem(`doc:${rowKey(r.folderId, r.docId)}`, 'doc', r, {
+          docItem(ctx, `doc:${rowKey(r.folderId, r.docId)}`, 'doc', r, {
             titleRanges: result.ranges,
             context: dotted(
-              folderPath(r.folderId),
+              folderPathOf(paths, r.folderId),
               chips.length ? chips : null,
               updatedLabel(r.updatedAt, now),
             ),
@@ -230,7 +258,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         const id = `folder:${result.folderId}`;
         const path = paths.get(result.folderId);
         const parents = path?.names.slice(0, -1) ?? [];
-        targets.set(id, { kind: 'folder', folderId: result.folderId });
+        ctx.targets.set(id, { kind: 'folder', folderId: result.folderId });
         folderItems.push({
           id,
           kind: 'folder',
@@ -244,7 +272,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         });
       } else {
         const id = `tag:${result.tag.key}`;
-        targets.set(id, { kind: 'tag', key: result.tag.key });
+        ctx.targets.set(id, { kind: 'tag', key: result.tag.key });
         tagItems.push({
           id,
           kind: 'tag',
@@ -262,66 +290,76 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       { id: 'tags', label: 'Tags', items: tagItems },
     );
 
-    if (!tagsOnly) {
-      const hits = searchText(textQuery, texts).flatMap((hit) => {
-        const r = live.get(hit.row);
-        if (!r) return [];
-        return [
-          docItem(
-            `text:${hit.row}`,
-            'text',
-            r,
-            {
-              context: dotted(
-                folderPath(r.folderId),
-                hit.heading === undefined ? null : `in “${hit.heading}”`,
-              ),
-              snippet: hit.snippet,
-              snippetRanges: hit.ranges,
-            },
-            hit.blockId,
-          ),
-        ];
-      });
-      groups.push({
-        id: 'text',
-        label: 'In document text',
-        items: hits,
-        aside:
-          foldersDone < foldersTotal ? (
-            <SearchProgress
-              label={`${foldersDone} of ${foldersTotal} folders searched`}
-            />
-          ) : undefined,
-      });
-    }
-
     // Only member folders are in the index, so a restricted folder is never named.
-    const named = (status: string) =>
-      folders
-        .filter((f) => folderStatus[f.id] === status)
-        .map((f) => folderLabel(f.name));
-    return {
-      groups,
-      targets,
-      warning: coverageWarning(named('syncing'), named('error')),
-    };
+    const named = (ids: string[]) =>
+      folders.filter((f) => ids.includes(f.id)).map((f) => folderLabel(f.name));
+    const withStatus = (status: string) =>
+      folders.filter((f) => folderStatus[f.id] === status).map((f) => f.id);
+    const warning = coverageWarning(
+      named(withStatus('syncing')),
+      named(withStatus('error')),
+      named(partlyRead),
+    );
+    return { ...ctx, groups, tagsOnly, empty, warning };
   }, [
     open,
     query,
-    textQuery,
     rows,
     folders,
     folderStatus,
     tags,
     tagsByKey,
-    texts,
-    foldersDone,
-    foldersTotal,
     presence,
     recent,
     paths,
+    partlyRead,
   ]);
+
+  // Matches inside doc text: a scan of every indexed block, so only once typing pauses.
+  const textHits = React.useMemo(() => {
+    const ctx: RowContext = { paths, presence, targets: new Map() };
+    if (!open || !normalizeQuery(textQuery).text) return { ...ctx, items: [] };
+    const items = searchText(textQuery, texts).flatMap((hit) => {
+      const r = live.get(hit.row);
+      if (!r) return [];
+      return [
+        docItem(
+          ctx,
+          `text:${hit.row}`,
+          'text',
+          r,
+          {
+            context: dotted(
+              folderPathOf(paths, r.folderId),
+              hit.heading === undefined ? null : `in “${hit.heading}”`,
+            ),
+            snippet: hit.snippet,
+            snippetRanges: hit.ranges,
+          },
+          hit.blockId,
+        ),
+      ];
+    });
+    return { ...ctx, items };
+  }, [open, textQuery, texts, live, paths, presence]);
+
+  // Still reading a folder, not merely missing one that failed.
+  const reading = foldersDone + partlyRead.length < foldersTotal;
+  const groups = React.useMemo(() => {
+    if (titles.empty || titles.tagsOnly) return titles.groups;
+    const textGroup: PaletteGroupView = {
+      id: 'text',
+      label: 'In document text',
+      // Hits for an older query would highlight words no longer typed.
+      items: textQuery === query ? textHits.items : [],
+      aside: reading ? (
+        <SearchProgress
+          label={`${foldersDone} of ${foldersTotal} folders searched`}
+        />
+      ) : undefined,
+    };
+    return [...titles.groups, textGroup];
+  }, [titles, textHits, textQuery, query, reading, foldersDone, foldersTotal]);
 
   const routeOf = (t: Target): { route: AppRoute; search?: string } => {
     const ws = namespaceId ?? '';
@@ -340,7 +378,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   };
 
   const onOpen = (item: PaletteItemView, { newTab }: OpenOptions) => {
-    const target = targets.get(item.id);
+    const target = titles.targets.get(item.id) ?? textHits.targets.get(item.id);
     if (!target) return;
     if (newTab) {
       const { route, search } = routeOf(target);
@@ -362,7 +400,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       onQueryChange={setQuery}
       scopeLabel={scopeLabel}
       groups={groups}
-      warning={warning}
+      warning={titles.warning}
       emptyText={EMPTY_TEXT}
       onOpen={onOpen}
     />

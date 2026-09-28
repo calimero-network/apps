@@ -33,7 +33,12 @@ vi.mock('@/generated/docs/DocsClient', () => ({
   },
 }));
 
-function row(folderId: string, docId: string, archived = false): IndexRow {
+function row(
+  folderId: string,
+  docId: string,
+  archived = false,
+  updatedAt = 0,
+): IndexRow {
   return {
     folderId,
     docId,
@@ -41,7 +46,7 @@ function row(folderId: string, docId: string, archived = false): IndexRow {
     tags: [],
     archived,
     createdAt: 0,
-    updatedAt: 0,
+    updatedAt,
     createdBy: 'a',
     updatedBy: 'a',
   };
@@ -280,22 +285,77 @@ describe('useTextIndex', () => {
     expect(getDocument).toHaveBeenCalledTimes(3);
   });
 
-  it('keeps a failed doc out, counts its folder done, and retries on the next pass', async () => {
+  it('keeps a failed doc and its folder unsearched until a retry reads it', async () => {
     getDocument.mockRejectedValueOnce(new Error('offline'));
     getDocument.mockImplementation((_ctx, doc) => Promise.resolve(blocks(doc)));
     const { result, rerender } = renderHook(
+      ({ rows }) => useTextIndex(input(rows, { f1: 'ready', f2: 'ready' })),
+      { initialProps: { rows: [row('f1', 'a'), row('f2', 'z')] } },
+    );
+    await settle();
+    expect([...result.current.texts.keys()]).toEqual(['f2/z']);
+    expect(result.current).toMatchObject({
+      foldersDone: 1,
+      foldersTotal: 2,
+      pending: ['f1'],
+      failed: ['f1'],
+    });
+
+    rerender({ rows: [row('f1', 'a'), row('f1', 'b'), row('f2', 'z')] });
+    await settle();
+    expect([...result.current.texts.keys()].sort()).toEqual([
+      'f1/a',
+      'f1/b',
+      'f2/z',
+    ]);
+    expect(result.current).toMatchObject({
+      foldersDone: 2,
+      pending: [],
+      failed: [],
+    });
+  });
+
+  it('re-reads a doc the list says changed since it was read, with no event', async () => {
+    getDocument.mockImplementation((_ctx, doc) =>
+      Promise.resolve(blocks(`v1 ${doc}`)),
+    );
+    const { result, rerender } = renderHook(
       ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
       {
-        initialProps: { rows: [row('f1', 'a')] },
+        initialProps: {
+          rows: [row('f1', 'a', false, 5), row('f1', 'b', false, 5)],
+        },
       },
     );
     await settle();
-    expect(result.current.texts.size).toBe(0);
-    expect(result.current).toMatchObject({ foldersDone: 1, foldersTotal: 1 });
+    expect(getDocument).toHaveBeenCalledTimes(2);
 
-    rerender({ rows: [row('f1', 'a'), row('f1', 'b')] });
+    getDocument.mockImplementation((_ctx, doc) =>
+      Promise.resolve(blocks(`v2 ${doc}`)),
+    );
+    rerender({ rows: [row('f1', 'a', false, 9), row('f1', 'b', false, 5)] });
     await settle();
-    expect([...result.current.texts.keys()].sort()).toEqual(['f1/a', 'f1/b']);
+    rerender({ rows: [row('f1', 'a', false, 9), row('f1', 'b', false, 5)] });
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(3);
+    expect(getDocument).toHaveBeenLastCalledWith('c-f1', 'a');
+    expect(textOf(result, 'f1/a')).toBe('v2 a');
+  });
+
+  it('reads again when the list moves on while a read is in flight', async () => {
+    const held = deferred<Block[]>();
+    getDocument.mockImplementationOnce(() => held.promise);
+    getDocument.mockImplementation(() => Promise.resolve(blocks('newer')));
+    const { result, rerender } = renderHook(
+      ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
+      { initialProps: { rows: [row('f1', 'a', false, 1)] } },
+    );
+    await settle();
+    rerender({ rows: [row('f1', 'a', false, 2)] });
+    held.resolve(blocks('older'));
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(textOf(result, 'f1/a')).toBe('newer');
   });
 
   it('drops the old workspace work: a late read never lands after a switch', async () => {

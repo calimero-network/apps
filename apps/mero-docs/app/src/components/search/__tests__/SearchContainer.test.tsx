@@ -1,13 +1,13 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import type { TextIndex } from '@/hooks/useTextIndex';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
 import type { Block } from '@/generated/docs/DocsClient';
-import { docTextFromBlocks } from '@/lib/search/docText';
+import { docTextFromBlocks, searchText } from '@/lib/search/docText';
 import {
   rowKey,
   type DocText,
@@ -38,6 +38,10 @@ vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => index,
   useTextIndexValue: () => textIndex,
 }));
+vi.mock('@/lib/search/docText', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/search/docText')>();
+  return { ...real, searchText: vi.fn(real.searchText) };
+});
 vi.mock('@/hooks/useTags', () => ({
   useTags: () => ({ tags, byKey: new Map(tags.map((t) => [t.key, t])) }),
 }));
@@ -157,7 +161,9 @@ beforeEach(() => {
     foldersDone: 3,
     foldersTotal: 3,
     pending: [],
+    failed: [],
   };
+  vi.mocked(searchText).mockClear();
   presence = new Map([['f1/d2', [{ id: 'bob', name: 'Bob', colour: '#f00' }]]]);
 });
 
@@ -257,6 +263,62 @@ describe('SearchContainer results', () => {
     expect(marks(hits[0])).toEqual(['roadm']);
   });
 
+  it('scans doc text once typing pauses, not on every keystroke', async () => {
+    textIndex = {
+      ...textIndex,
+      texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'a road trip'])),
+    };
+    mount();
+    await type('road');
+    await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    expect(searchText).toHaveBeenCalledTimes(1);
+    expect(searchText).toHaveBeenCalledWith('road', textIndex.texts);
+
+    await type(' trip');
+    await waitFor(() =>
+      expect(searchText).toHaveBeenLastCalledWith('road trip', textIndex.texts),
+    );
+    expect(searchText).toHaveBeenCalledTimes(2);
+  });
+
+  it('hides text matches for an older query until the new one is scanned', async () => {
+    textIndex = {
+      ...textIndex,
+      texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'the zebra crossing'])),
+    };
+    mount();
+    await type('zebra');
+    await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    await type(' c');
+    expect(
+      screen.queryByRole('group', { name: 'In document text' }),
+    ).toBeNull();
+    const hit = await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    expect(marks(hit)).toEqual(['zebra c']);
+  });
+
+  it('names a folder with a doc it could not read, and stops the progress for it', async () => {
+    textIndex = {
+      ...textIndex,
+      foldersDone: 2,
+      foldersTotal: 3,
+      pending: ['f1'],
+      failed: ['f1'],
+    };
+    mount();
+    await type('road');
+    expect(screen.getByText(/could not be fully searched/).textContent).toBe(
+      'Product could not be fully searched.',
+    );
+    expect(screen.queryByText(/folders searched/)).toBeNull();
+  });
+
   it('says how far the text search has got while it builds', async () => {
     textIndex = { ...textIndex, foldersDone: 1, foldersTotal: 3 };
     mount();
@@ -272,7 +334,13 @@ describe('SearchContainer results', () => {
       { id: 'f4', name: 'Finance' },
       { id: 'f5', name: 'Legal' },
     ];
-    index.folderStatus = { ...index.folderStatus, f4: 'syncing', f5: 'error' };
+    // f9 is a restricted folder this member is not in: it has a status but is not theirs.
+    index.folderStatus = {
+      ...index.folderStatus,
+      f4: 'syncing',
+      f5: 'error',
+      f9: 'syncing',
+    };
     mount();
     await type('road');
     expect(

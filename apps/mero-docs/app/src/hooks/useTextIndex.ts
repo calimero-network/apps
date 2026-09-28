@@ -23,10 +23,21 @@ export type TextIndex = {
   foldersDone: number;
   foldersTotal: number;
   pending: string[]; // folder ids not fully searched yet
+  failed: string[]; // folder ids with a doc whose last read failed
 };
 
-type Job = { key: string; folderId: string; docId: string; contextId: string };
-type Snapshot = { texts: Map<string, DocText>; tried: Set<string> };
+type Job = {
+  key: string;
+  folderId: string;
+  docId: string;
+  contextId: string;
+  updatedAt: number; // the list's version of the doc
+};
+type Snapshot = {
+  texts: Map<string, DocText>;
+  searched: Set<string>;
+  failed: Set<string>;
+};
 
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve));
 
@@ -48,7 +59,13 @@ export function useTextIndex({
       const contextId = contextOf(r.folderId);
       if (r.archived || !contextId) continue;
       const key = rowKey(r.folderId, r.docId);
-      out.set(key, { key, folderId: r.folderId, docId: r.docId, contextId });
+      out.set(key, {
+        key,
+        folderId: r.folderId,
+        docId: r.docId,
+        contextId,
+        updatedAt: r.updatedAt,
+      });
     }
     return out;
   }, [rows, contextOf]);
@@ -58,8 +75,8 @@ export function useTextIndex({
     alive: true,
     wanted: new Map<string, Job>(),
     texts: new Map<string, DocText>(),
-    tried: new Set<string>(), // read, or failed, since it was listed
-    failed: new Set<string>(),
+    readAt: new Map<string, number>(), // the list version each text was read at
+    failed: new Set<string>(), // last read failed; its folder is not fully searched
     queue: [] as Job[],
     queued: new Set<string>(),
     running: new Map<string, { again: boolean }>(),
@@ -68,7 +85,8 @@ export function useTextIndex({
   });
   const [snapshot, setSnapshot] = useState<Snapshot>(() => ({
     texts: new Map(),
-    tried: new Set(),
+    searched: new Set(),
+    failed: new Set(),
   }));
 
   const clients = useMemo(
@@ -93,7 +111,13 @@ export function useTextIndex({
     e.publishTimer = setTimeout(() => {
       e.publishTimer = null;
       if (e.alive)
-        setSnapshot({ texts: new Map(e.texts), tried: new Set(e.tried) });
+        setSnapshot({
+          texts: new Map(e.texts),
+          searched: new Set(
+            [...e.readAt.keys()].filter((key) => !e.failed.has(key)),
+          ),
+          failed: new Set(e.failed),
+        });
     }, PUBLISH_MS);
   }, []);
 
@@ -107,9 +131,11 @@ export function useTextIndex({
       e.running.set(job.key, { again: false });
       let text: DocText | null = null;
       let failed = false;
+      let version = job.updatedAt;
       try {
         await yieldToEventLoop();
         if (current()) {
+          version = e.wanted.get(job.key)!.updatedAt;
           const blocks = await clientFor(job.contextId).getDocument({
             doc: job.docId,
           });
@@ -129,14 +155,21 @@ export function useTextIndex({
       e.running.delete(job.key);
       if (!e.alive) return;
       const done = text !== null || failed;
-      if (done && current()) {
-        // A failed read keeps the last good text searchable.
-        if (text) e.texts.set(job.key, text);
-        if (failed) e.failed.add(job.key);
-        e.tried.add(job.key);
+      if (text && current()) {
+        e.texts.set(job.key, text);
+        e.readAt.set(job.key, version);
+        e.failed.delete(job.key);
+      } else if (failed && current()) {
+        // The last good text, if any, stays searchable; the next list pass retries.
+        e.failed.add(job.key);
       }
       const next = e.wanted.get(job.key);
-      if (next && (again || !done || !current()) && !e.queued.has(job.key)) {
+      const behind = !!text && !!next && next.updatedAt > version;
+      if (
+        next &&
+        (again || !done || !current() || behind) &&
+        !e.queued.has(job.key)
+      ) {
         e.queue.unshift(next);
         e.queued.add(job.key);
       }
@@ -170,20 +203,24 @@ export function useTextIndex({
     };
   }, []);
 
-  // A listed doc not read yet joins the queue; a doc gone from the list leaves
-  // it; a failed read gets one more try on each pass.
+  // A listed doc not read yet, or changed since its read (an edit missed while
+  // the event stream was down), joins the queue; a doc gone from the list
+  // leaves it; a failed read gets one more try on each pass.
   useEffect(() => {
     const e = engine.current;
     e.wanted = wanted;
-    for (const key of e.failed) e.tried.delete(key);
-    e.failed.clear();
     for (const key of [...e.texts.keys()])
       if (!wanted.has(key)) e.texts.delete(key);
-    for (const key of [...e.tried]) if (!wanted.has(key)) e.tried.delete(key);
+    for (const key of [...e.readAt.keys()])
+      if (!wanted.has(key)) e.readAt.delete(key);
+    for (const key of [...e.failed]) if (!wanted.has(key)) e.failed.delete(key);
     e.queue = e.queue.flatMap((job) => wanted.get(job.key) ?? []);
     e.queued = new Set(e.queue.map((job) => job.key));
     for (const [key, job] of wanted) {
-      if (e.tried.has(key) || e.queued.has(key) || e.running.has(key)) continue;
+      const readAt = e.readAt.get(key);
+      const fresh =
+        readAt !== undefined && readAt >= job.updatedAt && !e.failed.has(key);
+      if (fresh || e.queued.has(key) || e.running.has(key)) continue;
       e.queue.push(job);
       e.queued.add(key);
     }
@@ -241,8 +278,11 @@ export function useTextIndex({
 
   return useMemo(() => {
     const waiting = new Set<string>();
-    for (const [key, job] of wanted)
-      if (!snapshot.tried.has(key)) waiting.add(job.folderId);
+    const failedIn = new Set<string>();
+    for (const [key, job] of wanted) {
+      if (!snapshot.searched.has(key)) waiting.add(job.folderId);
+      if (snapshot.failed.has(key)) failedIn.add(job.folderId);
+    }
     // A syncing or failed folder is named by the palette instead of counted here.
     const searchable = folders.filter(
       (f) => folderStatus[f.id] === 'ready' || folderStatus[f.id] === 'loading',
@@ -255,6 +295,7 @@ export function useTextIndex({
       foldersDone: searchable.length - pending.length,
       foldersTotal: searchable.length,
       pending,
+      failed: pending.filter((id) => failedIn.has(id)),
     };
   }, [snapshot, wanted, folders, folderStatus]);
 }
