@@ -25,6 +25,7 @@ interface Props {
   subtitle: string;
   canManage: boolean;
   busy?: boolean; // a change is in flight, so no other can start
+  actions?: React.ReactNode; // shown before the tag's own Rename and More
   onRename: () => void;
   onRecolor: (color: string) => void;
   onDelete: () => void;
@@ -36,11 +37,12 @@ export function TagPageHeader({
   subtitle,
   canManage,
   busy = false,
+  actions: extraActions,
   onRename,
   onRecolor,
   onDelete,
 }: Props) {
-  const actions = canManage && (
+  const manageActions = canManage && (
     <>
       <Button
         variant="outline"
@@ -109,7 +111,14 @@ export function TagPageHeader({
         </>
       }
       subtitle={subtitle}
-      actions={actions || undefined}
+      actions={
+        extraActions || manageActions ? (
+          <>
+            {extraActions}
+            {manageActions}
+          </>
+        ) : undefined
+      }
     />
   );
 }

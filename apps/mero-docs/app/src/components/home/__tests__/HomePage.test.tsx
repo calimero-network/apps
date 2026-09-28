@@ -23,6 +23,7 @@ import { HomePage } from '../HomePage';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
+import { useAppRoute } from '@/hooks/useAppRoute';
 import { TagNameTakenError } from '@/hooks/useTags';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -134,7 +135,13 @@ function LocationProbe() {
   return null;
 }
 
-function mount(url = '/app/ws1', folderId?: string) {
+// The folder comes from the URL, as in the layout, so leaving a folder route unmounts its scope.
+function RoutedHome() {
+  const { route } = useAppRoute();
+  return <HomePage folderId={route?.folder} />;
+}
+
+function mount(url = '/app/ws1') {
   return render(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
@@ -142,7 +149,7 @@ function mount(url = '/app/ws1', folderId?: string) {
           path="/app/:ws/*"
           element={
             <>
-              <HomePage folderId={folderId} />
+              <RoutedHome />
               <LocationProbe />
             </>
           }
@@ -238,7 +245,7 @@ describe('HomePage', () => {
   });
 
   it('scopes a folder route to that folder and its subfolders, under its name', () => {
-    mount('/app/ws1/f/eng', 'eng');
+    mount('/app/ws1/f/eng');
     expect(screen.getByRole('heading', { name: 'Engineering' })).toBeTruthy();
     expect(titles()).toEqual(['API spec', 'Untitled']);
     expect(screen.queryByRole('button', { name: /^Folder/ })).toBeNull();
@@ -377,7 +384,7 @@ describe('HomePage', () => {
       index.folders = FOLDERS;
       settle([]);
       permError = new Error('502');
-      mount('/app/ws1/f/design', 'design');
+      mount('/app/ws1/f/design');
       expect(screen.getByText('No documents yet')).toBeTruthy();
       expect(screen.queryByText(/They show up here/)).toBeNull();
     });
@@ -385,13 +392,13 @@ describe('HomePage', () => {
     it('speaks about the folder on an empty folder route, by role', () => {
       settle([]);
       canEdit = { design: true };
-      const { unmount } = mount('/app/ws1/f/design', 'design');
+      const { unmount } = mount('/app/ws1/f/design');
       expect(screen.getByText('No documents in this folder yet.')).toBeTruthy();
       expect(screen.queryByText(/in every folder/)).toBeNull();
       unmount();
 
       canEdit = {};
-      mount('/app/ws1/f/design', 'design');
+      mount('/app/ws1/f/design');
       expect(
         screen.getByText(
           'No documents in this folder yet. They show up here when someone adds one.',
@@ -497,7 +504,7 @@ describe('HomePage', () => {
 
     it('creates in the routed folder, never asking about its subfolders', async () => {
       canEdit = { eng: true, specs: true };
-      mount('/app/ws1/f/eng', 'eng');
+      mount('/app/ws1/f/eng');
       fireEvent.click(screen.getByRole('button', { name: 'New document' }));
       await waitFor(() =>
         expect(location.pathname).toBe('/app/ws1/f/eng/d/new-doc'),
@@ -789,6 +796,57 @@ describe('HomePage', () => {
       await waitFor(() =>
         expect(saveView).toHaveBeenCalledWith('Last 7 days', 'updated=7d', 'me'),
       );
+    });
+
+    it('is offered on a single tag page and saves that tag', async () => {
+      saveView.mockResolvedValue({
+        id: 'v1',
+        name: 'Q3',
+        query: 'tag=q3',
+        scope: 'me',
+      });
+      mount('/app/ws1?tag=q3');
+      expect(screen.getByRole('heading', { name: 'Q3' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      expect(
+        (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement)
+          .value,
+      ).toBe('Q3');
+      fireEvent.click(saveSubmit());
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith('Q3', 'tag=q3', 'me'),
+      );
+      await waitFor(() => expect(location.search).toBe('?tag=q3&view=v1'));
+    });
+
+    it('keeps a folder route as the folder filter, and opens the view on Home', async () => {
+      saveView.mockResolvedValue({
+        id: 'v1',
+        name: 'Engineering, Last 7 days',
+        query: 'folder=eng&updated=7d',
+        scope: 'me',
+      });
+      mount('/app/ws1/f/eng?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      expect(
+        (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement)
+          .value,
+      ).toBe('Engineering, Last 7 days');
+      fireEvent.click(saveSubmit());
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith(
+          'Engineering, Last 7 days',
+          'folder=eng&updated=7d',
+          'me',
+        ),
+      );
+      await waitFor(() =>
+        expect(location).toEqual({
+          pathname: '/app/ws1',
+          search: '?folder=eng&updated=7d&view=v1',
+        }),
+      );
+      expect(navType).toBe('REPLACE');
     });
 
     it('keeps the popover open, and the URL put, when saving fails', async () => {

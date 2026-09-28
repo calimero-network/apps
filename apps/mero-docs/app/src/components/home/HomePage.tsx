@@ -282,7 +282,7 @@ export function HomePage({ folderId }: Props) {
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,
   );
   const summaryArgs = {
-    q,
+    q: effective,
     tagsByKey,
     paths,
     selfIdentity,
@@ -298,10 +298,11 @@ export function HomePage({ folderId }: Props) {
   }) => {
     setSaving(true);
     try {
-      const queryForSave = serializeHomeQuery({ ...q, view: undefined });
+      // A folder route's folder is part of the view, which opens on Home.
+      const queryForSave = serializeHomeQuery({ ...effective, view: undefined });
       const savedView = await saveView(name, queryForSave, scope);
       setSaveOpen(false);
-      navigateQuery(withView(queryForSave, savedView.id), true);
+      goHome(withView(queryForSave, savedView.id), { replace: true });
     } catch {
       // Reported by the saved views hook's own toast; the popover stays open to retry.
     } finally {
@@ -492,6 +493,7 @@ export function HomePage({ folderId }: Props) {
             void recolorTag(tagPage.key, color).catch(() => {})
           }
           onDelete={() => void deleteTagAfterConfirm(tagPage.key, tagPage.name)}
+          actions={saveViewButton || undefined}
         />
       ) : (
         <HomeHeader
