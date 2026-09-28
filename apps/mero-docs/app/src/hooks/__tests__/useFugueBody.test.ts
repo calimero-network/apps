@@ -3,8 +3,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { useCreateBlockNote } from '@blocknote/react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
+import { schema } from '@/components/editor/blocknote/schema';
 
 let deliver: ((event: unknown) => void) | null = null;
 
@@ -481,6 +483,33 @@ describe('useFugueBody', () => {
     expect(client.splitBlock).not.toHaveBeenCalled();
   });
 
+  it('keeps the caret at the start when a peer\'s first block replaces the empty paragraph', async () => {
+    const client = fakeClient([]);
+    const editor = renderHook(() => useCreateBlockNote({ schema })).result.current;
+    editor.mount(document.body.appendChild(document.createElement('div')));
+    renderHook(() =>
+      useFugueBody({
+        client: client as unknown as DocsClient,
+        docId: DOC,
+        contextId: CTX,
+        editor: editor as unknown as BodyEditor,
+      }),
+    );
+    await settle();
+    editor.setTextCursorPosition(editor.document[0].id, 'start');
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'The fox.')]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1']);
+    const { selection } = editor.prosemirrorView.state;
+    expect(editor.getTextCursorPosition().block.id).toBe('blk-1');
+    expect(selection.empty).toBe(true);
+    expect(selection.$head.parentOffset).toBe(0);
+  });
+
   it('never writes the empty block the editor shows for an empty document', async () => {
     const client = fakeClient([]);
     const editor = new FakeEditor();
@@ -514,6 +543,24 @@ describe('useFugueBody', () => {
       ops: [{ insert: 'hi', attributes: {} }],
       anchor: null,
     });
+  });
+
+  it('writes the empty document\'s block when the user only formats it', async () => {
+    const client = fakeClient([]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle();
+
+    client.getDocument.mockResolvedValue([row('blk-new', '', 'paragraph', { textAlignment: 'center' })]);
+    editor.updateBlock('placeholder', { props: { ...BLOCKNOTE_DEFAULTS, textAlignment: 'center' } });
+    await settle();
+
+    expect(client.insertBlock).toHaveBeenCalledWith({ doc: DOC, after: null, kind: 'paragraph', depth: 0 });
+    expect(client.setAttr).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'textAlignment', value: 'center' }),
+    );
   });
 
   it('keeps a peer\'s text that lands while this window changes that block\'s kind', async () => {
