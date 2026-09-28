@@ -47,7 +47,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: 'ctx',
     registryClient: { setFolderRole },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
-    namespaceMemberNames: {},
+    namespaceMemberNames: { bob: 'Bob' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
     refetch: vi.fn(),
   }),
@@ -301,6 +301,16 @@ describe('removing a folder owner', () => {
   });
 });
 
+// A folder's member list carries no names; the workspace's names label its rows.
+describe('naming folder members', () => {
+  it.each([false, true])('names a member by their workspace name (role editor: %s)', (canManagePermissions) => {
+    folderPerms.canManagePermissions = canManagePermissions;
+    folderMembers.value = [ME, { identity: 'bob', role: 'Member' } as typeof ME];
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
+  });
+});
+
 describe('making a folder restricted', () => {
   it('asks first, and cancel leaves it open', async () => {
     confirm.mockResolvedValue(false);
@@ -308,6 +318,9 @@ describe('making a folder restricted', () => {
     fireEvent.click(screen.getByRole('button', { name: /Make restricted/ }));
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(confirm.mock.calls[0][0].destructive).toBe(true);
+    expect(confirm.mock.calls[0][0].body).toBe(
+      'Workspace members you have not added will lose access to this folder and its subfolders.',
+    );
     expect(setSubgroupVisibility).not.toHaveBeenCalled();
   });
 

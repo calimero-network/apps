@@ -30,11 +30,8 @@ test.describe('Archive (single-node)', () => {
     await home.chip('Archived').click();
     await home.expectTitles(['Old plan']);
 
-    await page
-      .getByRole('button', { name: 'Search docs, folders and tags' })
-      .click();
-    const palette = page.getByRole('dialog', { name: 'Search' });
-    await palette.getByRole('textbox', { name: 'Search' }).fill('plan');
+    await alice.palette.search('plan');
+    const palette = alice.palette.dialog();
     await expect(
       palette.getByRole('option', { name: /Current plan/ }).first(),
     ).toBeVisible();

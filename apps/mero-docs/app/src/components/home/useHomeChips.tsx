@@ -89,15 +89,21 @@ export function useHomeChips({
   paths,
   base,
 }: Args): FilterChipView[] {
-  const { selfIdentity } = useDriveWorkspace();
+  const { selfIdentity, registryFolders } = useDriveWorkspace();
   const { tags, byKey: tagsByKey } = useTags();
   const personName = usePersonName(q.by);
   const tagName = (key: string) => {
     const t = tagsByKey.get(key);
     return t && !t.deleted ? t.name : UNKNOWN_TAG_LABEL;
   };
-  const folderName = (id: string) =>
-    paths.get(id)?.names.join(' / ') ?? UNKNOWN_FOLDER_LABEL;
+  // A folder this member cannot see keeps the alias its no-access card shows.
+  const folderName = (id: string) => {
+    const hidden = registryFolders?.find((f) => f.id === id);
+    return (
+      paths.get(id)?.names.join(' / ') ??
+      (hidden ? folderLabel(hidden.alias) : UNKNOWN_FOLDER_LABEL)
+    );
+  };
   const [openChip, setOpenChip] = React.useState<string | null>(null);
 
   const folderCounts = countBy(base, (r) => paths.get(r.folderId)?.ids ?? []);

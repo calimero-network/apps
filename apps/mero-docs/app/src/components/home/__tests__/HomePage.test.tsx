@@ -5,6 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -65,6 +66,9 @@ const ws = {
   selfIdentity: 'me',
   namespaceMemberNames: { me: 'Ann', bob: 'Bob' } as Record<string, string>,
   namespaces: [{ namespaceId: 'ws1', name: 'Acme Product' }],
+  registryFolders: [
+    { id: 'legal', parent_id: 'ws1', color: null, alias: 'Legal' },
+  ],
 };
 
 const mentionOf = (folderId: string, docId: string, member = 'me') => ({
@@ -402,6 +406,14 @@ describe('HomePage', () => {
       fireEvent.click(chip(/^Sort: Name$/));
       expect(location.search).toBe('?sort=created');
       expect(titles()).toEqual(['Brand', 'API spec', 'Untitled']);
+    });
+
+    it('names a folder this member cannot see by its alias, as the no-access card does', () => {
+      mount('/app/ws1?folder=legal');
+      expect(chip(/^Folder: Legal$/)).toBeTruthy();
+      cleanup();
+      mount('/app/ws1?folder=nope');
+      expect(chip(/^Unknown folder$/)).toBeTruthy();
     });
 
     it('names an unknown tag and offers to clear the filters', () => {
