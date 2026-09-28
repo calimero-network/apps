@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { HTTPError } from '@calimero-network/mero-js';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 
@@ -202,6 +203,31 @@ describe('useFugueBody', () => {
     });
     await settle();
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+  });
+
+  // The node answers the same edit the same way every time: a 413 (the edit is
+  // over its body limit) or a 403 is not about the moment. Resending it at once
+  // looped for as long as the editor stayed open.
+  it.each([413, 403])('sends an edit the node refuses with %i once, not in a loop', async (status) => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn.mockRejectedValue(
+      new HTTPError(status, 'Refused', 'http://node/jsonrpc', new Headers(), '{"error":"no"}'),
+    );
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. huge paste');
+    await settle();
+    await settle(2000);
+
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    expect((result.current.error as HTTPError | null)?.status).toBe(status);
+    // The edit is still in the editor, and the next one tries again.
+    expect(editor.textOf('blk-1')).toBe('The fox. huge paste');
+    editor.type('blk-1', 'The fox. small');
+    await settle();
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
   });
 
   it('rebases a refused write onto the peer text and resends it', async () => {
