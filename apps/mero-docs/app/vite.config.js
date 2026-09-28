@@ -128,6 +128,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.PW_PORT) || 5179,
     strictPort: true,
+    // An edit made during an e2e run would hot-swap modules under the test and reset UI state.
+    watch: process.env.E2E_NO_WATCH ? null : undefined,
   },
   base: '/',
   build: {

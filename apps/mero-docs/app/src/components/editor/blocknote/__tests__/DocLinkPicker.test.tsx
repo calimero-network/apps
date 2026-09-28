@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   menus: [] as Menu[],
   texts: new Map() as Map<string, DocText>,
   ws: 'w1',
+  names: { me: 'Mia', bob: 'Bob' } as Record<string, string>,
   group: {
     members: [] as { identity: string }[],
     loading: false,
@@ -45,11 +46,13 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: h.ws,
     selfIdentity: 'me',
-    namespaceMemberNames: { me: 'Mia', bob: 'Bob' },
+    namespaceMemberNames: h.names,
+    namespaceMembers: h.group,
   }),
 }));
+// A one-off member read goes stale when someone joins; the picker must not use it.
 vi.mock('@calimero-network/mero-react', () => ({
-  useGroupMembers: () => h.group,
+  useGroupMembers: () => ({ members: [], loading: false, error: null }),
 }));
 vi.mock('@/hooks/useFolderReach', () => ({
   useFolderReach: () => () => true,
@@ -107,6 +110,7 @@ afterEach(() => {
   h.menus = [];
   h.group = { members: [], loading: false, error: null };
   h.ws = 'w1';
+  h.names = { me: 'Mia', bob: 'Bob' };
 });
 
 describe('DocLinkPicker', () => {
@@ -167,6 +171,44 @@ describe('DocLinkPicker', () => {
     rerender(<DocLinkPicker editor={editor} />);
     const items = await latest(DOC_LINK_TRIGGER).getItems('');
     expect(items.filter((i) => i.kind === 'person')).toEqual([]);
+  });
+
+  it('offers a member who joined after the picker opened', async () => {
+    const editor = {} as DriveEditor;
+    h.group = { members: [{ identity: 'me' }], loading: false, error: null };
+    const { rerender } = render(<DocLinkPicker editor={editor} />);
+    h.group = {
+      members: [{ identity: 'me' }, { identity: 'bob' }],
+      loading: false,
+      error: null,
+    };
+    rerender(<DocLinkPicker editor={editor} />);
+    const items = await latest(DOC_LINK_TRIGGER).getItems('bo');
+    expect(
+      items.filter((i) => i.kind === 'person').map((i) => i.title),
+    ).toEqual(['Bob']);
+  });
+
+  it("reloads an open @ menu when a member's name arrives, and only then", async () => {
+    const editor = {} as DriveEditor;
+    h.group = {
+      members: [{ identity: 'me' }, { identity: 'bob' }],
+      loading: false,
+      error: null,
+    };
+    h.names = { me: 'Mia' };
+    const { rerender } = render(<DocLinkPicker editor={editor} />);
+    const before = latest(DOC_LINK_TRIGGER).getItems;
+
+    h.group = { ...h.group, members: [...h.group.members] };
+    rerender(<DocLinkPicker editor={editor} />);
+    expect(latest(DOC_LINK_TRIGGER).getItems).toBe(before);
+
+    h.names = { me: 'Mia', bob: 'Bob' };
+    rerender(<DocLinkPicker editor={editor} />);
+    expect(latest(DOC_LINK_TRIGGER).getItems).not.toBe(before);
+    const items = await latest(DOC_LINK_TRIGGER).getItems('bo');
+    expect(items.map((i) => i.title)).toEqual(['Bob']);
   });
 
   it('leaves People out, with no error text, when members never loaded', async () => {

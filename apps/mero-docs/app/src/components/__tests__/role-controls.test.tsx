@@ -47,7 +47,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: 'ctx',
     registryClient: { setFolderRole },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
-    namespaceMemberNames: { bob: 'Bob' },
+    namespaceMemberNames: { bob: 'Bob', me: 'Me' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
     refetch: vi.fn(),
   }),
@@ -208,7 +208,6 @@ function renderFolderRow() {
       <FolderMemberRoleRow
         folderId="f1"
         identity="bob"
-        label="Bob"
         coreRole="Member"
         registryRole="Editor"
         canManage
@@ -254,7 +253,6 @@ describe('folder member row', () => {
         <FolderMemberRoleRow
           folderId="f1"
           identity="bob"
-          label="Bob"
           coreRole="Admin"
           registryRole="Editor"
           canManage

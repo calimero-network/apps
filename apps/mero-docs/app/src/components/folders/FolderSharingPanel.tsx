@@ -31,6 +31,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useFolderRoles } from '@/hooks/useFolderRole';
+import { useMemberName } from '@/hooks/useMemberName';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
@@ -58,7 +59,6 @@ export function FolderSharingPanel({ folderId }: Props) {
     folders,
     selfIdentity,
     registryContextId,
-    namespaceMemberNames,
   } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
@@ -136,7 +136,7 @@ export function FolderSharingPanel({ folderId }: Props) {
     }
   };
 
-  const onRemove = async (id: string, label: string) => {
+  const onRemove = async (id: string) => {
     const leaving = !!selfIdentity && id === selfIdentity;
     const ok = await confirm(leaving ? {
       title: 'Leave this folder?',
@@ -151,7 +151,6 @@ export function FolderSharingPanel({ folderId }: Props) {
           <MemberLabel
             namespaceId={namespaceId}
             memberId={id}
-            fallback={() => label}
             className="font-medium"
           />
           {' '}from this folder?
@@ -233,9 +232,6 @@ export function FolderSharingPanel({ folderId }: Props) {
           </li>
         )}
         {members.map((m) => {
-          // A folder's member rows carry no names; the workspace's rows do.
-          const label =
-            m.name ?? namespaceMemberNames[m.identity] ?? UNNAMED_MEMBER_LABEL;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
@@ -251,7 +247,6 @@ export function FolderSharingPanel({ folderId }: Props) {
                 <FolderMemberRoleRow
                   folderId={folderId}
                   identity={m.identity}
-                  label={label}
                   coreRole={m.role}
                   registryRole={roleByMember.get(m.identity) ?? 'Editor'}
                   isSelf={isSelfRow}
@@ -268,52 +263,22 @@ export function FolderSharingPanel({ folderId }: Props) {
               </React.Fragment>
             );
           }
-          // Read-only view (no canManagePermissions): name + the member's
-          // folder role from the registry Role alone (caps are not fetched
-          // here), optional remove if they can manage members on a
-          // Restricted folder.
           return (
-            <li key={m.identity} className="px-4 py-2 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-foreground">
-                    <MemberLabel
-                      namespaceId={namespaceId}
-                      memberId={m.identity}
-                      isSelf={isSelfRow}
-                      fallback={() => label}
-                    />
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {roleDisplayLabel(
-                      folderRoleOfRegistryRole(
-                        parseGroupRole(m.role),
-                        roleByMember.get(m.identity) ?? 'Editor',
-                      ),
-                    )}
-                  </div>
-                </div>
-                {removable ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    disabled={removingId === m.identity}
-                    aria-label={`Remove ${label}`}
-                    onClick={() => onRemove(m.identity, label)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <span aria-hidden data-testid="remove-slot" className="h-7 w-7 shrink-0" />
-                )}
-              </div>
-              {rowErr && (
-                <p className="mt-1 text-xs text-destructive" role="alert">
-                  Remove failed: {rowErr}
-                </p>
+            <ReadOnlyMemberRow
+              key={m.identity}
+              namespaceId={namespaceId}
+              identity={m.identity}
+              isSelf={isSelfRow}
+              role={roleDisplayLabel(
+                folderRoleOfRegistryRole(
+                  parseGroupRole(m.role),
+                  roleByMember.get(m.identity) ?? 'Editor',
+                ),
               )}
-            </li>
+              onRemove={removable ? () => onRemove(m.identity) : undefined}
+              removing={removingId === m.identity}
+              error={rowErr}
+            />
           );
         })}
       </ul>
@@ -402,5 +367,60 @@ export function FolderSharingPanel({ folderId }: Props) {
         />
       )}
     </section>
+  );
+}
+
+// Without canManagePermissions: the name and the member's folder role from the
+// registry Role alone (caps are not fetched here), plus remove when allowed.
+function ReadOnlyMemberRow({
+  namespaceId,
+  identity,
+  isSelf,
+  role,
+  onRemove,
+  removing,
+  error,
+}: {
+  namespaceId: string | null;
+  identity: string;
+  isSelf: boolean;
+  role: string;
+  onRemove?: () => void;
+  removing: boolean;
+  error: string | null;
+}) {
+  const { name, settled } = useMemberName(namespaceId, identity);
+  // Null while the name loads, so labels never call a named member unnamed.
+  const label = name ?? (settled ? UNNAMED_MEMBER_LABEL : null);
+  return (
+    <li className="px-4 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-foreground">
+            <MemberLabel namespaceId={namespaceId} memberId={identity} isSelf={isSelf} />
+          </div>
+          <div className="truncate text-xs text-muted-foreground">{role}</div>
+        </div>
+        {onRemove ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            disabled={removing}
+            aria-label={label ? `Remove ${label}` : 'Remove member'}
+            onClick={onRemove}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : (
+          <span aria-hidden data-testid="remove-slot" className="h-7 w-7 shrink-0" />
+        )}
+      </div>
+      {error && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          Remove failed: {error}
+        </p>
+      )}
+    </li>
   );
 }

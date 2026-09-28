@@ -2,7 +2,6 @@
 // The / menu opens it too, or its section mode, which links a heading instead.
 
 import { useCallback, useRef } from 'react';
-import { useGroupMembers } from '@calimero-network/mero-react';
 import {
   SuggestionMenuController,
   type SuggestionMenuProps,
@@ -64,9 +63,12 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { rows, folders } = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const { route } = useAppRoute();
-  const { namespaceId, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
-  const group = useGroupMembers(namespaceId);
+  const {
+    namespaceId,
+    selfIdentity,
+    namespaceMemberNames,
+    namespaceMembers: group,
+  } = useDriveWorkspace();
   // A reload or a failed read keeps the last people read for this workspace; none yet leaves People out.
   const lastMembers = useRef<{ ws: string | null; ids: string[] }>({
     ws: null,
@@ -120,9 +122,14 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     },
     [],
   );
+  // Changes only when the people offered change, so a join or a name arriving reloads an open menu.
+  const peopleKey = source.members
+    .map((id) => `${id}=${namespaceMemberNames[id] ?? ''}`)
+    .join(',');
   const getDocs = useCallback(
     (query: string) => itemsAfterPause(query, mentionPickerItems),
-    [itemsAfterPause],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- people are read through sourceRef; peopleKey is the reload trigger
+    [itemsAfterPause, peopleKey],
   );
   // A new text index gives a new getItems, so an open section menu reloads its headings.
   const getSections = useCallback(
