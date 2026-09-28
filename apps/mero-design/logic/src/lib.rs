@@ -32,55 +32,81 @@ const CANVAS_ROLE_MASKS: &[(&str, OpMask)] = &[(ROLE_EDITOR, OpMask::WRITE.union
 
 // ── Element data ──────────────────────────────────────────────────────────────
 
+/// What an element is, as a JSON object tagged by `kind`: `rect`, `circle`, `line`,
+/// `arrow`, `path`, `text`, `image` or `svg`, plus that kind's own fields.
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "kind")]
 pub enum ElementData {
+    /// A rectangle filling the element's box; `cornerRadius` rounds its corners.
     Rect,
+    /// An ellipse filling the element's box.
     Circle,
-    /// `points` is "x1,y1 x2,y2" in element-local space. A bounding box cannot
-    /// express which way a line was drawn, so a line drawn bottom-left to
-    /// top-right came back mirrored. Defaulted so pre-existing elements and older
-    /// clients that send a bare `{"kind":"line"}` still deserialize.
+    /// A straight line.
+    // A bounding box cannot say which way a line was drawn. Defaulted so a bare
+    // {"kind":"line"} still deserializes.
     Line {
+        /// The two end points, `"x1,y1 x2,y2"`, in pixels from the element's `x` and `y`.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         points: String,
     },
+    /// A straight line with an arrowhead at its second point.
     Arrow {
+        /// The two end points, `"x1,y1 x2,y2"`, in pixels from the element's `x` and `y`;
+        /// the arrowhead is at the second.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         points: String,
     },
+    /// A freehand stroke or a closed outline.
     Path {
+        /// SVG path data in pixels from the element's `x` and `y`, e.g. `"M 0 0 L 40 40 Z"`.
         points: String,
     },
+    /// Text in the element's box.
     Text {
+        /// The text itself; may be empty.
         content: String,
+        /// Font size in pixels.
         #[serde(rename = "fontSize")]
         font_size: u32,
+        /// A CSS font family, e.g. `"sans-serif"`.
         #[serde(rename = "fontFamily")]
         font_family: String,
+        /// Bold weight.
         bold: bool,
+        /// Italic style.
         italic: bool,
+        /// Horizontal alignment: `"left"`, `"center"` or `"right"`; omitted means left.
         #[serde(skip_serializing_if = "Option::is_none")]
         text_align: Option<String>,
+        /// Vertical alignment inside the box: `"top"`, `"middle"` or `"bottom"`.
         #[serde(skip_serializing_if = "Option::is_none")]
         vertical_align: Option<String>,
     },
+    /// A raster image stored as a blob on the node.
     Image {
+        /// The image's own width in pixels, before any scaling to the element's box.
         #[serde(rename = "naturalWidth")]
         natural_width: u32,
+        /// The image's own height in pixels.
         #[serde(rename = "naturalHeight")]
         natural_height: u32,
+        /// Id of the uploaded blob holding the image; the contract announces it to the
+        /// board's members so their nodes fetch it.
         #[serde(rename = "blobId", default, skip_serializing_if = "String::is_empty")]
         blob_id: String,
     },
+    /// An SVG image stored as a blob on the node.
     Svg {
+        /// The SVG's own width in pixels.
         #[serde(rename = "naturalWidth")]
         natural_width: u32,
+        /// The SVG's own height in pixels.
         #[serde(rename = "naturalHeight")]
         natural_height: u32,
+        /// Id of the uploaded blob holding the SVG markup; announced like an image's.
         #[serde(rename = "blobId", default, skip_serializing_if = "String::is_empty")]
         blob_id: String,
     },
@@ -88,8 +114,8 @@ pub enum ElementData {
 
 // ── Element ───────────────────────────────────────────────────────────────────
 
-/// `layer_index` is indexed, so the stack in order, and its top and bottom,
-/// are seeks rather than a scan and sort.
+// `layer_index` is indexed, so the stack in order, and its top and bottom, are seeks.
+/// One element on the canvas.
 #[derive(
     AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, app::Indexed,
 )]
@@ -97,29 +123,52 @@ pub enum ElementData {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Element {
+    /// Chosen by the caller; use a fresh UUID. Writing an existing id replaces that element.
     pub id: ElementId,
+    /// What the element is, tagged by `kind`.
     pub data: ElementData,
+    /// Left edge, canvas pixels.
     pub x: i64,
+    /// Top edge, canvas pixels.
     pub y: i64,
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
+    /// Clockwise rotation in degrees.
     pub rotation: i32,
+    /// Fill colour as a CSS colour (`"#ef4444"`, `"transparent"`); on a plain text
+    /// element, the text colour.
     pub fill: String,
+    /// Outline colour as a CSS colour.
     pub stroke: String,
+    /// Outline width in pixels; 0 for none.
     pub stroke_width: u32,
+    /// Opacity in percent, 0 to 100.
     pub opacity: u8,
+    /// Paint order; higher paints on top.
     #[index]
     pub layer_index: u32,
-    /// Set by the contract from the caller, never taken from the client.
+    /// The creator's member id, set by the contract; the value sent is ignored.
     pub created_by: MemberId,
+    /// Creation time, unix milliseconds.
     pub created_at: u64,
+    /// Last change, unix milliseconds. Between concurrent writes to one element the
+    /// larger value wins, so every write must carry a newer one.
     pub updated_at: u64,
+    /// Drop shadow colour as a CSS colour; `null` for no shadow.
     pub shadow_color: Option<String>,
+    /// Drop shadow horizontal offset in pixels.
     pub shadow_offset_x: Option<i32>,
+    /// Drop shadow vertical offset in pixels.
     pub shadow_offset_y: Option<i32>,
+    /// Drop shadow blur radius in pixels; `null` or 0 for no shadow.
     pub shadow_blur: Option<u32>,
+    /// Layer name, a `/`-separated path: the groups, then the name. May carry client
+    /// extras after a U+001F character; keep them when renaming.
     pub label: Option<String>,
-    /// Corner radius in px, clamped by the client to min(width, height) / 2.
+    /// Corner radius in pixels for a `rect`, drawn at most half the shorter side; 0 or
+    /// omitted means square corners.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub corner_radius: Option<u32>,
 }
@@ -130,20 +179,23 @@ calimero_storage::impl_atomic_lww_leaf!(Element, updated_at);
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
+/// A board member: someone who has called `join`.
 #[app::mergeable(id = "mero_design::Member")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
+    /// Member id: the member's account id (64 hex), the id roles and ownership name.
     pub id: MemberId,
+    /// Display name the member chose.
     pub username: String,
+    /// Avatar URL, or `null`.
     pub avatar: Option<String>,
+    /// When the member joined, unix milliseconds from their own clock.
     pub joined_at: u64,
-    /// Dedicated LWW clock for username/avatar edits. Merging on `joined_at`
-    /// (which never changes after the first join) would freeze a member's
-    /// username at its first value across nodes; this field is the real
-    /// last-writer-wins timestamp for profile edits.
+    /// Unix milliseconds of the last profile edit; the newest edit wins.
+    // A dedicated clock: merging on joined_at would freeze a username at its first value.
     pub username_updated_at: u64,
 }
 
@@ -171,62 +223,80 @@ impl MergeableTrait for Member {
 
 // ── Board info ────────────────────────────────────────────────────────────────
 
+/// Board summary: name, description, counts and owner.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct BoardInfo {
+    /// The board's name.
     pub name: String,
+    /// The board's description; may be empty.
     pub description: String,
+    /// How many elements are on the canvas.
     pub element_count: u32,
+    /// How many members have joined.
     pub member_count: u32,
+    /// The owner's member id (account id).
     pub owner: Option<String>,
 }
 
-/// A member paired with their effective role, for the settings/members UI.
-///
-/// A member id IS an account (see [`MeroDesign::caller_id`]), so `account`
-/// always equals `member`. It stays in the shape because it is what the
-/// settings UI joins `/groups/{id}/members` rows on.
+/// A member with their effective role.
+// A member id is an account, so `account` always equals `member`; the settings UI
+// joins `/groups/{id}/members` rows on it.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
+    /// Member id (account id).
     pub member: String,
+    /// `"admin"`, `"editor"` or `"viewer"`.
     pub role: String,
+    /// The member's account id; always equal to `member`.
     pub account: Option<String>,
 }
 
 // ── Comments ──────────────────────────────────────────────────────────────────
 
+/// A reply in a comment thread.
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CommentReply {
+    /// Reply id, chosen by the caller.
     pub id: String,
+    /// The reply text.
     pub content: String,
+    /// The writer's member id, set by the contract.
     pub author: String,
+    /// Unix milliseconds; replies are listed in this order.
     pub created_at: u64,
 }
 
 // A reply is written once and never edited, so its clock never moves.
 calimero_storage::impl_atomic_lww_leaf!(CommentReply, created_at);
 
+/// A comment pinned at a canvas point, with its replies.
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
+    /// Comment id, chosen by the caller.
     pub id: CommentId,
+    /// Pin position, canvas pixels.
     pub x: i64,
+    /// Pin position, canvas pixels.
     pub y: i64,
+    /// The comment text.
     pub content: String,
+    /// The writer's member id, set by the contract.
     pub author: String,
+    /// Unix milliseconds.
     pub created_at: u64,
-    /// Filled on read from `MeroDesign::replies`, and always stored empty: a
-    /// reply is its own entry, so two replies posted at once both survive.
-    /// Kept in a `Vec` inside the comment they were whole-record LWW, and the
-    /// comment's clock never moved, so one of them was lost.
+    /// The thread, oldest first.
+    // Always stored empty and filled on read: each reply is its own entry, so two
+    // replies posted at once both survive.
     pub replies: Vec<CommentReply>,
 }
 
@@ -236,19 +306,22 @@ calimero_storage::impl_atomic_lww_leaf!(Comment, created_at);
 
 // ── Cursor state (ephemeral — last known position per identity) ────────────────
 
+/// A pointer's last reported position.
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
-    /// The device this pointer belongs to — one per open window.
+    /// The device (context identity) this pointer belongs to.
     pub identity: String,
-    /// The member (account) behind that device, read from the entry's owner
-    /// stamp, so the overlay can label the pointer with a username.
+    /// The member id (account) behind that device.
     #[serde(default)]
     pub account: MemberId,
+    /// Canvas pixels.
     pub x: i64,
+    /// Canvas pixels.
     pub y: i64,
+    /// Unix milliseconds of the last move.
     pub updated_at: u64,
 }
 
@@ -282,62 +355,94 @@ calimero_storage::impl_atomic_lww_leaf!(CursorState, updated_at);
 /// Largest batch any `*_elements` method accepts.
 pub const MAX_BATCH: usize = 200;
 
-/// One element's share of an `update_elements` call. Field names and meaning
-/// match `update_element`'s arguments: `None` leaves a field alone.
+/// One element's change in an `update_elements` call. Fields match `update_element`'s
+/// arguments; an omitted or `null` field is left unchanged.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ElementPatch {
+    /// The element to change; an unknown id is skipped.
     pub id: String,
+    /// New left edge, canvas pixels.
     #[serde(default)]
     pub x: Option<i64>,
+    /// New top edge, canvas pixels.
     #[serde(default)]
     pub y: Option<i64>,
+    /// New width in pixels.
     #[serde(default)]
     pub width: Option<u32>,
+    /// New height in pixels.
     #[serde(default)]
     pub height: Option<u32>,
+    /// New rotation in degrees.
     #[serde(default)]
     pub rotation: Option<i32>,
+    /// New fill colour.
     #[serde(default)]
     pub fill: Option<String>,
+    /// New outline colour.
     #[serde(default)]
     pub stroke: Option<String>,
+    /// New outline width in pixels.
     #[serde(default)]
     pub stroke_width: Option<u32>,
+    /// New opacity in percent, 0 to 100.
     #[serde(default)]
     pub opacity: Option<u8>,
+    /// New corner radius in pixels; 0 squares the corners.
     #[serde(default)]
     pub corner_radius: Option<u32>,
 }
 
-/// One element's share of an `update_element_labels` call.
+/// One element's new label in an `update_element_labels` call.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct LabelUpdate {
+    /// The element to rename; an unknown id is skipped.
     pub id: String,
+    /// The new label, as for `update_element_label`; `null` clears it.
     pub label: Option<String>,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
+/// What changed on the board, so an open client knows what to re-read.
 #[app::event]
 pub enum Event {
+    /// `add_element` stored an element; the payload is its id.
     ElementAdded(String),
+    /// One element changed (`update_element`, `update_element_label`,
+    /// `update_text_style`, `update_shadow`); the payload is its id.
     ElementUpdated(String),
+    /// `delete_element` ran; the payload is the id it was given.
     ElementDeleted(String),
+    /// The layer order changed, or `clear_elements` emptied the canvas; re-read `get_elements`.
     LayerReordered(),
+    /// A member joined; the payload is their member id.
     MemberJoined(String),
+    /// A member renamed themselves; the payload is their member id.
     MemberUsernameUpdated(String),
+    /// The board's name or description changed.
     BoardUpdated(),
+    /// A comment was added or replaced; the payload is its id.
     CommentAdded(String),
+    /// A comment's replies changed; the payload is the comment id.
     CommentUpdated(String),
+    /// `delete_comment` ran; the payload is the id it was given.
     CommentDeleted(String),
+    /// A pointer moved; the payload is its device identity.
     CursorMoved(String),
+    /// A member's editor role was granted or revoked; the payload is the id the caller passed.
     RoleUpdated(String),
+    /// The board changed owner; the payload is the id the caller passed.
     OwnerTransferred(String),
     // One event per batch call, carrying every id it touched.
+    /// `add_elements` stored elements; the payload is every id, in call order.
     ElementsAdded(Vec<String>),
+    /// `update_elements` or `update_element_labels` changed elements; the payload is
+    /// every id that existed (unknown ids are left out).
     ElementsUpdated(Vec<String>),
+    /// `delete_elements` ran; the payload is every id the call named.
     ElementsDeleted(Vec<String>),
 }
 
@@ -401,6 +506,17 @@ fn reply_key(comment_id: &str, created_at: u64, reply_id: &str) -> String {
 
 #[app::logic]
 impl MeroDesign {
+    /// Create a board owned by the caller. Runs once, when the context is created, with
+    /// the context's init arguments. The creator becomes the owner and the only admin.
+    ///
+    /// # Arguments
+    /// * `name` - the board's name.
+    /// * `description` - free text; may be empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"name":"Landing page","description":""}
+    /// ```
     #[app::init]
     pub fn init(name: String, description: String) -> MeroDesign {
         // Ownership, the admin tier and the member roster are all ACCOUNT-scoped.
@@ -534,6 +650,15 @@ impl MeroDesign {
         }
     }
 
+    /// The board's name, description, element and member counts, and owner.
+    ///
+    /// # Returns
+    /// The board summary.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_board(&self) -> BoardInfo {
         BoardInfo {
             name: self.board_name_str(),
@@ -545,8 +670,21 @@ impl MeroDesign {
         }
     }
 
-    /// Rename / re-describe the board. Owner-only — the rename only converges
-    /// from the board owner.
+    /// Rename or re-describe the board. Owner only.
+    ///
+    /// # Arguments
+    /// * `name` - the new name, or `null` to keep it. An empty name shows the name the board
+    ///   was created with.
+    /// * `description` - the new description, or `null` to keep it. An empty one shows the
+    ///   description the board was created with.
+    ///
+    /// # Errors
+    /// Fails if the caller is not the owner.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"name":"Landing page v2","description":null}
+    /// ```
     pub fn update_board(
         &mut self,
         name: Option<String>,
@@ -563,7 +701,19 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Hand the board (and its owner-gated config) to another member. Owner-only.
+    /// Hand the board to another account: it becomes owner and admin, and the caller stops
+    /// being admin (and so loses editing unless also granted editor). Owner only.
+    ///
+    /// # Arguments
+    /// * `new_owner` - the new owner's member id (account id). They need not have joined yet.
+    ///
+    /// # Errors
+    /// Fails if the caller is not the owner or `new_owner` is not a 64-hex account id.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"new_owner":"<member id from get_members>"}
+    /// ```
     pub fn transfer_ownership(&mut self, new_owner: String) -> app::Result<()> {
         let owner = self.require_account(&new_owner)?;
         // Only the current owner can pass the `Ownable` transfer guards below,
@@ -591,7 +741,19 @@ impl MeroDesign {
 
     // ── Roles ───────────────────────────────────────────────────────────────────
 
-    /// Grant a member the editor role. Admin-only (enforced at merge).
+    /// Let a member change the canvas and comments. Admin only.
+    ///
+    /// # Arguments
+    /// * `member` - their member id (account id), from `get_members` or `list_group_members`;
+    ///   they need not have joined the board yet.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an admin or `member` is not a 64-hex account id.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"member":"<member id from get_members>"}
+    /// ```
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
@@ -600,7 +762,19 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Revoke a member's editor role (downgrade to viewer). Admin-only.
+    /// Take the editor role away, leaving the member a viewer. Admin only. An admin's own
+    /// admin role is unaffected.
+    ///
+    /// # Arguments
+    /// * `member` - their member id (account id).
+    ///
+    /// # Errors
+    /// Fails if the caller is not an admin or `member` is not a 64-hex account id.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"member":"<member id from get_members>"}
+    /// ```
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
@@ -609,7 +783,18 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Effective role of a member: "admin", "editor", or "viewer".
+    /// A member's effective role.
+    ///
+    /// # Arguments
+    /// * `member` - a member id (account id). Anything else, or an id with no grant, is a viewer.
+    ///
+    /// # Returns
+    /// `"admin"`, `"editor"` or `"viewer"`.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"member":"<member id from get_members>"}
+    /// ```
     pub fn get_role(&self, member: String) -> String {
         // Anything that is not a member id names nobody, and nobody holds a
         // grant — the same answer as a member who was never granted one.
@@ -619,17 +804,41 @@ impl MeroDesign {
         }
     }
 
-    /// Effective role of the caller — convenience for the frontend's edit gate.
+    /// The caller's effective role.
+    ///
+    /// # Returns
+    /// `"admin"`, `"editor"` or `"viewer"`.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn my_role(&self) -> String {
         self.role_label(&Self::caller_account())
     }
 
-    /// Whether the caller may edit the canvas.
+    /// Whether the caller may change the canvas and comments.
+    ///
+    /// # Returns
+    /// `true` for an admin or editor, `false` for a viewer.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn can_edit(&self) -> bool {
         self.is_editor(&Self::caller_account())
     }
 
-    /// Every member with their effective role, for the members/settings UI.
+    /// Every member who has joined, with their effective role.
+    ///
+    /// # Returns
+    /// One entry per member.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn list_roles(&self) -> Vec<MemberRole> {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
@@ -657,9 +866,20 @@ impl MeroDesign {
 
     // ── Members ───────────────────────────────────────────────────────────────
 
-    /// Add the caller to the roster. Keyed by account, so opening the board on
-    /// a second machine does not add a second "member", and the roster is one
-    /// `UserStorage` slot per account, so nobody can rename anyone else.
+    /// Add the caller to the board's members, so other members see their name. Anyone in the
+    /// context may join; joining grants no editing rights. Does nothing, and emits nothing, if
+    /// the caller's account has already joined (use `update_member_username` to rename).
+    ///
+    /// # Arguments
+    /// * `username` - display name shown to other members.
+    /// * `avatar` - avatar URL, or `null`.
+    /// * `timestamp` - the caller's clock in unix milliseconds.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"username":"bot","avatar":null,"timestamp":1727000000000}
+    /// ```
+    #[app::idempotent]
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
         if self.members.contains_current_user().unwrap_or(false) {
             return;
@@ -676,8 +896,15 @@ impl MeroDesign {
         app::emit!(Event::MemberJoined(member_id));
     }
 
-    /// Every member, with `id` taken from the slot's account rather than from
-    /// the stored value.
+    /// Every member who has joined, with username, avatar and join time.
+    ///
+    /// # Returns
+    /// One entry per member; `id` is the member id roles and ownership use.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_members(&self) -> Vec<Member> {
         self.members
             .entries()
@@ -692,7 +919,16 @@ impl MeroDesign {
             .unwrap_or_default()
     }
 
-    /// Rename the caller's own member entry — the only one they can write.
+    /// Rename the caller's own member entry. Does nothing if the caller has not joined.
+    ///
+    /// # Arguments
+    /// * `username` - the new display name.
+    /// * `timestamp` - the caller's clock in unix milliseconds; the newest rename wins.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"username":"bot-2","timestamp":1727000001000}
+    /// ```
     pub fn update_member_username(&mut self, username: String, timestamp: u64) {
         if let Ok(Some(mut m)) = self.members.get() {
             m.username = username;
@@ -704,6 +940,25 @@ impl MeroDesign {
 
     // ── Elements ──────────────────────────────────────────────────────────────
 
+    /// Add an element to the canvas, or replace the element with the same `id`. Editors only.
+    ///
+    /// The caller chooses `id` (a fresh UUID) and `layerIndex` (one above the highest in
+    /// `get_elements` paints on top). `createdBy` is set by the contract. For an `image` or `svg`,
+    /// `blobId` must name a blob already uploaded to the node.
+    ///
+    /// # Arguments
+    /// * `element` - the whole element; `null` or omitted optional fields mean none.
+    ///
+    /// # Returns
+    /// The element's id.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"element":{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","data":{"kind":"rect"},"x":40,"y":60,"width":120,"height":80,"rotation":0,"fill":"#ef4444","stroke":"transparent","strokeWidth":0,"opacity":100,"layerIndex":0,"createdBy":"","createdAt":1727000000000,"updatedAt":1727000000000}}
+    /// ```
     pub fn add_element(&mut self, element: Element) -> app::Result<String> {
         self.require_editor()?;
         let id = self.insert_element(element)?;
@@ -711,9 +966,23 @@ impl MeroDesign {
         Ok(id)
     }
 
-    /// `add_element` for a whole selection — a paste, an import, a batch of
-    /// rerouted connectors. An id that already exists is overwritten, exactly as
-    /// `add_element` does. At most `MAX_BATCH` elements.
+    /// `add_element` for many elements in one call, such as a paste or an import. Editors only.
+    /// Emits one `ElementsAdded` event.
+    ///
+    /// # Arguments
+    /// * `elements` - at most 200 elements; an existing id is replaced, as with `add_element`.
+    ///
+    /// # Returns
+    /// The elements' ids, in the order given.
+    ///
+    /// # Errors
+    /// Fails, adding nothing, if the caller is not an editor or admin or `elements` holds more
+    /// than 200 entries.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"elements":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","data":{"kind":"rect"},"x":40,"y":60,"width":120,"height":80,"rotation":0,"fill":"#ef4444","stroke":"transparent","strokeWidth":0,"opacity":100,"layerIndex":0,"createdBy":"","createdAt":1727000000000,"updatedAt":1727000000000}]}
+    /// ```
     pub fn add_elements(&mut self, elements: Vec<Element>) -> app::Result<Vec<String>> {
         self.require_editor()?;
         Self::require_batch(elements.len())?;
@@ -767,6 +1036,31 @@ impl MeroDesign {
     // an `Option<T>` field a caller may or may not be changing. Collapsing them
     // into a struct would change the ABI — and therefore the generated client
     // and the published contract — which a migration must not do.
+    /// Move, resize or restyle an element. Editors only. Does nothing if `id` names no element.
+    ///
+    /// Every field argument is optional: `null` leaves it unchanged.
+    ///
+    /// # Arguments
+    /// * `id` - the element to change.
+    /// * `x` - new left edge, canvas pixels.
+    /// * `y` - new top edge, canvas pixels.
+    /// * `width` - new width in pixels.
+    /// * `height` - new height in pixels.
+    /// * `rotation` - new rotation in degrees.
+    /// * `fill` - new fill colour.
+    /// * `stroke` - new outline colour.
+    /// * `stroke_width` - new outline width in pixels.
+    /// * `opacity` - new opacity in percent, 0 to 100.
+    /// * `corner_radius` - new corner radius in pixels; 0 squares the corners.
+    /// * `updated_at` - unix milliseconds, newer than the element's current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","x":300,"y":60,"width":null,"height":null,"rotation":null,"fill":"#22c55e","stroke":null,"stroke_width":null,"opacity":null,"corner_radius":8,"updated_at":1727000010000}
+    /// ```
     #[allow(clippy::too_many_arguments)]
     pub fn update_element(
         &mut self,
@@ -803,9 +1097,22 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// `update_element` for a whole selection — a multi-drag, a fill applied to
-    /// many shapes. Every patch shares one `updated_at`, as they are one edit.
-    /// Unknown ids are skipped. At most `MAX_BATCH` patches.
+    /// `update_element` for many elements in one call, such as a multi-select drag. Editors only.
+    /// Unknown ids are skipped. Emits one `ElementsUpdated` event naming the ids that existed.
+    ///
+    /// # Arguments
+    /// * `patches` - at most 200; each names an element and the fields to change.
+    /// * `updated_at` - unix milliseconds, shared by every patch; newer than each element's
+    ///   current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails, changing nothing, if the caller is not an editor or admin or `patches` holds more
+    /// than 200 entries.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"patches":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","x":40,"y":50}],"updated_at":1727000010000}
+    /// ```
     pub fn update_elements(
         &mut self,
         patches: Vec<ElementPatch>,
@@ -881,6 +1188,23 @@ impl MeroDesign {
         Ok(found.map(|()| id))
     }
 
+    /// Set or clear an element's label (its layer name and group). Editors only. Does nothing
+    /// if `id` names no element.
+    ///
+    /// # Arguments
+    /// * `id` - the element to rename.
+    /// * `label` - a `/`-separated path, groups first (`"topbar/logo"`); a `rect` labelled
+    ///   `screen/<name>` is a presentation screen. Keep any U+001F suffix the current label
+    ///   carries. `null` clears the label.
+    /// * `updated_at` - unix milliseconds, newer than the element's current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","label":"screen/01 Sign in","updated_at":1727000030000}
+    /// ```
     pub fn update_element_label(
         &mut self,
         id: String,
@@ -894,8 +1218,23 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// `update_element_label` for a whole selection — grouping, ungrouping,
-    /// renaming a group. Unknown ids are skipped. At most `MAX_BATCH` labels.
+    /// `update_element_label` for many elements in one call, such as grouping a selection.
+    /// Editors only. Unknown ids are skipped. Emits one `ElementsUpdated` event naming the ids
+    /// that existed.
+    ///
+    /// # Arguments
+    /// * `labels` - at most 200; each names an element and its new label, or `null` to clear it.
+    /// * `updated_at` - unix milliseconds, shared by every label; newer than each element's
+    ///   current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails, changing nothing, if the caller is not an editor or admin or `labels` holds more
+    /// than 200 entries.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"labels":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","label":"topbar/logo"}],"updated_at":1727000030000}
+    /// ```
     pub fn update_element_labels(
         &mut self,
         labels: Vec<LabelUpdate>,
@@ -928,6 +1267,29 @@ impl MeroDesign {
     // an `Option<T>` field a caller may or may not be changing. Collapsing them
     // into a struct would change the ABI — and therefore the generated client
     // and the published contract — which a migration must not do.
+    /// Change a text element's content or style. Editors only. Does nothing if `id` names no
+    /// element; on an element that is not text it changes only `updatedAt`.
+    ///
+    /// Every field argument is optional: `null` leaves it unchanged.
+    ///
+    /// # Arguments
+    /// * `id` - the text element to change.
+    /// * `content` - new text.
+    /// * `font_family` - new CSS font family.
+    /// * `font_size` - new font size in pixels.
+    /// * `bold` - bold on or off.
+    /// * `italic` - italic on or off.
+    /// * `text_align` - `"left"`, `"center"` or `"right"`.
+    /// * `vertical_align` - `"top"`, `"middle"` or `"bottom"`.
+    /// * `updated_at` - unix milliseconds, newer than the element's current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f","content":"Hello there","font_family":null,"font_size":32,"bold":true,"italic":null,"text_align":"center","vertical_align":null,"updated_at":1727000005000}
+    /// ```
     #[allow(clippy::too_many_arguments)]
     pub fn update_text_style(
         &mut self,
@@ -983,6 +1345,16 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// Delete every element on the board, for every member. Admin only. Emits `LayerReordered`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
+    #[app::destructive]
     pub fn clear_elements(&mut self) -> app::Result<()> {
         self.require_admin()?;
         self.elements.get_mut()?.clear()?;
@@ -990,6 +1362,18 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// Delete every comment and reply on the board, for every member. Admin only. Emits no
+    /// event, so open clients see it only when they next read comments.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn clear_comments(&mut self) -> app::Result<()> {
         self.require_admin()?;
         self.comments.get_mut()?.clear()?;
@@ -997,6 +1381,24 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// Set or remove an element's drop shadow. Editors only. Does nothing if `id` names no
+    /// element. All four shadow fields are replaced; `null` for all four removes the shadow.
+    ///
+    /// # Arguments
+    /// * `id` - the element to change.
+    /// * `shadow_color` - a CSS colour, e.g. `"rgba(0,0,0,0.3)"`.
+    /// * `shadow_offset_x` - horizontal offset in pixels.
+    /// * `shadow_offset_y` - vertical offset in pixels.
+    /// * `shadow_blur` - blur radius in pixels; 0 draws no shadow.
+    /// * `updated_at` - unix milliseconds, newer than the element's current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","shadow_color":"rgba(0,0,0,0.3)","shadow_offset_x":0,"shadow_offset_y":4,"shadow_blur":12,"updated_at":1727000015000}
+    /// ```
     pub fn update_shadow(
         &mut self,
         id: String,
@@ -1020,6 +1422,20 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// Delete an element for every member. Editors only. An unknown id is not an error, and
+    /// still emits `ElementDeleted`.
+    ///
+    /// # Arguments
+    /// * `id` - the element to delete.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+    /// ```
+    #[app::destructive]
     pub fn delete_element(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let _ = self.elements.get_mut()?.remove(&id)?;
@@ -1027,8 +1443,24 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// `delete_element` for a whole selection. Ids that are already gone are
-    /// fine — a peer may have deleted them first. At most `MAX_BATCH` ids.
+    /// `delete_element` for many elements in one call. Editors only. Ids already gone are
+    /// fine. Emits one `ElementsDeleted` event.
+    ///
+    /// On a large board a batch can run out of gas well below 200 ids (roughly 150 on an empty
+    /// board, 23 at 1000 elements); on that error nothing is deleted, so retry with half as many.
+    ///
+    /// # Arguments
+    /// * `ids` - at most 200 element ids.
+    ///
+    /// # Errors
+    /// Fails, deleting nothing, if the caller is not an editor or admin, `ids` holds more than
+    /// 200 entries, or the call runs out of gas.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+    /// ```
+    #[app::destructive]
     pub fn delete_elements(&mut self, ids: Vec<String>) -> app::Result<()> {
         self.require_editor()?;
         Self::require_batch(ids.len())?;
@@ -1043,8 +1475,15 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Every element, bottom to top: the `layer_index` index already holds
-    /// them in that order.
+    /// Every element on the canvas, in paint order.
+    ///
+    /// # Returns
+    /// The elements, lowest `layerIndex` first.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_elements(&self) -> Vec<Element> {
         self.element_map()
             .and_then(|m| m.query("layer_index").entries().ok())
@@ -1052,6 +1491,18 @@ impl MeroDesign {
             .unwrap_or_default()
     }
 
+    /// One element by id.
+    ///
+    /// # Arguments
+    /// * `id` - the element id.
+    ///
+    /// # Returns
+    /// The element, or `null` if `id` names no element.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+    /// ```
     pub fn get_element(&self, id: String) -> Option<Element> {
         self.element_map()?
             .get(&id)
@@ -1060,8 +1511,18 @@ impl MeroDesign {
             .map(|v| v.clone())
     }
 
-    /// The elements a batch event named, in one read instead of one
-    /// `get_element` each. Ids that no longer exist are left out.
+    /// Several elements by id in one read, such as the ids a batch event named. No size cap.
+    ///
+    /// # Arguments
+    /// * `ids` - element ids.
+    ///
+    /// # Returns
+    /// The elements that exist, in the order asked; unknown ids are left out.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+    /// ```
     pub fn get_elements_by_ids(&self, ids: Vec<String>) -> Vec<Element> {
         let Some(map) = self.element_map() else {
             return Vec::new();
@@ -1073,11 +1534,21 @@ impl MeroDesign {
 
     // ── Layer order ───────────────────────────────────────────────────────────
 
-    /// Moves one element to an explicit position in the layer order and renumbers
-    /// the rest densely, so "up one" and "down one" survive a sync.
-    /// `bring_to_front` / `send_to_back` remain the all-the-way jumps.
+    /// Move one element to a position in the paint order and renumber every element from 0,
+    /// so a one-step move survives a sync. Editors only. Does nothing if `id` names no element.
     ///
-    /// Only elements whose index actually changes are written.
+    /// # Arguments
+    /// * `id` - the element to move.
+    /// * `index` - the new position, 0 at the back; larger than the board is clamped to the front.
+    /// * `updated_at` - unix milliseconds, newer than the element's current `updatedAt`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","index":0,"updated_at":1727000020000}
+    /// ```
     pub fn set_layer_index(&mut self, id: String, index: u32, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
 
@@ -1116,7 +1587,18 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// The top of the stack is one seek on the `layer_index` index.
+    /// Paint an element above every other one. Editors only.
+    ///
+    /// # Arguments
+    /// * `id` - the element to move.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+    /// ```
     pub fn bring_to_front(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let max_layer = self
@@ -1132,9 +1614,18 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Put an element below every other one. When the bottom of the stack has
-    /// room (its index is above 0) this writes one element; only a stack
-    /// already starting at 0 has to shift the others up.
+    /// Paint an element below every other one. Editors only.
+    ///
+    /// # Arguments
+    /// * `id` - the element to move.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"}
+    /// ```
     pub fn send_to_back(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let lowest = self
@@ -1175,6 +1666,23 @@ impl MeroDesign {
 
     // ── Comments ──────────────────────────────────────────────────────────────
 
+    /// Pin a comment at a canvas point, or replace the comment with the same `id` (its replies
+    /// are kept). Editors only; the author is the caller.
+    ///
+    /// # Arguments
+    /// * `id` - a fresh UUID chosen by the caller.
+    /// * `x` - canvas pixels.
+    /// * `y` - canvas pixels.
+    /// * `content` - the comment text.
+    /// * `created_at` - unix milliseconds.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d","x":120,"y":90,"content":"Bigger logo?","created_at":1727000040000}
+    /// ```
     pub fn add_comment(
         &mut self,
         id: String,
@@ -1201,8 +1709,22 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Reply to a comment. The reply is its own entry, so concurrent replies to
-    /// one comment all survive.
+    /// Reply to a comment. Editors only; the author is the caller. Does nothing if the comment
+    /// does not exist.
+    ///
+    /// # Arguments
+    /// * `comment_id` - the comment to answer.
+    /// * `reply_id` - a fresh UUID chosen by the caller.
+    /// * `content` - the reply text.
+    /// * `created_at` - unix milliseconds; replies are listed in this order.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d","reply_id":"1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e","content":"Agreed","created_at":1727000050000}
+    /// ```
     pub fn add_reply(
         &mut self,
         comment_id: String,
@@ -1228,6 +1750,22 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// Delete one reply from a comment. Editors only. Does nothing, and emits nothing, if the
+    /// reply is not there.
+    ///
+    /// # Arguments
+    /// * `comment_id` - the comment the reply belongs to.
+    /// * `reply_id` - the reply to delete.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d","reply_id":"1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e"}
+    /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn delete_reply(&mut self, comment_id: String, reply_id: String) -> app::Result<()> {
         self.require_editor()?;
         let keys: Vec<String> = self
@@ -1248,7 +1786,20 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Delete a comment and its thread.
+    /// Delete a comment and all its replies. Editors only. An unknown id is not an error, and
+    /// still emits `CommentDeleted`.
+    ///
+    /// # Arguments
+    /// * `id` - the comment to delete.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"id":"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d"}
+    /// ```
+    #[app::destructive]
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let _ = self.comments.get_mut()?.remove(&id)?;
@@ -1266,8 +1817,15 @@ impl MeroDesign {
         Ok(())
     }
 
-    /// Every comment, each with its thread in reply order — one prefix slice
-    /// of `replies` per comment.
+    /// Every comment with its replies.
+    ///
+    /// # Returns
+    /// The comments, each with its replies oldest first.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_comments(&self) -> Vec<Comment> {
         let (Ok(comments), Ok(replies)) = (self.comments.get(), self.replies.get()) else {
             return Vec::new();
@@ -1288,8 +1846,18 @@ impl MeroDesign {
 
     // ── Cursor tracking ───────────────────────────────────────────────────────
 
-    /// Broadcast the caller's cursor. Presence is open to all members
-    /// (including viewers); both ids are the real signer's, not client-supplied.
+    /// Report the caller's pointer position to the other members. Open to everyone in the
+    /// context, viewers included. One pointer per device.
+    ///
+    /// # Arguments
+    /// * `x` - canvas pixels.
+    /// * `y` - canvas pixels.
+    /// * `updated_at` - unix milliseconds.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"x":200,"y":150,"updated_at":1727000060000}
+    /// ```
     pub fn update_cursor(&mut self, x: i64, y: i64, updated_at: u64) {
         // Keyed by DEVICE: one pointer per open window, so a member editing
         // from two machines shows two.
@@ -1311,10 +1879,17 @@ impl MeroDesign {
         app::emit!(Event::CursorMoved(identity));
     }
 
-    /// Every pointer, labelled with the account on its owner stamp.
+    /// Every pointer's last reported position.
     ///
-    /// `entries_with_owners`, not a key-only `owner_of`: keys are per owner,
-    /// so `owner_of` would only ever name the caller.
+    /// # Returns
+    /// One entry per device that has reported a position, labelled with the account that owns it.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
+    // `entries_with_owners`, not a key-only `owner_of`: keys are per owner,
+    // so `owner_of` would only ever name the caller.
     pub fn get_cursors(&self) -> Vec<CursorState> {
         let Ok(entries) = self.cursors.entries_with_owners() else {
             return Vec::new();
