@@ -401,6 +401,10 @@ export class DocsClient {
    * convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
    * one-tap `migrate_my_entries` actually re-stamped it.
    *
+   * The entry of the account holding the comment (the lowest, if several
+   * do), read by name, so it answers the same on every node: a key-only
+   * `entry_schema_version` reads the caller's own entry only.
+   *
    * @intent read_only
    */
   public async commentSchemaVersion(params: { id: string }): Promise<number> {

@@ -145,6 +145,12 @@ export interface RegistryState {
    * folder_id (string) → FolderRecord. Owned by whoever registered the
    * folder, who alone edits it; the registry admins (owner and managers)
    * are its moderators and may also remove it. Every node enforces both.
+   *
+   * Keys are per owner (core rc.57): two accounts registering one id hold
+   * two entries, and a key-only `get`/`contains`/`owner_of` answers for the
+   * CALLER only. Every read by id goes through `folder_holder`, which takes
+   * the entry of the lowest account holding the id, the same pick on every
+   * node; `register_folder` refuses an id any account is known to hold.
    */
   folders: Record<string, FolderRecord>;
   /**

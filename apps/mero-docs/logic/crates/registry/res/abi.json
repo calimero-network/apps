@@ -296,7 +296,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both."
+          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both.\n\nKeys are per owner (core rc.57): two accounts registering one id hold\ntwo entries, and a key-only `get`/`contains`/`owner_of` answers for the\nCALLER only. Every read by id goes through `folder_holder`, which takes\nthe entry of the lowest account holding the id, the same pick on every\nnode; `register_folder` refuses an id any account is known to hold."
         },
         {
           "name": "folder_contexts",
