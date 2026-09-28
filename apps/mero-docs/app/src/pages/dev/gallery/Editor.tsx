@@ -149,7 +149,7 @@ function DocLinks() {
         href={`/app/acme-product/m/${GALLERY_MEMBER}`}
         onClick={stopNavigation}
       >
-        @Ada Lovelace
+        Ada Lovelace
       </a>{' '}
       before changing it.
     </>

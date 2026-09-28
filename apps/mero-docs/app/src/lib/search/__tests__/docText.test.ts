@@ -155,7 +155,7 @@ describe('mentions', () => {
         'p',
         'paragraph',
         'Intro. Ask ',
-        ['@Ada', { link: mention(ME) }],
+        ['Ada', { link: mention(ME) }],
         ' about ',
         ['Roadmap', { link: LINK }],
         '. Later.',
@@ -166,7 +166,7 @@ describe('mentions', () => {
         ws: 'w1',
         member: ME,
         blockId: 'p',
-        sentence: 'Ask @Ada about Roadmap.',
+        sentence: 'Ask Ada about Roadmap.',
       },
     ]);
     expect(t.links.map((l) => l.target.doc)).toEqual(['target']);
@@ -182,14 +182,14 @@ describe('mentions', () => {
   it('lists each doc mentioning a member in this workspace once, at its first mention', () => {
     const texts = index(
       text('f1', 'd1', [
-        block('p1', 'paragraph', ['@Ada', { link: mention(ME) }]),
-        block('p2', 'paragraph', 'Again ', ['@Ada', { link: mention(ME) }]),
+        block('p1', 'paragraph', ['Ada', { link: mention(ME) }]),
+        block('p2', 'paragraph', 'Again ', ['Ada', { link: mention(ME) }]),
       ]),
       text('f1', 'd2', [
-        block('p', 'paragraph', ['@Bob', { link: mention(BOB) }]),
+        block('p', 'paragraph', ['Bob', { link: mention(BOB) }]),
       ]),
       text('f2', 'd3', [
-        block('p', 'paragraph', ['@Ada', { link: mention(ME, 'other') }]),
+        block('p', 'paragraph', ['Ada', { link: mention(ME, 'other') }]),
       ]),
     );
     const found = mentionsOf(texts, 'w1', ME);

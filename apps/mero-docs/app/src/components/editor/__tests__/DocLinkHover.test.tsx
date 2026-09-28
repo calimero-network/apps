@@ -217,7 +217,7 @@ describe('DocLinkHover', () => {
           </a>{' '}
           and{' '}
           <a href={`/app/w1/m/${BOB}`} data-testid="mention">
-            @Bob
+            Bob
           </a>
         </p>
       </DocLinkHover>,

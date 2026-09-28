@@ -21,7 +21,6 @@ import type { DriveEditor } from './schema';
 
 export const PEOPLE_GROUP = 'People';
 export const CANT_OPEN_FOLDER = "Can't open this folder";
-const MENTION_PREFIX = '@'; // the inserted text reads "@Ada"
 
 type PeopleSource = {
   ws: string;
@@ -97,7 +96,7 @@ export function mentionPickerItems(
   return [...peopleItems(query, src), ...docLinkItems(query, src)];
 }
 
-/** Inserts a picked row: `@name` linked to a member, or a doc's title; says so when the member cannot open this folder. */
+/** Inserts a picked row: the member's name linked to them, or a doc's title; says so when the member cannot open this folder. */
 export function pickLinkItem(
   editor: DriveEditor,
   item: DocLinkItem,
@@ -106,7 +105,7 @@ export function pickLinkItem(
   const { mention } = item;
   insertDocLink(editor, {
     href: item.href,
-    title: mention ? `${MENTION_PREFIX}${mention.name}` : item.title,
+    title: mention ? mention.name : item.title,
   });
   if (mention?.cantOpen) notify(`${mention.name} can't open this folder`);
 }

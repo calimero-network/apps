@@ -152,7 +152,7 @@ describe('mentionPickerItems', () => {
 });
 
 describe('pickLinkItem', () => {
-  it('inserts @name linked to the member and warns when they cannot open the folder', () => {
+  it('inserts the name linked to the member and warns when they cannot open the folder', () => {
     const editor = editorWith('ask ');
     const notify = vi.fn();
     const [bob] = peopleItems('bob', people({ canOpen: (id) => id !== BOB }));
@@ -162,7 +162,7 @@ describe('pickLinkItem', () => {
       {
         type: 'link',
         href: `/app/w1/m/${BOB}`,
-        content: [{ type: 'text', text: '@Bob', styles: {} }],
+        content: [{ type: 'text', text: 'Bob', styles: {} }],
       },
     ]);
     expect(notify).toHaveBeenCalledWith("Bob can't open this folder");
@@ -188,7 +188,7 @@ describe('pickLinkItem', () => {
       (editor.document[0].content as { content: { text: string }[] }[]).map(
         (l) => l.content[0].text,
       ),
-    ).toEqual(['@Mia', 'Plan']);
+    ).toEqual(['Mia', 'Plan']);
     expect(notify).not.toHaveBeenCalled();
   });
 });

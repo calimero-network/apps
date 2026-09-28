@@ -40,10 +40,10 @@ test.describe('Mentions (two-node)', () => {
     await expect(option).toBeVisible({ timeout: SYNC_MS });
     await expect(option).not.toContainText("Can't open this folder");
     await option.click();
-    await expect(alice.editor.mentionChip('@bob')).toBeVisible();
+    await expect(alice.editor.mentionChip('bob')).toBeVisible();
     await saved(alice.page);
     // A click puts the caret in the link; the card stands in for BlockNote's toolbar.
-    await alice.editor.mentionChip('@bob').click();
+    await alice.editor.mentionChip('bob').click();
     await expect(alice.editor.memberCard()).toBeVisible();
     await expect(alice.editor.linkToolbar()).toHaveCount(0);
 
@@ -73,9 +73,9 @@ test.describe('Mentions (two-node)', () => {
     await expect(
       alice.page.getByText("bob can't open this folder"),
     ).toBeVisible();
-    await expect(alice.editor.mentionChip('@bob')).toBeVisible();
+    await expect(alice.editor.mentionChip('bob')).toBeVisible();
     await saved(alice.page);
-    await alice.editor.mentionChip('@bob').hover();
+    await alice.editor.mentionChip('bob').hover();
     await expect(alice.editor.memberCard()).toContainText(
       "Can't open this folder",
     );

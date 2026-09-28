@@ -44,10 +44,10 @@ test.describe('Mentions (single-node)', () => {
 
     await page.keyboard.type('ali');
     await editor.personOption('You').click();
-    const chip = editor.mentionChip('@alice');
+    const chip = editor.mentionChip('alice');
     await expect(chip).toHaveAttribute('href', MEMBER_PATH);
     await expect(chip).toHaveCSS('border-radius', '999px');
-    await expect(editor.block('Ask')).toHaveText('Ask @alice');
+    await expect(editor.block('Ask')).toHaveText('Ask alice');
     await saved(page);
 
     const url = page.url();
@@ -98,7 +98,7 @@ test.describe('Mentions (single-node)', () => {
     await palette.getByRole('textbox', { name: 'Search' }).fill('@me');
     const mentions = palette.getByRole('group', { name: 'Mentions' });
     await expect(mentions.getByRole('option')).toHaveCount(1);
-    await expect(mentions.getByRole('option')).toContainText('Ask @alice');
+    await expect(mentions.getByRole('option')).toContainText('Ask alice');
     await page.keyboard.press('Enter');
     await editor.expectMounted();
     await expect(page.getByTestId('doc-title-input')).toHaveValue('Plan');
