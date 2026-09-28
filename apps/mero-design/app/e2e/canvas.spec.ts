@@ -50,7 +50,15 @@ function mockSse(page: import("@playwright/test").Page) {
   return page.route("**/sse**", (route) => route.abort());
 }
 
-function mockIdentities(page: import("@playwright/test").Page) {
+// The board keys members by account, so the node's account must match TEST_MEMBER too.
+async function mockIdentities(page: import("@playwright/test").Page) {
+  await page.route("**/admin-api/identity", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { accountId: "test-identity" } }),
+    }),
+  );
   return page.route("**/admin-api/contexts/**/identities-owned", (route) =>
     route.fulfill({
       status: 200,
