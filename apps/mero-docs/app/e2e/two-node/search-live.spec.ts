@@ -1,23 +1,10 @@
 // Search across two nodes: a restricted folder Bob is not in never reaches his
 // palette, Bob's edits become searchable for Alice, and a deleted doc drops out.
 
-import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/two-user';
 import type { WorkspaceDriver } from '../fixtures/workspace';
 
-const FIELD = 'Search docs, folders and tags'; // the top-bar field's accessible name
 const TEXT_GROUP = 'In document text';
-
-function palette(page: Page) {
-  return page.getByRole('dialog', { name: 'Search' });
-}
-
-async function search(page: Page, text: string) {
-  if (!(await palette(page).isVisible())) {
-    await page.getByRole('button', { name: FIELD }).click();
-  }
-  await palette(page).getByRole('textbox', { name: 'Search' }).fill(text);
-}
 
 async function inviteBob(alice: WorkspaceDriver, bob: WorkspaceDriver) {
   await alice.openSettings();
@@ -49,26 +36,25 @@ test.describe('Search live (two-node)', () => {
     await alice.editor.close();
     await inviteBob(alice, bob);
 
-    const { page } = bob;
-    await search(page, 'plan');
-    await expect(
-      palette(page)
-        .getByRole('group', { name: 'Documents' })
-        .getByRole('option'),
-    ).toHaveText([/^Plan/], { timeout: 60_000 });
+    const { palette } = bob;
+    await palette.search('plan');
+    await expect(palette.group('Documents').getByRole('option')).toHaveText(
+      [/^Plan/],
+      { timeout: 60_000 },
+    );
     // Once his text search is done, nothing of Finance has turned up.
-    await expect(palette(page).getByText(/folders searched/)).toBeHidden({
+    await expect(palette.dialog().getByText(/folders searched/)).toBeHidden({
       timeout: 60_000,
     });
-    await search(page, 'payroll');
+    await palette.search('payroll');
     await expect(
-      palette(page).getByText('No documents, folders or tags match'),
+      palette.dialog().getByText('No documents, folders or tags match'),
     ).toBeVisible();
-    await search(page, 'budget');
-    await expect(palette(page).getByRole('option')).toHaveCount(0);
-    await search(page, 'finance');
-    await expect(palette(page).getByRole('option')).toHaveCount(0);
-    await expect(palette(page)).not.toContainText('Finance');
+    await palette.search('budget');
+    await expect(palette.dialog().getByRole('option')).toHaveCount(0);
+    await palette.search('finance');
+    await expect(palette.dialog().getByRole('option')).toHaveCount(0);
+    await expect(palette.dialog()).not.toContainText('Finance');
   });
 
   test("Bob's new text becomes searchable for Alice (S-19)", async ({
@@ -76,17 +62,15 @@ test.describe('Search live (two-node)', () => {
     bob,
   }) => {
     await inviteBob(alice, bob);
-    await search(alice.page, 'zebra');
+    await alice.palette.search('zebra');
     await expect(
-      palette(alice.page).getByText('No documents, folders or tags match'),
+      alice.palette.dialog().getByText('No documents, folders or tags match'),
     ).toBeVisible({ timeout: 30_000 });
 
     await bob.openDoc('Plan');
     await bob.editor.type('Meet at the zebra crossing');
 
-    const hit = palette(alice.page)
-      .getByRole('group', { name: TEXT_GROUP })
-      .getByRole('option');
+    const hit = alice.palette.group(TEXT_GROUP).getByRole('option');
     await expect(hit).toContainText('Plan', { timeout: 60_000 });
     await expect(hit.locator('mark')).toHaveText('zebra');
   });
@@ -96,10 +80,8 @@ test.describe('Search live (two-node)', () => {
     bob,
   }) => {
     await inviteBob(alice, bob);
-    await search(alice.page, 'plan');
-    const rows = palette(alice.page)
-      .getByRole('group', { name: 'Documents' })
-      .getByRole('option');
+    await alice.palette.search('plan');
+    const rows = alice.palette.group('Documents').getByRole('option');
     await expect(rows).toHaveText([/^Plan/]);
 
     await bob.openDoc('Plan');
@@ -107,7 +89,7 @@ test.describe('Search live (two-node)', () => {
 
     await expect(rows).toHaveCount(0, { timeout: 60_000 });
     await expect(
-      palette(alice.page).getByText('No documents, folders or tags match'),
+      alice.palette.dialog().getByText('No documents, folders or tags match'),
     ).toBeVisible();
   });
 });
