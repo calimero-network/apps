@@ -935,11 +935,27 @@ impl MeroSignState {
         Ok(())
     }
 
+    /// The document at `document_id` of the lowest account holding one, with
+    /// its uploader.
+    ///
+    /// Keys are per owner (core rc.57): a key-only `get` reads only the
+    /// CALLER's entry, so another member's document would read as missing.
+    /// Ids are random, so a second holder of one only exists if a patched node
+    /// copied it; the lowest account is the same pick on every node.
+    fn document_holder(&self, document_id: &str) -> app::Result<Option<(UserId, StoredDocument)>> {
+        Ok(self
+            .documents
+            .entries_at(&document_id.to_owned())
+            .map_err(store_err("Failed to get document"))?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner)
+            .map(|(owner, doc)| (*owner.as_bytes(), doc)))
+    }
+
     /// A stored document, or an error naming it.
     fn stored(&self, document_id: &str) -> app::Result<StoredDocument> {
-        self.documents
-            .get(&document_id.to_owned())
-            .map_err(store_err("Failed to get document"))?
+        self.document_holder(document_id)?
+            .map(|(_, doc)| doc)
             .ok_or_else(|| AppError::msg("Document not found".to_string()))
     }
 
@@ -948,6 +964,11 @@ impl MeroSignState {
     /// Signatures from accounts that neither must sign the document nor hold
     /// `Sign` now are ignored, so a member who is not a signer cannot put a
     /// version of their own on it.
+    ///
+    /// The signer is the entry's owner stamp, whatever its key says. Keys are
+    /// per owner, so one key appears once per account holding it, and a
+    /// key-only `owner_of` names only the caller: each distinct key is read
+    /// once, with every holder's entry at it (`entries_at`).
     fn signed_chain(
         &self,
         document_id: &str,
@@ -955,21 +976,22 @@ impl MeroSignState {
     ) -> app::Result<Vec<(UserId, SignedVersion)>> {
         let err = store_err("Failed to get document signatures");
         let mut records = Vec::new();
-        for (key, version) in self
+        let keys: BTreeSet<String> = self
             .document_signatures
             .prefix(format!("{document_id}/").as_bytes())
             .map_err(&err)?
-        {
-            let Some(owner) = self.document_signatures.owner_of(&key).map_err(&err)? else {
-                continue;
-            };
-            let signer = *owner.as_bytes();
-            let may_sign = doc.required_signers.contains(&signer)
-                || self
-                    .level_of(&signer)?
-                    .is_some_and(|l| rank(&l) >= rank(&PermissionLevel::Sign));
-            if may_sign {
-                records.push((key, signer, version));
+            .map(|(key, _)| key)
+            .collect();
+        for key in keys {
+            for (owner, version) in self.document_signatures.entries_at(&key).map_err(&err)? {
+                let signer = *owner.as_bytes();
+                let may_sign = doc.required_signers.contains(&signer)
+                    || self
+                        .level_of(&signer)?
+                        .is_some_and(|l| rank(&l) >= rank(&PermissionLevel::Sign));
+                if may_sign {
+                    records.push((key.clone(), signer, version));
+                }
             }
         }
         Ok(chain(records, doc))
@@ -978,15 +1000,10 @@ impl MeroSignState {
     fn info(
         &self,
         id: String,
+        uploaded_by: UserId,
         doc: StoredDocument,
         with_content: bool,
     ) -> app::Result<DocumentInfo> {
-        let uploaded_by = self
-            .documents
-            .owner_of(&id)
-            .map_err(store_err("Failed to get document"))?
-            .map(|a| *a.as_bytes())
-            .unwrap_or_default();
         let signed = self.signed_chain(&id, &doc)?;
         let status = status_of(&doc, &signed);
         let (hash, pdf_blob_id, size) = match signed.last() {
@@ -1081,32 +1098,47 @@ impl MeroSignState {
 
     /// Delete a document by ID. Admins only: they are the documents'
     /// moderators, and every node refuses anyone else's removal.
+    ///
+    /// Every account's document at the id, each by name (`remove_by`): keys
+    /// are per owner, and a key-only `remove` removes only the caller's own.
     pub fn delete_document(&mut self, document_id: String) -> app::Result<()> {
         self.validate_admin_permissions()?;
 
-        match self.documents.remove(&document_id) {
-            Ok(Some(_)) => {
-                app::emit!(MeroSignEvent::DocumentDeleted { id: document_id });
-                Ok(())
-            }
-            Ok(None) => Err(AppError::msg(format!(
+        let holders = self
+            .documents
+            .entries_at(&document_id)
+            .map_err(|e| AppError::msg(format!("Failed to delete document: {:?}", e)))?;
+        if holders.is_empty() {
+            return Err(AppError::msg(format!(
                 "Document not found: {}",
                 document_id
-            ))),
-            Err(e) => Err(AppError::msg(format!("Failed to delete document: {:?}", e))),
+            )));
         }
+        for (owner, _) in holders {
+            let _ = self
+                .documents
+                .remove_by(&owner, &document_id)
+                .map_err(|e| AppError::msg(format!("Failed to delete document: {:?}", e)))?;
+        }
+        app::emit!(MeroSignEvent::DocumentDeleted { id: document_id });
+        Ok(())
     }
 
     /// List all documents, without their search content (see [`DocumentInfo`]).
     pub fn list_documents(&self) -> app::Result<Vec<DocumentInfo>> {
-        let entries: Vec<(String, StoredDocument)> = self
+        // One row per document id: `entries()` lists an id once per account
+        // holding it, and every read by id takes the lowest holder's.
+        let ids: BTreeSet<String> = self
             .documents
             .entries()
             .map_err(store_err("Failed to list documents"))?
+            .map(|(id, _)| id)
             .collect();
         let mut documents = Vec::new();
-        for (id, doc) in entries {
-            documents.push(self.info(id, doc, false)?);
+        for id in ids {
+            if let Some((uploaded_by, doc)) = self.document_holder(&id)? {
+                documents.push(self.info(id, uploaded_by, doc, false)?);
+            }
         }
         Ok(documents)
     }
@@ -1263,11 +1295,7 @@ impl MeroSignState {
         &self,
         document_id: String,
     ) -> app::Result<Vec<DocumentSignature>> {
-        let Some(document) = self
-            .documents
-            .get(&document_id)
-            .map_err(store_err("Failed to get document"))?
-        else {
+        let Some((_, document)) = self.document_holder(&document_id)? else {
             return Ok(Vec::new());
         };
         Ok(self
@@ -1527,15 +1555,11 @@ impl MeroSignState {
         query_embedding: Vec<f32>,
         document_id: String,
     ) -> app::Result<String> {
-        let document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => doc,
-            Ok(None) => {
-                return Err(AppError::msg(format!(
-                    "Document with ID '{}' not found",
-                    document_id
-                )))
-            }
-            Err(e) => return Err(AppError::msg(format!("Failed to access document: {:?}", e))),
+        let Some((_, document)) = self.document_holder(&document_id)? else {
+            return Err(AppError::msg(format!(
+                "Document with ID '{}' not found",
+                document_id
+            )));
         };
 
         if let Some(chunks) = &document.chunks {

@@ -696,7 +696,7 @@
     },
     {
       "name": "get_cursors",
-      "doc": "Every pointer, labelled with the account on its owner stamp.",
+      "doc": "Every pointer, labelled with the account on its owner stamp.\n\n`entries_with_owners`, not a key-only `owner_of`: keys are per owner,\nso `owner_of` would only ever name the caller.",
       "params": [],
       "returns": {
         "kind": "list",

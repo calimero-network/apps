@@ -684,7 +684,7 @@ fn nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries() {
     assert!(before.verified, "{:?}", before.checks);
     assert_eq!(before.counts, Some(vec![1, 1, 0]));
 
-    // Bob's dealing cannot be edited, by Bob or anyone.
+    // Bob's dealing cannot be edited by Bob.
     let (bobs_key, bobs_dealing) = p.app.view(|s| {
         s.dealings
             .entries()
@@ -694,13 +694,21 @@ fn nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries() {
     });
     let mut other = bobs_dealing.clone();
     other.commitments.reverse();
-    for who in [BOB, MALLORY] {
-        let (k, d) = (bobs_key.clone(), other.clone());
-        assert!(
-            p.call(who, |s| s.dealings.insert(k, d)).is_err(),
-            "a dealing is written once"
-        );
-    }
+    let (k, d) = (bobs_key.clone(), other.clone());
+    assert!(
+        p.call(BOB, |s| s.dealings.insert(k, d)).is_err(),
+        "a dealing is written once"
+    );
+    // Keys are per owner: Mallory filing at Bob's key files her OWN entry
+    // there, which leaves Bob's untouched and is never read as his.
+    let (k, d) = (bobs_key.clone(), other.clone());
+    p.call(MALLORY, |s| s.dealings.insert(k, d)).unwrap();
+    let k = bobs_key.clone();
+    let held = p.app.view(|s| s.dealings.entries_at(&k).unwrap());
+    assert_eq!(held.len(), 2, "Bob's and Mallory's, side by side");
+    assert!(held
+        .iter()
+        .any(|(owner, d)| *owner == AccountId::from(BOB) && *d == bobs_dealing));
     // A second dealing from Bob, published after the fact, changes nothing.
     let k = format!("{pid}/{}/{}", acct(BOB), "ff".repeat(32));
     p.call(BOB, |s| s.dealings.insert(k, other)).unwrap();
@@ -846,13 +854,11 @@ fn the_election_and_seal_are_written_once_and_only_the_creators_count() {
     // Alice's own election cannot be edited.
     let alices = p.app.view(|s| {
         s.elections
-            .entries()
+            .entries_by(&AccountId::from(ALICE))
             .unwrap()
+            .into_iter()
             .map(|(k, _)| k)
-            .find(|k| {
-                let owner = s.elections.owner_of(k).unwrap();
-                owner.map(|o| o.to_string()) == Some(acct(ALICE))
-            })
+            .find(|k| k.starts_with(&format!("{pid}/")))
             .unwrap()
     });
     let e = fake.clone();
@@ -884,6 +890,38 @@ fn the_election_and_seal_are_written_once_and_only_the_creators_count() {
         .checks
         .iter()
         .any(|c| c.name == "written once" && !c.ok));
+}
+
+/// Keys are per owner, so Mallory can file a control entry of her own at
+/// Alice's poll id. It is a separate entry: every reader still reads Alice's,
+/// by name, and the poll is listed once.
+#[test]
+fn a_control_entry_filed_at_someone_elses_poll_id_is_never_read() {
+    let mut p = new_poll(&[ALICE, BOB, CAROL], 2, &[]);
+    let pid = p.id.clone();
+    let k = pid.clone();
+    p.call(MALLORY, |s| {
+        s.polls.insert(
+            k,
+            LwwRegister::new(PollControl {
+                closing_at: Some(1),
+                anchor: None,
+            }),
+        )
+    })
+    .unwrap();
+    let k = pid.clone();
+    assert_eq!(p.app.view(|s| s.polls.entries_at(&k).unwrap()).len(), 2);
+
+    let view = p.view(BOB);
+    assert_eq!(view.state.phase, Phase::KeyCeremony);
+    assert_eq!(
+        view.state.closing_at, None,
+        "Mallory's notice is not Alice's"
+    );
+    let listed = p.call(BOB, |s| s.list_polls()).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].poll_id, pid);
 }
 
 /// A complaint is read from its recipient's own entries, so nobody can file

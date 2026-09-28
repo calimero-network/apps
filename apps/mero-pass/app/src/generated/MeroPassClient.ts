@@ -42,10 +42,13 @@ export interface AuditView {
  * A device public key the vault key may be wrapped to.
  *
  * Stored in an [`AuthoredMap`], so only the account that registered it can
- * remove it. Its account is the entry's owner stamp (`devices.owner_of`),
- * which every node verifies — never a field in the value, which a modified
- * node could fill with anyone's account to be handed the vault key in their
- * name.
+ * remove it. Its account is the entry's owner stamp, which every node
+ * verifies — never a field in the value, which a modified node could fill
+ * with anyone's account to be handed the vault key in their name.
+ *
+ * Keys are per owner (core rc.57): two accounts registering one fingerprint
+ * hold two entries, each read with its own account (`entries_with_owners`).
+ * A key-only `owner_of` would only ever name the caller.
  */
 export interface DeviceKey {
   /**

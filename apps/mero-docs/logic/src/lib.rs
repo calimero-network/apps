@@ -935,11 +935,8 @@ impl DocsState {
         {
             return Err(DriveError::NotFound(id));
         }
-        let created_by_me = self
-            .origins
-            .owned_by_me(&id)
-            .map_err(|e| DriveError::Invalid(format!("origins.owned_by_me: {e}")))?;
         let me = AccountId::from(calimero_sdk::env::account_id());
+        let created_by_me = self.origin_of(&id)?.is_some_and(|(owner, _)| owner == me);
         if !created_by_me && !self.comments.is_moderator(&me) {
             return Err(DriveError::Forbidden(format!(
                 "only the creator of {id} or a moderator may delete it"
@@ -1050,19 +1047,17 @@ impl DocsState {
             .map_err(|e| AppError::msg(format!("comments.query: {e}")))?;
         let mut out = Vec::with_capacity(entries.len());
         for (id, c) in entries {
-            out.push(project_comment(&id, self.comment_author(&id)?, &c));
+            out.push(project_comment(&id, self.comment_author(&id, &c)?, &c));
         }
         Ok(out)
     }
 
     #[app::view]
     pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
-        let c = self
-            .comments
-            .get(&id)
-            .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
+        let (author, c) = self
+            .comment_holder(&id)?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
-        Ok(project_comment(&id, self.comment_author(&id)?, &c))
+        Ok(project_comment(&id, hex(author.as_bytes()), &c))
     }
 
     #[app::view]
@@ -1077,9 +1072,16 @@ impl DocsState {
     /// convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
     /// one-tap `migrate_my_entries` actually re-stamped it.
     #[app::view]
+    ///
+    /// The entry of the account holding the comment (the lowest, if several
+    /// do), read by name, so it answers the same on every node: a key-only
+    /// `entry_schema_version` reads the caller's own entry only.
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
+        let Some((author, _)) = self.comment_holder(&id)? else {
+            return Ok(None);
+        };
         self.comments
-            .entry_schema_version(&id)
+            .entry_schema_version_by(&author, &id)
             .map_err(|e| AppError::msg(format!("comments.entry_schema_version: {e}")))
     }
 
@@ -1096,11 +1098,24 @@ impl DocsState {
         id: String,
         body: String,
     ) -> Result<(), DriveError> {
-        let mut c = self
+        // The caller's own comment: keys are per owner, and only its author
+        // may change a comment.
+        let Some(mut c) = self
             .comments
             .get(&id)
             .map_err(|e| DriveError::Invalid(format!("comments.get: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
+        else {
+            let held = !self
+                .comments
+                .entries_at(&id)
+                .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?
+                .is_empty();
+            return Err(if held {
+                DriveError::Forbidden(format!("only its author may edit {id}"))
+            } else {
+                DriveError::NotFound(id)
+            });
+        };
         c.body.set(body);
         // `update` re-signs as the caller; storage refuses anyone but the
         // comment's author, on every node.
@@ -1119,13 +1134,32 @@ impl DocsState {
     }
 
     /// Its author, or a moderator of this folder, may remove a comment.
+    ///
+    /// Keys are per owner, so a key-only `remove` removes only the CALLER's
+    /// own comment. A caller holding none (a moderator) removes every
+    /// holder's comment at the id by name, which storage allows a moderator
+    /// only.
     pub(crate) fn delete_comment_inner(&mut self, id: String) -> Result<(), DriveError> {
-        let existed = self
+        let holders = self
             .comments
-            .remove(&id)
-            .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
-        if existed.is_none() {
+            .entries_at(&id)
+            .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?;
+        if holders.is_empty() {
             return Err(DriveError::NotFound(id));
+        }
+        let me = AccountId::from(calimero_sdk::env::account_id());
+        if holders.iter().any(|(owner, _)| *owner == me) {
+            let _ = self
+                .comments
+                .remove(&id)
+                .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
+            return Ok(());
+        }
+        for (owner, _) in holders {
+            let _ = self
+                .comments
+                .remove_by(&owner, &id)
+                .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
         }
         Ok(())
     }
@@ -1133,9 +1167,42 @@ impl DocsState {
 
 /// Outside `#[app::logic]`: these are plumbing, not JSON-RPC surface.
 impl DocsState {
+    /// A doc's origin stamp: its creator and creation time.
+    ///
+    /// Keys are per owner (core rc.57): a patched node can file an origin of
+    /// its own under someone else's doc id, and a key-only `owner_of` or `get`
+    /// answers for the CALLER only. A doc id ends in its creator's account
+    /// tag (`account_tag`), so the origin is the one entry at the id whose
+    /// owner carries that tag; with none, or with several, the doc has no
+    /// known creator, rather than one a claimant chose.
+    fn origin_of(&self, id: &String) -> Result<Option<(AccountId, u64)>, DriveError> {
+        let tag = id.rsplit('-').next().unwrap_or_default();
+        let mut matching = self
+            .origins
+            .entries_at(id)
+            .map_err(|e| DriveError::Invalid(format!("origins: {e}")))?
+            .into_iter()
+            .filter(|(owner, _)| hex(&owner.as_bytes()[..4]) == tag);
+        match (matching.next(), matching.next()) {
+            (Some(origin), None) => Ok(Some(origin)),
+            _ => Ok(None),
+        }
+    }
+
+    /// The comment at `id` of the lowest account holding one, with that
+    /// account: the same pick on every node. A key-only `get` would read the
+    /// caller's own comment only.
+    fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
+        Ok(self
+            .comments
+            .entries_at(id)?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner))
+    }
+
     fn project(&self, id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
         let key = id.to_string();
-        let err = |e| DriveError::Invalid(format!("origins: {e}"));
+        let origin = self.origin_of(&key)?;
         let mut tags: Vec<String> = rec
             .tags
             .iter()
@@ -1144,11 +1211,8 @@ impl DocsState {
         tags.sort();
         Ok(DocDto {
             id: key.clone(),
-            creator: self
-                .origins
-                .owner_of(&key)
-                .map_err(err)?
-                .map(|owner| hex(owner.as_bytes()))
+            creator: origin
+                .map(|(owner, _)| hex(owner.as_bytes()))
                 .unwrap_or_default(),
             title: rec
                 .title
@@ -1156,15 +1220,27 @@ impl DocsState {
                 .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
             tags,
             archived: *rec.archived.get(),
-            created_at: self.origins.get(&key).map_err(err)?.unwrap_or_default(),
+            created_at: origin.map(|(_, at)| at).unwrap_or_default(),
             updated_at: *rec.updated_at.get(),
         })
     }
 
-    fn comment_author(&self, id: &String) -> app::Result<String> {
+    /// The author of the comment row `c` at `id`: the holder of `id` whose
+    /// entry it is, matched by bytes (keys are per owner, so a key-only
+    /// `owner_of` would only ever name the caller). A comment carries an
+    /// `LwwRegister`, stamped with its write, so two accounts' entries are
+    /// never byte-identical.
+    fn comment_author(&self, id: &String, c: &Comment) -> app::Result<String> {
+        let Ok(row) = calimero_sdk::borsh::to_vec(c) else {
+            return Ok(String::new());
+        };
         Ok(self
             .comments
-            .owner_of(id)?
+            .entries_at(id)?
+            .into_iter()
+            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
+            .map(|(owner, _)| owner)
+            .min()
             .map(|owner| hex(owner.as_bytes()))
             .unwrap_or_default())
     }
@@ -1971,11 +2047,17 @@ mod tests {
 
     #[test]
     fn delete_doc_removes_from_map() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into()).unwrap();
-        app.delete_doc_inner(id.clone()).unwrap();
-        assert!(app.get_doc(id).is_err());
-        assert_eq!(app.list_docs(true).unwrap().len(), 0);
+        // Through `TestHost`, which aligns the SDK account with the storage
+        // writer as a node does: a doc's creator is the origin entry whose
+        // owner carries the id's account tag.
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc_inner("t".into()))
+            .unwrap();
+        app.call_as_account(ALICE, ALICE, |s| s.delete_doc_inner(id.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.get_doc(id)).is_err());
+        assert_eq!(app.view(|s| s.list_docs(true)).unwrap().len(), 0);
     }
 
     #[test]
@@ -2098,12 +2180,19 @@ mod tests {
         assert_eq!(doc.creator, hex(&ALICE));
         assert!(doc.created_at > 0);
 
-        // Nobody can write the origin again, its creator included: the key is
-        // taken, and a write-once entry has no update.
+        // Nobody can write the origin again, its creator included: a
+        // write-once entry has no update.
         assert!(app
-            .call_as_account(BOB, BOB, |s| s.origins.insert(id.clone(), 1))
+            .call_as_account(ALICE, ALICE, |s| s.origins.insert(id.clone(), 1))
             .is_err());
-        assert_eq!(app.view(|s| s.get_doc(id)).unwrap().creator, hex(&ALICE));
+        // Keys are per owner: Bob's write lands as his own entry at the id.
+        // His account does not carry the id's tag, so it is never the origin.
+        app.call_as_account(BOB, BOB, |s| s.origins.insert(id.clone(), 1))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
+        assert_eq!(doc.creator, hex(&ALICE));
+        assert!(doc.created_at > 1);
+        assert!(app.call_as_account(BOB, BOB, |s| s.delete_doc(id)).is_err());
     }
 
     #[test]

@@ -291,3 +291,16 @@ MEROD_BINARY=/path/to/merod pnpm --filter ./app test:e2e
 ```
 
 `NODE_COUNT` (1-3, default 3) controls how many peers the harness starts.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+An issue is read through the header of the **lowest account** holding its id (the same
+pick on every node), and `created_by` names whoever that is — the stamp is never
+reattributed. A comment's author is matched among its id's holders. Deleting an issue or
+editing/deleting a comment acts on the caller's own entry and answers `Forbidden` when
+only someone else holds it. Test: `nobody_else_can_remove_or_reattribute_an_issue_in_storage`.

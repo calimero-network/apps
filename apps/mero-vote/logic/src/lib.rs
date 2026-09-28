@@ -560,8 +560,18 @@ fn nonce() -> String {
     hex::encode(bytes)
 }
 
-/// The values under `prefix` that `author` wrote. Anyone may write any key;
-/// only the owner stamp, checked by every node at merge, says who did.
+/// The account a hex id names, or `None` if it names none.
+fn account_of(hex_id: &str) -> Option<AccountId> {
+    parse_hash(hex_id).ok().map(AccountId::from)
+}
+
+/// The values under `prefix` that `author` wrote, in key order. Anyone may
+/// write any key; only the owner stamp, checked by every node at merge, says
+/// who did.
+///
+/// Keys are per owner, so one key appears once per account holding it, and a
+/// key-only read answers only for the caller. Each distinct key is therefore
+/// read as `author`'s own entry, by name.
 fn written_by<V>(
     map: &WriteOnce<SortedMap<String, V>>,
     prefix: &str,
@@ -570,11 +580,19 @@ fn written_by<V>(
 where
     V: BorshSerialize + BorshDeserialize + 'static,
 {
+    let Some(author) = account_of(author) else {
+        return Ok(Vec::new());
+    };
     let mut out = Vec::new();
-    for (key, value) in map.prefix(prefix.as_bytes())? {
-        if map.owner_of(&key)?.is_some_and(|o| o.to_string() == author) {
+    let mut last: Option<String> = None;
+    for (key, _) in map.prefix(prefix.as_bytes())? {
+        if last.as_ref() == Some(&key) {
+            continue;
+        }
+        if let Some(value) = map.get_by(&author, &key)? {
             out.push(value);
         }
+        last = Some(key);
     }
     Ok(out)
 }
@@ -921,7 +939,10 @@ impl MeroVote {
     pub fn list_polls(&self) -> app::Result<Vec<PollSummary>> {
         let counts = self.ballot_counts()?;
         let mut out = Vec::new();
-        for (poll_id, _) in self.polls.entries()? {
+        // One poll id can appear once per account holding a control entry at
+        // it (keys are per owner); only the creator's counts, so list it once.
+        let ids: BTreeSet<String> = self.polls.entries()?.map(|(id, _)| id).collect();
+        for poll_id in ids {
             let Some((def, state)) = self.try_load(&poll_id)? else {
                 continue;
             };
@@ -1480,13 +1501,15 @@ impl MeroVote {
         let Some(def) = self.definition(poll_id)? else {
             return Ok(None);
         };
-        let key = poll_id.to_owned();
-        let Some(control) = self.polls.get(&key)? else {
+        // The creator's own control entry, by name: keys are per owner, so
+        // anyone else's entry at this poll id is a different entry, and never
+        // read.
+        let Some(creator) = account_of(&def.creator) else {
             return Ok(None);
         };
-        if self.polls.owner_of(&key)?.map(|o| o.to_string()) != Some(def.creator.clone()) {
+        let Some(control) = self.polls.get_by(&creator, &poll_id.to_owned())? else {
             return Ok(None);
-        }
+        };
         let control = control.get().clone();
         let prefix = format!("{poll_id}/");
         let election = written_by(&self.elections, &prefix, &def.creator)?
@@ -1677,28 +1700,45 @@ impl MeroVote {
         Ok(out)
     }
 
+    /// The body a counted ballot points at: the voter's own entry at that hash
+    /// if they hold one, else the lowest account's, so a body someone else
+    /// filed is still read, and then flagged by `wrote_body`.
+    ///
+    /// Keys are per owner, so a key-only `get` would read the CALLER's entry.
     fn body(&self, counted: &CountedBallot) -> app::Result<Option<StoredBallot>> {
-        Ok(self.ballot_bodies.get(&parse_hash(&counted.frozen)?)?)
-    }
-
-    /// Whether the body at `frozen` is `voter`'s own entry. Anyone can build a
-    /// valid ballot proof for any voter id, so the proof alone does not show
-    /// the voter cast it; the owner stamp does.
-    fn wrote_body(&self, frozen: &str, voter: &str) -> app::Result<bool> {
-        Ok(self
-            .ballot_bodies
-            .owner_of(&parse_hash(frozen)?)?
-            .is_some_and(|o| o.to_string() == voter))
-    }
-
-    /// The body at `frozen`, if `voter` wrote it and it names them.
-    fn authored_body(&self, frozen: &str, voter: &str) -> app::Result<Option<StoredBallot>> {
-        if !self.wrote_body(frozen, voter)? {
-            return Ok(None);
+        let hash = parse_hash(&counted.frozen)?;
+        if let Some(voter) = account_of(&counted.voter) {
+            if let Some(body) = self.ballot_bodies.get_by(&voter, &hash)? {
+                return Ok(Some(body));
+            }
         }
         Ok(self
             .ballot_bodies
-            .get(&parse_hash(frozen)?)?
+            .entries_at(&hash)?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner)
+            .map(|(_, body)| body))
+    }
+
+    /// Whether `voter` holds a body at `frozen`. Anyone can build a valid
+    /// ballot proof for any voter id, so the proof alone does not show the
+    /// voter cast it; the owner stamp does.
+    fn wrote_body(&self, frozen: &str, voter: &str) -> app::Result<bool> {
+        let hash = parse_hash(frozen)?;
+        match account_of(voter) {
+            Some(voter) => Ok(self.ballot_bodies.contains_by(&voter, &hash)?),
+            None => Ok(false),
+        }
+    }
+
+    /// `voter`'s own body at `frozen`, if it names them.
+    fn authored_body(&self, frozen: &str, voter: &str) -> app::Result<Option<StoredBallot>> {
+        let Some(owner) = account_of(voter) else {
+            return Ok(None);
+        };
+        Ok(self
+            .ballot_bodies
+            .get_by(&owner, &parse_hash(frozen)?)?
             .filter(|b| b.voter == voter))
     }
 

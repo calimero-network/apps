@@ -239,3 +239,18 @@ Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
 - Future AI features will maintain the same privacy-first approach, processing data entirely within Calimero infrastructure.
 
 ---
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- A document is read through the entry of the **lowest account** holding its id
+  (ids are random, so a second holder only exists if a patched node copied one), and
+  `uploaded_by` names that account.
+- A document's signatures are read per key with every holder's account (`entries_at`):
+  the signer is the entry's owner stamp, as before.
+- `delete_document` removes every holder's entry with `remove_by`; a key-only `remove`
+  would remove only the admin's own.

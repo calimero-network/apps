@@ -150,6 +150,22 @@ The [architecture documentation](https://calimero-network.github.io/battleships/
 - Complete game flow from namespace creation to match completion
 - Calimero platform features used (9 features)
 
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- **Lobby.** A match is read through `match_of`: among the holders of its id, the entry
+  owned by the account that registered the id's `player1` key (the lowest such holder
+  otherwise). Result rows are read per key with every holder's account (`entries_at`),
+  because both players' nodes can now file a report under the same key. Creating a match
+  still refuses an id **any** account holds. Test:
+  `an_entry_filed_under_someone_elses_match_id_is_never_the_match`.
+- **Game.** A player's commitments, shots, answers and reveals are read as that player's
+  own entry at each key (`get_by`), once per key.
+
 ## License
 
 MIT

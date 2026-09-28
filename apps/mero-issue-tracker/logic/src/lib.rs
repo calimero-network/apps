@@ -716,9 +716,7 @@ impl IssueTracker {
             .map_err(store_err("comments.query"))?
         {
             let author = self
-                .comments
-                .owner_of(&id)
-                .map_err(store_err("comments.owner_of"))?
+                .comment_author(&id, &c)?
                 .map(|a| a.to_string())
                 .unwrap_or_default();
             comments.push(CommentView {
@@ -947,10 +945,10 @@ fn caller() -> String {
 }
 
 impl IssueTracker {
+    /// Whether any account holds a header at `issue_id`: keys are per owner,
+    /// so a key-only `contains` would ask about the caller's own only.
     fn issue_exists(&self, issue_id: &str) -> app::Result<bool> {
-        self.headers
-            .contains(&issue_id.to_owned())
-            .map_err(store_err("headers.contains"))
+        Ok(self.header_holder(&issue_id.to_owned())?.is_some())
     }
 
     /// Apply a triage edit to an existing issue, re-creating its triage row
@@ -991,24 +989,58 @@ impl IssueTracker {
         Ok(())
     }
 
+    /// Keys are per owner: `owned_by_me` asks whether the CALLER holds a
+    /// comment at the id, `entries_at` whether anyone does.
     fn require_comment_author(&self, comment_id: &String, action: &str) -> app::Result<()> {
-        if !self
-            .comments
-            .contains(comment_id)
-            .map_err(store_err("comments.contains"))?
-        {
-            app::bail!(Error::NotFound(comment_id.clone()));
-        }
-        if !self
+        if self
             .comments
             .owned_by_me(comment_id)
             .map_err(store_err("comments.owned_by_me"))?
         {
-            app::bail!(Error::Forbidden(format!(
-                "only the author may {action} this comment"
-            )));
+            return Ok(());
         }
-        Ok(())
+        if self
+            .comments
+            .entries_at(comment_id)
+            .map_err(store_err("comments.entries_at"))?
+            .is_empty()
+        {
+            app::bail!(Error::NotFound(comment_id.clone()));
+        }
+        app::bail!(Error::Forbidden(format!(
+            "only the author may {action} this comment"
+        )))
+    }
+
+    /// The author of the comment row `c` at `id`: the holder of `id` whose
+    /// entry it is, matched by bytes. Keys are per owner, so a key-only
+    /// `owner_of` would only ever name the caller. A comment carries
+    /// `LwwRegister`s, stamped with their write, so two accounts' entries are
+    /// never byte-identical.
+    fn comment_author(&self, id: &String, c: &Comment) -> app::Result<Option<AccountId>> {
+        let Ok(row) = calimero_sdk::borsh::to_vec(c) else {
+            return Ok(None);
+        };
+        Ok(self
+            .comments
+            .entries_at(id)
+            .map_err(store_err("comments.entries_at"))?
+            .into_iter()
+            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
+            .map(|(owner, _)| owner)
+            .min())
+    }
+
+    /// The header at `id` of the lowest account holding one, with that
+    /// account: the same pick on every node. Keys are per owner, so a
+    /// key-only `get` would read the caller's own header only.
+    fn header_holder(&self, id: &String) -> app::Result<Option<(AccountId, IssueHeader)>> {
+        Ok(self
+            .headers
+            .entries_at(id)
+            .map_err(store_err("headers.entries_at"))?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner))
     }
 
     /// The labels attached to an issue, sorted for a stable order. Only rows
@@ -1033,15 +1065,10 @@ impl IssueTracker {
 
     /// The issue `id` as a view, or `None` if it has no header.
     fn issue_view(&self, id: String) -> app::Result<Option<IssueView>> {
-        let Some(header) = self.headers.get(&id).map_err(store_err("headers.get"))? else {
+        let Some((creator, header)) = self.header_holder(&id)? else {
             return Ok(None);
         };
-        let created_by = self
-            .headers
-            .owner_of(&id)
-            .map_err(store_err("headers.owner_of"))?
-            .map(|a| a.to_string())
-            .unwrap_or_default();
+        let created_by = creator.to_string();
         let issue = match self.issues.get(&id).map_err(store_err("issues.get"))? {
             Some(issue) => issue.clone(),
             None => Issue::missing(),
@@ -1553,8 +1580,14 @@ mod tests {
                 s.comments.modify(&c, |c| c.body.set("hax".into()))
             })
             .is_err());
+        // Keys are per owner: OTHER's key-only remove names OTHER's own entry
+        // at the key, of which there is none.
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.comments.remove(&c))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_comment(c.clone()))
             .is_err());
         assert_eq!(
             app.view(|s| s.get_issue(id)).unwrap().comments[0].body,
@@ -1568,28 +1601,51 @@ mod tests {
         let id = new_issue(&mut app);
         let me = app.view(|_| caller());
 
+        // Keys are per owner: OTHER's key-only remove and modify name OTHER's
+        // own entry at the id, of which there is none.
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.remove(&id))
-            .is_err());
+            .unwrap()
+            .is_none());
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
                 s.headers.modify(&id, |h| h.title = "Renamed".into())
             })
             .is_err());
-        // Taking the key over by inserting is refused too: it is occupied.
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.insert(
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_issue(id.clone()))
+            .is_err());
+
+        let issue = app.view(|s| s.get_issue(id.clone())).unwrap().issue;
+        assert_eq!(issue.title, "Login broken");
+        assert_eq!(issue.created_by, me, "created_by is the owner stamp");
+
+        // Inserting at the id files OTHER's own header beside mine. Reads by
+        // id take the lowest account's, and name whoever that is: the stamp
+        // is never reattributed, and my header is untouched.
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.headers.insert(
                 id.clone(),
                 IssueHeader {
                     title: "Mine now".into(),
                     created_at: 0,
-                }
-            ))
-            .is_err());
-
-        let issue = app.view(|s| s.get_issue(id)).unwrap().issue;
-        assert_eq!(issue.title, "Login broken");
-        assert_eq!(issue.created_by, me, "created_by is the owner stamp");
+                },
+            )
+        })
+        .unwrap();
+        let other = AccountId::from(OTHER_ACCOUNT).to_string();
+        let shown = app.view(|s| s.get_issue(id.clone())).unwrap().issue;
+        let expected = if other < me {
+            ("Mine now", other)
+        } else {
+            ("Login broken", me.clone())
+        };
+        assert_eq!((shown.title.as_str(), shown.created_by), expected);
+        let my_account = AccountId::from(app.account_id());
+        let mine = app.view(|s| s.headers.get_by(&my_account, &id).unwrap().unwrap());
+        assert_eq!(mine.title, "Login broken");
+        let listed = app.view(|s| s.list_issues(None, None, None)).unwrap();
+        assert_eq!(listed.len(), 1, "one issue however many hold its id");
     }
 
     /// Triage is public on purpose, so a peer CAN remove a triage row. The
@@ -1652,7 +1708,9 @@ mod tests {
         app.call(|s| s.delete_issue(id.clone())).unwrap();
         // Only its author may remove it, so it stays — unreachable, since
         // every read goes through the issue.
-        assert!(app.view(|s| s.comments.contains(&theirs).unwrap()));
+        // Keys are per owner, so asked across owners: a key-only `contains`
+        // would ask about the viewer's own comment.
+        assert!(!app.view(|s| s.comments.entries_at(&theirs).unwrap().is_empty()));
         assert!(app.view(|s| s.get_issue(id)).is_err());
     }
 }

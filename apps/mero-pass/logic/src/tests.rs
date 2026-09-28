@@ -474,6 +474,36 @@ fn a_device_is_registered_under_the_callers_account() {
     assert_eq!(bob_row.devices, 1);
 }
 
+/// Keys are per owner: Carol registering a fingerprint Bob already holds
+/// files her own entry. Each row names its own account, and revoking hers as
+/// its owner leaves Bob's.
+#[test]
+fn one_fingerprint_two_accounts_are_two_devices() {
+    let mut app = new_vault();
+    for (account, device) in [(BOB, BOB_LAPTOP), (CAROL, CAROL_PHONE)] {
+        app.call_as_account(account, device, |s| {
+            s.register_device(fp(1), "pk".to_owned(), String::new(), "browser".to_owned())
+        })
+        .unwrap();
+    }
+    let mut accounts: Vec<String> = app
+        .view(|s| s.list_devices())
+        .unwrap()
+        .into_iter()
+        .map(|d| d.account)
+        .collect();
+    accounts.sort();
+    let mut want = vec![bob(), hex::encode(CAROL)];
+    want.sort();
+    assert_eq!(accounts, want);
+
+    app.call_as_account(CAROL, CAROL_PHONE, |s| s.revoke_device(fp(1)))
+        .unwrap();
+    let left = app.view(|s| s.list_devices()).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].account, bob());
+}
+
 #[test]
 fn a_malformed_fingerprint_is_refused() {
     let mut app = new_vault();

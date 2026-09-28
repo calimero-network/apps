@@ -181,8 +181,12 @@ fn a_demotion_takes_the_power_away() {
         .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.delete_document(doc.clone()))
         .unwrap_err();
     assert!(format!("{err:?}").contains("Admin permissions required"));
+    // Keys are per owner: Bob's key-only remove names his own entry, of
+    // which there is none, and removing Alice's by name needs a moderator.
     assert!(
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.documents.remove(&doc))
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s
+            .documents
+            .remove_by(&AccountId::from(ALICE_ACCOUNT), &doc))
             .is_err(),
         "nor is he a moderator of the documents any more"
     );
@@ -811,15 +815,31 @@ fn a_signed_document_and_its_signatures_cannot_be_changed() {
 
     // The uploaded document cannot be rewritten, by its uploader or anyone.
     let stored = app.view(|s| s.documents.get(&doc).unwrap().unwrap());
-    for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
-        let (d, mut forged) = (doc.clone(), stored.clone());
-        forged.hash = "swapped".to_owned();
-        assert!(app
-            .call_as_account(account, device, |s| s.documents.insert(d, forged))
-            .is_err());
-    }
+    let (d, mut forged) = (doc.clone(), stored.clone());
+    forged.hash = "swapped".to_owned();
+    assert!(app
+        .call_as_account(ALICE_ACCOUNT, ALICE_DEVICE, |s| s
+            .documents
+            .insert(d, forged))
+        .is_err());
+    // Keys are per owner: Bob's insert at the id files HIS own entry, which
+    // leaves Alice's untouched. Reads by id take the lowest account's, and
+    // Alice's account is the lower here.
+    let (d, mut forged) = (doc.clone(), stored.clone());
+    forged.hash = "swapped".to_owned();
+    app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.documents.insert(d, forged))
+        .unwrap();
+    assert_eq!(
+        app.view(|s| s.documents.get_by(&AccountId::from(ALICE_ACCOUNT), &doc))
+            .unwrap()
+            .unwrap()
+            .hash,
+        stored.hash
+    );
     assert!(
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.documents.remove(&doc))
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s
+            .documents
+            .remove_by(&AccountId::from(ALICE_ACCOUNT), &doc))
             .is_err(),
         "only a moderator removes a document"
     );

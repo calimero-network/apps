@@ -239,9 +239,19 @@ the same add-wins reason as the trash.
 `register_device(fingerprint, public_key, label, kind)` stores a P-256
 public key under its SHA-256 fingerprint. `kind` is `browser` or `recovery`
 (a key pair the user holds as a printed code) and anything else is refused.
-The device's account is the entry's owner stamp, read with `owner_of` by
-`list_devices`, `list_members` and `remove_member`; `node_device` is taken
-from `env::device_id()`.
+The device's account is the entry's owner stamp, read with
+`entries_with_owners` by `list_devices` and `list_members`, and with
+`entries_by(account)` by `remove_member`; `node_device` is taken from
+`env::device_id()`.
+
+**Keys are per owner (core 0.11.0-rc.57).** Two accounts registering one
+fingerprint hold two independent entries, each listed with its own account.
+A key-only `owner_of`, `contains` or `get` answers for the CALLER only, so
+every cross-account read names the owner or reads every holder:
+`add_key_wraps` and `revoke_device` ask whether *any* account registered the
+fingerprint (`entries_at`), `key_wraps_for` and `wrapped_pairs` take each
+wrap's author from `entries_with_owners`, and a wrapper's repeat check reads
+its own wraps (`my_entries`).
 
 **Why.**
 - **`AuthoredMap`, not a guarded store.** Any member, a viewer or a pending
@@ -254,8 +264,10 @@ from `env::device_id()`.
   account. An `account` field in the value would not do: a modified node
   writes any field it likes, and clients hand the vault key to a device by
   the account listed with it.
-- **Insert refuses an existing key.** So one member can't replace another's
-  public key.
+- **Nobody replaces another's public key.** Since rc.57 an insert at a
+  fingerprint someone else holds files the caller's own, separate entry,
+  listed under the caller's account; it never touches the other entry.
+  `register_device` is a no-op only when the caller already holds it.
 
 **Two ways to revoke.** An owner revoking their own device removes the entry,
 so nothing new is wrapped to it. An admin revoking someone else's can't
@@ -292,9 +304,10 @@ details are in `app/src/lib/crypto.ts`). The contract stores wraps in an
 `AuthoredMap` keyed `"<recipient>:<keyId>:<nonce>"`.
 
 **Why this key shape.**
-- **Squatting.** Any key a member can predict, another member can write
-  first, and an authored map refuses to overwrite it. A random nonce means
-  there is no slot to squat. A repeat from the same wrapper is skipped.
+- **Squatting.** Before rc.57, any key a member could predict another member
+  could write first, and an authored map refused to overwrite it. Keys are
+  per owner now, so a slot cannot be squatted at all; the random nonce still
+  keeps one wrapper's wraps apart. A repeat from the same wrapper is skipped.
 - **Approval counts role holders only.** Clients treat a device listed in
   `wrapped_pairs` as approved, so that list counts only wraps whose owner
   stamp holds a role. A pending or removed member's garbage wrap to their

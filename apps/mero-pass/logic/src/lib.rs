@@ -141,10 +141,13 @@ pub struct Revision {
 /// A device public key the vault key may be wrapped to.
 ///
 /// Stored in an [`AuthoredMap`], so only the account that registered it can
-/// remove it. Its account is the entry's owner stamp (`devices.owner_of`),
-/// which every node verifies — never a field in the value, which a modified
-/// node could fill with anyone's account to be handed the vault key in their
-/// name.
+/// remove it. Its account is the entry's owner stamp, which every node
+/// verifies — never a field in the value, which a modified node could fill
+/// with anyone's account to be handed the vault key in their name.
+///
+/// Keys are per owner (core rc.57): two accounts registering one fingerprint
+/// hold two entries, each read with its own account (`entries_with_owners`).
+/// A key-only `owner_of` would only ever name the caller.
 #[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DeviceKey {
@@ -525,11 +528,11 @@ impl MeroPassApp {
         }
         let removed = self.prefixed_set(ADMIN_REMOVED)?;
         let revoked = self.revoked_set()?;
-        for (fingerprint, _) in self.devices.entries()? {
+        for (owner, fingerprint, _) in self.devices.entries_with_owners()? {
             if revoked.contains(&fingerprint) {
                 continue;
             }
-            let account = self.device_account(&fingerprint)?;
+            let account = owner.to_string();
             let fallback = if removed.contains(&account) {
                 "removed"
             } else {
@@ -616,12 +619,12 @@ impl MeroPassApp {
             }
         }
         self.project_roles()?;
-        let mut theirs = Vec::new();
-        for (fp, _) in self.devices.entries()? {
-            if self.device_account(&fp)? == account {
-                theirs.push(fp);
-            }
-        }
+        let theirs: Vec<String> = self
+            .devices
+            .entries_by(&who)?
+            .into_iter()
+            .map(|(fp, _)| fp)
+            .collect();
         let admin = self.admin.get_mut()?;
         let _ = admin.insert(
             format!("{ADMIN_REMOVED}{account}"),
@@ -678,15 +681,6 @@ impl MeroPassApp {
         self.prefixed_set(ADMIN_REVOKED)
     }
 
-    /// The account that registered a device: its owner stamp.
-    fn device_account(&self, fingerprint: &String) -> app::Result<String> {
-        Ok(self
-            .devices
-            .owner_of(fingerprint)?
-            .map(|a| a.to_string())
-            .unwrap_or_default())
-    }
-
     /// Register this browser's public key so the vault key can be wrapped to
     /// it. `fingerprint` must be the hex SHA-256 of the raw key; the client
     /// derives both, and the contract checks the shape, not the hash (a wrong
@@ -705,6 +699,8 @@ impl MeroPassApp {
             app::bail!("device kind must be browser or recovery");
         }
         Self::check_envelope(&public_key)?;
+        // The caller's own registration only: keys are per owner, so another
+        // account's entry at this fingerprint is theirs, and never in the way.
         if self.devices.contains(&fingerprint)? {
             return Ok(());
         }
@@ -729,10 +725,10 @@ impl MeroPassApp {
     pub fn list_devices(&self) -> app::Result<Vec<DeviceView>> {
         let revoked = self.revoked_set()?;
         let mut out = Vec::new();
-        for (fingerprint, d) in self.devices.entries()? {
+        for (owner, fingerprint, d) in self.devices.entries_with_owners()? {
             out.push(DeviceView {
                 revoked: revoked.contains(&fingerprint),
-                account: self.device_account(&fingerprint)?,
+                account: owner.to_string(),
                 fingerprint,
                 public_key: d.public_key,
                 label: d.label,
@@ -746,7 +742,8 @@ impl MeroPassApp {
     /// Revoke a device. Your own device you may always revoke; anyone else's
     /// needs an admin. Follow with `rotate_key`.
     pub fn revoke_device(&mut self, fingerprint: String) -> app::Result<()> {
-        if !self.devices.contains(&fingerprint)? {
+        // Any account's device, not just the caller's: keys are per owner.
+        if self.devices.entries_at(&fingerprint)?.is_empty() {
             app::bail!("no such device");
         }
         let owned = self.devices.owned_by_me(&fingerprint).unwrap_or(false);
@@ -780,18 +777,17 @@ impl MeroPassApp {
             Self::check_envelope(&w.envelope)?;
             if w.key_id.contains(':')
                 || revoked.contains(&w.recipient)
-                || !self.devices.contains(&w.recipient)?
+                || self.devices.entries_at(&w.recipient)?.is_empty()
             {
                 continue;
             }
             // One wrap per wrapper, key and recipient: a repeat is a no-op.
             let prefix = format!("{}:{}:", w.recipient, w.key_id);
-            let mut repeat = false;
-            for (slot, existing) in self.key_wraps.entries()? {
-                repeat |= slot.starts_with(&prefix)
-                    && existing.wrapper == w.wrapper
-                    && self.key_wraps.owned_by_me(&slot)?;
-            }
+            let repeat = self
+                .key_wraps
+                .my_entries()?
+                .into_iter()
+                .any(|(slot, existing)| slot.starts_with(&prefix) && existing.wrapper == w.wrapper);
             if repeat {
                 continue;
             }
@@ -818,12 +814,12 @@ impl MeroPassApp {
     pub fn key_wraps_for(&self, recipient: String) -> app::Result<Vec<KeyWrapView>> {
         let mut out = Vec::new();
         let prefix = format!("{recipient}:");
-        for (slot, w) in self.key_wraps.entries()? {
+        for (author, slot, w) in self.key_wraps.entries_with_owners()? {
             if !slot.starts_with(&prefix) {
                 continue;
             }
             out.push(KeyWrapView {
-                wrapped_by: self.wrap_author(&slot)?,
+                wrapped_by: author.to_string(),
                 key_id: w.key_id,
                 recipient: w.recipient,
                 wrapper: w.wrapper,
@@ -841,24 +837,12 @@ impl MeroPassApp {
     /// writing a garbage wrap to its own device — must not count.
     pub fn wrapped_pairs(&self) -> app::Result<Vec<String>> {
         let mut pairs = BTreeSet::new();
-        for (slot, w) in self.key_wraps.entries()? {
-            let by_member = self
-                .key_wraps
-                .owner_of(&slot)?
-                .is_some_and(|who| self.role_of(&who) != "pending");
-            if by_member {
+        for (who, _, w) in self.key_wraps.entries_with_owners()? {
+            if self.role_of(&who) != "pending" {
                 let _ = pairs.insert(format!("{}:{}", w.key_id, w.recipient));
             }
         }
         Ok(pairs.into_iter().collect())
-    }
-
-    fn wrap_author(&self, slot: &String) -> app::Result<String> {
-        Ok(self
-            .key_wraps
-            .owner_of(slot)?
-            .map(|a| a.to_string())
-            .unwrap_or_default())
     }
 
     /// Make `key_id` the key new writes use. The first call bootstraps the

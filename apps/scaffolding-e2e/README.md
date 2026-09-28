@@ -342,3 +342,18 @@ Local development never hits this (loopback is always trusted), which is why it
 can ship broken.
 
 **Context state not syncing** — both nodes need to be able to reach each other on the P2P port shown in the merod startup logs.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- `authored_get` and `authored_get_owner` read the **lowest account** holding the key.
+- New: `authored_get_by(owner, key)` reads one owner's entry, and `authored_owners(key)`
+  lists every account holding it. `authored-shared.yml` uses both for its cross-node reads.
+- `authored_remove` removes the caller's own entry only.
+- The workspace directory (`ws_channels`, `ws_groups`) refuses registering an id another
+  account holds (it used to rely on the key being taken), lists each entry with its own
+  owner, and an admin's unregister removes every holder's entry with `remove_by`.
