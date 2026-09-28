@@ -131,7 +131,11 @@ export function useJoinFromInvitation(): {
    * admitters intersection, the signed op, the step names. What is here is the
    * ordering and which refusals are worth keeping the invitation for.
    */
-  const { needsBootstrap, bootstrap } = useDelegatedBootstrap();
+  const { credential, bootstrap } = useDelegatedBootstrap();
+  // An account holder joins through an admitter whether or not it already has
+  // a relay: `joinNamespace` + `joinContext` are a node's own admin calls, which
+  // a relay does not serve to a keyholder.
+  const isAccount = credential !== null;
 
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
@@ -155,7 +159,7 @@ export function useJoinFromInvitation(): {
     attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
-      if (needsBootstrap) {
+      if (isAccount) {
         /*
          * The delegated path, and deliberately NOT `joinNamespace` +
          * `joinContext`.
@@ -225,11 +229,11 @@ export function useJoinFromInvitation(): {
     } finally {
       running.current = false;
     }
-    // `needsBootstrap` and `bootstrap` join the list because this callback now
+    // `isAccount` and `bootstrap` join the list because this callback now
     // branches on them. Safe for the same reason the others are: `attempted`
     // guards the retry effect, so a changing identity here cannot restart a
     // failed join.
-  }, [joinNamespace, joinContext, needsBootstrap, bootstrap]);
+  }, [joinNamespace, joinContext, isAccount, bootstrap]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or
