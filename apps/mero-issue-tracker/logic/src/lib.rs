@@ -595,6 +595,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","label":"ci"}
     /// ```
+    #[app::destructive]
     #[app::idempotent]
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
