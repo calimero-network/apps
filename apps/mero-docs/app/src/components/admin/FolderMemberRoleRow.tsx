@@ -13,7 +13,8 @@ import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
-import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { useMemberName } from '@/hooks/useMemberName';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { RoleSelect } from './RoleSelect';
 import {
@@ -35,9 +36,6 @@ import type { Role } from '@/generated/registry/RegistryClient';
 interface Props {
   folderId: string;
   identity: string;
-  /** Server-reported name or the shared unnamed fallback; MemberLabel's
-   *  fallback and the remove dialog's text. */
-  label: string;
   /** Server-reported core role: Admin / Member / ReadOnly. */
   coreRole?: string;
   /** Registry folder Role for this member (default 'Editor' if absent). */
@@ -50,14 +48,13 @@ interface Props {
    *  written, so the parent can refetch the role list. */
   onAfterRoleChange?: () => void;
   /** Remove this member from the folder. Undefined hides the button. */
-  onRemove?: (identity: string, label: string) => void;
+  onRemove?: (identity: string) => void;
   removing?: boolean;
 }
 
 export function FolderMemberRoleRow({
   folderId,
   identity,
-  label,
   coreRole,
   registryRole,
   isSelf,
@@ -69,6 +66,9 @@ export function FolderMemberRoleRow({
   const { registryClient, registryContextId, namespaceId } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
+  const { name, settled } = useMemberName(namespaceId, identity);
+  // Null while the name loads, so labels never call a named member unnamed.
+  const label = name ?? (settled ? UNNAMED_MEMBER_LABEL : null);
   const confirm = useConfirm();
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -100,7 +100,9 @@ export function FolderMemberRoleRow({
     }
     if (!current) return;
     const ok = await confirm({
-      title: `Change ${label}'s role to ${roleDisplayLabel(next)}?`,
+      title: label
+        ? `Change ${label}'s role to ${roleDisplayLabel(next)}?`
+        : `Change role to ${roleDisplayLabel(next)}?`,
       body: describeRoleChange(current, next, 'folder'),
       confirmLabel: 'Change role',
       destructive: true,
@@ -141,7 +143,6 @@ export function FolderMemberRoleRow({
               namespaceId={namespaceId}
               memberId={identity}
               isSelf={isSelf}
-              fallback={() => label}
             />
           </div>
         </div>
@@ -153,7 +154,7 @@ export function FolderMemberRoleRow({
               void onRoleChange(next);
             }}
             disabled={!canManage || updating || core !== 'Member'}
-            ariaLabel={`Role for ${label}`}
+            ariaLabel={label ? `Role for ${label}` : 'Member role'}
           />
           {onRemove && canManage ? (
             <Button
@@ -161,8 +162,8 @@ export function FolderMemberRoleRow({
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
               disabled={removing}
-              aria-label={`Remove ${label}`}
-              onClick={() => onRemove(identity, label)}
+              aria-label={label ? `Remove ${label}` : 'Remove member'}
+              onClick={() => onRemove(identity)}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

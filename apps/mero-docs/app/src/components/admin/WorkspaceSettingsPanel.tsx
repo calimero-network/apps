@@ -19,7 +19,7 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
-import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
+import { useMemberName } from '@/hooks/useMemberName';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 // Resolves the name the same way <MemberLabel> does, so the remove
@@ -37,9 +37,9 @@ function ManagerRow({
   busy: boolean;
   onRemove: (memberId: string) => void;
 }) {
-  const { name } = useMemberDisplayName(namespaceId, memberId);
-  const { namespaceMemberNames } = useDriveWorkspace();
-  const resolvedName = name ?? namespaceMemberNames[memberId] ?? UNNAMED_MEMBER_LABEL;
+  const { name, settled } = useMemberName(namespaceId, memberId);
+  // Null while the name loads, so labels never call a named member unnamed.
+  const label = name ?? (settled ? UNNAMED_MEMBER_LABEL : null);
   return (
     <li className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1">
       <MemberLabel
@@ -53,7 +53,7 @@ function ManagerRow({
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
           disabled={busy}
-          aria-label={`Remove ${resolvedName} from people who can set folder roles`}
+          aria-label={`Remove ${label ?? 'member'} from people who can set folder roles`}
           onClick={() => onRemove(memberId)}
         >
           <Trash2 className="h-3.5 w-3.5" />
