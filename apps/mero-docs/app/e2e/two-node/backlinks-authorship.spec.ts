@@ -55,6 +55,11 @@ test.describe('Details across nodes (two-node)', () => {
     await alice.openDoc('Secret');
     await alice.editor.type('See ');
     await alice.editor.pasteLink(planUrl, 'Plan');
+    // Secret's Links to reads the node, so the link is saved before the reload drops the page.
+    await alice.details.open();
+    await expect(
+      alice.details.section('Links to').getByRole('button', { name: /Plan/ }),
+    ).toBeVisible({ timeout: SYNC_MS });
     await alice.page.goto(planUrl);
     await alice.editor.expectMounted();
     await expect(
