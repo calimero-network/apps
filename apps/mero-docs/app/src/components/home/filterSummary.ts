@@ -7,13 +7,12 @@ import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
 import {
   MENTIONED_ME_LABEL,
+  UNKNOWN_FOLDER_LABEL,
   UNKNOWN_TAG_LABEL,
   type FolderPaths,
 } from './useHomeChips';
 import { UPDATED_OPTIONS } from './UpdatedMenu';
 import type { FilterIcon } from './types';
-
-const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
 
 export const SORT_LABELS: Record<HomeQuery['sort'], string> = {
   updated: 'Last updated',
