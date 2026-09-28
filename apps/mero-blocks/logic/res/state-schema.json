@@ -16,31 +16,34 @@
               "$ref": "Player"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Device identity (64 hex) -> that device's player row."
         }
       ]
     },
     "BlockOverride": {
       "kind": "record",
-      "doc": "One block override: `b` is the block id (0 = air / broken).",
+      "doc": "A stored block edit: block id `b` and the stamp that orders concurrent edits.",
       "fields": [
         {
           "name": "b",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Block id, 0 to 15; 0 is air (a broken block)."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
-          "doc": "room-time stamp for LWW convergence when two peers edit the same block"
+          "doc": "Room-clock unix seconds; the larger stamp wins when two players edit one block."
         }
       ]
     },
     "MeroBlocks": {
       "kind": "record",
+      "doc": "One world: its fixed metadata, every block edit and every account's players.",
       "fields": [
         {
           "name": "meta",
@@ -78,98 +81,111 @@
             "value": {
               "$ref": "Avatars"
             }
-          }
+          },
+          "doc": "Each account's avatars, writable only by that account."
         }
       ]
     },
     "Player": {
       "kind": "record",
-      "doc": "A player row: identity-keyed presence + last known transform.",
+      "doc": "A player row: presence and last known transform, keyed by the player's device identity.",
       "fields": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Display name."
         },
         {
           "name": "x",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Position in blocks."
         },
         {
           "name": "y",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Position in blocks; y is up."
         },
         {
           "name": "z",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Position in blocks."
         },
         {
           "name": "yaw",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "pitch",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "sel",
           "type": {
             "kind": "u32"
           },
-          "doc": "selected hotbar slot (cosmetic — lets peers render what you hold)"
+          "doc": "Selected hotbar slot, 0 to 8; peers render what the player holds."
         },
         {
           "name": "left",
           "type": {
             "kind": "bool"
           },
-          "doc": "explicitly left; row is kept, never removed"
+          "doc": "Whether the player has left; set by `leave`, cleared by `join` or `heartbeat`."
         },
         {
           "name": "joinedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Room-clock unix seconds."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Room-clock unix seconds."
         }
       ]
     },
     "WorldMeta": {
       "kind": "record",
+      "doc": "The world's identity: name, terrain seed and creation time. Fixed at creation.",
       "fields": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Display name."
         },
         {
           "name": "seed",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Terrain seed; clients generate identical terrain from it."
         },
         {
           "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix seconds; the 600 s day/night cycle is counted from here."
         }
       ]
     }
