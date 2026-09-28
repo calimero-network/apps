@@ -25,8 +25,9 @@ import {
   rememberWorldName,
   resolveApplicationId,
   worldNameOf,
+  WorldInviteError,
 } from "../net/admin";
-import { onInvitation as onInvite } from "@calimero-apps/invite";
+import { onInvitation as onInvite, shouldRetain } from "@calimero-apps/invite";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
@@ -557,8 +558,10 @@ export class Landing {
     `;
     this.root.appendChild(shade);
     let busy = false;
-    // Set only for a link-opened invite; called once the join actually succeeds
-    // so a transient failure leaves the intent in the store to retry next load.
+    // Set only for a link-opened invite; called once the join actually succeeds,
+    // or once the node has refused the invitation for good (expired, invalid,
+    // not allowed), so only a transient failure leaves the intent in the store
+    // to retry next load.
     let prefillAck: (() => void) | null = null;
     const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=invite-close]")!;
     const joinBtn = shade.querySelector<HTMLButtonElement>("[data-testid=join-invite-btn]")!;
@@ -587,6 +590,7 @@ export class Landing {
         shade.remove();
         done(this.readChoice());
       } catch (e) {
+        if (e instanceof WorldInviteError && !shouldRetain(e.outcome)) prefillAck?.();
         errEl.textContent = `Could not join with invite: ${errText(e)}`;
         busy = false;
         joinBtn.disabled = false;
