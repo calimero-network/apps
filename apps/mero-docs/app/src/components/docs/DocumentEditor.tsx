@@ -23,6 +23,8 @@ import { DocTags } from '@/components/tags/DocTags';
 import { isContextEvent } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
@@ -33,6 +35,7 @@ import { useTitleCursors } from '@/hooks/useTitleCursors';
 import { useCanManageTags } from '@/hooks/useTags';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { ArchivedBanner } from '@/components/editor/ArchivedBanner';
+import { DocDetails } from './DocDetails';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
@@ -44,6 +47,8 @@ const TAG_ADD_FAILED = "Couldn't add the tag. Try again.";
 const TAG_REMOVE_FAILED = "Couldn't remove the tag. Try again.";
 const ARCHIVE_FAILED = "Couldn't archive the document. Try again.";
 const UNARCHIVE_FAILED = "Couldn't unarchive the document. Try again.";
+const DETAILS_OPEN_KEY = 'mero-drive:details-open'; // this device's Details panel, from md up
+const MD_QUERY = '(min-width: 768px)'; // Tailwind md, where Details docks beside the document
 
 interface Props {
   folderId: string;
@@ -224,6 +229,16 @@ export function DocumentEditor({
     [docsArchive, docsUnarchive, docId, rereadDoc],
   );
 
+  // The panel beside the document is remembered; the phone sheet opens only when asked.
+  const isDesktop = useMediaQuery(MD_QUERY);
+  const [panelOpen, setPanelOpen] = useLocalStorage(DETAILS_OPEN_KEY, false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (isDesktop) setSheetOpen(false);
+  }, [isDesktop]);
+  const detailsOpen = isDesktop ? panelOpen : sheetOpen;
+  const setDetailsOpen = isDesktop ? setPanelOpen : setSheetOpen;
+
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
     if (!title.title) return;
@@ -270,7 +285,7 @@ export function DocumentEditor({
   }
 
   return (
-    <>
+    <div className="flex h-full">
       <EditorShell
         documentName={title.title || 'Untitled'}
         // Every mutation handler gates on canEditDocs so a read-only viewer
@@ -321,6 +336,8 @@ export function DocumentEditor({
             />
           )
         }
+        detailsOpen={detailsOpen}
+        onToggleDetails={() => setDetailsOpen(!detailsOpen)}
         onArchive={
           canOrganize && doc && !doc.archived
             ? () => setArchived(true)
@@ -337,7 +354,16 @@ export function DocumentEditor({
           )
         }
       />
+      {detailsOpen && (
+        <DocDetails
+          folderId={folderId}
+          docId={docId}
+          folderName={folderName}
+          sheet={!isDesktop}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
       <DocumentInspector client={client} docId={docId} />
-    </>
+    </div>
   );
 }

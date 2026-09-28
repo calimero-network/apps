@@ -38,6 +38,31 @@ describe('EditorHeader copy link', () => {
   });
 });
 
+describe('EditorHeader details toggle', () => {
+  it('toggles Details and says whether it is open', () => {
+    const onToggleDetails = vi.fn();
+    const { rerender } = render(
+      <EditorHeader
+        documentName="Plan"
+        detailsOpen={false}
+        onToggleDetails={onToggleDetails}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: 'Details' });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle);
+    expect(onToggleDetails).toHaveBeenCalledTimes(1);
+    rerender(
+      <EditorHeader
+        documentName="Plan"
+        detailsOpen
+        onToggleDetails={onToggleDetails}
+      />,
+    );
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
 describe('EditorHeader archive', () => {
   it('offers Archive to an editor of a live document', async () => {
     const user = userEvent.setup();

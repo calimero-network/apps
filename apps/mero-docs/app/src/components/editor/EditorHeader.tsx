@@ -1,4 +1,4 @@
-// The editor's top bar: back, the title field, undo/redo and the actions menu.
+// The editor's top bar: back, the title field, Details, undo/redo and the actions menu.
 // Purely presentational - the title is a live input because it writes through
 // the title CRDT on every keystroke, not on a commit.
 
@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   FileText,
   Link,
+  PanelRight,
   Redo2,
   Trash2,
   Undo2,
@@ -48,6 +49,8 @@ interface EditorHeaderProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onCopyLink?: () => void;
+  detailsOpen?: boolean;
+  onToggleDetails?: () => void;
   onArchive?: () => void;
   onUnarchive?: () => void;
   peers?: Peer[];
@@ -62,6 +65,8 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onUndo,
   onRedo,
   onCopyLink,
+  detailsOpen = false,
+  onToggleDetails,
   onArchive,
   onUnarchive,
   peers = [],
@@ -127,11 +132,24 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           <span className="hidden sm:inline">Copy link</span>
         </Button>
       )}
+      {onToggleDetails && (
+        <Button
+          variant={detailsOpen ? 'selected' : 'ghost'}
+          size="icon"
+          className="h-9 w-9"
+          aria-label="Details"
+          aria-pressed={detailsOpen}
+          onClick={onToggleDetails}
+        >
+          <PanelRight className="w-4 h-4" />
+        </Button>
+      )}
       {onUndo && (
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          // No room below sm: a phone header keeps Copy link, Details and the menu.
+          className="hidden h-9 w-9 sm:inline-flex"
           data-testid="doc-undo"
           aria-label="Undo"
           onClick={onUndo}
@@ -143,7 +161,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="hidden h-9 w-9 sm:inline-flex"
           data-testid="doc-redo"
           aria-label="Redo"
           onClick={onRedo}

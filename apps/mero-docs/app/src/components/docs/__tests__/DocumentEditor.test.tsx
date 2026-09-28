@@ -16,6 +16,7 @@ const addTag = vi.fn();
 const removeTag = vi.fn();
 const archive = vi.fn();
 const unarchive = vi.fn();
+let isDesktop = true;
 let canEditDocs = true;
 let canManageTags = true;
 let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
@@ -56,6 +57,14 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 }));
 let location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
 vi.mock('react-router-dom', () => ({ useLocation: () => location }));
+vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => isDesktop }));
+vi.mock('../DocDetails', () => ({
+  DocDetails: ({ sheet, onClose }: { sheet: boolean; onClose: () => void }) => (
+    <div data-testid="details" data-sheet={String(sheet)}>
+      <button onClick={onClose}>Close details</button>
+    </div>
+  ),
+}));
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs }),
@@ -111,11 +120,15 @@ vi.mock('@/components/editor/EditorShell', () => ({
     focusBlock,
     focusKey,
     tags,
+    detailsOpen,
+    onToggleDetails,
     onArchive,
     onUnarchive,
     notice,
   }: {
     tags?: React.ReactNode;
+    detailsOpen?: boolean;
+    onToggleDetails?: () => void;
     onArchive?: () => void;
     onUnarchive?: () => void;
     notice?: React.ReactNode;
@@ -139,6 +152,11 @@ vi.mock('@/components/editor/EditorShell', () => ({
       {isLoading ? 'Loading document...' : documentName}
       {notice}
       {tags}
+      {onToggleDetails && (
+        <button aria-pressed={!!detailsOpen} onClick={onToggleDetails}>
+          Details
+        </button>
+      )}
       {onArchive && <button onClick={onArchive}>Archive</button>}
       {onUnarchive && <button onClick={onUnarchive}>Unarchive</button>}
       {onDelete && <button onClick={onDelete}>Delete</button>}
@@ -177,6 +195,8 @@ beforeEach(() => {
   deliver = undefined;
   canEditDocs = true;
   canManageTags = true;
+  isDesktop = true;
+  localStorage.clear();
   archive.mockResolvedValue(undefined);
   unarchive.mockResolvedValue(undefined);
   addTag.mockResolvedValue(undefined);
@@ -445,6 +465,44 @@ describe('DocumentEditor', () => {
       await waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
       expect(screen.getByTestId('doc-tags').textContent).toContain('q3');
       expect(screen.queryByText("Couldn't load document")).toBeNull();
+    });
+  });
+
+  describe('details', () => {
+    const mount = () =>
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+    const toggle = () => screen.getByRole('button', { name: 'Details' });
+
+    it('docks Details beside the document from md up, and remembers it on this device', async () => {
+      const { unmount } = mount();
+      await screen.findByText('Notes');
+      expect(screen.queryByTestId('details')).toBeNull();
+      expect(toggle().getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(toggle());
+      expect(screen.getByTestId('details').getAttribute('data-sheet')).toBe('false');
+      expect(toggle().getAttribute('aria-pressed')).toBe('true');
+      expect(localStorage.getItem('mero-drive:details-open')).toBe('true');
+      unmount();
+
+      mount();
+      await screen.findByText('Notes');
+      expect(screen.getByTestId('details')).toBeTruthy();
+      fireEvent.click(screen.getByText('Close details'));
+      expect(screen.queryByTestId('details')).toBeNull();
+      expect(localStorage.getItem('mero-drive:details-open')).toBe('false');
+    });
+
+    it('opens Details as a sheet below md, without changing the remembered panel (L-27)', async () => {
+      isDesktop = false;
+      mount();
+      await screen.findByText('Notes');
+      fireEvent.click(toggle());
+      expect(screen.getByTestId('details').getAttribute('data-sheet')).toBe('true');
+      expect(localStorage.getItem('mero-drive:details-open')).toBeNull();
+      fireEvent.click(screen.getByText('Close details'));
+      expect(screen.queryByTestId('details')).toBeNull();
     });
   });
 

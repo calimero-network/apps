@@ -78,6 +78,18 @@ export function isValidTagKey(key: string): boolean {
   return key.length <= TAG_KEY_MAX && VALID_KEY.test(key);
 }
 
+/** A doc's tag keys as chips named from the workspace tags; a deleted tag shows nowhere. */
+export function docTagChips(
+  keys: string[],
+  byKey: Map<string, Tag>,
+): { key: string; name: string; color?: string }[] {
+  return keys.flatMap((key) => {
+    const tag = byKey.get(key);
+    if (tag?.deleted) return [];
+    return [{ key, name: tag?.name ?? key, color: tag?.color }];
+  });
+}
+
 /** Docs per tag key, archived docs left out. */
 export function tagCounts(rows: IndexRow[]): Map<string, number> {
   const counts = new Map<string, number>();
