@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   findTagByName,
+  firstUnusedColor,
   isValidTagKey,
   normalizeTagName,
   sidebarTags,
   tagCounts,
   tagKeyFor,
+  tagSuggestions,
   TAG_COLORS,
   TAG_COLOR_NAMES,
   TAG_NAME_MAX,
@@ -208,5 +210,64 @@ describe('tagCounts and sidebarTags (T-16)', () => {
       'w',
       'x',
     ]);
+  });
+});
+
+describe('tagSuggestions (T-02)', () => {
+  const tags = [
+    tag('relaunch', 'relaunch'),
+    tag('launch', 'Launch'),
+    tag('launch-plan', 'launch plan'),
+    tag('old', 'launched', true),
+    tag('q3', 'Q3'),
+  ];
+  const counts = new Map([
+    ['relaunch', 9],
+    ['launch-plan', 5],
+    ['launch', 1],
+  ]);
+
+  it('puts the exact name first, then prefixes, then the rest, busiest first', () => {
+    expect(
+      tagSuggestions(tags, 'launch', [], counts).map((t) => t.key),
+    ).toEqual(['launch', 'launch-plan', 'relaunch']);
+  });
+
+  it('folds case and accents, and leaves out deleted tags and tags already on the doc', () => {
+    expect(
+      tagSuggestions(tags, 'LAÜNCH', ['launch'], counts).map((t) => t.key),
+    ).toEqual(['launch-plan', 'relaunch']);
+  });
+
+  it('offers every live tag for an empty query, busiest first, and caps the list', () => {
+    expect(tagSuggestions(tags, '', [], counts).map((t) => t.key)).toEqual([
+      'relaunch',
+      'launch-plan',
+      'launch',
+      'q3',
+    ]);
+    const many = Array.from({ length: 20 }, (_, i) => tag(`t${i}`, `t${i}`));
+    expect(tagSuggestions(many, '', [], new Map())).toHaveLength(8);
+  });
+});
+
+describe('firstUnusedColor', () => {
+  it('is the first palette colour no live tag has, else the first colour', () => {
+    const coloured = (key: string, color: string, deleted = false): Tag => ({
+      key,
+      name: key,
+      color,
+      deleted,
+    });
+    expect(firstUnusedColor([])).toBe(TAG_COLORS[0]);
+    expect(
+      firstUnusedColor([
+        coloured('a', TAG_COLORS[0]),
+        coloured('b', TAG_COLORS[1], true),
+      ]),
+    ).toBe(TAG_COLORS[1]);
+    expect(
+      firstUnusedColor(TAG_COLORS.map((c, i) => coloured(`k${i}`, c))),
+    ).toBe(TAG_COLORS[0]);
   });
 });

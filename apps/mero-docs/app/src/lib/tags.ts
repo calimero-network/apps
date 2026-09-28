@@ -2,7 +2,7 @@
 // colour, so renames never touch docs and a deleted key is never reused.
 
 import { nameCollator } from './collate';
-import { foldForSearch } from './search/match';
+import { foldForSearch, matchScore } from './search/match';
 import type { IndexRow, Tag } from './workspaceIndex/types';
 
 export type { Tag } from './workspaceIndex/types';
@@ -30,6 +30,7 @@ const RANDOM_KEY_LEN = 6;
 const RANDOM_KEY_RADIX = 36;
 const RANDOM_KEY_TRIES = 8; // then number the last random key, so a stuck `random` still ends
 const VALID_KEY = /^[a-z0-9-]+$/;
+const SUGGESTIONS_MAX = 8; // the Add tag list stays short; typing narrows it
 
 /** Trimmed, inner whitespace collapsed, cut to TAG_NAME_MAX characters. */
 export function normalizeTagName(raw: string): string {
@@ -95,4 +96,36 @@ export function sidebarTags(tags: Tag[], counts: Map<string, number>): Tag[] {
     .sort(
       (a, b) => count(b) - count(a) || nameCollator.compare(a.name, b.name),
     );
+}
+
+/** Live tags matching `query`, not already in `exclude`: exact name, then prefix, then busiest. */
+export function tagSuggestions(
+  tags: Tag[],
+  query: string,
+  exclude: readonly string[],
+  counts: Map<string, number>,
+): Tag[] {
+  const q = foldForSearch(normalizeTagName(query));
+  const rank = (t: Tag) => {
+    const name = foldForSearch(normalizeTagName(t.name));
+    return name === q ? -1 : matchScore(name, q);
+  };
+  return tags
+    .filter((t) => !t.deleted && !exclude.includes(t.key))
+    .map((t) => ({ t, score: rank(t) }))
+    .filter((x): x is { t: Tag; score: number } => x.score !== null)
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        (counts.get(b.t.key) ?? 0) - (counts.get(a.t.key) ?? 0) ||
+        nameCollator.compare(a.t.name, b.t.name),
+    )
+    .slice(0, SUGGESTIONS_MAX)
+    .map((x) => x.t);
+}
+
+/** The colour a new tag starts with: the first one no live tag has yet. */
+export function firstUnusedColor(tags: Tag[]): string {
+  const used = new Set(tags.filter((t) => !t.deleted).map((t) => t.color));
+  return TAG_COLORS.find((c) => !used.has(c)) ?? TAG_COLORS[0];
 }

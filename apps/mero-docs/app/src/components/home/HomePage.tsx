@@ -7,8 +7,12 @@ import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { hereLabel } from '@/components/common/LivePill';
 import { QuietLoading } from '@/components/ui/empty-state';
 import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
+import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
+import { TagPageHeader } from '@/components/tags/TagPageHeader';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { DEV_NODE_PARAM, useAppRoute } from '@/hooks/useAppRoute';
 import { useCreateDocument } from '@/hooks/useCreateDocument';
@@ -16,14 +20,15 @@ import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
-import { usePresenceByDoc, type DocPeer } from '@/hooks/usePresenceByDoc';
-import { useTags } from '@/hooks/useTags';
+import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
+import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
 import {
   applyHomeQuery,
   parseHomeQuery,
   serializeHomeQuery,
+  tagPageKey,
   type HomeQuery,
 } from '@/lib/homeQuery';
 import { updatedLabel } from '@/lib/relativeTime';
@@ -71,13 +76,6 @@ function isFiltered(q: HomeQuery): boolean {
     !!q.by ||
     q.archived
   );
-}
-
-function hereLabel(here: DocPeer[]): string | undefined {
-  if (here.length === 0) return undefined;
-  if (here.length === 1) return `${here[0].name} is here`;
-  if (here.length === 2) return `${here[0].name} and ${here[1].name} are here`;
-  return `${here[0].name} and ${here.length - 1} others are here`;
 }
 
 function useNow(): number {
@@ -137,7 +135,8 @@ export function HomePage({ folderId }: Props) {
   const { namespaceId, rootGroupId } = useDriveWorkspace();
   const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
-  const { byKey: tagsByKey } = useTags();
+  const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
+  const confirm = useConfirm();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();
   const { search } = useLocation();
@@ -184,10 +183,20 @@ export function HomePage({ folderId }: Props) {
     () => new Set(scope.map((f) => f.id)),
     [scope],
   );
+  // A deleted tag shows nowhere, so it matches nothing either, even on docs that still carry it.
+  const liveRows = React.useMemo(
+    () =>
+      rows.map((r) =>
+        r.tags.some((k) => tagsByKey.get(k)?.deleted)
+          ? { ...r, tags: r.tags.filter((k) => !tagsByKey.get(k)?.deleted) }
+          : r,
+      ),
+    [rows, tagsByKey],
+  );
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;
-  const shown = applyHomeQuery(rows, effective, now, folders);
+  const shown = applyHomeQuery(liveRows, effective, now, folders);
   // What the chip counts are taken over: the scope and the Archived switch, no other filter.
-  const base = rows.filter(
+  const base = liveRows.filter(
     (r) => scopeIds.has(r.folderId) && r.archived === q.archived,
   );
 
@@ -244,10 +253,9 @@ export function HomePage({ folderId }: Props) {
       title: r.title.trim(),
       folderPath: path?.names ?? [UNKNOWN_FOLDER_LABEL],
       folderColor: path?.color,
-      tags: r.tags.flatMap((k) => {
+      tags: r.tags.map((k) => {
         const t = tagsByKey.get(k);
-        if (t?.deleted) return [];
-        return [{ key: k, name: t?.name ?? k, color: t?.color ?? TAG_NEUTRAL }];
+        return { key: k, name: t?.name ?? k, color: t?.color ?? TAG_NEUTRAL };
       }),
       here,
       liveLabel: hereLabel(here),
@@ -273,6 +281,58 @@ export function HomePage({ folderId }: Props) {
       ? plural(0, 'document')
       : `${plural(shown.length, 'document')} across ${plural(folderCount, 'folder')}`;
 
+  // --- Tag page ---
+  const pageKey = folderId ? null : tagPageKey(q);
+  const pageTag = pageKey ? tagsByKey.get(pageKey) : undefined;
+  const tagPage = pageTag && !pageTag.deleted ? pageTag : undefined;
+  const [renaming, setRenaming] = React.useState<{ error?: string } | null>(
+    null,
+  );
+  React.useEffect(() => setRenaming(null), [pageKey]);
+  const [deleting, setDeleting] = React.useState(false);
+  const deletingRef = React.useRef(false);
+  // Any other failure has been reported by a toast, so only a taken name stays under the field.
+  const renameTagTo = async (key: string, name: string) => {
+    try {
+      await renameTag(key, name);
+      setRenaming(null);
+    } catch (e: unknown) {
+      setRenaming({
+        error: e instanceof TagNameTakenError ? e.message : undefined,
+      });
+    }
+  };
+  // One run at a time; a failure has been reported by a toast and frees the header again.
+  const deleteTagAfterConfirm = async (key: string, name: string) => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    try {
+      const ok = await confirm({
+        title: 'Delete tag?',
+        body: (
+          <>
+            Delete <span className="font-medium">{name}</span>? It comes off
+            every document you can edit and disappears everywhere else.
+          </>
+        ),
+        confirmLabel: 'Delete tag',
+        destructive: true,
+      });
+      if (!ok) return;
+      setDeleting(true);
+      const editable = new Set(
+        Object.keys(creatable).filter((id) => creatable[id]),
+      );
+      await deleteTag(key, editable);
+      goHome(undefined, { replace: true });
+    } catch {
+      // Reported by the tags hook.
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
+  };
+
   const pickerFolders = writable.map((f) => {
     const path = paths.get(f.id);
     return {
@@ -294,11 +354,13 @@ export function HomePage({ folderId }: Props) {
         ? 'no-folders'
         : loading
           ? null
-          : isFiltered(q)
-            ? 'no-matches'
-            : syncing.length === 0 && failed.length === 0
-              ? 'no-docs'
-              : null;
+          : tagPage && syncing.length === 0 && failed.length === 0
+            ? 'no-tagged'
+            : isFiltered(q)
+              ? 'no-matches'
+              : syncing.length === 0 && failed.length === 0
+                ? 'no-docs'
+                : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
   const emptyBody = {
     'no-folders':
@@ -308,6 +370,7 @@ export function HomePage({ folderId }: Props) {
           ? undefined
           : NO_FOLDERS_READ_ONLY,
     'no-matches': undefined,
+    'no-tagged': undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -321,6 +384,7 @@ export function HomePage({ folderId }: Props) {
       ? () => setNewFolderOpen(true)
       : undefined,
     'no-matches': clearFilters,
+    'no-tagged': undefined,
     'no-docs': writable.length ? newDocument : undefined,
   } as const;
   const body =
@@ -342,24 +406,48 @@ export function HomePage({ folderId }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-card">
-      <HomeHeader
-        title={title}
-        subtitle={countKnown ? subtitle : ''}
-        actions={
-          // An empty list carries New document itself, so it is offered once.
-          writable.length > 0 &&
-          emptyKind !== 'no-docs' && (
-            <Button
-              className={headerActionClass}
-              disabled={!!creatingIn}
-              onClick={newDocument}
-            >
-              <Plus />
-              New document
-            </Button>
-          )
-        }
-      />
+      {tagPage ? (
+        <TagPageHeader
+          name={tagPage.name}
+          color={tagPage.color}
+          subtitle={
+            deleting
+              ? 'Deleting tag…'
+              : !countKnown
+                ? ''
+                : shown.length === 0
+                  ? 'No documents yet'
+                  : `${plural(shown.length, 'document')} in ${plural(folderCount, 'folder')}`
+          }
+          // The workspace caps an Editor has and a Guest lacks, as useCanManageTags reads them.
+          canManage={nsPerms.canCreateFolder}
+          busy={deleting}
+          onRename={() => setRenaming({})}
+          onRecolor={(color) =>
+            void recolorTag(tagPage.key, color).catch(() => {})
+          }
+          onDelete={() => void deleteTagAfterConfirm(tagPage.key, tagPage.name)}
+        />
+      ) : (
+        <HomeHeader
+          title={title}
+          subtitle={countKnown ? subtitle : ''}
+          actions={
+            // An empty list carries New document itself, so it is offered once.
+            writable.length > 0 &&
+            emptyKind !== 'no-docs' && (
+              <Button
+                className={headerActionClass}
+                disabled={!!creatingIn}
+                onClick={newDocument}
+              >
+                <Plus />
+                New document
+              </Button>
+            )
+          }
+        />
+      )}
       {foldersKnown && folders.length > 0 && (
         <FilterBar
           chips={chips}
@@ -421,6 +509,15 @@ export function HomePage({ folderId }: Props) {
         }}
         onOpenChange={setPickerOpen}
       />
+      {tagPage && (
+        <RenameTagDialog
+          open={!!renaming}
+          name={tagPage.name}
+          error={renaming?.error}
+          onSubmit={(name) => void renameTagTo(tagPage.key, name)}
+          onOpenChange={(open) => !open && setRenaming(null)}
+        />
+      )}
       {newFolderOpen && (
         <NewFolderDialog
           parentFolderId={null}

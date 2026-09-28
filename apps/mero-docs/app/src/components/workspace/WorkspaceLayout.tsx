@@ -1,5 +1,5 @@
 // Three-pane workspace shell:
-//   - top bar (logo + NamespaceSwitcher)
+//   - top bar (logo + NamespaceSwitcher, search in the centre)
 //   - left rail (Home, Views, Tags, then FolderTree); a drawer below md
 //   - main content: DocumentEditor rendered inline in the main pane
 //     (gated on selectedFolderId for save-stability, NOT selectedFolder)
@@ -48,8 +48,14 @@ import { resolveLinkTarget } from '@/lib/linkTarget';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
+import { TopBarSearch } from '@/components/search/TopBarSearch';
+import { SearchContainer } from '@/components/search/SearchContainer';
+import { useRecentDocs } from '@/hooks/useRecentDocs';
+import { KEY_LABELS } from '@/lib/platform';
 
 const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
+const EDITOR_SELECTOR = '.bn-editor'; // Cmd/Ctrl+K there is the editor's own link shortcut
+const SEARCH_KEY_CODE = 'KeyK'; // the physical key, so the shortcut works on any layout
 
 // Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
 // only needed once a document is opened, so they must not weigh down the
@@ -201,6 +207,25 @@ export function WorkspaceLayout() {
   useEffect(() => {
     if (docKey && linkTarget === 'ok') setOpenedDocKey(docKey);
   }, [docKey, linkTarget]);
+  const { recent, touch } = useRecentDocs(namespaceId ?? '');
+  const docOpened = linkTarget === 'ok' && !!selectedFolderId && !!selectedDocId;
+  useEffect(() => {
+    if (docOpened) touch(selectedFolderId!, selectedDocId!);
+  }, [docOpened, selectedFolderId, selectedDocId, touch]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const hasWorkspace = !!namespaceId;
+  useEffect(() => {
+    if (!hasWorkspace) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.code !== SEARCH_KEY_CODE) return;
+      if (e.target instanceof Element && e.target.closest(EDITOR_SELECTOR)) return;
+      e.preventDefault();
+      setSearchOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasWorkspace]);
   const showEditor =
     !!docKey &&
     (linkTarget === 'ok' || (linkTarget === 'syncing' && openedDocKey === docKey));
@@ -287,6 +312,14 @@ export function WorkspaceLayout() {
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
+        {namespaceId && (
+          <div className="flex min-w-0 flex-1 justify-center md:px-6">
+            <TopBarSearch
+              onOpen={() => setSearchOpen(true)}
+              shortcutLabel={KEY_LABELS.search}
+            />
+          </div>
+        )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {/* Connection indicator — shows the node URL and online
               state. Hidden on narrow viewports; title carries the
@@ -454,6 +487,13 @@ export function WorkspaceLayout() {
           </main>
           {isMember && <DisplayNameGate />}
         </div>
+        {namespaceId && (
+          <SearchContainer
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            recent={recent}
+          />
+        )}
       </WorkspaceIndexProvider>
     </div>
   );

@@ -8,50 +8,54 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { TagColorSwatches } from './AddTagPopover';
 
 interface Props {
   open: boolean;
-  name: string;
+  color: string; // the colour it starts on
   error?: string;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string, color: string) => void;
   onOpenChange: (open: boolean) => void;
 }
 
-export function RenameTagDialog({ open, onOpenChange, ...form }: Props) {
+// A tag with no document yet, from the sidebar's Tags "+".
+export function NewTagDialog({ open, onOpenChange, ...form }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby={undefined} className="max-w-sm">
-        <RenameForm {...form} onCancel={() => onOpenChange(false)} />
+        <NewTagForm {...form} onCancel={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-// Mounted per open, so the field starts from the current name every time.
-function RenameForm({
-  name,
+// Mounted per open, so every new tag starts from an empty name.
+function NewTagForm({
+  color: initialColor,
   error: givenError,
   onSubmit,
   onCancel,
 }: Omit<Props, 'open' | 'onOpenChange'> & { onCancel: () => void }) {
-  const [value, setValue] = React.useState(name);
+  const [name, setName] = React.useState('');
+  const [color, setColor] = React.useState(initialColor);
   const inputId = React.useId();
   const errorId = React.useId();
   // An error is about the name that was saved, so editing it clears the error.
   const [edited, setEdited] = React.useState(false);
   const error = edited ? undefined : givenError;
-  const next = value.trim();
+  const colourLabelId = React.useId();
+  const next = name.trim();
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         setEdited(false);
-        if (next) onSubmit(next);
+        if (next) onSubmit(next, color);
       }}
     >
       <DialogTitle className="mb-4 text-[15px] tracking-[-0.01em]">
-        Rename tag
+        New tag
       </DialogTitle>
       <label
         htmlFor={inputId}
@@ -62,9 +66,9 @@ function RenameForm({
       <Input
         id={inputId}
         autoFocus
-        value={value}
+        value={name}
         onChange={(e) => {
-          setValue(e.target.value);
+          setName(e.target.value);
           setEdited(true);
         }}
         aria-invalid={error ? true : undefined}
@@ -80,12 +84,23 @@ function RenameForm({
           {error}
         </p>
       )}
+      <div
+        id={colourLabelId}
+        className="mb-2 mt-4 text-xs font-medium text-muted-foreground"
+      >
+        Colour
+      </div>
+      <TagColorSwatches
+        value={color}
+        onChange={setColor}
+        labelledBy={colourLabelId}
+      />
       <DialogFooter>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={!next}>
-          Save
+          Create
         </Button>
       </DialogFooter>
     </form>

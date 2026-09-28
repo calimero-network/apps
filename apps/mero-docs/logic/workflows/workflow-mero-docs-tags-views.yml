@@ -9,8 +9,9 @@ description: >
   A tag or view written on one node is read on the other. Two nodes that
   create the same tag key while partitioned converge to one record whose
   colour is the later write. Deleting a tag keeps its row, marked deleted,
-  on both nodes. Every validation error is hit once, and each is shown to
-  have written nothing.
+  on both nodes, and a rename made on a partitioned node never revives it.
+  Every validation error is hit once, and each is shown to have written
+  nothing.
 
 force_pull_image: true
 
@@ -353,7 +354,131 @@ steps:
       - 'json_subset({{tags_deleted_bob}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": true}])'
 
   # =================================================================
-  # Phase E: Tag validation
+  # Phase E: A rename on a partitioned node races a delete
+  #
+  # Bob renames and recolours a tag Alice deleted while he was offline.
+  # The delete wins on both nodes; Bob's name and colour are kept.
+  # =================================================================
+
+  - name: Alice creates tag roadmap
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: roadmap
+      name: Roadmap
+      color: '#ffaa00'
+
+  - name: Sync tag roadmap to Bob
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Bob lists tags before the partition
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_roadmap_bob: result.output
+
+  - name: Assert Bob sees tag roadmap live
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_roadmap_bob}}, [{"key": "roadmap", "name": "Roadmap", "color": "#ffaa00", "deleted": false}])'
+
+  - name: Stop Bob's node before the delete
+    type: stop_node
+    nodes: [tags-node-2]
+
+  - name: Alice deletes tag roadmap while Bob is offline
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: delete_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: roadmap
+
+  - name: Stop Alice's node after the delete
+    type: stop_node
+    nodes: [tags-node-1]
+
+  - name: Start Bob's node alone again
+    type: start_node
+    nodes: [tags-node-2]
+
+  - name: Bob lists tags without Alice's delete
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_roadmap_bob_offline: result.output
+
+  - name: Assert Bob has not seen the delete
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_roadmap_bob_offline}}, [{"key": "roadmap", "name": "Roadmap", "color": "#ffaa00", "deleted": false}])'
+
+  - name: Bob renames and recolours tag roadmap while Alice is offline
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{bob_key}}'
+    args:
+      key: roadmap
+      name: Roadmap v2
+      color: '#8844cc'
+
+  - name: Start Alice's node after the rename
+    type: start_node
+    nodes: [tags-node-1]
+
+  - name: Wait for the nodes to find each other again
+    type: wait
+    seconds: 15
+
+  - name: Sync the racing rename and delete
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 180
+    trigger_sync: true
+
+  - name: Alice lists tags after the race
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_race_alice: result.output
+
+  - name: Bob lists tags after the race
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_race_bob: result.output
+
+  - name: Assert both nodes keep roadmap deleted with Bob's name and colour
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_race_alice}}, [{"key": "roadmap", "name": "Roadmap v2", "color": "#8844cc", "deleted": true}])'
+      - 'json_subset({{tags_race_bob}}, [{"key": "roadmap", "name": "Roadmap v2", "color": "#8844cc", "deleted": true}])'
+
+  # =================================================================
+  # Phase F: Tag validation
   #
   # core returns an app error as a byte array, so `expected_error` cannot
   # pin the wording; the list read after the rejections shows none landed.
@@ -395,6 +520,19 @@ steps:
       color: red
     expected_failure: true
 
+  # Deleted keys are never reused, so set_tag must not undelete one.
+  - name: Reject set_tag on the deleted key launch
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: launch
+      name: Launch v3
+      color: '#00ff00'
+    expected_failure: true
+
   - name: Reject delete_tag on a key never set
     type: call
     node: tags-node-1
@@ -421,8 +559,13 @@ steps:
       - 'not_contains({{tags_after_rejects}}, Probe)'
       - 'not_contains({{tags_after_rejects}}, ghost)'
 
+  - name: Assert launch is still deleted and unchanged
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_after_rejects}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": true}])'
+
   # =================================================================
-  # Phase F: Saved views across nodes
+  # Phase G: Saved views across nodes
   # =================================================================
 
   - name: Alice saves a view
@@ -521,7 +664,7 @@ steps:
       - 'json_equal({{views_deleted_alice}}, {"output": []})'
 
   # =================================================================
-  # Phase G: View validation
+  # Phase H: View validation
   # =================================================================
 
   - name: Reject save_view with a space in the id

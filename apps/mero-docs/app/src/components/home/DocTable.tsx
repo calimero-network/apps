@@ -118,7 +118,7 @@ function TitleCell({ row }: { row: DocRowView }) {
   );
 }
 
-function FolderPath({ path, color }: { path: string[]; color?: string }) {
+export function FolderPath({ path, color }: { path: string[]; color?: string }) {
   return (
     <>
       {color ? (

@@ -1,5 +1,5 @@
-// One index, one tag list and one presence map per workspace, shared by Home,
-// the sidebar and later search. Remount it per workspace so nothing carries over.
+// One index, one tag list, one presence map and one text index per workspace,
+// shared by Home, the sidebar and search. Remount it per workspace so nothing carries over.
 
 import React, {
   createContext,
@@ -19,6 +19,7 @@ import {
   type PresenceByDoc,
 } from '@/hooks/usePresenceByDoc';
 import { TagsContext, useTagsSource } from '@/hooks/useTags';
+import { useTextIndex, type TextIndex } from '@/hooks/useTextIndex';
 
 const WorkspaceIndexContext = createContext<WorkspaceIndex>({
   rows: [],
@@ -29,8 +30,21 @@ const WorkspaceIndexContext = createContext<WorkspaceIndex>({
   refetchFolder: () => {},
 });
 
+// Its own context: the text index changes as each doc is read, and only search reads it.
+const TextIndexContext = createContext<TextIndex>({
+  texts: new Map(),
+  foldersDone: 0,
+  foldersTotal: 0,
+  pending: [],
+  failed: [],
+});
+
 export function useWorkspaceIndexValue(): WorkspaceIndex {
   return useContext(WorkspaceIndexContext);
+}
+
+export function useTextIndexValue(): TextIndex {
+  return useContext(TextIndexContext);
 }
 
 type ReportPresence = (folderId: string, byDoc: PresenceByDoc | null) => void;
@@ -57,7 +71,8 @@ export function WorkspaceIndexProvider({
   children: React.ReactNode;
 }) {
   const index = useWorkspaceIndex();
-  const tags = useTagsSource();
+  const tags = useTagsSource(index);
+  const texts = useTextIndex(index);
   const [byFolder, setByFolder] = useState<Record<string, PresenceByDoc>>({});
   const report = useCallback<ReportPresence>((folderId, byDoc) => {
     setByFolder((prev) => {
@@ -87,7 +102,9 @@ export function WorkspaceIndexProvider({
               report={report}
             />
           ))}
-          {children}
+          <TextIndexContext.Provider value={texts}>
+            {children}
+          </TextIndexContext.Provider>
         </PresenceByDocContext.Provider>
       </TagsContext.Provider>
     </WorkspaceIndexContext.Provider>

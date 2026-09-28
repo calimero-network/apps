@@ -12,8 +12,8 @@
  *     and a hairline between rail and main, not floating rounded cards.
  *   • the top bar carries a sidebar toggle, the mark, the name, then the
  *     workspace switcher (name and an up/down chevron; New and Join live in
- *     its menu), and on the right the node dot, the node URL, a theme toggle
- *     and Log out.
+ *     its menu), the search field in the centre (`search/TopBarSearch.tsx`),
+ *     and on the right the node dot, the node URL, a theme toggle and Log out.
  *   • the rail's sections each have a header row in small caps.
  *
  * The rest is component by component:
@@ -49,6 +49,8 @@ const LIST_TOP = BODY_TOP + 80;
 const LIST_ROW_H = 22;
 const COL_FOLDER = MAIN_X + 132; // Name | Folder | Tags | Updated, as DocTable
 const COL_TAGS = MAIN_X + 204;
+const SEARCH_X = L + 176; // the search field is centred in the gap between the switcher and the node URL
+const SEARCH_W = 128;
 
 const TXT = { fontFamily: 'var(--cal-lp-font)', lineHeight: 1 } as const;
 const ROW = { display: 'flex', alignItems: 'center' } as const;
@@ -97,6 +99,12 @@ const FileIcon = ({ size = 10 }: { size?: number }) => (
     <polyline points="14 2 14 8 20 8" />
     <line x1="8" y1="13" x2="16" y2="13" />
     <line x1="8" y1="17" x2="13" y2="17" />
+  </svg>
+);
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" width="8" height="8" {...S}>
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
   </svg>
 );
 const LockIcon = () => (
@@ -402,6 +410,47 @@ export default function DriveAnimation() {
         Product team
         <span style={{ fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>
           ⇅
+        </span>
+      </span>
+
+      {/* TopBarSearch: the field, its placeholder and the shortcut, centred. */}
+      <span
+        className="cal-lp-a-box"
+        style={{
+          ...ROW,
+          ...TXT,
+          left: SEARCH_X,
+          top: BAR_TOP + 5,
+          width: SEARCH_W,
+          height: 16,
+          gap: 4,
+          padding: '0 3px 0 6px',
+          fontSize: 6.5,
+          color: 'var(--cal-lp-text-faint)',
+        }}
+      >
+        <SearchIcon />
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Search docs, folders and #tags
+        </span>
+        <span
+          style={{
+            padding: '2px 3px',
+            borderRadius: 3,
+            border: '1px solid var(--cal-lp-border)',
+            background: 'var(--cal-lp-bg-1)',
+            fontSize: 5.5,
+          }}
+        >
+          ⌘K
         </span>
       </span>
 

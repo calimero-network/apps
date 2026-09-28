@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useDocs } from '../useDocs';
+import { subscribeDocsRefetch, useDocs } from '../useDocs';
 
 // Regression layer for useDocs — the docs facade for a folder. The
 // behaviour under test spans: the happy path, the docs-context
@@ -18,6 +18,8 @@ const docsClientStub = {
   editDoc: vi.fn(),
   getDoc: vi.fn(),
   deleteDoc: vi.fn(),
+  addTag: vi.fn(),
+  removeTag: vi.fn(),
 };
 // Per-context clients for tests that switch folders; others share the stub.
 const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
@@ -259,5 +261,21 @@ describe('useDocs', () => {
     const { result } = renderHook(() => useDocs('folder-1', { includeArchived: true }));
     await waitFor(() => expect(result.current.listed).toBe(true));
     expect(listDocs).toHaveBeenCalledWith({ include_archived: true });
+  });
+
+  it('tags and untags a doc, then has every list of the folder re-read', async () => {
+    const { result } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(result.current.contextId).toBe('docs-ctx-1'));
+    const reread = vi.fn();
+    const off = subscribeDocsRefetch('docs-ctx-1', reread);
+    await act(() => result.current.addTag('d1', 'q3'));
+    await act(() => result.current.removeTag('d1', 'plan'));
+    off();
+    expect(docsClientStub.addTag).toHaveBeenCalledWith({ id: 'd1', tag: 'q3' });
+    expect(docsClientStub.removeTag).toHaveBeenCalledWith({
+      id: 'd1',
+      tag: 'plan',
+    });
+    expect(reread).toHaveBeenCalledTimes(2);
   });
 });
