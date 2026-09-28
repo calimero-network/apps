@@ -29,6 +29,7 @@ import { namespaceLabel } from '@/lib/namespaceLabel';
 import { openedLabel, updatedLabel } from '@/lib/relativeTime';
 import { normalizeQuery } from '@/lib/search/match';
 import { searchV1 } from '@/lib/search/rank';
+import { plural } from '@/lib/plural';
 import { searchText } from '@/lib/search/docText';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 
@@ -56,10 +57,6 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   recent: RecentDoc[];
-}
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 function useDebounced<T>(value: T, ms: number): T {

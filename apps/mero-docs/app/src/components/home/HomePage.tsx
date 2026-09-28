@@ -44,10 +44,15 @@ import { docUrl } from '@/lib/routes';
 import { TAG_NEUTRAL, withoutDeletedTags } from '@/lib/tags';
 import { rowKey } from '@/lib/workspaceIndex/types';
 import { DocTable } from './DocTable';
-import { defaultViewName, SORT_LABELS, summarizeHomeQuery } from './filterSummary';
+import {
+  defaultViewName,
+  SORT_LABELS,
+  summarizeHomeQuery,
+} from './filterSummary';
 import { FilterBar } from './FilterBar';
 import { HomeEmpty } from './HomeEmpty';
 import { HomeHeader, headerActionClass } from './HomeHeader';
+import { plural } from '@/lib/plural';
 import { NewDocFolderPicker } from './NewDocFolderPicker';
 import type { DocRowView } from './types';
 import {
@@ -65,10 +70,6 @@ const EMPTY_FOLDER_READ_ONLY = `${EMPTY_FOLDER} They show up here when someone a
 
 interface Props {
   folderId?: string; // the folder route: this folder and its subfolders
-}
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 // Probes one folder's write access; a hook per folder, so each gets a component.
@@ -298,7 +299,10 @@ export function HomePage({ folderId }: Props) {
     setSaving(true);
     try {
       // A folder route's folder is part of the view, which opens on Home.
-      const queryForSave = serializeHomeQuery({ ...effective, view: undefined });
+      const queryForSave = serializeHomeQuery({
+        ...effective,
+        view: undefined,
+      });
       const savedView = await saveView(name, queryForSave, scope);
       setSaveOpen(false);
       goHome(withView(queryForSave, savedView.id), { replace: true });
@@ -451,12 +455,13 @@ export function HomePage({ folderId }: Props) {
       New document
     </Button>
   );
-  const headerActions = saveViewButton || newDocumentButton ? (
-    <>
-      {saveViewButton}
-      {newDocumentButton}
-    </>
-  ) : undefined;
+  const headerActions =
+    saveViewButton || newDocumentButton ? (
+      <>
+        {saveViewButton}
+        {newDocumentButton}
+      </>
+    ) : undefined;
   const body =
     view.length > 0 ? (
       <DocTable

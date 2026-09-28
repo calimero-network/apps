@@ -30,7 +30,7 @@ describe('NewDocFolderPicker', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
     await user.click(
-      screen.getByRole('button', { name: /Engineering \/ Specs/ }),
+      screen.getByRole('button', { name: /Engineering.*Specs/ }),
     );
     expect(onPick).toHaveBeenCalledWith('s');
   });

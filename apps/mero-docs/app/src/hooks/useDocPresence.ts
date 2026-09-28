@@ -2,7 +2,7 @@
 // single publisher: two of them would overwrite each other's caret, and the
 // node keeps only the latest value an author wrote.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
 import { PRESENCE_BEAT_MS, PRESENCE_STALE_MS } from '@/lib/presenceTiming';
 import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
@@ -11,6 +11,7 @@ import {
   presenceColour,
   type DocPresence,
 } from '@/lib/rich/presence';
+import { useNow } from './useNow';
 
 export const PRESENCE_THROTTLE_MS = 200; // bounds the burst while dragging
 const NO_CARET: CaretSlice = { blockId: null, anchor: '', head: '' }; // listed as here, drawn nowhere
@@ -112,11 +113,7 @@ export function useFreshPeers<T>(
   peers: ReadonlyMap<string, T>,
   ageOf: (author: string) => number | undefined,
 ): Map<string, T> {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), PRESENCE_BEAT_MS);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(PRESENCE_BEAT_MS);
   return useMemo(() => {
     const fresh = new Map<string, T>();
     for (const [author, slice] of peers) {
