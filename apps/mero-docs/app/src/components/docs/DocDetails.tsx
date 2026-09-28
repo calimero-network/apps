@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 
-import { MemberLabel } from '@/components/common/MemberLabel';
 import {
   useFolderPaths,
   type FolderPaths,
@@ -15,6 +14,7 @@ import {
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNow } from '@/hooks/useNow';
+import { usePersonName } from '@/hooks/usePersonName';
 import { useTags } from '@/hooks/useTags';
 import { backlinksTo, linksFrom } from '@/lib/backlinks';
 import { docLabel } from '@/lib/docLabel';
@@ -33,8 +33,6 @@ import {
   type LinkedFromEntry,
   type LinksToEntry,
 } from './DetailsPanel';
-
-const SELF_LABEL = 'You'; // the reader, in "Sep 3 by You"
 
 interface Props {
   folderId: string;
@@ -114,7 +112,7 @@ export function DocDetails({
   sheet,
   onClose,
 }: Props) {
-  const { namespaceId, selfIdentity } = useDriveWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const { byKey } = useTags();
   const { goDoc } = useAppRoute();
   const now = useNow();
@@ -124,11 +122,9 @@ export function DocDetails({
     docId,
   );
 
-  const author = (id: string): React.ReactNode => {
-    if (!id) return undefined;
-    if (id === selfIdentity) return SELF_LABEL;
-    return <MemberLabel namespaceId={namespaceId} memberId={id} />;
-  };
+  // One hook per author, so each one's own profile name can win.
+  const creatorName = usePersonName(row?.createdBy);
+  const updaterName = usePersonName(row?.updatedBy);
   const path = paths.get(folderId);
   const props: DetailsPanelProps = {
     folder: {
@@ -137,11 +133,11 @@ export function DocDetails({
     },
     created: row && {
       dateLabel: dateLabel(row.createdAt, now),
-      by: author(row.createdBy),
+      by: row.createdBy ? creatorName(row.createdBy) : undefined,
     },
     updated: row && {
       relLabel: updatedLabel(row.updatedAt, now),
-      by: author(row.updatedBy),
+      by: row.updatedBy ? updaterName(row.updatedBy) : undefined,
     },
     tags: row ? docTagChips(row.tags, byKey) : [],
     linkedFrom,

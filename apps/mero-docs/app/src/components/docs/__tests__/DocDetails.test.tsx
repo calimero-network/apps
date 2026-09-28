@@ -28,8 +28,11 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: { [BOB]: 'Bob' },
   }),
 }));
+const CAROL = 'c2'.repeat(32);
 vi.mock('@/hooks/useMemberDisplayName', () => ({
-  useMemberDisplayName: () => ({ name: null }),
+  useMemberDisplayName: (_ns: string, id: string | null) => ({
+    name: id === CAROL ? 'Carol' : null,
+  }),
 }));
 vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => ({ rows, folders }),
@@ -111,7 +114,18 @@ describe('DocDetails (L-23)', () => {
       `${updatedLabel(NOW - 2 * MIN, NOW)} by Bob`,
       'Q3',
     ]);
-    expect(document.body.textContent).not.toContain(BOB);
+    expect(document.body.innerHTML).not.toContain(BOB);
+  });
+
+  it('names a member from their profile, and an unnamed one without their key', () => {
+    const stranger = 'd3'.repeat(32);
+    rows[0] = { ...rows[0], createdBy: CAROL, updatedBy: stranger };
+    renderDetails();
+    expect(facts().slice(1, 3)).toEqual([
+      `${dateLabel(rows[0].createdAt, NOW)} by Carol`,
+      `${updatedLabel(rows[0].updatedAt, NOW)} by Unnamed member`,
+    ]);
+    expect(document.body.innerHTML).not.toContain(stranger);
   });
 
   it('shows only the date when the author is unknown', () => {
