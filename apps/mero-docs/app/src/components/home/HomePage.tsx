@@ -22,6 +22,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useNow } from '@/hooks/useNow';
+import { usePersonName } from '@/hooks/usePersonName';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { useSavedViews } from '@/hooks/useSavedViews';
 import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
@@ -114,8 +115,7 @@ function CreateDoc({
 }
 
 export function HomePage({ folderId }: Props) {
-  const { namespaceId, rootGroupId, namespaces, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
+  const { namespaceId, rootGroupId, namespaces } = useDriveWorkspace();
   const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
@@ -173,6 +173,7 @@ export function HomePage({ folderId }: Props) {
     [rows, tagsByKey],
   );
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;
+  const personName = usePersonName(q.by);
   const shown = applyHomeQuery(liveRows, effective, now, folders);
   // What the chip counts are taken over: the scope and the Archived switch, no other filter.
   const base = liveRows.filter(
@@ -270,8 +271,7 @@ export function HomePage({ folderId }: Props) {
     q: effective,
     tagsByKey,
     paths,
-    selfIdentity,
-    namespaceMemberNames,
+    personName,
     sortLabel: SORT_LABELS[q.sort],
   };
   const saveCurrentView = async ({

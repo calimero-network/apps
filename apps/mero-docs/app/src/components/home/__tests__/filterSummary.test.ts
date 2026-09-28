@@ -21,8 +21,7 @@ const args = (over: Partial<Parameters<typeof summarizeHomeQuery>[0]> = {}) => (
   q: EMPTY,
   tagsByKey: new Map<string, Tag>(),
   paths: new Map(),
-  selfIdentity: 'me',
-  namespaceMemberNames: {},
+  personName: (id: string) => (id === 'me' ? 'You' : `name of ${id}`),
   sortLabel: SORT_LABELS.updated,
   ...over,
 });
@@ -71,18 +70,10 @@ describe('summarizeHomeQuery', () => {
     ]);
   });
 
-  it('names another member, or the fallback label for one with no display name', () => {
-    expect(
-      summarizeHomeQuery(
-        args({
-          q: { ...EMPTY, by: 'bob' },
-          namespaceMemberNames: { bob: 'Bob' },
-        }),
-      ),
-    ).toEqual([{ icon: 'user', label: 'Bob' }, { icon: 'sort', label: 'Last updated' }]);
+  it('names another member the way the Created by chip does', () => {
     expect(
       summarizeHomeQuery(args({ q: { ...EMPTY, by: 'bob' } })),
-    ).toEqual([{ icon: 'user', label: 'Unnamed member' }, { icon: 'sort', label: 'Last updated' }]);
+    ).toEqual([{ icon: 'user', label: 'name of bob' }, { icon: 'sort', label: 'Last updated' }]);
   });
 });
 

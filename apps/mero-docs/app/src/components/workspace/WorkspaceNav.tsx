@@ -15,6 +15,7 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useNow } from '@/hooks/useNow';
+import { listedPersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
 import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
@@ -147,8 +148,8 @@ export function WorkspaceNav({
     q,
     tagsByKey,
     paths,
-    selfIdentity,
-    namespaceMemberNames,
+    personName: (id: string) =>
+      listedPersonName(id, selfIdentity, namespaceMemberNames),
     sortLabel: SORT_LABELS[q.sort],
   };
   const onAddView = () => {

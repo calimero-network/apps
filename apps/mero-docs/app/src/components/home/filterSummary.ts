@@ -1,12 +1,11 @@
 // The chips a saved view's popover shows for the active filters, and a
 // starting name built from them, so a save has something better than "Untitled".
 
-import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import type { HomeQuery } from '@/lib/homeQuery';
 import { cutViewName } from '@/lib/viewName';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
-import { SELF_LABEL, UNKNOWN_TAG_LABEL, type FolderPaths } from './useHomeChips';
+import { UNKNOWN_TAG_LABEL, type FolderPaths } from './useHomeChips';
 import { UPDATED_OPTIONS } from './UpdatedMenu';
 import type { FilterIcon } from './types';
 
@@ -28,8 +27,7 @@ interface Args {
   q: HomeQuery;
   tagsByKey: Map<string, Tag>;
   paths: FolderPaths;
-  selfIdentity: string | null;
-  namespaceMemberNames: Record<string, string>;
+  personName: (id: string) => string;
   sortLabel: string;
 }
 
@@ -38,8 +36,7 @@ export function summarizeHomeQuery({
   q,
   tagsByKey,
   paths,
-  selfIdentity,
-  namespaceMemberNames,
+  personName,
   sortLabel,
 }: Args): FilterSummary[] {
   const items: FilterSummary[] = [
@@ -65,13 +62,7 @@ export function summarizeHomeQuery({
     });
   }
   if (q.by) {
-    items.push({
-      icon: 'user',
-      label:
-        q.by === selfIdentity
-          ? SELF_LABEL
-          : namespaceMemberNames[q.by] || UNNAMED_MEMBER_LABEL,
-    });
+    items.push({ icon: 'user', label: personName(q.by) });
   }
   if (q.archived) items.push({ icon: 'archive', label: 'Archived' });
   items.push({ icon: 'sort', label: sortLabel });
