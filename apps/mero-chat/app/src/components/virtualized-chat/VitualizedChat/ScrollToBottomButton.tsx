@@ -20,15 +20,17 @@ const Button = styled.button`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: #007bff;
-  color: white;
+  /* Calimero green (brand-700, the send button's green) with white arrows.
+     The lighter brand-600 #A5FF11 is too bright for white to read on. */
+  background-color: var(--color-brand-700, #73b30c);
+  color: #fff;
   border: none;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: all 0.2s ease-in-out;
 
   &:hover {
-    background-color: #0056b3;
+    background-color: #5e930a;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     transform: translateY(-2px);
   }
@@ -60,7 +62,7 @@ const ScrollToBottomButton: React.FC<ScrollToBottomButtonProps> = ({
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
