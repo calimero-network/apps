@@ -26,7 +26,7 @@ import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { useSavedViews } from '@/hooks/useSavedViews';
-import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
+import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
 import {
@@ -67,6 +67,8 @@ const NO_FOLDERS_READ_ONLY =
   'Documents live in folders. A workspace owner needs to create one or share one with you.';
 const EMPTY_FOLDER = 'No documents in this folder yet.';
 const EMPTY_FOLDER_READ_ONLY = `${EMPTY_FOLDER} They show up here when someone adds one.`;
+
+type EmptyKind = React.ComponentProps<typeof HomeEmpty>['kind'];
 
 interface Props {
   folderId?: string; // the folder route: this folder and its subfolders
@@ -121,7 +123,6 @@ export function HomePage({ folderId }: Props) {
   const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
-  const canShare = useCanManageTags();
   const { save: saveView } = useSavedViews();
   const confirm = useConfirm();
   const presence = usePresenceByDoc();
@@ -397,16 +398,13 @@ export function HomePage({ folderId }: Props) {
                   ? 'no-docs'
                   : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
-  const emptyBody = {
+  const emptyBody: Partial<Record<EmptyKind, string | null>> = {
     'no-folders':
       nsPerms.loading || nsPerms.error
         ? null
         : nsPerms.canCreateFolder
           ? undefined
           : NO_FOLDERS_READ_ONLY,
-    'no-matches': undefined,
-    'no-tagged': undefined,
-    partial: undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -414,16 +412,14 @@ export function HomePage({ folderId }: Props) {
         : folderCanWrite
           ? EMPTY_FOLDER
           : EMPTY_FOLDER_READ_ONLY,
-  } as const;
-  const emptyAction = {
+  };
+  const emptyAction: Partial<Record<EmptyKind, () => void>> = {
     'no-folders': nsPerms.canCreateFolder
       ? () => setNewFolderOpen(true)
       : undefined,
     'no-matches': clearFilters,
-    'no-tagged': undefined,
-    partial: undefined,
     'no-docs': writable.length ? newDocument : undefined,
-  } as const;
+  };
   const saveViewButton = isHomeQueryFiltered(q) && (
     <SaveViewPopover
       key="save-view"
@@ -436,7 +432,7 @@ export function HomePage({ folderId }: Props) {
       defaultName={defaultViewName(summaryArgs)}
       filters={summarizeHomeQuery(summaryArgs)}
       workspaceName={workspaceName}
-      canShare={canShare}
+      canShare={nsPerms.canCreateFolder}
       saving={saving}
       onSave={(v) => void saveCurrentView(v)}
       open={saveOpen}
