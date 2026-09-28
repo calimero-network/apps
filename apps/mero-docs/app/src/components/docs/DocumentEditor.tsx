@@ -20,6 +20,7 @@ import { useTitleCursors } from '@/hooks/useTitleCursors';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { documentLoadErrorMessage, documentSaveErrorMessage } from '@/lib/documentError';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
@@ -117,12 +118,22 @@ export function DocumentEditor({
       .then((loaded) => alive && setDoc(loaded))
       .catch((cause: unknown) => {
         if (!alive) return;
+        console.error('document load failed', cause);
         setLoadError(cause instanceof Error ? cause : new Error(String(cause)));
       });
     return () => {
       alive = false;
     };
   }, [docId, docsContextId, docsGet]);
+
+  // The status bar only says "Save failed"; this says why. Only a failed save
+  // sets 'error' (a failed re-read sets `error` alone), and one toast id means a
+  // save that keeps failing replaces its message instead of stacking copies.
+  useEffect(() => {
+    if (body.status !== 'error' || !body.error) return;
+    console.error('document save failed', body.error);
+    toast.error(documentSaveErrorMessage(body.error), { id: `doc-save-${docId}` });
+  }, [body.status, body.error, docId]);
 
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
@@ -162,7 +173,7 @@ export function DocumentEditor({
             Couldn't load document
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {loadError.message}
+            {documentLoadErrorMessage(loadError)}
           </p>
         </div>
       </div>

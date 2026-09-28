@@ -11,6 +11,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
+import { classifyError } from '@calimero-network/mero-js';
 import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
 import {
   diffBlocks,
@@ -158,6 +159,10 @@ export function useFugueBody({
   const editorRef = useRef<BodyEditor | null>(editor);
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set when the node refused an edit for a reason it will give again (a 413
+  // over its body limit, a 403): resending at once only loops. Cleared by the
+  // user's next edit, which is what can change the answer.
+  const heldRef = useRef(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drainRef = useRef<(() => Promise<void>) | null>(null);
   const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
@@ -545,6 +550,8 @@ export function useFugueBody({
       setError(asError(cause));
       setStatus('error');
       resyncRef.current = true;
+      // Still re-read what did land; the drain loop just stops resending.
+      if (!classifyError(cause).retryable) heldRef.current = true;
       return true;
     }
   }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
@@ -553,11 +560,11 @@ export function useFugueBody({
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      while (dirtyRef.current || staleRef.current || resyncRef.current) {
+      while ((dirtyRef.current && !heldRef.current) || staleRef.current || resyncRef.current) {
         if (resyncRef.current) {
           resyncRef.current = false;
           await refreshWith(new Set(serverRef.current.map((b) => b.id)));
-        } else if (dirtyRef.current) {
+        } else if (dirtyRef.current && !heldRef.current) {
           dirtyRef.current = false;
           if (!(await flush())) break;
         } else {
@@ -578,6 +585,7 @@ export function useFugueBody({
     dirtyRef.current = false;
     staleRef.current = false;
     resyncRef.current = false;
+    heldRef.current = false;
     loadedRef.current = false;
     syncedRef.current = false;
     resetRetry();
@@ -618,6 +626,7 @@ export function useFugueBody({
   const onContentChange = useCallback(
     (_serialized: string) => {
       dirtyRef.current = true;
+      heldRef.current = false;
       setStatus('unsaved');
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       flushTimerRef.current = setTimeout(() => {
