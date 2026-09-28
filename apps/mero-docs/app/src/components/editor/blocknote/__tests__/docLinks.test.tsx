@@ -1,10 +1,11 @@
-// Doc links against a live headless editor where the editor matters (the [[
+// Doc links against a live headless editor where the editor matters (the @
 // trigger and the inserted link), and as plain data everywhere else.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { SuggestionMenu } from '@blocknote/core/extensions';
 import { schema, type DriveEditor } from '../schema';
+import { inlineToText } from '../content';
 import {
   DOC_LINK_TRIGGER,
   docLinkItems,
@@ -68,71 +69,97 @@ function editorWith(content: string): DriveEditor {
   return editor;
 }
 
-describe('opensDocPicker (L-11)', () => {
-  it('does nothing for a single [', () => {
-    const editor = editorWith('see ');
-    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(false);
+/** A mounted editor whose typing goes through BlockNote's text input handling. */
+function typingEditor(content: string) {
+  // The menu measures its anchor, which jsdom leaves unimplemented.
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    toJSON: () => ({}),
+  } as DOMRect);
+  const editor = editorWith(content);
+  editor.mount(document.body.appendChild(document.createElement('div')));
+  const menus = editor.getExtension(SuggestionMenu)!;
+  menus.addSuggestionMenu({
+    triggerCharacter: DOC_LINK_TRIGGER,
+    shouldOpen: opensDocPicker,
   });
-
-  it('opens when the [ just typed follows another [', () => {
-    const editor = editorWith('see [');
-    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(true);
-  });
-
-  it('opens on the second [ as BlockNote handles typing, mid-line', () => {
-    // The menu measures its anchor, which jsdom leaves unimplemented.
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-      toJSON: () => ({}),
-    } as DOMRect);
-    const editor = editorWith('see ');
-    editor.mount(document.body.appendChild(document.createElement('div')));
-    const menus = editor.getExtension(SuggestionMenu)!;
-    menus.addSuggestionMenu({
-      triggerCharacter: DOC_LINK_TRIGGER,
-      shouldOpen: opensDocPicker,
-    });
-    const view = editor.prosemirrorView!;
-    const type = (ch: string) => {
+  const view = editor.prosemirrorView!;
+  const type = (chars: string) => {
+    for (const ch of chars) {
       const at = view.state.selection.from;
       const handled = view.someProp('handleTextInput', (f) =>
         f(view, at, at, ch, () => view.state.tr),
       );
       if (!handled) view.dispatch(view.state.tr.insertText(ch));
-    };
-    type('[');
-    expect(menus.store.state?.show).toBeFalsy();
-    type('[');
-    type('p');
-    expect(menus.store.state).toMatchObject({ show: true, query: 'p' });
+    }
+  };
+  return { editor, menus, type };
+}
+
+describe('opensDocPicker (L-11)', () => {
+  it('opens after a space', () => {
+    const editor = editorWith('see ');
+    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(true);
+  });
+
+  it('opens at the start of a block', () => {
+    const editor = editorWith('');
+    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(true);
+  });
+
+  it('stays shut inside a word, as in an email address', () => {
+    const editor = editorWith('ada');
+    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(false);
+  });
+
+  it('opens on @ as BlockNote handles typing, mid-line', () => {
+    const { editor, menus, type } = typingEditor('see ');
+    type('@p');
+    expect(menus.store.state).toMatchObject({
+      show: true,
+      triggerCharacter: '@',
+      query: 'p',
+    });
     editor.unmount();
   });
 
-  it('opens at the start of a block too', () => {
-    const editor = editorWith('[');
-    expect(editor.transact((tr) => opensDocPicker(tr))).toBe(true);
-  });
-});
-
-describe('insertDocLink (L-12, L-13)', () => {
-  it('replaces the leftover [ with the title linked to the doc', () => {
-    // The menu has already removed the trigger [ and the query; one [ is left.
-    const editor = editorWith('see [');
-    insertDocLink(
-      editor,
-      { href: '/app/w1/f/f1/d/d2', title: 'Pricing notes' },
-      { fromPicker: true },
+  it('leaves an email address as text', () => {
+    const { editor, menus, type } = typingEditor('mail ');
+    type('ada@example.com');
+    expect(menus.store.state?.show).toBeFalsy();
+    expect(inlineToText(editor.document[0].content)).toBe(
+      'mail ada@example.com',
     );
+    editor.unmount();
+  });
+
+  it('leaves [[ as text', () => {
+    const { editor, menus, type } = typingEditor('see ');
+    type('[[p');
+    expect(menus.store.state?.show).toBeFalsy();
+    editor.unmount();
+  });
+
+  it('takes the typed @query when a pick inserts the link', () => {
+    const { editor, menus, type } = typingEditor('see ');
+    type('@pla');
+    // What the menu does on a pick: close, clear the query, then insert.
+    menus.closeMenu();
+    menus.clearQuery();
+    insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },
       {
         type: 'link',
         href: '/app/w1/f/f1/d/d2',
-        content: [{ type: 'text', text: 'Pricing notes', styles: {} }],
+        content: [{ type: 'text', text: 'Plan', styles: {} }],
       },
     ]);
+    editor.unmount();
   });
+});
 
-  it('keeps a [ typed by hand when the link does not come from the picker', () => {
+describe('insertDocLink (L-12, L-13)', () => {
+  it('puts the title linked to the doc at the caret', () => {
     const editor = editorWith('see [');
     insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
     expect(editor.document[0].content).toEqual([
@@ -145,30 +172,9 @@ describe('insertDocLink (L-12, L-13)', () => {
     ]);
   });
 
-  it('keeps text before the caret that is not a [', () => {
-    const editor = editorWith('see ');
-    insertDocLink(
-      editor,
-      { href: '/app/w1/f/f1/d/d2#b=b7', title: 'Plan' },
-      { fromPicker: true },
-    );
-    expect(editor.document[0].content).toEqual([
-      { type: 'text', text: 'see ', styles: {} },
-      {
-        type: 'link',
-        href: '/app/w1/f/f1/d/d2#b=b7',
-        content: [{ type: 'text', text: 'Plan', styles: {} }],
-      },
-    ]);
-  });
-
   it('leaves the caret after the link so typing continues as plain text', () => {
-    const editor = editorWith('see [');
-    insertDocLink(
-      editor,
-      { href: '/app/w1/f/f1/d/d2', title: 'Plan' },
-      { fromPicker: true },
-    );
+    const editor = editorWith('see ');
+    insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
     editor.insertInlineContent([' next'], { updateSelection: true });
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },

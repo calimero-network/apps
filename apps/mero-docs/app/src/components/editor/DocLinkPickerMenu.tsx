@@ -19,7 +19,7 @@ interface DocLinkPickerMenuProps {
   onPick: (item: DocLinkPickerItem) => void;
 }
 
-// The [[ menu. The editor's suggestion controller owns the keyboard, so the active row is controlled.
+// The @ menu. The editor's suggestion controller owns the keyboard, so the active row is controlled.
 export function DocLinkPickerMenu({
   items,
   activeIndex,

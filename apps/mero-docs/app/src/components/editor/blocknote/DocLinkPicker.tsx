@@ -1,5 +1,4 @@
-// The [[ picker. BlockNote compares a multi-character trigger against one
-// character too many, so the trigger is [ and it opens only after another [.
+// The @ picker: typing @ at a word start links a document.
 
 import { useCallback, useRef } from 'react';
 import {
@@ -78,9 +77,7 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
       shouldOpen={opensDocPicker}
       getItems={getItems}
       suggestionMenuComponent={PickerMenu}
-      onItemClick={(item: DocLinkItem) =>
-        insertDocLink(editor, item, { fromPicker: true })
-      }
+      onItemClick={(item: DocLinkItem) => insertDocLink(editor, item)}
     />
   );
 }

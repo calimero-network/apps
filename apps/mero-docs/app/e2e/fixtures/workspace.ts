@@ -734,9 +734,9 @@ export class EditorDriver {
     return this.page.evaluate(() => navigator.clipboard.readText());
   }
 
-  // Types [[ and a query at the caret, then picks a row of the doc link picker.
+  // Types @ and a query at the caret, then picks a row of the doc link picker.
   async linkDoc(query: string, option: string | RegExp): Promise<void> {
-    await this.page.keyboard.type(`[[${query}`);
+    await this.page.keyboard.type(`@${query}`);
     await this.linkPicker().getByRole('option', { name: option }).click();
   }
 

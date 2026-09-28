@@ -1,4 +1,4 @@
-// Links between documents: the [[ picker, a pasted app URL, clicking a link
+// Links between documents: the @ picker, a pasted app URL, clicking a link
 // and the card shown on hover, including a link whose document was deleted.
 
 import type { Page } from '@playwright/test';
@@ -41,11 +41,11 @@ test.describe('Doc links (single-node)', () => {
     await editor.type('Pricing follows the model in ');
   });
 
-  test('[[ opens the picker and a pick inserts a chip (L-11, L-12)', async ({
+  test('@ opens the picker and a pick inserts a chip (L-11, L-12)', async ({
     alice,
   }) => {
     const { page, editor } = alice;
-    await page.keyboard.type('[[');
+    await page.keyboard.type('@');
     await expect(page.getByText('Link to a document')).toBeVisible();
     await page.keyboard.type('pric');
     await expect(editor.linkPicker().getByRole('option').first()).toContainText(
@@ -67,16 +67,23 @@ test.describe('Doc links (single-node)', () => {
     alice,
   }) => {
     const { page, editor } = alice;
-    await page.keyboard.type('[[pr');
+    await page.keyboard.type('@pr');
     await expect(editor.linkPicker()).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByText('Link to a document')).toBeHidden();
-    await editor.expectContent('Pricing follows the model in [[pr');
+    await editor.expectContent('Pricing follows the model in @pr');
 
-    await page.keyboard.type(' and [[zzzzzz');
+    await page.keyboard.type(' and @zzzzzz');
     await expect(page.getByText('Link to a document')).toBeHidden();
-    await editor.expectContent('[[pr and [[zzzzzz');
+    await editor.expectContent('@pr and @zzzzzz');
     await expect(editor.docLink('Pricing notes')).toHaveCount(0);
+  });
+
+  test('an email address and [[ stay plain text', async ({ alice }) => {
+    const { page, editor } = alice;
+    await page.keyboard.type('ada@example.com or [[pr');
+    await expect(page.getByText('Link to a document')).toBeHidden();
+    await editor.expectContent('ada@example.com or [[pr');
   });
 
   test('a pasted doc URL becomes a chip with the doc title (L-15)', async ({

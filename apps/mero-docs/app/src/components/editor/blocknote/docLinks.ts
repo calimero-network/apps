@@ -1,4 +1,4 @@
-// Doc-to-doc links: what the [[ picker offers, what a pick or a pasted app URL
+// Doc-to-doc links: what the @ picker offers, what a pick or a pasted app URL
 // inserts, and where a click on a link goes. A doc link is an ordinary `link`.
 
 import type { HighlightRange } from '@/components/common/Highlight';
@@ -18,7 +18,8 @@ import {
 } from '@/lib/workspaceIndex/types';
 import type { DriveEditor } from './schema';
 
-export const DOC_LINK_TRIGGER = '['; // the second [ of [[ opens the picker
+export const DOC_LINK_TRIGGER = '@'; // opens the picker at a word start
+const WORD_START = /^\s?$/; // what may precede the trigger: nothing, or whitespace
 const PICK_LIMIT = 5; // rows per picker group, so the menu fits under the caret
 const NEW_TAB = '_blank'; // window.open target for a new tab
 const MIDDLE_BUTTON = 1; // MouseEvent.button; 2 is the context-menu button
@@ -31,10 +32,10 @@ type Textish = {
   selection: { from: number };
 };
 
-/** True when the [ being typed follows another, so [[ opens the picker and a lone [ stays text. */
+/** True when the @ being typed starts a word, so an email address stays text. */
 export function opensDocPicker(tr: Textish): boolean {
   const at = tr.selection.from;
-  return at > 0 && tr.doc.textBetween(at - 1, at) === DOC_LINK_TRIGGER;
+  return WORD_START.test(tr.doc.textBetween(Math.max(0, at - 1), at));
 }
 
 const toRanges = (ranges: [number, number][]): HighlightRange[] =>
@@ -100,21 +101,12 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
   return [...titles, ...texts.slice(0, PICK_LIMIT)];
 }
 
-/** Puts `title` linked to `href` at the caret; from the picker, also takes the [ it leaves behind. */
-export function insertDocLink(
-  editor: DriveEditor,
-  link: DocLink,
-  { fromPicker = false } = {},
-): void {
-  editor.transact((tr) => {
-    if (fromPicker && opensDocPicker(tr)) {
-      tr.delete(tr.selection.from - 1, tr.selection.from);
-    }
-    editor.insertInlineContent(
-      [{ type: 'link', href: link.href, content: link.title }],
-      { updateSelection: true },
-    );
-  });
+/** Puts `title` linked to `href` at the caret. */
+export function insertDocLink(editor: DriveEditor, link: DocLink): void {
+  editor.insertInlineContent(
+    [{ type: 'link', href: link.href, content: link.title }],
+    { updateSelection: true },
+  );
 }
 
 /** A pasted doc URL from this workspace as a link titled with the doc; anything else is null. */

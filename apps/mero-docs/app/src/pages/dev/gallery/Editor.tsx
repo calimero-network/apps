@@ -503,7 +503,7 @@ export function Gallery(): React.JSX.Element {
       </div>
 
       <div>
-        <Caption>Link picker under “[[pric”</Caption>
+        <Caption>Link picker under “@pric”</Caption>
         <EditorFrame height="h-[520px]">
           <HeaderMock />
           <div className="flex-1 overflow-y-auto bg-card">
@@ -512,7 +512,7 @@ export function Gallery(): React.JSX.Element {
                 <>
                   Pricing follows the model in{' '}
                   <span className="rounded-[3px] bg-secondary px-0.5 text-foreground">
-                    [[pric
+                    @pric
                   </span>
                 </>
               }
