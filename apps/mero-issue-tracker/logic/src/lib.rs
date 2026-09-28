@@ -1,32 +1,32 @@
-//! Issue-tracker service — a private, real-time issue board for a small team.
+//! Issue-tracker service - a private, real-time issue board for a small team.
 //!
 //! One shared Calimero context holding every issue and comment. Demonstrates the
 //! core patterns:
 //!
 //! - `#[app::state]` / `#[app::logic]` / `#[app::init]`
-//! - `Authored<IndexedMap<String, IssueHeader>>` — who filed each issue, and its
+//! - `Authored<IndexedMap<String, IssueHeader>>` - who filed each issue, and its
 //!   title. Owned by the filer: only they can delete the issue, and the creator
 //!   shown is the owner stamp, which a patched node cannot forge.
-//! - `IndexedMap<String, Issue>` — the shared triage state (anyone may triage),
+//! - `IndexedMap<String, Issue>` - the shared triage state (anyone may triage),
 //!   indexed by status and assignee so a board column is a seek.
-//! - `Authored<IndexedMap<String, Comment>>` — the discussion threads. Each
+//! - `Authored<IndexedMap<String, Comment>>` - the discussion threads. Each
 //!   comment is owned by its author; the `LwwRegister`s nested in it are owned
 //!   by that author too, so only they can edit it, on every node.
-//! - `IndexedMap<String, LabelTag>` — one row per (issue, label), keyed
+//! - `IndexedMap<String, LabelTag>` - one row per (issue, label), keyed
 //!   `issue_id\u{1}label` so concurrent adds of the same label converge to one
 //!   entry, indexed both ways so "labels of an issue" and "issues with a label"
 //!   are seeks.
 //! - `LwwRegister<T>` for every mutable issue/comment field so concurrent edits
 //!   converge LWW, and hand-written `Mergeable` on the CRDT-nesting `Issue` /
 //!   `Comment` map values (#2577 nested-register re-keying).
-//! - `app::emit!`, named-struct returns (no tuples — ABI-safe views).
+//! - `app::emit!`, named-struct returns (no tuples - ABI-safe views).
 //!
 //! # What every node enforces, and what it does not
 //!
 //! A member can run a patched node that skips every check in these methods. The
 //! checks only make a refused write fail early; the storage types above are what
-//! hold. Triage state and labels are public ON PURPOSE — any teammate may move,
-//! re-prioritise, re-assign or relabel an issue — so a patched node can rewrite
+//! hold. Triage state and labels are public ON PURPOSE - any teammate may move,
+//! re-prioritise, re-assign or relabel an issue - so a patched node can rewrite
 //! or remove them, exactly as an honest teammate could rewrite them. A missing
 //! triage row reads, and is re-created, as a fresh `Open` issue: the issue
 //! itself lives in its owned header, which only its filer can remove.
@@ -62,7 +62,7 @@ const PRIORITIES: [&str; 4] = ["low", "medium", "high", "urgent"];
 const LABEL_SEP: char = '\u{1}';
 
 // ---------------------------------------------------------------------------
-// Data models (internal, Borsh-only — they nest CRDTs; callers get *View structs)
+// Data models (internal, Borsh-only - they nest CRDTs; callers get *View structs)
 // ---------------------------------------------------------------------------
 
 /// Who filed an issue, and what they called it. Set once at creation. The filer
@@ -150,7 +150,7 @@ impl Mergeable for Issue {
 
 /// A discussion entry on an issue. `id`, `issue_id`, `created_at` are
 /// immutable; `body` and `edited_at` are LWW registers. The author is the
-/// entry's owner stamp, and only they may edit or delete it — on every node.
+/// entry's owner stamp, and only they may edit or delete it - on every node.
 /// `thread` is one issue's comments, oldest first.
 #[app::mergeable(id = "mero_issue_tracker::Comment")]
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
@@ -250,7 +250,7 @@ pub struct CommentView {
     pub edited_at: Option<u64>,
 }
 
-/// A full issue plus its comment thread (named struct — never a tuple return).
+/// A full issue plus its comment thread (named struct - never a tuple return).
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IssueDetail {
@@ -260,7 +260,7 @@ pub struct IssueDetail {
     pub comments: Vec<CommentView>,
 }
 
-/// One board column's live count (named struct — never a `(String, u64)` tuple).
+/// One board column's live count (named struct - never a `(String, u64)` tuple).
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct StatusCount {
@@ -288,7 +288,7 @@ pub struct IssueTracker {
     /// Issue id → header, owned by whoever filed it. An issue exists while its
     /// header does.
     headers: Authored<IndexedMap<String, IssueHeader>>,
-    /// Issue id → triage state. Shared — any teammate may triage.
+    /// Issue id → triage state. Shared - any teammate may triage.
     issues: IndexedMap<String, Issue>,
     /// All comments across all issues, keyed by generated id, each owned by
     /// its author.
@@ -978,7 +978,7 @@ impl IssueTracker {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Hex of the calling ACCOUNT — the person, not the device, so the same
+/// Hex of the calling ACCOUNT - the person, not the device, so the same
 /// teammate can edit their comment from a laptop and a phone. It is what an
 /// owner stamp names, and what the node's member list is keyed by.
 fn caller() -> String {
@@ -1165,7 +1165,7 @@ fn validate_user_label(label: &str) -> app::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// In-process tests — one TestHost roundtrip per mutation.
+// In-process tests - one TestHost roundtrip per mutation.
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -1175,7 +1175,7 @@ mod tests {
     use super::*;
 
     // A second PERSON: both axes move. `call_as` alone moves only the device,
-    // which is the same person on another machine — and `caller()` is the
+    // which is the same person on another machine - and `caller()` is the
     // account, so that is still the author.
     const OTHER: [u8; 32] = [0x22; 32];
     const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
@@ -1657,8 +1657,8 @@ mod tests {
         );
     }
 
-    /// A triage row with no header — what a patched node inventing issues
-    /// would write — is neither listed nor counted.
+    /// A triage row with no header - what a patched node inventing issues
+    /// would write - is neither listed nor counted.
     #[test]
     fn a_triage_row_without_a_header_is_not_an_issue() {
         let mut app = TestHost::new(IssueTracker::init);
@@ -1689,7 +1689,7 @@ mod tests {
             })
             .unwrap();
         app.call(|s| s.delete_issue(id.clone())).unwrap();
-        // Only its author may remove it, so it stays — unreachable, since
+        // Only its author may remove it, so it stays - unreachable, since
         // every read goes through the issue.
         assert!(app.view(|s| s.comments.contains(&theirs).unwrap()));
         assert!(app.view(|s| s.get_issue(id)).is_err());
