@@ -282,6 +282,8 @@ steps:
     executor_public_key: '{{bob_key}}'
     args:
       id: '{{doc_a}}'
+    outputs:
+      bob_can_delete_doc_a: result.output.can_delete
 
   - name: Reject get_doc on unknown id
     type: call
@@ -646,6 +648,14 @@ steps:
       id: '{{doc_bob}}'
     outputs:
       bob_hex: result.output.created_by
+      bob_can_delete_doc_bob: result.output.can_delete
+
+  # Delete is offered only to a doc's creator or the folder's founder.
+  - name: Assert Bob may delete his own doc but not Alice's
+    type: json_assert
+    statements:
+      - 'json_equal({{bob_can_delete_doc_bob}}, true)'
+      - 'json_equal({{bob_can_delete_doc_a}}, false)'
 
   - name: Assert doc_a was created by Alice and last changed by Bob
     type: assert
