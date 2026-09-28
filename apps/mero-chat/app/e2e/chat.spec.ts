@@ -668,3 +668,35 @@ test.describe("Chat UI — attachment-only messages", () => {
   });
 
 });
+
+test.describe("Chat UI — a file dropped outside the composer", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("is swallowed, so the browser does not open it in place of the app", async ({
+    page,
+  }) => {
+    const url = page.url();
+    // Dispatched on the message list, well away from the composer. The
+    // browser's default for an unhandled file drop is to navigate to the file.
+    const prevented = await page.evaluate(() => {
+      const target =
+        document.querySelector('[id^="actions-container-"]')?.parentElement ??
+        document.body;
+      const dt = new DataTransfer();
+      dt.items.add(new File(["stray"], "stray.txt", { type: "text/plain" }));
+      const over = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt });
+      const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+      target.dispatchEvent(over);
+      target.dispatchEvent(drop);
+      return { over: over.defaultPrevented, drop: drop.defaultPrevented };
+    });
+    expect(prevented).toEqual({ over: true, drop: true });
+    expect(page.url()).toBe(url);
+    // And nothing was attached: that only happens on the composer.
+    await expect(page.locator('[title="stray.txt"]')).toHaveCount(0);
+  });
+});
