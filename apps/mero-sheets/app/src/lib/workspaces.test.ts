@@ -5,7 +5,9 @@ import {
   ensureNamespace,
   acceptInvite,
   enterSpreadsheet,
+  InviteRedeemError,
   isAlreadyMember,
+  keepsInvitation,
   listSpreadsheets,
   mintInvite,
   namespaceLabel,
@@ -214,6 +216,92 @@ describe('acceptInvite', () => {
         { invitation: SIGNED },
       ),
     ).rejects.toThrow('403 forbidden');
+  });
+});
+
+// ── Membership, not the request, decides a join ─────────────────────────────
+//
+// The desktop proxy aborts at 30s while a join can take far longer and land
+// anyway, so a failed request is only a failure if the namespace is not listed.
+describe('acceptInvite through redeemInvitation', () => {
+  const httpError = (status: number, message: string) =>
+    Object.assign(new Error(message), { status });
+
+  it('joins, sending the join exactly once', async () => {
+    const joinNamespace = vi.fn(async () => ({}));
+    const listNamespaces = vi.fn(async () => [{ namespaceId: GROUP_HEX }]);
+    const result = await acceptInvite(admin({ joinNamespace, listNamespaces }), {
+      invitation: SIGNED,
+    });
+    expect(result.namespaceId).toBe(GROUP_HEX);
+    expect(joinNamespace).toHaveBeenCalledTimes(1);
+  });
+
+  it('proceeds as already-member when the request failed but the namespace is listed', async () => {
+    const joinNamespace = vi.fn(async () => {
+      throw httpError(0, 'Failed to fetch');
+    });
+    const onStatus = vi.fn();
+    const result = await acceptInvite(
+      admin({
+        joinNamespace,
+        listNamespaces: async () => [{ namespaceId: GROUP_HEX }],
+      }),
+      { invitation: SIGNED, contextId: 'ctx1' },
+      onStatus,
+    );
+    expect(result.namespaceId).toBe(GROUP_HEX);
+    expect(result.contextId).toBe('ctx1');
+    expect(joinNamespace).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenCalledWith(expect.stringMatching(/^Already in/));
+  });
+
+  it('a final refusal (409) says why in workspace terms and lets the invitation go', async () => {
+    const err = await acceptInvite(
+      admin({
+        joinNamespace: async () => {
+          throw httpError(409, 'member was removed');
+        },
+        listNamespaces: async () => [],
+      }),
+      { invitation: SIGNED },
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InviteRedeemError);
+    expect((err as Error).message).toBe(
+      "You can't join this workspace with this invitation. Ask an admin to invite you again.",
+    );
+    expect((err as InviteRedeemError).outcome).toMatchObject({
+      reason: 'refused',
+      retryable: false,
+    });
+    // Acked: the prompt resolves it rather than replaying a dead link.
+    expect(keepsInvitation(err)).toBe(false);
+  });
+
+  it('a transient failure (503) keeps the invitation for a retry', async () => {
+    const err = await acceptInvite(
+      admin({
+        joinNamespace: async () => {
+          throw httpError(503, 'no peers');
+        },
+        listNamespaces: async () => {
+          throw new Error('could not list');
+        },
+      }),
+      { invitation: SIGNED },
+    ).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(
+      /^No one in this workspace is online to let you in yet/,
+    );
+    expect((err as InviteRedeemError).outcome).toMatchObject({
+      reason: 'no-one-online',
+      retryable: true,
+    });
+    expect(keepsInvitation(err)).toBe(true);
+  });
+
+  it('keeps the invitation on an error that is not a refused join', () => {
+    expect(keepsInvitation(new Error('enter failed'))).toBe(true);
   });
 });
 

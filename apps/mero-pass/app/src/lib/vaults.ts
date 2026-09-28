@@ -69,6 +69,7 @@ import {
   type SignedInvitation,
 } from './inviteCodec';
 import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
+import { redeemInvitation, type RedeemOutcome } from '@calimero-apps/invite';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
 import type { DeviceKeyPair } from './crypto';
@@ -900,6 +901,23 @@ export type Redeemed =
   | { kind: 'joined' };
 
 /**
+ * A namespace join the node did not let through, as `redeemInvitation` read it.
+ *
+ * Thrown rather than returned so every step after the grant (the vault joins,
+ * entering the context) keeps its plain-error contract; the caller tells the two
+ * apart with `instanceof` and decides whether to keep the invitation from
+ * `outcome` — see `hooks/useRedeemInvitation`.
+ */
+export class InviteRedeemError extends Error {
+  readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;
+  constructor(outcome: Extract<RedeemOutcome, { status: 'failed' }>) {
+    super(outcome.message);
+    this.name = 'InviteRedeemError';
+    this.outcome = outcome;
+  }
+}
+
+/**
  * Accept a decoded invite: walk its chain, or join the single group it names.
  *
  * The id acted on always comes from INSIDE the signed invitation, never from the
@@ -940,18 +958,42 @@ export async function acceptInvite(
         ? `team${payload.groupAlias ? ` “${payload.groupAlias}”` : ''}`
         : `vault${payload.vaultName ? ` “${payload.vaultName}”` : ''}`;
     onStatus(`Joining the ${label}…`);
-    try {
-      if (step.kind === 'namespace') {
-        await admin.joinNamespace(signedId, {
-          invitation: step.invitation as never,
-        });
-      } else {
-        await admin.joinGroup({ invitation: step.invitation as never });
+    if (step.kind === 'namespace') {
+      // Membership, not the request, decides whether the team join worked: the
+      // desktop proxy aborts at 30s while a join can take far longer and land
+      // anyway. `redeemInvitation` sends the join once and, when it throws,
+      // asks the node whether the namespace is now listed.
+      let heldAlready = false;
+      const outcome = await redeemInvitation(
+        { namespaceId: signedId, invitation: step.invitation },
+        {
+          join: async (namespaceId, invitation) => {
+            try {
+              await admin.joinNamespace(namespaceId, {
+                invitation: invitation as never,
+              });
+            } catch (e) {
+              // Walking a chain routinely re-joins something already held.
+              if (!isAlreadyMember(e)) throw e;
+              heldAlready = true;
+            }
+          },
+          memberships: async () =>
+            ((await admin.listNamespaces()) ?? []).map((n) => n.namespaceId),
+        },
+      );
+      if (outcome.status === 'failed') throw new InviteRedeemError(outcome);
+      if (heldAlready || outcome.status === 'already-member') {
+        onStatus(`Already in the ${label} — continuing…`);
       }
-    } catch (e) {
-      // Walking a chain routinely re-joins something already held.
-      if (!isAlreadyMember(e)) throw e;
-      onStatus(`Already in the ${label} — continuing…`);
+    } else {
+      try {
+        await admin.joinGroup({ invitation: step.invitation as never });
+      } catch (e) {
+        // Walking a chain routinely re-joins something already held.
+        if (!isAlreadyMember(e)) throw e;
+        onStatus(`Already in the ${label} — continuing…`);
+      }
     }
     if (step.kind === 'namespace') result.namespaceId = signedId;
     else result.vaultId = signedId;

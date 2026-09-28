@@ -17,6 +17,12 @@
 
 import type { MeroJs } from '@calimero-network/mero-js';
 import {
+  describeInviteFailure,
+  redeemInvitation,
+  shouldRetain,
+  type RedeemOutcome,
+} from '@calimero-apps/invite';
+import {
   encodeInvite,
   namespaceIdOfInvite,
   type InviteChainEntry,
@@ -308,6 +314,35 @@ export interface AcceptedInvite {
 }
 
 /**
+ * A workspace join the node did not let through, as `redeemInvitation` read it.
+ *
+ * The message is already the sentence to show (in this app's word,
+ * "workspace"), so a caller that only renders `e.message` — the paste modal —
+ * says the right thing; `outcome` is there for the one that must also decide
+ * whether to keep the invitation (see `keepsInvitation`).
+ */
+export class InviteRedeemError extends Error {
+  readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;
+  constructor(outcome: Extract<RedeemOutcome, { status: 'failed' }>) {
+    super(describeInviteFailure(outcome.reason, 'workspace') ?? outcome.message);
+    this.name = 'InviteRedeemError';
+    this.outcome = outcome;
+  }
+}
+
+/**
+ * Whether a failed accept should leave a captured invitation for another try.
+ *
+ * True for a failure a later attempt could fix (no member online yet, a flaky
+ * node) — and for any error that is not a refused join, as before. False once
+ * the node has refused this invitation for good, which would otherwise replay a
+ * dead link on every load.
+ */
+export function keepsInvitation(e: unknown): boolean {
+  return e instanceof InviteRedeemError ? shouldRetain(e.outcome) : true;
+}
+
+/**
  * Accept a decoded invite: walk its chain, or join the single group it names.
  *
  * The id acted on always comes from INSIDE the signed invitation, never from the
@@ -340,23 +375,45 @@ export async function acceptInvite(
       ? `“${payload.groupAlias}”`
       : 'the workspace';
     onStatus(`Joining ${label}…`);
-    try {
-      if (step.kind === 'namespace') {
-        await admin.joinNamespace(signedId, {
-          invitation: step.invitation as never,
-          // The node stores this as the namespace's name for THIS member, so a
-          // joiner who arrives via a link ends up with the same label the
-          // inviter sees rather than a bare id.
-          ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
-        });
-        result.namespaceId = signedId;
-      } else {
-        await admin.joinGroup({ invitation: step.invitation as never });
+    if (step.kind === 'namespace') {
+      // Membership, not the request, decides whether the join worked: the
+      // desktop proxy aborts at 30s while a join can take far longer and land
+      // anyway. `redeemInvitation` sends the join once and, when it throws,
+      // asks the node whether the namespace is now listed.
+      let heldAlready = false;
+      const outcome = await redeemInvitation(
+        { namespaceId: signedId, invitation: step.invitation },
+        {
+          join: async (namespaceId, invitation) => {
+            try {
+              await admin.joinNamespace(namespaceId, {
+                invitation: invitation as never,
+                // The node stores this as the namespace's name for THIS member,
+                // so a joiner who arrives via a link ends up with the same label
+                // the inviter sees rather than a bare id.
+                ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
+              });
+            } catch (e) {
+              if (!isAlreadyMember(e)) throw e;
+              heldAlready = true;
+            }
+          },
+          memberships: async () =>
+            ((await admin.listNamespaces()) ?? []).map((n) => n.namespaceId),
+        },
+      );
+      if (outcome.status === 'failed') throw new InviteRedeemError(outcome);
+      if (heldAlready || outcome.status === 'already-member') {
+        onStatus(`Already in ${label} — continuing…`);
       }
-    } catch (e) {
-      if (!isAlreadyMember(e)) throw e;
-      onStatus(`Already in ${label} — continuing…`);
-      if (step.kind === 'namespace') result.namespaceId = signedId;
+      result.namespaceId = signedId;
+    } else {
+      try {
+        await admin.joinGroup({ invitation: step.invitation as never });
+      } catch (e) {
+        if (!isAlreadyMember(e)) throw e;
+        onStatus(`Already in ${label} — continuing…`);
+      }
     }
   }
 
