@@ -13,6 +13,8 @@
     "src/**/*.test.tsx",
     "src/test",
     "src/generated",
+    "src/useJoinFromInvitation.ts",
+    "src/JoinCard.tsx",
     "src/utils"
   ]
 }
