@@ -391,9 +391,11 @@ jobs:
       # The vitest copy-lint suite only scans string literals and JSX text in a
       # handful of files, so an em dash in a comment, a test name, a Rust doc
       # comment or a merobox YAML step slips past review every time. This scans
-      # every tracked file under apps/mero-docs instead.
+      # every tracked file under apps/mero-docs instead. The landing page is a
+      # generated copy of scripts/landing/template, so it is fixed there.
       - name: Assert no em dash in apps/mero-docs
-        run: python3 scripts/check-no-em-dash.py
+        run: |
+          ! git grep -nI $'\u2014' -- apps/mero-docs ':!apps/mero-docs/app/src/pages/landing' ':!apps/mero-docs/app/src/generated'
 
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
