@@ -653,6 +653,11 @@ test.describe("Chat UI — attachment-only messages", () => {
   });
 
   test("an empty composer with no attachment still sends nothing", async ({ page }) => {
+    // Count only once the channel has finished loading: send a marker and wait
+    // for it, or the history arriving mid-test reads as a phantom send.
+    const marker = `ui-empty-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
     const rows = page.locator('[id^="actions-container-"]');
     const before = await rows.count();
     await page.getByRole("button", { name: "Send message" }).first().click();
