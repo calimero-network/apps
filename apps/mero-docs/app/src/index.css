@@ -267,7 +267,7 @@ html .bn-container[data-color-scheme='dark'] {
   }
 }
 
-/* In-app links are document chips; any other href keeps the default link look. */
+/* In-app links are document chips; other links get the link look below, since preflight strips the browser's. */
 .bn-editor a[href^='/app/'] {
   --doc-chip: hsl(var(--primary) / 0.2);
   --doc-chip-hover: hsl(var(--primary) / 0.32);
@@ -305,5 +305,17 @@ html .bn-container[data-color-scheme='dark'] {
 }
 
 .bn-editor a[href^='/app/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+.bn-editor a:not([href^='/app/']) {
+  color: hsl(var(--primary-ink));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.bn-editor a:not([href^='/app/']):focus-visible {
   box-shadow: 0 0 0 2px hsl(var(--ring));
 }

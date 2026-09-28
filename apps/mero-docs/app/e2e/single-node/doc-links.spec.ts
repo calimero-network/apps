@@ -210,6 +210,15 @@ test.describe('Doc links (single-node)', () => {
     await page.keyboard.press('ControlOrMeta+v');
     const link = page.locator(".bn-editor a[href='https://example.com/']");
     await expect(link).toHaveText('Example');
+    await expect(link).toHaveCSS('text-decoration-line', 'underline');
+    const [linkColor, inkColor] = await link.evaluate((el) => {
+      const probe = document.body.appendChild(document.createElement('span'));
+      probe.style.color = 'hsl(var(--primary-ink))';
+      const ink = getComputedStyle(probe).color;
+      probe.remove();
+      return [getComputedStyle(el).color, ink];
+    });
+    expect(linkColor).toBe(inkColor);
 
     const [tab] = await Promise.all([
       page.context().waitForEvent('page'),
