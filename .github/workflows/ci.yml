@@ -692,6 +692,7 @@ jobs:
 
       - run: pnpm -r $PNPM_FILTER test
       - run: pnpm -r $PNPM_FILTER build
+      - run: pnpm -r $PNPM_FILTER --if-present run check:bundle
 
       # `pnpm -r build` succeeding does not mean Vercel will serve anything: it
       # uploads whatever `outputDirectory` names, and an empty or wrong path is
