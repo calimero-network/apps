@@ -70,7 +70,9 @@ const LABEL_SEP: char = '\u{1}';
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct IssueHeader {
+    /// 1 to 64 characters.
     pub title: String,
+    /// Unix milliseconds.
     #[index]
     pub created_at: u64,
 }
@@ -82,13 +84,20 @@ pub struct IssueHeader {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Issue {
+    /// What is wrong, in a sentence or two.
     pub summary: LwwRegister<String>,
+    /// Who or what it affects and how badly.
     pub impact: LwwRegister<String>,
+    /// Steps, logs or conditions that trigger it.
     pub repro: LwwRegister<String>,
+    /// What "fixed" must satisfy.
     pub resolution_criteria: LwwRegister<String>,
+    /// One of Open, In progress, Blocked, Done.
     #[index]
     pub status: LwwRegister<String>,
+    /// One of low, medium, high, urgent.
     pub priority: LwwRegister<String>,
+    /// Free text; None when unassigned.
     #[index]
     pub assignee: LwwRegister<Option<String>>,
 }
@@ -148,10 +157,15 @@ impl Mergeable for Issue {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[index(thread(issue_id, created_at))]
 pub struct Comment {
+    /// `comment-<ms>-<8 hex>`.
     pub id: String,
+    /// The issue this comment is on.
     pub issue_id: String,
+    /// The comment text; never empty.
     pub body: LwwRegister<String>,
+    /// Unix milliseconds.
     pub created_at: u64,
+    /// Unix milliseconds of the last edit, or None.
     pub edited_at: LwwRegister<Option<u64>>,
 }
 
@@ -174,10 +188,13 @@ impl Mergeable for Comment {
 #[derive(Debug, BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct LabelTag {
+    /// The labelled issue.
     #[index]
     pub issue_id: LwwRegister<String>,
+    /// 1 to 64 characters.
     #[index]
     pub label: LwwRegister<String>,
+    /// Unix milliseconds of the latest add.
     pub added_at: LwwRegister<u64>,
 }
 
@@ -189,11 +206,17 @@ pub struct LabelTag {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IssueView {
+    /// `issue-<ms>-<8 hex>`.
     pub id: String,
+    /// 1 to 64 characters.
     pub title: String,
+    /// What is wrong, in a sentence or two.
     pub summary: String,
+    /// Who or what it affects and how badly.
     pub impact: String,
+    /// Steps, logs or conditions that trigger it.
     pub repro: String,
+    /// What "fixed" must satisfy.
     pub resolution_criteria: String,
     /// One of Open, In progress, Blocked, Done.
     pub status: String,
@@ -213,10 +236,13 @@ pub struct IssueView {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentView {
+    /// `comment-<ms>-<8 hex>`.
     pub id: String,
+    /// The issue this comment is on.
     pub issue_id: String,
     /// The writer's account id (hex); only this account may edit or delete it.
     pub author: String,
+    /// The comment text.
     pub body: String,
     /// Unix milliseconds.
     pub created_at: u64,
@@ -228,7 +254,9 @@ pub struct CommentView {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IssueDetail {
+    /// The issue itself.
     pub issue: IssueView,
+    /// Its comment thread, oldest first.
     pub comments: Vec<CommentView>,
 }
 
@@ -238,6 +266,7 @@ pub struct IssueDetail {
 pub struct StatusCount {
     /// One of Open, In progress, Blocked, Done.
     pub status: String,
+    /// Issues currently in this status.
     pub count: u64,
 }
 
@@ -245,6 +274,7 @@ pub struct StatusCount {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct RepoInfo {
+    /// An `http(s)://` URL, or empty until set.
     pub repo_url: String,
 }
 
@@ -252,6 +282,7 @@ pub struct RepoInfo {
 // State
 // ---------------------------------------------------------------------------
 
+/// One repository's issue board: its issues, comments, labels and URL.
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct IssueTracker {
     /// Issue id → header, owned by whoever filed it. An issue exists while its

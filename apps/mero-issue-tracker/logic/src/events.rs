@@ -4,25 +4,66 @@
 #[calimero_sdk::app::event]
 pub enum Event<'a> {
     /// A new issue was created on the board.
-    IssueCreated { id: &'a str, created_by: &'a str },
+    IssueCreated {
+        /// The new issue's id.
+        id: &'a str,
+        /// The filer's account id (hex).
+        created_by: &'a str,
+    },
     /// One of an issue's text sections changed (summary/impact/repro/resolution).
-    IssueEdited { id: &'a str },
-    /// An issue was deleted, along with its comments and labels.
-    IssueDeleted { id: &'a str },
+    IssueEdited {
+        /// The issue's id.
+        id: &'a str,
+    },
+    /// An issue was deleted, along with its triage state, its labels and the deleter's comments on it.
+    IssueDeleted {
+        /// The deleted issue's id.
+        id: &'a str,
+    },
     /// An issue's status changed (moved columns).
-    IssueStatusChanged { id: &'a str, status: &'a str },
+    IssueStatusChanged {
+        /// The issue's id.
+        id: &'a str,
+        /// The new status.
+        status: &'a str,
+    },
     /// An issue's priority changed.
-    IssuePriorityChanged { id: &'a str, priority: &'a str },
+    IssuePriorityChanged {
+        /// The issue's id.
+        id: &'a str,
+        /// The new priority.
+        priority: &'a str,
+    },
     /// An issue's assignee changed.
-    IssueAssigneeChanged { id: &'a str },
+    IssueAssigneeChanged {
+        /// The issue's id.
+        id: &'a str,
+    },
     /// A label was added to or removed from an issue.
-    IssueLabelsChanged { id: &'a str },
+    IssueLabelsChanged {
+        /// The issue's id.
+        id: &'a str,
+    },
     /// A comment was posted to an issue's thread.
-    CommentAdded { id: &'a str, issue_id: &'a str },
+    CommentAdded {
+        /// The new comment's id.
+        id: &'a str,
+        /// The issue it was posted on.
+        issue_id: &'a str,
+    },
     /// A comment was edited by its author.
-    CommentEdited { id: &'a str },
+    CommentEdited {
+        /// The comment's id.
+        id: &'a str,
+    },
     /// A comment was deleted by its author.
-    CommentDeleted { id: &'a str },
+    CommentDeleted {
+        /// The deleted comment's id.
+        id: &'a str,
+    },
     /// The repository URL this context tracks was set or changed.
-    RepoUrlChanged { url: &'a str },
+    RepoUrlChanged {
+        /// The new URL.
+        url: &'a str,
+    },
 }
