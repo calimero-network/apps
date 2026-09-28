@@ -223,12 +223,7 @@
         {
           "name": "deleted",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "bool"
-            }
+            "kind": "bool"
           }
         }
       ]

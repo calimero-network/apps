@@ -241,20 +241,21 @@ fn is_hex_color(s: &str) -> bool {
 
 /// Workspace-wide tag: a stable key mapped to a display name and colour.
 /// `deleted` tombstones the row rather than removing it — see `delete_tag`.
+/// It merges by OR, so a delete on any replica is permanent.
 #[app::mergeable(id = "mero_drive_registry::TagRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct TagRecord {
     pub name: LwwRegister<String>,
     pub color: LwwRegister<String>,
-    pub deleted: LwwRegister<bool>,
+    pub deleted: bool,
 }
 
 impl Mergeable for TagRecord {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         <LwwRegister<String> as Mergeable>::merge(&mut self.name, &other.name)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.color, &other.color)?;
-        <LwwRegister<bool> as Mergeable>::merge(&mut self.deleted, &other.deleted)?;
+        self.deleted |= other.deleted;
         Ok(())
     }
 }
@@ -264,8 +265,13 @@ impl TagRecord {
         TagRecord {
             name: LwwRegister::new(name),
             color: LwwRegister::new(color),
-            deleted: LwwRegister::new(false),
+            deleted: false,
         }
+    }
+
+    fn edit(&mut self, name: String, color: String) {
+        self.name.set(name);
+        self.color.set(color);
     }
 }
 
@@ -286,7 +292,7 @@ fn project_tag(key: &str, rec: &TagRecord) -> TagDto {
         key: key.to_string(),
         name: rec.name.get().clone(),
         color: rec.color.get().clone(),
-        deleted: *rec.deleted.get(),
+        deleted: rec.deleted,
     }
 }
 
@@ -848,9 +854,10 @@ impl RegistryState {
             .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?
             .map(|v| v.clone())
             .unwrap_or_else(|| TagRecord::new(String::new(), String::new()));
-        rec.name.set(name);
-        rec.color.set(color);
-        rec.deleted.set(false);
+        if rec.deleted {
+            return Err(DriveError::Invalid("tag deleted".into()));
+        }
+        rec.edit(name, color);
         self.tags
             .insert(key.to_string(), rec)
             .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
@@ -864,7 +871,7 @@ impl RegistryState {
             .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?
             .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(key.to_string()))?;
-        rec.deleted.set(true);
+        rec.deleted = true;
         self.tags
             .insert(key.to_string(), rec)
             .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
@@ -1526,16 +1533,54 @@ mod tests {
     }
 
     #[test]
-    fn set_tag_after_delete_clears_deleted() {
+    fn set_tag_after_delete_is_rejected() {
         let mut app = RegistryState::init();
         app.set_tag_inner("launch", "Launch".into(), "#ff0000".into())
             .unwrap();
         app.delete_tag_inner("launch").unwrap();
-        app.set_tag_inner("launch", "Launch v2".into(), "#00ff00".into())
-            .unwrap();
+        let err = app
+            .set_tag_inner("launch", "Launch v2".into(), "#00ff00".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(ref m) if m == "tag deleted"));
         let tags = app.list_tags().unwrap();
-        assert_eq!(tags[0].name, "Launch v2");
-        assert!(!tags[0].deleted);
+        assert_eq!(tags[0].name, "Launch");
+        assert!(tags[0].deleted);
+    }
+
+    fn zero_tag() -> TagRecord {
+        TagRecord {
+            name: zero_lww("Launch".to_string()),
+            color: zero_lww("#ff0000".to_string()),
+            deleted: false,
+        }
+    }
+
+    /// Merges each side into a copy of the other and asserts both land on `want`.
+    fn assert_merges_both_ways(a: &TagRecord, b: &TagRecord, want: (&str, &str, bool)) {
+        for (x, y) in [(a, b), (b, a)] {
+            let mut m = x.clone();
+            <TagRecord as Mergeable>::merge(&mut m, y).unwrap();
+            <TagRecord as Mergeable>::merge(&mut m, y).unwrap();
+            let t = project_tag("launch", &m);
+            assert_eq!((t.name.as_str(), t.color.as_str(), t.deleted), want);
+        }
+    }
+
+    #[test]
+    fn tag_record_merge_rename_racing_delete_stays_deleted() {
+        let mut b = zero_tag();
+        b.deleted = true; // delete on B
+        let mut a = zero_tag();
+        a.edit("Launch v2".into(), "#ff0000".into()); // later rename on A
+        assert_merges_both_ways(&a, &b, ("Launch v2", "#ff0000", true));
+    }
+
+    #[test]
+    fn tag_record_merge_unsynced_recreate_stays_deleted() {
+        let mut b = zero_tag();
+        b.deleted = true; // delete on B
+        let a = TagRecord::new("Launch 2".into(), "#00ff00".into()); // A never saw it
+        assert_merges_both_ways(&a, &b, ("Launch 2", "#00ff00", true));
     }
 
     #[test]
@@ -1543,12 +1588,12 @@ mod tests {
         let mut a = TagRecord {
             name: zero_lww("Launch".to_string()),
             color: zero_lww("#ff0000".to_string()),
-            deleted: zero_lww(false),
+            deleted: false,
         };
         let mut b = TagRecord {
             name: zero_lww("Launch".to_string()),
             color: zero_lww("#ff0000".to_string()),
-            deleted: zero_lww(false),
+            deleted: false,
         };
         a.name.set("Launch v2".into()); // rename on A
         b.color.set("#00ff00".into()); // recolour on B
