@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDeepLink } from "@calimero-network/mero-platform-react";
 import type { DeepLinkIntent } from "@calimero-network/mero-platform";
+import { setContextId, useMero } from "@calimero-network/mero-react";
 import {
-  setContextId,
-  useJoinContext,
-  useJoinNamespace,
-  useMero,
-} from "@calimero-network/mero-react";
+  describeInviteFailure,
+  redeemInvitation,
+  shouldRetain,
+  type InviteRedeemer,
+} from "@calimero-apps/invite";
 import {
   decodeInvitationPayload,
-  isTerminalInvitationError,
   parseInvitationPayload,
   type KvInvitationPayload,
 } from "./utils/invitation";
@@ -47,7 +47,10 @@ export type JoinState =
  *    once `isAuthenticated` flips.
  *
  * The intent is only acked — permanently discarded — on success, or on an error
- * that can never succeed. Everything else keeps it for the next load.
+ * that can never succeed. Everything else keeps it for the next load. Which is
+ * which is decided by @calimero-apps/invite (`redeemInvitation`), which also
+ * treats "the request failed but the namespace is now listed" as success: the
+ * desktop proxy aborts at 30s while a join can take ~95s and land anyway.
  */
 export function useJoinFromInvitation(): {
   state: JoinState;
@@ -58,9 +61,7 @@ export function useJoinFromInvitation(): {
   /** Refuse one, and stop being asked. */
   declineJoin: () => void;
 } {
-  const { isAuthenticated } = useMero();
-  const { joinNamespace } = useJoinNamespace();
-  const { joinContext } = useJoinContext();
+  const { isAuthenticated, mero } = useMero();
 
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
@@ -84,10 +85,52 @@ export function useJoinFromInvitation(): {
     attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
-      await joinNamespace(held.payload.namespaceId, {
-        invitation: held.payload.invitation,
-      });
-      await joinContext(held.payload.contextId);
+      // The admin client directly, not `useJoinNamespace` / `useJoinContext`:
+      // those hooks catch a failed request and resolve `null`, so a refused
+      // join looked exactly like a successful one. `join` has to throw, with
+      // the node's HTTP status on the error, for the outcome to say why.
+      const redeemer: InviteRedeemer = {
+        join: async (namespaceId) => {
+          if (!mero) throw new Error("Not connected to a node.");
+          await mero.admin.joinNamespace(namespaceId, {
+            invitation: held.payload.invitation,
+          });
+          await mero.admin.joinContext(held.payload.contextId);
+        },
+        memberships: async () => {
+          if (!mero) throw new Error("Not connected to a node.");
+          // rc.25 renamed `groupId` -> `namespaceId`; read both (see ContextPicker).
+          const namespaces = (await mero.admin.listNamespaces()) as Array<{
+            namespaceId?: string;
+            groupId?: string;
+            id?: string;
+          }>;
+          return namespaces.map((n) => n.namespaceId ?? n.groupId ?? n.id ?? "");
+        },
+      };
+      // `already-member` is the same success as `joined`: a link followed
+      // twice, or a join the proxy gave up on that landed anyway. A namespace
+      // member follows its contexts by default (core auto-follow), so the
+      // context is joined even if this attempt never reached that call.
+      const outcome = await redeemInvitation(
+        { namespaceId: held.payload.namespaceId, invitation: held.payload.invitation },
+        redeemer,
+      );
+
+      if (outcome.status === "failed") {
+        if (!shouldRetain(outcome)) {
+          // Never going to work — stop asking on every load.
+          held.intent.resolve?.();
+          pending.current = null;
+        }
+        setState({
+          status: "failed",
+          message: describeInviteFailure(outcome.reason, "namespace") ?? outcome.message,
+          retryable: outcome.retryable,
+          fromLink: held.fromLink,
+        });
+        return;
+      }
 
       setContextId(held.payload.contextId);
       // Ack FIRST, then reload: a reload before the ack would replay the same
@@ -96,18 +139,14 @@ export function useJoinFromInvitation(): {
       pending.current = null;
       window.location.reload();
     } catch (e) {
+      // `redeemInvitation` reports a failed join in its outcome, never by
+      // throwing; this is anything else, so keep the invitation.
       const message = e instanceof Error ? e.message : String(e);
-      const terminal = isTerminalInvitationError(message);
-      if (terminal) {
-        // Never going to work — stop asking on every load.
-        held.intent.resolve?.();
-        pending.current = null;
-      }
-      setState({ status: "failed", message, retryable: !terminal, fromLink: held.fromLink });
+      setState({ status: "failed", message, retryable: true, fromLink: held.fromLink });
     } finally {
       running.current = false;
     }
-  }, [joinNamespace, joinContext]);
+  }, [mero]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or
