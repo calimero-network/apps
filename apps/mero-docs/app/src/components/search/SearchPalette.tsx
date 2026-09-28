@@ -14,13 +14,12 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Highlight, type HighlightRange } from '@/components/common/Highlight';
 import { Kbd } from '@/components/common/Kbd';
+import { KEY_LABELS } from '@/lib/platform';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import { cn } from '@/lib/utils';
 
 import type { PaletteGroupView, PaletteItemView } from './types';
 
-const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent); // key hints name ⌘ only on Apple
-const NEW_TAB_KEYS = IS_MAC ? '⌘↵' : 'Ctrl ↵'; // footer hint for opening in a new tab
 const PLACEHOLDER = 'Search docs, folders and #tags'; // same wording as the top-bar field
 const KIND_ICON = { doc: FileText, recent: FileText, text: TextAlignStart, folder: Folder, tip: Hash }; // tag rows show a dot instead
 const FAINT = 'text-muted-foreground/80'; // the mockup's faint ink for labels, context and hints
@@ -112,9 +111,11 @@ export function SearchPalettePanel({
   const listId = `${baseId}-list`;
   const resultsRef = React.useRef<HTMLDivElement>(null);
   const openable = React.useMemo(() => groups.flatMap((g) => g.items).filter((i) => i.kind !== 'tip'), [groups]);
-  // Keyed by the groups it was set against, so new results fall back to the first row without an effect.
-  const [cursor, setCursor] = React.useState({ groups, index: 0 });
-  const index = cursor.groups === groups && cursor.index < openable.length ? cursor.index : 0;
+  // The active row is remembered by id for the query it was picked under, so results that
+  // refresh under the same query keep it; a new query, or a row that left, starts at the top.
+  const [cursor, setCursor] = React.useState<{ query: string; id?: string }>({ query });
+  const found = cursor.query === query ? openable.findIndex((i) => i.id === cursor.id) : -1;
+  const index = Math.max(found, 0);
   const optionId = (i: number) => `${baseId}-opt-${i}`;
   const activeId = openable.length > 0 ? optionId(index) : undefined;
 
@@ -122,7 +123,7 @@ export function SearchPalettePanel({
     if (activeId) keepInView(resultsRef.current, document.getElementById(activeId), index === 0);
   }, [activeId, index]);
 
-  const move = (next: number) => setCursor({ groups, index: next });
+  const move = (next: number) => setCursor({ query, id: openable[next]?.id });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const n = openable.length;
@@ -229,7 +230,7 @@ export function SearchPalettePanel({
         <div className="hidden items-center gap-3.5 md:flex">
           <KeyHint keys={['↑', '↓']} label="move" />
           <KeyHint keys={['↵']} label="open" />
-          <KeyHint keys={[NEW_TAB_KEYS]} label="open in new tab" />
+          <KeyHint keys={[KEY_LABELS.newTab]} label="open in new tab" />
           <KeyHint keys={['#']} label="tags only" />
         </div>
         <span className="flex items-center gap-1.5">

@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { hereLabel } from '@/components/common/LivePill';
 import { QuietLoading } from '@/components/ui/empty-state';
 import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
 import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
@@ -19,7 +20,7 @@ import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
-import { usePresenceByDoc, type DocPeer } from '@/hooks/usePresenceByDoc';
+import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
@@ -75,13 +76,6 @@ function isFiltered(q: HomeQuery): boolean {
     !!q.by ||
     q.archived
   );
-}
-
-function hereLabel(here: DocPeer[]): string | undefined {
-  if (here.length === 0) return undefined;
-  if (here.length === 1) return `${here[0].name} is here`;
-  if (here.length === 2) return `${here[0].name} and ${here[1].name} are here`;
-  return `${here[0].name} and ${here.length - 1} others are here`;
 }
 
 function useNow(): number {

@@ -78,6 +78,19 @@ describe('useAppRoute', () => {
     expect(result.current.url).toBe('/app/w?q=new&node=2');
   });
 
+  it('builds the URL of a screen for a new tab, keeping the dev node param', () => {
+    const { result } = setup('/app/w?node=2&tag=x');
+    expect(
+      result.current.app.href({ ws: 'w', folder: 'f 1', doc: 'd', block: 'b' }),
+    ).toBe('/app/w/f/f%201/d/d?node=2#b=b');
+    expect(result.current.app.href({ ws: 'w' }, 'tag=q3')).toBe(
+      '/app/w?tag=q3&node=2',
+    );
+    expect(setup('/app/w').result.current.app.href({ ws: 'w', folder: 'f' })).toBe(
+      '/app/w/f/f',
+    );
+  });
+
   it('carries a folder list filter in its search', () => {
     const { result } = setup('/app/w?node=2');
     act(() => result.current.app.goFolder('f1', { search: 'tag=q3' }));

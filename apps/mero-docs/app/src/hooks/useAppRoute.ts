@@ -20,15 +20,22 @@ export function useAppRoute() {
   const ws = route?.ws;
 
   const current = pathname + search + hash;
+  // The relative URL of a screen, carrying the dev node param so a new tab stays on the same node.
+  const href = useCallback(
+    (target: AppRoute | null, targetSearch = '') => {
+      const url = new URL(target ? appPath(target) : '/app', window.location.origin);
+      url.search = targetSearch;
+      if (node) url.searchParams.set(DEV_NODE_PARAM, node);
+      return url.pathname + url.search + url.hash;
+    },
+    [node],
+  );
   const go = useCallback(
     (target: AppRoute | null, opts: GoOptions = {}) => {
-      const url = new URL(target ? appPath(target) : '/app', window.location.origin);
-      url.search = opts.search ?? '';
-      if (node) url.searchParams.set(DEV_NODE_PARAM, node);
-      const next = url.pathname + url.search + url.hash;
+      const next = href(target, opts.search);
       navigate(next, { replace: opts.replace || next === current });
     },
-    [navigate, node, current],
+    [navigate, href, current],
   );
 
   const goWorkspace = useCallback(
@@ -60,7 +67,7 @@ export function useAppRoute() {
   }, [go, ws]);
 
   return useMemo(
-    () => ({ route, goWorkspace, goHome, goFolder, goDoc, goSettings }),
-    [route, goWorkspace, goHome, goFolder, goDoc, goSettings],
+    () => ({ route, href, goWorkspace, goHome, goFolder, goDoc, goSettings }),
+    [route, href, goWorkspace, goHome, goFolder, goDoc, goSettings],
   );
 }
