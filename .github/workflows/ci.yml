@@ -53,6 +53,9 @@ jobs:
       # producer of the artifacts BOTH it and `browser` download, and `browser`
       # runs over `apps` — see the note on the wasm job's matrix.
       contract_apps: ${{ steps.set.outputs.contract_apps }}
+      # `apps` as {app, shard} pairs: an app in BROWSER_SHARDS runs its browser
+      # e2e split across that many runners.
+      browser_matrix: ${{ steps.set.outputs.browser_matrix }}
       logic: ${{ steps.filter.outputs.logic }}
       # pnpm workspace dirs the frontend job typechecks/tests/builds, or
       # ["*"] for all of them. Frontend-only apps (no crate) appear here and
@@ -253,6 +256,7 @@ jobs:
           JS_DEPS: ${{ steps.locks.outputs.js_deps }}
           APP_FILES: ${{ steps.filter.outputs.app_files }}
           EXTRA_PATHS: ${{ steps.locks.outputs.extra_paths }}
+          BROWSER_SHARDS: '{"mero-docs": 4}' # runners per app whose browser e2e outgrows one job's limit
         run: |
           set -euo pipefail
           # pnpm importers arrive as bare dirs (`apps/x/app`); give them a file
@@ -276,6 +280,9 @@ jobs:
             echo "::notice::changed apps: $apps"
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          browser_matrix=$(jq -c --argjson shards "$BROWSER_SHARDS" \
+            '[.[] as $app | ($shards[$app] // 1) as $n | range(1; $n + 1) | {app: $app, shard: "\(.)/\($n)"}]' <<<"$apps")
+          echo "browser_matrix=$browser_matrix" >> "$GITHUB_OUTPUT"
           echo "frontend_dirs=$frontend_dirs" >> "$GITHUB_OUTPUT"
           echo "::notice::frontend dirs: $frontend_dirs"
 
@@ -712,7 +719,7 @@ jobs:
         run: scripts/check-vercel-output.sh $VERCEL_APPS
 
   browser:
-    name: Browser E2E (${{ matrix.app }})
+    name: Browser E2E (${{ matrix.app }}${{ matrix.shard != '1/1' && format(' {0}', matrix.shard) || '' }})
     # `needs: wasm` for the same reason the merobox e2e does: run the bundle
     # that job already built and the ABI gate already validated, rather than
     # paying for a second fat-LTO wasm build.
@@ -727,10 +734,10 @@ jobs:
       fail-fast: false
       # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
       # so GitHub prints the raw template as a skipped check. Falling back to
-      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # a "none" leg keeps the name resolvable; this job's `if` gates on the same
       # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
+        include: ${{ fromJSON(needs.changes.outputs.browser_matrix != '[]' && needs.changes.outputs.browser_matrix || '[{"app":"none","shard":"1/1"}]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -776,19 +783,23 @@ jobs:
       # the page and needs no node.
       - name: Run the browser e2e
         working-directory: apps/${{ matrix.app }}/app
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
+          shard_args=()
+          [ "$SHARD" = "1/1" ] || shard_args=(--shard="$SHARD")
           if node -e "process.exit(require('./package.json').scripts?.['test:e2e:ci']?0:1)"; then
             echo "using this app's test:e2e:ci"
-            pnpm run test:e2e:ci
+            pnpm run test:e2e:ci "${shard_args[@]}"
           else
-            npx playwright test
+            npx playwright test "${shard_args[@]}"
           fi
 
       - name: Upload the report and node log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-e2e-${{ matrix.app }}-${{ github.sha }}
+          name: browser-e2e-${{ matrix.app }}-${{ strategy.job-index }}-${{ github.sha }}
           path: |
             apps/${{ matrix.app }}/app/playwright-report
             apps/${{ matrix.app }}/app/test-results
