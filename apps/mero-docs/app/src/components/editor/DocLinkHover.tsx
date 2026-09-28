@@ -3,10 +3,7 @@
 // follows a doc link; a mention opens its card on click.
 
 import * as React from 'react';
-import {
-  useGroupCapabilities,
-  useGroupMembers,
-} from '@calimero-network/mero-react';
+import { useGroupCapabilities } from '@calimero-network/mero-react';
 import {
   LinkToolbar,
   useBlockNoteEditor,
@@ -162,9 +159,11 @@ function LiveDocLinkCard({ target }: { target: DocHrefTarget }) {
 }
 
 function LiveMemberCard({ target }: { target: MemberHrefTarget }) {
-  const { namespaceId } = useDriveWorkspace();
+  const {
+    namespaceId,
+    namespaceMembers: { members },
+  } = useDriveWorkspace();
   const { route } = useAppRoute();
-  const { members } = useGroupMembers(namespaceId);
   const { capabilities } = useGroupCapabilities(namespaceId, target.member);
   const name = usePersonName(target.member)(target.member);
   const canOpen = useFolderReach(route?.folder)(target.member);

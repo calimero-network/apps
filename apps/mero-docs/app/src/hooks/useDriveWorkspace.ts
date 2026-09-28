@@ -55,6 +55,7 @@ import {
   useSetGroupMetadata,
   useNodeIdentity,
   useSubgroups,
+  type GroupMember,
   type Namespace,
 } from '@calimero-network/mero-react';
 import { RegistryClient } from '../generated/registry/RegistryClient';
@@ -182,6 +183,12 @@ export interface DriveWorkspaceState {
    *  firing one getMemberMetadata HTTP call per row. Empty object
    *  when no namespace is selected or the metadata hasn't loaded. */
   namespaceMemberNames: Record<string, string>;
+  /** The selected namespace's members, re-read on every namespace event (a join included). */
+  namespaceMembers: {
+    members: GroupMember[];
+    loading: boolean;
+    error: Error | null;
+  };
 
   // namespace list + selection
   namespaces: Namespace[];
@@ -378,8 +385,17 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const {
     members: nsMembers,
     loading: membersLoading,
+    error: membersError,
     refetch: refetchNsMembers,
   } = useGroupMembers(selectedNsId ?? undefined);
+  const namespaceMembers = useMemo(
+    () => ({
+      members: nsMembers,
+      loading: membersLoading,
+      error: membersError,
+    }),
+    [nsMembers, membersLoading, membersError],
+  );
 
   // Identity → server-reported display name map for THIS namespace.
   // Sourced from the namespace's root-group member rows, where
@@ -474,9 +490,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       await Promise.all(
         ids.map(async (id) => {
           try {
-            const rows = await new RegistryClient(
-              mero,
-              id).getFolders();
+            const rows = await new RegistryClient(mero, id).getFolders();
             counts[id] = Array.isArray(rows) ? rows.length : 0;
           } catch {
             // A context we cannot read contributes no evidence. Counting it as
@@ -1245,9 +1259,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // settings panel's "Claim ownership" button repairs, so never abort.
         if (reg?.contextId && reg?.memberPublicKey) {
           try {
-            await new RegistryClient(
-              mero,
-              reg.contextId).claimOwner();
+            await new RegistryClient(mero, reg.contextId).claimOwner();
           } catch (e) {
             console.warn(
               '[useDriveWorkspace] claimOwner failed during ' +
@@ -1514,6 +1526,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // not an account, and substituting it names nobody.
       selfIdentity,
       namespaceMemberNames,
+      namespaceMembers,
 
       namespaces,
       namespacesListed,
@@ -1553,6 +1566,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       applicationId,
       selfIdentity,
       namespaceMemberNames,
+      namespaceMembers,
       namespaces,
       namespacesListed,
       nsError,
@@ -1591,11 +1605,7 @@ const DriveWorkspaceContext = createContext<DriveWorkspaceState | null>(null);
 
 export function DriveWorkspaceProvider({ children }: { children: ReactNode }) {
   const value = useDriveWorkspaceInternal();
-  return createElement(
-    DriveWorkspaceContext.Provider,
-    { value },
-    children,
-  );
+  return createElement(DriveWorkspaceContext.Provider, { value }, children);
 }
 
 export function useDriveWorkspace(): DriveWorkspaceState {

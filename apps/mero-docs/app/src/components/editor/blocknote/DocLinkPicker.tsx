@@ -2,7 +2,6 @@
 // The / menu opens it too, or its section mode, which links a heading instead.
 
 import { useCallback, useRef } from 'react';
-import { useGroupMembers } from '@calimero-network/mero-react';
 import {
   SuggestionMenuController,
   type SuggestionMenuProps,
@@ -64,9 +63,12 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { rows, folders } = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const { route } = useAppRoute();
-  const { namespaceId, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
-  const group = useGroupMembers(namespaceId);
+  const {
+    namespaceId,
+    selfIdentity,
+    namespaceMemberNames,
+    namespaceMembers: group,
+  } = useDriveWorkspace();
   // A reload or a failed read keeps the last people read for this workspace; none yet leaves People out.
   const lastMembers = useRef<{ ws: string | null; ids: string[] }>({
     ws: null,

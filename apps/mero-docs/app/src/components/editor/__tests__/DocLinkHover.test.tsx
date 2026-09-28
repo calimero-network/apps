@@ -20,6 +20,11 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'w1',
     selfIdentity: 'me',
     namespaceMemberNames: { [BOB]: 'Robert' },
+    namespaceMembers: {
+      members: [{ identity: 'me' }, { identity: BOB, role: 'Admin' }],
+      loading: false,
+      error: null,
+    },
   }),
 }));
 vi.mock('@/hooks/useMemberDisplayName', () => ({
@@ -42,9 +47,8 @@ vi.mock('@/hooks/useFolderReach', () => ({
 }));
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useGroupMembers: () => ({
-    members: [{ identity: 'me' }, { identity: BOB, role: 'Admin' }],
-  }),
+  // A one-off member read goes stale when someone joins; the card must not use it.
+  useGroupMembers: () => ({ members: [] }),
   useGroupCapabilities: () => ({ capabilities: null }),
 }));
 
