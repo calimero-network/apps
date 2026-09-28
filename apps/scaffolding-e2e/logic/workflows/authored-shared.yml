@@ -238,6 +238,23 @@ steps:
     statements:
       - 'json_equal({{n3_owner}}, {"output": ["{{n1_account}}"]})'
 
+  # authored_get_owner answers with the key's lowest holder; node-1 is the only one.
+  - name: node-3 reads the authored key's holder
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_get_owner
+    args:
+      key: "alice_key"
+    outputs:
+      n3_holder: result
+
+  - name: Assert the key's holder is node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_holder}}, {"output": "{{n1_account}}"})'
+
   # node-1 (owner) updates the entry — should succeed
   - name: node-1 updates its own authored entry
     type: call
