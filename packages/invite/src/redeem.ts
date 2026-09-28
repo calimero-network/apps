@@ -113,7 +113,11 @@ function isTerminal(message: string): boolean {
     m.includes("invitation expired") ||
     m.includes("malformed") ||
     m.includes("does not match namespace_id") ||
-    m.includes("invalid invitation")
+    m.includes("invalid invitation") ||
+    // Core rc.56+ names the group between the two words: "invitation for group
+    // <id> expired at <secs>" (409) and "... is invalid: <reason>" (400). Before
+    // that both were a bare 500 with the message hidden.
+    /\binvitation for group .+? (expired at \d+|is invalid:)/.test(m)
   );
 }
 
