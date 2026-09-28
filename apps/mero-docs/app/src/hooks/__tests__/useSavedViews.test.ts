@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useSavedViews } from '../useSavedViews';
+import { useSavedViewsSource } from '../useSavedViews';
 
 const listViews = vi.fn();
 const saveView = vi.fn();
@@ -14,6 +14,7 @@ type Client = {
   deleteView?: typeof deleteView;
 };
 const ws = {
+  namespaceId: 'ws1',
   registryClient: { listViews, saveView, deleteView } as Client | null,
   registryContextId: 'reg-ctx',
 };
@@ -48,7 +49,7 @@ beforeEach(() => {
 describe('useSavedViews', () => {
   it('reads shared views from the registry, watching the registry context', async () => {
     listViews.mockResolvedValue([dto('v1', 'Q3 launch')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     expect(result.current.views[0]).toEqual({
       id: 'v1',
@@ -65,7 +66,7 @@ describe('useSavedViews', () => {
       'mero-drive:views:ws1',
       JSON.stringify([{ id: 'p1', name: 'Mine', query: 'tag=x' }]),
     );
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     expect(result.current.views[0]).toEqual({
       id: 'p1',
@@ -81,14 +82,14 @@ describe('useSavedViews', () => {
       JSON.stringify([{ id: 'p1', name: 'Zebra', query: 'tag=x' }]),
     );
     listViews.mockResolvedValue([dto('v1', 'apple')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(2));
     expect(result.current.views.map((v) => v.name)).toEqual(['apple', 'Zebra']);
   });
 
   it('re-reads shared views when a registry change lands', async () => {
     listViews.mockResolvedValue([dto('v1', 'One')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
 
     listViews.mockResolvedValue([dto('v1', 'One'), dto('v2', 'Two')]);
@@ -98,16 +99,22 @@ describe('useSavedViews', () => {
 
   it('keeps the last good shared list through a failed re-read', async () => {
     listViews.mockResolvedValue([dto('v1', 'One')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
 
     listViews.mockRejectedValue(new Error('node down'));
     await act(async () => onRegistryEvent?.());
+    await waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith(
+        '[useSavedViews] read failed',
+        expect.any(Error),
+      ),
+    );
     expect(result.current.views).toHaveLength(1);
   });
 
   it('saves a personal view to this device at once, with a fresh id', async () => {
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(listViews).toHaveBeenCalled());
     let saved!: Awaited<ReturnType<typeof result.current.save>>;
     await act(async () => {
@@ -125,20 +132,46 @@ describe('useSavedViews', () => {
     ]);
   });
 
-  it('a personal save is seen at once by another instance for the same workspace', async () => {
-    const { result: firstResult } = renderHook(() => useSavedViews('ws1'));
-    const { result: secondResult } = renderHook(() => useSavedViews('ws1'));
+  it("picks up another tab's personal views from the storage event", async () => {
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(listViews).toHaveBeenCalled());
-    await act(async () => {
-      await firstResult.current.save('Mine', 'tag=x', 'me');
+    const value = JSON.stringify([{ id: 'p9', name: 'Other tab', query: 'tag=x' }]);
+    localStorage.setItem('mero-drive:views:ws1', value);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'mero-drive:views:ws1', newValue: value }),
+      );
     });
-    await waitFor(() =>
-      expect(secondResult.current.views.map((v) => v.name)).toContain('Mine'),
+    expect(result.current.views.map((v) => v.name)).toEqual(['Other tab']);
+  });
+
+  it("keeps another tab's personal view when renaming or removing one here", async () => {
+    const { result } = renderHook(() => useSavedViewsSource());
+    let saved!: Awaited<ReturnType<typeof result.current.save>>;
+    await act(async () => {
+      saved = await result.current.save('Mine', 'tag=x', 'me');
+    });
+    const other = { id: 'p9', name: 'Other tab', query: 'tag=y' };
+    const stored = () =>
+      JSON.parse(localStorage.getItem('mero-drive:views:ws1') ?? '[]');
+    localStorage.setItem(
+      'mero-drive:views:ws1',
+      JSON.stringify([...stored(), other]),
     );
+
+    await act(async () => result.current.rename(saved.id, 'Renamed'));
+    expect(stored()).toEqual([
+      { id: saved.id, name: 'Renamed', query: 'tag=x' },
+      other,
+    ]);
+
+    await act(async () => result.current.remove(saved.id));
+    expect(stored()).toEqual([other]);
+    expect(result.current.views.map((v) => v.name)).toEqual(['Other tab']);
   });
 
   it('saves a shared view through the registry, then re-reads', async () => {
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(listViews).toHaveBeenCalled());
     listViews.mockResolvedValue([dto('new-id', 'Everyone view')]);
     let saved!: Awaited<ReturnType<typeof result.current.save>>;
@@ -159,7 +192,7 @@ describe('useSavedViews', () => {
 
   it('says a failed shared save plainly and leaves nothing added', async () => {
     saveView.mockRejectedValue(new Error('rpc: down'));
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(listViews).toHaveBeenCalled());
     await expect(
       result.current.save('Everyone view', 'tag=x', 'everyone'),
@@ -168,8 +201,35 @@ describe('useSavedViews', () => {
     expect(result.current.views).toHaveLength(0);
   });
 
+  it('says a shared save plainly while the registry is not ready', async () => {
+    ws.registryClient = null;
+    const { result } = renderHook(() => useSavedViewsSource());
+    await expect(
+      result.current.save('Everyone view', 'tag=x', 'everyone'),
+    ).rejects.toThrow();
+    expect(toastError).toHaveBeenCalledWith("Couldn't save the view. Try again.");
+  });
+
+  it('says a rename plainly when the view is gone', async () => {
+    const { result } = renderHook(() => useSavedViewsSource());
+    await waitFor(() => expect(listViews).toHaveBeenCalled());
+    await expect(result.current.rename('missing', 'New')).rejects.toThrow();
+    expect(toastError).toHaveBeenCalledWith(
+      "Couldn't rename the view. Try again.",
+    );
+  });
+
+  it('says a shared delete plainly while the registry is not ready', async () => {
+    ws.registryClient = null;
+    const { result } = renderHook(() => useSavedViewsSource());
+    await expect(result.current.remove('v1')).rejects.toThrow();
+    expect(toastError).toHaveBeenCalledWith(
+      "Couldn't delete the view. Try again.",
+    );
+  });
+
   it('renames a personal view on this device', async () => {
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     let saved!: Awaited<ReturnType<typeof result.current.save>>;
     await act(async () => {
       saved = await result.current.save('Old name', 'tag=x', 'me');
@@ -181,7 +241,7 @@ describe('useSavedViews', () => {
 
   it('renames a shared view by re-saving its id and query, keeping the name change', async () => {
     listViews.mockResolvedValue([dto('v1', 'Old')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     await act(async () => result.current.rename('v1', 'New'));
     expect(saveView).toHaveBeenCalledWith({
@@ -194,7 +254,7 @@ describe('useSavedViews', () => {
   it('says a failed rename plainly', async () => {
     listViews.mockResolvedValue([dto('v1', 'Old')]);
     saveView.mockRejectedValue(new Error('rpc: down'));
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     await expect(result.current.rename('v1', 'New')).rejects.toThrow();
     expect(toastError).toHaveBeenCalledWith(
@@ -203,7 +263,7 @@ describe('useSavedViews', () => {
   });
 
   it('removes a personal view on this device', async () => {
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     let saved!: Awaited<ReturnType<typeof result.current.save>>;
     await act(async () => {
       saved = await result.current.save('Mine', 'tag=x', 'me');
@@ -215,7 +275,7 @@ describe('useSavedViews', () => {
 
   it('removes a shared view through the registry', async () => {
     listViews.mockResolvedValue([dto('v1', 'Shared')]);
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     listViews.mockResolvedValue([]);
     await act(async () => result.current.remove('v1'));
@@ -225,7 +285,7 @@ describe('useSavedViews', () => {
   it('says a failed delete plainly', async () => {
     listViews.mockResolvedValue([dto('v1', 'Shared')]);
     deleteView.mockRejectedValue(new Error('rpc: down'));
-    const { result } = renderHook(() => useSavedViews('ws1'));
+    const { result } = renderHook(() => useSavedViewsSource());
     await waitFor(() => expect(result.current.views).toHaveLength(1));
     await expect(result.current.remove('v1')).rejects.toThrow();
     expect(toastError).toHaveBeenCalledWith(

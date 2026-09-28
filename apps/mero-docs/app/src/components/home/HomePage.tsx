@@ -120,7 +120,7 @@ export function HomePage({ folderId }: Props) {
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
   const canShare = useCanManageTags();
-  const { save: saveView } = useSavedViews(namespaceId ?? '');
+  const { save: saveView } = useSavedViews();
   const confirm = useConfirm();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();

@@ -1,9 +1,15 @@
 // Saved views: personal ones live on this device; shared ones live in the
-// registry. Two instances (Home's header, the sidebar) must see each other's
-// personal saves at once, so a write here notifies every other instance for
-// this workspace; `storage` events only fire across tabs, not within one.
+// registry. One source per workspace, provided to Home and the sidebar alike.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import { nameCollator } from '@/lib/collate';
 import { useContextEvents } from './useContextEvents';
@@ -51,29 +57,50 @@ function writePersonal(ws: string, views: Personal[]): void {
   }
 }
 
-const personalListeners = new Map<string, Set<() => void>>();
-function subscribePersonal(ws: string, fn: () => void): () => void {
-  let bucket = personalListeners.get(ws);
-  if (!bucket) personalListeners.set(ws, (bucket = new Set()));
-  bucket.add(fn);
-  return () => {
-    bucket?.delete(fn);
-    if (bucket?.size === 0) personalListeners.delete(ws);
-  };
+function failed(what: string, message: string, e: unknown): never {
+  console.warn(`[useSavedViews] ${what} failed`, e);
+  toast.error(message);
+  throw e;
 }
-function notifyPersonal(ws: string): void {
-  personalListeners.get(ws)?.forEach((fn) => fn());
+
+const notReady = () => Promise.reject(new Error('saved views are not ready'));
+
+export const SavedViewsContext = createContext<SavedViewsState>({
+  views: [],
+  save: notReady,
+  rename: notReady,
+  remove: notReady,
+});
+
+/** The workspace's saved views and their writes, from the workspace provider. */
+export function useSavedViews(): SavedViewsState {
+  return useContext(SavedViewsContext);
 }
 
 /** Personal views on this device, plus the workspace's shared views, merged and named by scope. */
-export function useSavedViews(ws: string): SavedViewsState {
-  const { registryClient, registryContextId } = useDriveWorkspace();
+export function useSavedViewsSource(): SavedViewsState {
+  const { namespaceId, registryClient, registryContextId } =
+    useDriveWorkspace();
+  const ws = namespaceId ?? '';
 
+  // Storage is re-read on every write and on another tab's, so neither undoes the other's.
   const [personal, setPersonal] = useState<Personal[]>(() => readPersonal(ws));
   useEffect(() => {
     setPersonal(readPersonal(ws));
-    return subscribePersonal(ws, () => setPersonal(readPersonal(ws)));
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === VIEWS_KEY_PREFIX + ws) setPersonal(readPersonal(ws));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [ws]);
+  const updatePersonal = useCallback(
+    (change: (views: Personal[]) => Personal[]) => {
+      const next = change(readPersonal(ws));
+      writePersonal(ws, next);
+      setPersonal(next);
+    },
+    [ws],
+  );
 
   const [shared, setShared] = useState<{
     client: typeof registryClient;
@@ -119,8 +146,6 @@ export function useSavedViews(ws: string): SavedViewsState {
   );
   const sharedRef = useRef(sharedViews);
   sharedRef.current = sharedViews;
-  const personalRef = useRef(personal);
-  personalRef.current = personal;
 
   const views = useMemo(
     () =>
@@ -139,71 +164,56 @@ export function useSavedViews(ws: string): SavedViewsState {
     ): Promise<SavedView> => {
       const id = crypto.randomUUID();
       if (scope === 'me') {
-        const next = [...readPersonal(ws), { id, name, query }];
-        writePersonal(ws, next);
-        setPersonal(next);
-        notifyPersonal(ws);
+        updatePersonal((views) => [...views, { id, name, query }]);
         return { id, name, query, scope };
       }
-      if (!registryClient) throw new Error('registry is not ready');
       try {
+        if (!registryClient) throw new Error('registry is not ready');
         await registryClient.saveView({ id, name, query });
       } catch (e: unknown) {
-        console.warn('[useSavedViews] save failed', e);
-        toast.error(SAVE_FAILED);
-        throw e;
+        failed('save', SAVE_FAILED, e);
       }
       load();
       return { id, name, query, scope };
     },
-    [ws, registryClient, load],
+    [registryClient, load, updatePersonal],
   );
 
   const rename = useCallback(
     async (id: string, name: string): Promise<void> => {
-      if (personalRef.current.some((p) => p.id === id)) {
-        const next = personalRef.current.map((p) =>
-          p.id === id ? { ...p, name } : p,
+      if (readPersonal(ws).some((p) => p.id === id)) {
+        updatePersonal((views) =>
+          views.map((p) => (p.id === id ? { ...p, name } : p)),
         );
-        writePersonal(ws, next);
-        setPersonal(next);
-        notifyPersonal(ws);
         return;
       }
-      const view = sharedRef.current.find((v) => v.id === id);
-      if (!registryClient || !view) throw new Error('view not found');
       try {
+        const view = sharedRef.current.find((v) => v.id === id);
+        if (!registryClient || !view) throw new Error('view not found');
         await registryClient.saveView({ id, name, query: view.query });
       } catch (e: unknown) {
-        console.warn('[useSavedViews] rename failed', e);
-        toast.error(RENAME_FAILED);
-        throw e;
+        failed('rename', RENAME_FAILED, e);
       }
       load();
     },
-    [ws, registryClient, load],
+    [ws, registryClient, load, updatePersonal],
   );
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      if (personalRef.current.some((p) => p.id === id)) {
-        const next = personalRef.current.filter((p) => p.id !== id);
-        writePersonal(ws, next);
-        setPersonal(next);
-        notifyPersonal(ws);
+      if (readPersonal(ws).some((p) => p.id === id)) {
+        updatePersonal((views) => views.filter((p) => p.id !== id));
         return;
       }
-      if (!registryClient) throw new Error('registry is not ready');
       try {
+        if (!registryClient) throw new Error('registry is not ready');
         await registryClient.deleteView({ id });
       } catch (e: unknown) {
-        console.warn('[useSavedViews] delete failed', e);
-        toast.error(DELETE_FAILED);
-        throw e;
+        failed('delete', DELETE_FAILED, e);
       }
       load();
     },
-    [ws, registryClient, load],
+    [ws, registryClient, load, updatePersonal],
   );
 
   return useMemo(

@@ -71,8 +71,12 @@ export function WorkspaceNav({
     selfIdentity = null,
     namespaceMemberNames = {},
   } = useDriveWorkspace();
-  const { views: savedViews, save: saveView, rename: renameView, remove: removeView } =
-    useSavedViews(ws);
+  const {
+    views: savedViews,
+    save: saveView,
+    rename: renameView,
+    remove: removeView,
+  } = useSavedViews();
   const confirm = useConfirm();
   const paths = useFolderPaths(folders);
   const [newTag, setNewTag] = React.useState<{ error?: string } | null>(null);
