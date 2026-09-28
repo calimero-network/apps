@@ -431,7 +431,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "Context members, keyed by DEVICE. `Authored`: the account that first\njoins with a device owns its row, and `owner_of` is the account that\ndevice speaks for — the verified device→account pairing every node\nenforces, which a field or a side table could not be."
+          "doc": "Context members, keyed by DEVICE. `Authored`: the account that joins\nwith a device owns its row, and that owner stamp is the account the\ndevice speaks for — the verified device→account pairing every node\nenforces, which a field or a side table could not be.\n\nKeys are per owner (core rc.57), so a second account can file a row of\nits own under someone else's device. A device held by exactly one\naccount speaks for it; one claimed by several speaks for nobody (see\n`account_of`), so a claimant never gets to post as someone else."
         },
         {
           "name": "fragments",
