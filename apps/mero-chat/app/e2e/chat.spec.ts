@@ -473,3 +473,90 @@ test.describe("Chat UI — thread replies", () => {
     });
   });
 });
+
+// ── Drag and drop onto the composer ───────────────────────────────────────────
+
+/** A 1×1 transparent PNG: real image bytes, so the node stores a real blob. */
+const PNG_1X1_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+/**
+ * Drop `files` on the composer the way a browser does: dragenter, dragover,
+ * drop, all carrying one DataTransfer. Playwright has no OS-level file drag,
+ * so the events are dispatched with a DataTransfer built in the page.
+ */
+async function dropOnComposer(
+  page: Page,
+  files: { name: string; type: string; base64: string }[],
+) {
+  const dataTransfer = await page.evaluateHandle((specs) => {
+    const dt = new DataTransfer();
+    for (const { name, type, base64 } of specs) {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      dt.items.add(new File([bytes], name, { type }));
+    }
+    return dt;
+  }, files);
+  const composer = page.getByTestId("message-composer");
+  await composer.dispatchEvent("dragenter", { dataTransfer });
+  await composer.dispatchEvent("dragover", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeVisible();
+  await composer.dispatchEvent("drop", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeHidden();
+}
+
+test.describe("Chat UI — drag and drop attachments", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("a dropped PNG goes to the image slot and a dropped PDF to the file slot", async ({
+    page,
+  }) => {
+    const stamp = Date.now();
+    const imageName = `drop-${stamp}.png`;
+    const fileName = `drop-${stamp}.pdf`;
+    const pdfBase64 = Buffer.from(`%PDF-1.4\n% drop ${stamp}\n%%EOF\n`).toString("base64");
+
+    await dropOnComposer(page, [
+      { name: imageName, type: "image/png", base64: PNG_1X1_BASE64 },
+      { name: fileName, type: "application/pdf", base64: pdfBase64 },
+    ]);
+
+    // Both previews appear once the node has stored the bytes: the PNG as a
+    // picture, the PDF as a file card. Neither routes through the popup.
+    const composer = page.getByTestId("message-composer");
+    await expect(composer.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(composer.getByTitle(fileName)).toBeVisible({ timeout: 20_000 });
+
+    const marker = `ui-drop-${stamp}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    // The sent message reads the image back from the node by blob id, so this
+    // passes only if the drop uploaded real bytes against the channel.
+    const row = messageRow(page, marker);
+    await expect(row.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(row.getByTitle(fileName)).toBeVisible();
+  });
+
+  test("dragging text over the composer does not show the drop overlay", async ({
+    page,
+  }) => {
+    const dataTransfer = await page.evaluateHandle(() => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "just some text");
+      return dt;
+    });
+    const composer = page.getByTestId("message-composer");
+    await composer.dispatchEvent("dragenter", { dataTransfer });
+    await composer.dispatchEvent("dragover", { dataTransfer });
+    await expect(page.getByTestId("composer-drop-overlay")).toHaveCount(0);
+  });
+});

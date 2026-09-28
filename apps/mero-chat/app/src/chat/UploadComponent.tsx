@@ -1,9 +1,8 @@
 import React from "react";
 import { styled } from "styled-components";
-import type { ChatFile, FileObject } from "../types/Common";
+import type { ChatFile } from "../types/Common";
 import { useEffect, useState } from "react";
-import { uploadBlobDirect } from "../api/dataSource/groupApiDataSource";
-import { getContextId } from "@calimero-network/mero-react";
+import { uploadChatAttachment } from "./uploadAttachment";
 
 const UploadComponentWrapper = styled.div``;
 
@@ -126,45 +125,18 @@ export default function UploadComponent({
     onError?.(null);
     setUploading(true);
 
-    const previewUrl = URL.createObjectURL(file);
-
     try {
       if (onReplace) {
         await onReplace(currentFile ?? null);
       }
 
-      // No context, no upload. A blob announced to nobody is stored on this
-      // node and invisible to every other member of the channel — and it looks
-      // like it worked, because our own node has the bytes. Refusing here is
-      // the only point at which the user can still be told.
-      const contextId = getContextId();
-      if (!contextId) {
-        throw new Error(
-          "Open a channel before attaching a file — an attachment is stored against the conversation it belongs to.",
-        );
-      }
-
-      const res = await uploadBlobDirect(file, contextId);
-
-      if (res.error || !res.data?.blobId) {
-        throw new Error(res.error?.message || "Failed to upload attachment");
-      }
-
-      const fileObject: FileObject = {
-        blobId: res.data.blobId,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        uploadedAt: Date.now(),
-      };
-      setUploadedFile({ file: fileObject, previewUrl });
+      setUploadedFile(await uploadChatAttachment(file));
       onError?.(null);
       onUploaded?.();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Upload failed";
       onError?.(errorMessage);
       setUploadedFile(null);
-      URL.revokeObjectURL(previewUrl);
     } finally {
       setUploading(false);
     }
