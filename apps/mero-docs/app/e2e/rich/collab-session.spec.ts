@@ -24,7 +24,8 @@ async function typeLive(page: Page, text: string): Promise<void> {
 
 /** Each rendered line of a window's editor. */
 async function shownLines(page: Page): Promise<string[]> {
-  const text = await page.getByTestId('doc-editor').innerText();
+  // The body only: the doc view also holds the tag row above it.
+  const text = await page.getByTestId('doc-editor').locator('.bn-editor').innerText();
   return text
     .split('\n')
     .map((line) => line.trim())

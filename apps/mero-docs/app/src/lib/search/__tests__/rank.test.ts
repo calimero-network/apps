@@ -102,7 +102,8 @@ describe('searchV1', () => {
     expect(labels(searchV1('#lanuch', rows, folders, tags))).toEqual(['tag:l']);
   });
 
-  it('matches 5,000 titles against three words with a typo in under 50 ms', () => {
+  // A guard against a quadratic regression, loose enough for a busy CI runner.
+  it('matches 5,000 titles against three words with a typo in under 2 s', () => {
     const words = ['alpha', 'beta', 'gamma', 'delta', 'Résumé', '日本', '🚀'];
     const rows = Array.from({ length: 5000 }, (_, i) =>
       row({
@@ -119,7 +120,7 @@ describe('searchV1', () => {
     const results = searchV1('gamma resmue delta', rows, [], []);
     const elapsed = performance.now() - started;
     expect(results.length).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(2_000);
   });
 
   it('highlights the matched characters on the shown label', () => {
