@@ -26,7 +26,7 @@ import { docLabel } from '@/lib/docLabel';
 import { folderLabel } from '@/lib/folderLabel';
 import { parseHomeQuery, serializeHomeQuery } from '@/lib/homeQuery';
 import { namespaceLabel } from '@/lib/namespaceLabel';
-import { openedLabel, updatedLabel } from '@/lib/relativeTime';
+import { updatedLabel, whenLabel } from '@/lib/relativeTime';
 import { normalizeQuery } from '@/lib/search/match';
 import { searchV1 } from '@/lib/search/rank';
 import { sidebarTags, tagCounts } from '@/lib/tags';
@@ -231,7 +231,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         docItem(ctx, `recent:${rowKey(r.folderId, r.docId)}`, 'recent', r, {
           context: dotted(
             folderPathOf(paths, r.folderId),
-            openedLabel(entry.openedAt, now),
+            `opened ${whenLabel(entry.openedAt, now)}`,
           ),
         }),
       );

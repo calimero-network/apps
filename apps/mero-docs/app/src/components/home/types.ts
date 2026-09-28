@@ -27,7 +27,6 @@ export type FilterChipView = {
   label: string;
   active: boolean;
   onClear?: () => void;
-  toggle?: boolean;
   onToggle?: () => void;
   popover?: ReactNode; // content rendered in a Popover anchored to the chip
   open?: boolean; // controls the popover, e.g. to close it after a single pick

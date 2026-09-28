@@ -53,7 +53,7 @@ describe('FilterBar', () => {
   it('hides Clear when no chip is active', () => {
     render(
       <FilterBar
-        chips={[chip({})]}
+        chips={[chip({ popover: <p>Tag list</p> })]}
         sortLabel="Last updated"
         onSortClick={() => {}}
         onClear={() => {}}
@@ -72,7 +72,6 @@ describe('FilterBar', () => {
             id: 'archived',
             icon: 'archive',
             label: 'Archived',
-            toggle: true,
             onToggle,
           }),
         ]}
@@ -92,7 +91,6 @@ describe('FilterBar', () => {
             id: 'archived',
             icon: 'archive',
             label: 'Archived',
-            toggle: true,
             onToggle,
             active: true,
           }),
