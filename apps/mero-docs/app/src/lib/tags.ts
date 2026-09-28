@@ -2,7 +2,13 @@
 // colour, so renames never touch docs and a deleted key is never reused.
 
 import { nameCollator } from './collate';
-import { foldForSearch, matchScore, queryWords } from './search/match';
+import {
+  foldForSearch,
+  matchScore,
+  queryWords,
+  TYPO_TIER,
+  typoFallback,
+} from './search/match';
 import type { IndexRow, Tag } from './workspaceIndex/types';
 
 export type { Tag } from './workspaceIndex/types';
@@ -135,10 +141,13 @@ export function tagSuggestions(
     const name = foldForSearch(normalizeTagName(t.name));
     return name === q ? -1 : matchScore(name, words);
   };
-  return tags
+  const hits = tags
     .filter((t) => !t.deleted && !exclude.includes(t.key))
-    .map((t) => ({ t, score: rank(t) }))
-    .filter((x): x is { t: Tag; score: number } => x.score !== null)
+    .flatMap((t) => {
+      const score = rank(t);
+      return score === null ? [] : [{ t, score, typo: score >= TYPO_TIER }];
+    });
+  return typoFallback(hits)
     .sort(
       (a, b) =>
         a.score - b.score ||

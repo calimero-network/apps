@@ -20,6 +20,7 @@ import {
   normalizeQuery,
   queryWords,
   TYPO_TIER,
+  typoFallback,
 } from '@/lib/search/match';
 import { searchV1 } from '@/lib/search/rank';
 import { HEADING_KIND, searchText } from '@/lib/search/docText';
@@ -175,10 +176,10 @@ export function sectionLinkItems(
           block: b.id,
         }),
       };
-      return [{ rank, item }];
+      return [{ rank, item, typo: (score ?? titleScore ?? 0) >= TYPO_TIER }];
     });
   });
-  return ranked
+  return typoFallback(ranked)
     .sort((a, b) => a.rank - b.rank)
     .slice(0, START_LIMIT)
     .map(({ item }) => item);

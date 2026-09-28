@@ -246,6 +246,14 @@ describe('tagSuggestions (T-02)', () => {
     );
   });
 
+  it('offers typos only when no tag matches exactly', () => {
+    const near = [tag('roadmap', 'roadmap'), tag('read', 'read')];
+    const keys = (q: string) =>
+      tagSuggestions(near, q, [], counts).map((t) => t.key);
+    expect(keys('road')).toEqual(['roadmap']);
+    expect(keys('raed')).toEqual(['read']);
+  });
+
   it('folds case and accents, and leaves out deleted tags and tags already on the doc', () => {
     expect(
       tagSuggestions(tags, 'LAÜNCH', ['launch'], counts).map((t) => t.key),

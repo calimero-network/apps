@@ -12,6 +12,7 @@ export type PaletteItemView = {
   right?: ReactNode; // LivePill, arrow for tags
   tagColor?: string; // for kind 'tag'
   icon?: LucideIcon; // overrides the kind's icon, e.g. for a tip
+  typo?: boolean; // matched only by forgiving a typo
 };
 
 export type PaletteGroupView = { id: string; label: string; aside?: ReactNode; items: PaletteItemView[] };

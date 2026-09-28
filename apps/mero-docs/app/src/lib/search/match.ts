@@ -131,10 +131,25 @@ export function matchScore(
   return worst + (sum - worst) / (TYPO_TIER * words.length + 1);
 }
 
-/** Rows in display order minus typo rows above the first exact one, so the default pick is exact when anything is. */
-export function typosAfterExact<T extends { typo?: boolean }>(rows: T[]): T[] {
-  const first = rows.findIndex((r) => !r.typo);
-  return first === -1 ? rows : rows.filter((r, i) => !r.typo || i > first);
+/** The exact rows when there are any: typo rows are only a fallback for when nothing matches exactly. */
+export function typoFallback<T extends { typo?: boolean }>(rows: T[]): T[] {
+  const exact = rows.filter((r) => !r.typo);
+  return exact.length ? exact : rows;
+}
+
+/** `items` in their own order whose label matches every word of `query`; all of them for an empty query. */
+export function filterByLabel<T>(
+  items: T[],
+  label: (item: T) => string,
+  query: string,
+): T[] {
+  const words = queryWords(query);
+  if (!words.length) return items;
+  const hits = items.flatMap((item) => {
+    const score = matchScore(foldForSearch(label(item)), words);
+    return score === null ? [] : [{ item, typo: score >= TYPO_TIER }];
+  });
+  return typoFallback(hits).map((h) => h.item);
 }
 
 /** 0 prefix, 1 word start, 2 substring, null no match. */

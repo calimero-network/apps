@@ -68,6 +68,35 @@ describe('NewDocFolderPicker', () => {
     expect(screen.getByText('No matches')).toBeTruthy();
   });
 
+  it('filters by path words in any order, and typos only when nothing matches exactly', async () => {
+    const user = userEvent.setup();
+    const names = ['Product', 'Design', 'Marketing', 'Finance', 'Legal'];
+    render(
+      <NewDocFolderPicker
+        open
+        folders={[
+          ...names.map((n) => folder(n, n)),
+          folder('s', 'Specs', ['Engineering', 'Specs']),
+          folder('r', 'Reads', ['Reads']),
+        ]}
+        onPick={() => {}}
+        onOpenChange={() => {}}
+      />,
+    );
+    const field = screen.getByRole('textbox', { name: 'Filter folders' });
+    const shown = () => screen.getAllByRole('button').map((b) => b.textContent);
+    await user.type(field, 'specs engineering');
+    expect(shown()).toContain('Engineering / Specs');
+    expect(shown()).not.toContain('Product');
+    await user.clear(field);
+    await user.type(field, 'markteing');
+    expect(shown()).toContain('Marketing');
+    await user.clear(field);
+    await user.type(field, 'read');
+    expect(shown()).toContain('Reads');
+    expect(shown()).not.toContain('Design');
+  });
+
   it('lists folders by name, case and accents aside', () => {
     render(
       <NewDocFolderPicker

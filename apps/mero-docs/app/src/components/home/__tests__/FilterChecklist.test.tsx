@@ -61,6 +61,33 @@ describe('FilterChecklist', () => {
     expect(screen.getByText('No matches')).toBeTruthy();
   });
 
+  it('matches words in any order, and typos only when nothing matches exactly', async () => {
+    const user = userEvent.setup();
+    render(
+      <FilterChecklist
+        placeholder="Filter tags"
+        items={[
+          { id: 'q3', label: 'Q3 roadmap', count: 1, checked: false },
+          { id: 'read', label: 'read later', count: 1, checked: false },
+        ]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        footerHint=""
+      />,
+    );
+    const field = screen.getByRole('textbox', { name: 'Filter tags' });
+    const shown = () =>
+      screen.queryAllByRole('checkbox').map((c) => c.textContent);
+    await user.type(field, 'roadmap q3');
+    expect(shown()).toEqual([expect.stringMatching(/^Q3 roadmap/)]);
+    await user.clear(field);
+    await user.type(field, 'road');
+    expect(shown()).toEqual([expect.stringMatching(/^Q3 roadmap/)]);
+    await user.clear(field);
+    await user.type(field, 'raed');
+    expect(shown()).toEqual([expect.stringMatching(/^read later/)]);
+  });
+
   it('toggles an item on click', async () => {
     const user = userEvent.setup();
     const { onToggle } = setup();

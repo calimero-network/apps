@@ -10,7 +10,7 @@ import {
   normalizeQuery,
   queryWords,
   TYPO_TIER,
-  typosAfterExact,
+  typoFallback,
 } from './match';
 
 const DEFAULT_LIMITS = { docs: 8, folders: 4, tags: 5 }; // rows per palette group
@@ -94,7 +94,7 @@ export function searchV1(
     (a, b) => nameCollator.compare(folderLabel(a.name), folderLabel(b.name)),
     limits.folders,
   );
-  return typosAfterExact([
+  return typoFallback([
     ...docHits.map(
       ({ item, ...match }): PaletteResult => ({
         kind: 'doc',

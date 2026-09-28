@@ -331,6 +331,24 @@ describe('sectionLinkItems', () => {
     expect(items[1].titleRanges).toEqual([]);
   });
 
+  it('offers typo headings only when nothing matches exactly', () => {
+    const priced = {
+      ...src,
+      texts: new Map([
+        [
+          rowKey('f1', 'd1'),
+          text('f1', 'd1', [
+            ['h1', 'Pricing', 'heading'],
+            ['h2', 'Pricey plans', 'heading'],
+          ]),
+        ],
+      ]),
+    };
+    expect(sectionLinkItems('price', priced).map((i) => i.title)).toEqual([
+      'Pricey plans',
+    ]);
+  });
+
   it('matches heading words in any order, and ranks a title match last', () => {
     expect(sectionLinkItems('page pricing', src).map((i) => i.title)).toEqual([
       'Pricing page',

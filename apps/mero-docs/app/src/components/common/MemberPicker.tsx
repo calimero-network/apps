@@ -27,6 +27,13 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useGroupMembers } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import {
+  foldForSearch,
+  matchScore,
+  queryWords,
+  TYPO_TIER,
+  typoFallback,
+} from '@/lib/search/match';
 import { MemberLabel } from './MemberLabel';
 
 interface Props {
@@ -75,16 +82,16 @@ export function MemberPicker({
   // pubkey prefix. Only matching rows render a MemberLabel, so the
   // useMemberDisplayName fan-out is bounded by what's actually shown.
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return members.filter((m) => {
-      if (excludeSet.has(m.identity)) return false;
-      if (q.length === 0) return true;
-      const name = m.name?.toLowerCase();
-      return (
-        (name !== undefined && name.includes(q)) ||
-        m.identity.toLowerCase().startsWith(q)
-      );
+    const candidates = members.filter((m) => !excludeSet.has(m.identity));
+    const key = query.trim().toLowerCase();
+    if (!key) return candidates;
+    const words = queryWords(query);
+    const hits = candidates.flatMap((m) => {
+      if (m.identity.toLowerCase().startsWith(key)) return [{ m, typo: false }];
+      const score = matchScore(foldForSearch(m.name ?? ''), words);
+      return score === null ? [] : [{ m, typo: score >= TYPO_TIER }];
     });
+    return typoFallback(hits).map((h) => h.m);
   }, [members, excludeSet, query]);
 
   const pick = (identity: string) => {

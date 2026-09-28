@@ -11,7 +11,7 @@ import {
   normalizeQuery,
   queryWords,
   TYPO_TIER,
-  typosAfterExact,
+  typoFallback,
 } from '@/lib/search/match';
 import type { DocText, IndexRow } from '@/lib/workspaceIndex/types';
 import {
@@ -97,7 +97,7 @@ export function mentionPickerItems(
   query: string,
   src: PeopleSource & Parameters<typeof docLinkItems>[1],
 ): DocLinkItem[] {
-  return typosAfterExact([
+  return typoFallback([
     ...peopleItems(query, src),
     ...docLinkItems(query, src),
   ]);

@@ -163,7 +163,7 @@ describe('mentionPickerItems', () => {
     ]);
   });
 
-  it('offers a person by a typo only below the first exact match', () => {
+  it('offers typos only when nothing in the menu matches exactly', () => {
     const DANA = 'a3'.repeat(32);
     const src = (rows: IndexRow[]) => ({
       ...people({ members: [ME, DANA], names: { ...NAMES, [DANA]: 'Dana' } }),
@@ -175,6 +175,11 @@ describe('mentionPickerItems', () => {
       mentionPickerItems('data', src(rows)).map((i) => i.title);
     expect(titles([row('d1', { title: 'Data plan' })])).toEqual(['Data plan']);
     expect(titles([row('d1', { title: 'Budget' })])).toEqual(['Dana']);
+    const dana = mentionPickerItems(
+      'dana',
+      src([row('d1', { title: 'Data plan' })]),
+    );
+    expect(dana.map((i) => i.title)).toEqual(['Dana']);
   });
 });
 

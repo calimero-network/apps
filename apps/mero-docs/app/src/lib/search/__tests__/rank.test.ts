@@ -67,24 +67,24 @@ describe('searchV1', () => {
     ]);
   });
 
-  it('forgives a typo but ranks it below every exact match', () => {
+  it('offers typos only when nothing matches exactly', () => {
     const rows = [
-      row({ docId: 'typo', title: 'Lunch menu', updatedAt: 9 }),
-      row({ docId: 'sub', title: 'Relaunch', updatedAt: 1 }),
-      row({ docId: 'miss', title: 'Budget', updatedAt: 5 }),
+      row({ docId: 'exact', title: 'Roadmap', updatedAt: 1 }),
+      row({ docId: 'typo', title: 'Read me', updatedAt: 9 }),
     ];
-    const results = searchV1('launch', rows, [], []);
-    expect(labels(results)).toEqual(['doc:sub', 'doc:typo']);
-    expect(results[1].ranges).toEqual([[0, 5]]);
+    expect(labels(searchV1('road', rows, [], []))).toEqual(['doc:exact']);
+    const [hit, ...rest] = searchV1('roadmpa', rows, [], []);
+    expect(labels([hit, ...rest])).toEqual(['doc:exact']);
+    expect(hit.ranges).toEqual([[0, 7]]);
+    expect(hit.typo).toBe(true);
   });
 
-  it('shows a typo only below the first exact match, so Enter never opens a typo', () => {
+  it('drops typos in every group when any group matches exactly, so Enter never opens a typo', () => {
     const rows = [row({ docId: 'd', title: 'Roadmap', tags: ['t'] })];
     const folders = [{ id: 'f', name: 'Roads' }];
     const tags = [tag('t', 'roadmap')];
     expect(labels(searchV1('roads', rows, folders, tags))).toEqual([
       'folder:f',
-      'tag:t',
     ]);
     expect(labels(searchV1('roadz', rows, [], tags))).toEqual([
       'doc:d',
