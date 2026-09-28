@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   appPath,
   docUrl,
+  homeUrl,
   parseAppPath,
   readReturnTo,
   saveReturnTo,
@@ -98,6 +99,15 @@ describe('docUrl', () => {
     expect(docUrl('w', 'f', 'doc-1')).toBe(
       `${window.location.origin}/app/w/f/f/d/doc-1`,
     );
+  });
+});
+
+describe('homeUrl', () => {
+  it('is absolute on this origin and carries the search', () => {
+    expect(homeUrl('w', 'tag=design')).toBe(
+      `${window.location.origin}/app/w?tag=design`,
+    );
+    expect(homeUrl('w', '')).toBe(`${window.location.origin}/app/w`);
   });
 });
 
