@@ -1,8 +1,50 @@
 // Namespace surface - Alice-only flows on node-1.
 
 import { test, expect } from '../fixtures/single-user';
+import { getEnv } from '../fixtures/env';
+
+const NODE_PAGE = 100; // core's default page for the namespace list
+const EVERY_NAMESPACE = 10_000; // a limit above any node this suite builds
+
+interface ListedNamespace {
+  namespaceId: string;
+  name?: string;
+}
 
 test.describe('Namespace (single-node)', () => {
+  test('a workspace past the node’s first page still names itself in the switcher', async ({
+    alice,
+  }) => {
+    const env = getEnv();
+    const headers = { Authorization: `Bearer ${env.node1.accessToken}` };
+    const listAll = async (): Promise<ListedNamespace[]> => {
+      const res = await alice.page.request.get(
+        `${env.node1.url}/admin-api/namespaces/for-application/${env.applicationId}?limit=${EVERY_NAMESPACE}`,
+        { headers },
+      );
+      expect(res.ok()).toBe(true);
+      return (await res.json()).data;
+    };
+    for (let n = (await listAll()).length; n <= NODE_PAGE; n++) {
+      const res = await alice.page.request.post(
+        `${env.node1.url}/admin-api/namespaces`,
+        { headers, data: { applicationId: env.applicationId, name: `Page Two ${n}` } },
+      );
+      expect(res.ok()).toBe(true);
+    }
+    // The node pages in id order, so the largest id is never on the first page.
+    const last = (await listAll()).reduce((a, b) =>
+      a.namespaceId > b.namespaceId ? a : b,
+    );
+    expect(last.name).toBeTruthy();
+
+    await alice.page.goto(`/app/${last.namespaceId}`);
+    await expect(alice.page.getByTestId('workspace-switcher')).toContainText(
+      last.name!,
+      { timeout: 15_000 },
+    );
+  });
+
   test('create namespace via NamespaceSwitcher', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix Alpha');

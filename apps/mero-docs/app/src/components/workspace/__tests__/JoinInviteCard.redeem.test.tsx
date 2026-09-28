@@ -20,7 +20,6 @@ vi.mock('@calimero-network/mero-react', () => ({
     isAuthenticated: true,
     isLoading: false,
   }),
-  useNamespacesForApplication: () => ({ namespaces: [] }),
   ConnectButton: () => <button>Connect</button>,
 }));
 
@@ -55,7 +54,11 @@ function setup(admin: {
   joinNamespace: () => Promise<unknown>;
   listNamespaces?: () => Promise<unknown>;
 }) {
-  h.admin = { listNamespaces: () => Promise.resolve([]), ...admin };
+  h.admin = {
+    listNamespaces: () => Promise.resolve([]),
+    listNamespacesForApplication: () => Promise.resolve([]),
+    ...admin,
+  };
   const onJoined = vi.fn();
   render(<JoinInviteCard parsed={parsed} onJoined={onJoined} />);
   fireEvent.click(screen.getByRole('button', { name: /accept & join/i }));

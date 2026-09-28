@@ -4,12 +4,9 @@
 // preview + accept experience stays single-source.
 
 import React, { useState } from 'react';
-import {
-  ConnectButton,
-  useMero,
-  useNamespacesForApplication,
-} from '@calimero-network/mero-react';
+import { ConnectButton, useMero } from '@calimero-network/mero-react';
 import { useApplicationId } from '@/hooks/useApplicationId';
+import { useAppNamespaces } from '@/hooks/useAppNamespaces';
 import { Button } from '@/components/ui/button';
 import { shouldRetain } from '@calimero-apps/invite';
 import {
@@ -64,12 +61,12 @@ export function JoinInviteCard({
   // "already a member" is an explicit state, not a server error. Folder
   // invites have no cheap client-side membership source; the join call's
   // error mapping covers them.
-  const { namespaces } = useNamespacesForApplication(
+  const { namespaces } = useAppNamespaces(
     isAuthenticated && parsed.kind === 'namespace' && appId ? appId : null,
   );
   const isMember =
     parsed.kind === 'namespace' &&
-    (namespaces ?? []).some((n) => n.namespaceId === parsed.targetId);
+    namespaces.some((n) => n.namespaceId === parsed.targetId);
 
   const onJoinClick = async () => {
     setJoining(true);

@@ -21,14 +21,6 @@ vi.mock('@calimero-network/mero-react', () => ({
     isLoading: false,
     applicationId: null,
   }),
-  // JoinInviteCard pre-checks namespace membership; an empty list keeps
-  // the card in the plain accept state for these dialog tests.
-  useNamespacesForApplication: () => ({
-    namespaces: [],
-    loading: false,
-    error: null,
-    refetch: async () => {},
-  }),
   ConnectButton: () => <button data-testid="connect-stub">Connect</button>,
 }));
 

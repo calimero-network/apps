@@ -152,12 +152,6 @@ vi.mock('@calimero-network/mero-react', () => ({
     refetch: vi.fn(),
   }),
   useCreateNamespace: () => ({ createNamespace: vi.fn(), loading: false, error: null }),
-  useNamespacesForApplication: () => ({
-    namespaces: [],
-    loading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
   // Stable reference - used by invite/membership hooks. Returns
   // stubbed admin methods; tests don't exercise real creation flows.
   useMero: () => ({

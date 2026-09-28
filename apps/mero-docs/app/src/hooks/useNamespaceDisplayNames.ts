@@ -1,6 +1,6 @@
 // Backfills a namespace's display `name` from the join-time snapshot.
 //
-// `useNamespacesForApplication` relays `listNamespacesForApplication`,
+// `useAppNamespaces` relays `listNamespacesForApplication`,
 // whose rows omit `name` until the node has synced the namespace's
 // root-group metadata - which, on a joined node, can lag indefinitely
 // (small-cluster gossip). The name is known at JOIN time though: it
