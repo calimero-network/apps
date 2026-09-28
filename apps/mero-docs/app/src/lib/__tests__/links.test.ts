@@ -119,6 +119,12 @@ describe('memberHref and parseMemberHref', () => {
     ).toEqual({ ws: 'a/b', member: MEMBER });
   });
 
+  it('reads the account in lower case, as members are keyed', () => {
+    expect(
+      parseMemberHref(`/app/w1/m/${MEMBER.toUpperCase()}`, ORIGIN)?.member,
+    ).toBe(MEMBER);
+  });
+
   it('keeps the workspace, so a caller can refuse another one', () => {
     expect(parseMemberHref(`/app/other/m/${MEMBER}`, ORIGIN)?.ws).toBe('other');
   });

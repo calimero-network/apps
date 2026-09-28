@@ -60,7 +60,9 @@ export function parseMemberHref(
   } catch {
     return null;
   }
-  return ws && ACCOUNT_HEX.test(member) ? { ws, member } : null;
+  return ws && ACCOUNT_HEX.test(member)
+    ? { ws, member: member.toLowerCase() }
+    : null;
 }
 
 export function memberHref(t: MemberHrefTarget): string {
