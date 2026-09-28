@@ -21,6 +21,7 @@ import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
+import { useNow } from '@/hooks/useNow';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { useSavedViews } from '@/hooks/useSavedViews';
 import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
@@ -38,7 +39,7 @@ import {
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { updatedLabel } from '@/lib/relativeTime';
 import { docUrl } from '@/lib/routes';
-import { TAG_NEUTRAL } from '@/lib/tags';
+import { TAG_NEUTRAL, withoutDeletedTags } from '@/lib/tags';
 import { rowKey } from '@/lib/workspaceIndex/types';
 import { DocTable } from './DocTable';
 import { defaultViewName, SORT_LABELS, summarizeHomeQuery } from './filterSummary';
@@ -53,7 +54,6 @@ import {
   useHomeChips,
 } from './useHomeChips';
 
-const CLOCK_TICK_MS = 60_000; // "2 min ago" labels and the Updated window move on
 const SORT_CYCLE: HomeQuery['sort'][] = ['updated', 'name', 'created'];
 const CREATE_FAILED = "Couldn't create a document. Try again.";
 const NO_FOLDERS_READ_ONLY =
@@ -67,15 +67,6 @@ interface Props {
 
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
-}
-
-function useNow(): number {
-  const [now, setNow] = React.useState(Date.now);
-  React.useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
 }
 
 // Probes one folder's write access; a hook per folder, so each gets a component.
@@ -177,14 +168,8 @@ export function HomePage({ folderId }: Props) {
     () => new Set(scope.map((f) => f.id)),
     [scope],
   );
-  // A deleted tag shows nowhere, so it matches nothing either, even on docs that still carry it.
   const liveRows = React.useMemo(
-    () =>
-      rows.map((r) =>
-        r.tags.some((k) => tagsByKey.get(k)?.deleted)
-          ? { ...r, tags: r.tags.filter((k) => !tagsByKey.get(k)?.deleted) }
-          : r,
-      ),
+    () => withoutDeletedTags(rows, tagsByKey),
     [rows, tagsByKey],
   );
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;

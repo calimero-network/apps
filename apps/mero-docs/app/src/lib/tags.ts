@@ -78,6 +78,18 @@ export function isValidTagKey(key: string): boolean {
   return key.length <= TAG_KEY_MAX && VALID_KEY.test(key);
 }
 
+/** Rows with deleted tags' keys dropped: a deleted tag shows nowhere, so it matches nothing either. */
+export function withoutDeletedTags(
+  rows: IndexRow[],
+  byKey: Map<string, Tag>,
+): IndexRow[] {
+  return rows.map((r) =>
+    r.tags.some((k) => byKey.get(k)?.deleted)
+      ? { ...r, tags: r.tags.filter((k) => !byKey.get(k)?.deleted) }
+      : r,
+  );
+}
+
 /** Docs per tag key, archived docs left out. */
 export function tagCounts(rows: IndexRow[]): Map<string, number> {
   const counts = new Map<string, number>();

@@ -18,11 +18,12 @@ const rows = [
   row({ docId: 'b', tags: ['design'] }),
   row({ docId: 'c', tags: ['q3'], archived: true }),
 ];
-const tags = [
+const TAGS = [
   { key: 'q3', name: 'Q3', color: '#3b82f6', deleted: false },
   { key: 'design', name: 'Design', color: '#8b5cf6', deleted: false },
   { key: 'unused', name: 'Unused', color: '#10b981', deleted: false },
 ];
+let tags = TAGS;
 
 const index = {
   rows,
@@ -117,6 +118,7 @@ function mount(url: string, ws = 'ws1') {
   );
 }
 
+const DAY = 24 * 60 * 60 * 1000;
 const section = (name: string) => screen.getByRole('button', { name });
 
 beforeEach(() => {
@@ -130,6 +132,7 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
   copyLink.mockReset();
   toastMessage.mockReset();
+  tags = TAGS;
   index.rows = rows;
   index.folderStatus = { f1: 'ready' };
   index.folders = [{ id: 'f1', name: 'One' }];
@@ -217,6 +220,64 @@ describe('WorkspaceNav', () => {
       expect(
         within(views).getByRole('button', { name: 'Stale, 0' }),
       ).toBeTruthy();
+    });
+
+    it("counts a view as its list does, with a deleted tag's key still on a doc matching nothing (R-23)", () => {
+      tags = [...TAGS, { key: 'old', name: 'Old', color: '#ef4444', deleted: true }];
+      index.rows = [...rows, row({ docId: 'd', tags: ['old'] })];
+      savedViews = [
+        { id: 'v1', name: 'Old things', query: 'tag=old', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      const views = screen.getByRole('region', { name: 'Views' });
+      expect(
+        within(views).getByRole('button', { name: 'Old things, 0' }),
+      ).toBeTruthy();
+    });
+
+    it('marks only the open view, not Home or the tag it filters on', () => {
+      savedViews = [
+        { id: 'v1', name: 'Q3 launch', query: 'tag=q3', scope: 'me' },
+        { id: 'v2', name: 'By name', query: 'sort=name', scope: 'me' },
+      ];
+      const { unmount } = mount('/app/ws1?tag=q3&view=v1');
+      expect(
+        screen
+          .getAllByRole('button')
+          .filter((b) => b.getAttribute('aria-current'))
+          .map((b) => b.getAttribute('aria-label')),
+      ).toEqual(['Q3 launch, 1']);
+      unmount();
+
+      mount('/app/ws1?sort=name&view=v2');
+      expect(
+        screen
+          .getAllByRole('button')
+          .filter((b) => b.getAttribute('aria-current'))
+          .map((b) => b.getAttribute('aria-label')),
+      ).toEqual(['By name, 2']);
+    });
+
+    it("moves a view's count on Home's clock tick, not on every render", () => {
+      const now = Date.now();
+      vi.useFakeTimers({ now, toFake: ['Date'] });
+      try {
+        index.rows = [row({ docId: 'a', updatedAt: now - 7 * DAY + 30_000 })];
+        savedViews = [
+          { id: 'v1', name: 'This week', query: 'updated=7d', scope: 'me' },
+        ];
+        mount('/app/ws1');
+        expect(
+          screen.getByRole('button', { name: 'This week, 1' }),
+        ).toBeTruthy();
+        vi.setSystemTime(now + 45_000);
+        fireEvent.click(section('Tags')); // any re-render
+        expect(
+          screen.getByRole('button', { name: 'This week, 1' }),
+        ).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('opens a view at its stored query plus its own id', () => {

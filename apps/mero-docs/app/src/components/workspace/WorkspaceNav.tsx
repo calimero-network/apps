@@ -14,6 +14,7 @@ import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useNow } from '@/hooks/useNow';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
 import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
@@ -33,6 +34,7 @@ import {
   firstUnusedColor,
   sidebarTags,
   tagCounts,
+  withoutDeletedTags,
 } from '@/lib/tags';
 import { SidebarNav } from './SidebarNav';
 
@@ -91,6 +93,11 @@ export function WorkspaceNav({
   const onHome = !!route && !route.folder && !route.settings;
   const q = parseHomeQuery(new URLSearchParams(search));
   const tagPage = onHome ? tagPageKey(q) : null;
+  const liveRows = React.useMemo(
+    () => withoutDeletedTags(rows, tagsByKey),
+    [rows, tagsByKey],
+  );
+  const now = useNow();
   const counts = tagCounts(rows);
   // The Home count claims every folder was read; a failed one leaves nothing to claim from.
   const statuses = folders.map((f) => folderStatus[f.id]);
@@ -186,8 +193,6 @@ export function WorkspaceNav({
       // Reported by the saved views hook's own toast.
     }
   };
-  const now = Date.now();
-
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <SidebarNav
@@ -195,13 +200,13 @@ export function WorkspaceNav({
           count: countKnown
             ? rows.filter((r) => !r.archived).length
             : undefined,
-          selected: onHome && !tagPage,
+          selected: onHome && !tagPage && !selectedViewId,
           onSelect: () => go(),
         }}
         views={savedViews.map((v) => ({
           id: v.id,
           name: v.name,
-          count: viewRowCount(rows, folders, now, v.query),
+          count: viewRowCount(liveRows, folders, now, v.query),
           shared: v.scope === 'everyone',
           selected: selectedViewId === v.id,
           onSelect: () => go(withView(v.query, v.id)),
@@ -215,7 +220,7 @@ export function WorkspaceNav({
           name: t.name,
           color: t.color,
           count: counts.get(t.key) ?? 0,
-          selected: tagPage === t.key,
+          selected: tagPage === t.key && !selectedViewId,
           onSelect: () => go(tagPageSearch(t.key)),
         }))}
         onAddView={onAddView}
