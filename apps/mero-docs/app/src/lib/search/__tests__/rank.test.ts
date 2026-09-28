@@ -35,7 +35,10 @@ describe('searchV1', () => {
   });
 
   it('puts docs, then folders, then tags, each ranked the same way (S-04)', () => {
-    const rows = [row({ docId: 'd', title: 'Road', tags: ['r2', 'r2b'] })];
+    const rows = [
+      row({ docId: 'd', title: 'Road', tags: ['r2', 'r2b'] }),
+      row({ docId: 'x', title: 'Budget', tags: ['r1'] }),
+    ];
     const folders = [
       { id: 'f-sub', name: 'Railroads' },
       { id: 'f-pre', name: 'Roadmaps' },
@@ -66,6 +69,7 @@ describe('searchV1', () => {
       name: `Plan ${i}`,
     }));
     const tags = Array.from({ length: 7 }, (_, i) => tag(`t${i}`, `plan-${i}`));
+    rows[0].tags = tags.map((t) => t.key);
     const results = searchV1('plan', rows, folders, tags);
     const count = (kind: PaletteResult['kind']) =>
       results.filter((r) => r.kind === kind).length;
@@ -110,7 +114,7 @@ describe('searchV1', () => {
     ).toEqual(['tag:l']);
   });
 
-  it('lists every live tag by count after # alone (S-09)', () => {
+  it('lists every tag on a readable doc by count after # alone (S-09)', () => {
     const rows = [
       row({ docId: 'a', tags: ['b', 'c'] }),
       row({ docId: 'b', tags: ['c'] }),
@@ -124,15 +128,16 @@ describe('searchV1', () => {
       ...Array.from({ length: 5 }, (_, i) => tag(`z${i}`, `zeta ${i}`)),
     ];
     const results = searchV1('#', rows, [], tags);
-    expect(labels(results).slice(0, 4)).toEqual([
-      'tag:c',
-      'tag:b',
-      'tag:a',
-      'tag:z0',
-    ]);
-    expect(results).toHaveLength(8);
+    expect(labels(results)).toEqual(['tag:c', 'tag:b']);
     const counts = results.map((r) => (r.kind === 'tag' ? r.count : -1));
-    expect(counts.slice(0, 3)).toEqual([2, 1, 0]);
+    expect(counts).toEqual([2, 1]);
+  });
+
+  it('leaves out tags whose docs this member cannot read, like the sidebar', () => {
+    const rows = [row({ docId: 'd', title: 'Plan', tags: ['seen'] })];
+    const tags = [tag('seen', 'payroll'), tag('hidden', 'payroll review')];
+    expect(labels(searchV1('payroll', rows, [], tags))).toEqual(['tag:seen']);
+    expect(labels(searchV1('#pay', rows, [], tags))).toEqual(['tag:seen']);
   });
 
   it('leaves deleted tags out', () => {

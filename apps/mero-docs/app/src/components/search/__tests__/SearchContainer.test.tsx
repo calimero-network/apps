@@ -189,7 +189,8 @@ describe('SearchContainer before anything is typed', () => {
     const tip = within(group('Tips')).getByRole('option');
     expect(tip.getAttribute('aria-disabled')).toBe('true');
     expect(tip.textContent).toContain('Type # to search tags only');
-    expect(group('Tips').textContent).toContain('roadmapq3');
+    // q3 tags no doc this member can read, so only roadmap is offered.
+    expect(group('Tips').textContent).toMatch(/tags onlyroadmap$/);
     expect(screen.getByText('Acme Product')).not.toBeNull();
   });
 
@@ -222,18 +223,15 @@ describe('SearchContainer results', () => {
     expect(screen.queryByText(/road-gone/)).toBeNull();
   });
 
-  it('searches only tags after #, and lists them all by count for # alone', async () => {
+  it('searches only tags after #, and lists those on readable docs by count for # alone', async () => {
     mount();
     await type('#');
     expect(screen.getAllByRole('group')).toEqual([group('Tags')]);
     expect(optionTexts('Tags')).toEqual([
       '#roadmap2 documents · show them all on Home',
-      '#q30 documents · show them all on Home',
     ]);
     await type('q');
-    expect(optionTexts('Tags')).toEqual([
-      '#q30 documents · show them all on Home',
-    ]);
+    expect(screen.queryByRole('group', { name: 'Tags' })).toBeNull();
     expect(screen.queryByRole('group', { name: 'Documents' })).toBeNull();
   });
 
