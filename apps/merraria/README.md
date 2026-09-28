@@ -32,9 +32,11 @@ wanted.
    progress, an inventory that gains what you mine and spends what you build,
    genuinely dark caves you light with torches (2D flood-fill lighting), a
    live minimap, and a shared day/night cycle that costs zero traffic.
-4. **Skew-proof presence.** The mero-meet room-clock + two-pass mark/grace
-   reap: silent heartbeats, roster polls with SSE nudges, and no way for a
-   machine with a skewed clock to reap live players.
+4. **Skew-proof presence.** The mero-meet room clock: silent heartbeats,
+   roster polls with SSE nudges, and no way for a machine with a skewed clock
+   (or a far-future stamp) to knock live players offline. A player who
+   vanishes without `leave` ages out of the TTL; nobody writes another
+   player's row.
 5. **Both auth paths, no friction.** Desktop SSO hash → zero-click auto-enter;
    web → node auth redirect (`/auth/login?callback-url=…`) + world picker
    (list / join / create via admin API); offline → localStorage persistence
@@ -52,8 +54,10 @@ wanted.
 ```
 
 - **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
-  **0.11.0-rc.25** git tags): `overrides:
-  UnorderedMap<"x,y", {t, updatedAt}>` with per-key LWW + presence map.
+  **0.11.0-rc.25** git tags): `meta: Frozen<{name, seed, createdAt}>` (fixed
+  at creation), `overrides: UnorderedMap<"x,y", {t, updatedAt}>` with per-key
+  LWW (public on purpose), and `players: UserStorage<{devices: Map<deviceId,
+  Player>}>`, so only an account can write its own avatars.
 - **Engine** (`app/src/engine/`, pure TS): deterministic terrain, 2D
   flood-fill lighting (80k cells — full recompute per edit is fast enough),
   platformer AABB physics (gravity, jump, swim), mining/inventory, day/night.
@@ -83,7 +87,7 @@ For multiplayer, open from the Calimero desktop (instant SSO) or click
 |---|---|---|
 | `make unit` (vitest) | 103 | terrain determinism + cave/ore distribution, lighting, physics (incl. head bumps and swimming), mining/inventory, sync protocol, session/auth/admin parsing |
 | `make e2e` (Playwright, fully mocked node) | 20 | landing + web login, desktop SSO auto-enter, world picker, live tile round-trips, presence, inventory persistence |
-| `make logic-test` (cargo, native mock host) | 17 | LWW convergence, bounds, clock-skew reap scenarios, rejoin self-heal |
+| `make logic-test` (cargo, native mock host) | 23 | LWW convergence, bounds, clock-skew and far-future-stamp scenarios, avatar ownership, frozen world meta, rejoin self-heal |
 
 ## CI / CD
 

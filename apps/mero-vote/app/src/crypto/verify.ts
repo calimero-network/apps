@@ -8,11 +8,12 @@
  * with the node — same counts, same transcript digest — neither implementation
  * can be quietly wrong on its own.
  *
- * What a transcript cannot show, and so this cannot check: whether each
- * dealer's and voter's *signed slot* still matches what was frozen, and the
- * complaints behind a disqualification. The node checks those against live
- * state (`dealings`, `complaints`, `voter endorsement`), and the transcript
- * carries its per-ballot `endorsed` flag as a claim.
+ * What a transcript cannot show, and so this cannot check: who wrote each
+ * frozen dealing, transport key and ballot, and the complaints behind a
+ * disqualification. The node checks those against the entries' owner stamps
+ * (`dealings`, `transport keys`, `complaints`, `ballot authorship`); the
+ * transcript's per-ballot `endorsed` flag only says whether the voter's slot
+ * still points at the counted ballot.
  */
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { Transcript } from "../generated/MeroVoteClient";

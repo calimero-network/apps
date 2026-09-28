@@ -110,6 +110,7 @@
     },
     {
       "name": "get_or_insert",
+      "doc": "Gets a value, inserting it if it doesn't exist.\n\nThis demonstrates the `entry` API combined with `or_insert`.\nWe pattern match to check existence for the event, then use the convenience method.",
       "params": [
         {
           "name": "key",
@@ -212,6 +213,7 @@
     },
     {
       "name": "update_if_exists",
+      "doc": "Updates a value only if the key already exists, using in-place mutation.\n\nThis demonstrates the `get_mut` API which allows modifying the value\nwithout a read-modify-write cycle. The change is automatically persisted\nwith a new timestamp when the guard is dropped.",
       "params": [
         {
           "name": "key",

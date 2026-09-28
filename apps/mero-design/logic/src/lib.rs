@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use calimero_sdk::abi::AbiType;
@@ -6,8 +7,10 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
+    AccessControl, Authored, Frozen, IndexedMap, LwwRegister, Mergeable as MergeableTrait, Ownable,
+    PermissionedStorage, ProtocolAuthorizer, SortedMap, UnorderedMap, UserStorage,
 };
+use calimero_storage::entities::OpMask;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +22,13 @@ type CommentId = String;
 /// everyone else is read-only ("viewer"). The board creator is the sole initial
 /// admin and is implicitly an editor + owner.
 const ROLE_EDITOR: &str = "editor";
+
+/// What each role may do to the canvas collections (`elements`, `comments`,
+/// `replies`), projected onto their capability maps after every role change.
+/// Editors add, change and remove; admins keep full control. Every node checks
+/// a write against this on apply, so a viewer's forged edit is refused
+/// everywhere, not only by the fail-fast `require_editor`.
+const CANVAS_ROLE_MASKS: &[(&str, OpMask)] = &[(ROLE_EDITOR, OpMask::WRITE.union(OpMask::DELETE))];
 
 // ── Element data ──────────────────────────────────────────────────────────────
 
@@ -78,7 +88,11 @@ pub enum ElementData {
 
 // ── Element ───────────────────────────────────────────────────────────────────
 
-#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+/// `layer_index` is indexed, so the stack in order, and its top and bottom,
+/// are seeks rather than a scan and sort.
+#[derive(
+    AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +108,9 @@ pub struct Element {
     pub stroke: String,
     pub stroke_width: u32,
     pub opacity: u8,
+    #[index]
     pub layer_index: u32,
+    /// Set by the contract from the caller, never taken from the client.
     pub created_by: MemberId,
     pub created_at: u64,
     pub updated_at: u64,
@@ -168,16 +184,9 @@ pub struct BoardInfo {
 
 /// A member paired with their effective role, for the settings/members UI.
 ///
-/// Carries BOTH ids on purpose. `member` is the board's device-scoped id — what
-/// elements are authored by, and what `get_members` keys usernames on. `account`
-/// is the authorization subject, and it is what `/groups/{id}/members` lists, so
-/// it is the only field the settings UI can join its two sources on. Without it
-/// the UI has an account id in one hand and a device key in the other, and since
-/// rc.27 both are 64 hex — indistinguishable, so the mismatch reads as a missing
-/// member rather than a type error.
-///
-/// `None` means this member has never written to the board, so the pairing is
-/// genuinely unknown; a grant cannot name them yet.
+/// A member id IS an account (see [`MeroDesign::caller_id`]), so `account`
+/// always equals `member`. It stays in the shape because it is what the
+/// settings UI joins `/groups/{id}/members` rows on.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -200,6 +209,9 @@ pub struct CommentReply {
     pub created_at: u64,
 }
 
+// A reply is written once and never edited, so its clock never moves.
+calimero_storage::impl_atomic_lww_leaf!(CommentReply, created_at);
+
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -211,6 +223,10 @@ pub struct Comment {
     pub content: String,
     pub author: String,
     pub created_at: u64,
+    /// Filled on read from `MeroDesign::replies`, and always stored empty: a
+    /// reply is its own entry, so two replies posted at once both survive.
+    /// Kept in a `Vec` inside the comment they were whole-record LWW, and the
+    /// comment's clock never moved, so one of them was lost.
     pub replies: Vec<CommentReply>,
 }
 
@@ -225,7 +241,12 @@ calimero_storage::impl_atomic_lww_leaf!(Comment, created_at);
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
+    /// The device this pointer belongs to — one per open window.
     pub identity: String,
+    /// The member (account) behind that device, read from the entry's owner
+    /// stamp, so the overlay can label the pointer with a username.
+    #[serde(default)]
+    pub account: MemberId,
     pub x: i64,
     pub y: i64,
     pub updated_at: u64,
@@ -341,32 +362,39 @@ pub struct MeroDesign {
     // `insert` returns `Ok`, and a later read returns `Ok("")`. Core's own tests
     // only insert into an already-rooted cell (`Root::new(...)` then
     // `.insert(...)`), and `apps/components-demo` constructs its `Ownable`
-    // without seeding it, so nothing upstream exercises seed-at-init. A plain
-    // `UnorderedMap`/`LwwRegister` write at init is unaffected — this is specific
-    // to the permissioned cell's writer-set guard.
+    // without seeding it, so nothing upstream exercises seed-at-init.
     //
-    // So the init values live here, in plain registers that persist normally, and
-    // the `Ownable` cells take over from the first owner edit onwards. Written
-    // once at init and never again.
-    initial_name: LwwRegister<String>,
-    initial_description: LwwRegister<String>,
-    elements: UnorderedMap<ElementId, Element>,
-    members: UnorderedMap<MemberId, Member>,
-    comments: UnorderedMap<CommentId, Comment>,
-    cursors: UnorderedMap<String, CursorState>,
+    // So the init values live here, and the `Ownable` cells take over from the
+    // first owner edit onwards. `Frozen`: written once at init and changeable
+    // by nobody — as plain registers any member could rewrite them, and so
+    // rename the board until its owner first did.
+    initial_name: Frozen<String>,
+    initial_description: Frozen<String>,
+    /// The canvas. Writer-set guarded: only accounts holding a role mask
+    /// projected from `roles` (editors, admins) may write an entry, on every
+    /// node.
+    elements: PermissionedStorage<IndexedMap<ElementId, Element>, ProtocolAuthorizer>,
+    /// One slot per account, written only by that account.
+    members: UserStorage<Member>,
+    /// Guarded like `elements`.
+    comments: PermissionedStorage<UnorderedMap<CommentId, Comment>, ProtocolAuthorizer>,
+    /// Every reply, keyed `"<comment>/<created_at:020>/<reply>"` so one
+    /// comment's thread is a prefix slice in order. Guarded like `elements`.
+    replies: PermissionedStorage<SortedMap<String, CommentReply>, ProtocolAuthorizer>,
+    /// Keyed by DEVICE: a pointer belongs to a screen. Each entry is owned by
+    /// the account that wrote it.
+    cursors: Authored<UnorderedMap<String, CursorState>>,
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
     roles: AccessControl,
-    /// member key → the account that device speaks for, self-registered on join
-    /// and on every cursor move.
-    ///
-    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20
-    /// (one person, many devices — the gate is the person), while the ids this
-    /// board shows and the frontend passes are device keys. Nothing on the wire
-    /// maps one to the other, and a device can only ever assert its OWN pairing
-    /// (both halves come from the host), so this is a self-registration rather
-    /// than an admin-maintained table.
-    accounts: UnorderedMap<MemberId, LwwRegister<AccountId>>,
+}
+
+fn reply_prefix(comment_id: &str) -> String {
+    format!("{comment_id}/")
+}
+
+fn reply_key(comment_id: &str, created_at: u64, reply_id: &str) -> String {
+    format!("{comment_id}/{created_at:020}/{reply_id}")
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -375,136 +403,65 @@ pub struct MeroDesign {
 impl MeroDesign {
     #[app::init]
     pub fn init(name: String, description: String) -> MeroDesign {
-        // Ownership and the admin tier are ACCOUNT-scoped; the board's member
-        // ids stay device-scoped (see `accounts`).
+        // Ownership, the admin tier and the member roster are all ACCOUNT-scoped.
         let me = Self::caller_account();
         // Deliberately NOT seeding the `Ownable` cells here — see `initial_name`.
         // The values would be silently dropped and the board would come up with
         // no name and no description.
-        let board_name = Ownable::new_owned_by(me);
-        let board_description = Ownable::new_owned_by(me);
-        let mut accounts = UnorderedMap::new();
-        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroDesign {
-            board_name,
-            board_description,
-            initial_name: LwwRegister::new(name),
-            initial_description: LwwRegister::new(description),
-            elements: UnorderedMap::new(),
-            members: UnorderedMap::new(),
-            comments: UnorderedMap::new(),
-            cursors: UnorderedMap::new(),
+            board_name: Ownable::new_owned_by(me),
+            board_description: Ownable::new_owned_by(me),
+            initial_name: Frozen::new(name),
+            initial_description: Frozen::new(description),
+            elements: PermissionedStorage::new(BTreeSet::from([me]), false),
+            members: UserStorage::new(),
+            comments: PermissionedStorage::new(BTreeSet::from([me]), false),
+            replies: PermissionedStorage::new(BTreeSet::from([me]), false),
+            cursors: Authored::new(),
             roles: AccessControl::new(me),
-            accounts,
         }
     }
 
     // ── Identity & authorization helpers ────────────────────────────────────────
 
-    /// The real signer of this invocation. Never trust a client-supplied id.
+    /// The installation this call came from, as the hex context key the
+    /// frontend reads back from `/contexts/{id}/identities-owned`.
     ///
-    /// A member id here is a DEVICE key, and stays one: it is what the frontend
-    /// reads back from `identities-owned`, and it is what every element in an
-    /// already-published document is authored by. Re-keying it would rewrite
-    /// stored state for no gain, because authorization does not run through it
-    /// — [`Self::caller_account`] does, resolved via `accounts`, so two devices
-    /// of one person already share one set of permissions.
-    ///
-    /// Do NOT reach for `env::executor_id()` to get this. It used to be the
-    /// same bytes; at rc.23 that shim resolves to the ACCOUNT (core #3510), so
-    /// it now means the opposite of what this function returns.
-    fn caller() -> PublicKey {
+    /// Used for exactly one thing: the cursor map. A pointer is a property of a
+    /// screen, not of a person, so the same human on a second machine gets a
+    /// second cursor. Every "whose is it" question is [`Self::caller_account`].
+    fn caller_device() -> PublicKey {
         sdk_env::device_id().into()
     }
 
-    /// The account this call is authorized as — what `AccessControl` and
-    /// `Ownable` gate on. Distinct from [`Self::caller`]: two devices of one
-    /// person report the same account and different device keys.
+    /// Who this call is authorized as: the person, not the machine — what
+    /// `AccessControl`, `Ownable` and every owner stamp gate on. Never trust a
+    /// client-supplied id.
     fn caller_account() -> AccountId {
         AccountId::from(sdk_env::account_id())
     }
 
-    /// A member id belonging to `account`, or the account's own string form when
-    /// none is known. Reverse of [`Self::account_of`].
-    fn member_of(&self, account: &AccountId) -> String {
-        if let Ok(entries) = self.accounts.entries() {
-            for (id, known) in entries {
-                if known.get() == account {
-                    return id;
-                }
-            }
-        }
-        account.to_string()
+    /// Hex string form of the caller's account — this board's member id.
+    ///
+    /// A member id used to be a DEVICE key, with a self-registered
+    /// device→account table to map it to the account grants name. Any member
+    /// could write that table, so a patched node could pair someone else's
+    /// device with its own account and receive their grants — or their board,
+    /// on a transfer. An account needs no table: the host supplies it.
+    fn caller_id() -> MemberId {
+        Self::caller_account().to_string()
     }
 
-    /// The account a member's device speaks for, if that member has ever
-    /// written to this board.
-    fn account_of(&self, member: &str) -> Option<AccountId> {
-        match self.accounts.get(member) {
-            Ok(Some(reg)) => Some(*reg.get()),
-            _ => None,
-        }
-    }
-
-    /// An account this board has already recorded for some member, matched by
-    /// its string form. Reverse lookup over `accounts`' VALUES, where
-    /// [`Self::account_of`] looks up its keys.
-    fn account_if_known(&self, candidate: &str) -> Option<AccountId> {
-        let entries = self.accounts.entries().ok()?;
-        for (_, known) in entries {
-            let account = *known.get();
-            if account.to_string() == candidate {
-                return Some(account);
-            }
-        }
-        None
-    }
-
-    /// Resolve a client-supplied id to the account a grant can name.
-    ///
-    /// Accepts either id a caller can hold, because since rc.27 they are the
-    /// same shape — 64 hex — and nothing about the string says which it is:
-    ///
-    ///   * a board MEMBER key (device-scoped), resolved through `accounts`;
-    ///   * an ACCOUNT id, which is what `/groups/{id}/members` lists and
-    ///     therefore what the settings UI has for every row.
-    ///
-    /// The account form is accepted ONLY when this board already recorded it
-    /// for some member. That restraint is the whole point: `AccessControl` will
-    /// happily store a grant for 32 arbitrary bytes, and a grant naming an
-    /// account no one here speaks for authorizes nobody, silently — it looks
-    /// like it worked and the member still cannot edit.
+    /// Resolve a client-supplied member id to the account a grant can name.
+    /// A member id IS an account, so this is a parse — which also means an
+    /// admin can grant someone who has never opened the board.
     fn require_account(&self, member: &str) -> app::Result<AccountId> {
-        // Validate the shape first, so a typo reads as "invalid key" rather
-        // than "hasn't opened the board".
-        let _ = Self::parse_pk(member)?;
-        if let Some(account) = self.account_of(member) {
-            return Ok(account);
-        }
-        if let Some(account) = self.account_if_known(member) {
-            return Ok(account);
-        }
-        app::bail!(
-            "that member hasn't opened this board yet, so their account is unknown — \
-             ask them to open it once, then set the role"
-        )
-    }
-
-    /// Record the caller's device→account pairing. Idempotent: an unchanged
-    /// pairing writes nothing, so the hot paths add no CRDT delta.
-    fn remember_account(&mut self) {
-        let me = Self::caller_id();
-        let account = Self::caller_account();
-        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
-            return;
-        }
-        let _ = self.accounts.insert(me, LwwRegister::new(account));
-    }
-
-    /// Base58 string form of the caller — matches the identity the frontend
-    /// reads from `/contexts/{id}/identities-owned`.
-    fn caller_id() -> String {
-        String::from(Self::caller())
+        AccountId::from_str(member).map_err(|_| {
+            app::err!(
+                "that is not a member id — expected the 64-character account id \
+                 the members list shows"
+            )
+        })
     }
 
     /// True if `who` may mutate the canvas (admin or explicit editor).
@@ -528,8 +485,21 @@ impl MeroDesign {
         app::bail!("admin access is required for this operation");
     }
 
-    fn parse_pk(value: &str) -> app::Result<PublicKey> {
-        PublicKey::from_str(value).map_err(|_| app::err!("invalid member public key"))
+    /// Push the current roles onto the canvas collections' capability maps,
+    /// where every node enforces them. Run after every role or admin change.
+    fn project_canvas_roles(&mut self) -> app::Result<()> {
+        self.roles
+            .project_onto(CANVAS_ROLE_MASKS, &mut self.elements)?;
+        self.roles
+            .project_onto(CANVAS_ROLE_MASKS, &mut self.comments)?;
+        self.roles
+            .project_onto(CANVAS_ROLE_MASKS, &mut self.replies)?;
+        Ok(())
+    }
+
+    /// The element map, for reading. `None` only if storage cannot load it.
+    fn element_map(&self) -> Option<&IndexedMap<ElementId, Element>> {
+        self.elements.get().ok()
     }
 
     // ── Board ─────────────────────────────────────────────────────────────────
@@ -544,7 +514,7 @@ impl MeroDesign {
             .map(|r| r.get().clone())
             .unwrap_or_default();
         if edited.is_empty() {
-            self.initial_name.get().clone()
+            self.initial_name.get().cloned().unwrap_or_default()
         } else {
             edited
         }
@@ -558,7 +528,7 @@ impl MeroDesign {
             .map(|r| r.get().clone())
             .unwrap_or_default();
         if edited.is_empty() {
-            self.initial_description.get().clone()
+            self.initial_description.get().cloned().unwrap_or_default()
         } else {
             edited
         }
@@ -568,12 +538,10 @@ impl MeroDesign {
         BoardInfo {
             name: self.board_name_str(),
             description: self.board_description_str(),
-            element_count: self.elements.len().unwrap_or(0) as u32,
-            member_count: self.members.len().unwrap_or(0) as u32,
-            // The owner is an account; report it as the member id clients
-            // already know, falling back to the account's own string when no
-            // device of that account has written here yet.
-            owner: self.board_name.owner().map(|a| self.member_of(&a)),
+            element_count: self.element_map().and_then(|m| m.len().ok()).unwrap_or(0) as u32,
+            member_count: self.members.entries().map(Iterator::count).unwrap_or(0) as u32,
+            // An account IS a member id, so this needs no translation.
+            owner: self.board_name.owner().map(|a| a.to_string()),
         }
     }
 
@@ -614,6 +582,9 @@ impl MeroDesign {
         if previous != owner && self.roles.is_admin(&previous) {
             self.roles.revoke_admin(&previous)?;
         }
+        // The previous owner still holds FULL on the canvas until this runs,
+        // which is what lets them hand it over.
+        self.project_canvas_roles()?;
         app::emit!(Event::OwnerTransferred(new_owner));
         Ok(())
     }
@@ -624,6 +595,7 @@ impl MeroDesign {
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
+        self.project_canvas_roles()?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
     }
@@ -632,16 +604,18 @@ impl MeroDesign {
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
+        self.project_canvas_roles()?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
     }
 
     /// Effective role of a member: "admin", "editor", or "viewer".
     pub fn get_role(&self, member: String) -> String {
-        // Unknown account = no grant can name them = viewer.
-        match self.account_of(&member) {
-            Some(account) => self.role_label(&account),
-            None => "viewer".to_string(),
+        // Anything that is not a member id names nobody, and nobody holds a
+        // grant — the same answer as a member who was never granted one.
+        match AccountId::from_str(&member) {
+            Ok(account) => self.role_label(&account),
+            Err(_) => "viewer".to_string(),
         }
     }
 
@@ -659,16 +633,12 @@ impl MeroDesign {
     pub fn list_roles(&self) -> Vec<MemberRole> {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
-            for (id, _) in entries {
-                let known = self.account_of(&id);
-                let role = match known {
-                    Some(account) => self.role_label(&account),
-                    None => "viewer".to_string(),
-                };
+            for (account, _) in entries {
+                let id = account.to_string();
                 out.push(MemberRole {
+                    role: self.role_label(&account),
+                    account: Some(id.clone()),
                     member: id,
-                    role,
-                    account: known.map(|a| a.to_string()),
                 });
             }
         }
@@ -687,14 +657,14 @@ impl MeroDesign {
 
     // ── Members ───────────────────────────────────────────────────────────────
 
+    /// Add the caller to the roster. Keyed by account, so opening the board on
+    /// a second machine does not add a second "member", and the roster is one
+    /// `UserStorage` slot per account, so nobody can rename anyone else.
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
-        // Register the pairing even for a repeat join: it is what lets an admin
-        // name this member in a grant at all.
-        self.remember_account();
-        let member_id = Self::caller_id();
-        if self.members.contains(&member_id).unwrap_or(false) {
+        if self.members.contains_current_user().unwrap_or(false) {
             return;
         }
+        let member_id = Self::caller_id();
         let m = Member {
             id: member_id.clone(),
             username,
@@ -702,23 +672,33 @@ impl MeroDesign {
             joined_at: timestamp,
             username_updated_at: timestamp,
         };
-        let _ = self.members.insert(member_id.clone(), m);
+        let _ = self.members.insert(m);
         app::emit!(Event::MemberJoined(member_id));
     }
 
+    /// Every member, with `id` taken from the slot's account rather than from
+    /// the stored value.
     pub fn get_members(&self) -> Vec<Member> {
-        self.members.entries().unwrap().map(|(_, v)| v).collect()
+        self.members
+            .entries()
+            .map(|entries| {
+                entries
+                    .map(|(account, mut m)| {
+                        m.id = account.to_string();
+                        m
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
-    /// Rename the caller's own member entry. Identity is the real signer, so a
-    /// member can only rename themselves — not anyone else.
+    /// Rename the caller's own member entry — the only one they can write.
     pub fn update_member_username(&mut self, username: String, timestamp: u64) {
-        let member_id = Self::caller_id();
-        if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
+        if let Ok(Some(mut m)) = self.members.get() {
             m.username = username;
             m.username_updated_at = timestamp;
-            drop(m);
-            app::emit!(Event::MemberUsernameUpdated(member_id));
+            let _ = self.members.insert(m);
+            app::emit!(Event::MemberUsernameUpdated(Self::caller_id()));
         }
     }
 
@@ -726,7 +706,7 @@ impl MeroDesign {
 
     pub fn add_element(&mut self, element: Element) -> app::Result<String> {
         self.require_editor()?;
-        let id = self.insert_element(element);
+        let id = self.insert_element(element)?;
         app::emit!(Event::ElementAdded(id.clone()));
         Ok(id)
     }
@@ -740,17 +720,20 @@ impl MeroDesign {
         if elements.is_empty() {
             return Ok(Vec::new());
         }
-        let ids: Vec<String> = elements
-            .into_iter()
-            .map(|el| self.insert_element(el))
-            .collect();
+        let mut ids = Vec::with_capacity(elements.len());
+        for el in elements {
+            ids.push(self.insert_element(el)?);
+        }
         app::emit!(Event::ElementsAdded(ids.clone()));
         Ok(ids)
     }
 
     /// Stores one element and announces its blob, if it has one. No event and
     /// no permission check: the public methods own both.
-    fn insert_element(&mut self, element: Element) -> String {
+    ///
+    /// `created_by` is the caller's account, or — when the id is already on
+    /// the board — whoever created it first. Never what the client sent.
+    fn insert_element(&mut self, mut element: Element) -> app::Result<String> {
         let id = element.id.clone();
         // Announce image/svg blobs to context so they propagate to all members
         let blob_id_str = match &element.data {
@@ -764,8 +747,12 @@ impl MeroDesign {
                 sdk_env::blob_announce_to_context(blob_id.as_ref(), &sdk_env::context_id());
             }
         }
-        let _ = self.elements.insert(id.clone(), element);
-        id
+        element.created_by = self
+            .element_map()
+            .and_then(|m| m.get(&id).ok().flatten())
+            .map_or_else(Self::caller_id, |existing| existing.created_by.clone());
+        let _ = self.elements.get_mut()?.insert(id.clone(), element)?;
+        Ok(id)
     }
 
     fn require_batch(len: usize) -> app::Result<()> {
@@ -810,7 +797,7 @@ impl MeroDesign {
             opacity,
             corner_radius,
         };
-        if let Some(id) = self.patch_element(patch, updated_at) {
+        if let Some(id) = self.patch_element(patch, updated_at)? {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
@@ -826,10 +813,12 @@ impl MeroDesign {
     ) -> app::Result<()> {
         self.require_editor()?;
         Self::require_batch(patches.len())?;
-        let ids: Vec<String> = patches
-            .into_iter()
-            .filter_map(|patch| self.patch_element(patch, updated_at))
-            .collect();
+        let mut ids = Vec::new();
+        for patch in patches {
+            if let Some(id) = self.patch_element(patch, updated_at)? {
+                ids.push(id);
+            }
+        }
         if !ids.is_empty() {
             app::emit!(Event::ElementsUpdated(ids));
         }
@@ -837,44 +826,59 @@ impl MeroDesign {
     }
 
     /// Applies one patch. Returns the id when the element exists.
-    fn patch_element(&mut self, patch: ElementPatch, updated_at: u64) -> Option<String> {
-        let Ok(Some(mut el)) = self.elements.get_mut(&patch.id) else {
-            return None;
-        };
-        if let Some(v) = patch.x {
-            el.x = v;
-        }
-        if let Some(v) = patch.y {
-            el.y = v;
-        }
-        if let Some(v) = patch.width {
-            el.width = v;
-        }
-        if let Some(v) = patch.height {
-            el.height = v;
-        }
-        if let Some(v) = patch.rotation {
-            el.rotation = v;
-        }
-        if let Some(v) = patch.fill {
-            el.fill = v;
-        }
-        if let Some(v) = patch.stroke {
-            el.stroke = v;
-        }
-        if let Some(v) = patch.stroke_width {
-            el.stroke_width = v;
-        }
-        if let Some(v) = patch.opacity {
-            el.opacity = v;
-        }
-        // None means "leave alone"; 0 means "square corners".
-        if let Some(v) = patch.corner_radius {
-            el.corner_radius = Some(v);
-        }
-        el.updated_at = updated_at;
-        drop(el);
-        Some(patch.id)
+    fn patch_element(
+        &mut self,
+        patch: ElementPatch,
+        updated_at: u64,
+    ) -> app::Result<Option<String>> {
+        let ElementPatch {
+            id,
+            x,
+            y,
+            width,
+            height,
+            rotation,
+            fill,
+            stroke,
+            stroke_width,
+            opacity,
+            corner_radius,
+        } = patch;
+        let found = self.elements.get_mut()?.update(&id, |el| {
+            if let Some(v) = x {
+                el.x = v;
+            }
+            if let Some(v) = y {
+                el.y = v;
+            }
+            if let Some(v) = width {
+                el.width = v;
+            }
+            if let Some(v) = height {
+                el.height = v;
+            }
+            if let Some(v) = rotation {
+                el.rotation = v;
+            }
+            if let Some(v) = fill {
+                el.fill = v;
+            }
+            if let Some(v) = stroke {
+                el.stroke = v;
+            }
+            if let Some(v) = stroke_width {
+                el.stroke_width = v;
+            }
+            if let Some(v) = opacity {
+                el.opacity = v;
+            }
+            // None means "leave alone"; 0 means "square corners".
+            if let Some(v) = corner_radius {
+                el.corner_radius = Some(v);
+            }
+            el.updated_at = updated_at;
+        })?;
+        Ok(found.map(|()| id))
     }
 
     pub fn update_element_label(
@@ -884,7 +888,7 @@ impl MeroDesign {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if self.set_label(&id, label, updated_at) {
+        if self.set_label(&id, label, updated_at)? {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
@@ -899,24 +903,24 @@ impl MeroDesign {
     ) -> app::Result<()> {
         self.require_editor()?;
         Self::require_batch(labels.len())?;
-        let ids: Vec<String> = labels
-            .into_iter()
-            .filter(|u| self.set_label(&u.id, u.label.clone(), updated_at))
-            .map(|u| u.id)
-            .collect();
+        let mut ids = Vec::new();
+        for u in labels {
+            if self.set_label(&u.id, u.label, updated_at)? {
+                ids.push(u.id);
+            }
+        }
         if !ids.is_empty() {
             app::emit!(Event::ElementsUpdated(ids));
         }
         Ok(())
     }
 
-    fn set_label(&mut self, id: &str, label: Option<String>, updated_at: u64) -> bool {
-        let Ok(Some(mut el)) = self.elements.get_mut(id) else {
-            return false;
-        };
-        el.label = label;
-        el.updated_at = updated_at;
-        true
+    fn set_label(&mut self, id: &str, label: Option<String>, updated_at: u64) -> app::Result<bool> {
+        let found = self.elements.get_mut()?.update(id, |el| {
+            el.label = label;
+            el.updated_at = updated_at;
+        })?;
+        Ok(found.is_some())
     }
 
     // Clippy's 7-argument limit, allowed rather than refactored: this is a
@@ -938,7 +942,7 @@ impl MeroDesign {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
+        let found = self.elements.get_mut()?.update(&id, |el| {
             if let ElementData::Text {
                 content: ref mut c,
                 font_family: ref mut ff,
@@ -972,7 +976,8 @@ impl MeroDesign {
                 }
             }
             el.updated_at = updated_at;
-            drop(el);
+        })?;
+        if found.is_some() {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
@@ -980,28 +985,15 @@ impl MeroDesign {
 
     pub fn clear_elements(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self
-            .elements
-            .entries()
-            .map(|iter| iter.map(|(k, _)| k).collect())
-            .unwrap_or_default();
-        for id in ids {
-            let _ = self.elements.remove(&id);
-        }
+        self.elements.get_mut()?.clear()?;
         app::emit!(Event::LayerReordered());
         Ok(())
     }
 
     pub fn clear_comments(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self
-            .comments
-            .entries()
-            .map(|iter| iter.map(|(k, _)| k).collect())
-            .unwrap_or_default();
-        for id in ids {
-            let _ = self.comments.remove(&id);
-        }
+        self.comments.get_mut()?.clear()?;
+        self.replies.get_mut()?.clear()?;
         Ok(())
     }
 
@@ -1015,13 +1007,14 @@ impl MeroDesign {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
+        let found = self.elements.get_mut()?.update(&id, |el| {
             el.shadow_color = shadow_color;
             el.shadow_offset_x = shadow_offset_x;
             el.shadow_offset_y = shadow_offset_y;
             el.shadow_blur = shadow_blur;
             el.updated_at = updated_at;
-            drop(el);
+        })?;
+        if found.is_some() {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
@@ -1029,7 +1022,7 @@ impl MeroDesign {
 
     pub fn delete_element(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        let _ = self.elements.remove(&id);
+        let _ = self.elements.get_mut()?.remove(&id)?;
         app::emit!(Event::ElementDeleted(id));
         Ok(())
     }
@@ -1042,28 +1035,39 @@ impl MeroDesign {
         if ids.is_empty() {
             return Ok(());
         }
+        let elements = self.elements.get_mut()?;
         for id in &ids {
-            let _ = self.elements.remove(id);
+            let _ = elements.remove(id)?;
         }
         app::emit!(Event::ElementsDeleted(ids));
         Ok(())
     }
 
+    /// Every element, bottom to top: the `layer_index` index already holds
+    /// them in that order.
     pub fn get_elements(&self) -> Vec<Element> {
-        let mut els: Vec<Element> = self.elements.entries().unwrap().map(|(_, v)| v).collect();
-        els.sort_by_key(|e| e.layer_index);
-        els
+        self.element_map()
+            .and_then(|m| m.query("layer_index").entries().ok())
+            .map(|rows| rows.into_iter().map(|(_, el)| el).collect())
+            .unwrap_or_default()
     }
 
     pub fn get_element(&self, id: String) -> Option<Element> {
-        self.elements.get(&id).ok().flatten().map(|v| v.clone())
+        self.element_map()?
+            .get(&id)
+            .ok()
+            .flatten()
+            .map(|v| v.clone())
     }
 
     /// The elements a batch event named, in one read instead of one
     /// `get_element` each. Ids that no longer exist are left out.
     pub fn get_elements_by_ids(&self, ids: Vec<String>) -> Vec<Element> {
+        let Some(map) = self.element_map() else {
+            return Vec::new();
+        };
         ids.iter()
-            .filter_map(|id| self.elements.get(id).ok().flatten().map(|v| v.clone()))
+            .filter_map(|id| map.get(id).ok().flatten().map(|v| v.clone()))
             .collect()
     }
 
@@ -1072,73 +1076,99 @@ impl MeroDesign {
     /// Moves one element to an explicit position in the layer order and renumbers
     /// the rest densely, so "up one" and "down one" survive a sync.
     /// `bring_to_front` / `send_to_back` remain the all-the-way jumps.
+    ///
+    /// Only elements whose index actually changes are written.
     pub fn set_layer_index(&mut self, id: String, index: u32, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
 
-        let mut order: Vec<(String, u32)> = self
-            .elements
-            .entries()
-            .unwrap()
+        let Some(map) = self.element_map() else {
+            return Ok(());
+        };
+        let order: Vec<(String, u32)> = map
+            .query("layer_index")
+            .entries()?
+            .into_iter()
             .map(|(k, v)| (k, v.layer_index))
             .collect();
-        if !order.iter().any(|(k, _)| *k == id) {
+        let Some(from) = order.iter().position(|(k, _)| *k == id) else {
             return Ok(());
-        }
-        order.sort_by_key(|(_, layer)| *layer);
+        };
+        let to = (index as usize).min(order.len().saturating_sub(1));
 
-        let ids: Vec<String> = order.into_iter().map(|(k, _)| k).collect();
-        let from = ids.iter().position(|k| *k == id).unwrap();
-        let to = (index as usize).min(ids.len().saturating_sub(1));
-
-        let mut next = ids;
+        let mut next = order;
         let moved = next.remove(from);
         next.insert(to, moved);
 
-        for (i, key) in next.iter().enumerate() {
-            if let Ok(Some(mut el)) = self.elements.get_mut(key) {
-                el.layer_index = i as u32;
+        let elements = self.elements.get_mut()?;
+        for (i, (key, current)) in next.iter().enumerate() {
+            let i = i as u32;
+            if *current == i && *key != id {
+                continue;
+            }
+            let _ = elements.update(key, |el| {
+                el.layer_index = i;
                 if *key == id {
                     el.updated_at = updated_at;
                 }
-            }
+            })?;
         }
         app::emit!(Event::LayerReordered());
         Ok(())
     }
 
+    /// The top of the stack is one seek on the `layer_index` index.
     pub fn bring_to_front(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let max_layer = self
-            .elements
-            .entries()
-            .unwrap()
-            .map(|(_, v)| v.layer_index)
-            .max()
-            .unwrap_or(0);
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
+            .element_map()
+            .map(|m| m.query("layer_index").desc().first())
+            .transpose()?
+            .flatten()
+            .map_or(0, |(_, el)| el.layer_index);
+        let _ = self.elements.get_mut()?.update(&id, |el| {
             el.layer_index = max_layer + 1;
-        }
+        })?;
         app::emit!(Event::LayerReordered());
         Ok(())
     }
 
+    /// Put an element below every other one. When the bottom of the stack has
+    /// room (its index is above 0) this writes one element; only a stack
+    /// already starting at 0 has to shift the others up.
     pub fn send_to_back(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        let other_ids: Vec<String> = self
-            .elements
-            .entries()
-            .unwrap()
-            .filter(|(k, _)| *k != id)
-            .map(|(k, _)| k)
-            .collect();
-        for other_id in &other_ids {
-            if let Ok(Some(mut other)) = self.elements.get_mut(other_id) {
-                other.layer_index = other.layer_index.saturating_add(1);
+        let lowest = self
+            .element_map()
+            .map(|m| m.query("layer_index").limit(2).entries())
+            .transpose()?
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(k, _)| *k != id)
+            .map(|(_, el)| el.layer_index);
+        let target = match lowest {
+            Some(0) => {
+                let others: Vec<String> = self
+                    .element_map()
+                    .map(|m| m.query("layer_index").keys())
+                    .transpose()?
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|k| *k != id)
+                    .collect();
+                let elements = self.elements.get_mut()?;
+                for other_id in &others {
+                    let _ = elements.update(other_id, |other| {
+                        other.layer_index = other.layer_index.saturating_add(1);
+                    })?;
+                }
+                0
             }
-        }
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            el.layer_index = 0;
-        }
+            Some(bottom) => bottom - 1,
+            None => 0,
+        };
+        let _ = self.elements.get_mut()?.update(&id, |el| {
+            el.layer_index = target;
+        })?;
         app::emit!(Event::LayerReordered());
         Ok(())
     }
@@ -1166,11 +1196,13 @@ impl MeroDesign {
             created_at,
             replies: vec![],
         };
-        let _ = self.comments.insert(id.clone(), c);
+        let _ = self.comments.get_mut()?.insert(id.clone(), c)?;
         app::emit!(Event::CommentAdded(id));
         Ok(())
     }
 
+    /// Reply to a comment. The reply is its own entry, so concurrent replies to
+    /// one comment all survive.
     pub fn add_reply(
         &mut self,
         comment_id: String,
@@ -1179,62 +1211,117 @@ impl MeroDesign {
         created_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        let author = Self::caller_id();
-        if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
-            c.replies.push(CommentReply {
-                id: reply_id,
-                content,
-                author,
-                created_at,
-            });
-            drop(c);
-            app::emit!(Event::CommentUpdated(comment_id));
+        if !self.comments.get()?.contains(&comment_id)? {
+            return Ok(());
         }
+        let reply = CommentReply {
+            id: reply_id.clone(),
+            content,
+            author: Self::caller_id(),
+            created_at,
+        };
+        let _ = self
+            .replies
+            .get_mut()?
+            .insert(reply_key(&comment_id, created_at, &reply_id), reply)?;
+        app::emit!(Event::CommentUpdated(comment_id));
         Ok(())
     }
 
     pub fn delete_reply(&mut self, comment_id: String, reply_id: String) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
-            c.replies.retain(|r| r.id != reply_id);
-            drop(c);
-            app::emit!(Event::CommentUpdated(comment_id));
+        let keys: Vec<String> = self
+            .replies
+            .get()?
+            .prefix(reply_prefix(&comment_id).as_bytes())?
+            .filter(|(_, r)| r.id == reply_id)
+            .map(|(k, _)| k)
+            .collect();
+        if keys.is_empty() {
+            return Ok(());
         }
+        let replies = self.replies.get_mut()?;
+        for key in keys {
+            let _ = replies.remove(&key)?;
+        }
+        app::emit!(Event::CommentUpdated(comment_id));
         Ok(())
     }
 
+    /// Delete a comment and its thread.
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        let _ = self.comments.remove(&id);
+        let _ = self.comments.get_mut()?.remove(&id)?;
+        let thread: Vec<String> = self
+            .replies
+            .get()?
+            .prefix(reply_prefix(&id).as_bytes())?
+            .map(|(k, _)| k)
+            .collect();
+        let replies = self.replies.get_mut()?;
+        for key in thread {
+            let _ = replies.remove(&key)?;
+        }
         app::emit!(Event::CommentDeleted(id));
         Ok(())
     }
 
+    /// Every comment, each with its thread in reply order — one prefix slice
+    /// of `replies` per comment.
     pub fn get_comments(&self) -> Vec<Comment> {
-        self.comments.entries().unwrap().map(|(_, v)| v).collect()
+        let (Ok(comments), Ok(replies)) = (self.comments.get(), self.replies.get()) else {
+            return Vec::new();
+        };
+        let Ok(entries) = comments.entries() else {
+            return Vec::new();
+        };
+        entries
+            .map(|(id, mut c)| {
+                c.replies = replies
+                    .prefix(reply_prefix(&id).as_bytes())
+                    .map(|thread| thread.map(|(_, r)| r).collect())
+                    .unwrap_or_default();
+                c
+            })
+            .collect()
     }
 
     // ── Cursor tracking ───────────────────────────────────────────────────────
 
     /// Broadcast the caller's cursor. Presence is open to all members
-    /// (including viewers); the identity is the real signer, not client-supplied.
+    /// (including viewers); both ids are the real signer's, not client-supplied.
     pub fn update_cursor(&mut self, x: i64, y: i64, updated_at: u64) {
-        // Every client moves its cursor, so this is where a member's
-        // device→account pairing reliably becomes known to the rest of the board.
-        self.remember_account();
-        let identity = Self::caller_id();
+        // Keyed by DEVICE: one pointer per open window, so a member editing
+        // from two machines shows two.
+        let identity = String::from(Self::caller_device());
         let cs = CursorState {
             identity: identity.clone(),
+            account: Self::caller_id(),
             x,
             y,
             updated_at,
         };
-        let _ = self.cursors.insert(identity.clone(), cs);
+        // First move inserts, later ones update. A key someone else already
+        // holds is refused by storage; that pointer just does not show.
+        let _ = if self.cursors.contains(&identity).unwrap_or(false) {
+            self.cursors.update(&identity, cs)
+        } else {
+            self.cursors.insert(identity.clone(), cs)
+        };
         app::emit!(Event::CursorMoved(identity));
     }
 
+    /// Every pointer, labelled with the account on its owner stamp.
     pub fn get_cursors(&self) -> Vec<CursorState> {
-        self.cursors.entries().unwrap().map(|(_, v)| v).collect()
+        let Ok(entries) = self.cursors.entries() else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(|(key, mut cs)| {
+                cs.account = self.cursors.owner_of(&key).ok().flatten()?.to_string();
+                Some(cs)
+            })
+            .collect()
     }
 }
 
@@ -1315,7 +1402,7 @@ mod tests {
         assert_eq!(app.view(|s| s.get_elements()).len(), 0);
 
         // Admin grants editor → now the same identity may add elements.
-        let bob = String::from(PublicKey::from(OTHER));
+        let bob = AccountId::from(OTHER_ACCOUNT).to_string();
         app.call(|s| s.grant_editor(bob.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_role(bob.clone())), "editor");
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
@@ -1331,31 +1418,22 @@ mod tests {
             .is_err());
     }
 
+    /// A member id is an account now, so an admin can set a role from the
+    /// node's members list alone — before the invitee has ever opened the
+    /// board. Under the old device→account table a grant could only name
+    /// someone the board had already heard from.
     #[test]
-    fn a_role_can_be_granted_by_account_id_not_just_member_key() {
-        // The settings UI lists namespace members from `/groups/{id}/members`,
-        // and those rows are ACCOUNT-keyed — it never sees a device key. Since
-        // rc.27 both ids are 64 hex, so passing the account here parsed fine and
-        // then missed the `accounts` lookup, failing as "hasn't opened this
-        // board yet" for a member who was demonstrably sitting on it.
+    fn a_member_can_be_granted_before_they_ever_open_the_board() {
         let mut app = new_board();
-        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
-
-        let bob_account = AccountId::from(OTHER_ACCOUNT).to_string();
-        let bob_member = String::from(PublicKey::from(OTHER));
-        assert_ne!(bob_account, bob_member, "the two ids must not be the same");
-
-        app.call(|s| s.grant_editor(bob_account.clone())).unwrap();
-        // Granting by account authorizes the same person the member key names.
-        assert_eq!(app.view(|s| s.get_role(bob_member.clone())), "editor");
-        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
-            s.add_element(sample_element("e1"))
-        })
-        .unwrap();
-
-        // And revoking by the same account id undoes it.
-        app.call(|s| s.revoke_editor(bob_account)).unwrap();
-        assert_eq!(app.view(|s| s.get_role(bob_member)), "viewer");
+        let stranger = AccountId::from([0x5Au8; 32]).to_string();
+        app.call(|s| s.grant_editor(stranger.clone())).unwrap();
+        assert_eq!(app.view(|s| s.get_role(stranger)), "editor");
+        let err = format!(
+            "{:?}",
+            app.call(|s| s.grant_editor("not-an-account-id".to_owned()))
+                .unwrap_err()
+        );
+        assert!(err.contains("not a member id"), "unexpected: {err}");
     }
 
     #[test]
@@ -1363,33 +1441,24 @@ mod tests {
         let mut app = new_board();
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
 
+        let bob_account = AccountId::from(OTHER_ACCOUNT).to_string();
         let roles = app.view(|s| s.list_roles());
         let bob = roles
             .iter()
-            .find(|r| r.member == String::from(PublicKey::from(OTHER)))
+            .find(|r| r.member == bob_account)
             .expect("bob is on the board");
         assert_eq!(
             bob.account.as_deref(),
-            Some(AccountId::from(OTHER_ACCOUNT).to_string().as_str()),
+            Some(bob_account.as_str()),
             "without the account the settings UI cannot match this row to a \
              namespace member, and falls back to showing a raw id"
         );
     }
 
     #[test]
-    fn an_account_this_board_never_saw_is_still_refused() {
-        // The restraint that makes accepting an account id safe: AccessControl
-        // stores a grant for arbitrary bytes quite happily, and one naming an
-        // account nobody here speaks for authorizes no one, silently.
-        let mut app = new_board();
-        let stranger = AccountId::from([0x5Au8; 32]).to_string();
-        assert!(app.call(|s| s.grant_editor(stranger)).is_err());
-    }
-
-    #[test]
     fn non_admin_cannot_grant_roles() {
         let mut app = new_board();
-        let third = String::from(PublicKey::from([0x33u8; 32]));
+        let third = AccountId::from([0x33u8; 32]).to_string();
         // OTHER is not an admin → the fail-fast guard refuses (and a forged
         // grant delta would be rejected at merge).
         assert!(app
@@ -1436,9 +1505,7 @@ mod tests {
     #[test]
     fn ownership_transfer_moves_control() {
         let mut app = new_board();
-        let other = String::from(PublicKey::from(OTHER));
-        // The board must know which account that member key speaks for before it
-        // can hand ownership over — joining is what records the pairing.
+        let other = AccountId::from(OTHER_ACCOUNT).to_string();
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_board()).owner, Some(other.clone()));
@@ -2016,5 +2083,189 @@ mod tests {
         app.call(|s| s.update_element_labels(Vec::new(), 1))
             .unwrap();
         assert!(app.view(|s| s.get_elements()).is_empty());
+    }
+
+    // ── what every node enforces ─────────────────────────────────────────────
+    //
+    // These write straight into the collections, the way a patched node that
+    // skips every method check would, and assert that storage still refuses —
+    // or, for the canvas, that the capability map every node checks a write
+    // against says so.
+
+    use calimero_storage::collections::Op;
+
+    /// The poisoning attack the old `accounts` table allowed: a member claimed
+    /// someone else's device key for their own account, so a grant or an
+    /// ownership transfer naming that member went to the attacker instead.
+    /// Member ids are accounts now, so a grant names exactly who it says.
+    #[test]
+    fn a_grant_names_exactly_the_account_it_says() {
+        let mut app = new_board();
+        let bob = AccountId::from(OTHER_ACCOUNT).to_string();
+        app.call(|s| s.grant_editor(bob.clone())).unwrap();
+        let mallory = AccountId::from([0x66u8; 32]);
+        assert!(!app.view(|s| s.elements.can(&mallory, Op::Write)));
+        assert!(app.view(|s| s.elements.can(&AccountId::from(OTHER_ACCOUNT), Op::Write)));
+    }
+
+    #[test]
+    fn canvas_write_rights_follow_the_roles_on_every_node() {
+        let mut app = new_board();
+        let bob = AccountId::from(OTHER_ACCOUNT);
+        let can = |app: &TestHost<MeroDesign>, op| {
+            app.view(|s| {
+                s.elements.can(&bob, op) && s.comments.can(&bob, op) && s.replies.can(&bob, op)
+            })
+        };
+        assert!(!can(&app, Op::Write), "a viewer holds no canvas capability");
+
+        let bob_id = bob.to_string();
+        app.call(|s| s.grant_editor(bob_id.clone())).unwrap();
+        assert!(can(&app, Op::Write) && can(&app, Op::Delete));
+        assert!(!can(&app, Op::Admin), "an editor cannot rotate the writers");
+
+        app.call(|s| s.revoke_editor(bob_id)).unwrap();
+        assert!(
+            !can(&app, Op::Write),
+            "revoking the role revokes the capability"
+        );
+    }
+
+    #[test]
+    fn a_transfer_moves_canvas_admin_to_the_new_owner() {
+        let mut app = new_board();
+        let me = app.view(|_| MeroDesign::caller_account());
+        assert!(
+            app.view(|s| s.elements.can(&me, Op::Admin)),
+            "the creator starts with FULL"
+        );
+        app.call(|s| s.transfer_ownership(AccountId::from(OTHER_ACCOUNT).to_string()))
+            .unwrap();
+        assert!(app.view(|s| s.elements.can(&AccountId::from(OTHER_ACCOUNT), Op::Admin)));
+        assert!(!app.view(|s| s.elements.can(&me, Op::Write)));
+    }
+
+    #[test]
+    fn created_by_is_the_caller_not_the_client() {
+        let mut app = new_board();
+        let mut el = sample_element("e1");
+        el.created_by = "someone-else".to_owned();
+        app.call(|s| s.add_element(el)).unwrap();
+        let me = app.view(|_| MeroDesign::caller_id());
+        assert_eq!(
+            app.view(|s| s.get_element("e1".to_owned()))
+                .unwrap()
+                .created_by,
+            me
+        );
+
+        // Overwriting the id keeps the original creator.
+        let bob = AccountId::from(OTHER_ACCOUNT).to_string();
+        app.call(|s| s.grant_editor(bob)).unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.add_element(sample_element("e1"))
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_element("e1".to_owned()))
+                .unwrap()
+                .created_by,
+            me
+        );
+    }
+
+    #[test]
+    fn concurrent_replies_to_one_comment_both_survive() {
+        let mut app = new_board();
+        let bob = AccountId::from(OTHER_ACCOUNT).to_string();
+        app.call(|s| s.grant_editor(bob)).unwrap();
+        app.call(|s| s.add_comment("c1".to_owned(), 0, 0, "hi".to_owned(), 1))
+            .unwrap();
+        app.call(|s| s.add_reply("c1".to_owned(), "r1".to_owned(), "one".to_owned(), 5))
+            .unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.add_reply("c1".to_owned(), "r2".to_owned(), "two".to_owned(), 5)
+        })
+        .unwrap();
+        let comments = app.view(|s| s.get_comments());
+        let ids: Vec<&str> = comments[0].replies.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids.len(), 2, "each reply is its own entry");
+        assert!(ids.contains(&"r1") && ids.contains(&"r2"));
+
+        app.call(|s| s.delete_reply("c1".to_owned(), "r1".to_owned()))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_comments())[0].replies.len(), 1);
+        app.call(|s| s.delete_comment("c1".to_owned())).unwrap();
+        assert!(app.view(|s| s.replies.get().unwrap().is_empty().unwrap()));
+    }
+
+    #[test]
+    fn nobody_renames_another_member() {
+        let mut app = new_board();
+        app.call(|s| s.join("alice".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.update_member_username("alice".to_owned(), 9)
+        });
+        let me = app.view(|_| MeroDesign::caller_id());
+        let members = app.view(|s| s.get_members());
+        let mine = members.iter().find(|m| m.id == me).unwrap();
+        assert_eq!(mine.username_updated_at, 1);
+    }
+
+    #[test]
+    fn a_cursor_belongs_to_whoever_wrote_it() {
+        let mut app = new_board();
+        const LAPTOP: [u8; 32] = [0x01; 32];
+        app.call_as(LAPTOP, |s| s.update_cursor(1, 1, 1));
+        let laptop = String::from(PublicKey::from(LAPTOP));
+        let me = app.view(|_| MeroDesign::caller_id());
+
+        let moved = app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.cursors.update(
+                &laptop,
+                CursorState {
+                    identity: laptop.clone(),
+                    account: me.clone(),
+                    x: 99,
+                    y: 99,
+                    updated_at: 2,
+                },
+            )
+        });
+        assert!(moved.is_err(), "another account cannot move my pointer");
+        let cursors = app.view(|s| s.get_cursors());
+        assert_eq!((cursors[0].x, cursors[0].account.clone()), (1, me));
+    }
+
+    #[test]
+    fn send_to_back_with_room_below_moves_only_that_element() {
+        let mut app = new_board();
+        for (id, index) in [("a", 5), ("b", 6), ("c", 7)] {
+            let mut el = sample_element(id);
+            el.layer_index = index;
+            app.call(|s| s.add_element(el)).unwrap();
+        }
+        app.call(|s| s.send_to_back("c".to_owned())).unwrap();
+        let got: Vec<(String, u32)> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| (e.id, e.layer_index))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("c".to_owned(), 4),
+                ("a".to_owned(), 5),
+                ("b".to_owned(), 6)
+            ]
+        );
+        app.call(|s| s.bring_to_front("c".to_owned())).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_element("c".to_owned()))
+                .unwrap()
+                .layer_index,
+            7
+        );
     }
 }

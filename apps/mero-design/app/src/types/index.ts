@@ -134,7 +134,10 @@ export interface CanvasComment {
 }
 
 export interface CursorState {
+  /** The device the pointer belongs to — one per open window. */
   identity: string;
+  /** The member (account) behind that device, from the entry's owner stamp. */
+  account?: string;
   x: number;
   y: number;
   updatedAt: number;

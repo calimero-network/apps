@@ -3,6 +3,7 @@
   "types": {
     "Ask": {
       "kind": "record",
+      "doc": "A structured request inside an update. Same three axes as `Post`.",
       "fields": [
         {
           "name": "id",
@@ -14,7 +15,8 @@
           "name": "post_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "An update's asks are one seek, not a scan of every ask."
         },
         {
           "name": "content",
@@ -85,7 +87,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Set to edit an existing ask of this update; `None` creates one."
         },
         {
           "name": "kind",
@@ -171,14 +174,16 @@
             "items": {
               "$ref": "OfferView"
             }
-          }
+          },
+          "doc": "Every offer — for the TEAM only; empty for readers. A presentation\nfilter, not confidentiality (see the module docs)."
         },
         {
           "name": "my_offer",
           "type": {
             "$ref": "OfferView"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The caller's own offer, if any."
         }
       ]
     },
@@ -207,7 +212,8 @@
           "name": "color",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS colour token or hex. Presentation only."
         },
         {
           "name": "created_at",
@@ -278,6 +284,7 @@
     },
     "Comment": {
       "kind": "record",
+      "doc": "A reply on a post. One level of nesting via `parent_id` (\"\" for top level).\n\nNo author field: the author is the entry's owner stamp. Deleting removes the\nentry — its owner, or a moderator, may.",
       "fields": [
         {
           "name": "id",
@@ -298,12 +305,6 @@
           }
         },
         {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "body",
           "type": {
             "kind": "string"
@@ -319,12 +320,6 @@
           "name": "edited_at",
           "type": {
             "kind": "u64"
-          }
-        },
-        {
-          "name": "deleted",
-          "type": {
-            "kind": "bool"
           }
         }
       ]
@@ -513,7 +508,8 @@
             "items": {
               "$ref": "ReaderView"
             }
-          }
+          },
+          "doc": "Non-team members with a profile who have not opened it: the follow-up\nlist."
         },
         {
           "name": "reactions",
@@ -754,36 +750,122 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
+          },
+          "doc": "Admin tier = the signed writer set; `team` grants are verified at merge."
         },
         {
           "name": "settings",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Settings"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Settings"
+              },
+              "crdt_type": "unordered_map"
+            }
           }
         },
         {
           "name": "categories",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Category"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Category"
+              },
+              "crdt_type": "unordered_map"
+            }
           }
         },
         {
-          "name": "posts",
+          "name": "updates",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Post"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Flat maps keyed by id, carrying their parent's id — never a nested\ncollection per parent, which would need deterministic re-keying to\nconverge when two nodes create it independently."
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Ask"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "question_status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Triage"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The team's status for a question, keyed by the question's id."
+        },
+        {
+          "name": "offer_status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Triage"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The team's status for an offer, keyed like the offer."
+        },
+        {
+          "name": "questions",
           "type": {
             "kind": "map",
             "key": {
@@ -792,33 +874,7 @@
             "value": {
               "$ref": "Post"
             },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "asks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Ask"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "offers",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Offer"
-            },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -831,7 +887,20 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Offer"
+            },
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -844,7 +913,7 @@
             "value": {
               "$ref": "Reaction"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -857,7 +926,7 @@
             "value": {
               "$ref": "Read"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -869,14 +938,35 @@
             },
             "value": {
               "$ref": "Profile"
-            },
-            "crdt_type": "unordered_map"
+            }
           }
+        },
+        {
+          "name": "mutes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "doc": "Which categories each reader has muted. Its own slot, not a profile\nfield, so renaming yourself on one device and muting on another both\nsurvive: a `UserStorage` slot resolves last-writer-wins as a whole."
         }
       ]
     },
     "Metric": {
       "kind": "record",
+      "doc": "One KPI as reported in one update.\n\n`value` is a STRING on purpose: founders write \"$1.2M\", \"38%\", \"12.5k\", and\nthe number they meant is the frontend's to parse. The contract keeps what\nwas reported, exactly as reported.",
       "fields": [
         {
           "name": "name",
@@ -949,12 +1039,14 @@
             "items": {
               "$ref": "MetricPoint"
             }
-          }
+          },
+          "doc": "Oldest first, one point per update that reported this metric."
         }
       ]
     },
     "Offer": {
       "kind": "record",
+      "doc": "One reader's offer to help with one ask. Keyed `\"<ask_id>|<account>\"`, and\nowned by that account.\n\nTwo writers, so two records: the HELPER owns this one (`note`/`withdrawn`,\nby `updated_at`), the TEAM owns its [`Triage`] under the same key. Accepting\nan offer must not be undone by the helper fixing a typo in their note, and a\nhelper must not be able to accept their own.",
       "fields": [
         {
           "name": "ask_id",
@@ -982,18 +1074,6 @@
         },
         {
           "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "status",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "status_at",
           "type": {
             "kind": "u64"
           }
@@ -1089,13 +1169,15 @@
           "name": "last_update_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the latest update went out, 0 if none has."
         },
         {
           "name": "next_due_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "`last_update_at + cadence`, 0 when there is no cadence or no update yet."
         },
         {
           "name": "updates_total",
@@ -1107,7 +1189,8 @@
           "name": "unread_updates",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unread updates in categories the caller has NOT muted."
         },
         {
           "name": "open_asks",
@@ -1178,7 +1261,8 @@
           "name": "updates_read",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Updates this person has opened, out of `updates_total`."
         },
         {
           "name": "updates_total",
@@ -1214,6 +1298,7 @@
     },
     "Post": {
       "kind": "record",
+      "doc": "An update or a question.\n\nThree independent merge axes: CONTENT (the author's edits, by `edited_at`),\nSTATUS (the team's triage of a question, by `status_at`) and the tombstone\n(OR). Folding status into content would let an author's typo fix silently\nundo \"answered\", or the reverse.",
       "fields": [
         {
           "name": "id",
@@ -1489,6 +1574,7 @@
     },
     "Profile": {
       "kind": "record",
+      "doc": "Who a member says they are. A claim, not an identity: the account id is\nthe only thing that authorises anything.",
       "fields": [
         {
           "name": "account",
@@ -1506,16 +1592,8 @@
           "name": "firm",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "muted",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
+          },
+          "doc": "Fund, firm or company — \"Seed Capital\", \"Angel\"."
         },
         {
           "name": "joined_at",
@@ -1533,6 +1611,7 @@
     },
     "Reaction": {
       "kind": "record",
+      "doc": "One account's one emoji on one post. Keyed `\"<post_id>|<account>|<emoji>\"`,\nso reacting twice cannot count twice and a second device is the same person.",
       "fields": [
         {
           "name": "post_id",
@@ -1591,6 +1670,7 @@
     },
     "Read": {
       "kind": "record",
+      "doc": "A read receipt. Keyed `\"<post_id>|<account>\"`. Both ends are monotone\n(first read = min, latest = max), so this merges without any clock\ntie-break at all.",
       "fields": [
         {
           "name": "post_id",
@@ -1649,12 +1729,14 @@
     },
     "Section": {
       "kind": "record",
+      "doc": "One block of an update: \"Highlights\", \"Lowlights\", \"Product\", \"Thanks\"…",
       "fields": [
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A template hint (\"highlights\", \"lowlights\", \"product\", \"team\", \"text\"…).\nFree text so templates can evolve without a contract release."
         },
         {
           "name": "title",
@@ -1672,6 +1754,7 @@
     },
     "Settings": {
       "kind": "record",
+      "doc": "Audience-wide settings, stored under the single key `\"main\"`.",
       "fields": [
         {
           "name": "company_name",
@@ -1683,10 +1766,29 @@
           "name": "cadence_days",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How often the team means to write, in days. 0 = no cadence. Drives the\n\"next update due\" nudge — Visible's recurring-update reminder, without a\nserver to send it."
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Triage": {
+      "kind": "record",
+      "doc": "The team's decision on something a reader wrote: a question's status, an\noffer's. Kept apart from the reader's record, in team-written storage.",
+      "fields": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status_at",
           "type": {
             "kind": "u64"
           }
@@ -1747,6 +1849,7 @@
   "methods": [
     {
       "name": "add_comment",
+      "doc": "Reply on a post. `parent_id` threads one level deep: replying to a reply\nattaches to that reply's parent, so a thread never becomes a staircase.",
       "params": [
         {
           "name": "post_id",
@@ -1775,6 +1878,7 @@
     },
     {
       "name": "add_teammate",
+      "doc": "Make a member part of the team. Admin only — and enforced at MERGE by\n`AccessControl`, so a forged grant from a non-admin does not converge.\nRotates every team-guarded writer set to include them.",
       "params": [
         {
           "name": "account",
@@ -1790,6 +1894,7 @@
     },
     {
       "name": "archive_category",
+      "doc": "Archive, never remove: updates filed under it keep their label, and an\narchive is monotone so a concurrent rename cannot resurrect it.",
       "params": [
         {
           "name": "category_id",
@@ -1805,6 +1910,7 @@
     },
     {
       "name": "ask_question",
+      "doc": "Ask the team something. Anyone in the audience may — this is the half of\nthe conversation a newsletter tool does not have. The question is the\nasker's own entry; the team can remove it, and triages it separately.",
       "params": [
         {
           "name": "title",
@@ -1860,6 +1966,7 @@
     },
     {
       "name": "delete_comment",
+      "doc": "The author may delete their comment; the team (its moderators) may\nremove any.",
       "params": [
         {
           "name": "comment_id",
@@ -1890,6 +1997,7 @@
     },
     {
       "name": "delete_post",
+      "doc": "Delete a post. An update is tombstoned by any teammate; a question is\nremoved by its author or by the team (its moderators).",
       "params": [
         {
           "name": "post_id",
@@ -1959,6 +2067,7 @@
     },
     {
       "name": "edit_update",
+      "doc": "Replace an update's content. Any teammate may — updates are the\ncompany's voice, not one person's. Asks listed with an `id` are edited,\nwithout one are created, and this update's asks not listed are removed.",
       "params": [
         {
           "name": "post_id",
@@ -1980,6 +2089,7 @@
     },
     {
       "name": "get_engagement",
+      "doc": "Who read what — the team's follow-up list. Team only.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1999,6 +2109,7 @@
     },
     {
       "name": "get_overview",
+      "doc": "The home screen in one call.",
       "params": [],
       "returns": {
         "$ref": "Overview"
@@ -2030,6 +2141,7 @@
     },
     {
       "name": "init",
+      "doc": "No arguments: the frontend's context-creation flow sends `{}`. The\ncreator becomes the first admin; everything else is configured after.",
       "params": [],
       "returns": {
         "kind": "unit"
@@ -2037,6 +2149,7 @@
     },
     {
       "name": "list_asks",
+      "doc": "Every ask across every live update, newest first. `status` filters to\n`\"open\"` or `\"resolved\"`.",
       "params": [
         {
           "name": "status",
@@ -2056,6 +2169,7 @@
     },
     {
       "name": "list_categories",
+      "doc": "Live categories, oldest first, with per-caller unread counts.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2067,6 +2181,7 @@
     },
     {
       "name": "list_comments",
+      "doc": "A post's whole thread, oldest first. Replies follow their parent. One\nseek on the `post_thread` index; the author is each entry's owner stamp.",
       "params": [
         {
           "name": "post_id",
@@ -2085,6 +2200,7 @@
     },
     {
       "name": "list_contributions",
+      "doc": "Accepted offers since `since` (unix ms; 0 for all), oldest first — what the\nnext update's \"Thank you\" section is written from.",
       "params": [
         {
           "name": "since",
@@ -2103,6 +2219,7 @@
     },
     {
       "name": "list_drafts",
+      "doc": "This node's drafts, most recently touched first.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2114,6 +2231,7 @@
     },
     {
       "name": "list_metrics",
+      "doc": "Every KPI ever reported, one series per metric name (case-insensitive),\noldest point first. The trend chart and \"vs last update\" deltas come\nfrom here, so founders never retype last month's number.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2125,6 +2243,7 @@
     },
     {
       "name": "list_people",
+      "doc": "Everyone this audience knows about: every admin and teammate, and every\nmember who has written anything (a profile, a read, a comment…).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2136,6 +2255,7 @@
     },
     {
       "name": "list_posts",
+      "doc": "One page of posts, newest first.\n\n`kind` is `\"update\"`, `\"question\"` or `None` for both; `category_id`\nfilters to one category. Keyset pagination: the cursor names the last\nrow seen, so a post replicating in above it cannot shift the page.",
       "params": [
         {
           "name": "kind",
@@ -2172,6 +2292,7 @@
     },
     {
       "name": "mark_read",
+      "doc": "Record that the caller opened a post. The frontend calls this when a\npost is shown — a read receipt the reader can see being taken.",
       "params": [
         {
           "name": "post_id",
@@ -2187,6 +2308,7 @@
     },
     {
       "name": "offer_help",
+      "doc": "\"I can help.\" One click, optional note. Offering again edits the note;\none offer per account per ask.",
       "params": [
         {
           "name": "ask_id",
@@ -2208,6 +2330,7 @@
     },
     {
       "name": "publish_update",
+      "doc": "Publish an update to this audience. Team only — and the updates map is\nthe team's writer set, so a reader's forged update does not converge.",
       "params": [
         {
           "name": "input",
@@ -2223,6 +2346,7 @@
     },
     {
       "name": "react",
+      "doc": "Toggle one emoji on a post for the caller.",
       "params": [
         {
           "name": "post_id",
@@ -2250,6 +2374,7 @@
     },
     {
       "name": "remove_teammate",
+      "doc": "Take a member off the team, and out of every team-guarded writer set:\ntheir later writes to team data are refused on apply, on every node.",
       "params": [
         {
           "name": "account",
@@ -2265,6 +2390,7 @@
     },
     {
       "name": "save_draft",
+      "doc": "Save a draft on THIS node only. `&mut self` so the runtime commits the\nprivate write — a `&self` method's private writes are discarded.",
       "params": [
         {
           "name": "draft_id",
@@ -2314,6 +2440,7 @@
     },
     {
       "name": "set_muted_categories",
+      "doc": "Mute categories: their updates stop counting as unread for you. Replaces\nthe whole set — the UI always has it in hand.",
       "params": [
         {
           "name": "category_ids",
@@ -2332,6 +2459,7 @@
     },
     {
       "name": "set_offer_status",
+      "doc": "Accept or decline someone's offer. Team only: the decision is a\nteam-written record beside the offer, so the helper cannot write it.\nAccepted offers become contributions (`list_contributions`).",
       "params": [
         {
           "name": "ask_id",
@@ -2359,6 +2487,7 @@
     },
     {
       "name": "set_profile",
+      "doc": "Name yourself. No `account` argument: you can only describe yourself,\nand `UserStorage` is what makes that true on every node.",
       "params": [
         {
           "name": "name",
@@ -2380,6 +2509,7 @@
     },
     {
       "name": "set_question_status",
+      "doc": "Mark a question answered (or re-open it). Team only: the status is a\nteam-written record, not a field of the asker's entry.",
       "params": [
         {
           "name": "post_id",

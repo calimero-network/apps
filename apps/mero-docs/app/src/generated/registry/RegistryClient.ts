@@ -6,6 +6,9 @@ import {
 
 // Generated types
 
+/**
+ * Wrapper around a Calimero context id. Same rationale as `FolderId`.
+ */
 export type ContextId = string & { readonly __brand: 'ContextId' };
 export const ContextId = (value: string): ContextId => value as ContextId;
 
@@ -67,43 +70,149 @@ export interface Event_ViewChanged {
   id: string;
 }
 
+/**
+ * Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.
+ */
 export interface FolderDto {
   id: FolderId;
   parent_id: FolderId | null;
+  /**
+   * `None` when color is unset / empty.
+   */
   color: string | null;
+  /**
+   * `None` when no Docs context has been bound to this folder yet.
+   */
   context_id: ContextId | null;
+  /**
+   * `None` when no registry-side alias is stored (older folders,
+   * or folders created before the alias field existed). Clients
+   * fall back to the admin-API alias or a truncated id stub.
+   */
   alias: string | null;
   visibility: Visibility;
 }
 
+/**
+ * Wrapper around a folder / group id string. Newtype so the generated TS
+ * client surfaces `FolderId` instead of a bare `string`.
+ */
 export type FolderId = string & { readonly __brand: 'FolderId' };
 export const FolderId = (value: string): FolderId => value as FolderId;
 
+/**
+ * Per-folder record inside the registry map. All fields are LWW so
+ * concurrent updates resolve deterministically.
+ *
+ * `Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`
+ * because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
+ * trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
+ * resolution picks the inherent one from the derive expansion, which then
+ * fails the macro's `?` - same workaround battleships uses on
+ * `MatchSummary`.
+ */
 export interface FolderRecord {
+  /**
+   * Parent folder id, or None for top-level folders. Stored as an
+   * LWW index; admin-API remains the source of truth for the tree.
+   */
   parent_id: string;
+  /**
+   * `#rrggbb` color, or empty string for "no color".
+   */
   color: string;
+  /**
+   * Display name. Mirrored from admin-API's group alias so namespace
+   * members who can't read the subgroup yet (Restricted folder before
+   * invite) can still see folder names. Empty string means "no
+   * registry-side alias - fall back to the admin-API alias or a
+   * truncated id stub on the client".
+   */
   alias: string;
+  /**
+   * Inherit = namespace-member cascade descends through this folder.
+   * Restricted = explicit-invite wall; cascade stops here.
+   */
   visibility: Visibility;
 }
 
+/**
+ * One explicit per-member role row for a folder (what `list_folder_roles`
+ * returns). Members not present have the implicit `Editor` role.
+ */
 export interface FolderRoleEntry {
+  /**
+   * hex-encoded member public key.
+   */
   member: string;
   role: Role;
 }
 
 export interface RegistryState {
+  /**
+   * folder_id (string) → FolderRecord. Owned by whoever registered the
+   * folder, who alone edits it; the registry admins (owner and managers)
+   * are its moderators and may also remove it. Every node enforces both.
+   */
   folders: Record<string, FolderRecord>;
+  /**
+   * folder_id (string) → Docs context id bound to that folder. Written
+   * once, by the folder's registrant; nobody can rebind or remove it, so a
+   * folder cannot be pointed at someone else's context after the fact.
+   * A binding counts only while its writer owns the folder (see
+   * `binding_of`).
+   */
   folder_contexts: Record<string, ContextId>;
+  /**
+   * parent_id-or-empty → LWW list of child folder ids in display order.
+   * Deliberately public: display order is collaborative, and a bad order
+   * is corrected by the next reorder.
+   */
   sort_order: Record<string, string[]>;
+  /**
+   * Hex account of the registry owner: whoever created the registry
+   * context (a namespace admin). Frozen at `init`; nobody can change it.
+   */
   owner: string;
+  /**
+   * Hex accounts granted manager rights over the whole registry (may set/
+   * clear any folder role). Writable by the owner only. The owner is
+   * implicitly a manager and is NOT stored here. Value `true` = is a
+   * manager, `false` = removed (kept around so the key is never
+   * CRDT-tombstoned - a `remove` would silently swallow a later re-add).
+   */
   managers: Record<string, boolean>;
+  /**
+   * `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
+   * Writable by the registry admins only (see `sync_admins`).
+   */
   folder_roles: Record<string, Role>;
+  /**
+   * tag key → TagRecord. Public, like `sort_order`: any member may name,
+   * recolour or delete a tag; which roles may is the app's to gate.
+   */
   tags: Record<string, TagRecord>;
+  /**
+   * saved-view id → ViewRecord. Public for the same reason as `tags`.
+   */
   views: Record<string, ViewRecord>;
+  /**
+   * saved-view id → created_at, written once by the view's creator. Its
+   * owner stamp is who created the view, and nobody can rewrite either.
+   */
+  view_origins: Record<string, number>;
 }
 
+/**
+ * Per-folder collaborator role. Local copy of `mero_docs_types::Role`
+ * (same variants, same bytes); keep the two definitions in sync.
+ */
 export type Role = 'Viewer' | 'Editor' | 'Manager';
 
+/**
+ * Flat projection of a `TagRecord`. Deleted rows are included so clients
+ * can tell a tombstoned key apart from one that was never used.
+ */
 export interface TagDto {
   key: string;
   name: string;
@@ -111,25 +220,46 @@ export interface TagDto {
   deleted: boolean;
 }
 
+/**
+ * Workspace-wide tag: a stable key mapped to a display name and colour.
+ * `deleted` tombstones the row rather than removing it - see `delete_tag`.
+ * It merges by OR, so a delete on any replica is permanent.
+ */
 export interface TagRecord {
   name: string;
   color: string;
   deleted: boolean;
 }
 
+/**
+ * Flat projection of a `ViewRecord`.
+ */
 export interface ViewDto {
   id: string;
   name: string;
   query: string;
+  /**
+   * Hex account of whoever created the view, from `view_origins`' owner stamp.
+   */
   created_by: string;
 }
 
+/**
+ * A workspace-wide saved search. Its creator is not stored here but in
+ * `view_origins`, where nobody can rewrite it.
+ */
 export interface ViewRecord {
   name: string;
   query: string;
-  created_by: string;
 }
 
+/**
+ * Per-folder cascade flag. `Inherit` = namespace-member cascade descends
+ * through this folder (Open subgroup); `Restricted` = explicit-invite wall,
+ * cascade stops here. Mirrors the admin-API subgroup_visibility concept but
+ * is stored in the registry so clients can read it without a per-folder
+ * admin-API call.
+ */
 export type Visibility = 'Inherit' | 'Restricted';
 
 
@@ -152,15 +282,33 @@ export type AbiEvent =
   | { name: "FolderContextBound"; payload: Event_FolderContextBound }
   | { name: "FolderParentChanged"; payload: Event_FolderParentChanged }
   | { name: "FolderRegistered"; payload: Event_FolderRegistered }
-  | { name: "FolderRoleChanged"; payload: Event_FolderRoleChanged }
+  | {
+    /**
+     * A folder's per-member role was set or cleared (UI re-fetches the row).
+     */
+    name: "FolderRoleChanged";
+    payload: Event_FolderRoleChanged;
+  }
   | { name: "FolderSortOrderChanged"; payload: Event_FolderSortOrderChanged }
   | { name: "FolderUnregistered"; payload: Event_FolderUnregistered }
   | { name: "FolderVisibilityChanged"; payload: Event_FolderVisibilityChanged }
   | { name: "ManagerAdded"; payload: Event_ManagerAdded }
   | { name: "ManagerRemoved"; payload: Event_ManagerRemoved }
   | { name: "OwnerClaimed"; payload: Event_OwnerClaimed }
-  | { name: "TagChanged"; payload: Event_TagChanged }
-  | { name: "ViewChanged"; payload: Event_ViewChanged }
+  | {
+    /**
+     * A tag's name, colour, or tombstone flag changed.
+     */
+    name: "TagChanged";
+    payload: Event_TagChanged;
+  }
+  | {
+    /**
+     * A saved view was created, edited, or deleted.
+     */
+    name: "ViewChanged";
+    payload: Event_ViewChanged;
+  }
 ;
 
 
@@ -275,6 +423,11 @@ export class RegistryClient {
 
   /**
    * get_owner
+   *
+   * The base58 public key of the registry owner, or an empty string if
+   * `claim_owner` has not been called yet. (Empty-string-means-unclaimed
+   * keeps the generated TS type honest - `Promise<string>`, not a lying
+   * non-nullable Option.)
    *
    * @intent read_only
    */
@@ -403,6 +556,12 @@ export class RegistryClient {
 
   /**
    * set_folder_alias
+   *
+   * Update the registry-side alias for a folder. Callers should mirror
+   * admin-API's `setGroupAlias` with a call here so namespace members
+   * who aren't subgroup members can still see the new name. Empty
+   * string clears the registry alias and falls back to whatever the
+   * client surfaces (admin API alias if visible, otherwise id stub).
    *
    * @intent mutating
    */

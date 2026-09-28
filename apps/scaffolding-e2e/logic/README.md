@@ -66,9 +66,7 @@ pub struct E2eKvStore {
     games: UnorderedMap<String, LwwRegister<String>>,
 
     // Blob Storage
-    files: UnorderedMap<String, FileRecord>,
-    file_counter: LwwRegister<u64>,
-    file_owner: LwwRegister<String>,
+    files: UnorderedMap<String, FileRecord>, // ids: file_<device>_<time>
 
     // Nested CRDTs
     crdt_counters: UnorderedMap<String, Counter>,
@@ -81,6 +79,13 @@ pub struct E2eKvStore {
     rga_document: ReplicatedGrowableArray,
     rga_edit_count: Counter,
     rga_metadata: UnorderedMap<String, LwwRegister<String>>,
+
+    // Workspace Registry — writers/moderators are the workspace admins
+    ws_claim: SharedStorage<LwwRegister<WsClaim>>,
+    ws_roles: SharedStorage<UnorderedMap<String, LwwRegister<String>>>,
+    ws_channels: Moderated<UnorderedMap<String, ChannelRecord>>,
+    ws_groups: Moderated<UnorderedMap<String, WsGroupRecord>>,
+    ws_pings: Counter,
 }
 ```
 
@@ -105,7 +110,7 @@ The app emits events for all state changes:
 - **Private Game Events**: `SecretSet`, `Guessed`
 - **Blob Events**: `FileUploaded`, `FileDeleted`
 - **Nested CRDT Events**: `CounterIncremented`, `RegisterSet`, `MetadataSet`, `MetricPushed`, `TagAdded`
-- **RGA Events**: `DocumentCreated`, `TextInserted`, `TextDeleted`, `TitleChanged`
+- **RGA Events**: `TextInserted`, `TextDeleted`, `TitleChanged`
 
 ## Event Handlers
 

@@ -8,46 +8,78 @@
           "name": "brightness",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "-100..=100, 0 = neutral"
         },
         {
           "name": "contrast",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "-100..=100, 0 = neutral"
         },
         {
           "name": "saturation",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "-100..=100, 0 = neutral"
         },
         {
           "name": "hue",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "-180..=180 degrees, 0 = neutral"
         },
         {
           "name": "exposure",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "-100..=100, 0 = neutral"
         },
         {
           "name": "blur",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "0..=100 blur radius in px (filter), 0 = none"
         },
         {
           "name": "invert",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "invert colors"
         },
         {
           "name": "curves",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "JSON-encoded curve control points (per-channel splines). Opaque to the\ncontract; the frontend interprets it. Empty = identity curve."
+        }
+      ]
+    },
+    "Canvas": {
+      "kind": "record",
+      "doc": "The owner-gated canvas settings: size and background.",
+      "fields": [
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "background",
           "type": {
             "kind": "string"
           }
@@ -61,13 +93,15 @@
           "name": "identity",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The device this pointer belongs to (hex context key) — unique per open\ninstallation, so it is what the map is keyed by."
         },
         {
           "name": "account",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The member (account) behind that device, so the overlay can label the\npointer with a username without a second lookup table. Filled from the\nentry's owner stamp on read, so nobody can put a pointer under someone\nelse's name."
         },
         {
           "name": "x",
@@ -82,7 +116,7 @@
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -91,6 +125,7 @@
     },
     "Layer": {
       "kind": "record",
+      "doc": "`parent_id` and `layer_index` are indexed, so a group's children and the\ntop or bottom of the stack are seeks rather than scans.",
       "fields": [
         {
           "name": "id",
@@ -108,20 +143,23 @@
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "\"raster\" | \"group\" | \"text\" | \"adjustment\" | \"fill\""
         },
         {
-          "name": "parent_id",
+          "name": "parentId",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Parent group layer id (folder nesting); None = top level."
         },
         {
-          "name": "layer_index",
+          "name": "layerIndex",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Order within the parent (ascending = bottom→top)."
         },
         {
           "name": "visible",
@@ -139,13 +177,15 @@
           "name": "opacity",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "0..=100"
         },
         {
-          "name": "blend_mode",
+          "name": "blendMode",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "\"normal\" | \"multiply\" | \"screen\" | \"overlay\" | \"darken\" | \"lighten\" | …"
         },
         {
           "name": "x",
@@ -178,65 +218,74 @@
           }
         },
         {
-          "name": "scale_x",
+          "name": "scaleX",
+          "type": {
+            "kind": "i32"
+          },
+          "doc": "percent, 100 = 1:1"
+        },
+        {
+          "name": "scaleY",
           "type": {
             "kind": "i32"
           }
         },
         {
-          "name": "scale_y",
+          "name": "skewX",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "Horizontal shear in degrees (-80..=80), 0 = none."
         },
         {
-          "name": "skew_x",
+          "name": "skewY",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "Vertical shear in degrees (-80..=80), 0 = none."
         },
         {
-          "name": "skew_y",
-          "type": {
-            "kind": "i32"
-          }
-        },
-        {
-          "name": "flip_h",
+          "name": "flipH",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Mirror across the layer's vertical centre line."
         },
         {
-          "name": "flip_v",
+          "name": "flipV",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Mirror across the layer's horizontal centre line."
         },
         {
           "name": "warp",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Corner-pin warp: JSON `{\"tl\":[dx,dy],\"tr\":[…],\"br\":[…],\"bl\":[…]}` in the\nlayer's own pixel units. Opaque to the contract (like `adjustments.curves`)\n— the renderer subdivides the quad into a triangle mesh. Empty = no warp."
         },
         {
-          "name": "blob_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "mask_blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "doc": "PNG pixel data for raster layers (blob id). Empty for non-raster kinds."
+        },
+        {
+          "name": "maskBlobId",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Grayscale PNG layer mask (blob id). None = no mask."
         },
         {
           "name": "fill",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Solid color for `fill` layers (and a tint reference otherwise)."
         },
         {
           "name": "adjustments",
@@ -252,19 +301,19 @@
           "nullable": true
         },
         {
-          "name": "created_by",
+          "name": "createdBy",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -294,16 +343,17 @@
           "nullable": true
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Dedicated LWW clock for username/avatar edits (joined_at never changes,\nso merging on it would freeze a member's username at its first value)."
         }
       ]
     },
@@ -343,72 +393,74 @@
           }
         },
         {
+          "name": "canvas",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Canvas"
+              }
+            }
+          },
+          "doc": "`None` until the owner first resizes or recolours; `initial_canvas`\nanswers until then."
+        },
+        {
           "name": "initial_name",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "What `init` was given. The `Ownable` cells above cannot be seeded at init\non rc.20 (the value is silently dropped — see `init`), so the opening\nvalues live here and the owner-gated cells take over from the first\nowner edit onwards. `Frozen`: written once at init, changeable by nobody,\nso a member cannot rename the document by rewriting the fallback. Read\nthrough `doc_name_str` / `canvas_now`."
         },
         {
           "name": "initial_description",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
           }
         },
         {
-          "name": "canvas_width",
+          "name": "initial_canvas",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "u32"
-            }
-          }
-        },
-        {
-          "name": "canvas_height",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u32"
-            }
-          }
-        },
-        {
-          "name": "background",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
+              "$ref": "Canvas"
             }
           }
         },
         {
           "name": "layers",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Layer"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Layer"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Writer-set guarded: only accounts holding a role mask projected from\n`roles` (editors, admins) may write an entry, on every node."
         },
         {
           "name": "members",
@@ -419,9 +471,9 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "One slot per account, written only by that account."
         },
         {
           "name": "cursors",
@@ -433,8 +485,9 @@
             "value": {
               "$ref": "CursorState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed by DEVICE, not by member — see `CursorState`. The only map here\nthat is. Each entry is owned by the account that wrote it."
         },
         {
           "name": "roles",
@@ -461,13 +514,13 @@
           }
         },
         {
-          "name": "font_family",
+          "name": "fontFamily",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "font_size",
+          "name": "fontSize",
           "type": {
             "kind": "u32"
           }

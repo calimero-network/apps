@@ -9,18 +9,11 @@
 //!
 //! ## What is stored, and why it converges
 //!
-//! **Moves, keyed by ply. Never a board.** `moves` is
-//! `UnorderedMap<"<game>/<ply>", MoveRecord>` and every position in the app is
-//! derived by replaying it (see [`game::replay`]). Two nodes that concurrently
-//! write the same ply — both players moving in the same instant, each valid
-//! against the state they could see — merge to ONE record by a total order
-//! over (timestamp, encoded bytes), so both replicas elect the same winner and
-//! the game continues from it. A stored BOARD could not do that: it would merge
-//! field by field into a position no game ever reached.
-//!
-//! **Seats are first-claim-wins.** Two people claiming White at once resolve
-//! the same way on every replica, so nobody ends up holding a seat on their own
-//! node and not on anyone else's.
+//! **Moves, keyed by author and ply. Never a board.** `moves` is
+//! `WriteOnce<SortedMap<"<account>/<game>/<ply>/<nonce>", MoveRecord>>` and
+//! every position in the app is derived by replaying it (see
+//! [`game::replay`]). A stored BOARD could not converge: it would merge field
+//! by field into a position no game ever reached.
 //!
 //! **Endings are stored only when a PERSON ends the game** — a resignation, an
 //! agreed draw, a claimed one. Checkmate, stalemate, insufficient material,
@@ -33,37 +26,46 @@
 //! signature, authorizes them at their causal cut, and applies the actions. It
 //! does NOT execute this contract. So a patched node can put whatever bytes it
 //! likes into any entity it is allowed to write, and the checks in `play` bind
-//! only the node that runs them. Two things follow, and they shape every read
+//! only the node that runs them. Three things follow, and they shape every read
 //! below:
 //!
 //! **Nothing is trusted that can be derived.** The position, the SAN, the ply
 //! ordering, the result and the current game index are all recomputed on every
 //! read, from the moves, by the reader. A forged record is inert: it sits in
 //! storage and in the root hash, and no honest node ever folds it into a
-//! position. This is quarantine at interpretation, not prevention at write —
-//! the write cannot be prevented, because nothing re-executes at receive time.
+//! position.
 //!
-//! **Everything else is owned.** Every entity a player writes lives in an
-//! [`AuthoredMap`], whose entries carry a `StorageType::User { owner }` stamp.
-//! Core verifies a per-action signature against that owner inside
-//! `Interface::apply_action` on every receive path — a remote `User` action
-//! with no signature is refused outright — so a member cannot author an entry
-//! as someone else. Keys name their author and the reader re-checks the stamp,
-//! which is what makes "White's move at ply 6" a claim only White can make.
+//! **Everything a player writes is owned, and written once.** Every claim
+//! lives in a [`WriteOnce`] map (presence alone in the player's own
+//! [`UserStorage`] slot), whose entries carry a `StorageType::User`
+//! owner stamp AND an immutable rule that every node enforces on apply: nobody,
+//! the owner included, edits or removes a row once written. Keys name their
+//! author and the reader re-checks the stamp, so "White's move at ply 6" is a
+//! claim only White can make — and one White cannot take back.
+//!
+//! **No clock a writer sets decides anything that matters.** A row's `at` is
+//! that writer's own word, so it cannot order a game or elect a seat holder
+//! once the game is under way: a backdated row would win any "earliest" rule.
+//! Instead a ply is decided by being the ONLY legal move its author wrote there
+//! (two is equivocation, and loses — see [`MeroChess::play_out`]), an ending
+//! pins the game at its ply, and the chairs lock once each player has moved
+//! against the other (see [`MeroChess::chairs`]).
 //!
 //! What remains is that a player can stall: squat a key the reader is waiting
 //! on, or simply stop moving. Neither changes a result, and both are available
 //! to anyone who can walk away from a board.
 
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable as MergeableTrait};
+use calimero_storage::collections::{
+    Frozen, Guarded, GuardedEntries, Mergeable as MergeableTrait, Owning, Policy, SortedMap,
+    UserStorage, WriteOnce,
+};
 
 pub mod board;
 pub mod game;
@@ -77,7 +79,7 @@ pub mod notation;
 #[cfg(test)]
 mod tests;
 
-use board::Color;
+use board::{Color, Position};
 use movegen::{in_check, ClaimableDraw, Outcome};
 
 /// A player's identity, hex-encoded. See [`MeroChess::caller`] for which of the
@@ -90,6 +92,10 @@ type MemberId = String;
 /// recorded. It is not a rule of chess; it is the bound that stops a context's
 /// state growing without limit, and every read replays the whole list.
 const MAX_PLY: u32 = 600;
+
+/// How many games one table walks before it stops counting. A table that
+/// reaches this many rematches has other problems.
+const MAX_GAMES: u32 = 1024;
 
 /// Display names are shown to the other player, so they are bounded and
 /// stripped of control characters at the door.
@@ -105,59 +111,20 @@ const PRESENCE_TTL_MS: u64 = 30_000;
 /// [`MeroChess::seat_for_color`] which seat is White right now.
 const SEAT_WHITE: &str = "white";
 const SEAT_BLACK: &str = "black";
-
-// ── CRDT merge rules ─────────────────────────────────────────────────────────
-
-/// Take `other` iff it wins a **total order** over (clock, canonical bytes).
-///
-/// The byte tie-break is not decoration. A bare `other.ts > self.ts` is not
-/// commutative: at an exact clock tie with differing content each replica keeps
-/// its own copy, `merge` changes nothing on either side, and the two stay
-/// divergent forever with no error anywhere. Comparing the borsh encoding — a
-/// total order over values — makes both replicas elect the same winner
-/// independently, which is what convergence requires.
-fn later_wins<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
-    match theirs_ts.cmp(&mine_ts) {
-        Ordering::Greater => true,
-        Ordering::Less => false,
-        Ordering::Equal => encoded_gt(theirs, mine),
-    }
-}
-
-/// The same total order, read the other way: the EARLIEST write wins.
-///
-/// Used for everything a player claims rather than updates — a seat, a ply, the
-/// end of a game. "First one wins" is the rule a person expects for a claim,
-/// and unlike last-writer-wins it cannot be taken away from them later by a
-/// node whose clock runs fast.
-fn earlier_wins<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
-    match theirs_ts.cmp(&mine_ts) {
-        Ordering::Less => true,
-        Ordering::Greater => false,
-        Ordering::Equal => encoded_gt(theirs, mine),
-    }
-}
-
-/// Compare two values by their canonical borsh encoding.
-///
-/// Infallible on purpose. Core's contract for a dispatched merge requires a
-/// TOTAL rule — an `Err` is not validation, it is a refusal to converge, and
-/// the entity then stays divergent while repair retries it forever. A value
-/// that came back out of storage was borsh-encoded to get there, so the
-/// fallback is unreachable rather than merely unlikely.
-fn encoded_gt<T: BorshSerialize>(a: &T, b: &T) -> bool {
-    let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
-    encode(a) > encode(b)
-}
+const SEATS: [&str; 2] = [SEAT_WHITE, SEAT_BLACK];
 
 // ── Stored records ───────────────────────────────────────────────────────────
+//
+// Everything but `Player` is plain data in a `WriteOnce` map: nothing merges,
+// because nothing changes.
 
+/// A person's presence row — the one thing they keep RE-stating, so it lives in
+/// their own [`UserStorage`] slot and resolves to the newest copy.
 #[app::mergeable(id = "mero-chess::Player")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Player {
-    pub id: MemberId,
     pub name: String,
     pub joined_at: u64,
     pub updated_at: u64,
@@ -165,99 +132,60 @@ pub struct Player {
 
 impl MergeableTrait for Player {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if later_wins(self.updated_at, other.updated_at, self, other) {
+        // Newest wins, ties broken on the encoding so both replicas agree.
+        // Only its owner writes a presence row, so this is a retry, not a race.
+        let theirs = (
+            other.updated_at,
+            calimero_sdk::borsh::to_vec(other).unwrap_or_default(),
+        );
+        let mine = (
+            self.updated_at,
+            calimero_sdk::borsh::to_vec(self).unwrap_or_default(),
+        );
+        if theirs > mine {
             *self = other.clone();
         }
         Ok(())
     }
 }
 
-/// One person's claim on one chair.
+/// One person's claim on one chair, keyed `"<seat>/<account>/<nonce>"`.
 ///
-/// Keyed `"<seat>/<account>"` and owned by that account, so a claim is
-/// something only its claimant can make. The reader elects the winner (see
-/// [`MeroChess::seat_member`]) rather than the writers racing for one key,
-/// which is also what stops a second claimant from squatting the chair's key
-/// before its rightful holder reaches it.
-#[app::mergeable(id = "mero-chess::Seat")]
+/// Whose claim WINS is the reader's question (see [`MeroChess::chairs`]); the
+/// row carries no member id, because the owner stamp already says who wrote it.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Seat {
-    pub member: MemberId,
     pub name: String,
     pub claimed_at: u64,
-    /// When the holder stood up, or 0 while they are still seated.
-    ///
-    /// A vacated claim is KEPT rather than deleted, because two different
-    /// questions are asked of these rows and only one of them is about now.
-    /// "Who is sitting there?" must stop counting it; "was this person entitled
-    /// to claim that rematch, back then?" must not — a fact about the past does
-    /// not change because somebody got up. Deleting the row answered both at
-    /// once, which collapsed the whole game history to game 0 the moment a
-    /// player left (see `seat_member_of_record`).
-    pub vacated_at: u64,
 }
 
-impl MergeableTrait for Seat {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Monotonic, and settled BEFORE the claim itself is chosen. `sit`
-        // always writes a fresh key, so one key only ever goes seated ->
-        // vacated, never back — but the pre-stand and post-stand copies of this
-        // key share a `claimed_at`, so leaving this to the tie-break below
-        // would let the seated copy win and sit the player back down.
-        let vacated_at = self.vacated_at.max(other.vacated_at);
-        // Two versions of ONE person's claim — only they can write this key, so
-        // this is a retry, not a race. The race between two DIFFERENT claimants
-        // is resolved by the reader, over separate keys.
-        if earlier_wins(self.claimed_at, other.claimed_at, self, other) {
-            *self = other.clone();
-        }
-        self.vacated_at = vacated_at;
-        Ok(())
-    }
-}
-
-/// One played move.
+/// One played move, keyed `"<account>/<game>/<ply>/<nonce>"`.
 ///
-/// Deliberately two fields. The game, the ply, the author and the notation were
-/// all in here once, and every one of them was a field a forger could set while
-/// the reader worked the same thing out for itself — the game and ply from the
-/// key, the author from the key and core's owner stamp, the SAN from the
-/// position during the replay. A stored value that nothing reads is not
-/// harmless: it is an invitation for the next reader to trust it.
-#[app::mergeable(id = "mero-chess::MoveRecord")]
+/// The game, the ply and the author come from the key and core's owner stamp;
+/// the SAN comes from the replay. What is left is what only the mover knows.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct MoveRecord {
     /// The move, and the only thing here a reader cannot work out for itself.
     pub uci: String,
-    /// When its author says they played it.
-    ///
-    /// Orders that author's own rows for one ply and nothing else — they are
-    /// the only person who can write them, so a wrong clock here can cost them
-    /// a retry and can cost nobody else anything.
+    /// When its author says they played it. Display only: nothing is ordered
+    /// by it, because its author could set it to anything.
     pub at: u64,
+    /// The member the mover saw in the other chair.
+    ///
+    /// Load-bearing: it is how a player's own, unforgeable rows vouch for who
+    /// they were playing, which is what locks the chairs once a game is under
+    /// way — see [`MeroChess::chairs`].
+    pub opponent: MemberId,
 }
 
-impl MergeableTrait for MoveRecord {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // A ply is claimed, not updated. Ordering comes from the KEY, so a
-        // clock that is wrong cannot reorder a game — it can only decide which
-        // of two genuinely simultaneous moves takes the ply.
-        if earlier_wins(self.at, other.at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-/// A game ended by a PERSON: a resignation, an agreed draw, a claimed one.
+/// A game ended by a PERSON, keyed `"<account>/<game>/<nonce>"`.
 ///
 /// Board endings (checkmate, stalemate, dead position, fivefold, seventy-five
 /// moves) are derived from the move list and never stored.
-#[app::mergeable(id = "mero-chess::Ending")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -268,73 +196,145 @@ pub struct Ending {
     pub reason: String,
     /// The ply the game stood at when this was written.
     ///
-    /// Load-bearing, not bookkeeping: it is what lets the reader re-check a
-    /// claimed draw against the position it was claimed in, and an agreement
-    /// against the offer it answered. An ending nobody can re-derive is an
-    /// ending a byzantine writer can invent.
+    /// Load-bearing, not bookkeeping: the reader re-checks the ending against
+    /// the position at this ply, and a valid one ENDS the game here — a move
+    /// written at this ply afterwards cannot un-resign anybody.
     pub ply: u32,
     pub at: u64,
 }
 
-impl MergeableTrait for Ending {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Whoever ended it first ended it. A resignation that crosses an
-        // acceptance on the wire must not flip between replicas.
-        if earlier_wins(self.at, other.at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-/// A standing draw offer, from one player, in one game.
+/// A draw offer, or an answer to one, keyed `"<account>/<game>/<nonce>"`.
 ///
 /// `ply` is what makes it expire: an offer is good only for the position it was
 /// made in, exactly as at a board, so a move made after it silently voids it.
-#[app::mergeable(id = "mero-chess::DrawOffer")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DrawOffer {
-    pub open: bool,
-    /// Set when this row is an ANSWER to the opponent's offer rather than an
-    /// offer of its own.
-    ///
-    /// It exists because only an entry's owner may write it: declining cannot
-    /// reach into the offerer's row to close it, so the refusal is recorded
-    /// here and [`MeroChess::offer_stands`] reads the pair.
+    /// Set when this row REFUSES the opponent's offer rather than making one.
+    /// Only an entry's owner may write it, so a refusal cannot close the
+    /// offerer's row; it is recorded here and the reader reads the pair.
     pub declined: bool,
     pub ply: u32,
     pub at: u64,
 }
 
-impl MergeableTrait for DrawOffer {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if later_wins(self.at, other.at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-/// One game at this table. Game 0 exists from the moment the context does.
-#[app::mergeable(id = "mero-chess::GameRecord")]
+/// A claim that this player started a rematch, keyed `"<account>/<game>/<nonce>"`.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct GameRecord {
-    /// Which game this claims to start — checked against the game the reader
-    /// is counting towards, so a row cannot claim a different one.
-    pub index: u32,
     pub started_at: u64,
 }
 
-impl MergeableTrait for GameRecord {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if earlier_wins(self.started_at, other.started_at, self, other) {
-            *self = other.clone();
+// ── Derived state ────────────────────────────────────────────────────────────
+
+/// Who holds one chair, as the reader elected it.
+#[derive(Clone, Debug, Default)]
+struct Holder {
+    member: MemberId,
+    name: String,
+}
+
+/// One game, played out from the rows by [`MeroChess::play_out`].
+struct Played {
+    index: u32,
+    started_at: u64,
+    white: MemberId,
+    black: MemberId,
+    /// The moves the replay applied, in ply order.
+    moves: Vec<MoveRecord>,
+    replay: game::Replay,
+    /// `*` while unfinished.
+    result: String,
+    reason: String,
+    /// Each seat holder's draw-offer rows for this game.
+    offers: BTreeMap<MemberId, Vec<DrawOffer>>,
+}
+
+impl Played {
+    fn unfinished(&self) -> bool {
+        self.result == "*"
+    }
+
+    fn ply(&self) -> u32 {
+        self.replay.applied as u32
+    }
+
+    fn member_for(&self, color: Color) -> &str {
+        match color {
+            Color::White => &self.white,
+            Color::Black => &self.black,
         }
-        Ok(())
+    }
+
+    /// Did `member` offer a draw at `ply`? Refusals are not consulted: this
+    /// is the question an agreement asks, and a player cannot void their own
+    /// acceptance by also refusing.
+    fn offered(&self, member: &str, ply: u32) -> bool {
+        self.offers
+            .get(member)
+            .is_some_and(|rows| rows.iter().any(|o| !o.declined && o.ply == ply))
+    }
+
+    fn declined(&self, member: &str, ply: u32) -> bool {
+        self.offers
+            .get(member)
+            .is_some_and(|rows| rows.iter().any(|o| o.declined && o.ply == ply))
+    }
+
+    /// The seat holder whose offer stands in the current position, or `""`.
+    fn standing_offer(&self) -> MemberId {
+        if !self.unfinished() {
+            return String::new();
+        }
+        let ply = self.ply();
+        for color in [Color::White, Color::Black] {
+            let from = self.member_for(color);
+            let to = self.member_for(color.other());
+            if !from.is_empty() && self.offered(from, ply) && !self.declined(to, ply) {
+                return from.to_owned();
+            }
+        }
+        String::new()
+    }
+}
+
+/// Everything a call needs to know about the table, derived once.
+struct Snapshot {
+    /// `[white chair, black chair]`.
+    chairs: [Holder; 2],
+    /// Every game the table validly reached, oldest first. Never empty.
+    games: Vec<Played>,
+}
+
+impl Snapshot {
+    fn current(&self) -> &Played {
+        // SAFETY: `MeroChess::snapshot` always plays out game 0.
+        self.games.last().expect("game 0 always exists")
+    }
+
+    fn holder(&self, seat: &str) -> &Holder {
+        &self.chairs[usize::from(seat == SEAT_BLACK)]
+    }
+
+    fn seat_of(&self, member: &str) -> Option<&'static str> {
+        SEATS
+            .into_iter()
+            .find(|seat| self.holder(seat).member == member)
+    }
+
+    /// The caller's colour in the current game, or `None` for a spectator.
+    ///
+    /// A player sitting in BOTH chairs is whichever side is to move: every
+    /// caller of this asks "may this person act, and as whom", and for a
+    /// pass-and-play board the honest answer is "as the side to move".
+    fn color_of(&self, member: &str) -> Option<Color> {
+        let game = self.current();
+        let side = game.replay.position.side_to_move;
+        [side, side.other()]
+            .into_iter()
+            .find(|&color| game.member_for(color) == member && !member.is_empty())
     }
 }
 
@@ -431,7 +431,8 @@ pub struct TableView {
     pub result: String,
     /// Why it ended: `checkmate`, `stalemate`, `insufficientMaterial`,
     /// `fivefold`, `seventyFiveMove`, `resignation`, `agreement`, `threefold`,
-    /// `fiftyMove` — or `""`.
+    /// `fiftyMove`, `equivocation` (a player wrote two different moves at one
+    /// ply, and lost for it) — or `""`.
     pub reason: String,
     pub check: bool,
     /// `threefold`, `fiftyMove` or `""` — a draw the side to move may claim.
@@ -494,31 +495,33 @@ pub enum Event {
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-/// Every map here is an [`AuthoredMap`] and every key names its author, so a
-/// member can only ever write rows about themselves — enforced by core at merge
-/// time, not by this code. The reader elects and re-derives; see the module
-/// docs for why that split is the whole security model.
+/// Every map a player writes is owned and every key names its author, so a
+/// member can only ever write rows about themselves — and, outside presence,
+/// never change or remove one. Both are enforced by core at apply time, not by
+/// this code. The reader elects and re-derives; see the module docs for why
+/// that split is the whole security model.
 #[app::state(emits = Event)]
 pub struct MeroChess {
-    /// The two plain registers, and the only two writes at this table that are
-    /// not authored. Any context member can last-write them, and that is
-    /// deliberate rather than overlooked: both are captions. Nothing about a
-    /// game's legality, result, turn order or history reads either one, so the
-    /// worst a member can do with them is relabel the table.
-    title: LwwRegister<String>,
-    created_at: LwwRegister<u64>,
-    /// `<account>` -> that person's presence row.
-    players: AuthoredMap<MemberId, Player>,
-    /// `"<seat>/<account>"` -> one person's claim on that chair.
-    seat_claims: AuthoredMap<String, Seat>,
-    /// `"<game>/<account>"` -> a claim that this player started that rematch.
-    games: AuthoredMap<String, GameRecord>,
-    /// `"<game>/<ply>/<account>"` -> the move that player wrote at that ply.
-    moves: AuthoredMap<String, MoveRecord>,
-    /// `"<game>/<account>"` -> how that player says the game ended.
-    endings: AuthoredMap<String, Ending>,
-    /// `"<game>/<account>"` -> that player's standing offer.
-    draw_offers: AuthoredMap<String, DrawOffer>,
+    /// Fixed when the table is created: nobody can relabel it or move the
+    /// date game 0 began.
+    title: Frozen<String>,
+    created_at: Frozen<u64>,
+    /// One slot per account — only that account writes it, and nobody can
+    /// file rows under anyone else's name to crowd it.
+    players: UserStorage<Player>,
+    /// `"<seat>/<account>/<nonce>"` -> one person's claim on that chair.
+    seat_claims: WriteOnce<SortedMap<String, Seat>>,
+    /// `"<seat>/<account>/<claim nonce>/<nonce>"` -> when that claim was given
+    /// up. Honoured only for a claimant who never acted at the table.
+    vacated: WriteOnce<SortedMap<String, u64>>,
+    /// `"<account>/<game>/<nonce>"` -> a claim that this player started game.
+    games: WriteOnce<SortedMap<String, GameRecord>>,
+    /// `"<account>/<game>/<ply>/<nonce>"` -> the move that player wrote there.
+    moves: WriteOnce<SortedMap<String, MoveRecord>>,
+    /// `"<account>/<game>/<nonce>"` -> how that player says the game ended.
+    endings: WriteOnce<SortedMap<String, Ending>>,
+    /// `"<account>/<game>/<nonce>"` -> that player's offers and refusals.
+    draw_offers: WriteOnce<SortedMap<String, DrawOffer>>,
 }
 
 #[app::logic]
@@ -527,18 +530,19 @@ impl MeroChess {
     pub fn init(title: String, now: u64) -> MeroChess {
         app::emit!(Event::Initialized());
         // Game 0 is IMPLICIT — no record, because a record is something a
-        // writer controls. `current_game` counts valid rematches up from zero,
+        // writer controls. The snapshot counts valid rematches up from zero,
         // so a peer cannot jump the table to game 9999 and leave every reader
         // staring at an empty board with the real game hidden behind it.
         MeroChess {
-            title: LwwRegister::new(clean_name(&title, "Chess")),
-            created_at: LwwRegister::new(now),
-            players: AuthoredMap::new(),
-            seat_claims: AuthoredMap::new(),
-            games: AuthoredMap::new(),
-            moves: AuthoredMap::new(),
-            endings: AuthoredMap::new(),
-            draw_offers: AuthoredMap::new(),
+            title: Frozen::new(clean_name(&title, "Chess")),
+            created_at: Frozen::new(now),
+            players: UserStorage::new(),
+            seat_claims: WriteOnce::new(),
+            vacated: WriteOnce::new(),
+            games: WriteOnce::new(),
+            moves: WriteOnce::new(),
+            endings: WriteOnce::new(),
+            draw_offers: WriteOnce::new(),
         }
     }
 
@@ -571,35 +575,24 @@ impl MeroChess {
         String::from(PublicKey::from(*owner))
     }
 
-    /// True when `key` in `map` is stamped with `expected` — the check every
-    /// read does before believing a row.
-    fn owned_by(owner: Option<MemberId>, expected: &str) -> bool {
-        matches!(owner, Some(actual) if actual == expected && !expected.is_empty())
-    }
-
     // ── reading the table ───────────────────────────────────────────────────
 
     /// The whole table in one call — see [`TableView`].
     pub fn table(&self, now: u64) -> app::Result<TableView> {
-        let index = self.current_game()?;
-        let moves = self.moves_of(index)?;
-        let replayed = game::replay(&moves.iter().map(|m| m.uci.clone()).collect::<Vec<_>>());
-        let (result, reason) = self.result_of(index, &replayed)?;
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        let replayed = &game.replay;
 
-        let white_seat = self.seat_view(self.seat_for_color(index, Color::White), now)?;
-        let black_seat = self.seat_view(self.seat_for_color(index, Color::Black), now)?;
+        let white_seat =
+            self.seat_view(&snap, self.seat_for_color(game.index, Color::White), now)?;
+        let black_seat =
+            self.seat_view(&snap, self.seat_for_color(game.index, Color::Black), now)?;
 
         let me = Self::caller_id();
-        // Deliberately via `color_of`, so a player in both chairs is reported
-        // as the side to move and the board stays playable for each side in
-        // turn rather than freezing after White's first move.
-        let my_color = match self.color_of(index, &me, replayed.position.side_to_move)? {
-            Some(color) => color_name(color),
-            None => "",
-        };
+        let my_color = snap.color_of(&me).map_or("", color_name);
 
         let side_to_move = color_name(replayed.position.side_to_move);
-        let unfinished = result == "*";
+        let unfinished = game.unfinished();
         let seated = !white_seat.member.is_empty() && !black_seat.member.is_empty();
 
         let status = if !unfinished {
@@ -611,15 +604,12 @@ impl MeroChess {
         };
 
         Ok(TableView {
-            title: self.title.get().clone(),
-            created_at: *self.created_at.get(),
-            game: index,
+            title: self.title.get()?.clone(),
+            created_at: *self.created_at.get()?,
+            game: game.index,
             fen: replayed.position.to_fen(),
             side_to_move: side_to_move.to_owned(),
-            // Truncated to what the REPLAY applied and labelled with the SAN
-            // it derived. A stored row past the stopping point is not a move
-            // that happened, and a stored `san` is a string its writer chose.
-            moves: move_views(&moves, &replayed, &white_seat.member, &black_seat.member),
+            moves: move_views(game),
             // Withheld once the game is over, so a client cannot offer a move
             // in a finished game and get a refusal it could have predicted.
             legal_moves: if unfinished {
@@ -628,8 +618,8 @@ impl MeroChess {
                 Vec::new()
             },
             status: status.to_owned(),
-            result,
-            reason,
+            result: game.result.clone(),
+            reason: game.reason.clone(),
             check: in_check(&replayed.position, replayed.position.side_to_move),
             claimable_draw: match replayed.claimable() {
                 Some(ClaimableDraw::ThreefoldRepetition) => "threefold".to_owned(),
@@ -639,40 +629,32 @@ impl MeroChess {
             my_turn: unfinished && seated && my_color == side_to_move,
             my_color: my_color.to_owned(),
             me,
-            draw_offer_from: self.standing_offer(index, replayed.applied as u32)?,
+            draw_offer_from: game.standing_offer(),
             white: white_seat,
             black: black_seat,
-            players: self.player_views(index, replayed.position.side_to_move, now)?,
-            // COUNTED from the current index, not `games.len()`. Game 0 is
-            // implicit — it has no row — so a row count is one short of the
-            // truth from the first game and wrong again for every extra
-            // rematch row a second player writes. `current_game` already walks
-            // exactly the games this table validly reached.
-            games_played: index.saturating_add(1),
+            players: self.player_views(&snap, now)?,
+            // COUNTED, not a row count: game 0 is implicit and a second
+            // player's rematch row is not a second game.
+            games_played: game.index.saturating_add(1),
         })
     }
 
     /// Every game this table has played, oldest first.
     pub fn history(&self) -> app::Result<Vec<GameSummary>> {
-        let mut out = Vec::new();
-        // Counted, not listed — same reason `current_game` counts. A game is in
-        // the record because the table reached it, not because a row says so.
-        for index in 0..=self.current_game()? {
-            let moves = self.moves_of(index)?;
-            let replayed = game::replay(&moves.iter().map(|m| m.uci.clone()).collect::<Vec<_>>());
-            let (result, reason) = self.result_of(index, &replayed)?;
-            let started_at = self.started_at_of(index)?;
-            out.push(GameSummary {
-                index,
-                started_at,
-                result,
-                reason,
-                plies: replayed.applied as u32,
-                white: self.seat_member_of_record(self.seat_for_color(index, Color::White))?,
-                black: self.seat_member_of_record(self.seat_for_color(index, Color::Black))?,
-            });
-        }
-        Ok(out)
+        Ok(self
+            .snapshot()?
+            .games
+            .iter()
+            .map(|game| GameSummary {
+                index: game.index,
+                started_at: game.started_at,
+                result: game.result.clone(),
+                reason: game.reason.clone(),
+                plies: game.ply(),
+                white: game.white.clone(),
+                black: game.black.clone(),
+            })
+            .collect())
     }
 
     // ── sitting down ────────────────────────────────────────────────────────
@@ -680,24 +662,8 @@ impl MeroChess {
     /// Announce yourself at the table, or refresh your presence and name.
     pub fn join(&mut self, name: String, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let existing = self.players.get(&id)?;
-        let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
-        let known = existing.is_some();
-        drop(existing);
-
-        self.put_owned(
-            |state| &mut state.players,
-            &format!("{id}/"),
-            &id,
-            |nonce| player_key(&id, nonce),
-            now,
-            Player {
-                id: id.clone(),
-                name: clean_name(&name, "Guest"),
-                joined_at,
-                updated_at: now,
-            },
-        )?;
+        let known = self.presence_of(&id)?.is_some();
+        self.announce(Some(clean_name(&name, "Guest")), now)?;
         if !known {
             app::emit!(Event::PlayerJoined(id));
         }
@@ -719,8 +685,9 @@ impl MeroChess {
         let id = Self::caller_id();
         let display = clean_name(&name, "Guest");
 
-        let holder = self.seat_member(&seat)?;
-        if holder == id {
+        let snap = self.snapshot()?;
+        let holder = &snap.holder(seat).member;
+        if *holder == id {
             return Ok(()); // already yours — idempotent, not an error
         }
         if !holder.is_empty() {
@@ -733,77 +700,47 @@ impl MeroChess {
         // The rule that matters — a seat someone else holds is theirs — is
         // above, and nothing below this line distinguishes the two cases.
 
-        let existing = self.players.get(&id)?;
-        let joined_at = existing.as_ref().map_or(now, |p| p.joined_at);
-        drop(existing);
-        self.put_owned(
-            |state| &mut state.players,
-            &format!("{id}/"),
-            &id,
-            |nonce| player_key(&id, nonce),
-            now,
-            Player {
-                id: id.clone(),
-                name: display.clone(),
-                joined_at,
-                updated_at: now,
-            },
-        )?;
+        self.announce(Some(display.clone()), now)?;
         // Under this claimant's own key. Whether the claim WINS the chair is
-        // the reader's question, asked the same way on every node — see
-        // `seat_member`.
-        let key = Self::free_key(&self.seat_claims, &id, now, |nonce| {
-            seat_key(&seat, &id, nonce)
-        })?;
-        self.put(
-            |state| &mut state.seat_claims,
+        // the reader's question, asked the same way on every node.
+        let key = Self::free_key(&self.seat_claims, now, |nonce| seat_key(seat, &id, nonce))?;
+        self.seat_claims.insert(
             key,
-            &id,
             Seat {
-                member: id.clone(),
                 name: display,
                 claimed_at: now,
-                vacated_at: 0,
             },
         )?;
         app::emit!(Event::Seated {
-            seat,
+            seat: seat.to_owned(),
             member: id.clone()
         });
         Ok(())
     }
 
-    /// Give up your chair — allowed only before the current game has a move in
-    /// it. Once a game is under way the way out is `resign`.
+    /// Give up your chair — allowed only before you have played at this table.
+    /// A chair you have played from is the table's record of who played; the
+    /// way out of a game is `resign`.
     pub fn stand(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let Some(seat) = self.seat_of(&id)? else {
+        let snap = self.snapshot()?;
+        let Some(seat) = snap.seat_of(&id) else {
             app::bail!("you are not seated");
         };
-        let index = self.current_game()?;
-        if !self.moves_of(index)?.is_empty() {
-            app::bail!("this game has started — resign instead");
+        if !snap.current().moves.is_empty() || self.has_acted(&id)? {
+            app::bail!("you have played at this table — resign instead");
         }
-        // Every row this player wrote for that chair — a squatted key can have
-        // forced a retry, so there may be more than one. Marked vacated rather
-        // than removed: the row is the only durable evidence that this player
-        // held the chair, and `rematch_is_valid` still needs it to answer a
-        // question about the past. `put` is owner-enforced by the collection
-        // itself, so this can only ever touch the caller's own claims.
-        let mine: Vec<(String, Seat)> = Self::valid_rows(&self.seat_claims, &seat_prefix(&seat))?
-            .into_iter()
-            .filter(|(key, _)| key_author(key) == Some(id.as_str()))
-            .collect();
-        for (key, claim) in mine {
-            self.put(
-                |state| &mut state.seat_claims,
-                key,
-                &id,
-                Seat {
-                    vacated_at: now,
-                    ..claim
-                },
-            )?;
+        // Every claim this player wrote for that chair — a squatted key can
+        // have forced a retry, so there may be more than one. Each is closed
+        // by a row of the caller's own, because a claim is written once and
+        // nobody, its author included, can remove it.
+        let prefix = format!("{seat}/{id}/");
+        for (key, _) in Self::owned_rows(&self.seat_claims, &prefix, &id)? {
+            if self.is_vacated(&key, &id)? {
+                continue;
+            }
+            let row = Self::free_key(&self.vacated, now, |nonce| format!("{key}/{nonce}"))?;
+            self.vacated.insert(row, now)?;
         }
         // Standing up is still a sign of life, and the parameter has to be
         // named `now` regardless: the ABI carries the RUST parameter names, so
@@ -811,7 +748,7 @@ impl MeroChess {
         // call from it would be a deserialisation error.
         self.touch(&id, now)?;
         app::emit!(Event::Vacated {
-            seat,
+            seat: seat.to_owned(),
             member: id.clone()
         });
         Ok(())
@@ -827,16 +764,14 @@ impl MeroChess {
     /// any of that — this is.
     pub fn play(&mut self, uci: String, now: u64) -> app::Result<String> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let moves = self.moves_of(index)?;
-        let replayed = game::replay(&moves.iter().map(|m| m.uci.clone()).collect::<Vec<_>>());
-
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result != "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        let index = game.index;
+        if !game.unfinished() {
             app::bail!("this game is over");
         }
 
-        let ply = replayed.applied as u32;
+        let ply = game.ply();
         if ply >= MAX_PLY {
             app::bail!("this game has reached the move limit");
         }
@@ -844,11 +779,10 @@ impl MeroChess {
         // BOTH chairs, not just the one to move: a game with an empty chair has
         // no opponent to answer, and letting White open against nobody produces
         // a move list the other player later joins into the middle of.
-        let holder =
-            self.seat_member(self.seat_for_color(index, replayed.position.side_to_move))?;
-        let waiting =
-            self.seat_member(self.seat_for_color(index, replayed.position.side_to_move.other()))?;
-        if holder.is_empty() || waiting.is_empty() {
+        let side = game.replay.position.side_to_move;
+        let holder = game.member_for(side);
+        let opponent = game.member_for(side.other()).to_owned();
+        if holder.is_empty() || opponent.is_empty() {
             app::bail!("both seats must be taken before a move can be played");
         }
         if holder != id {
@@ -861,26 +795,20 @@ impl MeroChess {
         // Membership of the generated list IS the legality check — one
         // definition of the rules for the whole app, and it is the same list
         // the client was handed.
-        let legal = movegen::legal_moves(&replayed.position);
-        let Some(&chosen) = legal.iter().find(|candidate| {
-            candidate.from == mv.from
-                && candidate.to == mv.to
-                // A promotion with no piece named is a queening, which is what
-                // a board does when you drag a pawn to the last rank.
-                && (mv.promotion.is_none() || candidate.promotion == mv.promotion)
-        }) else {
+        let Some(chosen) = find_legal(&game.replay.position, mv) else {
             app::bail!("that move is not legal in this position");
         };
 
-        let san = notation::san(&replayed.position, chosen);
-        let record = MoveRecord {
-            uci: notation::move_to_uci(chosen),
-            at: now,
-        };
-        let key = Self::free_key(&self.moves, &id, now, |nonce| {
-            move_key(index, ply, &id, nonce)
-        })?;
-        self.put(|state| &mut state.moves, key, &id, record)?;
+        let san = notation::san(&game.replay.position, chosen);
+        let key = Self::free_key(&self.moves, now, |nonce| move_key(&id, index, ply, nonce))?;
+        self.moves.insert(
+            key,
+            MoveRecord {
+                uci: notation::move_to_uci(chosen),
+                at: now,
+                opponent,
+            },
+        )?;
         self.touch(&id, now)?;
 
         app::emit!(Event::Moved {
@@ -893,19 +821,13 @@ impl MeroChess {
         // A move voids any standing offer, the same way it does at a board —
         // and announcing the ending here is what lets a client show "checkmate"
         // without replaying anything itself.
-        let after = game::replay(
-            &self
-                .moves_of(index)?
-                .iter()
-                .map(|m| m.uci.clone())
-                .collect::<Vec<_>>(),
-        );
-        if let Some(outcome) = after.outcome() {
-            let (result, reason) = describe_outcome(outcome);
+        let after = self.snapshot()?;
+        let now_over = after.current();
+        if now_over.index == index && !now_over.unfinished() {
             app::emit!(Event::GameEnded {
                 game: index,
-                result,
-                reason,
+                result: now_over.result.clone(),
+                reason: now_over.reason.clone(),
             });
         }
 
@@ -916,60 +838,32 @@ impl MeroChess {
     /// still being played.
     pub fn resign(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result != "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        if !game.unfinished() {
             app::bail!("this game is over");
         }
-        let Some(color) = self.color_of(index, &id, replayed.position.side_to_move)? else {
+        let Some(color) = snap.color_of(&id) else {
             app::bail!("only a seated player can resign");
         };
-
-        let result = win_for(color.other());
-        self.end_game(
-            index,
-            &result,
-            "resignation",
-            &id,
-            replayed.applied as u32,
-            now,
-        )?;
-        Ok(())
+        self.end_game(game, &win_for(color.other()), "resignation", &id, now)
     }
 
     /// Offer a draw in the current position. The offer stands until the
     /// position changes.
     pub fn offer_draw(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result != "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        if !game.unfinished() {
             app::bail!("this game is over");
         }
-        if self
-            .color_of(index, &id, replayed.position.side_to_move)?
-            .is_none()
-        {
+        if snap.color_of(&id).is_none() {
             app::bail!("only a seated player can offer a draw");
         }
-
-        self.put_owned(
-            |state| &mut state.draw_offers,
-            &claim_prefix(index, &id),
-            &id,
-            |nonce| claim_key(index, &id, nonce),
-            now,
-            DrawOffer {
-                open: true,
-                declined: false,
-                ply: replayed.applied as u32,
-                at: now,
-            },
-        )?;
+        self.write_offer(game, &id, false, now)?;
         app::emit!(Event::DrawOffered {
-            game: index,
+            game: game.index,
             by: id.clone()
         });
         Ok(())
@@ -978,69 +872,40 @@ impl MeroChess {
     /// Accept the opponent's standing offer.
     pub fn accept_draw(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result != "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        if !game.unfinished() {
             app::bail!("this game is over");
         }
-        let Some(color) = self.color_of(index, &id, replayed.position.side_to_move)? else {
+        let Some(color) = snap.color_of(&id) else {
             app::bail!("only a seated player can accept a draw");
         };
-
-        let opponent = self.seat_member(self.seat_for_color(index, color.other()))?;
-        let offered = self.standing_offer(index, replayed.applied as u32)?;
-        if offered.is_empty() || offered != opponent {
+        let offered = game.standing_offer();
+        if offered.is_empty() || offered != game.member_for(color.other()) {
             app::bail!("there is no draw offer to accept");
         }
-
-        self.end_game(
-            index,
-            "1/2-1/2",
-            "agreement",
-            &id,
-            replayed.applied as u32,
-            now,
-        )?;
-        Ok(())
+        self.end_game(game, "1/2-1/2", "agreement", &id, now)
     }
 
     /// Refuse the opponent's standing offer. (A move refuses it too.)
     pub fn decline_draw(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let Some(color) = self.color_of(index, &id, replayed.position.side_to_move)? else {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        let Some(color) = snap.color_of(&id) else {
             app::bail!("only a seated player can decline a draw");
         };
-        let opponent = self.seat_member(self.seat_for_color(index, color.other()))?;
-        if opponent.is_empty() {
-            app::bail!("there is no draw offer to decline");
-        }
-
+        let opponent = game.member_for(color.other());
         // ⚠️ The offer belongs to the OPPONENT, and only its owner may write it
-        // — so declining cannot clear their row. It is recorded as the
-        // decliner's own, and `offer_stands` stops counting an offer once the
-        // other player has answered it at the same ply.
-        if !self.offer_stands(index, &opponent, replayed.applied as u32)? {
+        // — so declining cannot close their row. It is recorded as the
+        // decliner's own, and the reader stops counting an offer once the
+        // other player has refused it at the same ply.
+        if opponent.is_empty() || game.standing_offer() != opponent {
             app::bail!("there is no draw offer to decline");
         }
-        self.put_owned(
-            |state| &mut state.draw_offers,
-            &claim_prefix(index, &id),
-            &id,
-            |nonce| claim_key(index, &id, nonce),
-            now,
-            DrawOffer {
-                open: false,
-                declined: true,
-                ply: replayed.applied as u32,
-                at: now,
-            },
-        )?;
-
+        self.write_offer(game, &id, true, now)?;
         app::emit!(Event::DrawDeclined {
-            game: index,
+            game: game.index,
             by: id.clone()
         });
         Ok(())
@@ -1051,244 +916,469 @@ impl MeroChess {
     /// ends a game on its own.
     pub fn claim_draw(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result != "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        if !game.unfinished() {
             app::bail!("this game is over");
         }
-        if self
-            .color_of(index, &id, replayed.position.side_to_move)?
-            .is_none()
-        {
+        if snap.color_of(&id).is_none() {
             app::bail!("only a seated player can claim a draw");
         }
-        let Some(claim) = replayed.claimable() else {
-            app::bail!("there is no draw to claim in this position");
+        let reason = match game.replay.claimable() {
+            Some(ClaimableDraw::ThreefoldRepetition) => "threefold",
+            Some(ClaimableDraw::FiftyMove) => "fiftyMove",
+            None => app::bail!("there is no draw to claim in this position"),
         };
-        let reason = match claim {
-            ClaimableDraw::ThreefoldRepetition => "threefold",
-            ClaimableDraw::FiftyMove => "fiftyMove",
-        };
-        self.end_game(index, "1/2-1/2", reason, &id, replayed.applied as u32, now)?;
-        Ok(())
+        self.end_game(game, "1/2-1/2", reason, &id, now)
     }
 
     /// Start the next game. Colours swap, so the player who had Black has
     /// White. Only allowed once the current game is finished.
     pub fn rematch(&mut self, now: u64) -> app::Result<u32> {
         let id = Self::caller_id();
-        let index = self.current_game()?;
-        let replayed = self.replay_game(index)?;
-        let (result, _reason) = self.result_of(index, &replayed)?;
-        if result == "*" {
+        let snap = self.snapshot()?;
+        let game = snap.current();
+        if game.unfinished() {
             app::bail!("finish this game first");
         }
-        if self
-            .color_of(index, &id, replayed.position.side_to_move)?
-            .is_none()
-        {
+        if snap.color_of(&id).is_none() {
             app::bail!("only a seated player can start a rematch");
         }
 
-        let next = index.saturating_add(1);
-        // Each player's claim lives under their own key, and `current_game`
+        let next = game.index.saturating_add(1);
+        // Each player's claim lives under their own key, and the snapshot
         // counts a game as started if EITHER seat holder validly claimed it —
         // so two rematches started at once still produce one new game rather
         // than a contested row.
-        let key = Self::free_key(&self.games, &id, now, |nonce| claim_key(next, &id, nonce))?;
-        self.put(
-            |state| &mut state.games,
-            key,
-            &id,
-            GameRecord {
-                index: next,
-                started_at: now,
-            },
-        )?;
+        let key = Self::free_key(&self.games, now, |nonce| claim_key(&id, next, nonce))?;
+        self.games.insert(key, GameRecord { started_at: now })?;
         app::emit!(Event::GameStarted { game: next });
         Ok(next)
     }
 
-    // ── internals ───────────────────────────────────────────────────────────
+    // ── internals: the reader ───────────────────────────────────────────────
 
-    /// The game being played now.
+    /// The table as the reader derives it: who holds each chair, then every
+    /// game it validly reached, each one played out from its rows.
     ///
-    /// COUNTED, not read: game 0 is implicit, and game `n + 1` exists only if
-    /// some seat holder validly claimed a rematch of a game `n` that was
-    /// already decided. Reading a stored index instead — `max(keys)`, which is
-    /// what this used to do — let any member write one row and move every
-    /// reader to an empty board, hiding the real game behind it.
-    fn current_game(&self) -> app::Result<u32> {
-        let mut index = 0;
-        // Bounded so a pathological store cannot spin a read forever; a table
-        // that reaches 1024 rematches has other problems.
-        while index < 1024 && self.rematch_is_valid(index + 1)? {
-            index += 1;
+    /// ONE pass over the rows, each map read by author-and-game prefix. The
+    /// game index is COUNTED, not read: game `n + 1` exists only if a seat
+    /// holder claimed a rematch of a game `n` that was already decided —
+    /// reading a stored index instead let any member move every reader to an
+    /// empty board, hiding the real game behind it.
+    fn snapshot(&self) -> app::Result<Snapshot> {
+        let chairs = self.chairs()?;
+        let mut games: Vec<Played> = Vec::new();
+        for index in 0..MAX_GAMES {
+            let started_at = match games.last() {
+                None => *self.created_at.get()?,
+                Some(previous) if previous.unfinished() => break,
+                Some(previous) => match self.rematch_started(index, previous)? {
+                    Some(at) => at,
+                    None => break,
+                },
+            };
+            let member = |color| {
+                chairs[usize::from(self.seat_for_color(index, color) == SEAT_BLACK)]
+                    .member
+                    .clone()
+            };
+            games.push(self.play_out(
+                index,
+                started_at,
+                member(Color::White),
+                member(Color::Black),
+            )?);
         }
-        Ok(index)
+        Ok(Snapshot { chairs, games })
     }
 
-    /// Is there a real claim on game `index`, by someone entitled to make it?
-    ///
-    /// Two conditions, both re-derived: a seat holder of the PREVIOUS game
-    /// wrote the claim under their own account, and that previous game was
-    /// actually finished. A rematch of a game still in progress is not a
-    /// rematch — it is a way to erase one.
-    fn rematch_is_valid(&self, index: u32) -> app::Result<bool> {
-        let Some(previous) = index.checked_sub(1) else {
-            return Ok(false);
-        };
-        let replayed = self.replay_game(previous)?;
-        if self.result_of(previous, &replayed)?.0 == "*" {
-            return Ok(false);
-        }
-        for color in [Color::White, Color::Black] {
-            // Of record, not live: whoever held this chair during game
-            // `previous` was entitled to claim the rematch, and standing up
-            // afterwards does not take that back.
-            let holder = self.seat_member_of_record(self.seat_for_color(previous, color))?;
-            if holder.is_empty() {
-                continue;
-            }
-            let rows = Self::valid_rows(&self.games, &claim_prefix(index, &holder))?;
-            if rows.iter().any(|(_, record)| record.index == index) {
-                return Ok(true);
+    /// When game `index` was started, if one of the previous game's players
+    /// validly claimed it: the earliest such claim.
+    fn rematch_started(&self, index: u32, previous: &Played) -> app::Result<Option<u64>> {
+        let mut earliest: Option<u64> = None;
+        for member in distinct(&previous.white, &previous.black) {
+            let prefix = claim_prefix(member, index);
+            for (_, record) in Self::owned_rows(&self.games, &prefix, member)? {
+                earliest = Some(earliest.map_or(record.started_at, |at| at.min(record.started_at)));
             }
         }
-        Ok(false)
+        Ok(earliest)
     }
 
-    /// When game `index` began.
+    /// Play game `index` out from its rows.
     ///
-    /// Game 0 began when the table did; a later game began when the rematch
-    /// that opened it was claimed — the earliest valid claim, which is the same
-    /// row `rematch_is_valid` counts. This used to read `games.get(game_key)`,
-    /// a key that stopped existing when keys grew an author and a nonce, so
-    /// every game silently reported the epoch. The compiler cannot catch a
-    /// lookup that simply misses, which is the argument for deriving a value
-    /// wherever there is something to derive it from.
-    fn started_at_of(&self, index: u32) -> app::Result<u64> {
-        if index == 0 {
-            return Ok(*self.created_at.get());
-        }
-        let mut claims = Vec::new();
-        for color in [Color::White, Color::Black] {
-            // Same claim as `rematch_is_valid` accepted, so it must be found the
-            // same way — otherwise a game opened by someone who has since left
-            // would be valid but lose the timestamp that says when it began.
-            let holder = self.seat_member_of_record(self.seat_for_color(index - 1, color))?;
-            if holder.is_empty() {
-                continue;
+    /// Ply by ply, the reader's arithmetic, and at each ply in this order:
+    ///
+    /// 1. **The board.** A position the rules have already ended ends the game,
+    ///    whatever rows sit past it.
+    /// 2. **A person's ending.** The earliest valid one written at THIS ply
+    ///    ends the game here, so a move written at this ply afterwards cannot
+    ///    un-resign anyone (see [`Self::ending_holds`]).
+    /// 3. **The move.** Only the player to move's own rows at this ply count,
+    ///    and of those, only the ones that are legal here. Exactly one distinct
+    ///    legal move is played. None means the game waits. Two or more is
+    ///    EQUIVOCATION and loses: written once, rows cannot be taken back, so
+    ///    choosing between them by their clock — a value their author sets —
+    ///    would let a player file a backdated second move at an old ply and
+    ///    rewrite the game from there.
+    fn play_out(
+        &self,
+        index: u32,
+        started_at: u64,
+        white: MemberId,
+        black: MemberId,
+    ) -> app::Result<Played> {
+        let mut rows: BTreeMap<MemberId, BTreeMap<u32, Vec<MoveRecord>>> = BTreeMap::new();
+        let mut endings: BTreeMap<u32, Vec<(Color, Ending)>> = BTreeMap::new();
+        let mut offers: BTreeMap<MemberId, Vec<DrawOffer>> = BTreeMap::new();
+        for member in distinct(&white, &black) {
+            let mut by_ply: BTreeMap<u32, Vec<MoveRecord>> = BTreeMap::new();
+            if !white.is_empty() && !black.is_empty() {
+                for (key, record) in
+                    Self::owned_rows(&self.moves, &game_prefix(member, index), member)?
+                {
+                    if let Some(ply) = key_segment(&key, 2).and_then(|s| s.parse().ok()) {
+                        by_ply.entry(ply).or_default().push(record);
+                    }
+                }
             }
-            claims.extend(
-                Self::valid_rows(&self.games, &claim_prefix(index, &holder))?
-                    .into_iter()
-                    .filter(|(_, record)| record.index == index),
+            let _previous = rows.insert(member.to_owned(), by_ply);
+            let claims = claim_prefix(member, index);
+            for (_, ending) in Self::owned_rows(&self.endings, &claims, member)? {
+                for color in [Color::White, Color::Black] {
+                    if (if color == Color::White {
+                        &white
+                    } else {
+                        &black
+                    }) == member
+                    {
+                        endings
+                            .entry(ending.ply)
+                            .or_default()
+                            .push((color, ending.clone()));
+                    }
+                }
+            }
+            let mine = Self::owned_rows(&self.draw_offers, &claims, member)?;
+            let _previous = offers.insert(
+                member.to_owned(),
+                mine.into_iter().map(|(_, o)| o).collect(),
             );
         }
-        Ok(Self::elect(claims, |record| record.started_at, true)
-            .map_or(0, |record| record.started_at))
-    }
 
-    /// The moves of one game, in ply order — reconstructed, never sorted.
-    ///
-    /// The ply sequence is the READER's arithmetic: ply 0, then 1, then 2,
-    /// stopping at the first one nobody has validly written. Sorting stored
-    /// rows by a `ply` FIELD (which is what this used to do) hands the ordering
-    /// to whoever wrote the rows — a row parked at any key could name itself
-    /// ply 6 and be applied sixth, and a gap in the sequence was silently
-    /// compacted away.
-    ///
-    /// A row counts at ply `p` only if it sits under that ply's prefix, its key
-    /// names the player whose turn `p` is — White on the even plies, Black on
-    /// the odd ones — and core's owner stamp agrees. Anything else is somebody
-    /// else's row, and the game simply has no move at that ply yet.
-    fn moves_of(&self, index: u32) -> app::Result<Vec<MoveRecord>> {
-        let white = self.seat_member_of_record(self.seat_for_color(index, Color::White))?;
-        let black = self.seat_member_of_record(self.seat_for_color(index, Color::Black))?;
-        if white.is_empty() || black.is_empty() {
-            return Ok(Vec::new());
-        }
+        let mut played = Played {
+            index,
+            started_at,
+            white,
+            black,
+            moves: Vec::new(),
+            replay: game::replay::<String>(&[]),
+            result: "*".to_owned(),
+            reason: String::new(),
+            offers,
+        };
 
-        // The position is carried along so each ply can be judged in the
-        // position it would actually be played in. A player who wrote a row
-        // that is not a legal move there — a stale retry, or junk — is not
-        // stuck with it: the earliest row that IS legal is taken, and the rest
-        // of their rows for that ply are ignored. Only their own rows are ever
-        // in the running, so this cannot be used against anyone.
-        // ⚠️ ONE scan of the map, bucketed by ply — not one scan per ply.
-        //
-        // `valid_rows` walks every entry in the collection and keeps the ones
-        // under its prefix; there is no prefix or range lookup on
-        // `AuthoredMap` to ask for less. Calling it inside the ply loop
-        // therefore re-read (and re-deserialised) the WHOLE map once per ply,
-        // making a read cost plies × rows.
-        //
-        // That is not just slow, it is a denial of service, because rows are
-        // something a byzantine peer can add and nobody can remove: only an
-        // entry's own author may delete it. Measured on the in-process host,
-        // a six-move game read in 6.8ms; with 1,200 junk rows parked in the
-        // map it read in 105ms, and the cost is linear in the junk — a few
-        // hundred thousand rows makes `table()` take minutes, permanently,
-        // for every member. The rows stayed inert, which was never the
-        // question: the forgery could not change the game, and could still
-        // end it.
-        //
-        // Bucketing first makes a read cost rows + plies. Junk still has to be
-        // looked at once — you cannot know a row is junk without reading it —
-        // but it is no longer multiplied by the length of the game.
-        let mut by_ply: BTreeMap<u32, Vec<(String, MoveRecord)>> = BTreeMap::new();
-        let seated = |author: &str| author == white || author == black;
-        for (key, record) in Self::rows_where(&self.moves, &game_prefix(index), seated)? {
-            let Some(ply) = key_ply(&key) else { continue };
-            by_ply.entry(ply).or_default().push((key, record));
-        }
-
-        let mut position = board::Position::initial();
-        let mut moves = Vec::new();
-        for ply in 0..MAX_PLY {
-            let author = if ply % 2 == 0 { &white } else { &black };
-            let mut rows: Vec<(String, MoveRecord)> = by_ply
-                .remove(&ply)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|(key, _)| key_author(key) == Some(author.as_str()))
-                .collect();
-            // A total order over rows, so every replica tries them in the same
-            // sequence and lands on the same move.
-            rows.sort_by_key(|(_, record)| {
-                (
-                    record.at,
-                    calimero_sdk::borsh::to_vec(record).unwrap_or_default(),
-                )
-            });
-
-            let legal = movegen::legal_moves(&position);
-            let chosen = rows.into_iter().find_map(|(_, record)| {
-                let mv = notation::parse_uci(&record.uci)?;
-                let played = legal.iter().copied().find(|candidate| {
-                    candidate.from == mv.from
-                        && candidate.to == mv.to
-                        && (mv.promotion.is_none() || candidate.promotion == mv.promotion)
-                })?;
-                Some((record, played))
-            });
-
-            let Some((record, played)) = chosen else {
+        let mut position = Position::initial();
+        let mut keys = vec![position.repetition_key()];
+        let mut ucis: Vec<String> = Vec::new();
+        for ply in 0..=MAX_PLY {
+            if let Some(outcome) = movegen::outcome(&position, &keys) {
+                (played.result, played.reason) = describe_outcome(outcome);
+                break;
+            }
+            let pending = endings.remove(&ply).unwrap_or_default();
+            if let Some(ending) = Self::earliest_holding(&played, ply, &position, &keys, pending) {
+                played.result = ending.result;
+                played.reason = ending.reason;
+                break;
+            }
+            if ply == MAX_PLY {
+                break;
+            }
+            let side = position.side_to_move;
+            let author = played.member_for(side).to_owned();
+            let candidates = rows
+                .get(&author)
+                .and_then(|by_ply| by_ply.get(&ply))
+                .cloned()
+                .unwrap_or_default();
+            // Distinct legal moves, each with its earliest row for display.
+            let mut legal: BTreeMap<String, (board::Move, MoveRecord)> = BTreeMap::new();
+            for record in candidates {
+                let Some(mv) =
+                    notation::parse_uci(&record.uci).and_then(|mv| find_legal(&position, mv))
+                else {
+                    continue;
+                };
+                let uci = notation::move_to_uci(mv);
+                let keep = legal.get(&uci).is_none_or(|(_, kept)| record.at < kept.at);
+                if keep {
+                    let _previous = legal.insert(uci, (mv, record));
+                }
+            }
+            if legal.len() > 1 {
+                played.result = win_for(side.other());
+                played.reason = "equivocation".to_owned();
+                break;
+            }
+            let Some((uci, (mv, record))) = legal.into_iter().next() else {
                 break;
             };
-            position = position.apply(played);
-            moves.push(record);
+            position = position.apply(mv);
+            keys.push(position.repetition_key());
+            ucis.push(uci);
+            played.moves.push(record);
         }
-        Ok(moves)
+        played.replay = game::replay(&ucis);
+        Ok(played)
     }
 
-    fn replay_game(&self, index: u32) -> app::Result<game::Replay> {
-        let moves = self.moves_of(index)?;
-        Ok(game::replay(
-            &moves.iter().map(|m| m.uci.clone()).collect::<Vec<_>>(),
-        ))
+    /// The earliest of `pending` — the endings written at `ply` — that holds
+    /// in this position, if any. Ties on the clock break on the encoding, so
+    /// every replica picks the same one; a clock can only choose between two
+    /// endings that BOTH hold, never make one hold.
+    fn earliest_holding(
+        game: &Played,
+        ply: u32,
+        position: &Position,
+        keys: &[String],
+        pending: Vec<(Color, Ending)>,
+    ) -> Option<Ending> {
+        pending
+            .into_iter()
+            .filter(|(color, ending)| Self::ending_holds(game, *color, ending, ply, position, keys))
+            .map(|(_, ending)| {
+                let bytes = calimero_sdk::borsh::to_vec(&ending).unwrap_or_default();
+                (ending.at, bytes, ending)
+            })
+            .min_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)))
+            .map(|(_, _, ending)| ending)
+    }
+
+    /// Can `color` actually have ended the game this way, at this ply?
+    ///
+    /// * **resignation** — the result must be a LOSS for the player who wrote
+    ///   it. Nobody resigns themselves into a win.
+    /// * **agreement** — the opponent must have offered a draw at this ply. An
+    ///   agreement is two acts; only one of them is this row.
+    /// * **threefold / fiftyMove** — the position must genuinely allow the
+    ///   claim, which the reader works out from the moves.
+    fn ending_holds(
+        game: &Played,
+        color: Color,
+        ending: &Ending,
+        ply: u32,
+        position: &Position,
+        keys: &[String],
+    ) -> bool {
+        let draw = ending.result == "1/2-1/2";
+        let claimable = movegen::claimable_draw(position, keys);
+        match ending.reason.as_str() {
+            "resignation" => ending.result == win_for(color.other()),
+            "agreement" => {
+                let opponent = game.member_for(color.other());
+                draw && !opponent.is_empty() && game.offered(opponent, ply)
+            }
+            "threefold" => draw && claimable == Some(ClaimableDraw::ThreefoldRepetition),
+            "fiftyMove" => draw && claimable == Some(ClaimableDraw::FiftyMove),
+            // An unknown reason is not a way to end a game.
+            _ => false,
+        }
+    }
+
+    /// Who holds each chair: `[white chair, black chair]`.
+    ///
+    /// The claims are per claimant, under keys only they can write, so nobody
+    /// can file a claim as someone else or squat a chair's key. Choosing
+    /// between two real claims is the hard part, because the only order they
+    /// carry is `claimed_at` — a clock the claimant sets. Left at "earliest
+    /// wins", a spectator could file a claim dated before everyone's and take
+    /// a chair in the middle of a game, with the whole move list following
+    /// them out of the door.
+    ///
+    /// So the chairs LOCK once each player has moved against the other. Every
+    /// move row names the opponent its author saw (see
+    /// [`MoveRecord::opponent`]), in a row that author alone can write and
+    /// nobody can remove. A pair who have each named the other are the
+    /// players, whatever anyone else files later:
+    ///
+    /// 1. Among such confirmed pairs, one of two different people outranks one
+    ///    person in both chairs — an outsider can confirm a pair with
+    ///    themselves, but not with a player who never named them.
+    /// 2. Before any pair is confirmed, each chair goes to its earliest claim,
+    ///    ties broken on the encoding so every replica agrees.
+    ///
+    /// Given up claims do not count; see [`Self::is_vacated`].
+    fn chairs(&self) -> app::Result<[Holder; 2]> {
+        let mut claims: [BTreeMap<MemberId, Seat>; 2] = Default::default();
+        for (slot, seat) in SEATS.into_iter().enumerate() {
+            for (key, claim) in self.seat_claims.prefix(seat_prefix(seat).as_bytes())? {
+                let Some(author) = key_segment(&key, 1) else {
+                    continue;
+                };
+                if Self::owner(&self.seat_claims, &key)? != author
+                    || self.is_vacated(&key, author)?
+                {
+                    continue;
+                }
+                // A claimant's earliest row stands for their claim.
+                let earlier = claims[slot].get(author).is_none_or(|kept| {
+                    (claim.claimed_at, &claim.name) < (kept.claimed_at, &kept.name)
+                });
+                if earlier {
+                    let _previous = claims[slot].insert(author.to_owned(), claim);
+                }
+            }
+        }
+
+        // `(chair, author, opponent)` for every move a claimant wrote.
+        let mut named: BTreeSet<(usize, MemberId, MemberId)> = BTreeSet::new();
+        let claimants: BTreeSet<&MemberId> = claims.iter().flat_map(BTreeMap::keys).collect();
+        for author in claimants {
+            for (key, record) in Self::owned_rows(&self.moves, &format!("{author}/"), author)? {
+                let game = key_segment(&key, 1).and_then(|s| s.parse::<u32>().ok());
+                let ply = key_segment(&key, 2).and_then(|s| s.parse::<u32>().ok());
+                let (Some(game), Some(ply)) = (game, ply) else {
+                    continue;
+                };
+                let color = if ply % 2 == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                };
+                let chair = usize::from(self.seat_for_color(game, color) == SEAT_BLACK);
+                let _new = named.insert((chair, author.clone(), record.opponent));
+            }
+        }
+
+        let earliest = |slot: usize| -> Option<(MemberId, Seat)> {
+            claims[slot]
+                .iter()
+                .min_by(|a, b| {
+                    let key = |(m, s): &(&MemberId, &Seat)| {
+                        (
+                            s.claimed_at,
+                            calimero_sdk::borsh::to_vec(*s).unwrap_or_default(),
+                            (*m).clone(),
+                        )
+                    };
+                    key(a).cmp(&key(b))
+                })
+                .map(|(m, s)| (m.clone(), s.clone()))
+        };
+
+        let confirmed = claims[0]
+            .iter()
+            .flat_map(|w| claims[1].iter().map(move |b| (w, b)))
+            .filter(|((w, _), (b, _))| {
+                named.contains(&(0, (*w).clone(), (*b).clone()))
+                    && named.contains(&(1, (*b).clone(), (*w).clone()))
+            })
+            .min_by_key(|((w, ws), (b, bs))| {
+                (
+                    w == b,
+                    ws.claimed_at,
+                    bs.claimed_at,
+                    (*w).clone(),
+                    (*b).clone(),
+                )
+            })
+            .map(|((w, ws), (b, bs))| [(w.clone(), ws.clone()), (b.clone(), bs.clone())]);
+
+        let pick =
+            confirmed.map_or_else(|| [earliest(0), earliest(1)], |[w, b]| [Some(w), Some(b)]);
+        Ok(pick.map(|choice| {
+            choice.map_or_else(Holder::default, |(member, seat)| Holder {
+                member,
+                name: seat.name,
+            })
+        }))
+    }
+
+    /// Has the claimant who wrote `claim_key` given it up?
+    ///
+    /// Only a claimant who has never acted at the table can: a chair someone
+    /// has played, resigned, offered or rematched from is the record of who
+    /// played, so a row saying they left it is ignored rather than allowed to
+    /// rewrite every game they were in.
+    fn is_vacated(&self, claim_key: &str, author: &str) -> app::Result<bool> {
+        let given_up =
+            !Self::owned_rows(&self.vacated, &format!("{claim_key}/"), author)?.is_empty();
+        Ok(given_up && !self.has_acted(author)?)
+    }
+
+    /// Has `member` written any move, ending, offer or rematch claim here?
+    fn has_acted(&self, member: &str) -> app::Result<bool> {
+        let prefix = format!("{member}/");
+        Ok(!Self::owned_rows(&self.moves, &prefix, member)?.is_empty()
+            || !Self::owned_rows(&self.endings, &prefix, member)?.is_empty()
+            || !Self::owned_rows(&self.draw_offers, &prefix, member)?.is_empty()
+            || !Self::owned_rows(&self.games, &prefix, member)?.is_empty())
+    }
+
+    /// The account core recorded as the writer of `key`, or `""`.
+    ///
+    /// The stamp, not a field: core verifies a per-action signature against it
+    /// inside `Interface::apply_action` on every receive path, so unlike
+    /// anything inside the value, a member cannot set it to someone else.
+    fn owner<V, P>(map: &Guarded<SortedMap<String, V>, P>, key: &String) -> app::Result<MemberId>
+    where
+        V: BorshSerialize + BorshDeserialize + 'static,
+        P: Owning,
+    {
+        Ok(map
+            .owner_of(key)?
+            .map_or_else(String::new, |owner| Self::owner_id(owner.as_bytes())))
+    }
+
+    /// Every row under `prefix` that `author` really wrote — the one place a
+    /// stored row becomes evidence. The prefix names the author; core's owner
+    /// stamp has to agree, and a member cannot forge that for anyone but
+    /// themselves.
+    ///
+    /// A prefix seek, not a scan: rows a byzantine peer files under somebody
+    /// else's name cost a stamp check only when a reader asks for that name.
+    fn owned_rows<V, P>(
+        map: &Guarded<SortedMap<String, V>, P>,
+        prefix: &str,
+        author: &str,
+    ) -> app::Result<Vec<(String, V)>>
+    where
+        V: BorshSerialize + BorshDeserialize + 'static,
+        P: Owning,
+    {
+        let mut rows = Vec::new();
+        for (key, value) in map.prefix(prefix.as_bytes())? {
+            if !author.is_empty() && Self::owner(map, &key)? == author {
+                rows.push((key, value));
+            }
+        }
+        Ok(rows)
+    }
+
+    /// A key in `map` nobody has written yet.
+    ///
+    /// Starts at `now` and walks forward past any taken key, so a squatted key
+    /// costs the writer one more attempt rather than their turn. Bounded: if
+    /// this cannot find a free key in a few tries, the map is under an attack
+    /// that a longer loop would not fix either.
+    fn free_key<C, P>(
+        map: &Guarded<C, P>,
+        now: u64,
+        build: impl Fn(u64) -> String,
+    ) -> app::Result<String>
+    where
+        C: GuardedEntries<Key = String>,
+        P: Policy,
+    {
+        for offset in 0..16 {
+            let key = build(now.saturating_add(offset));
+            if !map.contains(&key)? {
+                return Ok(key);
+            }
+        }
+        app::bail!("could not find a free slot to write to")
     }
 
     /// Which SEAT holds `color` in game `index`.
@@ -1303,285 +1393,13 @@ impl MeroChess {
         }
     }
 
-    /// Who holds `seat`: the earliest valid claim on it.
-    ///
-    /// Elected by the reader over per-claimant keys rather than resolved by a
-    /// merge over one shared key, for two reasons. A claim counts only if
-    /// core's owner stamp matches the account its key names, so nobody can file
-    /// a claim as someone else. And because each claimant writes under their
-    /// own account and nonce, nobody can occupy the chair's key first and lock
-    /// its rightful holder out of writing at all.
-    ///
-    /// Ties on the clock break on the canonical encoding, so every replica
-    /// elects the same holder independently.
-    fn seat_member(&self, seat: &str) -> app::Result<MemberId> {
-        self.elect_seat(seat, false)
-    }
-
-    /// Who held `seat` as the table's history records it, INCLUDING a holder
-    /// who has since stood up.
-    ///
-    /// The distinction from [`seat_member`](Self::seat_member) is the whole
-    /// point: entitlement to have claimed a rematch is a fact about the past,
-    /// so it must not be re-derived from who is sitting there now. Answering it
-    /// with the live election made a player's departure retroactively invalidate
-    /// every rematch they had claimed — `current_game` walks a chain and stops
-    /// at the first broken link, so one player standing up reset a four-game
-    /// table to game 0 for everybody, which is exactly the "move every reader to
-    /// an empty board" failure the counted index exists to prevent.
-    ///
-    /// Elected the same way over the same rows, so before anyone stands up this
-    /// returns precisely what `seat_member` returns.
-    fn seat_member_of_record(&self, seat: &str) -> app::Result<MemberId> {
-        self.elect_seat(seat, true)
-    }
-
-    /// Shared election. `include_vacated` picks the tense.
-    fn elect_seat(&self, seat: &str, include_vacated: bool) -> app::Result<MemberId> {
-        let rows = Self::valid_rows(&self.seat_claims, &seat_prefix(seat))?;
-        let claims: Vec<(String, Seat)> = rows
-            .into_iter()
-            // The claim has to be about the person who wrote it.
-            .filter(|(key, claim)| key_author(key) == Some(claim.member.as_str()))
-            .filter(|(_, claim)| include_vacated || claim.vacated_at == 0)
-            .collect();
-        Ok(Self::elect(claims, |claim| claim.claimed_at, true)
-            .map_or_else(String::new, |claim| claim.member))
-    }
-
-    /// The elected holder's own claim, for its display name.
-    fn seat_claim(&self, seat: &str, member: &str) -> app::Result<Option<Seat>> {
-        let rows = Self::valid_rows(&self.seat_claims, &seat_prefix(seat))?;
-        let mine: Vec<(String, Seat)> = rows
-            .into_iter()
-            .filter(|(key, _)| key_author(key) == Some(member))
-            // A name is a property of the person sitting there now: someone who
-            // left and sat back down under a new name must not read as the old.
-            .filter(|(_, claim)| claim.vacated_at == 0)
-            .collect();
-        Ok(Self::elect(mine, |claim| claim.claimed_at, true))
-    }
-
-    /// The account core recorded as the writer of `key`, or `None`.
-    ///
-    /// The stamp, not a field: core verifies a per-action signature against it
-    /// inside `Interface::apply_action` on every receive path, so unlike
-    /// anything inside the value, a member cannot set it to someone else.
-    fn owner_of<V>(map: &AuthoredMap<String, V>, key: &String) -> app::Result<Option<MemberId>>
-    where
-        V: BorshSerialize + BorshDeserialize,
-    {
-        Ok(map
-            .owner_of(key)?
-            .map(|owner| Self::owner_id(owner.as_bytes())))
-    }
-
-    /// Every row under `prefix` that its own key's author really wrote.
-    ///
-    /// The one place a stored row becomes evidence. Two things have to agree
-    /// before a row is even considered: the account named in the key, and
-    /// core's owner stamp on the entity. The first is what the reader is
-    /// looking for; the second is what a member cannot forge for anyone but
-    /// themselves. Everything else in this contract reads through here.
-    fn valid_rows<V>(map: &AuthoredMap<String, V>, prefix: &str) -> app::Result<Vec<(String, V)>>
-    where
-        V: BorshSerialize + BorshDeserialize + Clone,
-    {
-        Self::rows_where(map, prefix, |_| true)
-    }
-
-    /// [`Self::valid_rows`], narrowed to rows whose key names an author the
-    /// caller is actually interested in.
-    ///
-    /// The narrowing is not a convenience, it is the cost model. Confirming the
-    /// owner stamp means a metadata lookup PER ROW, while the author named in
-    /// the key is a string already in hand — and a row whose key names somebody
-    /// the caller does not care about cannot count whatever its stamp says. So
-    /// the cheap test goes first, and rows a byzantine peer filed under a name
-    /// nobody is looking for cost a string compare instead of a store read.
-    fn rows_where<V>(
-        map: &AuthoredMap<String, V>,
-        prefix: &str,
-        wanted: impl Fn(&str) -> bool,
-    ) -> app::Result<Vec<(String, V)>>
-    where
-        V: BorshSerialize + BorshDeserialize + Clone,
-    {
-        let mut rows = Vec::new();
-        for (key, value) in map.entries()? {
-            if !key.starts_with(prefix) {
-                continue;
-            }
-            let Some(author) = key_author(&key) else {
-                continue;
-            };
-            if !wanted(author) {
-                continue;
-            }
-            let author = author.to_owned();
-            if !Self::owned_by(Self::owner_of(map, &key)?, &author) {
-                continue;
-            }
-            rows.push((key, value));
-        }
-        Ok(rows)
-    }
-
-    /// The row a reader should believe, among several from one author.
-    ///
-    /// `earliest` picks the first claim — a seat, a move, an ending, all of
-    /// which are things you do once and cannot take back. `!earliest` picks the
-    /// most recent, which is what a draw offer needs: offering, then answering,
-    /// is a state that moves. Ties break on the canonical encoding so every
-    /// replica lands on the same row without talking to any other.
-    fn elect<V: BorshSerialize>(
-        rows: Vec<(String, V)>,
-        at: impl Fn(&V) -> u64,
-        earliest: bool,
-    ) -> Option<V> {
-        Self::elect_row(rows, at, earliest).map(|(_, value)| value)
-    }
-
-    /// [`Self::elect`], keeping the winning row's key — which a writer needs in
-    /// order to update its own row rather than pile up a new one.
-    fn elect_row<V: BorshSerialize>(
-        rows: Vec<(String, V)>,
-        at: impl Fn(&V) -> u64,
-        earliest: bool,
-    ) -> Option<(String, V)> {
-        let mut best: Option<(u64, Vec<u8>, String, V)> = None;
-        for (key, value) in rows {
-            let stamp = at(&value);
-            let encoded = calimero_sdk::borsh::to_vec(&value).unwrap_or_default();
-            let better = match &best {
-                None => true,
-                Some((best_at, best_bytes, _, _)) => {
-                    if stamp == *best_at {
-                        encoded < *best_bytes
-                    } else if earliest {
-                        stamp < *best_at
-                    } else {
-                        stamp > *best_at
-                    }
-                }
-            };
-            if better {
-                best = Some((stamp, encoded, key, value));
-            }
-        }
-        best.map(|(_, _, key, value)| (key, value))
-    }
-
-    /// Write the caller's single row under `prefix`, updating the one they
-    /// already have rather than adding another.
-    ///
-    /// For the two things a player keeps RE-stating — their presence and their
-    /// standing draw offer. Everything else in this contract is append-only,
-    /// where a fresh key per write is the point.
-    fn put_owned<V>(
-        &mut self,
-        field: impl Fn(&mut Self) -> &mut AuthoredMap<String, V>,
-        prefix: &str,
-        author: &str,
-        build: impl Fn(u64) -> String,
-        now: u64,
-        value: V,
-    ) -> app::Result<()>
-    where
-        V: BorshSerialize + BorshDeserialize + Clone + 'static,
-    {
-        let key = {
-            let map = field(self);
-            let mine: Vec<(String, V)> = Self::valid_rows(map, prefix)?
-                .into_iter()
-                .filter(|(key, _)| key_author(key) == Some(author))
-                .collect();
-            match Self::elect_row(mine, |_| 0, true) {
-                Some((key, _)) => key,
-                None => Self::free_key(map, author, now, build)?,
-            }
-        };
-        self.put(field, key, author, value)
-    }
-
-    /// A key in `map` that the caller can actually write.
-    ///
-    /// Starts at `now` and walks forward past any key someone else already
-    /// owns, so a squatted key costs the writer one more attempt rather than
-    /// their turn. Bounded: if this cannot find a free key in a few tries, the
-    /// map is under an attack that a longer loop would not fix either.
-    fn free_key<V>(
-        map: &AuthoredMap<String, V>,
-        author: &str,
-        now: u64,
-        build: impl Fn(u64) -> String,
-    ) -> app::Result<String>
-    where
-        V: BorshSerialize + BorshDeserialize,
-    {
-        for offset in 0..16 {
-            let key = build(now.saturating_add(offset));
-            match Self::owner_of(map, &key)? {
-                None => return Ok(key),
-                Some(existing) if existing == author => return Ok(key),
-                Some(_) => continue,
-            }
-        }
-        app::bail!("could not find a free slot to write to")
-    }
-
-    fn seat_of(&self, member: &str) -> app::Result<Option<String>> {
-        for seat in [SEAT_WHITE, SEAT_BLACK] {
-            if self.seat_member(seat)? == member {
-                return Ok(Some(seat.to_owned()));
-            }
-        }
-        Ok(None)
-    }
-
-    /// The caller's colour in game `index`, or `None` for a spectator.
-    ///
-    /// `side_to_move` decides the answer for a player sitting in BOTH chairs:
-    /// they are whichever side it is the turn of. Every caller of this is
-    /// asking "may this person act, and as whom" — and for a pass-and-play
-    /// board the honest answer to both halves is "as the side to move".
-    fn color_of(
-        &self,
-        index: u32,
-        member: &str,
-        side_to_move: Color,
-    ) -> app::Result<Option<Color>> {
-        let holds = |color: Color| -> app::Result<bool> {
-            Ok(self.seat_member(self.seat_for_color(index, color))? == member)
-        };
-        if holds(side_to_move)? {
-            return Ok(Some(side_to_move));
-        }
-        if holds(side_to_move.other())? {
-            return Ok(Some(side_to_move.other()));
-        }
-        Ok(None)
-    }
-
-    fn seat_view(&self, seat: &str, now: u64) -> app::Result<SeatView> {
-        let member = self.seat_member(seat)?;
-        // The NAME comes from the elected holder's own claim, so a losing
-        // claimant cannot label the chair.
-        let name = if member.is_empty() {
-            String::new()
-        } else {
-            self.seat_claim(seat, &member)?
-                .map_or_else(String::new, |claim| claim.name)
-        };
-        let online = if member.is_empty() {
-            false
-        } else {
-            self.is_online(&member, now)?
-        };
+    fn seat_view(&self, snap: &Snapshot, seat: &str, now: u64) -> app::Result<SeatView> {
+        let holder = snap.holder(seat);
+        let online = !holder.member.is_empty() && self.is_online(&holder.member, now)?;
         Ok(SeatView {
             seat: seat.to_owned(),
-            member,
-            name,
+            member: holder.member.clone(),
+            name: holder.name.clone(),
             online,
         })
     }
@@ -1592,49 +1410,24 @@ impl MeroChess {
             .is_some_and(|p| now.saturating_sub(p.updated_at) <= PRESENCE_TTL_MS))
     }
 
-    /// The presence row `member` wrote about themselves, if any.
-    ///
-    /// A row written about someone by somebody else says nothing about them, so
-    /// the newest VALID row wins — presence is a state that moves, unlike every
-    /// other claim in this contract.
+    /// The presence row `member` wrote about themselves.
     fn presence_of(&self, member: &str) -> app::Result<Option<Player>> {
-        let rows = Self::valid_rows(&self.players, &format!("{member}/"))?;
-        let mine: Vec<(String, Player)> = rows
-            .into_iter()
-            .filter(|(_, player)| player.id == member)
-            .collect();
-        Ok(Self::elect(mine, |player| player.updated_at, false))
+        Ok(self
+            .players
+            .entries()?
+            .find(|(account, _)| Self::owner_id(account.as_bytes()) == member)
+            .map(|(_, player)| player))
     }
 
-    fn player_views(
-        &self,
-        index: u32,
-        side_to_move: Color,
-        now: u64,
-    ) -> app::Result<Vec<PlayerView>> {
-        let mut seen: Vec<MemberId> = Vec::new();
-        for (key, _) in Self::valid_rows(&self.players, "")? {
-            if let Some(author) = key_author(&key) {
-                if !seen.iter().any(|id| id == author) {
-                    seen.push(author.to_owned());
-                }
-            }
-        }
-
+    fn player_views(&self, snap: &Snapshot, now: u64) -> app::Result<Vec<PlayerView>> {
         let mut out: Vec<PlayerView> = Vec::new();
-        for id in seen {
-            let Some(player) = self.presence_of(&id)? else {
-                continue;
-            };
-            let color = match self.color_of(index, &id, side_to_move)? {
-                Some(color) => color_name(color).to_owned(),
-                None => String::new(),
-            };
+        for (account, player) in self.players.entries()? {
+            let id = Self::owner_id(account.as_bytes());
             out.push(PlayerView {
                 online: now.saturating_sub(player.updated_at) <= PRESENCE_TTL_MS,
+                color: snap.color_of(&id).map_or("", color_name).to_owned(),
                 id,
                 name: player.name,
-                color,
             });
         }
         // Sorted so two clients polling the same table paint the same list.
@@ -1642,296 +1435,118 @@ impl MeroChess {
         Ok(out)
     }
 
-    /// The result of game `index`: the board's answer if it has one, otherwise
-    /// the earliest ending a player can be shown to have caused, otherwise
-    /// unfinished.
-    ///
-    /// The order matters. A board ending is a FACT about the move list, so it
-    /// outranks a stored one — that is also what makes a resignation written
-    /// concurrently with the mating move harmless.
-    ///
-    /// Every stored ending is RE-DERIVED before it counts (see
-    /// [`Self::ending_is_valid`]). Taking one at its word is how a member
-    /// writes "you resigned" into a game they were losing.
-    fn result_of(&self, index: u32, replayed: &game::Replay) -> app::Result<(String, String)> {
-        if let Some(outcome) = replayed.outcome() {
-            return Ok(describe_outcome(outcome));
-        }
-
-        let mut winner: Option<(u64, Vec<u8>, String, String)> = None;
-        for color in [Color::White, Color::Black] {
-            let holder = self.seat_member_of_record(self.seat_for_color(index, color))?;
-            if holder.is_empty() {
-                continue;
-            }
-            // Validity FIRST, then election. Electing one row and validating
-            // it afterwards lets a player's own junk row mask the real ending
-            // they wrote a moment later — which is how a genuine resignation
-            // came back as "still playing".
-            let mut valid = Vec::new();
-            for (key, ending) in Self::valid_rows(&self.endings, &claim_prefix(index, &holder))? {
-                if self.ending_is_valid(index, color, &ending, replayed)? {
-                    valid.push((key, ending));
-                }
-            }
-            let Some(ending) = Self::elect(valid, |ending| ending.at, true) else {
-                continue;
-            };
-            let encoded = calimero_sdk::borsh::to_vec(&ending).unwrap_or_default();
-            let candidate = (
-                ending.at,
-                encoded,
-                ending.result.clone(),
-                ending.reason.clone(),
-            );
-            let better = match &winner {
-                None => true,
-                Some((at, bytes, _, _)) => {
-                    candidate.0 < *at || (candidate.0 == *at && candidate.1 < *bytes)
-                }
-            };
-            if better {
-                winner = Some(candidate);
-            }
-        }
-
-        Ok(winner.map_or_else(
-            || ("*".to_owned(), String::new()),
-            |(_, _, result, reason)| (result, reason),
-        ))
-    }
-
-    /// Can `color` actually have ended the game this way, in this position?
-    ///
-    /// Each reason is checkable, so each one is checked:
-    ///
-    /// * **resignation** — the result must be a LOSS for the player who wrote
-    ///   it. Nobody resigns themselves into a win.
-    /// * **agreement** — the opponent must have had an offer standing at the
-    ///   ply the agreement was written at. An agreement is two acts; only one
-    ///   of them is this row.
-    /// * **threefold / fiftyMove** — the position at that ply must genuinely
-    ///   allow the claim, which the reader works out from the moves.
-    ///
-    /// An ending written at a ply the game has since moved past is stale and
-    /// counts for nothing — the same rule a draw offer lives under.
-    fn ending_is_valid(
-        &self,
-        index: u32,
-        color: Color,
-        ending: &Ending,
-        replayed: &game::Replay,
-    ) -> app::Result<bool> {
-        if ending.ply != replayed.applied as u32 {
-            return Ok(false);
-        }
-        match ending.reason.as_str() {
-            "resignation" => Ok(ending.result == win_for(color.other())),
-            "agreement" => {
-                if ending.result != "1/2-1/2" {
-                    return Ok(false);
-                }
-                let opponent =
-                    self.seat_member_of_record(self.seat_for_color(index, color.other()))?;
-                Ok(!opponent.is_empty() && self.offer_stands(index, &opponent, ending.ply)?)
-            }
-            "threefold" => Ok(ending.result == "1/2-1/2"
-                && replayed.claimable() == Some(ClaimableDraw::ThreefoldRepetition)),
-            "fiftyMove" => Ok(ending.result == "1/2-1/2"
-                && replayed.claimable() == Some(ClaimableDraw::FiftyMove)),
-            // An unknown reason is not a way to end a game.
-            _ => Ok(false),
-        }
-    }
-
-    /// Does `member` have an offer standing at `ply`, unanswered?
-    ///
-    /// Two rows, because only an entry's owner may write it: the offerer's own
-    /// row says they offered, and the absence of a `declined` row from the
-    /// other seat at the same ply says nobody has refused it yet. A move ends
-    /// it too — the ply moves on, and an offer is good only for the position it
-    /// was made in.
-    fn offer_stands(&self, index: u32, member: &str, ply: u32) -> app::Result<bool> {
-        let Some(offer) = self.latest_offer(index, member)? else {
-            return Ok(false);
-        };
-        if !(offer.open && !offer.declined && offer.ply == ply) {
-            return Ok(false);
-        }
-
-        for color in [Color::White, Color::Black] {
-            let other = self.seat_member_of_record(self.seat_for_color(index, color))?;
-            if other.is_empty() || other == member {
-                continue;
-            }
-            if self
-                .latest_offer(index, &other)?
-                .is_some_and(|answer| answer.declined && answer.ply == ply)
-            {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-
-    /// One player's most recent valid offer row for a game.
-    ///
-    /// The latest, not the earliest: offering and then answering is a state
-    /// that moves, which is the one place in this contract where a later claim
-    /// supersedes an earlier one.
-    fn latest_offer(&self, index: u32, member: &str) -> app::Result<Option<DrawOffer>> {
-        let rows = Self::valid_rows(&self.draw_offers, &claim_prefix(index, member))?;
-        Ok(Self::elect(rows, |offer| offer.at, false))
-    }
-
-    /// The member whose draw offer is still standing at `ply`, or `""`.
-    ///
-    /// Only the two seat holders are asked: an offer from anyone else is not an
-    /// offer, whoever wrote the row.
-    fn standing_offer(&self, index: u32, ply: u32) -> app::Result<MemberId> {
-        for color in [Color::White, Color::Black] {
-            let holder = self.seat_member(self.seat_for_color(index, color))?;
-            if !holder.is_empty() && self.offer_stands(index, &holder, ply)? {
-                return Ok(holder);
-            }
-        }
-        Ok(String::new())
-    }
+    // ── internals: writing ──────────────────────────────────────────────────
 
     fn end_game(
         &mut self,
-        index: u32,
+        game: &Played,
         result: &str,
         reason: &str,
         by: &str,
-        ply: u32,
         now: u64,
     ) -> app::Result<()> {
         // Under the caller's OWN key. An ending is a claim by one player about
         // one game, and the reader re-derives whether they could have made it.
-        let key = Self::free_key(&self.endings, by, now, |nonce| claim_key(index, by, nonce))?;
-        self.put(
-            |state| &mut state.endings,
+        let key = Self::free_key(&self.endings, now, |nonce| claim_key(by, game.index, nonce))?;
+        self.endings.insert(
             key,
-            by,
             Ending {
                 result: result.to_owned(),
                 reason: reason.to_owned(),
-                ply,
+                ply: game.ply(),
                 at: now,
             },
         )?;
         self.touch(by, now)?;
         app::emit!(Event::GameEnded {
-            game: index,
+            game: game.index,
             result: result.to_owned(),
             reason: reason.to_owned(),
         });
         Ok(())
     }
 
-    /// Keep a player's presence fresh whenever they do something.
-    fn touch(&mut self, member: &str, now: u64) -> app::Result<()> {
-        let Some(existing) = self.presence_of(member)? else {
-            return Ok(());
-        };
-        let refreshed = Player {
-            updated_at: now,
-            ..existing
-        };
-        self.put_owned(
-            |state| &mut state.players,
-            &format!("{member}/"),
-            member,
-            |nonce| player_key(member, nonce),
-            now,
-            refreshed,
-        )
+    fn write_offer(
+        &mut self,
+        game: &Played,
+        by: &str,
+        declined: bool,
+        now: u64,
+    ) -> app::Result<()> {
+        let key = Self::free_key(&self.draw_offers, now, |nonce| {
+            claim_key(by, game.index, nonce)
+        })?;
+        self.draw_offers.insert(
+            key,
+            DrawOffer {
+                declined,
+                ply: game.ply(),
+                at: now,
+            },
+        )?;
+        Ok(())
     }
 
-    /// Write `value` at `key` in one of this state's authored maps.
-    ///
-    /// `AuthoredMap` splits the two cases — `insert` refuses an existing key,
-    /// `update` refuses a non-owner — so every writer here needs the same three
-    /// lines, and the case that must not be papered over is the third: a key
-    /// somebody else got to first. That is not an error the caller can fix by
-    /// retrying, and it must not be silently ignored either, so it is a refusal
-    /// with a sentence that says what happened.
-    fn put<V>(
-        &mut self,
-        field: impl Fn(&mut Self) -> &mut AuthoredMap<String, V>,
-        key: String,
-        author: &str,
-        value: V,
-    ) -> app::Result<()>
-    where
-        V: BorshSerialize + BorshDeserialize + 'static,
-    {
-        // One mutable borrow for all three branches; `owner_id` is an
-        // associated function, so reading the stamp does not need `&self`.
-        let map = field(self);
-        let owner = map
-            .owner_of(&key)?
-            .map(|owner| Self::owner_id(owner.as_bytes()));
-        match owner {
-            None => map.insert(key, value)?,
-            Some(existing) if existing == author => map.update(&key, value)?,
-            Some(_) => app::bail!("another member already wrote that entry"),
+    /// Keep a player's presence fresh whenever they do something.
+    fn touch(&mut self, member: &str, now: u64) -> app::Result<()> {
+        if self.presence_of(member)?.is_none() {
+            return Ok(());
         }
+        self.announce(None, now)
+    }
+
+    /// Write the caller's presence row. `name` of `None` keeps the current one.
+    fn announce(&mut self, name: Option<String>, now: u64) -> app::Result<()> {
+        let existing = self.players.get()?;
+        let _previous = self.players.insert(Player {
+            name: name
+                .or_else(|| existing.as_ref().map(|p| p.name.clone()))
+                .unwrap_or_else(|| "Guest".to_owned()),
+            joined_at: existing.map_or(now, |p| p.joined_at),
+            updated_at: now,
+        })?;
         Ok(())
     }
 }
 
 // ── free helpers ─────────────────────────────────────────────────────────────
 
-/// Zero-padded so the key order is the game order — the same reason move keys
-/// are padded. Four digits is 10 000 games at one table.
+/// Zero-padded so the key order is the game order. Four digits is 10 000 games
+/// at one table.
 fn game_key(index: u32) -> String {
     format!("{index:04}")
 }
 
-/// `"<game>/<ply>/<account>/<nonce>"` — where one player's move at one ply
+/// `"<account>/<game>/<ply>/<nonce>"` — where one player's move at one ply
 /// lives.
 ///
-/// Three parts, each load-bearing:
-///
-/// * the **ply**, so the reader can ask for a specific move rather than sort
-///   rows by a field their writer controls;
-/// * the **account**, so two players never contend for one entity and the
-///   reader knows whose row it is looking at, cross-checked against core's own
-///   owner stamp (see [`MeroChess::owner_of`]);
+/// * the **account** first, so a reader seeks straight to the rows of the two
+///   people it is asking about, and rows filed under anybody else's name are
+///   never even loaded — they cost the writer storage and the reader nothing;
+/// * the **game** and **ply** next, so the reader asks for a specific move
+///   rather than sorting rows by a field their writer controls;
 /// * the **nonce**, so a key can never be OCCUPIED against its rightful author.
-///   `AuthoredMap::insert` refuses an existing key and only its owner may
-///   update it, so without this any context member — a spectator, not even a
-///   player — could park a row on the key the next move needs and permanently
-///   wedge the table. With a fresh nonce per write there is always a free key,
-///   and a squatted row is just an extra row the reader filters out.
-fn move_key(index: u32, ply: u32, author: &str, nonce: u64) -> String {
-    format!("{}/{ply:04}/{author}/{nonce}", game_key(index))
+///   An insert refuses an existing key, so without this any context member
+///   could park a row on the key the next move needs and permanently wedge the
+///   table. With a fresh nonce per write there is always a free key, and a
+///   squatted row is just an extra row the reader filters out.
+fn move_key(author: &str, index: u32, ply: u32, nonce: u64) -> String {
+    format!("{author}/{}/{ply:04}/{nonce}", game_key(index))
 }
 
-/// The prefix every move row of one game shares, whichever ply it is at.
-///
-/// One game, not one ply: the replay reads the whole game in a single pass and
-/// buckets by ply itself, because a per-ply prefix meant a full scan of the
-/// collection per ply. See `moves_of`.
-fn game_prefix(index: u32) -> String {
-    format!("{}/", game_key(index))
+/// The prefix every move row of one player in one game shares.
+fn game_prefix(author: &str, index: u32) -> String {
+    format!("{author}/{}/", game_key(index))
 }
 
-/// `"<game>/<account>/<nonce>"` — one player's claim about one game: their draw
+/// `"<account>/<game>/<nonce>"` — one player's claim about one game: their draw
 /// offer, their ending, their rematch. Nonce for the same reason as above.
-fn claim_key(index: u32, member: &str, nonce: u64) -> String {
-    format!("{}/{member}/{nonce}", game_key(index))
+fn claim_key(author: &str, index: u32, nonce: u64) -> String {
+    format!("{author}/{}/{nonce}", game_key(index))
 }
 
-/// `"<account>/<nonce>"` — one person's presence row.
-fn player_key(member: &str, nonce: u64) -> String {
-    format!("{member}/{nonce}")
-}
-
-fn claim_prefix(index: u32, member: &str) -> String {
-    format!("{}/{member}/", game_key(index))
+fn claim_prefix(author: &str, index: u32) -> String {
+    format!("{author}/{}/", game_key(index))
 }
 
 /// `"<seat>/<account>/<nonce>"` — one person's claim on one chair.
@@ -1943,35 +1558,40 @@ fn seat_prefix(seat: &str) -> String {
     format!("{seat}/")
 }
 
-/// The account a key names, i.e. the one that must own it for the row to count.
-///
-/// `"<seat>/<account>/<nonce>"` and `"<game>/<account>/<nonce>"` both put the
-/// account second-to-last, and a move key puts it there too; splitting from the
-/// right keeps this one function honest for all three.
-fn key_author(key: &str) -> Option<&str> {
-    let mut parts = key.rsplitn(3, '/');
-    let _nonce = parts.next()?;
-    parts.next()
+/// The `n`th `/`-separated segment of a key.
+fn key_segment(key: &str, n: usize) -> Option<&str> {
+    key.split('/').nth(n).filter(|s| !s.is_empty())
 }
 
-/// The ply a move key sits at: the second segment of
-/// `"<game>/<ply>/<account>/<nonce>"`.
-///
-/// Read from the KEY, which is the same source the per-ply prefix lookup used
-/// before the rows were bucketed — so a row still counts at exactly the ply it
-/// is filed under, and nowhere else. An account segment containing a `/` would
-/// shift the segments, so this only trusts the two positions before any author
-/// text can appear.
-fn key_ply(key: &str) -> Option<u32> {
-    let mut parts = key.split('/');
-    let _game = parts.next()?;
-    parts.next()?.parse().ok()
+/// The seat holders of one game, once each — a player in both chairs is one
+/// person, and their rows are read once.
+fn distinct<'a>(white: &'a str, black: &'a str) -> Vec<&'a str> {
+    let mut out: Vec<&str> = [white, black]
+        .into_iter()
+        .filter(|m| !m.is_empty())
+        .collect();
+    out.dedup();
+    out
 }
 
-fn normalize_seat(seat: &str) -> app::Result<String> {
+/// The legal move in `position` that `mv` names, with the promotion piece
+/// filled in the same way for every caller — a promotion with no piece named
+/// is a queening, which is what a board does when you drag a pawn onto the
+/// last rank.
+fn find_legal(position: &Position, mv: board::Move) -> Option<board::Move> {
+    movegen::legal_moves(position)
+        .into_iter()
+        .find(|candidate| {
+            candidate.from == mv.from
+                && candidate.to == mv.to
+                && (mv.promotion.is_none() || candidate.promotion == mv.promotion)
+        })
+}
+
+fn normalize_seat(seat: &str) -> app::Result<&'static str> {
     match seat.trim().to_ascii_lowercase().as_str() {
-        SEAT_WHITE => Ok(SEAT_WHITE.to_owned()),
-        SEAT_BLACK => Ok(SEAT_BLACK.to_owned()),
+        SEAT_WHITE => Ok(SEAT_WHITE),
+        SEAT_BLACK => Ok(SEAT_BLACK),
         _ => app::bail!("a seat is either `white` or `black`"),
     }
 }
@@ -2003,34 +1623,27 @@ fn describe_outcome(outcome: Outcome) -> (String, String) {
 
 /// The move list a client sees: exactly the plies the replay applied, numbered
 /// by their position in it, named by the SAN the replay derived, and credited
-/// to the player whose ply each one is.
-///
-/// The only thing taken from a stored row is the move itself — which the replay
-/// has already accepted as legal in the position it lands in.
-fn move_views(
-    records: &[MoveRecord],
-    replayed: &game::Replay,
-    white: &str,
-    black: &str,
-) -> Vec<MoveView> {
-    records
+/// to the player whose ply each one is — never to a name a row carries.
+fn move_views(game: &Played) -> Vec<MoveView> {
+    game.moves
         .iter()
-        .take(replayed.applied)
         .enumerate()
         .map(|(ply, record)| MoveView {
             ply: ply as u32,
             uci: record.uci.clone(),
-            san: replayed
+            san: game
+                .replay
                 .sans
                 .get(ply)
                 .cloned()
                 .unwrap_or_else(|| record.uci.clone()),
-            // The player whose ply this is, not a name the row carries. A row
-            // only reaches this point because it sat under that ply's prefix
-            // and core's owner stamp named this account, so the attribution is
-            // the one the reader already verified — where a stored `by` was
-            // free text its author chose, and could credit the opponent.
-            by: if ply % 2 == 0 { white } else { black }.to_owned(),
+            by: game
+                .member_for(if ply % 2 == 0 {
+                    Color::White
+                } else {
+                    Color::Black
+                })
+                .to_owned(),
             at: record.at,
         })
         .collect()

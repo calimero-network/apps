@@ -64,15 +64,31 @@ The rules live in `app/src/utils/crm.ts` as pure functions with unit tests.
   `LwwRegister`s. A new pipeline starts with *Lead in 10% → Qualified 25% →
   Meeting 40% → Proposal 60% → Negotiation 80%*, with fixed ids so every member
   receives the same entries.
-- `deals: UnorderedMap<String, Deal>` — every mutable field its own register.
+- `deals: IndexedMap<String, Deal>` — every mutable field its own register,
+  indexed by stage, status, owner and contact so each filter is a seek.
   `update_deal` writes only the fields that changed, so a teammate editing a
   different field of the same deal at the same time keeps their edit.
-- `contacts`, `activities`, `notes`, `automations` — maps keyed by id.
+- `contacts`, `activities` (indexed by deal), `automations` (indexed by stage)
+  — maps keyed by id. Like stages and deals, the team's shared working data:
+  every member may edit it.
+- `notes: Authored<IndexedMap<String, Note>>` — each note is its author's.
+  Nobody else can rewrite or delete it, on any node; the author shown is the
+  owner stamp.
+- `created_by: WriteOnce<UnorderedMap<String, u64>>` — one write-once entry
+  per record, written by its creator. Its owner stamp is the record's
+  `created_by`, which nobody can rewrite.
 - `currency`, `rotting_days` — pipeline settings.
 - Money is `u64` whole units of the pipeline currency; no floats in replicated
   state.
 - Only a deal's or contact's creator may delete it; only a note's author may
-  delete the note. Enforced in the contract against the executing identity.
+  delete the note. Both are checked against owner stamps, and identities are
+  accounts: one person's devices are one author.
+- A stage runs at most 10 automations when a deal enters it, and values an
+  honest node would reject (a probability over 100, a rotting threshold out of
+  range) are clamped on read.
+- Not enforced by storage: a member's modified node can still remove a shared
+  record outright — the creator gate only stops it passing itself off as the
+  creator.
 
 `list_deals` returns each deal with its next activity, open-activity count,
 last touch and contact name, computed in one pass over activities and notes.

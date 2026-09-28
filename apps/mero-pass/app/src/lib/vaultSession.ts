@@ -68,6 +68,11 @@ export interface DeviceRecord {
   public_key: string;
   label: string;
   kind: string;
+  /**
+   * The account that registered the device: the entry's owner stamp, which
+   * every node verifies. Never a value the registrant wrote, so nobody can
+   * register a key in a role holder's name to be handed the vault key.
+   */
   account: string;
   added_at: number;
   revoked: boolean;
@@ -193,6 +198,12 @@ const HELD_ROLES: readonly Role[] = ['admin', 'editor', 'viewer'];
  * Both classes need a device that is unrevoked, whose account holds a role,
  * and that is in `allowed` when given. Recovery devices are never
  * auto-entitled; they are given keys explicitly when they are created.
+ *
+ * Everything this trusts comes from the contract's owner stamps: a device's
+ * `account` is the account that registered it, and `pairs` counts only wraps
+ * written by a role holder. So a pending or removed member can neither pass
+ * off a device of theirs as a member's nor mark it approved with a wrap of
+ * their own.
  */
 export function classifyDevices(
   devices: DeviceRecord[],

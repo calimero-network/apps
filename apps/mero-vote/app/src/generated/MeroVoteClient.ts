@@ -6,6 +6,9 @@ import {
 
 // Generated types
 
+/**
+ * A pointer from the context to a public record of the transcript digest.
+ */
 export interface Anchor {
   digest: string;
   network: string;
@@ -13,24 +16,52 @@ export interface Anchor {
   anchored_at: number;
 }
 
+/**
+ * Result of re-verifying a poll from its raw inputs.
+ */
 export interface AuditReport {
   poll_id: string;
   phase: Phase;
+  /**
+   * Every check held. A poll is only as good as its worst check.
+   */
   verified: boolean;
   checks: Check[];
+  /**
+   * Per-option counts, once `t` trustees have published and all checks hold.
+   */
   counts: number[] | null;
   counted_ballots: number;
+  /**
+   * Trustees whose partials were combined, in index order.
+   */
   decrypted_by: string[];
+  /**
+   * Digest of the canonical transcript. What gets anchored.
+   */
   transcript_digest: string | null;
   anchor: Anchor | null;
+  /**
+   * Eligible voters whose current ballot is not in the sealed count:
+   * cast after the creator's node sealed, or left out by the creator.
+   * Informational — a voter can always add one after the seal, so it
+   * cannot fail the audit without letting any voter veto the result.
+   */
+  uncounted: string[];
 }
 
+/**
+ * What a voter's slot holds for a poll: which body is theirs.
+ */
 export interface BallotPointer {
   digest: string;
   frozen: string;
   cast_at: number;
 }
 
+/**
+ * What a trustee's browser needs during the key ceremony.
+ */
 export interface Ceremony {
   threshold: number;
   trustees: CeremonyTrustee[];
@@ -55,6 +86,10 @@ export interface Closure {
   closed_at: number;
 }
 
+/**
+ * "Dealer X sent me a share that does not match its commitments", with
+ * the ECDH secret for that one share and a DLEQ proof it is genuine.
+ */
 export interface Complaint {
   poll_id: string;
   dealer: string;
@@ -65,20 +100,45 @@ export interface Complaint {
 export interface ComplaintView {
   recipient: string;
   dealer: string;
+  /**
+   * Proves the dealer cheated. An invalid complaint disqualifies no one.
+   */
   valid: boolean;
 }
 
+/**
+ * One ballot the seal commits to count.
+ */
 export interface CountedBallot {
   voter: string;
+  /**
+   * The protocol digest — the voter's receipt.
+   */
   digest: string;
+  /**
+   * Where the body lives in `ballot_bodies`.
+   */
   frozen: string;
 }
 
+/**
+ * The key ceremony's outcome, frozen at open.
+ */
 export interface Election {
   key: string;
   threshold: number;
+  /**
+   * Transport keys, in trustee order. Frozen because complaints are
+   * adjudicated against them.
+   */
   transport: string[];
+  /**
+   * Dealings that make up the key, in trustee order.
+   */
   qualified: QualifiedDealing[];
+  /**
+   * Dealers left out because a complaint proved they cheated.
+   */
   disqualified: string[];
   opened_at: number;
 }
@@ -143,41 +203,124 @@ export interface Member {
   name: string;
 }
 
+/**
+ * What one account may still change. Lives in [`UserStorage`], so only that
+ * account can write it — enforced at merge, not just by this contract.
+ *
+ * Nothing the audit requires to stay put is here: a voter re-pointing their
+ * ballot or a trustee re-publishing a partial after the seal changes no
+ * verdict. Ceremony material is write-once, in [`MeroVote`].
+ */
 export interface MemberSlot {
   name: string;
   ballots: Record<string, BallotPointer>;
-  transport: Record<string, TransportKey>;
-  dealings: Record<string, WireDealing>;
-  complaints: Record<string, Complaint>;
   partials: Record<string, StoredPartials>;
 }
 
 export interface MeroVote {
+  /**
+   * Immutable definitions; the key is the poll id.
+   */
   definitions: Record<string, PollDefinition>;
-  polls: Record<string, PollState>;
+  /**
+   * Closing notice and anchor, owned by the creator (checked at merge). Its
+   * owner stamp must name the definition's `creator`, or the poll is
+   * ignored: the field alone is forgeable.
+   */
+  polls: Record<string, PollControl>;
+  /**
+   * The frozen election, `"{poll_id}/{nonce}"`. Only the creator's entries
+   * count; two of them is equivocation, and fails the audit.
+   */
+  elections: Record<string, Election>;
+  /**
+   * The seal, keyed and read like `elections`.
+   */
+  closures: Record<string, Closure>;
+  /**
+   * `"{poll_id}/{trustee}/{content hash}"`.
+   */
+  transport_keys: Record<string, TransportKey>;
+  /**
+   * `"{poll_id}/{dealer}/{content hash}"`.
+   */
+  dealings: Record<string, WireDealing>;
+  /**
+   * `"{poll_id}/{recipient}/{dealer}/{content hash}"`.
+   */
+  complaints: Record<string, Complaint>;
+  /**
+   * Ballot bodies by the SHA-256 of their bytes, owned by the voter who
+   * cast them. The owner stamp is what shows the voter, not the creator,
+   * made a counted ballot.
+   */
   ballot_bodies: Record<string, StoredBallot>;
+  /**
+   * One signed slot per account.
+   */
   slots: Record<string, MemberSlot>;
 }
 
 export type Phase = 'KeyCeremony' | 'Voting' | 'Closing' | 'Closed';
 
+/**
+ * The part of a poll its creator may still change: the closing notice
+ * and the anchor. Everything else about a poll's lifecycle is written
+ * once (see `elections` and `closures` in [`MeroVote`]).
+ */
+export interface PollControl {
+  /**
+   * When the close was announced (phase Closing onward).
+   */
+  closing_at: number | null;
+  anchor: Anchor | null;
+}
+
+/**
+ * The immutable part of a poll. Stored content-addressed; its SHA-256 IS
+ * the poll id, so nothing voters relied on can be edited under them.
+ */
 export interface PollDefinition {
   title: string;
   description: string;
   options: string[];
   min_choices: number;
   max_choices: number;
+  /**
+   * Accounts that hold the decryption key between them, in index order
+   * (trustee `i` in this list has Shamir index `i + 1`).
+   */
   trustees: string[];
+  /**
+   * How many trustees it takes to decrypt. 1..=trustees.len().
+   */
   threshold: number;
+  /**
+   * Accounts allowed to vote. Empty means any member of the context.
+   */
   voters: string[];
   creator: string;
+  /**
+   * Milliseconds. Also makes two otherwise identical polls distinct.
+   */
   created_at: number;
+  /**
+   * Informational deadline in milliseconds. Node clocks are not a
+   * consensus source, so closing is an explicit act of the creator.
+   */
   closes_at: number | null;
 }
 
+/**
+ * A poll's lifecycle as read: the phase is derived from what has been
+ * written, so a sealed poll can never go back to voting.
+ */
 export interface PollState {
   phase: Phase;
   election: Election | null;
+  /**
+   * When the close was announced (phase Closing onward).
+   */
   closing_at: number | null;
   closure: Closure | null;
   anchor: Anchor | null;
@@ -198,6 +341,9 @@ export interface PollView {
   state: PollState;
   trustees: TrusteeStatus[];
   turnout: Turnout[];
+  /**
+   * The caller's own receipt, if they have voted.
+   */
   my_digest: string | null;
   can_vote: boolean;
 }
@@ -207,6 +353,9 @@ export interface QualifiedDealing {
   dealing: WireDealing;
 }
 
+/**
+ * A ballot body, content-addressed.
+ */
 export interface StoredBallot {
   poll_id: string;
   voter: string;
@@ -217,11 +366,17 @@ export interface StoredPartials {
   options: WirePartial[];
 }
 
+/**
+ * What a trustee's browser needs to compute its partial decryptions.
+ */
 export interface TallyInputs {
   aggregate: WireCiphertext[];
   counted: number;
 }
 
+/**
+ * Every input of the tally, for verification somewhere other than this node.
+ */
 export interface Transcript {
   protocol: string;
   poll_id: string;
@@ -236,6 +391,11 @@ export interface TranscriptBallot {
   voter: string;
   digest: string;
   ballot: WireBallot;
+  /**
+   * Whether the voter's own slot still points at this ballot.
+   * Informational: authorship is the body's owner stamp, checked by
+   * the audit as "ballot authorship".
+   */
   endorsed: boolean;
 }
 
@@ -245,6 +405,9 @@ export interface TranscriptPartial {
   options: WirePartial[];
 }
 
+/**
+ * A trustee's transport key and its proof of knowledge.
+ */
 export interface TransportKey {
   key: string;
   proof: WireBranch;
@@ -252,30 +415,51 @@ export interface TransportKey {
 
 export interface TrusteeStatus {
   account: string;
+  /**
+   * 1-based Shamir index.
+   */
   index: number;
   transport_published: boolean;
   dealing_published: boolean;
+  /**
+   * Valid complaints filed against this trustee's dealing.
+   */
   complaints_against: number;
+  /**
+   * Whether this trustee's dealing is part of the key (after open).
+   */
   qualified: boolean | null;
   partial_published: boolean;
 }
 
+/**
+ * Who has voted — never what.
+ */
 export interface Turnout {
   voter: string;
   digest: string;
   cast_at: number;
 }
 
+/**
+ * An encrypted ballot exactly as the browser built it.
+ */
 export interface WireBallot {
   choices: WireChoice[];
   sum_proof: WireBranch[];
 }
 
+/**
+ * One `(c, z)` pair of a proof, as 64-hex scalars.
+ */
 export interface WireBranch {
   c: string;
   z: string;
 }
 
+/**
+ * One option's ciphertext and its 0-or-1 proof.
+ */
 export interface WireChoice {
   a: string;
   b: string;
@@ -287,17 +471,35 @@ export interface WireCiphertext {
   b: string;
 }
 
+/**
+ * A trustee's contribution to the distributed key.
+ */
 export interface WireDealing {
+  /**
+   * `t` Feldman commitments, constant term first.
+   */
   commitments: string[];
+  /**
+   * Proof of knowledge of the constant term.
+   */
   proof: WireBranch;
+  /**
+   * One per trustee, in the poll's trustee order.
+   */
   shares: WireEncShare[];
 }
 
+/**
+ * One share of a dealing, encrypted to its recipient's transport key.
+ */
 export interface WireEncShare {
   r: string;
   v: string;
 }
 
+/**
+ * A trustee's partial decryption of one option's aggregate.
+ */
 export interface WirePartial {
   d: string;
   proof: WireBranch;
@@ -341,6 +543,9 @@ export class MeroVoteClient {
   /**
    * anchor_result
    *
+   * Record where the transcript digest was published. Only for a fully
+   * verified result, and only with the digest this node computes.
+   *
    * @intent mutating
    */
   public async anchorResult(params: { poll_id: string; network: string; reference: string }): Promise<string> {
@@ -350,6 +555,9 @@ export class MeroVoteClient {
 
   /**
    * cast_ballot
+   *
+   * Submit a ballot the browser encrypted. Verified here before it is
+   * stored — and again by every reader, on every audit.
    *
    * @intent mutating
    */
@@ -361,6 +569,8 @@ export class MeroVoteClient {
   /**
    * ceremony
    *
+   * Transport keys, dealings and complaints as they stand.
+   *
    * @intent read_only
    */
   public async ceremony(params: { poll_id: string }): Promise<Ceremony> {
@@ -370,6 +580,10 @@ export class MeroVoteClient {
 
   /**
    * close_poll
+   *
+   * Step one of closing: stop accepting ballots. Each node refuses new
+   * ballots once it sees this; ballots cast before that keep syncing in,
+   * and the seal is what freezes the count.
    *
    * @intent mutating
    */
@@ -391,6 +605,10 @@ export class MeroVoteClient {
   /**
    * file_complaint
    *
+   * A trustee proves `dealer` sent it a share that does not match the
+   * dealer's commitments. Refused unless the proof holds AND the share is
+   * really bad — so a complaint can never frame an honest dealer.
+   *
    * @intent mutating
    */
   public async fileComplaint(params: { poll_id: string; dealer: string; secret: string; proof: WireBranch }): Promise<void> {
@@ -411,6 +629,8 @@ export class MeroVoteClient {
   /**
    * get_result
    *
+   * Re-verify everything and, once `t` trustees have published, the counts.
+   *
    * @intent read_only
    */
   public async getResult(params: { poll_id: string }): Promise<AuditReport> {
@@ -420,6 +640,8 @@ export class MeroVoteClient {
 
   /**
    * get_transcript
+   *
+   * Every input of the tally plus this node's audit of it.
    *
    * @intent read_only
    */
@@ -449,6 +671,11 @@ export class MeroVoteClient {
   /**
    * open_voting
    *
+   * Freeze the election key and open voting. The qualified set is every
+   * verified dealing with no valid complaint against it, and it must hold
+   * at least `t` dealers — otherwise fewer than `t` colluders could know
+   * the whole key.
+   *
    * @intent mutating
    */
   public async openVoting(params: { poll_id: string }): Promise<string> {
@@ -458,6 +685,11 @@ export class MeroVoteClient {
 
   /**
    * publish_dealing
+   *
+   * Round 2: a trustee deals shares of its polynomial to every trustee.
+   * The contract checks the shape and the proof of knowledge; whether each
+   * encrypted share matches the commitments only its recipient can tell,
+   * which is what complaints are for. Write-once.
    *
    * @intent mutating
    */
@@ -469,6 +701,10 @@ export class MeroVoteClient {
   /**
    * publish_partial
    *
+   * A trustee publishes `Dⱼ = xⱼ·Aⱼ` for every option's aggregate, each
+   * with a DLEQ proof against its verification key `hⱼ`, which anyone can
+   * derive from the qualified commitments.
+   *
    * @intent mutating
    */
   public async publishPartial(params: { poll_id: string; partials: WirePartial[] }): Promise<void> {
@@ -478,6 +714,9 @@ export class MeroVoteClient {
 
   /**
    * publish_transport_key
+   *
+   * Round 1: a trustee publishes the key dealers will encrypt its shares
+   * to. Write-once — dealings are addressed to it.
    *
    * @intent mutating
    */
@@ -499,6 +738,9 @@ export class MeroVoteClient {
   /**
    * seal_poll
    *
+   * Step two: freeze the ballots to count — every eligible voter's
+   * current, re-verified ballot as this node sees it now.
+   *
    * @intent mutating
    */
   public async sealPoll(params: { poll_id: string }): Promise<number> {
@@ -508,6 +750,9 @@ export class MeroVoteClient {
 
   /**
    * set_name
+   *
+   * Put a display name in your slot. Doubles as "I'm here": the roster is
+   * how a creator finds the accounts to name as trustees or voters.
    *
    * @intent mutating
    */
@@ -519,6 +764,9 @@ export class MeroVoteClient {
   /**
    * tally_inputs
    *
+   * The per-option aggregates a trustee decrypts. Recomputed from the
+   * frozen ballots every call; nothing stored is trusted.
+   *
    * @intent read_only
    */
   public async tallyInputs(params: { poll_id: string }): Promise<TallyInputs> {
@@ -528,6 +776,8 @@ export class MeroVoteClient {
 
   /**
    * whoami
+   *
+   * The caller's ACCOUNT — the id trustees and voter rolls are written in.
    *
    * @intent read_only
    */

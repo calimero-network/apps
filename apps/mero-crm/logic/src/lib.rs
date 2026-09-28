@@ -20,6 +20,22 @@
 //!   replicated state: two nodes must compute byte-identical values.
 //! - Owners are display names (member aliases), the same convention as the
 //!   issue tracker's assignee, so the board can show a name without a lookup.
+//!
+//! Who can write what, as every node enforces it (a member can run a patched
+//! node that skips every check in this file):
+//!
+//! - Stages, deals, contacts, activities and automations are the TEAM'S shared
+//!   working data, deliberately writable by every member — that is what makes
+//!   it a shared board. They stay plain collections: moving them into an
+//!   owned type would make every nested `LwwRegister` its creator's alone.
+//! - Who CREATED a record is not a field anyone can rewrite: it is the owner
+//!   stamp of a write-once entry in `created_by`, written with the record.
+//!   "Only the creator may delete" is checked against that stamp. (A patched
+//!   node can still remove a shared record outright; the stamp is what stops
+//!   it passing itself off as the creator, or an honest node deleting on its
+//!   behalf.)
+//! - Notes are `Authored`: each is its author's, so nobody else can rewrite or
+//!   delete one, and the author shown is the stamp.
 
 use std::collections::BTreeMap;
 
@@ -29,8 +45,11 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_sdk::AccountId;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
+use calimero_storage::collections::{
+    Authored, IndexedMap, LwwRegister, Mergeable, UnorderedMap, WriteOnce,
+};
 use calimero_storage::env as storage_env;
 
 pub mod events;
@@ -59,6 +78,10 @@ const DEFAULT_CURRENCY: &str = "USD";
 /// Days a deal may sit in a stage without activity before it is "rotting".
 const DEFAULT_ROTTING_DAYS: u32 = 14;
 const MAX_STAGES: usize = 12;
+/// Rules one stage may carry. Enforced on the write, and again when a deal
+/// enters the stage: every member can add rules, so a patched node could plant
+/// thousands and make each honest move write one activity per rule.
+const MAX_AUTOMATIONS_PER_STAGE: usize = 10;
 const MAX_NAME_LEN: usize = 120;
 const MAX_TEXT_LEN: usize = 10_000;
 const DAY_MS: u64 = 86_400_000;
@@ -95,17 +118,24 @@ impl Mergeable for Stage {
 }
 
 /// A deal: an opportunity with a value, moving through the stages.
+///
+/// Indexed by the fields the board filters on, so a stage column, an owner's
+/// deals or a person's deals is a seek rather than a scan of every deal.
 #[app::mergeable(id = "mero_crm::Deal")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Deal {
     pub id: String,
     pub title: LwwRegister<String>,
     pub value: LwwRegister<u64>,
     pub organization: LwwRegister<String>,
+    #[index]
     pub contact_id: LwwRegister<Option<String>>,
+    #[index]
     pub owner: LwwRegister<Option<String>>,
+    #[index]
     pub stage_id: LwwRegister<String>,
+    #[index]
     pub status: LwwRegister<String>,
     pub lost_reason: LwwRegister<String>,
     /// Expected close date, ms since the epoch.
@@ -115,7 +145,6 @@ pub struct Deal {
     /// When the deal entered its current stage — what "rotting" measures.
     pub stage_entered_at: LwwRegister<u64>,
     pub closed_at: LwwRegister<Option<u64>>,
-    pub created_by: String,
     pub created_at: u64,
 }
 
@@ -123,7 +152,6 @@ impl Mergeable for Deal {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if (other.created_at, &other.id) < (self.created_at, &self.id) {
             self.id = other.id.clone();
-            self.created_by = other.created_by.clone();
             self.created_at = other.created_at;
         }
         self.title.merge(&other.title);
@@ -153,7 +181,6 @@ pub struct Contact {
     pub phone: LwwRegister<String>,
     pub organization: LwwRegister<String>,
     pub job_title: LwwRegister<String>,
-    pub created_by: String,
     pub created_at: u64,
 }
 
@@ -161,7 +188,6 @@ impl Mergeable for Contact {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if (other.created_at, &other.id) < (self.created_at, &self.id) {
             self.id = other.id.clone();
-            self.created_by = other.created_by.clone();
             self.created_at = other.created_at;
         }
         self.name.merge(&other.name);
@@ -175,10 +201,12 @@ impl Mergeable for Contact {
 
 /// Something someone has to do: a call, a meeting, a task, an email, a deadline.
 #[app::mergeable(id = "mero_crm::Activity")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Activity {
     pub id: String,
+    /// A deal's activities are one seek; `None` puts no row in the index.
+    #[index]
     pub deal_id: Option<String>,
     pub contact_id: Option<String>,
     pub kind: String,
@@ -190,7 +218,6 @@ pub struct Activity {
     pub note: LwwRegister<String>,
     /// Set when an automation scheduled it rather than a person.
     pub automation_id: Option<String>,
-    pub created_by: String,
     pub created_at: u64,
 }
 
@@ -202,7 +229,6 @@ impl Mergeable for Activity {
             self.contact_id = other.contact_id.clone();
             self.kind = other.kind.clone();
             self.automation_id = other.automation_id.clone();
-            self.created_by = other.created_by.clone();
             self.created_at = other.created_at;
         }
         self.subject.merge(&other.subject);
@@ -215,14 +241,15 @@ impl Mergeable for Activity {
     }
 }
 
-/// A note on a deal. Immutable once written; only its author may delete it.
+/// A note on a deal. Immutable once written; only its author may delete it —
+/// the author being the entry's owner stamp, not a field.
 #[app::mergeable(id = "mero_crm::Note")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Note {
     pub id: String,
+    #[index]
     pub deal_id: String,
-    pub author: String,
     pub body: String,
     pub created_at: u64,
 }
@@ -242,16 +269,16 @@ impl Mergeable for Note {
 /// automation is actually used for: never letting a deal arrive somewhere with
 /// no next step.
 #[app::mergeable(id = "mero_crm::Automation")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Automation {
     pub id: String,
+    #[index]
     pub stage_id: String,
     pub kind: String,
     pub subject: String,
     pub due_in_days: u32,
     pub enabled: LwwRegister<bool>,
-    pub created_by: String,
     pub created_at: u64,
 }
 
@@ -263,7 +290,6 @@ impl Mergeable for Automation {
             self.kind = other.kind.clone();
             self.subject = other.subject.clone();
             self.due_in_days = other.due_in_days;
-            self.created_by = other.created_by.clone();
             self.created_at = other.created_at;
         }
         self.enabled.merge(&other.enabled);
@@ -404,11 +430,16 @@ pub struct Settings {
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct Crm {
     stages: UnorderedMap<String, Stage>,
-    deals: UnorderedMap<String, Deal>,
+    deals: IndexedMap<String, Deal>,
     contacts: UnorderedMap<String, Contact>,
-    activities: UnorderedMap<String, Activity>,
-    notes: UnorderedMap<String, Note>,
-    automations: UnorderedMap<String, Automation>,
+    activities: IndexedMap<String, Activity>,
+    notes: Authored<IndexedMap<String, Note>>,
+    automations: IndexedMap<String, Automation>,
+    /// Record id → when it was created, written once with the record by the
+    /// account that created it. That owner stamp IS the record's `created_by`:
+    /// no node accepts a rewrite of it, so neither can anyone take over a
+    /// record's authorship by writing a field.
+    created_by: WriteOnce<UnorderedMap<String, u64>>,
     currency: LwwRegister<String>,
     rotting_days: LwwRegister<u32>,
 }
@@ -418,6 +449,16 @@ macro_rules! get_mut_or_404 {
     ($map:expr, $id:expr, $what:literal) => {
         $map.get_mut(&$id)
             .map_err(|e| AppError::msg(format!(concat!($what, ".get_mut: {}"), e)))?
+            .ok_or_else(|| not_found($what, &$id))?
+    };
+}
+
+/// Mutate an `IndexedMap` entry in place, keeping its indexes in step, or bail
+/// with `not found`.
+macro_rules! update_or_404 {
+    ($map:expr, $id:expr, $what:literal, $f:expr) => {
+        $map.update(&$id, $f)
+            .map_err(|e| AppError::msg(format!(concat!($what, ".update: {}"), e)))?
             .ok_or_else(|| not_found($what, &$id))?
     };
 }
@@ -441,11 +482,12 @@ impl Crm {
         }
         Crm {
             stages,
-            deals: UnorderedMap::new_with_field_name("crm:deals"),
+            deals: IndexedMap::new_with_field_name("crm:deals"),
             contacts: UnorderedMap::new_with_field_name("crm:contacts"),
-            activities: UnorderedMap::new_with_field_name("crm:activities"),
-            notes: UnorderedMap::new_with_field_name("crm:notes"),
-            automations: UnorderedMap::new_with_field_name("crm:automations"),
+            activities: IndexedMap::new_with_field_name("crm:activities"),
+            notes: Authored::new_with_field_name("crm:notes"),
+            automations: IndexedMap::new_with_field_name("crm:automations"),
+            created_by: WriteOnce::new_with_field_name("crm:created_by"),
             currency: LwwRegister::new(DEFAULT_CURRENCY.to_string()),
             rotting_days: LwwRegister::new(DEFAULT_ROTTING_DAYS),
         }
@@ -456,7 +498,9 @@ impl Crm {
     pub fn get_settings(&self) -> app::Result<Settings> {
         Ok(Settings {
             currency: self.currency.get().clone(),
-            rotting_days: *self.rotting_days.get(),
+            // Clamped on read: any member can write the register, so the range
+            // `set_rotting_days` checks is only a promise about honest nodes.
+            rotting_days: (*self.rotting_days.get()).clamp(1, 365),
         })
     }
 
@@ -557,7 +601,9 @@ impl Crm {
     }
 
     /// Remove a stage. Refused while any open deal sits in it, and for the last
-    /// remaining stage — a pipeline always has somewhere to put a deal.
+    /// remaining stage — a pipeline always has somewhere to put a deal. A deal
+    /// moved into it concurrently is not lost: the board shows a deal whose
+    /// stage is gone in the first stage (see `deal_view`).
     pub fn delete_stage(&mut self, stage_id: String) -> app::Result<()> {
         if !self.stage_exists(&stage_id)? {
             return Err(not_found("stage", &stage_id));
@@ -567,20 +613,20 @@ impl Crm {
         }
         let occupied = self
             .deals
-            .entries()
-            .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
-            .any(|(_, d)| d.stage_id.get() == &stage_id && d.status.get() == "open");
+            .query("stage_id")
+            .eq(stage_id.as_str())
+            .entries()?
+            .iter()
+            .any(|(_, d)| d.status.get() == "open");
         if occupied {
             return Err(invalid("move the open deals out of this stage first"));
         }
-        let rules: Vec<String> = self
+        for id in self
             .automations
-            .entries()
-            .map_err(|e| AppError::msg(format!("automations.entries: {e}")))?
-            .filter(|(_, a)| a.stage_id == stage_id)
-            .map(|(id, _)| id)
-            .collect();
-        for id in rules {
+            .query("stage_id")
+            .eq(stage_id.as_str())
+            .keys()?
+        {
             self.automations
                 .remove(&id)
                 .map_err(|e| AppError::msg(format!("automations.remove: {e}")))?;
@@ -639,12 +685,12 @@ impl Crm {
             source: LwwRegister::new(source.trim().to_string()),
             stage_entered_at: LwwRegister::new(now),
             closed_at: LwwRegister::new(None),
-            created_by: self.caller(),
             created_at: now,
         };
         self.deals
             .insert(id.clone(), deal)
             .map_err(|e| AppError::msg(format!("deals.insert: {e}")))?;
+        self.record_creator(&id, now)?;
         app::emit!(Event::DealCreated {
             id: &id,
             stage_id: &stage_id,
@@ -676,15 +722,15 @@ impl Crm {
                 return Err(not_found("contact", cid));
             }
         }
-        let mut guard = get_mut_or_404!(self.deals, deal_id, "deal");
-        set_if_changed(&mut guard.title, title.trim().to_string());
-        set_if_changed(&mut guard.value, value);
-        set_if_changed(&mut guard.organization, organization.trim().to_string());
-        set_if_changed(&mut guard.contact_id, contact_id);
-        set_if_changed(&mut guard.owner, normalize_opt(owner));
-        set_if_changed(&mut guard.expected_close, expected_close);
-        set_if_changed(&mut guard.source, source.trim().to_string());
-        drop(guard);
+        update_or_404!(self.deals, deal_id, "deal", |d| {
+            set_if_changed(&mut d.title, title.trim().to_string());
+            set_if_changed(&mut d.value, value);
+            set_if_changed(&mut d.organization, organization.trim().to_string());
+            set_if_changed(&mut d.contact_id, contact_id);
+            set_if_changed(&mut d.owner, normalize_opt(owner));
+            set_if_changed(&mut d.expected_close, expected_close);
+            set_if_changed(&mut d.source, source.trim().to_string());
+        });
         app::emit!(Event::DealUpdated { id: &deal_id });
         Ok(())
     }
@@ -696,16 +742,17 @@ impl Crm {
             return Err(not_found("stage", &stage_id));
         }
         let now = now_ms();
-        let mut guard = get_mut_or_404!(self.deals, deal_id, "deal");
-        if guard.status.get() != "open" {
+        let deal = self.load_deal(&deal_id)?;
+        if deal.status.get() != "open" {
             return Err(invalid("reopen a closed deal before moving it"));
         }
-        if guard.stage_id.get() == &stage_id {
+        if deal.stage_id.get() == &stage_id {
             return Ok(());
         }
-        guard.stage_id.set(stage_id.clone());
-        guard.stage_entered_at.set(now);
-        drop(guard);
+        update_or_404!(self.deals, deal_id, "deal", |d| {
+            d.stage_id.set(stage_id.clone());
+            d.stage_entered_at.set(now);
+        });
         app::emit!(Event::DealMoved {
             id: &deal_id,
             stage_id: &stage_id,
@@ -727,15 +774,15 @@ impl Crm {
     /// Put a closed deal back on the board, in the stage it closed from.
     pub fn reopen_deal(&mut self, deal_id: String) -> app::Result<()> {
         let now = now_ms();
-        let mut guard = get_mut_or_404!(self.deals, deal_id, "deal");
-        if guard.status.get() == "open" {
+        if self.load_deal(&deal_id)?.status.get() == "open" {
             return Ok(());
         }
-        guard.status.set("open".to_string());
-        guard.lost_reason.set(String::new());
-        guard.closed_at.set(None);
-        guard.stage_entered_at.set(now);
-        drop(guard);
+        update_or_404!(self.deals, deal_id, "deal", |d| {
+            d.status.set("open".to_string());
+            d.lost_reason.set(String::new());
+            d.closed_at.set(None);
+            d.stage_entered_at.set(now);
+        });
         app::emit!(Event::DealStatusChanged {
             id: &deal_id,
             status: "open",
@@ -744,17 +791,30 @@ impl Crm {
     }
 
     /// Deals, optionally filtered by status, stage and owner, newest first.
+    ///
+    /// The most selective filter given is an index seek; the others filter
+    /// what it returns.
     pub fn list_deals(
         &self,
         status: Option<String>,
         stage_id: Option<String>,
         owner: Option<String>,
     ) -> app::Result<Vec<DealView>> {
+        let rows: Vec<(String, Deal)> = if let Some(s) = &stage_id {
+            self.deals.query("stage_id").eq(s.as_str()).entries()?
+        } else if let Some(o) = &owner {
+            self.deals.query("owner").eq(o.as_str()).entries()?
+        } else if let Some(s) = &status {
+            self.deals.query("status").eq(s.as_str()).entries()?
+        } else {
+            self.deals
+                .entries()
+                .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
+                .collect()
+        };
         let index = self.deal_index()?;
-        let mut out: Vec<DealView> = self
-            .deals
-            .entries()
-            .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
+        let mut out: Vec<DealView> = rows
+            .into_iter()
             .filter(|(_, d)| status.as_ref().is_none_or(|s| d.status.get() == s))
             .filter(|(_, d)| stage_id.as_ref().is_none_or(|s| d.stage_id.get() == s))
             .filter(|(_, d)| {
@@ -762,32 +822,60 @@ impl Crm {
                     .as_ref()
                     .is_none_or(|o| d.owner.get().as_deref() == Some(o.as_str()))
             })
-            .map(|(_, d)| deal_view(&d, &index))
+            .map(|(_, d)| deal_view(&d, &index, self.creator_of(&d.id)))
             .collect();
         out.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
         Ok(out)
     }
 
-    /// One deal with its person, activities (by due date) and notes (newest first).
+    /// One deal with its person, activities (by due date) and notes (newest
+    /// first). Reads only that deal's rows: its activities and notes are index
+    /// seeks, its person one lookup.
     pub fn get_deal(&self, deal_id: String) -> app::Result<DealDetail> {
-        let deal = self
-            .deals
-            .get(&deal_id)
-            .map_err(|e| AppError::msg(format!("deals.get: {e}")))?
-            .ok_or_else(|| not_found("deal", &deal_id))?;
-        let index = self.deal_index()?;
-        let view = deal_view(&deal, &index);
-        let contact = match &view.contact_id {
-            Some(cid) => self.list_contacts()?.into_iter().find(|c| &c.id == cid),
+        let deal = self.load_deal(&deal_id)?;
+        let activities: Vec<Activity> = self
+            .activities
+            .query("deal_id")
+            .eq(deal_id.as_str())
+            .entries()?
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        let notes: Vec<(String, Note)> =
+            self.notes.query("deal_id").eq(deal_id.as_str()).entries()?;
+
+        let mut facts = BTreeMap::new();
+        let mut f = DealFacts::default();
+        for a in &activities {
+            f.add_activity(a);
+        }
+        for (_, n) in &notes {
+            f.last_touch = f.last_touch.max(Some(n.created_at));
+        }
+        let _ = facts.insert(deal_id.clone(), f);
+        let contact = match deal.contact_id.get() {
+            Some(cid) => self.contact_detail(cid)?,
             None => None,
         };
-        let activities = self.list_activities(Some(deal_id.clone()), None)?;
-        let mut notes: Vec<NoteView> = self
-            .notes
-            .entries()
-            .map_err(|e| AppError::msg(format!("notes.entries: {e}")))?
-            .filter(|(_, n)| n.deal_id == deal_id)
-            .map(|(_, n)| note_view(&n))
+        let index = DealIndex {
+            facts,
+            contact_names: contact
+                .iter()
+                .map(|c| (c.id.clone(), c.name.clone()))
+                .collect(),
+            ..self.stage_index()?
+        };
+        let view = deal_view(&deal, &index, self.creator_of(&deal_id));
+
+        let title = BTreeMap::from([(deal_id.clone(), deal.title.get().clone())]);
+        let mut activities: Vec<ActivityView> = activities
+            .iter()
+            .map(|a| activity_view(a, &title, self.creator_of(&a.id)))
+            .collect();
+        activities.sort_by(|a, b| (a.due_at, &a.id).cmp(&(b.due_at, &b.id)));
+        let mut notes: Vec<NoteView> = notes
+            .iter()
+            .map(|(key, n)| note_view(n, owner_hex(self.notes.owner_of(key).ok().flatten())))
             .collect();
         notes.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
         Ok(DealDetail {
@@ -798,31 +886,21 @@ impl Crm {
         })
     }
 
-    /// Delete a deal with its activities and notes. Only its creator may.
+    /// Delete a deal with its activities and its creator's notes. Only its
+    /// creator may — checked against the creation stamp, which nobody can
+    /// rewrite. Other members' notes are theirs to delete; they go dark with
+    /// the deal.
     pub fn delete_deal(&mut self, deal_id: String) -> app::Result<()> {
-        let created_by = self
-            .deals
-            .get(&deal_id)
-            .map_err(|e| AppError::msg(format!("deals.get: {e}")))?
-            .map(|d| d.created_by.clone())
-            .ok_or_else(|| not_found("deal", &deal_id))?;
-        if created_by != self.caller() {
+        let _ = self.load_deal(&deal_id)?;
+        if self.creator_of(&deal_id) != self.caller() {
             return Err(forbidden("only the creator may delete this deal"));
         }
-        let activity_ids: Vec<String> = self
+        let activity_ids = self
             .activities
-            .entries()
-            .map_err(|e| AppError::msg(format!("activities.entries: {e}")))?
-            .filter(|(_, a)| a.deal_id.as_deref() == Some(deal_id.as_str()))
-            .map(|(id, _)| id)
-            .collect();
-        let note_ids: Vec<String> = self
-            .notes
-            .entries()
-            .map_err(|e| AppError::msg(format!("notes.entries: {e}")))?
-            .filter(|(_, n)| n.deal_id == deal_id)
-            .map(|(id, _)| id)
-            .collect();
+            .query("deal_id")
+            .eq(deal_id.as_str())
+            .keys()?;
+        let note_ids = self.notes.query("deal_id").eq(deal_id.as_str()).keys()?;
         self.deals
             .remove(&deal_id)
             .map_err(|e| AppError::msg(format!("deals.remove: {e}")))?;
@@ -832,9 +910,9 @@ impl Crm {
                 .map_err(|e| AppError::msg(format!("activities.remove: {e}")))?;
         }
         for id in note_ids {
-            self.notes
-                .remove(&id)
-                .map_err(|e| AppError::msg(format!("notes.remove: {e}")))?;
+            if self.notes.owned_by_me(&id)? {
+                let _ = self.notes.remove(&id)?;
+            }
         }
         app::emit!(Event::DealDeleted { id: &deal_id });
         Ok(())
@@ -863,11 +941,11 @@ impl Crm {
                     phone: LwwRegister::new(phone.trim().to_string()),
                     organization: LwwRegister::new(organization.trim().to_string()),
                     job_title: LwwRegister::new(job_title.trim().to_string()),
-                    created_by: self.caller(),
                     created_at: now,
                 },
             )
             .map_err(|e| AppError::msg(format!("contacts.insert: {e}")))?;
+        self.record_creator(&id, now)?;
         app::emit!(Event::ContactChanged { id: &id });
         Ok(id)
     }
@@ -893,28 +971,23 @@ impl Crm {
         Ok(())
     }
 
-    /// Delete a person. Only their creator may. Deals keep their history but
-    /// lose the link, so no deal points at someone who no longer exists.
+    /// Delete a person. Only their creator may (the creation stamp, again).
+    /// Deals keep their history but lose the link, so no deal points at
+    /// someone who no longer exists.
     pub fn delete_contact(&mut self, contact_id: String) -> app::Result<()> {
-        let created_by = self
-            .contacts
-            .get(&contact_id)
-            .map_err(|e| AppError::msg(format!("contacts.get: {e}")))?
-            .map(|c| c.created_by.clone())
-            .ok_or_else(|| not_found("contact", &contact_id))?;
-        if created_by != self.caller() {
+        if !self.contact_exists(&contact_id)? {
+            return Err(not_found("contact", &contact_id));
+        }
+        if self.creator_of(&contact_id) != self.caller() {
             return Err(forbidden("only the creator may delete this contact"));
         }
-        let linked: Vec<String> = self
+        let linked = self
             .deals
-            .entries()
-            .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
-            .filter(|(_, d)| d.contact_id.get().as_deref() == Some(contact_id.as_str()))
-            .map(|(id, _)| id)
-            .collect();
+            .query("contact_id")
+            .eq(contact_id.as_str())
+            .keys()?;
         for id in linked {
-            let mut guard = get_mut_or_404!(self.deals, id, "deal");
-            guard.contact_id.set(None);
+            update_or_404!(self.deals, id, "deal", |d| d.contact_id.set(None));
         }
         self.contacts
             .remove(&contact_id)
@@ -944,17 +1017,13 @@ impl Crm {
             .contacts
             .entries()
             .map_err(|e| AppError::msg(format!("contacts.entries: {e}")))?
-            .map(|(id, c)| ContactView {
-                open_deals: open.get(&id).copied().unwrap_or(0),
-                won_value: won.get(&id).copied().unwrap_or(0),
-                id,
-                name: c.name.get().clone(),
-                email: c.email.get().clone(),
-                phone: c.phone.get().clone(),
-                organization: c.organization.get().clone(),
-                job_title: c.job_title.get().clone(),
-                created_by: c.created_by.clone(),
-                created_at: c.created_at,
+            .map(|(id, c)| {
+                contact_view(
+                    &c,
+                    open.get(&id).copied().unwrap_or(0),
+                    won.get(&id).copied().unwrap_or(0),
+                    self.creator_of(&id),
+                )
             })
             .collect();
         out.sort_by(|a, b| (a.name.to_lowercase(), &a.id).cmp(&(b.name.to_lowercase(), &b.id)));
@@ -1008,21 +1077,21 @@ impl Crm {
     /// Mark an activity done (or undo that).
     pub fn set_activity_done(&mut self, activity_id: String, done: bool) -> app::Result<()> {
         let now = now_ms();
-        let mut guard = get_mut_or_404!(self.activities, activity_id, "activity");
-        if *guard.done.get() != done {
-            guard.done.set(done);
-            guard.done_at.set(if done { Some(now) } else { None });
-        }
-        drop(guard);
+        update_or_404!(self.activities, activity_id, "activity", |a| {
+            if *a.done.get() != done {
+                a.done.set(done);
+                a.done_at.set(if done { Some(now) } else { None });
+            }
+        });
         app::emit!(Event::ActivityChanged { id: &activity_id });
         Ok(())
     }
 
     /// Move an activity to a new due time.
     pub fn reschedule_activity(&mut self, activity_id: String, due_at: u64) -> app::Result<()> {
-        let mut guard = get_mut_or_404!(self.activities, activity_id, "activity");
-        set_if_changed(&mut guard.due_at, due_at);
-        drop(guard);
+        update_or_404!(self.activities, activity_id, "activity", |a| {
+            set_if_changed(&mut a.due_at, due_at)
+        });
         app::emit!(Event::ActivityChanged { id: &activity_id });
         Ok(())
     }
@@ -1041,28 +1110,40 @@ impl Crm {
     }
 
     /// Activities, optionally for one deal and/or by done-ness, by due date.
+    /// One deal's activities are an index seek.
     pub fn list_activities(
         &self,
         deal_id: Option<String>,
         done: Option<bool>,
     ) -> app::Result<Vec<ActivityView>> {
-        let titles: BTreeMap<String, String> = self
-            .deals
-            .entries()
-            .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
-            .map(|(id, d)| (id, d.title.get().clone()))
-            .collect();
-        let mut out: Vec<ActivityView> = self
-            .activities
-            .entries()
-            .map_err(|e| AppError::msg(format!("activities.entries: {e}")))?
-            .filter(|(_, a)| {
-                deal_id
-                    .as_ref()
-                    .is_none_or(|d| a.deal_id.as_deref() == Some(d.as_str()))
-            })
+        let (rows, titles): (Vec<(String, Activity)>, BTreeMap<String, String>) = match &deal_id {
+            Some(did) => (
+                self.activities
+                    .query("deal_id")
+                    .eq(did.as_str())
+                    .entries()?,
+                self.deals
+                    .get(did)?
+                    .map(|d| (did.clone(), d.title.get().clone()))
+                    .into_iter()
+                    .collect(),
+            ),
+            None => (
+                self.activities
+                    .entries()
+                    .map_err(|e| AppError::msg(format!("activities.entries: {e}")))?
+                    .collect(),
+                self.deals
+                    .entries()
+                    .map_err(|e| AppError::msg(format!("deals.entries: {e}")))?
+                    .map(|(id, d)| (id, d.title.get().clone()))
+                    .collect(),
+            ),
+        };
+        let mut out: Vec<ActivityView> = rows
+            .into_iter()
             .filter(|(_, a)| done.is_none_or(|want| *a.done.get() == want))
-            .map(|(_, a)| activity_view(&a, &titles))
+            .map(|(id, a)| activity_view(&a, &titles, self.creator_of(&id)))
             .collect();
         out.sort_by(|a, b| (a.due_at, &a.id).cmp(&(b.due_at, &b.id)));
         Ok(out)
@@ -1080,18 +1161,15 @@ impl Crm {
         }
         let now = now_ms();
         let id = new_id("note", now);
-        self.notes
-            .insert(
-                id.clone(),
-                Note {
-                    id: id.clone(),
-                    deal_id: deal_id.clone(),
-                    author: self.caller(),
-                    body: body.trim().to_string(),
-                    created_at: now,
-                },
-            )
-            .map_err(|e| AppError::msg(format!("notes.insert: {e}")))?;
+        self.notes.insert(
+            id.clone(),
+            Note {
+                id: id.clone(),
+                deal_id: deal_id.clone(),
+                body: body.trim().to_string(),
+                created_at: now,
+            },
+        )?;
         app::emit!(Event::NoteChanged {
             id: &id,
             deal_id: &deal_id,
@@ -1099,23 +1177,20 @@ impl Crm {
         Ok(id)
     }
 
-    /// Delete a note. Only its author may.
+    /// Delete a note. Only its author may — the entry's owner, which every
+    /// node checks when it applies the removal.
     pub fn delete_note(&mut self, note_id: String) -> app::Result<()> {
         let note = self
             .notes
-            .get(&note_id)
-            .map_err(|e| AppError::msg(format!("notes.get: {e}")))?
-            .map(|n| (n.author.clone(), n.deal_id.clone()))
+            .get(&note_id)?
             .ok_or_else(|| not_found("note", &note_id))?;
-        if note.0 != self.caller() {
+        if !self.notes.owned_by_me(&note_id)? {
             return Err(forbidden("only the author may delete this note"));
         }
-        self.notes
-            .remove(&note_id)
-            .map_err(|e| AppError::msg(format!("notes.remove: {e}")))?;
+        let _ = self.notes.remove(&note_id)?;
         app::emit!(Event::NoteChanged {
             id: &note_id,
-            deal_id: &note.1,
+            deal_id: &note.deal_id,
         });
         Ok(())
     }
@@ -1127,7 +1202,7 @@ impl Crm {
             .automations
             .entries()
             .map_err(|e| AppError::msg(format!("automations.entries: {e}")))?
-            .map(|(_, a)| automation_view(&a))
+            .map(|(id, a)| automation_view(&a, self.creator_of(&id)))
             .collect();
         out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
         Ok(out)
@@ -1150,6 +1225,15 @@ impl Crm {
         if due_in_days > 365 {
             return Err(invalid("due_in_days must be at most 365"));
         }
+        if self
+            .automations
+            .query("stage_id")
+            .eq(stage_id.as_str())
+            .count()?
+            >= MAX_AUTOMATIONS_PER_STAGE
+        {
+            return Err(invalid("a stage can have at most 10 automations"));
+        }
         let now = now_ms();
         let id = new_id("auto", now);
         self.automations
@@ -1162,11 +1246,11 @@ impl Crm {
                     subject: subject.trim().to_string(),
                     due_in_days,
                     enabled: LwwRegister::new(true),
-                    created_by: self.caller(),
                     created_at: now,
                 },
             )
             .map_err(|e| AppError::msg(format!("automations.insert: {e}")))?;
+        self.record_creator(&id, now)?;
         app::emit!(Event::AutomationsChanged {});
         Ok(id)
     }
@@ -1176,9 +1260,9 @@ impl Crm {
         automation_id: String,
         enabled: bool,
     ) -> app::Result<()> {
-        let mut guard = get_mut_or_404!(self.automations, automation_id, "automation");
-        set_if_changed(&mut guard.enabled, enabled);
-        drop(guard);
+        update_or_404!(self.automations, automation_id, "automation", |a| {
+            set_if_changed(&mut a.enabled, enabled)
+        });
         app::emit!(Event::AutomationsChanged {});
         Ok(())
     }
@@ -1210,17 +1294,64 @@ struct DealFacts {
     last_touch: Option<u64>,
 }
 
+impl DealFacts {
+    fn add_activity(&mut self, a: &Activity) {
+        if *a.done.get() {
+            if let Some(at) = *a.done_at.get() {
+                self.last_touch = self.last_touch.max(Some(at));
+            }
+        } else {
+            self.open += 1;
+            let due = *a.due_at.get();
+            let sooner = self
+                .next
+                .as_ref()
+                .is_none_or(|n| (due, &a.id) < (n.due_at, &n.id));
+            if sooner {
+                self.next = Some(NextActivity {
+                    id: a.id.clone(),
+                    kind: a.kind.clone(),
+                    subject: a.subject.get().clone(),
+                    due_at: due,
+                });
+            }
+        }
+    }
+}
+
 struct DealIndex {
     facts: BTreeMap<String, DealFacts>,
     stage_probability: BTreeMap<String, u32>,
+    /// Where a deal whose stage was deleted under it is shown: the first stage.
+    first_stage: Option<String>,
     contact_names: BTreeMap<String, String>,
 }
 
 impl Crm {
-    /// Hex of the executing identity — what `created_by` / `author` hold and
-    /// what the frontend compares against for "is this mine".
+    /// The executing ACCOUNT, hex — what `created_by` / `author` hold and what
+    /// the frontend compares against for "is this mine". An account, not the
+    /// device: one person's laptop and phone are one author.
     fn caller(&self) -> String {
-        hex::encode(env::device_id())
+        AccountId::from(env::account_id()).to_string()
+    }
+
+    /// Who created a record: the owner stamp of its write-once creation entry,
+    /// or `""` for one that has none (the seeded default stages).
+    fn creator_of(&self, id: &str) -> String {
+        owner_hex(self.created_by.owner_of(&id.to_owned()).ok().flatten())
+    }
+
+    fn record_creator(&mut self, id: &str, now: u64) -> app::Result<()> {
+        self.created_by.insert(id.to_owned(), now)?;
+        Ok(())
+    }
+
+    fn load_deal(&self, id: &str) -> app::Result<Deal> {
+        self.deals
+            .get(id)
+            .map_err(|e| AppError::msg(format!("deals.get: {e}")))?
+            .map(|d| (*d).clone())
+            .ok_or_else(|| not_found("deal", id))
     }
 
     fn stage_exists(&self, id: &str) -> app::Result<bool> {
@@ -1241,13 +1372,33 @@ impl Crm {
             .map_err(|e| AppError::msg(format!("contacts.contains: {e}")))
     }
 
+    /// One person, with their deal totals read through the `contact_id` index.
+    fn contact_detail(&self, id: &str) -> app::Result<Option<ContactView>> {
+        let Some(c) = self
+            .contacts
+            .get(id)
+            .map_err(|e| AppError::msg(format!("contacts.get: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let (mut open, mut won) = (0u32, 0u64);
+        for (_, d) in self.deals.query("contact_id").eq(id).entries()? {
+            match d.status.get().as_str() {
+                "open" => open += 1,
+                "won" => won += *d.value.get(),
+                _ => {}
+            }
+        }
+        Ok(Some(contact_view(&c, open, won, self.creator_of(id))))
+    }
+
     fn close_deal(&mut self, deal_id: String, status: &str, reason: String) -> app::Result<()> {
         let now = now_ms();
-        let mut guard = get_mut_or_404!(self.deals, deal_id, "deal");
-        guard.status.set(status.to_string());
-        guard.lost_reason.set(reason);
-        guard.closed_at.set(Some(now));
-        drop(guard);
+        update_or_404!(self.deals, deal_id, "deal", |d| {
+            d.status.set(status.to_string());
+            d.lost_reason.set(reason);
+            d.closed_at.set(Some(now));
+        });
         app::emit!(Event::DealStatusChanged {
             id: &deal_id,
             status,
@@ -1284,28 +1435,33 @@ impl Crm {
                     owner: LwwRegister::new(owner),
                     note: LwwRegister::new(note),
                     automation_id,
-                    created_by: self.caller(),
                     created_at: now,
                 },
             )
             .map_err(|e| AppError::msg(format!("activities.insert: {e}")))?;
+        self.record_creator(&id, now)?;
         Ok(id)
     }
 
-    /// Schedule every enabled automation for `stage_id` against the deal. The
-    /// activity is owned by the deal's owner, so the follow-up lands on the
-    /// right person's list.
+    /// Schedule the stage's enabled automations against the deal — the first
+    /// `MAX_AUTOMATIONS_PER_STAGE` of them, oldest first, however many the
+    /// stage holds. The activity is owned by the deal's owner, so the
+    /// follow-up lands on the right person's list.
     fn run_automations(&mut self, deal_id: &str, stage_id: &str, now: u64) -> app::Result<()> {
-        let rules: Vec<Automation> = self
+        let mut rules: Vec<Automation> = self
             .automations
-            .entries()
-            .map_err(|e| AppError::msg(format!("automations.entries: {e}")))?
-            .filter(|(_, a)| a.stage_id == stage_id && *a.enabled.get())
+            .query("stage_id")
+            .eq(stage_id)
+            .entries()?
+            .into_iter()
             .map(|(_, a)| a)
+            .filter(|a| *a.enabled.get())
             .collect();
         if rules.is_empty() {
             return Ok(());
         }
+        rules.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        rules.truncate(MAX_AUTOMATIONS_PER_STAGE);
         let (owner, contact_id) = self
             .deals
             .get(deal_id)
@@ -1318,7 +1474,7 @@ impl Crm {
                 contact_id.clone(),
                 rule.kind.clone(),
                 rule.subject.clone(),
-                now + u64::from(rule.due_in_days) * DAY_MS,
+                now + u64::from(rule.due_in_days.min(365)) * DAY_MS,
                 owner.clone(),
                 String::new(),
                 Some(rule.id.clone()),
@@ -1332,6 +1488,17 @@ impl Crm {
         Ok(())
     }
 
+    /// Stage probabilities and the first stage — small, read whole.
+    fn stage_index(&self) -> app::Result<DealIndex> {
+        let stages = self.list_stages()?;
+        Ok(DealIndex {
+            facts: BTreeMap::new(),
+            first_stage: stages.first().map(|s| s.id.clone()),
+            stage_probability: stages.into_iter().map(|s| (s.id, s.probability)).collect(),
+            contact_names: BTreeMap::new(),
+        })
+    }
+
     fn deal_index(&self) -> app::Result<DealIndex> {
         let mut facts: BTreeMap<String, DealFacts> = BTreeMap::new();
         for (_, a) in self
@@ -1342,42 +1509,12 @@ impl Crm {
             let Some(did) = a.deal_id.clone() else {
                 continue;
             };
-            let f = facts.entry(did).or_default();
-            if *a.done.get() {
-                if let Some(at) = *a.done_at.get() {
-                    f.last_touch = f.last_touch.max(Some(at));
-                }
-            } else {
-                f.open += 1;
-                let due = *a.due_at.get();
-                let sooner = f
-                    .next
-                    .as_ref()
-                    .is_none_or(|n| (due, &a.id) < (n.due_at, &n.id));
-                if sooner {
-                    f.next = Some(NextActivity {
-                        id: a.id.clone(),
-                        kind: a.kind.clone(),
-                        subject: a.subject.get().clone(),
-                        due_at: due,
-                    });
-                }
-            }
+            facts.entry(did).or_default().add_activity(&a);
         }
-        for (_, n) in self
-            .notes
-            .entries()
-            .map_err(|e| AppError::msg(format!("notes.entries: {e}")))?
-        {
+        for (_, n) in self.notes.entries()? {
             let f = facts.entry(n.deal_id.clone()).or_default();
             f.last_touch = f.last_touch.max(Some(n.created_at));
         }
-        let stage_probability = self
-            .stages
-            .entries()
-            .map_err(|e| AppError::msg(format!("stages.entries: {e}")))?
-            .map(|(id, s)| (id, *s.probability.get()))
-            .collect();
         let contact_names = self
             .contacts
             .entries()
@@ -1386,15 +1523,28 @@ impl Crm {
             .collect();
         Ok(DealIndex {
             facts,
-            stage_probability,
             contact_names,
+            ..self.stage_index()?
         })
     }
 }
 
-fn deal_view(d: &Deal, index: &DealIndex) -> DealView {
+fn owner_hex(owner: Option<AccountId>) -> String {
+    owner.map(|o| o.to_string()).unwrap_or_default()
+}
+
+fn deal_view(d: &Deal, index: &DealIndex, created_by: String) -> DealView {
     let status = d.status.get().clone();
-    let stage_id = d.stage_id.get().clone();
+    // A deal moved into a stage while someone deleted it would otherwise sit in
+    // a column that no longer exists, invisible on every board.
+    let stage_id = if index.stage_probability.contains_key(d.stage_id.get()) {
+        d.stage_id.get().clone()
+    } else {
+        index
+            .first_stage
+            .clone()
+            .unwrap_or_else(|| d.stage_id.get().clone())
+    };
     let probability = match status.as_str() {
         "won" => 100,
         "lost" => 0,
@@ -1423,7 +1573,7 @@ fn deal_view(d: &Deal, index: &DealIndex) -> DealView {
         next_activity: facts.and_then(|f| f.next.clone()),
         open_activities: facts.map(|f| f.open).unwrap_or(0),
         last_touch_at: facts.and_then(|f| f.last_touch),
-        created_by: d.created_by.clone(),
+        created_by,
         created_at: d.created_at,
     }
 }
@@ -1432,12 +1582,32 @@ fn stage_view(s: &Stage) -> StageView {
     StageView {
         id: s.id.clone(),
         name: s.name.get().clone(),
-        probability: *s.probability.get(),
+        // Clamped on read: `validate_probability` only binds honest writers.
+        probability: (*s.probability.get()).min(100),
         position: *s.position.get(),
     }
 }
 
-fn activity_view(a: &Activity, titles: &BTreeMap<String, String>) -> ActivityView {
+fn contact_view(c: &Contact, open_deals: u32, won_value: u64, created_by: String) -> ContactView {
+    ContactView {
+        id: c.id.clone(),
+        name: c.name.get().clone(),
+        email: c.email.get().clone(),
+        phone: c.phone.get().clone(),
+        organization: c.organization.get().clone(),
+        job_title: c.job_title.get().clone(),
+        open_deals,
+        won_value,
+        created_by,
+        created_at: c.created_at,
+    }
+}
+
+fn activity_view(
+    a: &Activity,
+    titles: &BTreeMap<String, String>,
+    created_by: String,
+) -> ActivityView {
     ActivityView {
         id: a.id.clone(),
         deal_title: a.deal_id.as_ref().and_then(|d| titles.get(d).cloned()),
@@ -1451,22 +1621,22 @@ fn activity_view(a: &Activity, titles: &BTreeMap<String, String>) -> ActivityVie
         owner: a.owner.get().clone(),
         note: a.note.get().clone(),
         automation_id: a.automation_id.clone(),
-        created_by: a.created_by.clone(),
+        created_by,
         created_at: a.created_at,
     }
 }
 
-fn note_view(n: &Note) -> NoteView {
+fn note_view(n: &Note, author: String) -> NoteView {
     NoteView {
         id: n.id.clone(),
         deal_id: n.deal_id.clone(),
-        author: n.author.clone(),
+        author,
         body: n.body.clone(),
         created_at: n.created_at,
     }
 }
 
-fn automation_view(a: &Automation) -> AutomationView {
+fn automation_view(a: &Automation, created_by: String) -> AutomationView {
     AutomationView {
         id: a.id.clone(),
         stage_id: a.stage_id.clone(),
@@ -1474,7 +1644,7 @@ fn automation_view(a: &Automation) -> AutomationView {
         subject: a.subject.clone(),
         due_in_days: a.due_in_days,
         enabled: *a.enabled.get(),
-        created_by: a.created_by.clone(),
+        created_by,
         created_at: a.created_at,
     }
 }
@@ -1583,7 +1753,10 @@ mod tests {
 
     use super::*;
 
+    /// Another PERSON: an account and a device of their own. `call_as` alone
+    /// would be the creator's second device, which the gates rightly let in.
     const OTHER: [u8; 32] = [0x22; 32];
+    const CREATOR_PHONE: [u8; 32] = [0x33; 32];
 
     fn deal(app: &mut TestHost<Crm>, title: &str, value: u64, stage: &str) -> String {
         app.call(|s| {
@@ -1965,7 +2138,9 @@ mod tests {
         assert_eq!(contacts[0].name, "Grace Hopper");
         assert_eq!(contacts[0].won_value, 7);
 
-        assert!(app.call_as(OTHER, |s| s.delete_contact(c.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.delete_contact(c.clone()))
+            .is_err());
         app.call(|s| s.delete_contact(c.clone())).unwrap();
         assert!(app.view(|s| s.list_contacts()).unwrap().is_empty());
         assert_eq!(app.view(|s| s.get_deal(d)).unwrap().deal.contact_id, None);
@@ -1982,7 +2157,9 @@ mod tests {
         let detail = app.view(|s| s.get_deal(d.clone())).unwrap();
         assert_eq!(detail.notes[0].body, "Budget approved");
         assert!(detail.deal.last_touch_at.is_some());
-        assert!(app.call_as(OTHER, |s| s.delete_note(n.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.delete_note(n.clone()))
+            .is_err());
         app.call(|s| s.delete_note(n)).unwrap();
         assert!(app.view(|s| s.get_deal(d)).unwrap().notes.is_empty());
     }
@@ -2005,10 +2182,129 @@ mod tests {
             })
             .unwrap();
         let n = app.call(|s| s.add_note(d.clone(), "n".into())).unwrap();
-        assert!(app.call_as(OTHER, |s| s.delete_deal(d.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.delete_deal(d.clone()))
+            .is_err());
         app.call(|s| s.delete_deal(d.clone())).unwrap();
         assert!(app.view(|s| s.get_deal(d.clone())).is_err());
         assert!(!app.view(|s| s.activities.contains(&a).unwrap()));
         assert!(!app.view(|s| s.notes.contains(&n).unwrap()));
+    }
+
+    // ── Storage-enforced authorship (holds against a patched node) ───────────
+
+    #[test]
+    fn a_creators_second_device_is_still_the_creator() {
+        let mut app = TestHost::new(Crm::init);
+        let d = deal(&mut app, "D", 1, "stage-lead");
+        app.call_as(CREATOR_PHONE, |s| s.delete_deal(d)).unwrap();
+    }
+
+    #[test]
+    fn nobody_else_rewrites_or_removes_a_note_and_the_author_is_the_stamp() {
+        let mut app = TestHost::new(Crm::init);
+        let d = deal(&mut app, "D", 1, "stage-lead");
+        let n = app
+            .call(|s| s.add_note(d.clone(), "Budget approved".into()))
+            .unwrap();
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s
+                .notes
+                .modify(&n, |note| note.body = "Budget cut".into()))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.notes.remove(&n))
+            .is_err());
+        let me = AccountId::from(app.account_id()).to_string();
+        let notes = app.view(|s| s.get_deal(d)).unwrap().notes;
+        assert_eq!(notes[0].body, "Budget approved");
+        assert_eq!(notes[0].author, me);
+    }
+
+    #[test]
+    fn a_records_creator_cannot_be_rewritten() {
+        let mut app = TestHost::new(Crm::init);
+        let d = deal(&mut app, "D", 1, "stage-lead");
+        // Another member's patched node tries to claim the deal: a second
+        // creation entry, or a rewrite of the first.
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.created_by.insert(d.clone(), 0))
+            .is_err());
+        let me = AccountId::from(app.account_id()).to_string();
+        assert_eq!(
+            app.view(|s| s.get_deal(d.clone())).unwrap().deal.created_by,
+            me
+        );
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.delete_deal(d.clone()))
+            .is_err());
+        // Teammates still edit the shared deal itself — that is the board.
+        app.call_as_account(OTHER, OTHER, |s| {
+            s.move_deal(d.clone(), "stage-meeting".into())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_stage_runs_at_most_ten_automations() {
+        let mut app = TestHost::new(Crm::init);
+        for i in 0..MAX_AUTOMATIONS_PER_STAGE {
+            app.call(|s| {
+                s.add_automation("stage-proposal".into(), "task".into(), format!("t{i}"), 1)
+            })
+            .unwrap();
+        }
+        assert!(app
+            .call(|s| s.add_automation("stage-proposal".into(), "task".into(), "x".into(), 1))
+            .is_err());
+        // A patched node plants more directly; a move still writes only ten.
+        app.call(|s| {
+            s.automations.insert(
+                "auto-planted".into(),
+                Automation {
+                    id: "auto-planted".into(),
+                    stage_id: "stage-proposal".into(),
+                    kind: "task".into(),
+                    subject: "spam".into(),
+                    due_in_days: u32::MAX,
+                    enabled: LwwRegister::new(true),
+                    created_at: u64::MAX,
+                },
+            )
+        })
+        .unwrap();
+        let d = deal(&mut app, "D", 1, "stage-lead");
+        app.call(|s| s.move_deal(d.clone(), "stage-proposal".into()))
+            .unwrap();
+        let acts = app.view(|s| s.get_deal(d)).unwrap().activities;
+        assert_eq!(acts.len(), MAX_AUTOMATIONS_PER_STAGE);
+        assert!(acts.iter().all(|a| a.subject != "spam"));
+    }
+
+    #[test]
+    fn out_of_range_values_written_around_the_api_are_clamped_on_read() {
+        let mut app = TestHost::new(Crm::init);
+        app.call(|s| {
+            let mut stage = s.stages.get_mut("stage-lead")?.expect("seeded");
+            stage.probability.set(1_000);
+            drop(stage);
+            s.rotting_days.set(0);
+            Ok::<_, calimero_storage::collections::StoreError>(())
+        })
+        .unwrap();
+        let lead = app.view(|s| s.list_stages()).unwrap()[0].clone();
+        assert_eq!(lead.probability, 100);
+        assert_eq!(app.view(|s| s.get_settings()).unwrap().rotting_days, 1);
+    }
+
+    #[test]
+    fn a_deal_whose_stage_was_deleted_shows_in_the_first_stage() {
+        let mut app = TestHost::new(Crm::init);
+        let d = deal(&mut app, "D", 1, "stage-meeting");
+        // As if the stage were deleted concurrently with the move into it.
+        app.call(|s| s.stages.remove("stage-meeting")).unwrap();
+        let view = app.view(|s| s.get_deal(d)).unwrap().deal;
+        assert_eq!(view.stage_id, "stage-lead");
+        assert_eq!(view.probability, 10);
     }
 }

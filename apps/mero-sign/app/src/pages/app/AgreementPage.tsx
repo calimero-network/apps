@@ -28,7 +28,6 @@ import {
 import { encodeInvite } from '../../lib/inviteCodec';
 import { shareableInvitation } from '../../lib/inviteLink';
 import {
-  DEMOTION_UNAVAILABLE,
   INVITABLE_LEVELS,
   INVITE_LEVEL_LABELS,
   LEVEL_DESCRIPTIONS,
@@ -36,7 +35,7 @@ import {
   canRemove,
   isAdmin,
   isHexId,
-  promotionsFor,
+  levelChangesFor,
   shortId,
   toHexId,
 } from '../../lib/participants';
@@ -203,8 +202,8 @@ export default function AgreementPage() {
   const [inviteeId, setInviteeId] = useState('');
   // Defaults to Signer because that is what inviting somebody to an agreement
   // ordinarily means, and the picker states the consequence rather than
-  // relying on a safe default that fights the common case. The choice can be
-  // raised later but never lowered — see INVITABLE_LEVELS.
+  // relying on a safe default that fights the common case. An admin can
+  // change it later from the People tab.
   const [inviteeLevel, setInviteeLevel] = useState<PermissionLevel>(
     PermissionLevel.Sign,
   );
@@ -293,7 +292,7 @@ export default function AgreementPage() {
     [roster, selfAccountId],
   );
 
-  const promote = useCallback(
+  const changeLevel = useCallback(
     async (userId: string, level: PermissionLevel) => {
       setRoleBusyFor(userId);
       try {
@@ -631,7 +630,7 @@ export default function AgreementPage() {
             ) : (
               <div className={styles.rows} data-testid="people-rows">
                 {roster.map((entry) => {
-                  const promotions = promotionsFor(entry.level);
+                  const changes = levelChangesFor(entry.level);
                   const busy = roleBusyFor === entry.id;
                   return (
                     <div
@@ -664,12 +663,12 @@ export default function AgreementPage() {
                       </span>
                       {iAmAdmin && (
                         <span className={styles.rowActions}>
-                          {promotions.map((level) => (
+                          {changes.map((level) => (
                             <button
                               key={level}
                               className={styles.smallBtn}
                               disabled={busy}
-                              onClick={() => void promote(entry.id, level)}
+                              onClick={() => void changeLevel(entry.id, level)}
                             >
                               Make {level}
                             </button>
@@ -689,9 +688,6 @@ export default function AgreementPage() {
                   );
                 })}
               </div>
-            )}
-            {iAmAdmin && roster.length > 0 && (
-              <p className={styles.note}>{DEMOTION_UNAVAILABLE}</p>
             )}
           </>
         )}

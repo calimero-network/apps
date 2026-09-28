@@ -37,19 +37,9 @@
         }
       ]
     },
-    "ContextType": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Channel"
-        },
-        {
-          "name": "Dm"
-        }
-      ]
-    },
-    "MeroChat": {
+    "ChannelText": {
       "kind": "record",
+      "doc": "The channel's name and description, writable by the admins only.",
       "fields": [
         {
           "name": "name",
@@ -63,17 +53,6 @@
           }
         },
         {
-          "name": "context_type",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "ContextType"
-            }
-          }
-        },
-        {
           "name": "description",
           "type": {
             "kind": "record",
@@ -83,28 +62,71 @@
               "kind": "string"
             }
           }
+        }
+      ]
+    },
+    "ContextType": {
+      "kind": "variant",
+      "doc": "\"channel\" or \"dm\", fixed when the context is created.",
+      "variants": [
+        {
+          "name": "Channel"
+        },
+        {
+          "name": "Dm"
+        }
+      ]
+    },
+    "Founding": {
+      "kind": "record",
+      "doc": "What a context is founded with. Frozen in `init`: nobody, the creator\nincluded, can change it afterwards.",
+      "fields": [
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
         },
         {
           "name": "created_at",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
+            "kind": "u64"
           }
         },
         {
           "name": "creator",
           "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroChat": {
+      "kind": "record",
+      "doc": "One context = one conversation (channel or DM).\nMessages, threads, reactions, profiles, and metadata live here.\n\nEvery field that is not collaborative is held to its writer by storage, on\nevery node, so a patched node cannot get around the checks below by\nskipping them: the checks only make a refused write fail early.",
+      "fields": [
+        {
+          "name": "founding",
+          "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "Founding"
             }
           }
+        },
+        {
+          "name": "info",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "$ref": "ChannelText"
+            }
+          },
+          "doc": "Writers: the admins (kept equal to `roles.admins()`, see `sync_staff`)."
         },
         {
           "name": "messages",
@@ -114,7 +136,22 @@
               "$ref": "Message"
             },
             "crdt_type": "authored_vector"
-          }
+          },
+          "doc": "Top-level messages. Each slot is owned by its sender; the index is the\nstable cursor clients page and resume by."
+        },
+        {
+          "name": "message_ids",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Slot"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Message id -> the `messages` entry holding it, written once by the\nsender. Turns edits, deletes and \"does this message exist\" into one\nlookup instead of a walk of the channel."
         },
         {
           "name": "threads",
@@ -124,14 +161,11 @@
               "kind": "string"
             },
             "value": {
-              "kind": "list",
-              "items": {
-                "$ref": "Message"
-              },
-              "crdt_type": "authored_vector"
+              "$ref": "Message"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "`thread_key(parent, id)` -> reply. The author edits their reply; the\nstaff (the moderators) remove any."
         },
         {
           "name": "reactions",
@@ -141,22 +175,11 @@
               "kind": "string"
             },
             "value": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "list",
-                "items": {
-                  "kind": "bytes",
-                  "size": 32
-                },
-                "crdt_type": "unordered_set"
-              },
-              "crdt_type": "unordered_map"
+              "kind": "unit"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "`reaction_key(message, emoji, account)` -> nothing: the key is the\nreaction, and the entry is owned by whoever reacted."
         },
         {
           "name": "profiles",
@@ -167,9 +190,9 @@
             },
             "value": {
               "$ref": "StoredProfile"
-            },
-            "crdt_type": "authored_map"
-          }
+            }
+          },
+          "doc": "One profile per account, written only by that account."
         },
         {
           "name": "roles",
@@ -182,25 +205,56 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
+          },
+          "doc": "Per-context moderation roles, backed by a writer-set-guarded registry.\nThe admin tier IS the writer set, so a non-admin's forged `grant`/\n`grant_admin` delta is rejected at merge. `Admin` maps to the admin\ntier; `Mod` to the `\"mod\"` named role; `Banned` lives in `banned`."
         },
         {
           "name": "banned",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bool"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Soft-ban exclusion set. Missing/`false` entry = not banned. Kept apart\nfrom `AccessControl` because moderators (not just admins) may ban and\nunban, which its admin-gated `grant` cannot express. Writers: the\nstaff, admins and moderators (see `sync_staff`)."
+        },
+        {
+          "name": "hidden",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Top-level messages the staff removed. A message's slot belongs to its\nsender and cannot be rewritten by anyone else, so a removal is recorded\nhere and every read blanks the message. Writers: the staff."
         },
         {
           "name": "read_receipts",
@@ -216,19 +270,9 @@
               "inner_type": {
                 "kind": "u64"
               }
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "deleted_messages",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            },
-            "crdt_type": "unordered_set"
-          }
+            }
+          },
+          "doc": "Per-account last-read timestamp, written only by that account. Enables\ncross-device unread tracking without localStorage."
         }
       ]
     },
@@ -251,7 +295,8 @@
           "type": {
             "kind": "bytes",
             "size": 32
-          }
+          },
+          "doc": "Whoever the writing node SAID sent it, echoed back to that sender. A\npatched node can put anyone here, so no read trusts it: views take the\nsender from the entry's owner stamp."
         },
         {
           "name": "mentions",
@@ -347,8 +392,29 @@
         }
       ]
     },
+    "Slot": {
+      "kind": "variant",
+      "doc": "Where a message lives: a slot of the channel, or a key of the thread map.",
+      "variants": [
+        {
+          "name": "Channel",
+          "payload": {
+            "kind": "bytes",
+            "size": 32
+          },
+          "doc": "The `messages` entry's id, as bytes."
+        },
+        {
+          "name": "Thread",
+          "payload": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "StoredProfile": {
       "kind": "record",
+      "doc": "Per-context profile stored in CRDT state.",
       "fields": [
         {
           "name": "username",

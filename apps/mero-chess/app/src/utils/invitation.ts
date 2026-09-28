@@ -232,8 +232,20 @@ export function isTerminalInvitationError(
     "not admin",
     "revoked",
     "already a member",
-  ].some((t) => m.includes(t));
+  ].some((t) => m.includes(t)) || NODE_INVITATION_REFUSAL.test(m);
 }
+
+/**
+ * The node's own wording since core 0.11.0-rc.56, which answers an expired
+ * invitation as `409 invitation for group <id> expired at <secs> (unix
+ * seconds)` and one with no application id as `400 invitation for group <id>
+ * is invalid: <reason>`. The group id — a Debug rendering with spaces in it,
+ * `ContextGroupId(Identity([12, 34, …]))` — sits between "invitation" and the
+ * verdict, so none of the phrases above match it. Before rc.56 both were a
+ * bare `500 Internal server error` with the message hidden.
+ */
+const NODE_INVITATION_REFUSAL =
+  /\binvitation for group .+? (expired at \d+|is invalid:)/;
 
 /**
  * The canonical shareable link — HTTPS, built by the platform SDK:

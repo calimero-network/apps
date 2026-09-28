@@ -15,8 +15,30 @@ fn account_hex(bytes: [u8; 32]) -> String {
     AccountId::from(bytes).to_string()
 }
 
+/// A fresh audience whose creator also moderates questions and comments, as
+/// on a node.
+///
+/// `TestHost` runs `init` with the storage layer's writer left at its own
+/// default rather than the SDK account, so `Moderated::new()` names that
+/// default as the first moderator while every `AccessControl` and
+/// `SharedStorage` gate names the SDK account. On a node the two are one
+/// account; rotating the moderators to the creator restores that.
 fn new_app() -> TestHost<MeroUpdates> {
-    TestHost::new(MeroUpdates::init)
+    let mut app = TestHost::new(MeroUpdates::init);
+    let creator = AccountId::from(app.account_id());
+    let genesis = *app
+        .view(|s| s.questions.moderators())
+        .iter()
+        .next()
+        .expect("init names a moderator")
+        .as_bytes();
+    app.call_as_account(genesis, genesis, |s| {
+        let founder: BTreeSet<AccountId> = [creator].into_iter().collect();
+        s.questions.set_moderators(founder.clone())?;
+        s.comments.set_moderators(founder)
+    })
+    .expect("rotate the moderators to the creator");
+    app
 }
 
 fn input(title: &str) -> UpdateInput {
@@ -747,30 +769,26 @@ fn a_tombstone_survives_a_newer_edit() {
 }
 
 #[test]
-fn an_offers_acceptance_and_its_note_merge_independently() {
-    let base = Offer {
-        ask_id: "a".to_owned(),
-        account: "b".to_owned(),
-        helper: OfferByHelper {
-            note: "old".to_owned(),
-            withdrawn: false,
-        },
-        updated_at: 1,
-        created_at: 1,
-        status: "offered".to_owned(),
-        status_at: 1,
+fn a_triage_converges_on_the_later_decision_and_breaks_ties_by_content() {
+    let accepted = Triage {
+        status: "accepted".to_owned(),
+        status_at: 3,
     };
-    let mut helper_edit = base.clone();
-    helper_edit.helper.note = "new".to_owned();
-    helper_edit.updated_at = 5;
-    let mut team_accept = base;
-    team_accept.status = "accepted".to_owned();
-    team_accept.status_at = 3;
-    let (l, r) = converge(&helper_edit, &team_accept);
-    for m in [&l, &r] {
-        assert_eq!(m.helper.note, "new");
-        assert_eq!(m.status, "accepted");
-    }
+    let declined = Triage {
+        status: "declined".to_owned(),
+        status_at: 5,
+    };
+    let (l, r) = converge(&accepted, &declined);
+    assert_eq!(
+        (l.status.as_str(), r.status.as_str()),
+        ("declined", "declined")
+    );
+    let tie = Triage {
+        status: "accepted".to_owned(),
+        status_at: 5,
+    };
+    let (l, r) = converge(&tie, &declined);
+    assert_eq!(l.status, r.status);
 }
 
 #[test]
@@ -811,4 +829,211 @@ fn timestamps_are_milliseconds_that_fit_a_js_number() {
     let at = app.view(|s| s.get_post(id)).unwrap().card.created_at;
     assert!(at > 1_600_000_000_000, "not a plausible ms timestamp: {at}");
     assert!(at < (1u64 << 53), "past Number.MAX_SAFE_INTEGER: {at}");
+}
+
+// ── storage-enforced protections (hold against a patched node) ───────────────
+//
+// Each of these writes through the collections directly, the way a patched node
+// would, and checks what every node's apply step lets through.
+
+/// Every team-guarded field's writer set, and both moderator sets. A write
+/// from an account outside a writer set is refused when any node applies it;
+/// `TestHost` has no peers to apply to, so these tests read the sets that
+/// check consults.
+fn team_sets(app: &TestHost<MeroUpdates>) -> Vec<BTreeSet<AccountId>> {
+    app.view(|s| {
+        vec![
+            s.settings.writers(),
+            s.categories.writers(),
+            s.updates.writers(),
+            s.asks.writers(),
+            s.question_status.writers(),
+            s.offer_status.writers(),
+            s.questions.moderators(),
+            s.comments.moderators(),
+        ]
+    })
+}
+
+#[test]
+fn team_data_is_written_only_by_the_team() {
+    let app = new_app();
+    let founder = AccountId::from(app.account_id());
+    for set in team_sets(&app) {
+        assert_eq!(set, [founder].into_iter().collect());
+    }
+}
+
+#[test]
+fn the_team_writer_sets_follow_the_registry() {
+    let mut app = new_app();
+    let cofounder = AccountId::from(COFOUNDER);
+    app.call(|s| s.add_teammate(cofounder.to_string())).unwrap();
+    assert!(team_sets(&app).iter().all(|set| set.contains(&cofounder)));
+    app.call(|s| s.remove_teammate(cofounder.to_string()))
+        .unwrap();
+    assert!(
+        team_sets(&app).iter().all(|set| !set.contains(&cofounder)),
+        "a demoted teammate's later writes to team data are refused on apply"
+    );
+    // A reader cannot rotate a writer set to let themselves in.
+    let me: BTreeSet<AccountId> = [AccountId::from(INVESTOR)].into_iter().collect();
+    assert!(as_investor(&mut app, |s| s.updates.rotate_writers(me.clone())).is_err());
+    assert!(as_investor(&mut app, |s| s.comments.set_moderators(me)).is_err());
+}
+
+#[test]
+fn a_question_belongs_to_its_asker_and_the_team_moderates_it() {
+    let mut app = new_app();
+    let founder = account_hex(app.account_id());
+    let q = as_investor(&mut app, |s| {
+        s.ask_question("runway?".to_owned(), String::new(), None)
+    })
+    .unwrap();
+    // The asker's own node writes the author field to the founder: the card
+    // still shows the stamp.
+    as_investor(&mut app, |s| {
+        s.questions.modify(&q, |p| p.author = founder.clone())
+    })
+    .unwrap();
+    let card = app.view(|s| s.get_post(q.clone())).unwrap().card;
+    assert_eq!(card.author, account_hex(INVESTOR));
+    assert!(!card.author_is_team);
+
+    // Another reader can neither rewrite nor remove it.
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s
+            .questions
+            .modify(&q, |p| p.content.title = "spam".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s.questions.remove(&q))
+        .is_err());
+    // The asker cannot mark it answered: the triage is the team's writer set.
+    assert!(!app
+        .view(|s| s.question_status.writers())
+        .contains(&AccountId::from(INVESTOR)));
+    // The team removes it as a moderator.
+    app.call(|s| s.delete_post(q.clone())).unwrap();
+    assert!(app.view(|s| s.get_post(q)).is_err());
+}
+
+#[test]
+fn a_helper_cannot_accept_their_own_offer() {
+    let mut app = new_app();
+    let id = publish(&mut app, "u");
+    let ask = app.view(|s| s.get_post(id)).unwrap().asks[0].id.clone();
+    as_investor(&mut app, |s| s.offer_help(ask.clone(), "me!".to_owned())).unwrap();
+    let key = format!("{ask}|{}", account_hex(INVESTOR));
+    // The decision is not in the helper's record, and its store is the team's.
+    assert!(!app
+        .view(|s| s.offer_status.writers())
+        .contains(&AccountId::from(INVESTOR)));
+    assert!(app.view(|s| s.list_contributions(0)).unwrap().is_empty());
+    // The team accepts it; the helper can still edit their own note.
+    app.call(|s| s.set_offer_status(ask.clone(), account_hex(INVESTOR), "accepted".to_owned()))
+        .unwrap();
+    as_investor(&mut app, |s| s.offer_help(ask.clone(), "on it".to_owned())).unwrap();
+    let got = app.view(|s| s.list_contributions(0)).unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].note, "on it");
+    // ...and nobody else can touch it.
+    assert!(app
+        .call(|s| s.offers.modify(&key, |o| o.helper.withdrawn = true))
+        .is_err());
+}
+
+#[test]
+fn rows_written_in_someone_elses_name_do_not_count() {
+    let mut app = new_app();
+    let id = publish(&mut app, "u");
+    let cofounder = account_hex(COFOUNDER);
+    // The investor plants a read and a reaction keyed as the cofounder's.
+    as_investor(&mut app, |s| {
+        s.reads.insert(
+            format!("{id}|{cofounder}"),
+            Read {
+                post_id: id.clone(),
+                account: cofounder.clone(),
+                first_at: 1,
+                last_at: 1,
+            },
+        )?;
+        s.reactions.insert(
+            format!("{id}|{cofounder}|🚀"),
+            Reaction {
+                post_id: id.clone(),
+                account: cofounder.clone(),
+                emoji: "🚀".to_owned(),
+                on: true,
+                updated_at: 1,
+            },
+        )
+    })
+    .unwrap();
+    let card = app.view(|s| s.get_post(id.clone())).unwrap().card;
+    assert_eq!(card.read_count, 1, "only the founder's own read");
+    assert!(card.reactions.iter().all(|r| r.count == 0));
+    // Nor can one account count twice by varying the key.
+    as_investor(&mut app, |s| {
+        s.reactions.insert(
+            format!("{id}|{}|extra", account_hex(INVESTOR)),
+            Reaction {
+                post_id: id.clone(),
+                account: account_hex(INVESTOR),
+                emoji: "🚀".to_owned(),
+                on: true,
+                updated_at: 1,
+            },
+        )
+    })
+    .unwrap();
+    let card = app.view(|s| s.get_post(id)).unwrap().card;
+    assert!(card.reactions.iter().all(|r| r.count == 0));
+}
+
+#[test]
+fn a_comment_is_its_authors_and_only_moderators_remove_others() {
+    let mut app = new_app();
+    let id = publish(&mut app, "u");
+    let c = as_investor(&mut app, |s| {
+        s.add_comment(id.clone(), None, "hi".to_owned())
+    })
+    .unwrap();
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s
+            .comments
+            .modify(&c, |c| c.body = "defaced".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s.delete_comment(c.clone()))
+        .is_err());
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s.comments.remove(&c))
+        .is_err());
+    let thread = app.view(|s| s.list_comments(id.clone())).unwrap();
+    assert_eq!(thread[0].author, account_hex(INVESTOR));
+    assert_eq!(thread[0].body, "hi");
+    // The author removes their own.
+    as_investor(&mut app, |s| s.delete_comment(c)).unwrap();
+    assert!(app.view(|s| s.list_comments(id)).unwrap().is_empty());
+}
+
+#[test]
+fn renaming_and_muting_are_separate_slots() {
+    let mut app = new_app();
+    as_investor(&mut app, |s| {
+        s.set_profile("Ada".to_owned(), "Seed".to_owned())
+    })
+    .unwrap();
+    as_investor(&mut app, |s| s.set_muted_categories(vec!["c1".to_owned()])).unwrap();
+    as_investor(&mut app, |s| {
+        s.set_profile("Ada L".to_owned(), "Seed".to_owned())
+    })
+    .unwrap();
+    let me = as_investor(&mut app, |s| s.get_me()).unwrap();
+    assert_eq!(me.name, "Ada L");
+    assert_eq!(me.muted, ["c1"]);
+    // Nobody writes someone else's slot: the founder's profile is untouched.
+    assert_eq!(app.view(|s| s.get_me()).unwrap().name, "");
 }

@@ -14,9 +14,16 @@
 //! - `body` - `RichDocument<DriveMarks>`, an ordered list of blocks each with
 //!   its own text, formatting and structure
 //! - `tags` - `UnorderedMap<String, LwwRegister<bool>>`, tag key to present,
-//!   merged per key
-//! - `archived` / `created_at` / `updated_at` - `LwwRegister<_>`
-//! - `created_by` / `updated_by` - `LwwRegister<String>`, hex account ids
+//!   merged per key, so concurrent tag edits all survive
+//! - `archived` / `updated_at` - `LwwRegister<_>`
+//! - `updated_by` - `LwwRegister<String>`, hex account of the last editor
+//!
+//! Documents are PUBLIC on purpose: every member of the folder edits them
+//! together, and every node accepts any member's write to them. Owning a doc's
+//! entry would hand its nested title and body to its creator alone. What is
+//! not collaborative is held to its writer by storage instead: who created a
+//! doc and when (`origins`, written once) and each comment (`comments`, owned
+//! by its author and removable by the folder's moderators).
 //!
 //! ## Scope
 //!
@@ -28,16 +35,16 @@ use std::collections::BTreeMap;
 use std::ops::DerefMut;
 
 use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::fugue_text::{Anchor, Bias, TextOp, Undo};
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
-    AuthoredMap, BlockId, BlockView, Counter, Expand, FugueText, LwwRegister, MarkId, MarkSchema,
-    Mergeable, RichDocument, Span, UnorderedMap, ValueRef,
+    BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
+    Mergeable, Moderated, RichDocument, Span, UnorderedMap, ValueRef, WriteOnce,
 };
 use calimero_storage::env as storage_env;
 use mero_docs_types::{is_valid_tag_key, DriveError};
@@ -256,10 +263,7 @@ pub struct DocRecord {
     /// tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
     pub tags: UnorderedMap<String, LwwRegister<bool>>,
     pub archived: LwwRegister<bool>,
-    /// Written once at create time; every replica holds the same value.
-    pub created_at: LwwRegister<u64>,
     pub updated_at: LwwRegister<u64>,
-    pub created_by: LwwRegister<String>, // hex account id, written once
     pub updated_by: LwwRegister<String>, // hex account id, advanced with updated_at
 }
 
@@ -276,16 +280,13 @@ pub struct DocDto {
     pub archived: bool,
     pub created_at: u64,
     pub updated_at: u64,
+    /// Hex account of whoever created the doc, from `origins`' owner stamp.
     pub created_by: String,
     pub updated_by: String,
 }
 
-/// The same hex account id the registry keys members by, so the client can name it.
-fn caller_account_hex() -> String {
-    hex::encode(calimero_sdk::env::account_id())
-}
-
-fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
+/// The keys whose register holds `true`, sorted.
+fn present_tags(rec: &DocRecord) -> Result<Vec<String>, DriveError> {
     let mut tags: Vec<String> = rec
         .tags
         .entries()
@@ -294,19 +295,25 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
         .map(|(key, _)| key)
         .collect();
     tags.sort();
-    Ok(DocDto {
-        id: id.to_string(),
-        title: rec
-            .title
-            .get_text()
-            .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
-        tags,
-        archived: *rec.archived.get(),
-        created_at: *rec.created_at.get(),
-        updated_at: *rec.updated_at.get(),
-        created_by: rec.created_by.get().clone(),
-        updated_by: rec.updated_by.get().clone(),
-    })
+    Ok(tags)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The same hex account id the registry keys members by, so the client can name it.
+fn caller_account_hex() -> String {
+    hex(&calimero_sdk::env::account_id())
+}
+
+/// A short, per-account id component. Ids are minted from a counter every
+/// replica increments; two members creating at once read the same count, and
+/// before this each named their doc `doc-<n>` - the two docs then merged into
+/// one, titles interleaved and bodies combined. The caller's account prefix
+/// keeps concurrent creators apart.
+fn account_tag() -> String {
+    hex(&calimero_sdk::env::account_id()[..4])
 }
 
 // ---------------------------------------------------------------------------
@@ -322,10 +329,12 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
 /// field inside `Comment` (changing an authored value type is a content
 /// rewrite, a different and harder migration class).
 #[app::mergeable(id = "mero_drive::Comment")]
-#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Comment {
-    /// Which doc this annotates. Immutable after create.
+    /// Which doc this annotates. Immutable after create. Indexed, so one doc's
+    /// comments are a seek rather than a walk of the folder's.
+    #[index]
     pub doc_id: String,
     pub body: LwwRegister<String>,
     /// Immutable after create.
@@ -346,14 +355,17 @@ impl Mergeable for Comment {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentDto {
     pub id: String,
+    /// Hex account of the comment's author, from its owner stamp.
+    pub author: String,
     pub doc_id: String,
     pub body: String,
     pub created_at: u64,
 }
 
-fn project_comment(id: &str, c: &Comment) -> CommentDto {
+fn project_comment(id: &str, author: String, c: &Comment) -> CommentDto {
     CommentDto {
         id: id.to_string(),
+        author,
         doc_id: c.doc_id.clone(),
         body: c.body.get().clone(),
         created_at: c.created_at,
@@ -364,18 +376,23 @@ fn project_comment(id: &str, c: &Comment) -> CommentDto {
 // State
 // ---------------------------------------------------------------------------
 
-/// `docs` + authored `comments`.
+/// `docs` + their `origins` + moderated `comments`.
 #[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
-    /// doc_id → record. The id is `doc-<counter>` and assigned by `create_doc`.
+    /// doc_id → record. Public: collaborative editing. The id is
+    /// `doc-<counter>-<account tag>` and assigned by `create_doc`.
     docs: UnorderedMap<String, DocRecord>,
-    /// Monotonic id allocator. G-Counter semantics: every create increments,
-    /// concurrent creates produce distinct ids across replicas.
+    /// doc_id → created_at, written once by the doc's creator. Its owner
+    /// stamp is who created the doc, and nobody can rewrite either.
+    origins: WriteOnce<UnorderedMap<String, u64>>,
+    /// Id allocator. Every create increments; the account tag in the id is
+    /// what keeps two concurrent creates apart (see `account_tag`).
     next_id: Counter,
-    /// comment_id → authored comment. Identity-gated: each entry is owned by
-    /// its writer and carries a per-entry schema version.
-    comments: AuthoredMap<String, Comment>,
-    /// Monotonic comment-id allocator (`cmt-<n>`).
+    /// comment_id → comment. Each is owned by its author, who alone edits it;
+    /// the folder's moderators (its founder, who created this context) may
+    /// also remove any. Every node enforces both.
+    comments: Moderated<IndexedMap<String, Comment>>,
+    /// Comment-id allocator (`cmt-<n>-<account tag>`).
     next_comment_id: Counter,
 }
 
@@ -385,8 +402,9 @@ impl DocsState {
     pub fn init() -> DocsState {
         DocsState {
             docs: UnorderedMap::new_with_field_name("docs:docs"),
+            origins: WriteOnce::new_with_field_name("docs:origins"),
             next_id: Counter::new_with_field_name("docs:next_id"),
-            comments: AuthoredMap::new_with_field_name("docs:comments"),
+            comments: Moderated::new_with_field_name("docs:comments"),
             next_comment_id: Counter::new_with_field_name("docs:next_comment_id"),
         }
     }
@@ -411,10 +429,9 @@ impl DocsState {
             .next_id
             .value()
             .map_err(|e| DriveError::Invalid(format!("next_id.value: {e}")))?;
-        let id = format!("doc-{}", n);
+        let id = format!("doc-{n}-{}", account_tag());
 
         let now = storage_env::time_now();
-        let by = caller_account_hex();
         let mut title_text = FugueText::new();
         let _minted = title_text
             .insert_str(0, &title)
@@ -424,11 +441,12 @@ impl DocsState {
             body: Body::new(),
             tags: UnorderedMap::new(),
             archived: LwwRegister::new(false),
-            created_at: LwwRegister::new(now),
             updated_at: LwwRegister::new(now),
-            created_by: LwwRegister::new(by.clone()),
-            updated_by: LwwRegister::new(by),
+            updated_by: LwwRegister::new(caller_account_hex()),
         };
+        self.origins
+            .insert(id.clone(), now)
+            .map_err(|e| DriveError::Conflict(format!("origins.insert: {e}")))?;
         self.docs
             .insert(id.clone(), rec)
             .map_err(|e| DriveError::Invalid(format!("docs.insert: {e}")))?;
@@ -442,7 +460,8 @@ impl DocsState {
             .get(&id)
             .map_err(|e| AppError::msg(format!("docs.get: {e}")))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
-        project(&id, &rec).map_err(|e| AppError::msg(e.to_string()))
+        self.project(&id, &rec)
+            .map_err(|e| AppError::msg(e.to_string()))
     }
 
     #[app::view]
@@ -456,7 +475,10 @@ impl DocsState {
             if !include_archived && *rec.archived.get() {
                 continue;
             }
-            out.push(project(&id, &rec).map_err(|e| AppError::msg(e.to_string()))?);
+            out.push(
+                self.project(&id, &rec)
+                    .map_err(|e| AppError::msg(e.to_string()))?,
+            );
         }
         Ok(out)
     }
@@ -923,7 +945,30 @@ impl DocsState {
         Ok(())
     }
 
+    /// The doc's creator, or a moderator of this folder, may delete it.
+    ///
+    /// This check is the app's, not storage's: `docs` is public so that every
+    /// member can co-edit, and a public entry is one any member's node may
+    /// remove. A patched node can skip it. What it cannot touch is `origins`,
+    /// so the doc's creator and creation time survive whoever removed it.
     pub(crate) fn delete_doc_inner(&mut self, id: String) -> Result<(), DriveError> {
+        if !self
+            .docs
+            .contains(&id)
+            .map_err(|e| DriveError::Invalid(format!("docs.contains: {e}")))?
+        {
+            return Err(DriveError::NotFound(id));
+        }
+        let created_by_me = self
+            .origins
+            .owned_by_me(&id)
+            .map_err(|e| DriveError::Invalid(format!("origins.owned_by_me: {e}")))?;
+        let me = AccountId::from(calimero_sdk::env::account_id());
+        if !created_by_me && !self.comments.is_moderator(&me) {
+            return Err(DriveError::Forbidden(format!(
+                "only the creator of {id} or a moderator may delete it"
+            )));
+        }
         let existed = self
             .docs
             .remove(&id)
@@ -1014,7 +1059,7 @@ impl DocsState {
             .next_comment_id
             .value()
             .map_err(|e| DriveError::Invalid(format!("next_comment_id.value: {e}")))?;
-        let id = format!("cmt-{}", n);
+        let id = format!("cmt-{n}-{}", account_tag());
 
         let comment = Comment {
             doc_id,
@@ -1028,17 +1073,18 @@ impl DocsState {
         Ok(id)
     }
 
+    /// One doc's comments: an index seek, not a walk of every comment.
     #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
         let entries = self
             .comments
+            .query("doc_id")
+            .eq(doc_id.as_str())
             .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?;
-        let mut out = Vec::new();
+            .map_err(|e| AppError::msg(format!("comments.query: {e}")))?;
+        let mut out = Vec::with_capacity(entries.len());
         for (id, c) in entries {
-            if c.doc_id == doc_id {
-                out.push(project_comment(&id, &c));
-            }
+            out.push(project_comment(&id, self.comment_author(&id)?, &c));
         }
         Ok(out)
     }
@@ -1050,7 +1096,7 @@ impl DocsState {
             .get(&id)
             .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
-        Ok(project_comment(&id, &c))
+        Ok(project_comment(&id, self.comment_author(&id)?, &c))
     }
 
     #[app::view]
@@ -1090,10 +1136,11 @@ impl DocsState {
             .map_err(|e| DriveError::Invalid(format!("comments.get: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         c.body.set(body);
-        // `update` re-signs as the caller (owner-gated by the authored map).
+        // `update` re-signs as the caller; storage refuses anyone but the
+        // comment's author, on every node.
         self.comments
             .update(&id, c)
-            .map_err(|e| DriveError::Invalid(format!("comments.update: {e}")))?;
+            .map_err(|e| DriveError::Forbidden(format!("comments.update: {e}")))?;
         Ok(())
     }
 
@@ -1105,11 +1152,12 @@ impl DocsState {
         Ok(())
     }
 
+    /// Its author, or a moderator of this folder, may remove a comment.
     pub(crate) fn delete_comment_inner(&mut self, id: String) -> Result<(), DriveError> {
         let existed = self
             .comments
             .remove(&id)
-            .map_err(|e| DriveError::Invalid(format!("comments.remove: {e}")))?;
+            .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
         if existed.is_none() {
             return Err(DriveError::NotFound(id));
         }
@@ -1119,6 +1167,37 @@ impl DocsState {
 
 /// Outside `#[app::logic]`: these are plumbing, not JSON-RPC surface.
 impl DocsState {
+    fn project(&self, id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
+        let key = id.to_string();
+        let err = |e| DriveError::Invalid(format!("origins: {e}"));
+        Ok(DocDto {
+            id: key.clone(),
+            title: rec
+                .title
+                .get_text()
+                .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
+            tags: present_tags(rec)?,
+            archived: *rec.archived.get(),
+            created_at: self.origins.get(&key).map_err(err)?.unwrap_or_default(),
+            updated_at: *rec.updated_at.get(),
+            created_by: self
+                .origins
+                .owner_of(&key)
+                .map_err(err)?
+                .map(|owner| hex(owner.as_bytes()))
+                .unwrap_or_default(),
+            updated_by: rec.updated_by.get().clone(),
+        })
+    }
+
+    fn comment_author(&self, id: &String) -> app::Result<String> {
+        Ok(self
+            .comments
+            .owner_of(id)?
+            .map(|owner| hex(owner.as_bytes()))
+            .unwrap_or_default())
+    }
+
     fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
         match self.docs.get(doc)? {
             Some(found) => Ok(found),
@@ -1168,9 +1247,9 @@ mod tests {
 
     use super::*;
 
-    const DOC: &str = "doc-1";
-    const ALICE: [u8; 32] = [0xa1; 32];
-    const BOB: [u8; 32] = [0xb0; 32];
+    /// The first doc the default test account creates: the counter, then the
+    /// account's tag (`0xEE…` is the test host's default account).
+    const DOC: &str = "doc-1-eeeeeeee";
 
     fn host(title: &str) -> TestHost<DocsState> {
         let mut app = TestHost::new(DocsState::init);
@@ -1891,8 +1970,8 @@ mod tests {
         let mut app = DocsState::init();
         let a = app.create_doc_inner("a".into()).unwrap();
         let b = app.create_doc_inner("b".into()).unwrap();
-        assert_eq!(a, "doc-1");
-        assert_eq!(b, "doc-2");
+        assert_eq!(a, "doc-1-eeeeeeee");
+        assert_eq!(b, "doc-2-eeeeeeee");
     }
 
     #[test]
@@ -2084,37 +2163,37 @@ mod tests {
 
     #[test]
     fn create_doc_records_the_caller_and_an_edit_records_the_editor() {
-        let mut app = TestHost::new(DocsState::init);
+        let mut app = folder();
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
             .unwrap();
         let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex::encode(ALICE));
-        assert_eq!(doc.updated_by, hex::encode(ALICE));
+        assert_eq!(doc.created_by, hex(&ALICE));
+        assert_eq!(doc.updated_by, hex(&ALICE));
 
         app.call_as_account(BOB, BOB, |s| s.edit_doc(id.clone(), "u".to_owned()))
             .unwrap();
         let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex::encode(ALICE));
-        assert_eq!(doc.updated_by, hex::encode(BOB));
+        assert_eq!(doc.created_by, hex(&ALICE));
+        assert_eq!(doc.updated_by, hex(&BOB));
     }
 
     #[test]
     fn archive_records_the_archiver_as_the_last_editor() {
-        let mut app = TestHost::new(DocsState::init);
+        let mut app = folder();
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
             .unwrap();
         app.call_as_account(BOB, BOB, |s| s.archive_doc(id.clone()))
             .unwrap();
         let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
-        assert_eq!(doc.created_by, hex::encode(ALICE));
-        assert_eq!(doc.updated_by, hex::encode(BOB));
+        assert_eq!(doc.created_by, hex(&ALICE));
+        assert_eq!(doc.updated_by, hex(&BOB));
     }
 
     #[test]
     fn a_tag_change_leaves_the_last_editor() {
-        let mut app = TestHost::new(DocsState::init);
+        let mut app = folder();
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
             .unwrap();
@@ -2122,7 +2201,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             app.view(|s| s.get_doc(id.clone())).unwrap().updated_by,
-            hex::encode(ALICE)
+            hex(&ALICE)
         );
     }
 
@@ -2132,6 +2211,113 @@ mod tests {
         let id = app.create_doc_inner("t".into()).unwrap();
         app.add_tag_inner(id.clone(), "x".into()).unwrap();
         assert_eq!(app.get_doc(id).unwrap().title, "t");
+    }
+
+    // ---- who may do what ---------------------------------------------------
+    //
+    // Docs themselves are public (co-editing); these pin what is not.
+
+    const ALICE: [u8; 32] = [0xA1; 32];
+    const BOB: [u8; 32] = [0xB0; 32];
+
+    /// A folder context founded by the test host's default account, with the
+    /// storage layer's account aligned to it while `init` runs, as on a node.
+    fn folder() -> TestHost<DocsState> {
+        TestHost::new(|| {
+            calimero_storage::env::with_account_id(calimero_sdk::env::account_id(), DocsState::init)
+        })
+    }
+
+    #[test]
+    fn concurrent_creators_mint_distinct_ids() {
+        let mut app = folder();
+        let a = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("a".into()))
+            .unwrap();
+        let b = app
+            .call_as_account(BOB, BOB, |s| s.create_doc("b".into()))
+            .unwrap();
+        assert!(a.ends_with("-a1a1a1a1"), "{a}");
+        assert!(b.ends_with("-b0b0b0b0"), "{b}");
+    }
+
+    #[test]
+    fn a_docs_creator_is_its_origin_stamp_and_is_fixed() {
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
+        assert_eq!(doc.created_by, hex(&ALICE));
+        assert!(doc.created_at > 0);
+
+        // Nobody can write the origin again, its creator included: the key is
+        // taken, and a write-once entry has no update.
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.origins.insert(id.clone(), 1))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_doc(id)).unwrap().created_by, hex(&ALICE));
+    }
+
+    #[test]
+    fn only_the_creator_or_a_moderator_deletes_a_doc() {
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.delete_doc(id.clone()))
+            .is_err());
+        // Bob can still edit it: documents are collaborative.
+        app.call_as_account(BOB, BOB, |s| s.edit_doc(id.clone(), "ours".into()))
+            .unwrap();
+
+        // The folder's founder moderates.
+        app.call(|s| s.delete_doc(id.clone())).unwrap();
+        assert!(app.view(|s| s.get_doc(id)).is_err());
+
+        let own = app
+            .call_as_account(BOB, BOB, |s| s.create_doc("bob's".into()))
+            .unwrap();
+        app.call_as_account(BOB, BOB, |s| s.delete_doc(own))
+            .unwrap();
+    }
+
+    #[test]
+    fn a_comment_is_its_authors_and_moderators_remove_any() {
+        let mut app = folder();
+        let doc = app.call(|s| s.create_doc("d".into())).unwrap();
+        let other = app.call(|s| s.create_doc("e".into())).unwrap();
+        let cmt = app
+            .call_as_account(ALICE, ALICE, |s| s.add_comment(doc.clone(), "hi".into()))
+            .unwrap();
+        let _elsewhere = app
+            .call_as_account(ALICE, ALICE, |s| s.add_comment(other.clone(), "yo".into()))
+            .unwrap();
+
+        let listed = app.view(|s| s.list_comments(doc.clone())).unwrap();
+        assert_eq!(listed.len(), 1, "only this doc's comments");
+        assert_eq!(listed[0].author, hex(&ALICE));
+        assert_eq!(listed[0].body, "hi");
+
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.edit_comment(cmt.clone(), "mine".into()))
+            .is_err());
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.delete_comment(cmt.clone()))
+            .is_err());
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.edit_comment(cmt.clone(), "hello".into())
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_comment(cmt.clone())).unwrap().body,
+            "hello"
+        );
+
+        // The founder is the first moderator.
+        app.call(|s| s.delete_comment(cmt.clone())).unwrap();
+        assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
     }
 
     // ---- struct-level DocRecord::merge ------------------------------------
@@ -2152,9 +2338,7 @@ mod tests {
             body: Body::new(),
             tags: UnorderedMap::new(),
             archived: zero_lww(false),
-            created_at: zero_lww(0),
             updated_at: zero_lww(0),
-            created_by: zero_lww(String::new()),
             updated_by: zero_lww(String::new()),
         }
     }
@@ -2164,9 +2348,11 @@ mod tests {
         let mut a = stub_record();
         let mut b = stub_record();
         b.archived = LwwRegister::new(true);
+        b.updated_at = LwwRegister::new(7);
         b.updated_by = LwwRegister::new("b0".to_owned());
         <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
         assert!(*a.archived.get());
+        assert_eq!(*a.updated_at.get(), 7);
         assert_eq!(a.updated_by.get(), "b0");
     }
 
@@ -2197,7 +2383,7 @@ mod tests {
         }
         let (mut receiver, sender) = if receiver_is_a { (a, b) } else { (b, a) };
         <DocRecord as Mergeable>::merge(&mut receiver, &sender).unwrap();
-        project("d", &receiver).unwrap().tags
+        present_tags(&receiver).unwrap()
     }
 
     #[test]
@@ -2225,18 +2411,21 @@ mod tests {
     #[test]
     fn doc_record_merge_is_idempotent() {
         let mut working = stub_record();
+        working.updated_at = LwwRegister::new(3);
         let _new = working
             .tags
             .insert("t".to_owned(), LwwRegister::new(true))
             .unwrap();
         let mut snapshot = stub_record();
+        snapshot.updated_at = LwwRegister::new(3);
         let _new = snapshot
             .tags
             .insert("t".to_owned(), LwwRegister::new(true))
             .unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        assert_eq!(project("d", &working).unwrap().tags, vec!["t".to_owned()]);
+        assert_eq!(*working.updated_at.get(), 3);
+        assert_eq!(present_tags(&working).unwrap(), vec!["t".to_owned()]);
         assert!(!*working.archived.get());
     }
 }

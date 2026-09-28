@@ -279,20 +279,12 @@ fn a_draw_cannot_be_claimed_out_of_a_position_that_does_not_allow_one() {
 }
 
 #[test]
-fn standing_up_does_not_erase_the_games_already_played() {
-    // The regression for the bug the two-node scenario found: a player leaving
-    // the table reset it to game 0 for EVERYONE.
-    //
-    // `current_game` counts up a chain — game n + 1 exists only if a seat
-    // holder of game n validly claimed it — and it used to ask who holds that
-    // chair NOW. `stand` deleted the claim rows, so every rematch Alice had
-    // claimed stopped being valid the moment she stood up. The walk stops at
-    // the FIRST broken link, so a table four games deep did not fall back to
-    // three: it fell back to 0, hiding a live game behind an empty board, which
-    // is the exact failure the counted index exists to prevent.
-    //
-    // Neither half was untested; the SEQUENCE was. Nothing stood up after a
-    // rematch.
+fn a_chair_someone_has_played_from_is_kept() {
+    // The regression for the bug the two-node scenario found — a player
+    // leaving reset the table to game 0 for EVERYONE — now held down by the
+    // rule that replaced it: a chair you have played from is the record of who
+    // played, so it cannot be given up at all. Leaving used to be what erased
+    // the history; now there is nothing to erase it with.
     let mut app = seated();
 
     // Two games behind us, both rematches claimed by Alice.
@@ -311,34 +303,37 @@ fn standing_up_does_not_erase_the_games_already_played() {
         2
     );
 
-    let before = table_as(&mut app, BOB, at(8));
-    assert_eq!(before.game, 2);
-    assert_eq!(before.games_played, 3);
+    // Game 2 has no moves yet, but Alice has acted at this table.
+    assert!(app
+        .call_as_account(ALICE, ALICE, |s| s.stand(at(9)))
+        .is_err());
 
-    // Alice gets up. Game 2 has no moves yet, so this is a stand, not a resign.
-    app.call_as_account(ALICE, ALICE, |s| s.stand(at(9)))
-        .expect("alice stands");
-
-    // Read by BOB, who never left: the history is the table's, not Alice's, so
-    // her departure cannot take it with her.
+    // And a vacate row written around the contract is not believed either:
+    // her claim still stands, and so does every game she played.
+    let alice = hex_id(&mut app, ALICE);
+    app.call_as_account(ALICE, ALICE, |s| {
+        let claim = s
+            .seat_claims
+            .prefix(format!("white/{alice}/").as_bytes())
+            .expect("claims")
+            .next()
+            .expect("alice's claim")
+            .0;
+        s.vacated
+            .insert(format!("{claim}/1"), at(9))
+            .expect("her own row");
+    });
     let after = table_as(&mut app, BOB, at(10));
     assert_eq!(after.game, 2, "a departure must not rewind the game count");
     assert_eq!(after.games_played, 3);
-    // The chair is genuinely free, which is the other half of the contract —
-    // keeping the claim as evidence must not keep her sitting in it.
-    assert!(after.white.member.is_empty() || after.black.member.is_empty());
-
-    // And it is free to take: Alice's retained claim must not lock the chair.
-    app.call_as_account(BOB, BOB, |s| {
-        s.sit("white".to_owned(), "Bob".to_owned(), at(11))
-    })
-    .or_else(|_| {
-        app.call_as_account(BOB, BOB, |s| {
-            s.sit("black".to_owned(), "Bob".to_owned(), at(11))
-        })
-    })
-    .expect("the vacated chair can be taken");
-    assert_eq!(table_as(&mut app, BOB, at(12)).game, 2);
+    assert_eq!(after.white.member, alice);
+    assert!(app
+        .call_as_account(CAROL, CAROL, |s| s.sit(
+            "white".to_owned(),
+            "Carol".to_owned(),
+            at(11)
+        ))
+        .is_err());
 }
 
 #[test]
@@ -738,31 +733,26 @@ fn the_merobox_scenario_holds_as_a_sequence_of_rules() {
         ("1-0", "resignation")
     );
 
-    // ── game 4: a chair given up, and taken ──────────────────────────────
+    // ── game 4: a chair that cannot be given up ──────────────────────────
     assert_eq!(
         app.call_as_account(ALICE, ALICE, |s| s.rematch(at(37)))
             .expect("alice starts game 4"),
         4
     );
-    app.call_as_account(ALICE, ALICE, |s| s.stand(at(38)))
-        .expect("alice stands");
+    // Alice has played from the white chair, so it is hers for good; the
+    // table is still two players, in progress, on both nodes.
+    assert!(app
+        .call_as_account(ALICE, ALICE, |s| s.stand(at(38)))
+        .is_err());
     let view = table_as(&mut app, BOB, at(39));
-    assert_eq!(view.status, "awaitingPlayers");
-    assert!(view.white.member.is_empty());
-    assert!(view.white.name.is_empty());
-    assert!(!view.white.online);
-    assert_eq!(view.black.name, "Bob");
-
-    // Free rather than merely blank.
-    app.call_as_account(BOB, BOB, |s| {
-        s.sit("white".to_owned(), "Bob".to_owned(), at(40))
-    })
-    .expect("bob takes the empty chair");
-    let view = table_as(&mut app, BOB, at(41));
     assert_eq!(view.status, "inProgress");
-    assert!(view.my_turn);
-    assert_eq!(view.white.name, "Bob");
+    assert_eq!(view.white.name, "Alice");
     assert_eq!(view.black.name, "Bob");
+    assert!(app
+        .call_as_account(BOB, BOB, |s| {
+            s.sit("white".to_owned(), "Bob".to_owned(), at(40))
+        })
+        .is_err());
 
     // ── presence ─────────────────────────────────────────────────────────
     app.call_as_account(ALICE, ALICE, |s| s.heartbeat(at(42)))
@@ -802,6 +792,7 @@ fn forged_move(uci: &str) -> MoveRecord {
     MoveRecord {
         uci: uci.to_owned(),
         at: at(0),
+        opponent: String::new(),
     }
 }
 
@@ -824,7 +815,7 @@ fn a_move_row_written_by_anyone_but_the_player_to_move_is_inert() {
     // the only thing she can sign for.
     app.call_as_account(CAROL, CAROL, |s| {
         let record = forged_move("e2e4");
-        let _written = s.moves.insert(move_key(0, 0, &white, at(3)), record);
+        let _written = s.moves.insert(move_key(&white, 0, 0, at(3)), record);
     });
 
     // The board never saw it.
@@ -852,7 +843,7 @@ fn a_squatted_key_costs_a_nonce_and_not_a_turn() {
     // kill every game at the table this way.
     let mut app = seated();
     let white = table_as(&mut app, ALICE, at(3)).white.member;
-    let contested = move_key(0, 0, &white, at(4));
+    let contested = move_key(&white, 0, 0, at(4));
 
     app.call_as_account(CAROL, CAROL, |s| {
         let _squatted = s.moves.insert(contested.clone(), forged_move("e2e4"));
@@ -875,7 +866,7 @@ fn a_row_at_a_ply_the_game_has_not_reached_is_inert() {
     app.call_as_account(ALICE, ALICE, |s| {
         let _written = s
             .moves
-            .insert(move_key(0, 8, &white, at(3)), forged_move("e2e4"));
+            .insert(move_key(&white, 0, 8, at(3)), forged_move("e2e4"));
     });
 
     assert!(table_as(&mut app, ALICE, at(4)).moves.is_empty());
@@ -896,7 +887,7 @@ fn the_scoresheet_is_derived_and_not_transcribed() {
     app.call_as_account(BOB, BOB, |s| {
         let _written = s
             .moves
-            .insert(move_key(0, 1, &black, at(5)), forged_move("e7e5"));
+            .insert(move_key(&black, 0, 1, at(5)), forged_move("e7e5"));
     });
 
     let view = table_as(&mut app, ALICE, at(6));
@@ -921,7 +912,7 @@ fn a_resignation_nobody_could_have_made_is_not_believed() {
     // it says.
     app.call_as_account(BOB, BOB, |s| {
         let _written = s.endings.insert(
-            claim_key(0, &white, at(5)),
+            claim_key(&white, 0, at(5)),
             Ending {
                 result: "0-1".to_owned(),
                 reason: "resignation".to_owned(),
@@ -936,7 +927,7 @@ fn a_resignation_nobody_could_have_made_is_not_believed() {
     // resignation: one that hands him the win is not one.
     app.call_as_account(BOB, BOB, |s| {
         let _written = s.endings.insert(
-            claim_key(0, &black, at(7)),
+            claim_key(&black, 0, at(7)),
             Ending {
                 result: "0-1".to_owned(),
                 reason: "resignation".to_owned(),
@@ -966,7 +957,7 @@ fn an_agreed_draw_needs_an_offer_that_actually_stood() {
 
     app.call_as_account(BOB, BOB, |s| {
         let _written = s.endings.insert(
-            claim_key(0, &black, at(5)),
+            claim_key(&black, 0, at(5)),
             Ending {
                 result: "1/2-1/2".to_owned(),
                 reason: "agreement".to_owned(),
@@ -992,7 +983,7 @@ fn a_claimed_draw_has_to_be_available_in_the_position() {
 
     app.call_as_account(BOB, BOB, |s| {
         let _written = s.endings.insert(
-            claim_key(0, &black, at(5)),
+            claim_key(&black, 0, at(5)),
             Ending {
                 result: "1/2-1/2".to_owned(),
                 reason: "threefold".to_owned(),
@@ -1018,10 +1009,8 @@ fn a_seat_claim_filed_on_someone_elses_behalf_moves_no_chair() {
         let _written = s.seat_claims.insert(
             seat_key("white", &alice, at(1)),
             Seat {
-                member: alice.clone(),
                 name: "Alice".to_owned(),
                 claimed_at: at(1),
-                vacated_at: 0,
             },
         );
     });
@@ -1046,11 +1035,8 @@ fn a_rematch_nobody_at_the_table_claimed_starts_no_game() {
     // board and hide the real game behind it.
     app.call_as_account(CAROL, CAROL, |s| {
         let _written = s.games.insert(
-            claim_key(1, &carol, at(3)),
-            GameRecord {
-                index: 1,
-                started_at: at(3),
-            },
+            claim_key(&carol, 1, at(3)),
+            GameRecord { started_at: at(3) },
         );
     });
 
@@ -1070,9 +1056,8 @@ fn a_draw_offer_from_a_spectator_is_not_an_offer() {
 
     app.call_as_account(CAROL, CAROL, |s| {
         let _written = s.draw_offers.insert(
-            claim_key(0, &carol, at(4)),
+            claim_key(&carol, 0, at(4)),
             DrawOffer {
-                open: true,
                 declined: false,
                 ply: 1,
                 at: at(4),
@@ -1101,10 +1086,11 @@ fn a_map_stuffed_with_junk_still_reads_as_the_game_that_was_played() {
     app.call_as_account(CAROL, CAROL, |s| {
         for i in 0..1_000u64 {
             let _written = s.moves.insert(
-                move_key(0, (i % 8) as u32, "deadbeef", i),
+                move_key("deadbeef", 0, (i % 8) as u32, i),
                 MoveRecord {
                     uci: "e2e4".to_owned(),
                     at: i,
+                    opponent: String::new(),
                 },
             );
         }
@@ -1124,4 +1110,201 @@ fn a_map_stuffed_with_junk_still_reads_as_the_game_that_was_played() {
     assert_eq!(view.moves[3].san, "Nc6");
     assert_eq!(view.side_to_move, "white");
     assert_eq!(view.result, "*");
+}
+
+// ── What a player cannot take back ──────────────────────────────────────────
+//
+// The tests above ask whether a row written by the WRONG person fools a
+// reader. These ask the harder question: can the RIGHT person — a player,
+// writing rows they are entitled to write — rewrite what already happened?
+
+/// A move row `account` writes about themselves, straight into the map.
+fn own_move(app: &mut TestHost<MeroChess>, account: [u8; 32], ply: u32, uci: &str, nonce: u64) {
+    let me = hex_id(app, account);
+    app.call_as_account(account, account, |s| {
+        s.moves
+            .insert(
+                move_key(&me, 0, ply, nonce),
+                MoveRecord {
+                    uci: uci.to_owned(),
+                    at: 0,
+                    opponent: String::new(),
+                },
+            )
+            .expect("a fresh key of their own");
+    });
+}
+
+#[test]
+fn a_played_move_cannot_be_overwritten_or_deleted_by_its_own_author() {
+    let mut app = seated();
+    play(&mut app, ALICE, "e2e4", at(3));
+    let alice = hex_id(&mut app, ALICE);
+    let key = app.view(|s| {
+        s.moves
+            .prefix(format!("{alice}/").as_bytes())
+            .expect("moves")
+            .next()
+            .expect("her move")
+            .0
+    });
+
+    // `WriteOnce` has no update and no remove, and an insert over the key is
+    // refused — for its owner too. Every node enforces the same on apply.
+    let rewritten = app.call_as_account(ALICE, ALICE, |s| {
+        s.moves.insert(
+            key.clone(),
+            MoveRecord {
+                uci: "d2d4".to_owned(),
+                at: 0,
+                opponent: String::new(),
+            },
+        )
+    });
+    assert!(rewritten.is_err());
+    assert_eq!(table_as(&mut app, BOB, at(4)).moves[0].san, "e4");
+}
+
+#[test]
+fn a_backdated_second_move_at_an_old_ply_loses_instead_of_rewriting_the_game() {
+    // Alice has thought better of 1.e4 three moves later. Her rows cannot be
+    // changed, so she files ANOTHER one at ply 0, dated before the first.
+    // Chosen by clock, it would replay the whole game from 1.d4; chosen by
+    // "exactly one legal move per ply", it is two moves at one ply — and a
+    // player who plays two moves at once has forfeited.
+    let mut app = seated();
+    play(&mut app, ALICE, "e2e4", at(3));
+    play(&mut app, BOB, "e7e5", at(4));
+    play(&mut app, ALICE, "g1f3", at(5));
+    own_move(&mut app, ALICE, 0, "d2d4", 1);
+
+    let view = table_as(&mut app, BOB, at(6));
+    assert_eq!(view.status, "finished");
+    assert_eq!(view.result, "0-1");
+    assert_eq!(view.reason, "equivocation");
+
+    // A retry of the SAME move is not equivocation: it is one move.
+    drop(app);
+    let mut app = seated();
+    play(&mut app, ALICE, "e2e4", at(3));
+    own_move(&mut app, ALICE, 0, "e2e4", 1);
+    let view = table_as(&mut app, BOB, at(4));
+    assert_eq!(view.result, "*");
+    assert_eq!(view.moves.len(), 1);
+}
+
+#[test]
+fn a_resignation_cannot_be_undone_by_playing_on() {
+    // Alice resigns with White to move, then — around the contract — writes
+    // the move she would have played. The ending pins the game at its ply,
+    // so the move is never reached.
+    let mut app = seated();
+    app.call_as_account(ALICE, ALICE, |s| s.resign(at(3)))
+        .expect("alice resigns");
+    own_move(&mut app, ALICE, 0, "e2e4", 4);
+
+    let view = table_as(&mut app, BOB, at(5));
+    assert_eq!(view.result, "0-1");
+    assert_eq!(view.reason, "resignation");
+    assert!(view.moves.is_empty());
+}
+
+#[test]
+fn an_agreed_draw_cannot_be_withdrawn_afterwards() {
+    let mut app = seated();
+    play(&mut app, ALICE, "e2e4", at(3));
+    app.call_as_account(BOB, BOB, |s| s.offer_draw(at(4)))
+        .expect("bob offers");
+    app.call_as_account(ALICE, ALICE, |s| s.accept_draw(at(5)))
+        .expect("alice accepts");
+
+    // Both sides try to take it back: Bob by filing a refusal-shaped row of
+    // his own, Alice by "declining" the offer she already accepted.
+    let (alice, bob) = (hex_id(&mut app, ALICE), hex_id(&mut app, BOB));
+    for (account, me) in [(BOB, bob), (ALICE, alice)] {
+        app.call_as_account(account, account, |s| {
+            s.draw_offers
+                .insert(
+                    claim_key(&me, 0, at(6)),
+                    DrawOffer {
+                        declined: true,
+                        ply: 1,
+                        at: at(6),
+                    },
+                )
+                .expect("their own row");
+        });
+    }
+
+    let view = table_as(&mut app, ALICE, at(7));
+    assert_eq!(view.result, "1/2-1/2");
+    assert_eq!(view.reason, "agreement");
+}
+
+#[test]
+fn a_backdated_seat_claim_does_not_take_a_chair_in_a_game_under_way() {
+    // Carol files claims on BOTH chairs, dated before anyone's, and plays a
+    // game against herself to vouch for them. Earliest-claim-wins would hand
+    // her the table; but Alice and Bob have each moved against the other, and
+    // a pair of two different people who named each other outranks one person
+    // naming themselves.
+    let mut app = seated();
+    play(&mut app, ALICE, "e2e4", at(3));
+    play(&mut app, BOB, "e7e5", at(4));
+
+    let carol = hex_id(&mut app, CAROL);
+    app.call_as_account(CAROL, CAROL, |s| {
+        for seat in ["white", "black"] {
+            s.seat_claims
+                .insert(
+                    seat_key(seat, &carol, 0),
+                    Seat {
+                        name: "Carol".to_owned(),
+                        claimed_at: 0,
+                    },
+                )
+                .expect("her own claim");
+        }
+        for (ply, uci) in [(0, "d2d4"), (1, "d7d5")] {
+            s.moves
+                .insert(
+                    move_key(&carol, 0, ply, 0),
+                    MoveRecord {
+                        uci: uci.to_owned(),
+                        at: 0,
+                        opponent: carol.clone(),
+                    },
+                )
+                .expect("her own move");
+        }
+    });
+
+    let view = table_as(&mut app, ALICE, at(5));
+    assert_eq!(view.white.name, "Alice");
+    assert_eq!(view.black.name, "Bob");
+    assert_eq!(view.moves.len(), 2);
+    assert_eq!(view.moves[1].san, "e5");
+    assert!(view.my_turn);
+}
+
+#[test]
+fn a_vacate_row_filed_against_someone_elses_claim_frees_no_chair() {
+    let mut app = seated();
+    let bob = hex_id(&mut app, BOB);
+    let claim = app.view(|s| {
+        s.seat_claims
+            .prefix(format!("black/{bob}/").as_bytes())
+            .expect("claims")
+            .next()
+            .expect("bob's claim")
+            .0
+    });
+
+    // Carol "stands Bob up". The row is hers, not his, so it says nothing.
+    app.call_as_account(CAROL, CAROL, |s| {
+        s.vacated
+            .insert(format!("{claim}/1"), at(3))
+            .expect("her own row");
+    });
+    assert_eq!(table_as(&mut app, ALICE, at(4)).black.name, "Bob");
 }

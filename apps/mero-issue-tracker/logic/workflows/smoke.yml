@@ -3,10 +3,12 @@
 # Exercises the spec's mutate methods end-to-end on real nodes (what the
 # in-process converge harness can't cover):
 #   - the issue-tracker service installed + a context created from the bundle
-#   - Board state (UnorderedMap<String, Issue> with LwwRegister fields and an
-#     UnorderedSet of labels) replicating across two peers
+#   - Board state (owned issue headers, the public IndexedMap<String, Issue>
+#     triage map with LwwRegister fields, and the label index) replicating
+#     across two peers
 #   - the authored-Comment gate: a non-author edit is rejected on a real signed
-#     delta path (the per-entry authorization the bare converge harness can't test)
+#     delta path (the per-entry authorization the bare converge harness can't
+#     test). Comments are an `Authored<IndexedMap>`, so every node refuses it.
 #
 # Usage (run from the chat project root, after a dev bundle has been built):
 #   cd logic && merobox bootstrap run workflows/probes/smoke.yml
@@ -47,7 +49,7 @@ nodes:
   # ponytail: pinned off `:edge` to the rc-matching tag so the verify merod
   # matches the SDK the logic pins. Bump in lockstep with logic/Cargo.toml's
   # SDK tag, or bootstrap skews.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.56
   # High base ports to avoid colliding with a host-native merod on the
   # defaults (2428 P2P / 2528 RPC). Each node gets base + i.
   base_port: 12428      # P2P / swarm

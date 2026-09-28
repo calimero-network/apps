@@ -81,9 +81,9 @@ fn two_people_reaching_for_the_same_chair_land_on_one_holder() {
 fn one_person_on_two_devices_plays_one_move_and_not_two() {
     // `one_account` is the point: both replicas write as the SAME person, which
     // is a laptop and a phone, not two players. The owner stamp covers both
-    // devices — so unlike the test above, these writes land on the same KEY and
-    // have to be reconciled by `MoveRecord::merge` rather than by the reader's
-    // election. Nothing else in this repo exercises that merge.
+    // devices — so unlike the test above, these writes land on the same KEY
+    // with the same bytes, which a write-once entry accepts as a redelivery
+    // rather than refusing as an edit. Nothing else in this repo exercises it.
     converge_app(table())
         .replicas(2)
         .one_account()

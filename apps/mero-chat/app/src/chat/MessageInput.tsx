@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo, type DragEvent } from "react";
 import { useDraft } from "../hooks/useDraft";
 import { styled } from "styled-components";
 import type {
@@ -15,6 +15,12 @@ import UploadComponent, {
 } from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
+import {
+  IMAGE_ATTACHMENT_TYPES,
+  attachmentKindFor,
+  dragCarriesFiles,
+} from "./attachmentKind";
+import { uploadChatAttachment } from "./uploadAttachment";
 import { getContextId } from "@calimero-network/mero-react";
 import type { ResponseData } from "../api/types";
 import { deleteBlob } from "../api/blobs";
@@ -145,6 +151,23 @@ const UploadPopupContainer = styled.div`
   }
 `;
 
+// Covers the composer while files are dragged over it, so it is obvious the
+// drop lands here and not on the message list behind it.
+const DropOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #4e95ff;
+  border-radius: 4px;
+  background-color: rgba(17, 17, 17, 0.92);
+  color: #fff;
+  font-size: 14px;
+  pointer-events: none;
+`;
+
 const UploadContainer = styled.div`
   background-color: rgb(17, 17, 17);
   border-radius: 4px;
@@ -255,7 +278,7 @@ export const IconUploadSvg = styled.div`
 `;
 
 export const IconUpload = ({ onClick }: { onClick: () => void }) => (
-  <IconUploadSvg onClick={onClick}>
+  <IconUploadSvg onClick={onClick} role="button" aria-label="Attach">
     <svg
       width="20px"
       height="20px"
@@ -297,6 +320,8 @@ export const IconSend = ({
 }) => (
   <IconSendSvg
     onClick={onClick}
+    role="button"
+    aria-label="Send message"
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="18"
@@ -794,7 +819,9 @@ export default function MessageInput({
 
   const hasAttachments = Boolean(uploadedImage || uploadedFile);
 
-  const isActive = hasText;
+  // An attachment is a message on its own. Text is optional, and the contract
+  // does not require it either.
+  const isActive = hasText || hasAttachments;
 
   const buildAttachmentDraft = useCallback(
     (chatFile: ChatFile | null): AttachmentDraft | null => {
@@ -831,7 +858,7 @@ export default function MessageInput({
           .trim() === "" ||
         emptyText.test(markdownParser(rawContent, []));
 
-      if (isEmptyContent) {
+      if (isEmptyContent && !fileDraft && !imageDraft) {
         handleMessageChange(null);
         return;
       }
@@ -850,7 +877,9 @@ export default function MessageInput({
       }
 
       const payload: SendMessagePayload = {
-        text: markdownParser(rawContent ?? "", tagList),
+        // Empty rather than an empty paragraph, so an attachment-only message
+        // stores no text and notifications can tell there was none.
+        text: isEmptyContent ? "" : markdownParser(rawContent ?? "", tagList),
         files: fileDraft ? [fileDraft] : [],
         images: imageDraft ? [imageDraft] : [],
       };
@@ -916,6 +945,115 @@ export default function MessageInput({
     setShowUpload(false);
   }, [setShowUpload]);
 
+  // ── Drag and drop onto the composer ────────────────────────────────────────
+  //
+  // A dropped file takes the same route as the popup's pickers, into the slot
+  // its type picks: JPEG/PNG/GIF become the image, anything else the file.
+  // There is one slot of each, so a drop fills at most one of each and says
+  // what it left out, and a drop into a filled slot replaces it like the
+  // popup's "Replace" button does.
+  //
+  // dragenter/dragleave fire for every child the pointer crosses, so the
+  // overlay counts them instead of toggling on each one.
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const dragDepthRef = useRef(0);
+
+  // A file dropped anywhere OUTSIDE the composer must not reach the browser's
+  // default, which opens the file in place of the app and loses the chat.
+  // The composer's own drop handler stops propagation, so this only ever sees
+  // the misses. Text and link drags are left alone.
+  useEffect(() => {
+    const swallowStrayFileDrop = (e: globalThis.DragEvent) => {
+      if (dragCarriesFiles(e.dataTransfer)) e.preventDefault();
+    };
+    window.addEventListener("dragover", swallowStrayFileDrop);
+    window.addEventListener("drop", swallowStrayFileDrop);
+    return () => {
+      window.removeEventListener("dragover", swallowStrayFileDrop);
+      window.removeEventListener("drop", swallowStrayFileDrop);
+    };
+  }, []);
+
+  const uploadDroppedFile = useCallback(
+    async (file: globalThis.File, kind: "image" | "file") => {
+      const setBusy = kind === "image" ? handleImageUploading : handleFileUploading;
+      setBusy(true);
+      try {
+        if (kind === "image") {
+          await handleReplaceImage(uploadedImage);
+          setUploadedImage(await uploadChatAttachment(file));
+        } else {
+          await handleReplaceFile(uploadedFile);
+          setUploadedFile(await uploadChatAttachment(file));
+        }
+      } catch (err) {
+        handleUploadError(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      handleImageUploading,
+      handleFileUploading,
+      handleReplaceImage,
+      handleReplaceFile,
+      handleUploadError,
+      setUploadedImage,
+      setUploadedFile,
+      uploadedImage,
+      uploadedFile,
+    ],
+  );
+
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    if (!dragCarriesFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent) => {
+    if (!dragCarriesFiles(e.dataTransfer)) return;
+    // Without this the browser refuses the drop, or opens the file in the tab.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    if (!dragCarriesFiles(e.dataTransfer)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent) => {
+      if (!dragCarriesFiles(e.dataTransfer)) return;
+      // Capture phase, so the rich-text editor never sees the file and cannot
+      // inline it as a data: URL that no other member could load.
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+
+      const files = Array.from(e.dataTransfer.files);
+      const image = files.find((f) => attachmentKindFor(f) === "image");
+      const file = files.find((f) => attachmentKindFor(f) === "file");
+      if (image) void uploadDroppedFile(image, "image");
+      if (file) void uploadDroppedFile(file, "file");
+
+      const skipped = files.length - (image ? 1 : 0) - (file ? 1 : 0);
+      if (skipped > 0) {
+        addToast({
+          title: "Some files were not attached",
+          message: `A message holds one image and one file, so ${skipped} of the ${files.length} dropped files ${skipped === 1 ? "was" : "were"} left out.`,
+          type: "channel",
+          duration: 5000,
+        });
+      }
+    },
+    [uploadDroppedFile, addToast],
+  );
+
   const toggleUploadPopup = useCallback(() => {
     setShowUpload((prev) => !prev);
     setEmojiSelectorOpen(false);
@@ -959,7 +1097,20 @@ export default function MessageInput({
   return (
     <>
       {canWriteMessage && (
-        <Container style={customStyle} onKeyDown={handleMentionKeyDown}>
+        <Container
+          style={customStyle}
+          onKeyDown={handleMentionKeyDown}
+          onDragEnterCapture={handleDragEnter}
+          onDragOverCapture={handleDragOver}
+          onDragLeaveCapture={handleDragLeave}
+          onDropCapture={handleDrop}
+          data-testid="message-composer"
+        >
+          {isDraggingFiles && (
+            <DropOverlay data-testid="composer-drop-overlay">
+              Drop to attach — images show inline, everything else as a file
+            </DropOverlay>
+          )}
           {showMentions && mentionSuggestions.length > 0 && (
             <MentionDropdown>
               {mentionSuggestions.map((s, i) => (
@@ -1072,7 +1223,7 @@ export default function MessageInput({
                 <UploadComponent
                   uploadedFile={uploadedImage}
                   setUploadedFile={setUploadedImage}
-                  type={["image/jpeg", "image/png", "image/gif"]}
+                  type={[...IMAGE_ATTACHMENT_TYPES]}
                   icon={<ImageUploadIcon />}
                   text={uploadedImage ? "Replace Image" : "Upload Image"}
                   onError={handleUploadError}

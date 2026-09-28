@@ -25,10 +25,10 @@ import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
-  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment, Publication,
+  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, ActivityEntry, Comment,
+  NotedCell, NoteChange, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment, Publication,
 } from '../api/spreadsheet/SpreadsheetClient';
-import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
+import type { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type Alert, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import type { NoteOp, Span } from '../spreadsheet/notes';
@@ -729,12 +729,12 @@ export function useSpreadsheet({
         : op.kind === 'Format' ? { row_id: op.row_id, col_id: op.col_id, format: op.format }
         : { row_id: op.row_id, col_id: op.col_id, clear: true },
       ));
-      const wire = ops.map((op) =>
+      const wire = ops.map((op): CellOpWire =>
         op.kind === 'Set'
-          ? CellOpWire.Set({ row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value })
+          ? { name: 'Set', payload: { row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value } }
           : op.kind === 'Format'
-            ? CellOpWire.Format({ row_id: op.row_id, col_id: op.col_id, format: op.format })
-            : CellOpWire.Clear({ row_id: op.row_id, col_id: op.col_id }));
+            ? { name: 'Format', payload: { row_id: op.row_id, col_id: op.col_id, format: op.format } }
+            : { name: 'Clear', payload: { row_id: op.row_id, col_id: op.col_id } });
       try {
         await enqueue(async () => {
           for (const chunk of chunkOps(wire)) {
@@ -805,7 +805,7 @@ export function useSpreadsheet({
 
   /** Add entries to the local structure at once, then send the ops. */
   const commitAxis = useCallback(
-    async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpPayload[], track: boolean) => {
+    async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpWire[], track: boolean) => {
       if (!client || ops.length === 0) return;
       const entry: UndoEntry | null = track
         ? { kind: 'axis', sheetId, axis, ids: added.map((e) => e.id), inserted: !added[0]?.deleted }
@@ -850,8 +850,8 @@ export function useSpreadsheet({
       const after = at < ids.length ? positionOf(ids[at], entries) : null;
       const added = positionsBetween(before, after, count)
         .map((pos) => ({ id: newAxisId(), pos, deleted: false }));
-      const ops = added.map(({ id, pos }) =>
-        axis === 'row' ? AxisOpWire.InsertRow({ id, pos }) : AxisOpWire.InsertCol({ id, pos }));
+      const ops = added.map(({ id, pos }): AxisOpWire =>
+        axis === 'row' ? { name: 'InsertRow', payload: { id, pos } } : { name: 'InsertCol', payload: { id, pos } });
       await commitAxis(sheetId, axis, added, ops, true);
     },
     [commitAxis],
@@ -867,8 +867,8 @@ export function useSpreadsheet({
         const pos = id === undefined ? null : positionOf(id, entries);
         return id === undefined || pos === null ? [] : [{ id, pos, deleted: true }];
       });
-      const ops = added.map(({ id }) =>
-        axis === 'row' ? AxisOpWire.DeleteRow({ id }) : AxisOpWire.DeleteCol({ id }));
+      const ops = added.map(({ id }): AxisOpWire =>
+        axis === 'row' ? { name: 'DeleteRow', payload: { id } } : { name: 'DeleteCol', payload: { id } });
       await commitAxis(sheetId, axis, added, ops, true);
     },
     [commitAxis],
@@ -882,9 +882,9 @@ export function useSpreadsheet({
         const pos = positionOf(id, entries);
         return pos === null ? [] : [{ id, pos, deleted }];
       });
-      const ops = changed.map(({ id }) => deleted
-        ? (axis === 'row' ? AxisOpWire.DeleteRow({ id }) : AxisOpWire.DeleteCol({ id }))
-        : (axis === 'row' ? AxisOpWire.RestoreRow({ id }) : AxisOpWire.RestoreCol({ id })));
+      const ops = changed.map(({ id }): AxisOpWire => deleted
+        ? (axis === 'row' ? { name: 'DeleteRow', payload: { id } } : { name: 'DeleteCol', payload: { id } })
+        : (axis === 'row' ? { name: 'RestoreRow', payload: { id } } : { name: 'RestoreCol', payload: { id } }));
       await commitAxis(sheetId, axis, changed, ops, false);
     },
     [commitAxis],
@@ -1015,9 +1015,9 @@ export function useSpreadsheet({
   const editNote = useCallback(
     async (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => {
       if (!client || ops.length === 0) return;
-      // `edit_note` takes Quill's untagged delta shape; the generated type
-      // models the enum as tagged, which is not what the contract reads.
-      const wire = ops as unknown as NoteChangePayload[];
+      // The editor's ops leave `attributes` out where the generated type sends
+      // `null`; serde reads a missing Option as None, so they go as they are.
+      const wire = ops as unknown as NoteChange[];
       await enqueue(() => client.editNote({ sheet_id: sheetId, row_id: rowId, col_id: colId, ops: wire }));
       setNotedCells(await client.getNotedCells());
     },
@@ -1361,17 +1361,6 @@ export function useSpreadsheet({
     await enqueue(() => client.deletePrivateSheet({ sheet_id: sheetId }));
     await reloadPrivate();
   }, [client, enqueue, reloadPrivate]);
-
-  // A member who joined before accounts were recorded: record theirs, so the
-  // People panel can match them to the group roster. Once per workbook.
-  const backfilled = useRef(false);
-  useEffect(() => { backfilled.current = false; }, [client]);
-  useEffect(() => {
-    const me = members.find((m) => m.id === selfId);
-    if (!client || !me || me.account || backfilled.current) return;
-    backfilled.current = true;
-    void enqueue(() => client.join({ nickname: me.nickname })).catch(() => undefined);
-  }, [client, members, selfId, enqueue]);
 
   const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
     if (!client) return [];

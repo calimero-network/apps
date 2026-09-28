@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from "../api/rpc";
+import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext, getNodeIdentity } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
@@ -71,6 +71,11 @@ export default function CanvasPage() {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [addingComment, setAddingComment] = useState(false);
   const [myIdentity, setMyIdentity] = useState("");
+  // Who this node's user IS: the account. The board keys members, comment
+  // authors and element creators by account, so every "is this me / mine"
+  // check compares against this. `myIdentity` is the device key, which is only
+  // what a cursor is keyed by.
+  const [myAccount, setMyAccount] = useState("");
   // Effective canvas permission for this identity (admin/editor → true, viewer → false).
   // The contract enforces this at merge; this flag is for read-only UX.
   const [canEdit, setCanEdit] = useState(true);
@@ -136,6 +141,14 @@ export default function CanvasPage() {
     refreshIdentity(() => !cancelled);
     return () => { cancelled = true; };
   }, [refreshIdentity]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getNodeIdentity()
+      .then((me) => { if (!cancelled) setMyAccount(me.accountId ?? ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
   function handleLogout() { logout(); navigate("/"); }
@@ -325,7 +338,7 @@ export default function CanvasPage() {
   // Show modal if this identity has no username registered in the contract.
   // usernameStore is only used to pre-fill the modal input.
   useEffect(() => {
-    if (!projectId || !myIdentity) return;
+    if (!projectId || !myIdentity || !myAccount) return;
     // Guard against a slow get_members from the previous project repopulating the
     // roster (and mislabeling cursors) after the user switched canvases.
     let cancelled = false;
@@ -334,7 +347,7 @@ export default function CanvasPage() {
         if (cancelled) return;
         const list = Array.isArray(ms) ? ms : [];
         setMembers(list);
-        const member = list.find((m) => m.id === myIdentity);
+        const member = list.find((m) => m.id === myAccount);
         const hasUsername = member?.username && member.username.trim().length > 0;
         if (!hasUsername) {
           setShowUsernameModal(true);
@@ -346,7 +359,7 @@ export default function CanvasPage() {
         setShowUsernameModal(true);
       });
     return () => { cancelled = true; };
-  }, [projectId, myIdentity]);
+  }, [projectId, myIdentity, myAccount]);
 
   async function handleUsernameSubmit(username: string) {
     if (!projectId || !myIdentity) return;
@@ -573,7 +586,7 @@ export default function CanvasPage() {
       width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale),
       rotation: 0, fill: "transparent", stroke: "transparent", strokeWidth: 0, opacity: 100,
       layerIndex: elements.length,
-      createdBy: myIdentity, createdAt: Date.now(), updatedAt: Date.now(),
+      createdBy: myAccount, createdAt: Date.now(), updatedAt: Date.now(),
     };
     cacheImage(id, dataUrl);
     upsertElement(el);
@@ -683,7 +696,7 @@ export default function CanvasPage() {
             members={members}
             contextId={projectId ?? ""}
             comments={comments}
-            myIdentity={myIdentity}
+            myIdentity={myAccount}
             addingComment={addingComment}
             viewport={viewport}
             onCommentAdded={(c) => setComments((prev) => [...prev, c])}

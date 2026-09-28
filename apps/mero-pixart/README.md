@@ -80,9 +80,13 @@ PNG **blobs** on the node and announced to the context so they propagate to ever
 member. Adjustments are **non-destructive**: they are stored as parameters and
 applied by the frontend at composite/render time, never baked into the stored
 pixels until an explicit destructive edit re-renders the layer. Document metadata
-(name, description, size) lives in an `Ownable` register so only the owner can
-rename/resize; access is governed by an `AccessControl` role registry (the creator
-is the sole initial admin). State changes fan out to members over **SSE** for
+(name, description, size, background) lives in `Ownable` registers so only the
+owner can rename/resize, with the values `init` was given `Frozen`; access is
+governed by an `AccessControl` role registry (the creator is the sole initial
+admin), whose roles are projected onto the layer map's capability set — so every
+node, not just the caller's, refuses a viewer's layer write. The roster is one
+`UserStorage` slot per account and each cursor is owned by the account that
+wrote it. State changes fan out to members over **SSE** for
 real-time collaboration.
 
 ## Quick Start

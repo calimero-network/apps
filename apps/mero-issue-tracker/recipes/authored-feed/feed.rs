@@ -11,7 +11,8 @@ use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::Mergeable;
 use calimero_storage::env as storage_env;
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+// `Default` is what `tombstone` overwrites an entry with: an empty post.
+#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Post {
@@ -33,6 +34,16 @@ impl Mergeable for Post {
     }
 }
 
+/// One feed row as the UI renders it. `author` is read from the entry's owner
+/// stamp, which a patched node cannot forge — never from a field in `Post`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FeedEntry {
+    pub index: usize,
+    pub author: String,
+    pub post: Post,
+}
+
 // ── add to the service state ───────────────────────────────────────────────
 // #[app::state(emits = ...)]
 // pub struct FeedState {
@@ -51,11 +62,13 @@ impl FeedState {
         if text.is_empty() || text.len() > 4096 {
             app::bail!(AppError::msg("post must be 1-4096 bytes"));
         }
-        let idx = self
+        let _ = self
             .posts
             .push(Post { text, created_ms: storage_env::time_now(), edited: false })
             .map_err(|e| AppError::msg(format!("posts.push: {e}")))?;
-        Ok(idx)
+        // `push` returns the entry's id; its position is the last slot.
+        let len = self.feed_len()?;
+        Ok(len - 1)
     }
 
     /// Edit your own post. AuthoredVector::update rejects non-authors with
@@ -82,17 +95,32 @@ impl FeedState {
         Ok(())
     }
 
-    /// Read the feed in insertion order (paginated). Pair each post with its
-    /// author via `owner_of` so the UI can show who wrote it.
-    pub fn get_feed(&self, offset: usize, limit: usize) -> app::Result<Vec<Post>> {
-        let all: Vec<Post> = self
-            .posts
-            .iter()
-            .map_err(|e| AppError::msg(format!("posts.iter: {e}")))?
-            .collect();
-        let start = offset.min(all.len());
-        let end = (start + limit).min(all.len());
-        Ok(all[start..end].to_vec())
+    /// Read the feed in insertion order (paginated), each post paired with
+    /// its author via `owner_of`. Reads only the requested slots, and skips
+    /// tombstones (an empty post).
+    pub fn get_feed(&self, offset: usize, limit: usize) -> app::Result<Vec<FeedEntry>> {
+        let len = self.feed_len()?;
+        let mut page = Vec::with_capacity(limit.min(len));
+        for index in offset..(offset.saturating_add(limit)).min(len) {
+            let Some(post) = self
+                .posts
+                .get(index)
+                .map_err(|e| AppError::msg(format!("posts.get: {e}")))?
+            else {
+                continue;
+            };
+            if post.text.is_empty() {
+                continue;
+            }
+            let author = self
+                .posts
+                .owner_of(index)
+                .map_err(|e| AppError::msg(format!("posts.owner_of: {e}")))?
+                .map(|a| a.to_string())
+                .unwrap_or_default();
+            page.push(FeedEntry { index, author, post });
+        }
+        Ok(page)
     }
 
     pub fn feed_len(&self) -> app::Result<usize> {

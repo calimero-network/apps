@@ -6,8 +6,14 @@ import {
 
 // Generated types
 
+/**
+ * A structured request inside an update. Same three axes as `Post`.
+ */
 export interface Ask {
   id: string;
+  /**
+   * An update's asks are one seek, not a scan of every ask.
+   */
   post_id: string;
   content: AskContent;
   edited_at: number;
@@ -24,6 +30,9 @@ export interface AskContent {
 }
 
 export interface AskInput {
+  /**
+   * Set to edit an existing ask of this update; `None` creates one.
+   */
   id: string | null;
   kind: string;
   title: string;
@@ -40,7 +49,14 @@ export interface AskView {
   status: string;
   created_at: number;
   offer_count: number;
+  /**
+   * Every offer — for the TEAM only; empty for readers. A presentation
+   * filter, not confidentiality (see the module docs).
+   */
   offers: OfferView[];
+  /**
+   * The caller's own offer, if any.
+   */
   my_offer: OfferView | null;
 }
 
@@ -48,6 +64,9 @@ export interface Category {
   id: string;
   name: string;
   emoji: string;
+  /**
+   * A CSS colour token or hex. Presentation only.
+   */
   color: string;
   created_at: number;
   edited_at: number;
@@ -64,15 +83,19 @@ export interface CategoryView {
   muted: boolean;
 }
 
+/**
+ * A reply on a post. One level of nesting via `parent_id` ("" for top level).
+ *
+ * No author field: the author is the entry's owner stamp. Deleting removes the
+ * entry — its owner, or a moderator, may.
+ */
 export interface Comment {
   id: string;
   post_id: string;
   parent_id: string;
-  author: string;
   body: string;
   created_at: number;
   edited_at: number;
-  deleted: boolean;
 }
 
 export interface CommentView {
@@ -111,6 +134,10 @@ export interface EngagementRow {
   category_id: string;
   published_at: number;
   readers: ReaderView[];
+  /**
+   * Non-team members with a profile who have not opened it: the follow-up
+   * list.
+   */
   not_read: ReaderView[];
   reactions: number;
   comments: number;
@@ -182,18 +209,48 @@ export interface MeView {
 }
 
 export interface MeroUpdates {
+  /**
+   * Admin tier = the signed writer set; `team` grants are verified at merge.
+   */
   roles: Record<string, boolean>;
   settings: Record<string, Settings>;
   categories: Record<string, Category>;
-  posts: Record<string, Post>;
+  /**
+   * Flat maps keyed by id, carrying their parent's id — never a nested
+   * collection per parent, which would need deterministic re-keying to
+   * converge when two nodes create it independently.
+   */
+  updates: Record<string, Post>;
   asks: Record<string, Ask>;
-  offers: Record<string, Offer>;
+  /**
+   * The team's status for a question, keyed by the question's id.
+   */
+  question_status: Record<string, Triage>;
+  /**
+   * The team's status for an offer, keyed like the offer.
+   */
+  offer_status: Record<string, Triage>;
+  questions: Record<string, Post>;
   comments: Record<string, Comment>;
+  offers: Record<string, Offer>;
   reactions: Record<string, Reaction>;
   reads: Record<string, Read>;
   profiles: Record<string, Profile>;
+  /**
+   * Which categories each reader has muted. Its own slot, not a profile
+   * field, so renaming yourself on one device and muting on another both
+   * survive: a `UserStorage` slot resolves last-writer-wins as a whole.
+   */
+  mutes: Record<string, string[]>;
 }
 
+/**
+ * One KPI as reported in one update.
+ *
+ * `value` is a STRING on purpose: founders write "$1.2M", "38%", "12.5k", and
+ * the number they meant is the frontend's to parse. The contract keeps what
+ * was reported, exactly as reported.
+ */
 export interface Metric {
   name: string;
   value: string;
@@ -210,17 +267,27 @@ export interface MetricPoint {
 export interface MetricSeries {
   name: string;
   unit: string;
+  /**
+   * Oldest first, one point per update that reported this metric.
+   */
   points: MetricPoint[];
 }
 
+/**
+ * One reader's offer to help with one ask. Keyed `"<ask_id>|<account>"`, and
+ * owned by that account.
+ *
+ * Two writers, so two records: the HELPER owns this one (`note`/`withdrawn`,
+ * by `updated_at`), the TEAM owns its [`Triage`] under the same key. Accepting
+ * an offer must not be undone by the helper fixing a typo in their note, and a
+ * helper must not be able to accept their own.
+ */
 export interface Offer {
   ask_id: string;
   account: string;
   helper: OfferByHelper;
   updated_at: number;
   created_at: number;
-  status: string;
-  status_at: number;
 }
 
 export interface OfferByHelper {
@@ -242,9 +309,18 @@ export interface OfferView {
 export interface Overview {
   company_name: string;
   cadence_days: number;
+  /**
+   * When the latest update went out, 0 if none has.
+   */
   last_update_at: number;
+  /**
+   * `last_update_at + cadence`, 0 when there is no cadence or no update yet.
+   */
   next_due_at: number;
   updates_total: number;
+  /**
+   * Unread updates in categories the caller has NOT muted.
+   */
   unread_updates: number;
   open_asks: number;
   open_questions: number;
@@ -259,6 +335,9 @@ export interface PersonView {
   is_admin: boolean;
   is_team: boolean;
   joined_at: number;
+  /**
+   * Updates this person has opened, out of `updates_total`.
+   */
   updates_read: number;
   updates_total: number;
   last_read_at: number;
@@ -267,6 +346,14 @@ export interface PersonView {
   accepted_offers: number;
 }
 
+/**
+ * An update or a question.
+ *
+ * Three independent merge axes: CONTENT (the author's edits, by `edited_at`),
+ * STATUS (the team's triage of a question, by `status_at`) and the tombstone
+ * (OR). Folding status into content would let an author's typo fix silently
+ * undo "answered", or the reverse.
+ */
 export interface Post {
   id: string;
   kind: string;
@@ -320,15 +407,25 @@ export interface PostView {
   asks: AskView[];
 }
 
+/**
+ * Who a member says they are. A claim, not an identity: the account id is
+ * the only thing that authorises anything.
+ */
 export interface Profile {
   account: string;
   name: string;
+  /**
+   * Fund, firm or company — "Seed Capital", "Angel".
+   */
   firm: string;
-  muted: string[];
   joined_at: number;
   updated_at: number;
 }
 
+/**
+ * One account's one emoji on one post. Keyed `"<post_id>|<account>|<emoji>"`,
+ * so reacting twice cannot count twice and a second device is the same person.
+ */
 export interface Reaction {
   post_id: string;
   account: string;
@@ -343,6 +440,11 @@ export interface ReactionCount {
   mine: boolean;
 }
 
+/**
+ * A read receipt. Keyed `"<post_id>|<account>"`. Both ends are monotone
+ * (first read = min, latest = max), so this merges without any clock
+ * tie-break at all.
+ */
 export interface Read {
   post_id: string;
   account: string;
@@ -357,16 +459,40 @@ export interface ReaderView {
   first_at: number;
 }
 
+/**
+ * One block of an update: "Highlights", "Lowlights", "Product", "Thanks"…
+ */
 export interface Section {
+  /**
+   * A template hint ("highlights", "lowlights", "product", "team", "text"…).
+   * Free text so templates can evolve without a contract release.
+   */
   kind: string;
   title: string;
   body: string;
 }
 
+/**
+ * Audience-wide settings, stored under the single key `"main"`.
+ */
 export interface Settings {
   company_name: string;
+  /**
+   * How often the team means to write, in days. 0 = no cadence. Drives the
+   * "next update due" nudge — Visible's recurring-update reminder, without a
+   * server to send it.
+   */
   cadence_days: number;
   updated_at: number;
+}
+
+/**
+ * The team's decision on something a reader wrote: a question's status, an
+ * offer's. Kept apart from the reader's record, in team-written storage.
+ */
+export interface Triage {
+  status: string;
+  status_at: number;
 }
 
 export interface UpdateInput {
@@ -422,6 +548,9 @@ export class UpdatesClient {
   /**
    * add_comment
    *
+   * Reply on a post. `parent_id` threads one level deep: replying to a reply
+   * attaches to that reply's parent, so a thread never becomes a staircase.
+   *
    * @intent mutating
    */
   public async addComment(params: { post_id: string; parent_id: string | null; body: string }): Promise<string> {
@@ -431,6 +560,10 @@ export class UpdatesClient {
 
   /**
    * add_teammate
+   *
+   * Make a member part of the team. Admin only — and enforced at MERGE by
+   * `AccessControl`, so a forged grant from a non-admin does not converge.
+   * Rotates every team-guarded writer set to include them.
    *
    * @intent mutating
    */
@@ -442,6 +575,9 @@ export class UpdatesClient {
   /**
    * archive_category
    *
+   * Archive, never remove: updates filed under it keep their label, and an
+   * archive is monotone so a concurrent rename cannot resurrect it.
+   *
    * @intent mutating
    */
   public async archiveCategory(params: { category_id: string }): Promise<void> {
@@ -451,6 +587,10 @@ export class UpdatesClient {
 
   /**
    * ask_question
+   *
+   * Ask the team something. Anyone in the audience may — this is the half of
+   * the conversation a newsletter tool does not have. The question is the
+   * asker's own entry; the team can remove it, and triages it separately.
    *
    * @intent mutating
    */
@@ -472,6 +612,9 @@ export class UpdatesClient {
   /**
    * delete_comment
    *
+   * The author may delete their comment; the team (its moderators) may
+   * remove any.
+   *
    * @intent mutating
    */
   public async deleteComment(params: { comment_id: string }): Promise<void> {
@@ -491,6 +634,9 @@ export class UpdatesClient {
 
   /**
    * delete_post
+   *
+   * Delete a post. An update is tombstoned by any teammate; a question is
+   * removed by its author or by the team (its moderators).
    *
    * @intent mutating
    */
@@ -522,6 +668,10 @@ export class UpdatesClient {
   /**
    * edit_update
    *
+   * Replace an update's content. Any teammate may — updates are the
+   * company's voice, not one person's. Asks listed with an `id` are edited,
+   * without one are created, and this update's asks not listed are removed.
+   *
    * @intent mutating
    */
   public async editUpdate(params: { post_id: string; input: UpdateInput }): Promise<void> {
@@ -531,6 +681,8 @@ export class UpdatesClient {
 
   /**
    * get_engagement
+   *
+   * Who read what — the team's follow-up list. Team only.
    *
    * @intent read_only
    */
@@ -551,6 +703,8 @@ export class UpdatesClient {
 
   /**
    * get_overview
+   *
+   * The home screen in one call.
    *
    * @intent read_only
    */
@@ -581,6 +735,9 @@ export class UpdatesClient {
 
   /**
    * init
+   *
+   * No arguments: the frontend's context-creation flow sends `{}`. The
+   * creator becomes the first admin; everything else is configured after.
    */
   public async init(): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
@@ -589,6 +746,9 @@ export class UpdatesClient {
 
   /**
    * list_asks
+   *
+   * Every ask across every live update, newest first. `status` filters to
+   * `"open"` or `"resolved"`.
    *
    * @intent read_only
    */
@@ -600,6 +760,8 @@ export class UpdatesClient {
   /**
    * list_categories
    *
+   * Live categories, oldest first, with per-caller unread counts.
+   *
    * @intent read_only
    */
   public async listCategories(): Promise<CategoryView[]> {
@@ -609,6 +771,9 @@ export class UpdatesClient {
 
   /**
    * list_comments
+   *
+   * A post's whole thread, oldest first. Replies follow their parent. One
+   * seek on the `post_thread` index; the author is each entry's owner stamp.
    *
    * @intent read_only
    */
@@ -620,6 +785,9 @@ export class UpdatesClient {
   /**
    * list_contributions
    *
+   * Accepted offers since `since` (unix ms; 0 for all), oldest first — what the
+   * next update's "Thank you" section is written from.
+   *
    * @intent read_only
    */
   public async listContributions(params: { since: number }): Promise<ContributionView[]> {
@@ -629,6 +797,8 @@ export class UpdatesClient {
 
   /**
    * list_drafts
+   *
+   * This node's drafts, most recently touched first.
    *
    * @intent read_only
    */
@@ -640,6 +810,10 @@ export class UpdatesClient {
   /**
    * list_metrics
    *
+   * Every KPI ever reported, one series per metric name (case-insensitive),
+   * oldest point first. The trend chart and "vs last update" deltas come
+   * from here, so founders never retype last month's number.
+   *
    * @intent read_only
    */
   public async listMetrics(): Promise<MetricSeries[]> {
@@ -649,6 +823,9 @@ export class UpdatesClient {
 
   /**
    * list_people
+   *
+   * Everyone this audience knows about: every admin and teammate, and every
+   * member who has written anything (a profile, a read, a comment…).
    *
    * @intent read_only
    */
@@ -660,6 +837,12 @@ export class UpdatesClient {
   /**
    * list_posts
    *
+   * One page of posts, newest first.
+   *
+   * `kind` is `"update"`, `"question"` or `None` for both; `category_id`
+   * filters to one category. Keyset pagination: the cursor names the last
+   * row seen, so a post replicating in above it cannot shift the page.
+   *
    * @intent read_only
    */
   public async listPosts(params: { kind: string | null; category_id: string | null; cursor: string | null; limit: number }): Promise<PostPage> {
@@ -669,6 +852,9 @@ export class UpdatesClient {
 
   /**
    * mark_read
+   *
+   * Record that the caller opened a post. The frontend calls this when a
+   * post is shown — a read receipt the reader can see being taken.
    *
    * @intent mutating
    */
@@ -680,6 +866,9 @@ export class UpdatesClient {
   /**
    * offer_help
    *
+   * "I can help." One click, optional note. Offering again edits the note;
+   * one offer per account per ask.
+   *
    * @intent mutating
    */
   public async offerHelp(params: { ask_id: string; note: string }): Promise<void> {
@@ -689,6 +878,9 @@ export class UpdatesClient {
 
   /**
    * publish_update
+   *
+   * Publish an update to this audience. Team only — and the updates map is
+   * the team's writer set, so a reader's forged update does not converge.
    *
    * @intent mutating
    */
@@ -700,6 +892,8 @@ export class UpdatesClient {
   /**
    * react
    *
+   * Toggle one emoji on a post for the caller.
+   *
    * @intent mutating
    */
   public async react(params: { post_id: string; emoji: string; on: boolean }): Promise<void> {
@@ -710,6 +904,9 @@ export class UpdatesClient {
   /**
    * remove_teammate
    *
+   * Take a member off the team, and out of every team-guarded writer set:
+   * their later writes to team data are refused on apply, on every node.
+   *
    * @intent mutating
    */
   public async removeTeammate(params: { account: string }): Promise<void> {
@@ -719,6 +916,9 @@ export class UpdatesClient {
 
   /**
    * save_draft
+   *
+   * Save a draft on THIS node only. `&mut self` so the runtime commits the
+   * private write — a `&self` method's private writes are discarded.
    *
    * @intent mutating
    */
@@ -740,6 +940,9 @@ export class UpdatesClient {
   /**
    * set_muted_categories
    *
+   * Mute categories: their updates stop counting as unread for you. Replaces
+   * the whole set — the UI always has it in hand.
+   *
    * @intent mutating
    */
   public async setMutedCategories(params: { category_ids: string[] }): Promise<void> {
@@ -749,6 +952,10 @@ export class UpdatesClient {
 
   /**
    * set_offer_status
+   *
+   * Accept or decline someone's offer. Team only: the decision is a
+   * team-written record beside the offer, so the helper cannot write it.
+   * Accepted offers become contributions (`list_contributions`).
    *
    * @intent mutating
    */
@@ -760,6 +967,9 @@ export class UpdatesClient {
   /**
    * set_profile
    *
+   * Name yourself. No `account` argument: you can only describe yourself,
+   * and `UserStorage` is what makes that true on every node.
+   *
    * @intent mutating
    */
   public async setProfile(params: { name: string; firm: string }): Promise<void> {
@@ -769,6 +979,9 @@ export class UpdatesClient {
 
   /**
    * set_question_status
+   *
+   * Mark a question answered (or re-open it). Team only: the status is a
+   * team-written record, not a field of the asker's entry.
    *
    * @intent mutating
    */

@@ -16,8 +16,8 @@
 //
 //  3. Registry ownership/managers - gates `canManagePermissions` (who
 //     may change folder roles / see the sharing-panel admin section).
-//     Fail-closed: until someone `claim_owner`s the registry, nobody is
-//     an owner/manager. Read from `useDriveWorkspace().registryAdmin`
+//     The owner is the registry's creator, fixed by the contract at `init`;
+//     managers are added by the owner. Read from `useDriveWorkspace().registryAdmin`
 //     (fetched ONCE for the whole tree) - NOT via a per-row hook call.
 //
 // Open subgroups inherit membership from the

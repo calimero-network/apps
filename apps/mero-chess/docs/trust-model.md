@@ -87,27 +87,29 @@ update what they wrote from their phone. Device identity lives on
 `env::device_id` and is what CRDT mechanics use for tiebreaks; do not conflate
 the two.
 
-### Why chess is `AuthoredMap` everywhere
+### Why chess is owned (and write-once) everywhere
 
 Every row in this contract is one player's claim about themselves: *I took this
 seat*, *I played this move*, *I resigned*, *I offered a draw*. There is no
 shared object two people co-edit, and there are no roles. That is the shape
-`AuthoredMap` is for, and the shape it is not for is just as clear: a collaborative
-document is `SharedStorage`, a forum with moderators is `PermissionedStorage`.
+owned storage is for — and because every one of those claims is a fact about the
+past, all but presence are `WriteOnce`: owned AND immutable, so not even their
+author can take one back. The shape it is not for is just as clear: a
+collaborative document is `SharedStorage`, a forum with moderators is
+`Moderated`.
 
 ```rust
 #[app::state(emits = Event)]
 pub struct MeroChess {
-    // Captions. The only two unauthored writes here — see "What is
-    // deliberately NOT fixed".
-    title: LwwRegister<String>,
-    created_at: LwwRegister<u64>,
-    players: AuthoredMap<MemberId, Player>,
-    seat_claims: AuthoredMap<String, Seat>,
-    games: AuthoredMap<String, GameRecord>,
-    moves: AuthoredMap<String, MoveRecord>,
-    endings: AuthoredMap<String, Ending>,
-    draw_offers: AuthoredMap<String, DrawOffer>,
+    title: Frozen<String>,
+    created_at: Frozen<u64>,
+    players: UserStorage<Player>,
+    seat_claims: WriteOnce<SortedMap<String, Seat>>,
+    vacated: WriteOnce<SortedMap<String, u64>>,
+    games: WriteOnce<SortedMap<String, GameRecord>>,
+    moves: WriteOnce<SortedMap<String, MoveRecord>>,
+    endings: WriteOnce<SortedMap<String, Ending>>,
+    draw_offers: WriteOnce<SortedMap<String, DrawOffer>>,
 }
 ```
 
@@ -506,11 +508,9 @@ leave the slice at 17. A writer who targets *your* prefix can still crowd it —
 no collection prevents that — but an untargeted flood stops mattering, and it
 was the untargeted flood that could end a table from a laptop in an afternoon.
 
-**This app does not use it yet**, and that is a release-ordering fact rather
-than a decision: the contract pins `calimero-sdk` at the tag the workspace
-pins, and the collection lands in a later one. When it ships, `moves`,
-`endings`, `draw_offers`, `games` and `seat_claims` are all hierarchical-keyed
-authored maps read by prefix, which is precisely the shape it is for.
+**This app now uses it.** Every map is a `SortedMap` under its guard, keyed
+author first (`"<author>/<game>/…"`), so a read seeks straight to the two
+players' rows and never loads a row filed under anybody else's name.
 
 **The general rule, and it is the one to take away from this whole document:**
 *a forged row you correctly ignore is not free.* Whenever you catch yourself
@@ -525,34 +525,65 @@ availability. Availability is where this class of app actually dies.
 because a wall-clock threshold in CI is a flake generator; the numbers above are
 reproducible with the benchmark described in that test's comment.
 
+### 15. "Owned" is not "final"
+
+`AuthoredMap` stopped anyone writing a row *as someone else*. It did not stop a
+player rewriting *their own* rows, and every rule above that said "earliest
+wins" trusted a clock the writer sets:
+
+- **A move could be taken back.** The reader took each ply's earliest legal
+  row. A player three moves into a lost line filed a second row at an old ply,
+  dated before the first, and the game replayed from there. Un-finishing a
+  decided game also broke the rematch chain, so every later game vanished.
+- **A seat could be taken mid-game.** A chair went to its earliest claim; a
+  spectator filed one dated `0` and the move list followed them out of the
+  door.
+- **Endings could be withdrawn.** A resignation counted only while the game
+  stood at its ply, so the resigner played on; an agreed draw could be voided
+  by a later "decline"; a rematch claim could simply be removed.
+
+**What replaced it.** Every claim is `WriteOnce` — no update, no remove, for
+anyone, enforced by every node. A ply takes the ONLY legal move its author
+wrote there, and two is equivocation, which loses. A valid ending pins the
+game at its ply. An agreement needs only the offer it answered. Every move
+names the opponent its author saw, and a pair who have each named the other
+hold the chairs whatever is filed later; a chair someone has played from
+cannot be vacated. The title and creation date are `Frozen`.
+
+**The general rule:** *owned stops forgery; it does not stop regret.* For any
+row that records something that happened, ask whether its author should be
+able to change it — and never let a writer-set clock decide between two rows
+that author wrote.
+
+**Pinned by:** `a_played_move_cannot_be_overwritten_or_deleted_by_its_own_author`,
+`a_backdated_second_move_at_an_old_ply_loses_instead_of_rewriting_the_game`,
+`a_resignation_cannot_be_undone_by_playing_on`,
+`an_agreed_draw_cannot_be_withdrawn_afterwards`,
+`a_backdated_seat_claim_does_not_take_a_chair_in_a_game_under_way`,
+`a_vacate_row_filed_against_someone_elses_claim_frees_no_chair`,
+`a_chair_someone_has_played_from_is_kept`.
+
 ---
 
 ## What is deliberately NOT fixed
 
-Being honest about the residue is part of the model. Four things remain. Three
-are decisions; the fourth is now waiting on a release rather than on anyone
-making up their mind.
+Being honest about the residue is part of the model. Three things remain.
 
-**`title` and `created_at` are plain `LwwRegister`s.** Any member can
-last-write them. They are captions: nothing about a game's legality, result,
-turn order or history reads either one, so the worst case is that somebody
-relabels the table. Guarding them would mean a writer-set anchor for two strings
-nobody makes decisions from. *The general rule: know which of your fields are
-load-bearing, write it down, and let the rest be cheap.*
+**Seats before both players have moved.** Until each player has moved naming
+the other, a chair goes to its earliest claim — and `claimed_at` is the
+claimant's clock, so a patched member can still displace a seated player who
+has not played yet. A table one person plays alone, and two members colluding
+to confirm a pair of their own, are open the same way. No order between two
+people's rows is visible to a reader; only a row that names another does.
 
 **A player can stall, and a stalled table cannot be reclaimed.** Nothing forces
 a move, which is fine — a chess clock is a feature, not a security boundary. The
-sharper edge is that `stand` is refused once a game has started and nobody can
+sharper edge is that `stand` is refused once a player has played and nobody can
 vacate anyone else's chair, so a member who sits down, plays one move and walks
 away leaves that table unusable permanently. A table is a context and another
 one costs nothing, so this is griefing rather than a breach; the honest fix is
 an abandon rule (claim the win, or free the chair, after a timeout), and it is
 not written yet.
-
-**Read cost is still linear in total rows *in this app*,** for the reason in
-finding 14 — though no longer because the platform cannot do better.
-`AuthoredSortedMap` closed that in core; this contract adopts it on the release
-that carries it.
 
 **The forgery path itself has no automated coverage in this repository.** The
 byzantine tests below prove the *reader* is not fooled, and `tests/converge.rs`

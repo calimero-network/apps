@@ -607,6 +607,334 @@ fn the_roster_lists_named_members() {
     assert_eq!(roster[0].account, acct(ALICE));
 }
 
+/// A ballot written straight to storage as `who`, skipping every check in
+/// `cast_ballot` — what a modified node can do. Returns `(frozen, digest)`.
+/// The pointer goes in `who`'s own slot only when the ballot is theirs.
+fn force_ballot(
+    p: &mut Poll,
+    who: [u8; 32],
+    voter: &str,
+    sel: [bool; 3],
+    seed: &str,
+) -> (String, String) {
+    let key = p.view(ALICE).state.election.unwrap().key;
+    let pk = crypto::decode_point(&key, "key").unwrap();
+    let rules = crypto::Rules {
+        options: 3,
+        min: 1,
+        max: 1,
+    };
+    let mut rng = crypto::seeded_rng(seed.as_bytes());
+    let ballot = crypto::cast_ballot(&pk, &p.id, voter, &rules, &sel, &mut rng).unwrap();
+    let digest = hex::encode(crypto::ballot_digest(&p.id, voter, &ballot));
+    let body = StoredBallot {
+        poll_id: p.id.clone(),
+        voter: voter.to_owned(),
+        ballot: wire_ballot(&ballot),
+    };
+    let frozen = content_key(&body).unwrap();
+    let pid = p.id.clone();
+    let own = voter == acct(who);
+    let (f, d) = (frozen.clone(), digest.clone());
+    p.call(who, |s| -> app::Result<()> {
+        s.ballot_bodies.insert(parse_hash(&f)?, body)?;
+        if own {
+            let mut slot = s.slots.get()?.unwrap_or_default();
+            slot.ballots.insert(
+                pid,
+                LwwRegister::new(BallotPointer {
+                    digest: d,
+                    frozen: f,
+                    cast_at: 0,
+                }),
+            )?;
+            s.slots.insert(slot)?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    (frozen, digest)
+}
+
+/// A 2-of-3 poll, voted on by Alice and Bob and sealed, not yet decrypted.
+fn sealed_poll() -> Poll {
+    let mut p = new_poll(&[ALICE, BOB, CAROL], 2, &[ALICE, BOB, CAROL]);
+    let pid = p.id.clone();
+    p.publish_transport_keys();
+    p.deal(&[0, 1, 2], None);
+    p.call(ALICE, |s| s.open_voting(pid.clone())).unwrap();
+    p.vote(ALICE, &acct(ALICE), [true, false, false], "va")
+        .unwrap();
+    p.vote(BOB, &acct(BOB), [false, true, false], "vb").unwrap();
+    p.call(ALICE, |s| s.close_poll(pid.clone())).unwrap();
+    p.call(ALICE, |s| s.seal_poll(pid.clone())).unwrap();
+    p
+}
+
+/// Every write-once entry the audit relies on stays put even when its author
+/// runs a modified node, so no trustee or voter can fail a sealed result by
+/// rewriting their own part of it.
+#[test]
+fn nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries() {
+    let mut p = sealed_poll();
+    let pid = p.id.clone();
+    p.decrypt(0).unwrap();
+    p.decrypt(1).unwrap();
+    let before = p.report();
+    assert!(before.verified, "{:?}", before.checks);
+    assert_eq!(before.counts, Some(vec![1, 1, 0]));
+
+    // Bob's dealing cannot be edited, by Bob or anyone.
+    let (bobs_key, bobs_dealing) = p.app.view(|s| {
+        s.dealings
+            .entries()
+            .unwrap()
+            .find(|(k, _)| k.contains(&acct(BOB)))
+            .unwrap()
+    });
+    let mut other = bobs_dealing.clone();
+    other.commitments.reverse();
+    for who in [BOB, MALLORY] {
+        let (k, d) = (bobs_key.clone(), other.clone());
+        assert!(
+            p.call(who, |s| s.dealings.insert(k, d)).is_err(),
+            "a dealing is written once"
+        );
+    }
+    // A second dealing from Bob, published after the fact, changes nothing.
+    let k = format!("{pid}/{}/{}", acct(BOB), "ff".repeat(32));
+    p.call(BOB, |s| s.dealings.insert(k, other)).unwrap();
+
+    // Bob re-points his ballot after the seal; Carol votes after it.
+    let _ = force_ballot(&mut p, BOB, &acct(BOB), [false, false, true], "late-b");
+    let _ = force_ballot(&mut p, CAROL, &acct(CAROL), [false, false, true], "late-c");
+
+    let after = p.report();
+    assert!(after.verified, "{:?}", after.checks);
+    assert_eq!(after.counts, before.counts);
+    assert_eq!(
+        after.uncounted,
+        vec![acct(CAROL)],
+        "the late ballot is reported, not counted"
+    );
+    let t = p.call(ALICE, |s| s.get_transcript(pid.clone())).unwrap();
+    let bob = t.ballots.iter().find(|b| b.voter == acct(BOB)).unwrap();
+    assert!(
+        !bob.endorsed,
+        "Bob's slot moved on, which the transcript shows"
+    );
+}
+
+/// Anyone can build a well-formed ballot for any voter id; only the owner
+/// stamp shows who cast it. A seal counting a ballot the creator made for a
+/// voter fails the audit.
+#[test]
+fn a_ballot_the_creator_forged_for_a_voter_fails_the_audit() {
+    let mut p = new_poll(&[ALICE, BOB, CAROL], 2, &[ALICE, BOB, CAROL]);
+    let pid = p.id.clone();
+    p.publish_transport_keys();
+    p.deal(&[0, 1, 2], None);
+    p.call(ALICE, |s| s.open_voting(pid.clone())).unwrap();
+    p.vote(ALICE, &acct(ALICE), [true, false, false], "va")
+        .unwrap();
+    p.vote(BOB, &acct(BOB), [false, true, false], "vb").unwrap();
+    p.call(ALICE, |s| s.close_poll(pid.clone())).unwrap();
+
+    // Carol never voted. Alice stuffs a ballot in her name and seals by hand.
+    let (frozen, digest) = force_ballot(&mut p, ALICE, &acct(CAROL), [true, false, false], "x");
+    let pid2 = pid.clone();
+    p.call(ALICE, |s| -> app::Result<()> {
+        let mut counted: Vec<CountedBallot> = s
+            .current_ballots(&pid2)?
+            .into_iter()
+            .map(|(voter, ptr)| CountedBallot {
+                voter,
+                digest: ptr.digest,
+                frozen: ptr.frozen,
+            })
+            .collect();
+        counted.push(CountedBallot {
+            voter: acct(CAROL),
+            digest,
+            frozen,
+        });
+        s.closures.insert(
+            format!("{pid2}/seal"),
+            Closure {
+                counted,
+                closed_at: 0,
+            },
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let report = p.report();
+    assert!(!report.verified);
+    let check = report
+        .checks
+        .iter()
+        .find(|c| c.name == "ballot authorship")
+        .unwrap();
+    assert!(
+        !check.ok && check.detail.contains(&acct(CAROL)),
+        "{check:?}"
+    );
+    assert!(
+        report
+            .checks
+            .iter()
+            .any(|c| c.name == "ballot proofs" && c.ok),
+        "the forged ballot's proofs are fine — that is the point"
+    );
+}
+
+#[test]
+fn a_poll_whose_creator_field_is_forged_is_ignored() {
+    let mut app = TestHost::new(MeroVote::init);
+    let def = PollDefinition {
+        title: "Alice's poll, really".into(),
+        description: String::new(),
+        options: vec!["a".into(), "b".into()],
+        min_choices: 1,
+        max_choices: 1,
+        trustees: vec![acct(MALLORY)],
+        threshold: 1,
+        voters: vec![],
+        creator: acct(ALICE),
+        created_at: 0,
+        closes_at: None,
+    };
+    let id = app
+        .call_as_account(MALLORY, dev(MALLORY), |s| -> app::Result<String> {
+            let id = hex::encode(s.definitions.insert(def)?);
+            s.polls.insert(
+                id.clone(),
+                LwwRegister::new(PollControl {
+                    closing_at: None,
+                    anchor: None,
+                }),
+            )?;
+            Ok(id)
+        })
+        .unwrap();
+    let polls = app
+        .call_as_account(BOB, dev(BOB), |s| s.list_polls())
+        .unwrap();
+    assert!(polls.is_empty(), "the poll is Mallory's, not Alice's");
+    assert!(app
+        .call_as_account(BOB, dev(BOB), |s| s.get_poll(id))
+        .is_err());
+}
+
+/// The election and the seal are written once, and only the creator's count.
+/// A sealed poll cannot be taken back to voting by any write.
+#[test]
+fn the_election_and_seal_are_written_once_and_only_the_creators_count() {
+    let mut p = sealed_poll();
+    let pid = p.id.clone();
+    let election = p.view(ALICE).state.election.unwrap();
+
+    // Mallory's election for Alice's poll is stored and never read.
+    let mut fake = election.clone();
+    fake.key = "00".repeat(32);
+    let (k, e) = (format!("{pid}/{}", "00".repeat(16)), fake.clone());
+    p.call(MALLORY, |s| s.elections.insert(k, e)).unwrap();
+    assert_eq!(p.view(BOB).state.election.unwrap().key, election.key);
+    assert!(p.report().checks.iter().all(|c| c.ok));
+
+    // Alice's own election cannot be edited.
+    let alices = p.app.view(|s| {
+        s.elections
+            .entries()
+            .unwrap()
+            .map(|(k, _)| k)
+            .find(|k| {
+                let owner = s.elections.owner_of(k).unwrap();
+                owner.map(|o| o.to_string()) == Some(acct(ALICE))
+            })
+            .unwrap()
+    });
+    let e = fake.clone();
+    assert!(p.call(ALICE, |s| s.elections.insert(alices, e)).is_err());
+
+    // Clearing the closing notice leaves the poll sealed.
+    let pid2 = pid.clone();
+    p.call(ALICE, |s| {
+        s.polls.update(
+            &pid2,
+            LwwRegister::new(PollControl {
+                closing_at: None,
+                anchor: None,
+            }),
+        )
+    })
+    .unwrap();
+    assert_eq!(p.view(BOB).state.phase, Phase::Closed);
+    assert!(p
+        .vote(CAROL, &acct(CAROL), [true, false, false], "c")
+        .is_err());
+
+    // A second election of Alice's own is equivocation, and fails the audit.
+    let k = format!("{pid}/{}", "ff".repeat(16));
+    p.call(ALICE, |s| s.elections.insert(k, fake)).unwrap();
+    let report = p.report();
+    assert!(!report.verified);
+    assert!(report
+        .checks
+        .iter()
+        .any(|c| c.name == "written once" && !c.ok));
+}
+
+/// A complaint is read from its recipient's own entries, so nobody can file
+/// one in a trustee's name or occupy the key a trustee will file under.
+#[test]
+fn a_complaint_in_someone_elses_name_is_ignored() {
+    let mut p = new_poll(&[ALICE, BOB, CAROL], 2, &[]);
+    let pid = p.id.clone();
+    p.publish_transport_keys();
+    p.deal(&[0, 1, 2], Some((2, 1)));
+
+    let squat = Complaint {
+        poll_id: pid.clone(),
+        dealer: acct(ALICE),
+        secret: "00".repeat(32),
+        proof: WireBranch {
+            c: "00".repeat(32),
+            z: "00".repeat(32),
+        },
+    };
+    let k = format!("{pid}/{}/{}/x", acct(BOB), acct(ALICE));
+    p.call(MALLORY, |s| s.complaints.insert(k, squat)).unwrap();
+    let cer = p.call(ALICE, |s| s.ceremony(pid.clone())).unwrap();
+    assert!(cer.complaints.is_empty(), "Mallory's entry is not Bob's");
+
+    // Bob still files his real complaint against Carol.
+    let carols = decode_dealing(cer.trustees[2].dealing.as_ref().unwrap()).unwrap();
+    let mut rng = crypto::seeded_rng(b"complaint");
+    let (sec, proof) = crypto::make_complaint(
+        &pid,
+        &acct(BOB),
+        &acct(CAROL),
+        2,
+        &p.es[1],
+        &carols,
+        &mut rng,
+    )
+    .unwrap();
+    p.call(BOB, |s| {
+        s.file_complaint(
+            pid.clone(),
+            acct(CAROL),
+            crypto::encode_point(&sec),
+            wire_branch(&proof),
+        )
+    })
+    .unwrap();
+    let view = p.view(ALICE);
+    assert_eq!(view.trustees[2].complaints_against, 1);
+}
+
 /// The transcript text is the one thing both implementations must build
 /// identically that `vectors.json` does not cover, because it lives in this
 /// crate rather than the crypto one. Same fixed inputs here and in the

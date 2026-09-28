@@ -3,6 +3,7 @@
   "types": {
     "CalendarEventState": {
       "kind": "record",
+      "doc": "One shared event. Its real owner is the entry's owner stamp; `owner` here is\nonly the key of the `owner` index, and a row whose field disagrees with the\nstamp — what a patched node would write — is dropped on read.",
       "fields": [
         {
           "name": "title",
@@ -55,7 +56,8 @@
               "kind": "bytes",
               "size": 32
             }
-          }
+          },
+          "doc": "One `peers` index row per invitee."
         },
         {
           "name": "created_at",
@@ -84,8 +86,9 @@
             "value": {
               "$ref": "CalendarEventState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Key is the event id; the value is the shared event, owned by the\naccount that created it. Only that account edits or deletes it."
         },
         {
           "name": "members",
@@ -96,14 +99,15 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "Each member's display name, in their own slot."
         }
       ]
     },
     "Member": {
       "kind": "record",
+      "doc": "A context member with a human-readable display name, in the member's own\n`UserStorage` slot (keyed by ACCOUNT), so the UI can resolve `owner`/`peers`\nto names. `id` is filled from the slot's key on read, never trusted from\nthe stored value.",
       "fields": [
         {
           "name": "id",
@@ -118,16 +122,17 @@
           }
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Dedicated LWW clock for username edits. Merging on `joined_at` (which\nnever changes after first join) would freeze a username at its first\nvalue across nodes; this is the real last-writer-wins timestamp."
         }
       ]
     }

@@ -1,41 +1,39 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Avatars": {
+      "kind": "record",
+      "doc": "One account's avatars, keyed by device (see `caller`). The slot and the\nmap nested in it belong to the account: every node refuses another\naccount's write to either.",
+      "fields": [
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "Merraria": {
       "kind": "record",
       "fields": [
         {
-          "name": "name",
+          "name": "meta",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "WorldMeta"
             }
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "name + seed + day-clock anchor, frozen: the terrain is derived from the\nseed, so nobody (the creator included) may change it after creation."
         },
         {
           "name": "overrides",
@@ -48,7 +46,8 @@
               "$ref": "TileOverride"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "\"x,y\" -> override. Set-only (dig = t:0), never removed. Public on\npurpose: the world is collaborative."
         },
         {
           "name": "players",
@@ -58,22 +57,8 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "reap_marks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ReapMark"
-            },
-            "crdt_type": "unordered_map"
+              "$ref": "Avatars"
+            }
           }
         }
       ]
@@ -81,12 +66,6 @@
     "Player": {
       "kind": "record",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -109,7 +88,8 @@
           "name": "dir",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "facing: -1 | 1"
         },
         {
           "name": "sel",
@@ -121,7 +101,8 @@
           "name": "action",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "what the player is doing: \"idle\" | \"walking\" | \"mining\" | \"building\" | \"swimming\""
         },
         {
           "name": "left",
@@ -130,30 +111,13 @@
           }
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "ReapMark": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "marked_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "row_ts",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -162,6 +126,7 @@
     },
     "TileOverride": {
       "kind": "record",
+      "doc": "One tile override: `t` is the tile id (0 = air / dug out).",
       "fields": [
         {
           "name": "t",
@@ -170,7 +135,30 @@
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "WorldMeta": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }

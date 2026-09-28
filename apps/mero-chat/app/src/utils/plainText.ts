@@ -44,3 +44,35 @@ export function notificationPreview(html: string, maxLength = 100): string {
   const text = toPlainText(html);
   return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
 }
+
+/** How much of a message a notification needs: its text and attachment counts. */
+export interface NotifiableMessage {
+  text?: string | null;
+  images?: ArrayLike<unknown> | null;
+  files?: ArrayLike<unknown> | null;
+}
+
+/**
+ * What a notification should say about `message`, or `""` when there is
+ * nothing to announce.
+ *
+ * A message can be attachments alone, with no text. Its text flattens to
+ * nothing, so it used to fail every `if (msg.text)` guard and nobody was
+ * notified. Say what was sent instead: "Alice sent an image".
+ *
+ * Text, when there is any, is returned as-is (still HTML). The notify calls
+ * flatten and truncate it, and the attachment sentence passes through that
+ * unchanged.
+ */
+export function notificationBody(message: NotifiableMessage, senderName: string): string {
+  const text = message.text ?? "";
+  if (toPlainText(text)) return text;
+
+  const hasImage = (message.images?.length ?? 0) > 0;
+  const hasFile = (message.files?.length ?? 0) > 0;
+  const sender = senderName || "Someone";
+  if (hasImage && hasFile) return `${sender} sent an image and a file`;
+  if (hasImage) return `${sender} sent an image`;
+  if (hasFile) return `${sender} sent a file`;
+  return "";
+}

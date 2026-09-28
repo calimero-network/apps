@@ -35,8 +35,8 @@ use calimero_sdk::serde::Serialize;
 use calimero_sdk::{app, env, AccountId, ContextId};
 use calimero_storage::collections::{
     AccessControl, AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister,
-    Mergeable, Ownable, ReplicatedGrowableArray, SharedStorage, SortedMap, SortedSet, UnorderedMap,
-    UnorderedSet, UserStorage, Vector,
+    Mergeable, Moderated, Ownable, ReplicatedGrowableArray, SharedStorage, SortedMap, SortedSet,
+    UnorderedMap, UnorderedSet, UserStorage, Vector,
 };
 use calimero_storage::entities::OpMask;
 use sha2::{Digest, Sha256};
@@ -75,6 +75,17 @@ struct NestedMap {
     map: UnorderedMap<String, LwwRegister<String>>,
 }
 
+/// The workspace claim: its name and the account that made it. Written once,
+/// by `ws_init`, into a writer-set cell whose writers are the admins.
+#[derive(AbiType, Debug, Clone, Default, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+struct WsClaim {
+    /// Empty is the "not claimed" sentinel — `ws_init` rejects an empty name.
+    name: String,
+    /// The account that ran `ws_init`, 64 hex.
+    admin: String,
+}
+
 /// What `whoami` returns — see that method for why both halves exist.
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -96,6 +107,7 @@ pub struct FileRecord {
     pub id: String,
     pub name: String,
     #[serde(serialize_with = "serialize_blob_id_bytes")]
+    #[abi(as = String)]
     pub blob_id: [u8; 32],
     pub size: u64,
     pub mime_type: String,
@@ -122,7 +134,9 @@ pub struct ChannelRecord {
     pub context_id: String,
     pub name: String,
     pub topic: String,
-    /// The ACCOUNT that registered it, 64 hex — see `caller_account`.
+    /// The ACCOUNT that registered it, 64 hex. Listings fill it from the
+    /// entry's owner stamp, never from the stored bytes, which the writer
+    /// chose.
     pub created_by: String,
     pub registered_at: u64,
 }
@@ -137,6 +151,7 @@ pub struct WsGroupRecord {
     pub group_id: String,
     pub name: String,
     pub description: String,
+    /// As `ChannelRecord::created_by`: read from the owner stamp.
     pub created_by: String,
     pub registered_at: u64,
 }
@@ -230,10 +245,6 @@ pub struct E2eKvStore {
     // --- Blob Storage ---
     /// File metadata records
     files: UnorderedMap<String, FileRecord>,
-    /// Counter for generating file IDs
-    file_counter: LwwRegister<u64>,
-    /// Owner of the file share context
-    file_owner: LwwRegister<String>,
 
     // --- Nested CRDTs ---
     /// Map of G-Counters (grow-only, concurrent increments should sum)
@@ -285,21 +296,22 @@ pub struct E2eKvStore {
     shared_data: SharedStorage<LwwRegister<String>>,
 
     // --- Workspace Registry ---
-    /// Workspace name. Empty is the "not initialized" sentinel — a workspace
-    /// cannot be named "" (`ws_init` rejects it), so the two states never
-    /// collide.
-    ws_name: LwwRegister<String>,
-    /// The account that ran `ws_init`, 64 hex. Empty until then.
-    ws_admin: LwwRegister<String>,
+    /// Name and admin. Writers are the workspace admins: the context creator
+    /// first, then whoever an admin grants `admin`. Every node checks a write
+    /// against them, so a patched member cannot claim or rename it.
+    ws_claim: SharedStorage<LwwRegister<WsClaim>>,
+    /// identity -> role, in a writer-set cell with the same writers as
+    /// `ws_claim`: every entry is guarded by it, so a patched member cannot
+    /// grant itself `admin` or demote the real one. `LwwRegister` values so
+    /// two admins changing one member's role concurrently converge.
+    ws_roles: SharedStorage<UnorderedMap<String, LwwRegister<String>>>,
     /// context_id -> channel. Keyed by the context id so a re-register of the
-    /// same context updates rather than duplicates.
-    ws_channels: UnorderedMap<String, ChannelRecord>,
-    /// group_id -> group.
-    ws_groups: UnorderedMap<String, WsGroupRecord>,
-    /// identity -> role. `LwwRegister` (not a plain `String`) so two admins
-    /// changing one member's role concurrently converge instead of one write
-    /// being lost.
-    ws_roles: UnorderedMap<String, LwwRegister<String>>,
+    /// same context updates rather than duplicates. Each entry is owned by
+    /// the account that registered it; the workspace admins moderate, so an
+    /// admin may remove anyone's entry and nobody else may.
+    ws_channels: Moderated<UnorderedMap<String, ChannelRecord>>,
+    /// group_id -> group, owned and moderated as `ws_channels`.
+    ws_groups: Moderated<UnorderedMap<String, WsGroupRecord>>,
     /// Pongs received via `xcall`. Grow-only: a pong is an event that happened,
     /// and no node can un-happen another node's.
     ws_pings: Counter,
@@ -425,10 +437,6 @@ pub enum Event<'a> {
     },
 
     // RGA Events
-    DocumentCreated {
-        title: String,
-        owner: String,
-    },
     TextInserted {
         position: usize,
         text: String,
@@ -647,6 +655,12 @@ impl E2eKvStore {
     pub fn init() -> E2eKvStore {
         app::log!("Initializing E2E KV Store");
 
+        // The workspace admin set, four times over: both directories'
+        // moderators and both writer-set cells' writers. Seeded from the one
+        // set the directories were created with so they agree by construction.
+        let ws_channels: Moderated<UnorderedMap<String, ChannelRecord>> = Moderated::new();
+        let ws_admins = ws_channels.moderators();
+
         E2eKvStore {
             // KV
             kv_items: UnorderedMap::new(),
@@ -678,8 +692,6 @@ impl E2eKvStore {
             games: UnorderedMap::new(),
             // Blob Storage
             files: UnorderedMap::new(),
-            file_counter: LwwRegister::new(0),
-            file_owner: LwwRegister::new(String::new()),
             // Nested CRDTs
             crdt_counters: UnorderedMap::new(),
             crdt_pn_counters: UnorderedMap::new(),
@@ -708,16 +720,16 @@ impl E2eKvStore {
                 std::iter::once(AccountId::from(env::account_id())).collect(),
                 false,
             ),
-            // Workspace Registry — deliberately NOT seeded with the deployer as
-            // admin. `init` runs once per context, and the workspace is claimed
-            // later by whoever calls `ws_init`; seeding it here would make the
-            // context creator the permanent admin of a workspace that may not
-            // exist yet.
-            ws_name: LwwRegister::new(String::new()),
-            ws_admin: LwwRegister::new(String::new()),
-            ws_channels: UnorderedMap::new(),
-            ws_groups: UnorderedMap::new(),
-            ws_roles: UnorderedMap::new(),
+            // Workspace Registry — the context creator's ACCOUNT is the sole
+            // initial admin: of the role cell (its writer set) and of the two
+            // directories (their moderators). The claim itself is still made
+            // later, by `ws_init`, but only an admin can make it. "First caller
+            // wins" is not something storage can hold against a patched node;
+            // a writer set is.
+            ws_claim: SharedStorage::new(ws_admins.clone(), false),
+            ws_roles: SharedStorage::new(ws_admins, false),
+            ws_channels,
+            ws_groups: Moderated::new(),
             ws_pings: Counter::new(),
         }
     }
@@ -894,14 +906,25 @@ impl E2eKvStore {
 
     pub fn remove(&mut self, key: &str) -> app::Result<Option<String>> {
         app::log!("Removing key: {:?}", key);
-        app::emit!(Event::Removed { key });
-        Ok(self.kv_items.remove(key)?.map(|v| v.get().clone()))
+        // Only emit `Removed` when a value was actually present — emitting for
+        // an absent key would broadcast a change that never happened.
+        let removed = self.kv_items.remove(key)?.map(|v| v.get().clone());
+        if removed.is_some() {
+            app::emit!(Event::Removed { key });
+        }
+        Ok(removed)
     }
 
     pub fn clear(&mut self) -> app::Result<()> {
         app::log!("Clearing all entries");
-        app::emit!(Event::Cleared);
-        self.kv_items.clear().map_err(Into::into)
+        // Only emit `Cleared` when there was something to clear, and only
+        // after the clear succeeds.
+        let was_non_empty = !self.kv_items.is_empty()?;
+        self.kv_items.clear()?;
+        if was_non_empty {
+            app::emit!(Event::Cleared);
+        }
+        Ok(())
     }
 
     /// Remove with handler trigger (for testing event-driven handlers)
@@ -1366,12 +1389,14 @@ impl E2eKvStore {
     ) -> app::Result<String> {
         let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
-        let current_counter = *self.file_counter.get();
-        let file_id = format!("file_{current_counter}");
-        self.file_counter.set(current_counter + 1);
-
         let uploader = caller_account();
         let timestamp = env::time_now();
+        // Unique without coordination: a shared counter read by two nodes at
+        // once hands both the same id, and the whole-record LWW then drops one
+        // upload silently. A device runs one execution at a time, so its id
+        // plus its clock separates every upload.
+        let device = hex::encode(env::device_id());
+        let file_id = format!("file_{}_{timestamp}", &device[..16]);
 
         // `blob_announce_to_context` returns once the announce is SCHEDULED, not
         // once it is delivered — and since rc.39 it feeds availability-node
@@ -2037,19 +2062,21 @@ impl E2eKvStore {
     //   * WORKSPACE role — what the app lets a member do. Enforced here, and
     //     only meaningful for callers the node already admitted.
 
-    /// Claim the workspace and become its admin.
+    /// Claim the workspace: name it and record the caller as its admin.
     ///
-    /// Not seeded in `init`: a context can exist before anyone decides to run a
-    /// workspace in it, and the claim is what makes `caller_account()` the
-    /// admin. First caller wins, and there is no transfer — this is a scaffold,
-    /// and a role-transfer flow would be the interesting part of a different
-    /// example.
+    /// Only a workspace admin may — initially the context creator, the sole
+    /// writer of `ws_claim` from `init`. A claim by anyone else is refused by
+    /// storage, on every node, rather than by the check below: "first caller
+    /// wins" read off a public register is a race a patched node always wins.
+    /// There is no transfer — this is a scaffold, and a role-transfer flow
+    /// would be the interesting part of a different example.
     pub fn ws_init(&mut self, name: String) -> app::Result<()> {
-        if !self.ws_name.get().is_empty() {
+        let current = self.ws_claim.get()?.get().clone();
+        if !current.name.is_empty() {
             app::bail!(
                 "workspace already initialized as '{}' by {}",
-                self.ws_name.get(),
-                self.ws_admin.get()
+                current.name,
+                current.admin
             );
         }
         if name.trim().is_empty() {
@@ -2057,9 +2084,13 @@ impl E2eKvStore {
         }
 
         let admin = caller_account();
-        self.ws_name.set(name.clone());
-        self.ws_admin.set(admin.clone());
-        self.ws_roles
+        let _previous = self.ws_claim.insert(LwwRegister::new(WsClaim {
+            name: name.clone(),
+            admin: admin.clone(),
+        }))?;
+        let _prior = self
+            .ws_roles
+            .get_mut()?
             .insert(admin.clone(), LwwRegister::new(ROLE_ADMIN.to_owned()))?;
 
         app::emit!(Event::WorkspaceInitialized {
@@ -2075,21 +2106,23 @@ impl E2eKvStore {
     /// Errors — rather than returning an empty summary — while unclaimed, so a
     /// caller cannot mistake "no workspace here" for "an empty workspace".
     pub fn ws_get_info(&self) -> app::Result<WorkspaceInfo> {
-        let name = self.ws_name.get().clone();
-        if name.is_empty() {
+        let claim = self.ws_claim.get()?.get().clone();
+        if claim.name.is_empty() {
             app::bail!("workspace not initialized: call ws_init first");
         }
         Ok(WorkspaceInfo {
-            name,
-            admin: self.ws_admin.get().clone(),
+            name: claim.name,
+            admin: claim.admin,
             channel_count: self.ws_channels.len()?,
             group_count: self.ws_groups.len()?,
-            member_count: self.ws_roles.len()?,
+            member_count: self.ws_roles.get()?.len()?,
         })
     }
 
-    /// Add a context to the directory, or update the entry for one already in
-    /// it. Any member may register; `read-only` may not.
+    /// Add a context to the directory, or update the entry for one the caller
+    /// registered. Any member may register; `read-only` may not (an app-level
+    /// check). A context someone else registered is theirs: storage refuses
+    /// the overwrite, so it can only be removed by them or an admin.
     pub fn ws_register_channel(
         &mut self,
         context_id: String,
@@ -2101,16 +2134,18 @@ impl E2eKvStore {
             app::bail!("context_id cannot be empty");
         }
 
-        self.ws_channels.insert(
-            context_id.clone(),
-            ChannelRecord {
-                context_id: context_id.clone(),
-                name: name.clone(),
-                topic,
-                created_by: by.clone(),
-                registered_at: env::time_now(),
-            },
-        )?;
+        let record = ChannelRecord {
+            context_id: context_id.clone(),
+            name: name.clone(),
+            topic,
+            created_by: by.clone(),
+            registered_at: env::time_now(),
+        };
+        if self.ws_channels.contains(&context_id)? {
+            self.ws_channels.update(&context_id, record)?;
+        } else {
+            self.ws_channels.insert(context_id.clone(), record)?;
+        }
 
         app::emit!(Event::ChannelRegistered {
             context_id: context_id.clone(),
@@ -2120,6 +2155,8 @@ impl E2eKvStore {
         Ok(())
     }
 
+    /// Remove a channel: its registrant or a workspace admin (a moderator of
+    /// the directory) may, and storage refuses anyone else.
     pub fn ws_unregister_channel(&mut self, context_id: String) -> app::Result<()> {
         let _by = self.require_writer()?;
         if self.ws_channels.remove(&context_id)?.is_none() {
@@ -2135,8 +2172,12 @@ impl E2eKvStore {
     /// a listing is how a new member finds out what to join.
     pub fn ws_list_channels(&self) -> app::Result<Vec<ChannelRecord>> {
         let mut channels = Vec::new();
-        for (_, record) in self.ws_channels.entries()? {
-            channels.push(record.clone());
+        for (key, mut record) in self.ws_channels.entries()? {
+            record.created_by = self
+                .ws_channels
+                .owner_of(&key)?
+                .map_or_else(String::new, |owner| owner.to_string());
+            channels.push(record);
         }
         // `UnorderedMap` iteration order is not part of its contract, so sort
         // for a stable listing — two nodes must render the same table.
@@ -2144,6 +2185,7 @@ impl E2eKvStore {
         Ok(channels)
     }
 
+    /// Add or update a group; ownership as `ws_register_channel`.
     pub fn ws_register_group(
         &mut self,
         group_id: String,
@@ -2155,16 +2197,18 @@ impl E2eKvStore {
             app::bail!("group_id cannot be empty");
         }
 
-        self.ws_groups.insert(
-            group_id.clone(),
-            WsGroupRecord {
-                group_id: group_id.clone(),
-                name: name.clone(),
-                description,
-                created_by: by.clone(),
-                registered_at: env::time_now(),
-            },
-        )?;
+        let record = WsGroupRecord {
+            group_id: group_id.clone(),
+            name: name.clone(),
+            description,
+            created_by: by.clone(),
+            registered_at: env::time_now(),
+        };
+        if self.ws_groups.contains(&group_id)? {
+            self.ws_groups.update(&group_id, record)?;
+        } else {
+            self.ws_groups.insert(group_id.clone(), record)?;
+        }
 
         app::emit!(Event::GroupRegistered {
             group_id: group_id.clone(),
@@ -2187,14 +2231,19 @@ impl E2eKvStore {
 
     pub fn ws_list_groups(&self) -> app::Result<Vec<WsGroupRecord>> {
         let mut groups = Vec::new();
-        for (_, record) in self.ws_groups.entries()? {
-            groups.push(record.clone());
+        for (key, mut record) in self.ws_groups.entries()? {
+            record.created_by = self
+                .ws_groups
+                .owner_of(&key)?
+                .map_or_else(String::new, |owner| owner.to_string());
+            groups.push(record);
         }
         groups.sort_by(|a, b| a.group_id.cmp(&b.group_id));
         Ok(groups)
     }
 
-    /// Grant `identity` a workspace role. Admin only.
+    /// Grant `identity` a workspace role. Admin only — and enforced by
+    /// storage: `ws_roles`' writers are the admins.
     ///
     /// `identity` is a free-form `String`, not an `AccountId`, and that is not
     /// laziness: the UI grants roles to node identities it read from the admin
@@ -2207,6 +2256,11 @@ impl E2eKvStore {
     /// **only a role granted under the caller's own `account_id` is a role that
     /// `ws_my_role` will ever return** — everything else is a directory entry.
     /// This is the app-level mirror of the writer-set trap in `shared_*`.
+    ///
+    /// Granting or taking away `admin` also rotates the admin set — the
+    /// writers of `ws_claim` and `ws_roles`, and both directories' moderators
+    /// — for an identity that parses as an account. That set, not the role
+    /// string, is what storage enforces.
     pub fn ws_set_member_role(&mut self, identity: String, role: String) -> app::Result<()> {
         let by = self.require_admin()?;
         if identity.trim().is_empty() {
@@ -2222,8 +2276,29 @@ impl E2eKvStore {
             app::bail!("an admin cannot demote themselves — the workspace would have none");
         }
 
-        let mut entry = self.ws_roles.entry(identity.clone())?.or_default()?;
-        entry.set(role.clone());
+        {
+            let mut entry = self
+                .ws_roles
+                .get_mut()?
+                .entry(identity.clone())?
+                .or_default()?;
+            entry.set(role.clone());
+        }
+
+        if let Ok(account) = identity.parse::<AccountId>() {
+            let mut admins = self.ws_roles.writers();
+            let changed = if role == ROLE_ADMIN {
+                admins.insert(account)
+            } else {
+                admins.remove(&account)
+            };
+            if changed {
+                self.ws_claim.rotate_writers(admins.clone())?;
+                self.ws_roles.rotate_writers(admins.clone())?;
+                self.ws_channels.set_moderators(admins.clone())?;
+                self.ws_groups.set_moderators(admins)?;
+            }
+        }
 
         app::emit!(Event::MemberRoleSet {
             identity: identity.clone(),
@@ -2237,6 +2312,7 @@ impl E2eKvStore {
     pub fn ws_get_member_role(&self, identity: String) -> app::Result<String> {
         Ok(self
             .ws_roles
+            .get()?
             .get(&identity)?
             .map_or_else(String::new, |role| role.get().clone()))
     }
@@ -2250,7 +2326,7 @@ impl E2eKvStore {
 
     pub fn ws_list_members(&self) -> app::Result<Vec<MemberRecord>> {
         let mut members = Vec::new();
-        for (identity, role) in self.ws_roles.entries()? {
+        for (identity, role) in self.ws_roles.get()?.entries()? {
             members.push(MemberRecord {
                 identity,
                 role: role.get().clone(),
@@ -2351,7 +2427,7 @@ impl E2eKvStore {
 
     /// The caller's account, if the workspace is claimed and they hold any role.
     fn require_member(&self) -> app::Result<String> {
-        if self.ws_name.get().is_empty() {
+        if self.ws_claim.get()?.get().name.is_empty() {
             app::bail!("workspace not initialized: call ws_init first");
         }
         let me = caller_account();
@@ -2363,7 +2439,8 @@ impl E2eKvStore {
         Ok(me)
     }
 
-    /// The caller's account, if they are an admin.
+    /// The caller's account, if they are an admin. A fail-fast check only:
+    /// storage refuses a non-admin's write to `ws_roles` regardless.
     fn require_admin(&self) -> app::Result<String> {
         let me = self.require_member()?;
         let role = self.ws_get_member_role(me.clone())?;
@@ -2371,5 +2448,233 @@ impl E2eKvStore {
             app::bail!("role '{role}' cannot manage members; '{ROLE_ADMIN}' required");
         }
         Ok(me)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use calimero_sdk::testing::TestHost;
+
+    use super::*;
+
+    const ALICE: [u8; 32] = [0xA1; 32];
+    const BOB: [u8; 32] = [0xB0; 32];
+
+    fn hex_of(account: [u8; 32]) -> String {
+        AccountId::from(account).to_string()
+    }
+
+    /// The account that ran `init`, as storage recorded it: the first admin
+    /// of the workspace (and of `acl`).
+    fn creator(app: &TestHost<E2eKvStore>) -> [u8; 32] {
+        let admins = app.view(|s| s.acl_admins()).expect("admins");
+        let bytes = hex::decode(&admins[0]).expect("hex");
+        bytes.try_into().expect("an account is 32 bytes")
+    }
+
+    /// A claimed workspace with ALICE and BOB as plain members.
+    fn workspace() -> (TestHost<E2eKvStore>, [u8; 32]) {
+        let mut app = TestHost::new(E2eKvStore::init);
+        let admin = creator(&app);
+        app.call_as_account(admin, admin, |s| s.ws_init("Team".to_owned()))
+            .expect("the creator claims");
+        for who in [ALICE, BOB] {
+            app.call_as_account(admin, admin, |s| {
+                s.ws_set_member_role(hex_of(who), ROLE_MEMBER.to_owned())
+            })
+            .expect("grant member");
+        }
+        (app, admin)
+    }
+
+    fn channel(context_id: &str) -> ChannelRecord {
+        ChannelRecord {
+            context_id: context_id.to_owned(),
+            name: "#forged".to_owned(),
+            topic: String::new(),
+            created_by: "someone-else".to_owned(),
+            registered_at: 0,
+        }
+    }
+
+    #[test]
+    fn only_an_admin_can_claim_the_workspace() {
+        let mut app = TestHost::new(E2eKvStore::init);
+        assert!(app
+            .call_as_account(ALICE, ALICE, |s| s.ws_init("Mine".to_owned()))
+            .is_err());
+        let admin = creator(&app);
+        app.call_as_account(admin, admin, |s| s.ws_init("Team".to_owned()))
+            .expect("the creator claims");
+        let info = app.view(|s| s.ws_get_info()).expect("info");
+        assert_eq!((info.name.as_str(), info.admin), ("Team", hex_of(admin)));
+    }
+
+    /// A member cannot promote itself through the API, nor — the patched-node
+    /// path, skipping `require_admin` — rewrite the claim cell, which storage
+    /// refuses outright. A direct write into the role map is stamped a member
+    /// of the admins' cell and refused by every peer on apply (core's
+    /// `a_writer_set_guards_the_second_level_too`); the mock host has one
+    /// replica, so that half is core's to test.
+    #[test]
+    fn a_member_cannot_grant_itself_admin() {
+        let (mut app, admin) = workspace();
+        assert!(app
+            .call_as_account(ALICE, ALICE, |s| {
+                s.ws_set_member_role(hex_of(ALICE), ROLE_ADMIN.to_owned())
+            })
+            .is_err());
+        let forged_claim = app.call_as_account(ALICE, ALICE, |s| -> app::Result<()> {
+            let _ = s.ws_claim.insert(LwwRegister::new(WsClaim {
+                name: "Hijacked".to_owned(),
+                admin: hex_of(ALICE),
+            }))?;
+            Ok(())
+        });
+        assert!(forged_claim.is_err(), "nor may it rewrite the claim");
+        assert_eq!(
+            app.call_as_account(ALICE, ALICE, |s| s.ws_my_role())
+                .expect("role"),
+            ROLE_MEMBER
+        );
+        assert_eq!(
+            app.view(|s| s.ws_roles.writers()),
+            [AccountId::from(admin)].into_iter().collect(),
+            "the admin set is unchanged"
+        );
+    }
+
+    /// A member's channel is theirs: another member can neither overwrite nor
+    /// remove it, the owner can update it, and an admin (a moderator) can
+    /// remove it.
+    #[test]
+    fn a_channel_belongs_to_its_registrant_and_admins_moderate() {
+        let (mut app, admin) = workspace();
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.ws_register_channel("ctx".to_owned(), "#a".to_owned(), String::new())
+        })
+        .expect("register");
+        assert!(app
+            .call_as_account(BOB, BOB, |s| {
+                s.ws_register_channel("ctx".to_owned(), "#b".to_owned(), String::new())
+            })
+            .is_err());
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.ws_unregister_channel("ctx".to_owned()))
+            .is_err());
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.ws_register_channel("ctx".to_owned(), "#a2".to_owned(), String::new())
+        })
+        .expect("the registrant updates");
+        let listed = app.view(|s| s.ws_list_channels()).expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "#a2");
+
+        app.call_as_account(admin, admin, |s| s.ws_unregister_channel("ctx".to_owned()))
+            .expect("an admin moderates");
+        assert!(app.view(|s| s.ws_list_channels()).expect("list").is_empty());
+    }
+
+    /// `created_by` in a listing is the owner stamp, not the stored bytes.
+    #[test]
+    fn a_listing_reports_the_owner_stamp_not_the_stored_author() {
+        let (mut app, _admin) = workspace();
+        app.call_as_account(ALICE, ALICE, |s| -> app::Result<()> {
+            s.ws_channels.insert("ctx".to_owned(), channel("ctx"))?;
+            Ok(())
+        })
+        .expect("insert");
+        let listed = app.view(|s| s.ws_list_channels()).expect("list");
+        assert_eq!(listed[0].created_by, hex_of(ALICE));
+    }
+
+    /// Granting `admin` rotates the admin set, so the new admin can moderate
+    /// and manage members; demoting them takes both away again.
+    #[test]
+    fn granting_admin_hands_over_moderation_and_demoting_takes_it_back() {
+        let (mut app, admin) = workspace();
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.ws_register_group("g".to_owned(), "G".to_owned(), String::new())
+        })
+        .expect("register");
+        app.call_as_account(admin, admin, |s| {
+            s.ws_set_member_role(hex_of(BOB), ROLE_ADMIN.to_owned())
+        })
+        .expect("promote");
+        app.call_as_account(BOB, BOB, |s| s.ws_unregister_group("g".to_owned()))
+            .expect("a promoted admin moderates");
+
+        app.call_as_account(admin, admin, |s| {
+            s.ws_set_member_role(hex_of(BOB), ROLE_MEMBER.to_owned())
+        })
+        .expect("demote");
+        assert!(!app
+            .view(|s| s.ws_roles.writers())
+            .contains(&AccountId::from(BOB)));
+        assert!(!app.view(|s| s.ws_channels.is_moderator(&AccountId::from(BOB))));
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.ws_register_group("h".to_owned(), "H".to_owned(), String::new())
+        })
+        .expect("register");
+        assert!(
+            app.call_as_account(BOB, BOB, |s| s.ws_unregister_group("h".to_owned()))
+                .is_err(),
+            "a demoted admin no longer moderates"
+        );
+    }
+
+    /// Two devices uploading at once no longer mint the same id.
+    #[test]
+    fn concurrent_uploads_get_distinct_ids() {
+        let mut app = TestHost::new(E2eKvStore::init);
+        let blob = hex::encode([7u8; 32]);
+        let a = app
+            .call_as([1; 32], |s| {
+                s.upload_file("a".into(), blob.clone(), 1, "text/plain".into())
+            })
+            .expect("upload");
+        let b = app
+            .call_as([2; 32], |s| {
+                s.upload_file("b".into(), blob.clone(), 1, "text/plain".into())
+            })
+            .expect("upload");
+        assert_ne!(a, b);
+        assert_eq!(app.view(|s| s.list_files()).expect("list").len(), 2);
+    }
+
+    /// The map nested in a `UserStorage` slot is the slot owner's.
+    #[test]
+    fn another_account_cannot_write_into_my_nested_user_map() {
+        let mut app = TestHost::new(E2eKvStore::init);
+        app.call_as_account(ALICE, ALICE, |s| {
+            s.set_user_nested("k".to_owned(), "mine".to_owned())
+        })
+        .expect("set");
+        let forged = app.call_as_account(BOB, BOB, |s| -> app::Result<()> {
+            let Some(mut alices) = s.user_items_nested.get_for_user(&AccountId::from(ALICE))?
+            else {
+                app::bail!("alice has a slot");
+            };
+            let _ = alices
+                .map
+                .insert("k".to_owned(), "forged".to_owned().into())?;
+            Ok(())
+        });
+        assert!(forged.is_err());
+        assert_eq!(
+            app.call_as_account(ALICE, ALICE, |s| s.get_user_nested("k"))
+                .expect("get")
+                .as_deref(),
+            Some("mine")
+        );
+    }
+
+    #[test]
+    fn removing_an_absent_key_or_clearing_nothing_emits_nothing() {
+        let mut app = TestHost::new(E2eKvStore::init);
+        let _ = app.take_events();
+        assert_eq!(app.call(|s| s.remove("missing")).expect("remove"), None);
+        app.call(|s| s.clear()).expect("clear");
+        assert!(app.events().is_empty());
     }
 }

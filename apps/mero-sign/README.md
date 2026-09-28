@@ -51,35 +51,34 @@ keeps their role):
 | `Sign`  | Upload documents and sign them. What redeeming an invitation gives you.        |
 | `Admin` | Everything a signer can do, plus deleting documents and managing participants. |
 
-The agreement's creator is its first `Admin`. An admin can **promote** anyone in
-the roster, from the participants panel.
-
-⚠️ **Demotion is not offered, and that is a property of the contract rather than
-a missing button.** Permissions merge by taking the *higher* level, so a lowered
-level applies on the admin's node and is discarded the moment it meets a replica
-that still holds the old one. The contract refuses the write rather than
-accepting one it cannot converge, and the panel says so. The way to withdraw
-authority that does reach every node is to **remove** the participant. Making a
-demotion stick needs a last-writer-wins permission cell, which changes the stored
-layout and so requires recreating every existing context — an owner's decision.
+The agreement's creator is its first `Admin`. An admin can change anyone's
+level, up or down, from the participants panel, or remove them; the last admin
+cannot step down. Levels are grants in an `AccessControl` registry that only
+admins can write, so every node refuses a member who writes one for themselves,
+and a demotion converges like a promotion. Redeeming an invitation registers you
+as a signer in your own `UserStorage` slot; an admin's removal outranks it.
 
 ### Signing
 
-A signature is recorded for the **caller's account**, derived inside the contract
-from `env::account_id()`. There is no signer parameter — `sign_document`,
-`set_consent` and `mark_participant_signed` all take only the document. Nothing a
-client sends can name who signed.
+A signature is recorded for the **caller's account**. There is no signer
+parameter — `sign_document`, `set_consent` and `mark_participant_signed` all
+take only the document — and on every other node the signer is the signature
+entry's owner stamp, so nobody can write a signature in someone else's name.
 
 To sign you must be a participant holding `Sign` or `Admin`, and you must have
-consented to that document yourself. Once every participant has signed, the
-document becomes `FullySigned`.
+consented to that document yourself (consents live in your own `UserStorage`
+slot). The document names who must sign it when it is uploaded — every
+participant holding `Sign` or `Admin` then — and becomes `FullySigned` once all
+of them have. That is terminal: a completed document takes no more signatures,
+and nobody who joins later reopens it.
 
-⚠️ **Upgrading from a bundle published before this:** consent is now keyed by
-account where it used to be keyed by the context member key, so anyone who had
-consented before the upgrade must consent again. No documents, signatures or
-agreements are lost — the stored layout is unchanged — and signatures recorded
-by the older bundle carry a device key, so they will not count toward
-`FullySigned` and those documents need re-signing.
+**Nothing is overwritten.** The uploaded document is written once
+(`ModeratedOnce`: only an admin can remove it). Each signature is a write-once
+entry recording the version it signed (`base_hash`), the version it produced
+(`new_hash`) and that version's PDF blob. The document's current version is the
+end of that chain, and its status is derived from it on every read. A signer who
+built on a stale version is refused; if two signers race on the same version,
+every node keeps the same one on the document and the other signs again.
 
 ### Signature Library
 
