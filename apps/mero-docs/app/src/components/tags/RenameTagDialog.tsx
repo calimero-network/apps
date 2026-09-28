@@ -11,6 +11,7 @@ import {
 
 interface Props {
   open: boolean;
+  title?: string;
   name: string;
   error?: string;
   onSubmit: (name: string) => void;
@@ -29,6 +30,7 @@ export function RenameTagDialog({ open, onOpenChange, ...form }: Props) {
 
 // Mounted per open, so the field starts from the current name every time.
 function RenameForm({
+  title = 'Rename tag',
   name,
   error: givenError,
   onSubmit,
@@ -51,7 +53,7 @@ function RenameForm({
       }}
     >
       <DialogTitle className="mb-4 text-[15px] tracking-[-0.01em]">
-        Rename tag
+        {title}
       </DialogTitle>
       <label
         htmlFor={inputId}
