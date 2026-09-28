@@ -9,6 +9,8 @@ import {
 } from './roles';
 import {
   DEFAULT_INVITE_SECS,
+  InviteRedeemError,
+  acceptInvite,
   createPersonalVault,
   createTeam,
   createVault,
@@ -21,6 +23,7 @@ import {
   mintVaultInvite,
   isPersonalRecord,
   myCapabilities,
+  redeemInvite,
   removeTeamMember,
   repairCreatorAdmin,
   setMemberRole,
@@ -1058,5 +1061,83 @@ describe('the rc.41 default mask', () => {
         applicationId: 'app-1',
       }),
     ).rejects.toThrow('503');
+  });
+});
+
+// ── Redeeming a team invitation ─────────────────────────────────────────────
+//
+// Membership, not the request, decides whether the namespace join worked: the
+// desktop proxy aborts at 30s while a join can take far longer and land anyway.
+describe('acceptInvite decides a team join by membership', () => {
+  const NS = '3f8a91c2';
+  const payload = { invitation: SIGNED, groupAlias: 'Acme' } as never;
+  const httpError = (status: number, message: string) =>
+    Object.assign(new Error(message), { status });
+
+  it('joins, sending the join exactly once', async () => {
+    const { admin, calls } = fakeAdmin({
+      joinNamespace: vi.fn(async () => ({})),
+      listNamespaces: vi.fn(async () => [{ namespaceId: NS }]),
+    });
+    await expect(redeemInvite(admin, payload)).resolves.toEqual({
+      kind: 'team',
+      namespaceId: NS,
+    });
+    expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
+    expect(admin.joinNamespace).toHaveBeenCalledWith(NS, {
+      invitation: SIGNED,
+    });
+    expect(methodsOf(calls)).not.toContain('joinGroup');
+  });
+
+  it('treats a join that failed but landed as already-member, and proceeds', async () => {
+    const onStatus = vi.fn();
+    const { admin } = fakeAdmin({
+      joinNamespace: vi.fn(async () => {
+        throw httpError(502, 'proxy timeout');
+      }),
+      listNamespaces: vi.fn(async () => [{ namespaceId: NS }]),
+    });
+    await expect(redeemInvite(admin, payload, onStatus)).resolves.toEqual({
+      kind: 'team',
+      namespaceId: NS,
+    });
+    expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenCalledWith(
+      expect.stringMatching(/Already in the team/),
+    );
+  });
+
+  it('reports a final refusal (409) as not retryable', async () => {
+    const { admin } = fakeAdmin({
+      joinNamespace: vi.fn(async () => {
+        throw httpError(409, 'member was removed');
+      }),
+      listNamespaces: vi.fn(async () => []),
+    });
+    const err = await acceptInvite(admin, payload).catch((e) => e);
+    expect(err).toBeInstanceOf(InviteRedeemError);
+    expect((err as InviteRedeemError).outcome).toMatchObject({
+      status: 'failed',
+      namespaceId: NS,
+      reason: 'refused',
+      retryable: false,
+    });
+  });
+
+  it('reports no member online (503) as retryable', async () => {
+    const { admin } = fakeAdmin({
+      joinNamespace: vi.fn(async () => {
+        throw httpError(503, 'no peers');
+      }),
+      listNamespaces: vi.fn(async () => {
+        throw new Error('could not list');
+      }),
+    });
+    const err = await acceptInvite(admin, payload).catch((e) => e);
+    expect((err as InviteRedeemError).outcome).toMatchObject({
+      reason: 'no-one-online',
+      retryable: true,
+    });
   });
 });
