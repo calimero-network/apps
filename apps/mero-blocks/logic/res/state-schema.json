@@ -1,6 +1,25 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Avatars": {
+      "kind": "record",
+      "doc": "One account's avatars, keyed by device (see `caller`). The slot belongs to\nthe account, and so does the map nested in it: every node refuses another\naccount's write to either, so nobody can move, rename or evict someone\nelse's avatar, or squat a device id before its owner first joins.",
+      "fields": [
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "BlockOverride": {
       "kind": "record",
       "doc": "A stored block edit: block id `b` and the stamp that orders concurrent edits.",
@@ -13,7 +32,7 @@
           "doc": "Block id, 0 to 15; 0 is air (a broken block)."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
@@ -25,37 +44,16 @@
       "kind": "record",
       "fields": [
         {
-          "name": "name",
+          "name": "meta",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "WorldMeta"
             }
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "name + seed + day-clock anchor. Every client derives the terrain from\nthe seed, so changing it after creation would rebuild the world under\neveryone's edits: frozen, nobody (the creator included) can."
         },
         {
           "name": "overrides",
@@ -69,7 +67,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed."
+          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed. Public on\npurpose: the world is collaborative."
         },
         {
           "name": "players",
@@ -79,22 +77,8 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "reap_marks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ReapMark"
-            },
-            "crdt_type": "unordered_map"
+              "$ref": "Avatars"
+            }
           }
         }
       ]
@@ -103,13 +87,6 @@
       "kind": "record",
       "doc": "A player row: presence and last known transform, keyed by the player's identity.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The player's context identity (device key, 64 hex)."
-        },
         {
           "name": "name",
           "type": {
@@ -160,17 +137,17 @@
           "type": {
             "kind": "bool"
           },
-          "doc": "explicitly left (or reaped); row is kept, never removed"
+          "doc": "Explicitly left; row is kept, never removed."
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           },
           "doc": "Room-clock unix seconds."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
@@ -178,21 +155,29 @@
         }
       ]
     },
-    "ReapMark": {
+    "WorldMeta": {
       "kind": "record",
-      "doc": "Presence bookkeeping: when a silent player was marked stale, and the row stamp seen then.",
+      "doc": "The world's identity: name, terrain seed and creation time.",
       "fields": [
         {
-          "name": "marked_at",
+          "name": "name",
           "type": {
-            "kind": "u64"
+            "kind": "string"
           }
         },
         {
-          "name": "row_ts",
+          "name": "seed",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Terrain seed; clients generate identical terrain from it."
+        },
+        {
+          "name": "createdAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Unix seconds; the 600 s day/night cycle is counted from here."
         }
       ]
     }

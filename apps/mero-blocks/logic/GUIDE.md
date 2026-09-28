@@ -167,6 +167,6 @@ The player row stays and shows as offline; a later `join` brings it back at its 
 - At most 512 edits per `set_blocks` call; more fails the whole call and applies nothing.
 - `now` must be real wall-clock unix seconds. It orders concurrent edits of one block (last writer wins) and drives presence.
 - Edits are never deleted: breaking writes `b: 0`, so `get_overrides` grows with every coordinate touched.
-- Presence: online while the last write is at most 10 seconds old. A player silent for 30 seconds is marked stale, and set to left 30 seconds after that by whichever player calls `set_blocks` or `heartbeat` next.
-- `set_blocks` emits `BlocksChanged` only when at least one edit was applied. `join` emits `PlayerJoined`; `leave` emits `PlayerLeft`. `heartbeat` emits `PlayerJoined` only when it creates the row or brings back a player who had left, otherwise no event. Both `set_blocks` and `heartbeat` can also emit `PlayerLeft` for any player they reap for going silent.
+- Presence: online while the last write is at most 10 seconds old. Nothing sets a silent player to left automatically; they simply show as offline until they call `leave`, or come back online on their next `heartbeat`.
+- `set_blocks` emits `BlocksChanged` only when at least one edit was applied. `join` emits `PlayerJoined`; `leave` emits `PlayerLeft`. `heartbeat` emits `PlayerJoined` only when it creates the row or brings back a player who had left, otherwise no event.
 - There is no turn order, inventory or win condition: it is a sandbox.

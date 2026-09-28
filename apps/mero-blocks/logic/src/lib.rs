@@ -128,7 +128,7 @@ pub struct Player {
     pub pitch: f64,
     /// Selected hotbar slot, 0 to 8; peers render what the player holds.
     pub sel: u8,
-    /// explicitly left; row is kept, never removed
+    /// Explicitly left; row is kept, never removed.
     pub left: bool,
     /// Room-clock unix seconds.
     pub joined_at: u64,

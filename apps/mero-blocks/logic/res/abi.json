@@ -1,6 +1,25 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Avatars": {
+      "kind": "record",
+      "doc": "One account's avatars, keyed by device (see `caller`). The slot belongs to\nthe account, and so does the map nested in it: every node refuses another\naccount's write to either, so nobody can move, rename or evict someone\nelse's avatar, or squat a device id before its owner first joins.",
+      "fields": [
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "BlockEntry": {
       "kind": "record",
       "doc": "One edited coordinate.",
@@ -33,7 +52,7 @@
           "doc": "Block id, 0 to 15; 0 is air (a broken block)."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
@@ -79,37 +98,16 @@
       "kind": "record",
       "fields": [
         {
-          "name": "name",
+          "name": "meta",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "WorldMeta"
             }
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "name + seed + day-clock anchor. Every client derives the terrain from\nthe seed, so changing it after creation would rebuild the world under\neveryone's edits: frozen, nobody (the creator included) can."
         },
         {
           "name": "overrides",
@@ -123,7 +121,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed."
+          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed. Public on\npurpose: the world is collaborative."
         },
         {
           "name": "players",
@@ -133,22 +131,8 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "reap_marks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ReapMark"
-            },
-            "crdt_type": "unordered_map"
+              "$ref": "Avatars"
+            }
           }
         }
       ]
@@ -157,13 +141,6 @@
       "kind": "record",
       "doc": "A player row: presence and last known transform, keyed by the player's identity.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The player's context identity (device key, 64 hex)."
-        },
         {
           "name": "name",
           "type": {
@@ -214,17 +191,17 @@
           "type": {
             "kind": "bool"
           },
-          "doc": "explicitly left (or reaped); row is kept, never removed"
+          "doc": "Explicitly left; row is kept, never removed."
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           },
           "doc": "Room-clock unix seconds."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
@@ -294,24 +271,6 @@
             "kind": "bool"
           },
           "doc": "Not left, and heard from within the last 10 s."
-        }
-      ]
-    },
-    "ReapMark": {
-      "kind": "record",
-      "doc": "Presence bookkeeping: when a silent player was marked stale, and the row stamp seen then.",
-      "fields": [
-        {
-          "name": "marked_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "row_ts",
-          "type": {
-            "kind": "u64"
-          }
         }
       ]
     },
@@ -385,7 +344,7 @@
           "doc": "Terrain seed; clients generate identical terrain from it."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           },
@@ -410,7 +369,7 @@
     },
     {
       "name": "get_players",
-      "doc": "Every player row with an `online` flag.\n\nA player is online when they have not left and wrote within the last 10 s,\nmeasured against the newest clock any player has reported.\n\n# Examples\n```json\n{\"now\":1727000000}\n```",
+      "doc": "Every player row with an `online` flag.\n\nA player is online when they have not left and wrote within the last 10 s,\nmeasured against the newest clock any player has reported. A player who\nvanished without calling `leave` simply ages out here; nobody writes to\nanother account's row to mark it left.\n\n# Examples\n```json\n{\"now\":1727000000}\n```",
       "params": [
         {
           "name": "now",
@@ -431,7 +390,7 @@
     },
     {
       "name": "heartbeat",
-      "doc": "Report the caller's position and keep them online.\n\nSend every 0.5 s while moving and every 2 s while idle; a player silent\nfor more than 10 s shows as offline. Creates the player row if needed.\nEmits `PlayerJoined` only when this creates the row or brings a left\nplayer back; otherwise no event. Also marks and removes players who\nhave gone silent (emits `PlayerLeft` for any it reaps).\n\n# Examples\n```json\n{\"t\":{\"name\":\"bot\",\"x\":64.5,\"y\":44.0,\"z\":64.5,\"yaw\":0.0,\"pitch\":0.0,\"sel\":0},\"now\":1727000000}\n```",
+      "doc": "Report the caller's position and keep them online.\n\nSend every 0.5 s while moving and every 2 s while idle; a player silent\nfor more than 10 s shows as offline. Creates the player row if needed.\nEmits `PlayerJoined` only when this creates the row or brings a left\nplayer back; otherwise no event (peers poll `get_players`, so a\nroutine heartbeat must not spam an event on every call).\n\n# Examples\n```json\n{\"t\":{\"name\":\"bot\",\"x\":64.5,\"y\":44.0,\"z\":64.5,\"yaw\":0.0,\"pitch\":0.0,\"sel\":0},\"now\":1727000000}\n```",
       "params": [
         {
           "name": "t",
@@ -569,7 +528,7 @@
     },
     {
       "name": "world_meta",
-      "doc": "The world's name, terrain seed and creation time (`createdAt`, unix seconds).\n\nTerrain is not stored: regenerate it from `seed`, then apply `get_overrides`.\n\n# Examples\n```json\n{}\n```",
+      "doc": "The world's name, terrain seed and creation time (`createdAt`, unix seconds).\n\nTerrain is not stored: regenerate it from `seed`, then apply `get_overrides`.\n\n# Errors\nFails if reading the world's metadata from storage fails.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "$ref": "WorldMeta"
