@@ -260,6 +260,22 @@ describe('docLinkItems (L-11, L-13)', () => {
   it('is empty when nothing matches', () => {
     expect(docLinkItems('zzz', src)).toEqual([]);
   });
+
+  it('forgives a typo in a title and matches title words in any order', () => {
+    const withRoadmap = {
+      ...src,
+      rows: [...rows, row('f2', 'd5', 'Roadmap', { updatedAt: 40 })],
+    };
+    const [hit] = docLinkItems('roadmpa', withRoadmap);
+    expect([hit.kind, hit.title, hit.titleRanges]).toEqual([
+      'doc',
+      'Roadmap',
+      [{ start: 0, end: 7 }],
+    ]);
+    expect(docLinkItems('notes design', src).map((i) => i.title)).toEqual([
+      'Design review notes',
+    ]);
+  });
 });
 
 describe('sectionLinkItems', () => {
@@ -313,6 +329,16 @@ describe('sectionLinkItems', () => {
     expect(items.map((i) => i.title)).toEqual(['Pricing page', 'Tiers']);
     expect(items[0].titleRanges).toEqual([{ start: 0, end: 4 }]);
     expect(items[1].titleRanges).toEqual([]);
+  });
+
+  it('matches heading words in any order, and ranks a title match last', () => {
+    expect(sectionLinkItems('page pricing', src).map((i) => i.title)).toEqual([
+      'Pricing page',
+    ]);
+    expect(sectionLinkItems('pricnig', src).map((i) => i.title)).toEqual([
+      'Pricing page',
+      'Tiers',
+    ]);
   });
 });
 

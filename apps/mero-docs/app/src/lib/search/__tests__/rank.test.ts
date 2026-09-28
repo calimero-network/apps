@@ -54,6 +54,74 @@ describe('searchV1', () => {
     ]);
   });
 
+  it('matches title words in any order, each marked, and needs them all', () => {
+    const rows = [
+      row({ docId: 'q3', title: 'Q3 Roadmap' }),
+      row({ docId: 'q4', title: 'Q4 Roadmap' }),
+    ];
+    const results = searchV1('roadmap q3', rows, [], []);
+    expect(labels(results)).toEqual(['doc:q3']);
+    expect(results[0].ranges).toEqual([
+      [0, 2],
+      [3, 10],
+    ]);
+  });
+
+  it('forgives a typo but ranks it below every exact match', () => {
+    const rows = [
+      row({ docId: 'typo', title: 'Lunch menu', updatedAt: 9 }),
+      row({ docId: 'sub', title: 'Relaunch', updatedAt: 1 }),
+      row({ docId: 'miss', title: 'Budget', updatedAt: 5 }),
+    ];
+    const results = searchV1('launch', rows, [], []);
+    expect(labels(results)).toEqual(['doc:sub', 'doc:typo']);
+    expect(results[1].ranges).toEqual([[0, 5]]);
+  });
+
+  it('shows a typo only below the first exact match, so Enter never opens a typo', () => {
+    const rows = [row({ docId: 'd', title: 'Roadmap', tags: ['t'] })];
+    const folders = [{ id: 'f', name: 'Roads' }];
+    const tags = [tag('t', 'roadmap')];
+    expect(labels(searchV1('roads', rows, folders, tags))).toEqual([
+      'folder:f',
+      'tag:t',
+    ]);
+    expect(labels(searchV1('roadz', rows, [], tags))).toEqual([
+      'doc:d',
+      'tag:t',
+    ]);
+  });
+
+  it('forgives typos in folder and tag names, and after #', () => {
+    const rows = [row({ docId: 'd', title: 'Plan', tags: ['l'] })];
+    const folders = [{ id: 'f', name: 'Product' }];
+    const tags = [tag('l', 'launch')];
+    expect(labels(searchV1('prodcut', rows, folders, tags))).toEqual([
+      'folder:f',
+    ]);
+    expect(labels(searchV1('#lanuch', rows, folders, tags))).toEqual(['tag:l']);
+  });
+
+  it('matches 5,000 titles against three words with a typo in under 50 ms', () => {
+    const words = ['alpha', 'beta', 'gamma', 'delta', 'Résumé', '日本', '🚀'];
+    const rows = Array.from({ length: 5000 }, (_, i) =>
+      row({
+        docId: `d${i}`,
+        title: Array.from(
+          { length: 4 },
+          (_, w) => words[(i + w) % words.length],
+        ).join(' '),
+        updatedAt: i,
+      }),
+    );
+    searchV1('warm up', rows, [], []);
+    const started = performance.now();
+    const results = searchV1('gamma resmue delta', rows, [], []);
+    const elapsed = performance.now() - started;
+    expect(results.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(50);
+  });
+
   it('highlights the matched characters on the shown label', () => {
     const rows = [row({ docId: 'd', title: 'Mon Résumé' })];
     const [hit] = searchV1('resume', rows, [], []);

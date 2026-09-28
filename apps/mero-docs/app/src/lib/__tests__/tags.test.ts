@@ -234,6 +234,18 @@ describe('tagSuggestions (T-02)', () => {
     ).toEqual(['launch', 'launch-plan', 'relaunch']);
   });
 
+  it('matches words in any order and forgives a typo, below exact matches', () => {
+    expect(
+      tagSuggestions(tags, 'plan launch', [], counts).map((t) => t.key),
+    ).toEqual(['launch-plan']);
+    expect(
+      tagSuggestions(tags, 'lanuch', [], counts).map((t) => t.key),
+    ).toEqual(['launch-plan', 'launch']);
+    expect(tagSuggestions(tags, 'launc', [], counts).map((t) => t.key)[0]).toBe(
+      'launch-plan',
+    );
+  });
+
   it('folds case and accents, and leaves out deleted tags and tags already on the doc', () => {
     expect(
       tagSuggestions(tags, 'LAÜNCH', ['launch'], counts).map((t) => t.key),

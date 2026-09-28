@@ -225,6 +225,33 @@ describe('searchText', () => {
     expect(highlighted(hit)).toEqual(['Quarterly']);
   });
 
+  it('matches words in any order within one block, without typos', () => {
+    const t = text('f1', 'multi', [
+      block('a', 'paragraph', 'The roadmap is here'),
+      block('b', 'paragraph', 'Q3 goals'),
+      block('c', 'paragraph', 'Plans for Q3: see the roadmap'),
+    ]);
+    const [hit] = searchText('roadmap q3', index(t));
+    expect(hit.blockId).toBe('c');
+    expect(highlighted(hit)).toEqual(['Q3', 'roadmap']);
+    expect(searchText('roadmpa', index(t))).toEqual([]);
+    const split = text('f1', 'split', [
+      block('a', 'paragraph', 'The roadmap'),
+      block('b', 'paragraph', 'Q3 goals'),
+    ]);
+    expect(searchText('roadmap q3', index(split))).toEqual([]);
+  });
+
+  it('centres a long snippet on the first matched word', () => {
+    const body =
+      'lorem ipsum '.repeat(20) + 'needle' + ' dolor sit'.repeat(20) + ' pin';
+    const t = text('f1', 'two', [block('p', 'paragraph', body)]);
+    const [hit] = searchText('pin needle', index(t));
+    expect(highlighted(hit)).toEqual(['needle']);
+    const [[from]] = hit.ranges;
+    expect(Math.abs(from - (hit.snippet.length - 6) / 2)).toBeLessThan(3);
+  });
+
   it('returns one row per doc, from its best block (S-15)', () => {
     const t = text('f1', 'many', [
       block('a', 'paragraph', 'railroad'),

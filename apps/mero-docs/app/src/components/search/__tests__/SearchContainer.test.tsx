@@ -303,7 +303,7 @@ describe('SearchContainer results', () => {
     const hit = await within(
       await screen.findByRole('group', { name: 'In document text' }),
     ).findByRole('option');
-    expect(marks(hit)).toEqual(['zebra c']);
+    expect(marks(hit)).toEqual(['zebra', 'c']);
   });
 
   it('names a folder with a doc it could not read, and stops the progress for it', async () => {

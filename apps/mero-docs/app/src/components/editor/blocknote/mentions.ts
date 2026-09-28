@@ -9,6 +9,9 @@ import {
   matchRanges,
   matchScore,
   normalizeQuery,
+  queryWords,
+  TYPO_TIER,
+  typosAfterExact,
 } from '@/lib/search/match';
 import type { DocText, IndexRow } from '@/lib/workspaceIndex/types';
 import {
@@ -34,13 +37,13 @@ type PeopleSource = {
 /** Members whose name matches, best first; before anything is typed, the people in `workedWith` first and you last. */
 export function peopleItems(query: string, src: PeopleSource): DocLinkItem[] {
   const { text } = normalizeQuery(query);
-  const q = foldForSearch(text);
+  const words = queryWords(text);
   const rank = new Map(src.workedWith.map((id, i) => [id, i]));
   const ranked = src.members.flatMap((id) => {
     const title = listedPersonName(id, src.self, src.names);
     const name = listedPersonName(id, null, src.names);
     const scores = [title, name].map((s) =>
-      q ? matchScore(foldForSearch(s), q) : 0,
+      matchScore(foldForSearch(s), words),
     );
     const score = Math.min(...scores.map((s) => s ?? Infinity));
     if (score === Infinity) return [];
@@ -57,6 +60,7 @@ export function peopleItems(query: string, src: PeopleSource): DocLinkItem[] {
       folderLabel: cantOpen ? CANT_OPEN_FOLDER : '',
       href: memberHref({ ws: src.ws, member: id }),
       mention: { name, cantOpen },
+      typo: score >= TYPO_TIER,
     };
     const order = id === src.self ? Infinity : rank.get(id) ?? rank.size;
     return [{ score, order, item }];
@@ -93,7 +97,10 @@ export function mentionPickerItems(
   query: string,
   src: PeopleSource & Parameters<typeof docLinkItems>[1],
 ): DocLinkItem[] {
-  return [...peopleItems(query, src), ...docLinkItems(query, src)];
+  return typosAfterExact([
+    ...peopleItems(query, src),
+    ...docLinkItems(query, src),
+  ]);
 }
 
 /** Inserts a picked row: the member's name linked to them, or a doc's title; says so when the member cannot open this folder. */

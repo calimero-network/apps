@@ -4,6 +4,10 @@ const MARKS = /\p{M}/gu;
 const FINAL_SIGMA = /ς/g; // lowercasing a whole string yields ς at word ends, per code point σ
 const EMPTY_QUERY = /^[\p{P}\s]*$/u; // symbols such as emoji still count as a query
 const WORD_CHAR = /[\p{L}\p{N}]/u;
+const LABEL_WORDS = /[\p{L}\p{N}]+/gu;
+const QUERY_SPACE = /\s+/u;
+export const TYPO_TIER = 3; // below prefix 0, word start 1 and substring 2
+const TYPO_MIN = 4; // code points a query word needs before a typo is forgiven
 
 /** Case, accent and width folded text; NFKD also maps full-width and ligature forms. */
 export function foldForSearch(s: string): string {
@@ -63,36 +67,114 @@ function foldWithMap(text: string): {
   return { folded, starts, ends };
 }
 
-/** Every match of `query` as UTF-16 ranges on the original `text`, whole code points only. */
-export function matchRanges(text: string, query: string): [number, number][] {
-  const q = foldForSearch(query);
-  if (!q) return [];
-  const { folded, starts, ends } = foldWithMap(text);
-  const ranges: [number, number][] = [];
-  for (
-    let i = folded.indexOf(q);
-    i !== -1;
-    i = folded.indexOf(q, i + q.length)
-  ) {
-    ranges.push([starts[i], ends[i + q.length - 1]]);
-  }
-  return ranges;
+/** The folded words of a query; a label must match every one. */
+export function queryWords(query: string): string[] {
+  return foldForSearch(query).split(QUERY_SPACE).filter(Boolean);
 }
 
-/** 0 prefix, 1 word start, 2 substring, null no match; both inputs already folded. */
+/** Every match of each query word as UTF-16 ranges on the original `text`, in text order, whole code points only. */
+export function matchRanges(
+  text: string,
+  query: string,
+  typos = true,
+): [number, number][] {
+  const words = queryWords(query);
+  if (!words.length) return [];
+  const { folded, starts, ends } = foldWithMap(text);
+  const range = (from: number, length: number): [number, number] => [
+    starts[from],
+    ends[from + length - 1],
+  ];
+  const ranges = words.flatMap((q) => {
+    const exact: [number, number][] = [];
+    for (
+      let i = folded.indexOf(q);
+      i !== -1;
+      i = folded.indexOf(q, i + q.length)
+    )
+      exact.push(range(i, q.length));
+    const typed = Array.from(q);
+    if (exact.length || !typos || typed.length < TYPO_MIN) return exact;
+    return [...folded.matchAll(LABEL_WORDS)]
+      .filter((w) => nearPrefix(typed, Array.from(w[0])))
+      .map((w) => range(w.index, w[0].length));
+  });
+  return ranges.sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * Null unless every word matches; lower is better: the worst word's tier, then the sum of tiers.
+ * `folded` is foldForSearch output; the score stays below TYPO_TIER + 1.
+ */
 export function matchScore(
   folded: string,
-  foldedQuery: string,
-): 0 | 1 | 2 | null {
+  words: string[],
+  typos = true,
+): number | null {
+  let worst = 0;
+  let sum = 0;
+  let labelWords: string[][] | undefined;
+  for (const q of words) {
+    let tier: number | null = exactTier(folded, q);
+    const typed = tier === null && typos ? Array.from(q) : [];
+    if (typed.length >= TYPO_MIN) {
+      labelWords ??= (folded.match(LABEL_WORDS) ?? []).map((w) =>
+        Array.from(w),
+      );
+      if (labelWords.some((w) => nearPrefix(typed, w))) tier = TYPO_TIER;
+    }
+    if (tier === null) return null;
+    worst = Math.max(worst, tier);
+    sum += tier;
+  }
+  // The other words only break ties, so one word scores its tier exactly.
+  return worst + (sum - worst) / (TYPO_TIER * words.length + 1);
+}
+
+/** Rows in display order minus typo rows above the first exact one, so the default pick is exact when anything is. */
+export function typosAfterExact<T extends { typo?: boolean }>(rows: T[]): T[] {
+  const first = rows.findIndex((r) => !r.typo);
+  return first === -1 ? rows : rows.filter((r, i) => !r.typo || i > first);
+}
+
+/** 0 prefix, 1 word start, 2 substring, null no match. */
+function exactTier(folded: string, q: string): 0 | 1 | 2 | null {
   let best: 1 | 2 | null = null;
-  for (
-    let i = folded.indexOf(foldedQuery);
-    i !== -1;
-    i = folded.indexOf(foldedQuery, i + 1)
-  ) {
+  for (let i = folded.indexOf(q); i !== -1; i = folded.indexOf(q, i + 1)) {
     if (i === 0) return 0;
     if (!WORD_CHAR.test(folded[i - 1])) return 1;
     best = 2;
   }
   return best;
+}
+
+/** True when `typed` is one edit (a swap of neighbours counts as one) from a prefix of `word` within one of its length. */
+function nearPrefix(typed: string[], word: string[]): boolean {
+  for (let len = typed.length - 1; len <= typed.length + 1; len++) {
+    if (len <= word.length && withinOneEdit(typed, word.slice(0, len)))
+      return true;
+  }
+  return false;
+}
+
+/** Optimal string alignment distance of at most 1. */
+function withinOneEdit(a: string[], b: string[]): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length !== b.length) {
+    const [long, short] = a.length > b.length ? [a, b] : [b, a];
+    return sameFrom(long, i + 1, short, i);
+  }
+  if (i === a.length) return true;
+  const swapped = a[i] === b[i + 1] && a[i + 1] === b[i];
+  return (
+    sameFrom(a, i + 1, b, i + 1) || (swapped && sameFrom(a, i + 2, b, i + 2))
+  );
+}
+
+function sameFrom(a: string[], i: number, b: string[], j: number): boolean {
+  if (a.length - i !== b.length - j) return false;
+  for (; i < a.length; i++, j++) if (a[i] !== b[j]) return false;
+  return true;
 }
