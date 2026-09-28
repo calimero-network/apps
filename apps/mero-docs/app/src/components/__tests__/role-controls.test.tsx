@@ -47,7 +47,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: 'ctx',
     registryClient: { setFolderRole },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
-    namespaceMemberNames: {},
+    namespaceMemberNames: { bob: 'Bob' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
     refetch: vi.fn(),
   }),
@@ -297,6 +297,16 @@ describe('removing a folder owner', () => {
     folderMembers.value = [{ ...ME, role: 'Admin' }, { identity: 'bob', name: 'Bob', role: 'Member' }];
     render(<FolderSharingPanel folderId="f1" />);
     expect(screen.queryByRole('button', { name: 'Remove Me' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
+  });
+});
+
+// A folder's member list carries no names; the workspace's names label its rows.
+describe('naming folder members', () => {
+  it.each([false, true])('names a member by their workspace name (role editor: %s)', (canManagePermissions) => {
+    folderPerms.canManagePermissions = canManagePermissions;
+    folderMembers.value = [ME, { identity: 'bob', role: 'Member' } as typeof ME];
+    render(<FolderSharingPanel folderId="f1" />);
     expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
   });
 });
