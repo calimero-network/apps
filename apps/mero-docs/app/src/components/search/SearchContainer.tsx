@@ -167,7 +167,11 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     failed: partlyRead,
   } = useTextIndexValue();
   const { tags, byKey: tagsByKey } = useTags();
-  const { mentions, reading: mentionsReading } = useMentionedMe();
+  const {
+    mentions,
+    known: mentionsKnown,
+    reading: mentionsReading,
+  } = useMentionedMe();
   const presence = usePresenceByDoc();
   const { namespaceId, namespaces } = useDriveWorkspace();
   const { href, goDoc, goFolder, goHome } = useAppRoute();
@@ -455,9 +459,9 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       scopeLabel={scopeLabel}
       groups={groups}
       warning={titles.warning}
-      // Nothing is claimed about mentions until every folder is read.
+      // Nothing is claimed about mentions until every folder is read in full.
       emptyText={
-        !titles.mentionsOnly ? EMPTY_TEXT : mentionsReading ? '' : NO_MENTIONS
+        !titles.mentionsOnly ? EMPTY_TEXT : mentionsKnown ? NO_MENTIONS : ''
       }
       onOpen={onOpen}
     />

@@ -450,6 +450,12 @@ describe('SearchContainer opening', () => {
     expect(screen.queryByText('No documents mention you yet')).toBeNull();
   });
 
+  it('says nothing mentions you once every folder was read in full', async () => {
+    mount();
+    await type('@me');
+    expect(screen.getByText('No documents mention you yet')).toBeTruthy();
+  });
+
   it('names a folder it could not fully read for @me', async () => {
     textIndex = {
       ...textIndex,
@@ -462,6 +468,7 @@ describe('SearchContainer opening', () => {
     expect(screen.getByText(/could not be fully searched/).textContent).toBe(
       'Roads could not be fully searched.',
     );
+    expect(screen.queryByText('No documents mention you yet')).toBeNull();
   });
 
   it('opens a folder, and a tag as Home filtered to it', async () => {
