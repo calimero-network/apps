@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A comment pinned at a canvas point, with its replies.",
       "fields": [
         {
           "name": "id",
@@ -14,13 +15,15 @@
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "content",
@@ -32,13 +35,15 @@
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
           "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "replies",
@@ -48,12 +53,13 @@
               "$ref": "CommentReply"
             }
           },
-          "doc": "Filled on read from `MeroDesign::replies`, and always stored empty: a\nreply is its own entry, so two replies posted at once both survive.\nKept in a `Vec` inside the comment they were whole-record LWW, and the\ncomment's clock never moved, so one of them was lost."
+          "doc": "The thread, ordered by `createdAt`."
         }
       ]
     },
     "CommentReply": {
       "kind": "record",
+      "doc": "A reply in a comment thread.",
       "fields": [
         {
           "name": "id",
@@ -71,62 +77,69 @@
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
           "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         }
       ]
     },
     "CursorState": {
       "kind": "record",
+      "doc": "A pointer's last reported position.",
       "fields": [
         {
           "name": "identity",
           "type": {
             "kind": "string"
           },
-          "doc": "The device this pointer belongs to — one per open window."
+          "doc": "The device key (64 hex) of the node that moved the pointer; one pointer per device."
         },
         {
           "name": "account",
           "type": {
             "kind": "string"
           },
-          "doc": "The member (account) behind that device, read from the entry's owner\nstamp, so the overlay can label the pointer with a username."
+          "doc": "The member id of the account behind that device."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         }
       ]
     },
     "Element": {
       "kind": "record",
-      "doc": "`layer_index` is indexed, so the stack in order, and its top and bottom,\nare seeks rather than a scan and sort.",
+      "doc": "One element on the canvas.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Chosen by the caller; use a fresh UUID."
         },
         {
           "name": "data",
@@ -138,115 +151,132 @@
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Left edge, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Top edge, canvas pixels."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Pixels."
         },
         {
           "name": "height",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Pixels."
         },
         {
           "name": "rotation",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "Degrees, clockwise."
         },
         {
           "name": "fill",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS color, or `transparent`."
         },
         {
           "name": "stroke",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS color, or `transparent`."
         },
         {
           "name": "strokeWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Pixels."
         },
         {
           "name": "opacity",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Percent, 0 to 100."
         },
         {
           "name": "layerIndex",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Paint order; a higher value paints on top."
         },
         {
           "name": "createdBy",
           "type": {
             "kind": "string"
           },
-          "doc": "Set by the contract from the caller, never taken from the client."
+          "doc": "The creator's member id, set by the contract; any value the caller sends is ignored."
         },
         {
           "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds of the last change; send the current time."
         },
         {
           "name": "shadowColor",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "A CSS color; omitted or `null` means no drop shadow."
         },
         {
           "name": "shadowOffsetX",
           "type": {
             "kind": "i32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Pixels."
         },
         {
           "name": "shadowOffsetY",
           "type": {
             "kind": "i32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Pixels."
         },
         {
           "name": "shadowBlur",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Pixels."
         },
         {
           "name": "label",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Layer name: a `/`-separated path whose last segment is the name and whose\nearlier segments are groups; omitted or `null` means unnamed."
         },
         {
           "name": "cornerRadius",
@@ -254,55 +284,63 @@
             "kind": "u32"
           },
           "nullable": true,
-          "doc": "Corner radius in px, clamped by the client to min(width, height) / 2."
+          "doc": "Pixels; omitted, `null` or 0 means square corners. The web client draws it\nclamped to min(`width`, `height`) / 2."
         }
       ]
     },
     "ElementData": {
       "kind": "variant",
+      "doc": "What an element is, tagged by `kind`: `rect`, `circle`, `line`, `arrow`, `path`,\n`text`, `image` or `svg`.",
       "variants": [
         {
-          "name": "rect"
+          "name": "rect",
+          "doc": "A rectangle filling the element's box."
         },
         {
-          "name": "circle"
+          "name": "circle",
+          "doc": "A circle of diameter `width`, its box's top-left at `x`, `y`; set `height` equal to `width`."
         },
         {
           "name": "line",
           "payload": {
             "$ref": "ElementData_Line"
           },
-          "doc": "`points` is \"x1,y1 x2,y2\" in element-local space. A bounding box cannot\nexpress which way a line was drawn, so a line drawn bottom-left to\ntop-right came back mirrored. Defaulted so pre-existing elements and older\nclients that send a bare `{\"kind\":\"line\"}` still deserialize."
+          "doc": "A straight line; `points` is `\"x1,y1 x2,y2\"` in element-local pixels."
         },
         {
           "name": "arrow",
           "payload": {
             "$ref": "ElementData_Arrow"
-          }
+          },
+          "doc": "A line with an arrowhead at its second point; `points` as for `line`."
         },
         {
           "name": "path",
           "payload": {
             "$ref": "ElementData_Path"
-          }
+          },
+          "doc": "A freehand path; `points` is SVG path data, e.g. `\"M 0 0 L 40 40\"`."
         },
         {
           "name": "text",
           "payload": {
             "$ref": "ElementData_Text"
-          }
+          },
+          "doc": "Text. `fontSize` is in pixels; `text_align` is `left`, `center` or `right`,\n`vertical_align` is `top`, `middle` or `bottom`, and either may be omitted or `null`."
         },
         {
           "name": "image",
           "payload": {
             "$ref": "ElementData_Image"
-          }
+          },
+          "doc": "A raster image: a blob on the node named by `blobId`, with its pixel size."
         },
         {
           "name": "svg",
           "payload": {
             "$ref": "ElementData_Svg"
-          }
+          },
+          "doc": "An SVG image: a blob on the node named by `blobId`, with its pixel size."
         }
       ],
       "tag": "kind"
@@ -437,12 +475,14 @@
     },
     "Member": {
       "kind": "record",
+      "doc": "A board member.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Member id: the member's account id (64 hex)."
         },
         {
           "name": "username",
@@ -455,20 +495,22 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Avatar URL, or `null`."
         },
         {
           "name": "joinedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
           },
-          "doc": "Dedicated LWW clock for username/avatar edits. Merging on `joined_at`\n(which never changes after the first join) would freeze a member's\nusername at its first value across nodes; this field is the real\nlast-writer-wins timestamp for profile edits."
+          "doc": "Unix milliseconds of the last rename; the newest rename wins."
         }
       ]
     },
