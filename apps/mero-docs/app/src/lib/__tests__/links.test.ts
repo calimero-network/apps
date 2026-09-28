@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  docHref,
   KNOWN_APP_ORIGINS,
   memberHref,
   parseDocHref,
   parseMemberHref,
 } from '../links';
+import { appPath } from '../routes';
 
 const ORIGIN = 'http://localhost:5173';
 // eslint-disable-next-line no-script-url -- a hostile href the parser must reject
@@ -97,12 +97,12 @@ describe('parseDocHref (L-15)', () => {
   });
 });
 
-describe('docHref', () => {
+describe('appPath', () => {
   it('writes a relative path that parses back', () => {
     const t = { ws: 'a/b', folder: 'c d', doc: 'e#f', block: 'h&i' };
-    expect(docHref(t).startsWith('/app/')).toBe(true);
-    expect(parseDocHref(docHref(t), ORIGIN)).toEqual(t);
-    expect(docHref({ ws: 'w', folder: 'f', doc: 'd' })).toBe('/app/w/f/f/d/d');
+    expect(appPath(t).startsWith('/app/')).toBe(true);
+    expect(parseDocHref(appPath(t), ORIGIN)).toEqual(t);
+    expect(appPath({ ws: 'w', folder: 'f', doc: 'd' })).toBe('/app/w/f/f/d/d');
   });
 });
 

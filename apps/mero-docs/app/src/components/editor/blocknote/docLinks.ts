@@ -7,12 +7,11 @@ import type { FolderPaths } from '@/components/home/useHomeChips';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
 import { docLabel } from '@/lib/docLabel';
 import {
-  docHref,
   parseDocHref,
   parseMemberHref,
   type MemberHrefTarget,
 } from '@/lib/links';
-import type { AppRoute } from '@/lib/routes';
+import { appPath, type AppRoute } from '@/lib/routes';
 import {
   foldForSearch,
   matchRanges,
@@ -92,7 +91,7 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
     group: DOCS_GROUP,
     title: docLabel(r.title),
     folderLabel: src.paths.get(r.folderId)?.names.join(' / ') ?? '',
-    href: docHref({ ws: src.ws, folder: r.folderId, doc: r.docId, block }),
+    href: appPath({ ws: src.ws, folder: r.folderId, doc: r.docId, block }),
   });
 
   if (!normalizeQuery(query).text) {
@@ -169,7 +168,7 @@ export function sectionLinkItems(
         title: heading,
         titleRanges: toRanges(matchRanges(heading, text)),
         folderLabel: title,
-        href: docHref({
+        href: appPath({
           ws: src.ws,
           folder: r.folderId,
           doc: r.docId,
@@ -205,7 +204,7 @@ export function pastedDocLink(
   const target = parseDocHref(url, ctx.origin);
   if (!target || !ctx.ws || target.ws !== ctx.ws) return null;
   const row = ctx.rows.get(rowKey(target.folder, target.doc));
-  return { href: docHref(target), title: row ? docLabel(row.title) : url };
+  return { href: appPath(target), title: row ? docLabel(row.title) : url };
 }
 
 export type LinkNav = {

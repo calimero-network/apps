@@ -1,4 +1,4 @@
-import { appPath, parseAppPath } from './routes';
+import { parseAppPath } from './routes';
 import type { DocHrefTarget } from './workspaceIndex/types';
 
 export type { DocHrefTarget } from './workspaceIndex/types';
@@ -38,10 +38,6 @@ export function parseDocHref(
   if (!route?.folder || !route.doc) return null;
   const { ws, folder, doc, block } = route;
   return block ? { ws, folder, doc, block } : { ws, folder, doc };
-}
-
-export function docHref(t: DocHrefTarget): string {
-  return appPath(t);
 }
 
 /** The member a mention links to; relative hrefs resolve on `origin`. */

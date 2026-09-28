@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dateLabel, openedLabel, updatedLabel } from '../relativeTime';
+import { dateLabel, updatedLabel } from '../relativeTime';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -47,25 +47,15 @@ describe('updatedLabel', () => {
   });
 });
 
-describe('openedLabel', () => {
-  it('reads as part of a sentence', () => {
-    expect(openedLabel(NOW - 30_000, NOW)).toBe('opened just now');
-    expect(openedLabel(NOW - 4 * MIN, NOW)).toBe('opened 4 min ago');
-    expect(openedLabel(NOW - HOUR, NOW)).toBe('opened 1 h ago');
-    expect(openedLabel(new Date(2026, 8, 27, 9).getTime(), NOW)).toBe(
-      'opened yesterday',
-    );
-    const sep22 = new Date(2026, 8, 22, 9).getTime();
-    expect(openedLabel(sep22, NOW)).toBe(`opened ${updatedLabel(sep22, NOW)}`);
-  });
-});
-
 describe('dateLabel', () => {
   it('is always a date, with the year only when it differs', () => {
     const today = NOW - 5 * MIN;
     const lastYear = new Date(2025, 11, 31, 10).getTime();
     expect(dateLabel(today, NOW)).toBe(
-      new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(today),
+      new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+      }).format(today),
     );
     expect(dateLabel(lastYear, NOW)).toBe(updatedLabel(lastYear, NOW));
   });

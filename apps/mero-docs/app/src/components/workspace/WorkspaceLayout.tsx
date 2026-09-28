@@ -51,7 +51,6 @@ import { DisplayNameGate } from './DisplayNameGate';
 import { TopBarSearch } from '@/components/search/TopBarSearch';
 import { SearchContainer } from '@/components/search/SearchContainer';
 import { useRecentDocs } from '@/hooks/useRecentDocs';
-import { KEY_LABELS } from '@/lib/platform';
 
 const EDITOR_SELECTOR = '.bn-editor'; // Cmd/Ctrl+K there is the editor's own link shortcut
 const SEARCH_KEY_CODE = 'KeyK'; // the physical key, so the shortcut works on any layout
@@ -119,7 +118,8 @@ export function WorkspaceLayout() {
 
   // Friendly display of the node URL - stripped of protocol for
   // compactness, full URL kept in the title attribute for copy-paste.
-  const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
+  const displayNode =
+    (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
   const { route, goWorkspace, goHome, goFolder, goDoc, goSettings } =
     useAppRoute();
@@ -207,7 +207,8 @@ export function WorkspaceLayout() {
     if (docKey && linkTarget === 'ok') setOpenedDocKey(docKey);
   }, [docKey, linkTarget]);
   const { recent, touch } = useRecentDocs(namespaceId ?? '');
-  const docOpened = linkTarget === 'ok' && !!selectedFolderId && !!selectedDocId;
+  const docOpened =
+    linkTarget === 'ok' && !!selectedFolderId && !!selectedDocId;
   useEffect(() => {
     if (docOpened) touch(selectedFolderId!, selectedDocId!);
   }, [docOpened, selectedFolderId, selectedDocId, touch]);
@@ -218,7 +219,8 @@ export function WorkspaceLayout() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.code !== SEARCH_KEY_CODE) return;
-      if (e.target instanceof Element && e.target.closest(EDITOR_SELECTOR)) return;
+      if (e.target instanceof Element && e.target.closest(EDITOR_SELECTOR))
+        return;
       e.preventDefault();
       setSearchOpen((open) => !open);
     };
@@ -227,7 +229,8 @@ export function WorkspaceLayout() {
   }, [hasWorkspace]);
   const showEditor =
     !!docKey &&
-    (linkTarget === 'ok' || (linkTarget === 'syncing' && openedDocKey === docKey));
+    (linkTarget === 'ok' ||
+      (linkTarget === 'syncing' && openedDocKey === docKey));
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     'mero-sidebar-width',
     256,
@@ -313,10 +316,7 @@ export function WorkspaceLayout() {
         </div>
         {namespaceId && (
           <div className="flex min-w-0 flex-1 justify-center md:px-6">
-            <TopBarSearch
-              onOpen={() => setSearchOpen(true)}
-              shortcutLabel={KEY_LABELS.search}
-            />
+            <TopBarSearch onOpen={() => setSearchOpen(true)} />
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -375,7 +375,10 @@ export function WorkspaceLayout() {
             </SidebarDrawer>
           ) : (
             !sidebarCollapsed && (
-              <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
+              <WorkspaceSidebar
+                width={sidebarWidth}
+                onWidthChange={setSidebarWidth}
+              >
                 {folderTree}
               </WorkspaceSidebar>
             )
@@ -428,7 +431,9 @@ export function WorkspaceLayout() {
                   docId={selectedDocId}
                   onClose={() => goFolder(selectedFolderId)}
                   // The deleted doc's URL is dead, so it must not stay in history.
-                  onDeleted={() => goFolder(selectedFolderId, { replace: true })}
+                  onDeleted={() =>
+                    goFolder(selectedFolderId, { replace: true })
+                  }
                   folderName={selectedFolder?.alias}
                 />
               </Suspense>
