@@ -103,14 +103,8 @@ export function useTagsSource(index: IndexSource): TagsState {
       clearTimeout(retryRef.current);
       const seq = ++seqRef.current;
       registryClient.listTags().then(
-        (dtos) => {
+        (tags) => {
           if (seq !== seqRef.current) return;
-          const tags = dtos.map(({ key, name, color, deleted }) => ({
-            key,
-            name,
-            color,
-            deleted,
-          }));
           loadedForRef.current = registryClient;
           setLoaded({ client: registryClient, tags });
         },
