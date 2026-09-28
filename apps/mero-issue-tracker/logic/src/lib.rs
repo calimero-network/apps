@@ -4,18 +4,34 @@
 //! core patterns:
 //!
 //! - `#[app::state]` / `#[app::logic]` / `#[app::init]`
-//! - `UnorderedMap<String, Issue>` — the shared issue board (anyone may triage).
-//! - `UnorderedMap<String, Comment>` — the discussion threads; authorship is
-//!   enforced in-logic (only the immutable `author` may edit/delete).
-//! - `UnorderedMap<String, u64>` — a flat label index keyed `issue_id\u{1}label`
-//!   so concurrent adds of the same label converge to one entry (no duplicates)
-//!   and removes are conflict-free.
-//! - `LwwRegister<T>` for every mutable issue/comment field (title, summary,
-//!   impact, repro, resolution_criteria, status, priority, assignee, body,
-//!   edited_at) so concurrent edits converge LWW.
-//! - hand-written `Mergeable` + `RekeyTarget` on the CRDT-nesting `Issue` /
+//! - `Authored<IndexedMap<String, IssueHeader>>` — who filed each issue, and its
+//!   title. Owned by the filer: only they can delete the issue, and the creator
+//!   shown is the owner stamp, which a patched node cannot forge.
+//! - `IndexedMap<String, Issue>` — the shared triage state (anyone may triage),
+//!   indexed by status and assignee so a board column is a seek.
+//! - `Authored<IndexedMap<String, Comment>>` — the discussion threads. Each
+//!   comment is owned by its author; the `LwwRegister`s nested in it are owned
+//!   by that author too, so only they can edit it, on every node.
+//! - `IndexedMap<String, LabelTag>` — one row per (issue, label), keyed
+//!   `issue_id\u{1}label` so concurrent adds of the same label converge to one
+//!   entry, indexed both ways so "labels of an issue" and "issues with a label"
+//!   are seeks.
+//! - `LwwRegister<T>` for every mutable issue/comment field so concurrent edits
+//!   converge LWW, and hand-written `Mergeable` on the CRDT-nesting `Issue` /
 //!   `Comment` map values (#2577 nested-register re-keying).
 //! - `app::emit!`, named-struct returns (no tuples — ABI-safe views).
+//!
+//! # What every node enforces, and what it does not
+//!
+//! A member can run a patched node that skips every check in these methods. The
+//! checks only make a refused write fail early; the storage types above are what
+//! hold. Triage state and labels are public ON PURPOSE — any teammate may move,
+//! re-prioritise, re-assign or relabel an issue — so a patched node can rewrite
+//! or remove them, exactly as an honest teammate could rewrite them. A missing
+//! triage row reads, and is re-created, as a fresh `Open` issue: the issue
+//! itself lives in its owned header, which only its filer can remove.
+
+use std::collections::BTreeSet;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
@@ -23,8 +39,9 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_sdk::AccountId;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
+use calimero_storage::collections::{Authored, IndexedMap, LwwRegister, Mergeable, StoreError};
 use calimero_storage::env as storage_env;
 use issue_tracker_types::{generate_id, validate_label, Error};
 
@@ -48,37 +65,69 @@ const LABEL_SEP: char = '\u{1}';
 // Data models (internal, Borsh-only — they nest CRDTs; callers get *View structs)
 // ---------------------------------------------------------------------------
 
-/// A single issue on the board. `id`, `created_by`, `created_at` are set once at
-/// creation; every mutable field is a `LwwRegister` so concurrent edits converge
-/// last-writer-wins. Labels live in a separate flat index (see `IssueTracker`).
+/// Who filed an issue, and what they called it. Set once at creation. The filer
+/// is the entry's owner stamp, not a field, so nobody can re-attribute an issue.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct IssueHeader {
+    pub title: String,
+    #[index]
+    pub created_at: u64,
+}
+
+/// An issue's shared triage state. Every field is a `LwwRegister` so concurrent
+/// edits converge last-writer-wins. Labels live in a separate index (see
+/// `IssueTracker`).
 #[app::mergeable(id = "mero_issue_tracker::Issue")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Issue {
-    pub id: String,
-    pub title: LwwRegister<String>,
     pub summary: LwwRegister<String>,
     pub impact: LwwRegister<String>,
     pub repro: LwwRegister<String>,
     pub resolution_criteria: LwwRegister<String>,
+    #[index]
     pub status: LwwRegister<String>,
     pub priority: LwwRegister<String>,
+    #[index]
     pub assignee: LwwRegister<Option<String>>,
-    pub created_by: String,
-    pub created_at: u64,
+}
+
+impl Issue {
+    /// The triage state an issue starts with, and the one a row removed by a
+    /// peer reads as.
+    fn open(
+        summary: String,
+        impact: String,
+        repro: String,
+        resolution_criteria: String,
+        priority: String,
+    ) -> Self {
+        Issue {
+            summary: LwwRegister::new(summary),
+            impact: LwwRegister::new(impact),
+            repro: LwwRegister::new(repro),
+            resolution_criteria: LwwRegister::new(resolution_criteria),
+            status: LwwRegister::new(STATUSES[0].to_string()),
+            priority: LwwRegister::new(priority),
+            assignee: LwwRegister::new(None),
+        }
+    }
+
+    fn missing() -> Self {
+        Self::open(
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            PRIORITIES[0].to_string(),
+        )
+    }
 }
 
 impl Mergeable for Issue {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Deterministic tie-break for the set-once fields so merge is
-        // commutative even if two replicas raced the initial insert.
-        if (other.created_at, &other.id) < (self.created_at, &self.id) {
-            self.id = other.id.clone();
-            self.created_by = other.created_by.clone();
-            self.created_at = other.created_at;
-        }
         // Nested registers merge by HLC last-writer-wins.
-        self.title.merge(&other.title);
         self.summary.merge(&other.summary);
         self.impact.merge(&other.impact);
         self.repro.merge(&other.repro);
@@ -90,16 +139,17 @@ impl Mergeable for Issue {
     }
 }
 
-/// A discussion entry on an issue. `id`, `issue_id`, `author`, `created_at` are
-/// immutable; `body` and `edited_at` are LWW registers. Only the `author` may
-/// edit or delete (enforced in-logic against the immutable field).
+/// A discussion entry on an issue. `id`, `issue_id`, `created_at` are
+/// immutable; `body` and `edited_at` are LWW registers. The author is the
+/// entry's owner stamp, and only they may edit or delete it — on every node.
+/// `thread` is one issue's comments, oldest first.
 #[app::mergeable(id = "mero_issue_tracker::Comment")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType, app::Indexed)]
 #[borsh(crate = "calimero_sdk::borsh")]
+#[index(thread(issue_id, created_at))]
 pub struct Comment {
     pub id: String,
     pub issue_id: String,
-    pub author: String,
     pub body: LwwRegister<String>,
     pub created_at: u64,
     pub edited_at: LwwRegister<Option<u64>>,
@@ -107,16 +157,28 @@ pub struct Comment {
 
 impl Mergeable for Comment {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Deterministic tie-break for the set-once fields so merge is
+        // commutative even if the author's two devices raced the insert.
         if (other.created_at, &other.id) < (self.created_at, &self.id) {
             self.id = other.id.clone();
             self.issue_id = other.issue_id.clone();
-            self.author = other.author.clone();
             self.created_at = other.created_at;
         }
         self.body.merge(&other.body);
         self.edited_at.merge(&other.edited_at);
         Ok(())
     }
+}
+
+/// One label on one issue.
+#[derive(Debug, BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Indexed)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct LabelTag {
+    #[index]
+    pub issue_id: LwwRegister<String>,
+    #[index]
+    pub label: LwwRegister<String>,
+    pub added_at: LwwRegister<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,18 +244,26 @@ pub struct RepoInfo {
 
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct IssueTracker {
-    /// All issues, keyed by generated id. Shared — any teammate may triage.
-    issues: UnorderedMap<String, Issue>,
-    /// All comments across all issues, keyed by generated id.
-    comments: UnorderedMap<String, Comment>,
-    /// Flat label index: key `"{issue_id}\u{1}{label}"` → added-at ms register.
-    /// Concurrent adds of the same label collapse to one entry (no duplicates);
-    /// removal is a conflict-free key delete. The value is a `LwwRegister` so the
-    /// map holds a CRDT value (a bare `u64` is not replicable).
-    labels: UnorderedMap<String, LwwRegister<u64>>,
+    /// Issue id → header, owned by whoever filed it. An issue exists while its
+    /// header does.
+    headers: Authored<IndexedMap<String, IssueHeader>>,
+    /// Issue id → triage state. Shared — any teammate may triage.
+    issues: IndexedMap<String, Issue>,
+    /// All comments across all issues, keyed by generated id, each owned by
+    /// its author.
+    comments: Authored<IndexedMap<String, Comment>>,
+    /// Key `"{issue_id}\u{1}{label}"` → the label. Concurrent adds of the same
+    /// label collapse to one entry (no duplicates); removal is a conflict-free
+    /// key delete.
+    labels: IndexedMap<String, LabelTag>,
     /// The GitHub repository URL this context (repo) tracks. Empty until set;
     /// LWW so concurrent edits from teammates converge last-writer-wins.
     repo_url: LwwRegister<String>,
+}
+
+/// A storage error, named by the call that raised it.
+fn store_err(what: &'static str) -> impl FnOnce(StoreError) -> AppError {
+    move |e| AppError::msg(format!("{what}: {e}"))
 }
 
 #[app::logic]
@@ -201,9 +271,10 @@ impl IssueTracker {
     #[app::init]
     pub fn init() -> IssueTracker {
         IssueTracker {
-            issues: UnorderedMap::new_with_field_name("issue_tracker:issues"),
-            comments: UnorderedMap::new_with_field_name("issue_tracker:comments"),
-            labels: UnorderedMap::new_with_field_name("issue_tracker:labels"),
+            headers: Authored::new_with_field_name("issue_tracker:headers"),
+            issues: IndexedMap::new_with_field_name("issue_tracker:issues"),
+            comments: Authored::new_with_field_name("issue_tracker:comments"),
+            labels: IndexedMap::new_with_field_name("issue_tracker:labels"),
             repo_url: LwwRegister::new(String::new()),
         }
     }
@@ -260,29 +331,27 @@ impl IssueTracker {
         let mut nonce = [0u8; 4];
         env::random_bytes(&mut nonce);
         let id = generate_id("issue", now, &nonce);
-        let created_by = self.caller();
+        let created_by = caller();
 
-        let issue = Issue {
-            id: id.clone(),
-            title: LwwRegister::new(title),
-            summary: LwwRegister::new(summary),
-            impact: LwwRegister::new(impact),
-            repro: LwwRegister::new(repro),
-            resolution_criteria: LwwRegister::new(resolution_criteria),
-            status: LwwRegister::new(STATUSES[0].to_string()),
-            priority: LwwRegister::new(priority),
-            assignee: LwwRegister::new(None),
-            created_by: created_by.clone(),
-            created_at: now,
-        };
-        self.issues
-            .insert(id.clone(), issue)
-            .map_err(|e| AppError::msg(format!("issues.insert: {e}")))?;
+        self.headers
+            .insert(
+                id.clone(),
+                IssueHeader {
+                    title,
+                    created_at: now,
+                },
+            )
+            .map_err(store_err("headers.insert"))?;
+        let _ = self
+            .issues
+            .insert(
+                id.clone(),
+                Issue::open(summary, impact, repro, resolution_criteria, priority),
+            )
+            .map_err(store_err("issues.insert"))?;
 
         for label in labels {
-            self.labels
-                .insert(label_key(&id, &label), LwwRegister::new(now))
-                .map_err(|e| AppError::msg(format!("labels.insert: {e}")))?;
+            self.put_label(&id, label, now)?;
         }
 
         app::emit!(Event::IssueCreated {
@@ -295,13 +364,7 @@ impl IssueTracker {
     /// Change an issue's status. Rejects any value outside the allowed set.
     pub fn set_status(&mut self, issue_id: String, status: String) -> app::Result<()> {
         validate_status(&status)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.status.set(status.clone());
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.status.set(status.clone()))?;
 
         app::emit!(Event::IssueStatusChanged {
             id: &issue_id,
@@ -313,13 +376,7 @@ impl IssueTracker {
     /// Update an issue's summary. Rejects an empty value.
     pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
         validate_section("summary", &summary)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.summary.set(summary);
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.summary.set(summary))?;
 
         app::emit!(Event::IssueEdited { id: &issue_id });
         Ok(())
@@ -328,13 +385,7 @@ impl IssueTracker {
     /// Update an issue's impact. Rejects an empty value.
     pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
         validate_section("impact", &impact)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.impact.set(impact);
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.impact.set(impact))?;
 
         app::emit!(Event::IssueEdited { id: &issue_id });
         Ok(())
@@ -343,13 +394,7 @@ impl IssueTracker {
     /// Update an issue's reproduction steps. Rejects an empty value.
     pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
         validate_section("repro", &repro)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.repro.set(repro);
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.repro.set(repro))?;
 
         app::emit!(Event::IssueEdited { id: &issue_id });
         Ok(())
@@ -362,13 +407,9 @@ impl IssueTracker {
         resolution_criteria: String,
     ) -> app::Result<()> {
         validate_section("resolution_criteria", &resolution_criteria)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.resolution_criteria.set(resolution_criteria);
-        drop(guard);
+        self.triage(&issue_id, |issue| {
+            issue.resolution_criteria.set(resolution_criteria)
+        })?;
 
         app::emit!(Event::IssueEdited { id: &issue_id });
         Ok(())
@@ -377,13 +418,7 @@ impl IssueTracker {
     /// Change an issue's priority. Rejects any value outside the allowed set.
     pub fn set_priority(&mut self, issue_id: String, priority: String) -> app::Result<()> {
         validate_priority(&priority)?;
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.priority.set(priority.clone());
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.priority.set(priority.clone()))?;
 
         app::emit!(Event::IssuePriorityChanged {
             id: &issue_id,
@@ -394,13 +429,7 @@ impl IssueTracker {
 
     /// Set or clear an issue's assignee.
     pub fn set_assignee(&mut self, issue_id: String, assignee: Option<String>) -> app::Result<()> {
-        let mut guard = self
-            .issues
-            .get_mut(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        guard.assignee.set(assignee);
-        drop(guard);
+        self.triage(&issue_id, |issue| issue.assignee.set(assignee))?;
 
         app::emit!(Event::IssueAssigneeChanged { id: &issue_id });
         Ok(())
@@ -414,9 +443,7 @@ impl IssueTracker {
             app::bail!(Error::NotFound(issue_id));
         }
         let now = storage_env::time_now() / 1_000_000;
-        self.labels
-            .insert(label_key(&issue_id, &label), LwwRegister::new(now))
-            .map_err(|e| AppError::msg(format!("labels.insert: {e}")))?;
+        self.put_label(&issue_id, label, now)?;
 
         app::emit!(Event::IssueLabelsChanged { id: &issue_id });
         Ok(())
@@ -427,9 +454,10 @@ impl IssueTracker {
         if !self.issue_exists(&issue_id)? {
             app::bail!(Error::NotFound(issue_id));
         }
-        self.labels
+        let _ = self
+            .labels
             .remove(&label_key(&issue_id, &label))
-            .map_err(|e| AppError::msg(format!("labels.remove: {e}")))?;
+            .map_err(store_err("labels.remove"))?;
 
         app::emit!(Event::IssueLabelsChanged { id: &issue_id });
         Ok(())
@@ -437,27 +465,70 @@ impl IssueTracker {
 
     /// List issues, optionally filtered by status, assignee, and/or label.
     /// Results are ordered by creation time then id for stability.
+    ///
+    /// The first filter given is a seek on its index; the others are checked on
+    /// the rows it returns. With no filter every issue is read.
     pub fn list_issues(
         &self,
         status: Option<String>,
         assignee: Option<String>,
         label: Option<String>,
     ) -> app::Result<Vec<IssueView>> {
-        let mut out: Vec<IssueView> = self
-            .issues
-            .entries()
-            .map_err(|e| AppError::msg(format!("issues.entries: {e}")))?
-            .map(|(id, issue)| self.to_issue_view(id, &issue))
-            .collect::<app::Result<_>>()?;
+        let ids: BTreeSet<String> = if let Some(status) = &status {
+            self.issues
+                .query("status")
+                .eq(status.as_str())
+                .keys()
+                .map_err(store_err("issues.query"))?
+                .into_iter()
+                .collect()
+        } else if let Some(assignee) = &assignee {
+            self.issues
+                .query("assignee")
+                .eq(assignee.as_str())
+                .keys()
+                .map_err(store_err("issues.query"))?
+                .into_iter()
+                .collect()
+        } else if let Some(label) = &label {
+            self.labels
+                .query("label")
+                .eq(label.as_str())
+                .entries()
+                .map_err(store_err("labels.query"))?
+                .into_iter()
+                .map(|(_, tag)| tag.issue_id.get().clone())
+                .collect()
+        } else {
+            self.headers
+                .entries()
+                .map_err(store_err("headers.entries"))?
+                .map(|(id, _)| id)
+                .collect()
+        };
 
-        if let Some(status) = &status {
-            out.retain(|i| &i.status == status);
-        }
-        if let Some(assignee) = &assignee {
-            out.retain(|i| i.assignee.as_deref() == Some(assignee.as_str()));
-        }
-        if let Some(label) = &label {
-            out.retain(|i| i.labels.iter().any(|l| l == label));
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            // A triage or label row with no header is not an issue.
+            let Some(view) = self.issue_view(id)? else {
+                continue;
+            };
+            if status.as_ref().is_some_and(|s| &view.status != s) {
+                continue;
+            }
+            if assignee
+                .as_ref()
+                .is_some_and(|a| view.assignee.as_deref() != Some(a.as_str()))
+            {
+                continue;
+            }
+            if label
+                .as_ref()
+                .is_some_and(|l| !view.labels.iter().any(|x| x == l))
+            {
+                continue;
+            }
+            out.push(view);
         }
 
         out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
@@ -467,45 +538,61 @@ impl IssueTracker {
     /// Read a single issue plus its full comment thread (ordered by created_at).
     pub fn get_issue(&self, issue_id: String) -> app::Result<IssueDetail> {
         let issue = self
-            .issues
-            .get(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get: {e}")))?
+            .issue_view(issue_id.clone())?
             .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        let issue = self.to_issue_view(issue_id.clone(), &issue)?;
 
-        let mut comments: Vec<CommentView> = self
+        let mut comments = Vec::new();
+        for (id, c) in self
             .comments
+            .query("thread")
+            .eq(&issue_id)
             .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
-            .filter(|(_, c)| c.issue_id == issue_id)
-            .map(|(_, c)| comment_view(&c))
-            .collect();
+            .map_err(store_err("comments.query"))?
+        {
+            let author = self
+                .comments
+                .owner_of(&id)
+                .map_err(store_err("comments.owner_of"))?
+                .map(|a| a.to_string())
+                .unwrap_or_default();
+            comments.push(CommentView {
+                id,
+                issue_id: c.issue_id,
+                author,
+                body: c.body.get().clone(),
+                created_at: c.created_at,
+                edited_at: *c.edited_at.get(),
+            });
+        }
         comments.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
 
         Ok(IssueDetail { issue, comments })
     }
 
-    /// Live count of issues per status column, in fixed column order.
+    /// Live count of issues per status column, in fixed column order. Each
+    /// column is a seek on the `status` index; a row counts only if its issue
+    /// still has a header.
     pub fn get_status_counts(&self) -> app::Result<Vec<StatusCount>> {
-        let mut counts = [0u64; STATUSES.len()];
-        for (_, issue) in self
-            .issues
-            .entries()
-            .map_err(|e| AppError::msg(format!("issues.entries: {e}")))?
-        {
-            let status = issue.status.get();
-            if let Some(idx) = STATUSES.iter().position(|s| s == status) {
-                counts[idx] += 1;
+        let mut out = Vec::with_capacity(STATUSES.len());
+        for status in STATUSES {
+            let mut count = 0u64;
+            for id in self
+                .issues
+                .query("status")
+                .eq(status)
+                .keys()
+                .map_err(store_err("issues.query"))?
+            {
+                if self.issue_exists(&id)? {
+                    count += 1;
+                }
             }
+            out.push(StatusCount {
+                status: status.to_string(),
+                count,
+            });
         }
-        Ok(STATUSES
-            .iter()
-            .enumerate()
-            .map(|(idx, s)| StatusCount {
-                status: (*s).to_string(),
-                count: counts[idx],
-            })
-            .collect())
+        Ok(out)
     }
 
     /// Post a comment to an issue's thread. Returns the generated comment id.
@@ -525,14 +612,13 @@ impl IssueTracker {
         let comment = Comment {
             id: id.clone(),
             issue_id: issue_id.clone(),
-            author: self.caller(),
             body: LwwRegister::new(body),
             created_at: now,
             edited_at: LwwRegister::new(None),
         };
         self.comments
             .insert(id.clone(), comment)
-            .map_err(|e| AppError::msg(format!("comments.insert: {e}")))?;
+            .map_err(store_err("comments.insert"))?;
 
         app::emit!(Event::CommentAdded {
             id: &id,
@@ -546,22 +632,14 @@ impl IssueTracker {
         if new_body.trim().is_empty() {
             app::bail!(Error::Invalid("comment body must not be empty".into()));
         }
-        let caller = self.caller();
+        self.require_comment_author(&comment_id, "edit")?;
         let now = storage_env::time_now() / 1_000_000;
-
-        let mut guard = self
-            .comments
-            .get_mut(&comment_id)
-            .map_err(|e| AppError::msg(format!("comments.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(comment_id.clone())))?;
-        if guard.author != caller {
-            app::bail!(Error::Forbidden(
-                "only the author may edit this comment".into()
-            ));
-        }
-        guard.body.set(new_body);
-        guard.edited_at.set(Some(now));
-        drop(guard);
+        self.comments
+            .modify(&comment_id, |c| {
+                c.body.set(new_body);
+                c.edited_at.set(Some(now));
+            })
+            .map_err(store_err("comments.modify"))?;
 
         app::emit!(Event::CommentEdited { id: &comment_id });
         Ok(())
@@ -569,73 +647,79 @@ impl IssueTracker {
 
     /// Delete a comment. Only the original author may delete.
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
-        let caller = self.caller();
-        let author = self
+        self.require_comment_author(&comment_id, "delete")?;
+        let _ = self
             .comments
-            .get(&comment_id)
-            .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
-            .map(|c| c.author.clone())
-            .ok_or_else(|| AppError::from(Error::NotFound(comment_id.clone())))?;
-        if author != caller {
-            app::bail!(Error::Forbidden(
-                "only the author may delete this comment".into()
-            ));
-        }
-        self.comments
             .remove(&comment_id)
-            .map_err(|e| AppError::msg(format!("comments.remove: {e}")))?;
+            .map_err(store_err("comments.remove"))?;
 
         app::emit!(Event::CommentDeleted { id: &comment_id });
         Ok(())
     }
 
-    /// Delete an issue and cascade-remove its comments and labels. Only the
-    /// issue's creator may delete it. Deletion is a CRDT tombstone: it is
-    /// last-writer-wins against a concurrent edit, so a delete racing an edit on
-    /// another replica resolves by HLC (no custom resurrection logic).
+    /// Delete an issue with its triage state, its labels and the caller's own
+    /// comments on it. Only the issue's creator may delete it.
+    ///
+    /// Other people's comments stay: each belongs to its author, and only they
+    /// may remove it. Every comment read goes through a live issue, so those
+    /// orphans are never shown.
     pub fn delete_issue(&mut self, issue_id: String) -> app::Result<()> {
-        let caller = self.caller();
-        let created_by = self
-            .issues
-            .get(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.get: {e}")))?
-            .map(|i| i.created_by.clone())
-            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
-        if created_by != caller {
+        if !self.issue_exists(&issue_id)? {
+            app::bail!(Error::NotFound(issue_id));
+        }
+        if !self
+            .headers
+            .owned_by_me(&issue_id)
+            .map_err(store_err("headers.owned_by_me"))?
+        {
             app::bail!(Error::Forbidden(
                 "only the creator may delete this issue".into()
             ));
         }
 
         // Collect matching keys before removing - do not mutate while iterating.
-        let comment_ids: Vec<String> = self
+        let mut my_comments = Vec::new();
+        for id in self
             .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
-            .filter(|(_, c)| c.issue_id == issue_id)
-            .map(|(id, _)| id)
-            .collect();
-        let label_prefix = format!("{issue_id}{LABEL_SEP}");
-        let label_keys: Vec<String> = self
+            .query("thread")
+            .eq(&issue_id)
+            .keys()
+            .map_err(store_err("comments.query"))?
+        {
+            if self
+                .comments
+                .owned_by_me(&id)
+                .map_err(store_err("comments.owned_by_me"))?
+            {
+                my_comments.push(id);
+            }
+        }
+        let label_keys = self
             .labels
-            .entries()
-            .map_err(|e| AppError::msg(format!("labels.entries: {e}")))?
-            .filter(|(key, _)| key.starts_with(label_prefix.as_str()))
-            .map(|(key, _)| key)
-            .collect();
+            .query("issue_id")
+            .eq(&issue_id)
+            .keys()
+            .map_err(store_err("labels.query"))?;
 
-        self.issues
+        let _ = self
+            .headers
             .remove(&issue_id)
-            .map_err(|e| AppError::msg(format!("issues.remove: {e}")))?;
-        for id in comment_ids {
-            self.comments
+            .map_err(store_err("headers.remove"))?;
+        let _ = self
+            .issues
+            .remove(&issue_id)
+            .map_err(store_err("issues.remove"))?;
+        for id in my_comments {
+            let _ = self
+                .comments
                 .remove(&id)
-                .map_err(|e| AppError::msg(format!("comments.remove: {e}")))?;
+                .map_err(store_err("comments.remove"))?;
         }
         for key in label_keys {
-            self.labels
+            let _ = self
+                .labels
                 .remove(&key)
-                .map_err(|e| AppError::msg(format!("labels.remove: {e}")))?;
+                .map_err(store_err("labels.remove"))?;
         }
 
         app::emit!(Event::IssueDeleted { id: &issue_id });
@@ -647,40 +731,117 @@ impl IssueTracker {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// Hex of the calling ACCOUNT — the person, not the device, so the same
+/// teammate can edit their comment from a laptop and a phone. It is what an
+/// owner stamp names, and what the node's member list is keyed by.
+fn caller() -> String {
+    AccountId::from(env::account_id()).to_string()
+}
+
 impl IssueTracker {
-    /// Hex of the executing identity — the public, shareable identity string.
-    /// Device, not account: this is the executor key the frontend compares
-    /// `created_by`/`author` against when gating edit and delete. Hex since
-    /// core 0.11.0-rc.27 removed base58 — the frontend now holds the same id
-    /// as hex, so a base58 rendering here would never compare equal.
-    fn caller(&self) -> String {
-        hex::encode(env::device_id())
-    }
-
     fn issue_exists(&self, issue_id: &str) -> app::Result<bool> {
-        self.issues
+        self.headers
+            .contains(&issue_id.to_owned())
+            .map_err(store_err("headers.contains"))
+    }
+
+    /// Apply a triage edit to an existing issue, re-creating its triage row
+    /// first if a peer removed it.
+    fn triage(&mut self, issue_id: &str, edit: impl FnOnce(&mut Issue)) -> app::Result<()> {
+        if !self.issue_exists(issue_id)? {
+            app::bail!(Error::NotFound(issue_id.to_owned()));
+        }
+        if !self
+            .issues
             .contains(issue_id)
-            .map_err(|e| AppError::msg(format!("issues.contains: {e}")))
+            .map_err(store_err("issues.contains"))?
+        {
+            let _ = self
+                .issues
+                .insert(issue_id.to_owned(), Issue::missing())
+                .map_err(store_err("issues.insert"))?;
+        }
+        let _ = self
+            .issues
+            .update(issue_id, edit)
+            .map_err(store_err("issues.update"))?;
+        Ok(())
     }
 
-    /// Collect the labels attached to an issue, sorted for a stable order.
-    fn labels_of(&self, issue_id: &str) -> app::Result<Vec<String>> {
-        let prefix = format!("{issue_id}{LABEL_SEP}");
-        let mut out: Vec<String> = self
+    fn put_label(&mut self, issue_id: &str, label: String, now: u64) -> app::Result<()> {
+        let _ = self
             .labels
-            .entries()
-            .map_err(|e| AppError::msg(format!("labels.entries: {e}")))?
-            .filter_map(|(key, _)| key.strip_prefix(prefix.as_str()).map(|l| l.to_string()))
-            .collect();
-        out.sort();
-        Ok(out)
+            .insert(
+                label_key(issue_id, &label),
+                LabelTag {
+                    issue_id: LwwRegister::new(issue_id.to_owned()),
+                    label: LwwRegister::new(label),
+                    added_at: LwwRegister::new(now),
+                },
+            )
+            .map_err(store_err("labels.insert"))?;
+        Ok(())
     }
 
-    fn to_issue_view(&self, id: String, issue: &Issue) -> app::Result<IssueView> {
-        let labels = self.labels_of(&id)?;
-        Ok(IssueView {
+    fn require_comment_author(&self, comment_id: &String, action: &str) -> app::Result<()> {
+        if !self
+            .comments
+            .contains(comment_id)
+            .map_err(store_err("comments.contains"))?
+        {
+            app::bail!(Error::NotFound(comment_id.clone()));
+        }
+        if !self
+            .comments
+            .owned_by_me(comment_id)
+            .map_err(store_err("comments.owned_by_me"))?
+        {
+            app::bail!(Error::Forbidden(format!(
+                "only the author may {action} this comment"
+            )));
+        }
+        Ok(())
+    }
+
+    /// The labels attached to an issue, sorted for a stable order. Only rows
+    /// whose key is the one `add_label` writes count, so a hand-written row
+    /// cannot duplicate a label.
+    fn labels_of(&self, issue_id: &str) -> app::Result<Vec<String>> {
+        let mut out = BTreeSet::new();
+        for (key, tag) in self
+            .labels
+            .query("issue_id")
+            .eq(issue_id)
+            .entries()
+            .map_err(store_err("labels.query"))?
+        {
+            let label = tag.label.get();
+            if key == label_key(issue_id, label) {
+                let _ = out.insert(label.clone());
+            }
+        }
+        Ok(out.into_iter().collect())
+    }
+
+    /// The issue `id` as a view, or `None` if it has no header.
+    fn issue_view(&self, id: String) -> app::Result<Option<IssueView>> {
+        let Some(header) = self.headers.get(&id).map_err(store_err("headers.get"))? else {
+            return Ok(None);
+        };
+        let created_by = self
+            .headers
+            .owner_of(&id)
+            .map_err(store_err("headers.owner_of"))?
+            .map(|a| a.to_string())
+            .unwrap_or_default();
+        let issue = match self.issues.get(&id).map_err(store_err("issues.get"))? {
+            Some(issue) => issue.clone(),
+            None => Issue::missing(),
+        };
+        Ok(Some(IssueView {
+            labels: self.labels_of(&id)?,
             id,
-            title: issue.title.get().clone(),
+            title: header.title,
             summary: issue.summary.get().clone(),
             impact: issue.impact.get().clone(),
             repro: issue.repro.get().clone(),
@@ -688,21 +849,9 @@ impl IssueTracker {
             status: issue.status.get().clone(),
             priority: issue.priority.get().clone(),
             assignee: issue.assignee.get().clone(),
-            labels,
-            created_by: issue.created_by.clone(),
-            created_at: issue.created_at,
-        })
-    }
-}
-
-fn comment_view(c: &Comment) -> CommentView {
-    CommentView {
-        id: c.id.clone(),
-        issue_id: c.issue_id.clone(),
-        author: c.author.clone(),
-        body: c.body.get().clone(),
-        created_at: c.created_at,
-        edited_at: *c.edited_at.get(),
+            created_by,
+            created_at: header.created_at,
+        }))
     }
 }
 
@@ -778,8 +927,11 @@ mod tests {
 
     use super::*;
 
-    // `call_as` moves the device, which is the axis `caller()` reads.
+    // A second PERSON: both axes move. `call_as` alone moves only the device,
+    // which is the same person on another machine — and `caller()` is the
+    // account, so that is still the author.
     const OTHER: [u8; 32] = [0x22; 32];
+    const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
 
     fn new_issue(app: &mut TestHost<IssueTracker>) -> String {
         app.call(|s| {
@@ -1104,11 +1256,14 @@ mod tests {
             .call(|s| s.add_comment(id.clone(), "mine".into()))
             .unwrap();
 
-        // A different executor is not the author - both must be rejected.
+        // A different person is not the author - both must be rejected.
         assert!(app
-            .call_as(OTHER, |s| s.edit_comment(c.clone(), "hax".into()))
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .edit_comment(c.clone(), "hax".into()))
             .is_err());
-        assert!(app.call_as(OTHER, |s| s.delete_comment(c.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_comment(c.clone()))
+            .is_err());
         // The comment survives the rejected attempts.
         assert_eq!(app.view(|s| s.get_issue(id)).unwrap().comments.len(), 1);
     }
@@ -1145,7 +1300,9 @@ mod tests {
         let mut app = TestHost::new(IssueTracker::init);
         let id = new_issue(&mut app);
 
-        assert!(app.call_as(OTHER, |s| s.delete_issue(id.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_issue(id.clone()))
+            .is_err());
         // Issue survives the rejected attempt.
         assert_eq!(app.view(|s| s.get_issue(id)).unwrap().issue.status, "Open");
     }
@@ -1154,5 +1311,140 @@ mod tests {
     fn delete_missing_issue_errors() {
         let mut app = TestHost::new(IssueTracker::init);
         assert!(app.call(|s| s.delete_issue("issue-nope".into())).is_err());
+    }
+
+    /// Authorship is the ACCOUNT: the author's second device may edit.
+    #[test]
+    fn the_authors_other_device_can_edit_their_comment() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+        let c = app
+            .call(|s| s.add_comment(id.clone(), "mine".into()))
+            .unwrap();
+        app.call_as(OTHER, |s| s.edit_comment(c.clone(), "from my phone".into()))
+            .unwrap();
+        let detail = app.view(|s| s.get_issue(id)).unwrap();
+        assert_eq!(detail.comments[0].body, "from my phone");
+        assert_eq!(detail.comments[0].author, app.view(|_| caller()));
+    }
+
+    // ── what every node enforces ─────────────────────────────────────────────
+    //
+    // These write straight into the collections, the way a patched node that
+    // skips every method check would, and assert that storage still refuses.
+
+    #[test]
+    fn another_account_cannot_rewrite_or_remove_a_comment_in_storage() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+        let c = app
+            .call(|s| s.add_comment(id.clone(), "mine".into()))
+            .unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+                s.comments.modify(&c, |c| c.body.set("hax".into()))
+            })
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.comments.remove(&c))
+            .is_err());
+        assert_eq!(
+            app.view(|s| s.get_issue(id)).unwrap().comments[0].body,
+            "mine"
+        );
+    }
+
+    #[test]
+    fn nobody_else_can_remove_or_reattribute_an_issue_in_storage() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+        let me = app.view(|_| caller());
+
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.remove(&id))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+                s.headers.modify(&id, |h| h.title = "Renamed".into())
+            })
+            .is_err());
+        // Taking the key over by inserting is refused too: it is occupied.
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.insert(
+                id.clone(),
+                IssueHeader {
+                    title: "Mine now".into(),
+                    created_at: 0,
+                }
+            ))
+            .is_err());
+
+        let issue = app.view(|s| s.get_issue(id)).unwrap().issue;
+        assert_eq!(issue.title, "Login broken");
+        assert_eq!(issue.created_by, me, "created_by is the owner stamp");
+    }
+
+    /// Triage is public on purpose, so a peer CAN remove a triage row. The
+    /// issue survives it: it reads as a fresh Open issue, and triaging it again
+    /// re-creates the row.
+    #[test]
+    fn an_issue_outlives_its_triage_row() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.issues.remove(&id))
+            .unwrap();
+
+        let issue = app.view(|s| s.get_issue(id.clone())).unwrap().issue;
+        assert_eq!(issue.status, "Open");
+        assert_eq!(issue.title, "Login broken");
+        assert_eq!(
+            app.view(|s| s.list_issues(None, None, None)).unwrap().len(),
+            1
+        );
+
+        app.call(|s| s.set_status(id.clone(), "Blocked".into()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_issue(id)).unwrap().issue.status,
+            "Blocked"
+        );
+    }
+
+    /// A triage row with no header — what a patched node inventing issues
+    /// would write — is neither listed nor counted.
+    #[test]
+    fn a_triage_row_without_a_header_is_not_an_issue() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let _ = new_issue(&mut app);
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.issues.insert("issue-forged".into(), Issue::missing())
+        })
+        .unwrap();
+
+        assert_eq!(
+            app.view(|s| s.list_issues(Some("Open".into()), None, None))
+                .unwrap()
+                .len(),
+            1
+        );
+        let counts = app.view(|s| s.get_status_counts()).unwrap();
+        assert_eq!(counts.iter().find(|c| c.status == "Open").unwrap().count, 1);
+        assert!(app.view(|s| s.get_issue("issue-forged".into())).is_err());
+    }
+
+    #[test]
+    fn other_peoples_comments_survive_an_issue_delete_but_are_not_shown() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+        let theirs = app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+                s.add_comment(id.clone(), "+1".into())
+            })
+            .unwrap();
+        app.call(|s| s.delete_issue(id.clone())).unwrap();
+        // Only its author may remove it, so it stays — unreachable, since
+        // every read goes through the issue.
+        assert!(app.view(|s| s.comments.contains(&theirs).unwrap()));
+        assert!(app.view(|s| s.get_issue(id)).is_err());
     }
 }

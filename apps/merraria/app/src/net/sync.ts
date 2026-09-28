@@ -133,7 +133,7 @@ export class SyncEngine {
     try {
       await this.exec("leave", { now: nowSecs() });
     } catch {
-      /* best-effort — reap collects us */
+      /* best-effort — we age out of the presence TTL anyway */
     }
   }
 

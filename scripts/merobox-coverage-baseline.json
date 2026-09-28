@@ -4,7 +4,7 @@
     "get_history",
     "get_players",
     "import_board_seed",
-    "register_player"
+    "reveal_board_handler"
   ],
   "mero-blocks": [
     "heartbeat",

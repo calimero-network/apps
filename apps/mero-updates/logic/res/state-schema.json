@@ -3,6 +3,7 @@
   "types": {
     "Ask": {
       "kind": "record",
+      "doc": "A structured request inside an update. Same three axes as `Post`.",
       "fields": [
         {
           "name": "id",
@@ -14,7 +15,8 @@
           "name": "post_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "An update's asks are one seek, not a scan of every ask."
         },
         {
           "name": "content",
@@ -102,7 +104,8 @@
           "name": "color",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS colour token or hex. Presentation only."
         },
         {
           "name": "created_at",
@@ -126,6 +129,7 @@
     },
     "Comment": {
       "kind": "record",
+      "doc": "A reply on a post. One level of nesting via `parent_id` (\"\" for top level).\n\nNo author field: the author is the entry's owner stamp. Deleting removes the\nentry — its owner, or a moderator, may.",
       "fields": [
         {
           "name": "id",
@@ -141,12 +145,6 @@
         },
         {
           "name": "parent_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -168,12 +166,6 @@
           "type": {
             "kind": "u64"
           }
-        },
-        {
-          "name": "deleted",
-          "type": {
-            "kind": "bool"
-          }
         }
       ]
     },
@@ -191,36 +183,122 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
+          },
+          "doc": "Admin tier = the signed writer set; `team` grants are verified at merge."
         },
         {
           "name": "settings",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Settings"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Settings"
+              },
+              "crdt_type": "unordered_map"
+            }
           }
         },
         {
           "name": "categories",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Category"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Category"
+              },
+              "crdt_type": "unordered_map"
+            }
           }
         },
         {
-          "name": "posts",
+          "name": "updates",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Post"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Flat maps keyed by id, carrying their parent's id — never a nested\ncollection per parent, which would need deterministic re-keying to\nconverge when two nodes create it independently."
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Ask"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "question_status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Triage"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The team's status for a question, keyed by the question's id."
+        },
+        {
+          "name": "offer_status",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Triage"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The team's status for an offer, keyed like the offer."
+        },
+        {
+          "name": "questions",
           "type": {
             "kind": "map",
             "key": {
@@ -229,33 +307,7 @@
             "value": {
               "$ref": "Post"
             },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "asks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Ask"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "offers",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Offer"
-            },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -268,7 +320,20 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Offer"
+            },
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -281,7 +346,7 @@
             "value": {
               "$ref": "Reaction"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -294,7 +359,7 @@
             "value": {
               "$ref": "Read"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -306,14 +371,35 @@
             },
             "value": {
               "$ref": "Profile"
-            },
-            "crdt_type": "unordered_map"
+            }
           }
+        },
+        {
+          "name": "mutes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            }
+          },
+          "doc": "Which categories each reader has muted. Its own slot, not a profile\nfield, so renaming yourself on one device and muting on another both\nsurvive: a `UserStorage` slot resolves last-writer-wins as a whole."
         }
       ]
     },
     "Metric": {
       "kind": "record",
+      "doc": "One KPI as reported in one update.\n\n`value` is a STRING on purpose: founders write \"$1.2M\", \"38%\", \"12.5k\", and\nthe number they meant is the frontend's to parse. The contract keeps what\nwas reported, exactly as reported.",
       "fields": [
         {
           "name": "name",
@@ -337,6 +423,7 @@
     },
     "Offer": {
       "kind": "record",
+      "doc": "One reader's offer to help with one ask. Keyed `\"<ask_id>|<account>\"`, and\nowned by that account.\n\nTwo writers, so two records: the HELPER owns this one (`note`/`withdrawn`,\nby `updated_at`), the TEAM owns its [`Triage`] under the same key. Accepting\nan offer must not be undone by the helper fixing a typo in their note, and a\nhelper must not be able to accept their own.",
       "fields": [
         {
           "name": "ask_id",
@@ -367,18 +454,6 @@
           "type": {
             "kind": "u64"
           }
-        },
-        {
-          "name": "status",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "status_at",
-          "type": {
-            "kind": "u64"
-          }
         }
       ]
     },
@@ -401,6 +476,7 @@
     },
     "Post": {
       "kind": "record",
+      "doc": "An update or a question.\n\nThree independent merge axes: CONTENT (the author's edits, by `edited_at`),\nSTATUS (the team's triage of a question, by `status_at`) and the tombstone\n(OR). Folding status into content would let an author's typo fix silently\nundo \"answered\", or the reverse.",
       "fields": [
         {
           "name": "id",
@@ -501,6 +577,7 @@
     },
     "Profile": {
       "kind": "record",
+      "doc": "Who a member says they are. A claim, not an identity: the account id is\nthe only thing that authorises anything.",
       "fields": [
         {
           "name": "account",
@@ -518,16 +595,8 @@
           "name": "firm",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "muted",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
+          },
+          "doc": "Fund, firm or company — \"Seed Capital\", \"Angel\"."
         },
         {
           "name": "joined_at",
@@ -545,6 +614,7 @@
     },
     "Reaction": {
       "kind": "record",
+      "doc": "One account's one emoji on one post. Keyed `\"<post_id>|<account>|<emoji>\"`,\nso reacting twice cannot count twice and a second device is the same person.",
       "fields": [
         {
           "name": "post_id",
@@ -580,6 +650,7 @@
     },
     "Read": {
       "kind": "record",
+      "doc": "A read receipt. Keyed `\"<post_id>|<account>\"`. Both ends are monotone\n(first read = min, latest = max), so this merges without any clock\ntie-break at all.",
       "fields": [
         {
           "name": "post_id",
@@ -609,12 +680,14 @@
     },
     "Section": {
       "kind": "record",
+      "doc": "One block of an update: \"Highlights\", \"Lowlights\", \"Product\", \"Thanks\"…",
       "fields": [
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A template hint (\"highlights\", \"lowlights\", \"product\", \"team\", \"text\"…).\nFree text so templates can evolve without a contract release."
         },
         {
           "name": "title",
@@ -632,6 +705,7 @@
     },
     "Settings": {
       "kind": "record",
+      "doc": "Audience-wide settings, stored under the single key `\"main\"`.",
       "fields": [
         {
           "name": "company_name",
@@ -643,10 +717,29 @@
           "name": "cadence_days",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How often the team means to write, in days. 0 = no cadence. Drives the\n\"next update due\" nudge — Visible's recurring-update reminder, without a\nserver to send it."
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Triage": {
+      "kind": "record",
+      "doc": "The team's decision on something a reader wrote: a question's status, an\noffer's. Kept apart from the reader's record, in team-written storage.",
+      "fields": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status_at",
           "type": {
             "kind": "u64"
           }

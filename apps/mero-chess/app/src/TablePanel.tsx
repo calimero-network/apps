@@ -74,11 +74,12 @@ function Seats({ view, busy, name, onNameChange, onSit, onStand }: TablePanelPro
                       {seated ? "Play this side too" : "Sit here"}
                     </button>
                   )}
-                  {/* Standing up is only offered while it is actually allowed.
-                      Once a game has a move in it the way out is resignation,
-                      and the contract refuses anything else — so offering the
-                      button would be offering a refusal. */}
-                  {mine && !started && (
+                  {/* Standing up is only offered while it is actually allowed:
+                      before the table's first game is under way. A chair
+                      someone has played from is the record of who played, so
+                      the contract refuses to free it — offering the button
+                      would be offering a refusal. */}
+                  {mine && !started && view.game === 0 && view.status !== "finished" && (
                     <button className="ghost" disabled={busy} onClick={onStand}>
                       Stand
                     </button>
@@ -260,6 +261,7 @@ const RESULT_WORDS: Record<string, string> = {
   agreement: "agreement",
   threefold: "threefold repetition",
   fiftyMove: "fifty-move rule",
+  equivocation: "two moves at once",
 };
 
 /**

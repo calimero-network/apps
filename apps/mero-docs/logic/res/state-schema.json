@@ -55,12 +55,14 @@
     },
     "Comment": {
       "kind": "record",
+      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions - the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
       "fields": [
         {
           "name": "doc_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Which doc this annotates. Immutable after create. Indexed, so one doc's\ncomments are a seek rather than a walk of the folder's."
         },
         {
           "name": "body",
@@ -77,12 +79,14 @@
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Immutable after create."
         }
       ]
     },
     "DocRecord": {
       "kind": "record",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
       "fields": [
         {
           "name": "title",
@@ -120,7 +124,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold."
         },
         {
           "name": "archived",
@@ -134,17 +139,6 @@
           }
         },
         {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
           "name": "updated_at",
           "type": {
             "kind": "record",
@@ -152,17 +146,6 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
             }
           }
         },
@@ -181,6 +164,7 @@
     },
     "DocsState": {
       "kind": "record",
+      "doc": "`docs` + their `origins` + moderated `comments`.",
       "fields": [
         {
           "name": "docs",
@@ -193,7 +177,22 @@
               "$ref": "DocRecord"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account tag>` and assigned by `create_doc`."
+        },
+        {
+          "name": "origins",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "doc_id → created_at, written once by the doc's creator. Its owner\nstamp is who created the doc, and nobody can rewrite either."
         },
         {
           "name": "next_id",
@@ -201,7 +200,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Id allocator. Every create increments; the account tag in the id is\nwhat keeps two concurrent creates apart (see `account_tag`)."
         },
         {
           "name": "comments",
@@ -214,7 +214,8 @@
               "$ref": "Comment"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
         },
         {
           "name": "next_comment_id",
@@ -222,7 +223,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Comment-id allocator (`cmt-<n>-<account tag>`)."
         }
       ]
     },

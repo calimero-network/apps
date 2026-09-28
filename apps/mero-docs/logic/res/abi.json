@@ -3,6 +3,7 @@
   "types": {
     "Applied": {
       "kind": "record",
+      "doc": "What `apply_delta_on` did. The block's spans come back either way, so a\nrefused write hands the client exactly the state it has to rebase onto.",
       "fields": [
         {
           "name": "applied",
@@ -31,19 +32,22 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The gap after this write's last change, or on a refusal the anchor sent."
         },
         {
           "name": "anchor_pos",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Where `anchor` sits in `spans`."
         }
       ]
     },
     "Block": {
       "kind": "record",
+      "doc": "One rendered block, mirroring `BlockView` so its id is the same bs58 token\nevery other method takes and returns.",
       "fields": [
         {
           "name": "id",
@@ -140,6 +144,7 @@
     },
     "Change": {
       "kind": "variant",
+      "doc": "One step of an attributed editor change, mirroring `DeltaOp`, which has no\n`AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.",
       "variants": [
         {
           "name": "Retain",
@@ -159,7 +164,8 @@
             "$ref": "Change_Delete"
           }
         }
-      ]
+      ],
+      "untagged": true
     },
     "Change_Delete": {
       "kind": "record",
@@ -191,7 +197,8 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "nullable": true
         }
       ]
     },
@@ -214,18 +221,21 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "nullable": true
         }
       ]
     },
     "Comment": {
       "kind": "record",
+      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions - the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
       "fields": [
         {
           "name": "doc_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Which doc this annotates. Immutable after create. Indexed, so one doc's\ncomments are a seek rather than a walk of the folder's."
         },
         {
           "name": "body",
@@ -242,18 +252,27 @@
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Immutable after create."
         }
       ]
     },
     "CommentDto": {
       "kind": "record",
+      "doc": "Flat projection of a `Comment` for list / get APIs.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex account of the comment's author, from its owner stamp."
         },
         {
           "name": "doc_id",
@@ -277,6 +296,7 @@
     },
     "DocDto": {
       "kind": "record",
+      "doc": "Flat projection of a `DocRecord` for list / get APIs. The body is read\nthrough `get_document` / `get_block_delta`, never flattened into a string.",
       "fields": [
         {
           "name": "id",
@@ -297,7 +317,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Keys only, sorted; the registry maps each to a name and colour."
         },
         {
           "name": "archived",
@@ -321,7 +342,8 @@
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Hex account of whoever created the doc, from `origins`' owner stamp."
         },
         {
           "name": "updated_by",
@@ -333,6 +355,7 @@
     },
     "DocRecord": {
       "kind": "record",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
       "fields": [
         {
           "name": "title",
@@ -370,7 +393,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold."
         },
         {
           "name": "archived",
@@ -384,17 +408,6 @@
           }
         },
         {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
           "name": "updated_at",
           "type": {
             "kind": "record",
@@ -402,17 +415,6 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
             }
           }
         },
@@ -431,6 +433,7 @@
     },
     "DocsState": {
       "kind": "record",
+      "doc": "`docs` + their `origins` + moderated `comments`.",
       "fields": [
         {
           "name": "docs",
@@ -443,7 +446,22 @@
               "$ref": "DocRecord"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account tag>` and assigned by `create_doc`."
+        },
+        {
+          "name": "origins",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "doc_id → created_at, written once by the doc's creator. Its owner\nstamp is who created the doc, and nobody can rewrite either."
         },
         {
           "name": "next_id",
@@ -451,7 +469,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Id allocator. Every create increments; the account tag in the id is\nwhat keeps two concurrent creates apart (see `account_tag`)."
         },
         {
           "name": "comments",
@@ -464,7 +483,8 @@
               "$ref": "Comment"
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
         },
         {
           "name": "next_comment_id",
@@ -472,7 +492,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Comment-id allocator (`cmt-<n>-<account tag>`)."
         }
       ]
     },
@@ -719,6 +740,7 @@
     },
     "TitleApplied": {
       "kind": "record",
+      "doc": "What `title_apply_delta_on` did; the title comes back either way.",
       "fields": [
         {
           "name": "applied",
@@ -744,14 +766,16 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The gap after this write's last change, or on a refusal the anchor sent."
         },
         {
           "name": "anchor_pos",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Where `anchor` sits in `text`."
         }
       ]
     }
@@ -801,6 +825,7 @@
     },
     {
       "name": "anchor_at",
+      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
       "params": [
         {
           "name": "doc",
@@ -834,6 +859,7 @@
     },
     {
       "name": "apply_delta",
+      "doc": "One editor transaction, text and formatting together, returning an\nopaque token `undo` takes.",
       "params": [
         {
           "name": "doc",
@@ -864,6 +890,7 @@
     },
     {
       "name": "apply_delta_on",
+      "doc": "`apply_delta`, but only onto the text the caller diffed against, since a position\ncounted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.",
       "params": [
         {
           "name": "doc",
@@ -930,6 +957,7 @@
     },
     {
       "name": "comment_schema_version",
+      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.",
       "params": [
         {
           "name": "id",
@@ -945,6 +973,7 @@
     },
     {
       "name": "create_doc",
+      "doc": "Creates a document and seeds its title. The body starts empty; a client\nadds the first block with `insert_block`.",
       "params": [
         {
           "name": "title",
@@ -1032,6 +1061,7 @@
     },
     {
       "name": "edit_doc",
+      "doc": "Renames a document by replacing the whole title, which is what a rename\nbox does. Character-level edits go through `title_apply_delta`.",
       "params": [
         {
           "name": "id",
@@ -1074,6 +1104,7 @@
     },
     {
       "name": "get_block_delta",
+      "doc": "One block's rendered spans: the read a binding does on every keystroke.",
       "params": [
         {
           "name": "doc",
@@ -1146,6 +1177,7 @@
     },
     {
       "name": "get_state_digest",
+      "doc": "The ordered body as one canonical line, so replicas are compared exactly\nby one value. Block ids are excluded because they carry the minting\nreplica, which no two nodes agree on.",
       "params": [
         {
           "name": "doc",
@@ -1256,6 +1288,7 @@
     },
     {
       "name": "list_comments",
+      "doc": "One doc's comments: an index seek, not a walk of every comment.",
       "params": [
         {
           "name": "doc_id",
@@ -1292,6 +1325,7 @@
     },
     {
       "name": "mark",
+      "doc": "Set `key` over visible positions `[start, end)`. `null` is a no-op result\nwhen every character already resolves to that value.",
       "params": [
         {
           "name": "doc",
@@ -1338,6 +1372,7 @@
     },
     {
       "name": "merge_blocks",
+      "doc": "Append `second`'s body to `first` and tombstone `second`.",
       "params": [
         {
           "name": "doc",
@@ -1393,6 +1428,7 @@
     },
     {
       "name": "passage_count",
+      "doc": "How many times `needle` appears contiguously in a block's text, which is\nan exact claim about interleaving that `contains` cannot make.",
       "params": [
         {
           "name": "doc",
@@ -1441,6 +1477,7 @@
     },
     {
       "name": "resolve_ids",
+      "doc": "Where anchors sit in THIS replica's block, one tree rebuild for the lot.\n`null` is an anchor this replica cannot place yet.",
       "params": [
         {
           "name": "doc",
@@ -1474,6 +1511,7 @@
     },
     {
       "name": "set_attr",
+      "doc": "`value: null` removes the attribute.",
       "params": [
         {
           "name": "doc",
@@ -1562,6 +1600,7 @@
     },
     {
       "name": "split_block",
+      "doc": "Split at visible position `at`, returning the new block's id.",
       "params": [
         {
           "name": "doc",
@@ -1589,6 +1628,7 @@
     },
     {
       "name": "title_anchor_at",
+      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
       "params": [
         {
           "name": "doc",
@@ -1616,6 +1656,7 @@
     },
     {
       "name": "title_apply_delta",
+      "doc": "One editor transaction on the title, returning an opaque token\n`title_undo` takes.",
       "params": [
         {
           "name": "doc",
@@ -1640,6 +1681,7 @@
     },
     {
       "name": "title_apply_delta_on",
+      "doc": "`title_apply_delta`, but only onto the title the caller diffed against and, with an\n`anchor`, only as an insert where that anchor sits; a refusal places the anchor.",
       "params": [
         {
           "name": "doc",
@@ -1677,6 +1719,7 @@
     },
     {
       "name": "title_resolve",
+      "doc": "Where anchors sit in THIS replica's title. `null` is an anchor this\nreplica cannot place yet.",
       "params": [
         {
           "name": "doc",
@@ -1704,6 +1747,7 @@
     },
     {
       "name": "title_undo",
+      "doc": "Takes a whole title transaction back, returning a token that redoes it.",
       "params": [
         {
           "name": "doc",
@@ -1740,6 +1784,7 @@
     },
     {
       "name": "undo",
+      "doc": "Take a whole transaction back, returning a token that redoes it.",
       "params": [
         {
           "name": "doc",
@@ -1771,7 +1816,8 @@
       "name": "BlockChanged",
       "payload": {
         "$ref": "Event_BlockChanged"
-      }
+      },
+      "doc": "Kind, depth or an attribute changed; re-read the block."
     },
     {
       "name": "BlockDeleted",

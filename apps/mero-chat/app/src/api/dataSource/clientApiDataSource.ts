@@ -707,7 +707,11 @@ export class ClientApiDataSource implements ClientApi {
 
   async sendMessage(props: SendMessageProps): ApiResponse<Message> {
     try {
-      if (!props.message) {
+      // Text is optional when the message carries an attachment; the contract
+      // does not require it. A message with neither is still refused here.
+      const hasAttachment =
+        (props.files?.length ?? 0) > 0 || (props.images?.length ?? 0) > 0;
+      if (!props.message && !hasAttachment) {
         return {
           error: {
             code: 400,

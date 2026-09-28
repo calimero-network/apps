@@ -6,14 +6,28 @@ import {
 
 // Generated types
 
+/**
+ * What `apply_delta_on` did. The block's spans come back either way, so a
+ * refused write hands the client exactly the state it has to rebase onto.
+ */
 export interface Applied {
   applied: boolean;
   token: string | null;
   spans: Span[];
+  /**
+   * The gap after this write's last change, or on a refusal the anchor sent.
+   */
   anchor: string | null;
+  /**
+   * Where `anchor` sits in `spans`.
+   */
   anchor_pos: number | null;
 }
 
+/**
+ * One rendered block, mirroring `BlockView` so its id is the same bs58 token
+ * every other method takes and returns.
+ */
 export interface Block {
   id: string;
   kind: string;
@@ -30,70 +44,135 @@ export interface BlockView {
   spans: Span[];
 }
 
-export type ChangePayload =
-  | { name: 'Retain'; payload: Change_Retain }
-  | { name: 'Insert'; payload: Change_Insert }
-  | { name: 'Delete'; payload: Change_Delete }
-
-export const Change = {
-  Retain: (retain: Change_Retain): ChangePayload => ({ name: 'Retain', payload: retain }),
-  Insert: (insert: Change_Insert): ChangePayload => ({ name: 'Insert', payload: insert }),
-  Delete: (delete_: Change_Delete): ChangePayload => ({ name: 'Delete', payload: delete_ }),
-} as const;
+/**
+ * One step of an attributed editor change, mirroring `DeltaOp`, which has no
+ * `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
+ */
+export type Change =
+  | Change_Retain
+  | Change_Insert
+  | Change_Delete;
 
 export interface Change_Delete {
-  delete_: number;
+  delete: number;
 }
 
 export interface Change_Insert {
   insert: string;
-  attributes: Record<string, string>;
+  attributes: Record<string, string> | null;
 }
 
 export interface Change_Retain {
   retain: number;
-  attributes: Record<string, string>;
+  attributes: Record<string, string> | null;
 }
 
+/**
+ * A per-document comment, owned by its author. Stored in an `AuthoredMap`, so
+ * the runtime stamps the writer's identity and a per-entry schema version on
+ * insert; only the owner can re-sign it (the basis of the migration banner).
+ *
+ * The value type is intentionally STABLE across schema versions - the v1→v2
+ * migration bumps the *state* schema and adds a top-level marker, never a
+ * field inside `Comment` (changing an authored value type is a content
+ * rewrite, a different and harder migration class).
+ */
 export interface Comment {
+  /**
+   * Which doc this annotates. Immutable after create. Indexed, so one doc's
+   * comments are a seek rather than a walk of the folder's.
+   */
   doc_id: string;
   body: string;
+  /**
+   * Immutable after create.
+   */
   created_at: number;
 }
 
+/**
+ * Flat projection of a `Comment` for list / get APIs.
+ */
 export interface CommentDto {
   id: string;
+  /**
+   * Hex account of the comment's author, from its owner stamp.
+   */
+  author: string;
   doc_id: string;
   body: string;
   created_at: number;
 }
 
+/**
+ * Flat projection of a `DocRecord` for list / get APIs. The body is read
+ * through `get_document` / `get_block_delta`, never flattened into a string.
+ */
 export interface DocDto {
   id: string;
   title: string;
+  /**
+   * Keys only, sorted; the registry maps each to a name and colour.
+   */
   tags: string[];
   archived: boolean;
   created_at: number;
   updated_at: number;
+  /**
+   * Hex account of whoever created the doc, from `origins`' owner stamp.
+   */
   created_by: string;
   updated_by: string;
 }
 
+/**
+ * Per-document record.
+ *
+ * The derive supplies the deterministic re-key cascade `title`, `body` and
+ * `tags` need: a nested collection stored under a value type that is not a
+ * registered `RekeyTarget` keeps a per-replica random storage id and never
+ * converges.
+ */
 export interface DocRecord {
   title: {  };
   body: Record<string, BlockView>;
+  /**
+   * tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
+   */
   tags: Record<string, boolean>;
   archived: boolean;
-  created_at: number;
   updated_at: number;
-  created_by: string;
   updated_by: string;
 }
 
+/**
+ * `docs` + their `origins` + moderated `comments`.
+ */
 export interface DocsState {
+  /**
+   * doc_id → record. Public: collaborative editing. The id is
+   * `doc-<counter>-<account tag>` and assigned by `create_doc`.
+   */
   docs: Record<string, DocRecord>;
+  /**
+   * doc_id → created_at, written once by the doc's creator. Its owner
+   * stamp is who created the doc, and nobody can rewrite either.
+   */
+  origins: Record<string, number>;
+  /**
+   * Id allocator. Every create increments; the account tag in the id is
+   * what keeps two concurrent creates apart (see `account_tag`).
+   */
   next_id: {  };
+  /**
+   * comment_id → comment. Each is owned by its author, who alone edits it;
+   * the folder's moderators (its founder, who created this context) may
+   * also remove any. Every node enforces both.
+   */
   comments: Record<string, Comment>;
+  /**
+   * Comment-id allocator (`cmt-<n>-<account tag>`).
+   */
   next_comment_id: {  };
 }
 
@@ -173,11 +252,20 @@ export interface Span {
   attributes: Record<string, string>;
 }
 
+/**
+ * What `title_apply_delta_on` did; the title comes back either way.
+ */
 export interface TitleApplied {
   applied: boolean;
   token: string | null;
   text: string;
+  /**
+   * The gap after this write's last change, or on a refusal the anchor sent.
+   */
   anchor: string | null;
+  /**
+   * Where `anchor` sits in `text`.
+   */
   anchor_pos: number | null;
 }
 
@@ -198,7 +286,13 @@ export interface TitleApplied {
 
 
 export type AbiEvent =
-  | { name: "BlockChanged"; payload: Event_BlockChanged }
+  | {
+    /**
+     * Kind, depth or an attribute changed; re-read the block.
+     */
+    name: "BlockChanged";
+    payload: Event_BlockChanged;
+  }
   | { name: "BlockDeleted"; payload: Event_BlockDeleted }
   | { name: "BlockInserted"; payload: Event_BlockInserted }
   | { name: "BlockMoved"; payload: Event_BlockMoved }
@@ -249,6 +343,8 @@ export class DocsClient {
   /**
    * anchor_at
    *
+   * A cursor for the gap at `position`, as an opaque token any member resolves.
+   *
    * @intent read_only
    */
   public async anchorAt(params: { doc: string; block: string; position: number; before: boolean }): Promise<string> {
@@ -259,9 +355,12 @@ export class DocsClient {
   /**
    * apply_delta
    *
+   * One editor transaction, text and formatting together, returning an
+   * opaque token `undo` takes.
+   *
    * @intent mutating
    */
-  public async applyDelta(params: { doc: string; block: string; ops: ChangePayload[] }): Promise<string> {
+  public async applyDelta(params: { doc: string; block: string; ops: Change[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta', argsJson: params });
     return response as string;
   }
@@ -269,9 +368,12 @@ export class DocsClient {
   /**
    * apply_delta_on
    *
+   * `apply_delta`, but only onto the text the caller diffed against, since a position
+   * counted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.
+   *
    * @intent mutating
    */
-  public async applyDeltaOn(params: { doc: string; block: string; base: string; ops: ChangePayload[]; anchor: string | null }): Promise<Applied> {
+  public async applyDeltaOn(params: { doc: string; block: string; base: string; ops: Change[]; anchor: string | null }): Promise<Applied> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta_on', argsJson: params });
     return response as Applied;
   }
@@ -299,6 +401,10 @@ export class DocsClient {
   /**
    * comment_schema_version
    *
+   * The comment's stored per-entry `schema_version` - `Some(1)` before
+   * convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
+   * one-tap `migrate_my_entries` actually re-stamped it.
+   *
    * @intent read_only
    */
   public async commentSchemaVersion(params: { id: string }): Promise<number> {
@@ -308,6 +414,9 @@ export class DocsClient {
 
   /**
    * create_doc
+   *
+   * Creates a document and seeds its title. The body starts empty; a client
+   * adds the first block with `insert_block`.
    *
    * @intent mutating
    */
@@ -359,6 +468,9 @@ export class DocsClient {
   /**
    * edit_doc
    *
+   * Renames a document by replacing the whole title, which is what a rename
+   * box does. Character-level edits go through `title_apply_delta`.
+   *
    * @intent mutating
    */
   public async editDoc(params: { id: string; title: string }): Promise<void> {
@@ -378,6 +490,8 @@ export class DocsClient {
 
   /**
    * get_block_delta
+   *
+   * One block's rendered spans: the read a binding does on every keystroke.
    *
    * @intent read_only
    */
@@ -418,6 +532,10 @@ export class DocsClient {
 
   /**
    * get_state_digest
+   *
+   * The ordered body as one canonical line, so replicas are compared exactly
+   * by one value. Block ids are excluded because they carry the minting
+   * replica, which no two nodes agree on.
    *
    * @intent read_only
    */
@@ -477,6 +595,8 @@ export class DocsClient {
   /**
    * list_comments
    *
+   * One doc's comments: an index seek, not a walk of every comment.
+   *
    * @intent read_only
    */
   public async listComments(params: { doc_id: string }): Promise<CommentDto[]> {
@@ -497,6 +617,9 @@ export class DocsClient {
   /**
    * mark
    *
+   * Set `key` over visible positions `[start, end)`. `null` is a no-op result
+   * when every character already resolves to that value.
+   *
    * @intent mutating
    */
   public async mark(params: { doc: string; block: string; start: number; end: number; key: string; value: string | null }): Promise<string> {
@@ -506,6 +629,8 @@ export class DocsClient {
 
   /**
    * merge_blocks
+   *
+   * Append `second`'s body to `first` and tombstone `second`.
    *
    * @intent mutating
    */
@@ -527,6 +652,9 @@ export class DocsClient {
   /**
    * passage_count
    *
+   * How many times `needle` appears contiguously in a block's text, which is
+   * an exact claim about interleaving that `contains` cannot make.
+   *
    * @intent read_only
    */
   public async passageCount(params: { doc: string; block: string; needle: string }): Promise<number> {
@@ -547,6 +675,9 @@ export class DocsClient {
   /**
    * resolve_ids
    *
+   * Where anchors sit in THIS replica's block, one tree rebuild for the lot.
+   * `null` is an anchor this replica cannot place yet.
+   *
    * @intent read_only
    */
   public async resolveIds(params: { doc: string; block: string; anchors: string[] }): Promise<number[]> {
@@ -556,6 +687,8 @@ export class DocsClient {
 
   /**
    * set_attr
+   *
+   * `value: null` removes the attribute.
    *
    * @intent mutating
    */
@@ -587,6 +720,8 @@ export class DocsClient {
   /**
    * split_block
    *
+   * Split at visible position `at`, returning the new block's id.
+   *
    * @intent mutating
    */
   public async splitBlock(params: { doc: string; block: string; at: number }): Promise<string> {
@@ -596,6 +731,8 @@ export class DocsClient {
 
   /**
    * title_anchor_at
+   *
+   * A cursor for the gap at `position`, as an opaque token any member resolves.
    *
    * @intent read_only
    */
@@ -607,9 +744,12 @@ export class DocsClient {
   /**
    * title_apply_delta
    *
+   * One editor transaction on the title, returning an opaque token
+   * `title_undo` takes.
+   *
    * @intent mutating
    */
-  public async titleApplyDelta(params: { doc: string; ops: ChangePayload[] }): Promise<string> {
+  public async titleApplyDelta(params: { doc: string; ops: Change[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta', argsJson: params });
     return response as string;
   }
@@ -617,15 +757,21 @@ export class DocsClient {
   /**
    * title_apply_delta_on
    *
+   * `title_apply_delta`, but only onto the title the caller diffed against and, with an
+   * `anchor`, only as an insert where that anchor sits; a refusal places the anchor.
+   *
    * @intent mutating
    */
-  public async titleApplyDeltaOn(params: { doc: string; base: string; ops: ChangePayload[]; anchor: string | null }): Promise<TitleApplied> {
+  public async titleApplyDeltaOn(params: { doc: string; base: string; ops: Change[]; anchor: string | null }): Promise<TitleApplied> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta_on', argsJson: params });
     return response as TitleApplied;
   }
 
   /**
    * title_resolve
+   *
+   * Where anchors sit in THIS replica's title. `null` is an anchor this
+   * replica cannot place yet.
    *
    * @intent read_only
    */
@@ -636,6 +782,8 @@ export class DocsClient {
 
   /**
    * title_undo
+   *
+   * Takes a whole title transaction back, returning a token that redoes it.
    *
    * @intent mutating
    */
@@ -656,6 +804,8 @@ export class DocsClient {
 
   /**
    * undo
+   *
+   * Take a whole transaction back, returning a token that redoes it.
    *
    * @intent mutating
    */

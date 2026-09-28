@@ -53,7 +53,7 @@ nodes:
   # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
   # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
   # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.56
   prefix: calimero-node
   # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
   # `merod init` now writes `discovery.mdns = false`, where every earlier release
@@ -424,6 +424,33 @@ steps:
       # The id survives the move, so a link or a pending edit still resolves.
       - "contains({{n2_after_promotion}}, {{solo_id}})"
 
+  # ─── OWNER GATE: an invited peer cannot rewrite the owner's event ────────
+  #
+  # Bob is on the guest list, which is not ownership. `events` is an
+  # `Authored` map, so every node refuses a non-owner's edit on apply.
+  # `expected_failure: true` alone can never fail a call step, so the error is
+  # captured and asserted.
+
+  - name: Node 2 (an invited peer) tries to rename Alice's shared event
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: update_event
+    args:
+      event_id: "{{shared_id}}"
+      event_data:
+        title: "hijacked-by-bob"
+      timestamp: 3000004
+    expected_failure: true
+    outputs:
+      peer_edit_error: error
+
+  - name: Assert the peer's edit was refused
+    type: assert
+    statements:
+      - "is_set({{peer_edit_error}})"
+
   # ─── NO DEMOTION: emptying the peer list cannot recall a DAG write ────────
 
   - name: Node 1 removes every peer from the shared event
@@ -481,5 +508,8 @@ steps:
       # And NOT smuggled back into private storage, which is the tempting
       # symmetry the contract deliberately does not implement.
       - "not_contains({{n1_private_after_removal}}, shared-with-bob)"
-      # What DID change: Bob is no longer a peer, so the read gate excludes him.
+      # What DID change: Bob is no longer a peer, so his view filters it out.
+      # (A view filter only — every member's node still holds the event.)
       - "not_contains({{n2_after_removal}}, shared-with-bob)"
+      # And the refused edit from before never landed anywhere.
+      - "not_contains({{n1_shared_after_removal}}, hijacked-by-bob)"

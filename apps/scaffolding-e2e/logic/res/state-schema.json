@@ -3,12 +3,14 @@
   "types": {
     "ChannelRecord": {
       "kind": "record",
+      "doc": "A channel in the workspace directory: another Calimero **context**, made\ndiscoverable by registering its id here.\n\n`registered_at` exists for the same reason `FileRecord::uploaded_at` does —\n`impl_atomic_lww_leaf!` needs a field to order concurrent writes by, and\nthis is a whole-record value, not a struct of independently mergeable CRDT\nfields. Two members registering the same context id concurrently converge on\nthe later write rather than on a field-by-field mixture of the two.",
       "fields": [
         {
           "name": "context_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The target context, 64 hex characters. The map key as well as a field,\nso a listing needs no zip with its keys."
         },
         {
           "name": "name",
@@ -26,7 +28,8 @@
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The ACCOUNT that registered it, 64 hex. Listings fill it from the\nentry's owner stamp, never from the stored bytes, which the writer\nchose."
         },
         {
           "name": "registered_at",
@@ -55,7 +58,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Public replicated KV map"
         },
         {
           "name": "handler_counter",
@@ -63,7 +67,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Counter for handler executions (CRDT G-Counter - grow only)"
         },
         {
           "name": "user_items_simple",
@@ -80,7 +85,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Simple user-owned data (e.g., profile name)"
         },
         {
           "name": "user_items_nested",
@@ -92,7 +98,8 @@
             "value": {
               "$ref": "NestedMap"
             }
-          }
+          },
+          "doc": "Nested user-owned data (e.g., user's private KV store)"
         },
         {
           "name": "frozen_items",
@@ -104,7 +111,8 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Content-addressed immutable storage"
         },
         {
           "name": "acl",
@@ -117,7 +125,8 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
+          },
+          "doc": "Named-role registry. Its backing writer set IS the admin tier, so\n\"who may grant a role\" and \"who may rotate the admins\" are the same\nauthenticated question — there is no separate admin bookkeeping to drift."
         },
         {
           "name": "acl_doc",
@@ -133,7 +142,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Capability-guarded document. Its per-account `OpMask` map is PROJECTED\nfrom `acl`'s roles by `acl_project`; it is deliberately not a second\nsource of truth, which is why nothing here writes the map directly."
         },
         {
           "name": "owned_doc",
@@ -149,7 +159,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Single-owner cell. `SharedStorage` above is a flat writer SET; this is\nthe degenerate case with one writer plus a real transfer operation, and\n`Ownable` enforces the at-most-one invariant that `SharedStorage` does\nnot."
         },
         {
           "name": "games",
@@ -167,7 +178,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Maps game_id -> SHA256(secret) hex"
         },
         {
           "name": "files",
@@ -180,29 +192,8 @@
               "$ref": "FileRecord"
             },
             "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "file_counter",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "file_owner",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
+          },
+          "doc": "File metadata records"
         },
         {
           "name": "crdt_counters",
@@ -217,7 +208,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of G-Counters (grow-only, concurrent increments should sum)\nCounter<false> = GCounter (default)"
         },
         {
           "name": "crdt_pn_counters",
@@ -232,7 +224,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of PN-Counters (supports decrement, concurrent inc/dec should merge correctly)\nCounter<true> = PNCounter (allows decrement)"
         },
         {
           "name": "crdt_registers",
@@ -250,7 +243,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of LWW registers (latest timestamp wins)"
         },
         {
           "name": "crdt_metadata",
@@ -275,7 +269,8 @@
               "crdt_type": "unordered_map"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Nested maps (field-level merge)"
         },
         {
           "name": "crdt_metrics",
@@ -287,7 +282,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "vector"
-          }
+          },
+          "doc": "Vector of G-Counters (element-wise merge)"
         },
         {
           "name": "crdt_tags",
@@ -304,7 +300,8 @@
               "crdt_type": "unordered_set"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of sets (union merge)"
         },
         {
           "name": "sorted_items",
@@ -322,7 +319,8 @@
               }
             },
             "crdt_type": "sorted_map"
-          }
+          },
+          "doc": "Key-ordered map."
         },
         {
           "name": "sorted_tags",
@@ -332,7 +330,8 @@
               "kind": "string"
             },
             "crdt_type": "sorted_set"
-          }
+          },
+          "doc": "Element-ordered set — the `SortedSet` counterpart of `sorted_items`,\nthrough the same host index path."
         },
         {
           "name": "rga_document",
@@ -340,7 +339,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "replicated_growable_array"
-          }
+          },
+          "doc": "Collaborative text document"
         },
         {
           "name": "rga_edit_count",
@@ -348,7 +348,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Edit count for document (G-Counter)"
         },
         {
           "name": "rga_metadata",
@@ -366,7 +367,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Document metadata (title, owner)"
         },
         {
           "name": "authored_items",
@@ -384,7 +386,8 @@
               }
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "Shared keyspace map with per-entry ownership"
         },
         {
           "name": "authored_vec",
@@ -399,7 +402,8 @@
               }
             },
             "crdt_type": "authored_vector"
-          }
+          },
+          "doc": "Append-only vector with per-slot ownership; only the pusher can update/tombstone their slot"
         },
         {
           "name": "shared_data",
@@ -415,29 +419,49 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Group-writable single value; writers rotate at runtime"
         },
         {
-          "name": "ws_name",
+          "name": "ws_claim",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "WsClaim"
+              }
             }
-          }
+          },
+          "doc": "Name and admin. Writers are the workspace admins: the context creator\nfirst, then whoever an admin grants `admin`. Every node checks a write\nagainst them, so a patched member cannot claim or rename it."
         },
         {
-          "name": "ws_admin",
+          "name": "ws_roles",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
             }
-          }
+          },
+          "doc": "identity -> role, in a writer-set cell with the same writers as\n`ws_claim`: every entry is guarded by it, so a patched member cannot\ngrant itself `admin` or demote the real one. `LwwRegister` values so\ntwo admins changing one member's role concurrently converge."
         },
         {
           "name": "ws_channels",
@@ -449,8 +473,9 @@
             "value": {
               "$ref": "ChannelRecord"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "context_id -> channel. Keyed by the context id so a re-register of the\nsame context updates rather than duplicates. Each entry is owned by\nthe account that registered it; the workspace admins moderate, so an\nadmin may remove anyone's entry and nobody else may."
         },
         {
           "name": "ws_groups",
@@ -462,26 +487,9 @@
             "value": {
               "$ref": "WsGroupRecord"
             },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "ws_roles",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "group_id -> group, owned and moderated as `ws_channels`."
         },
         {
           "name": "ws_pings",
@@ -489,12 +497,14 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Pongs received via `xcall`. Grow-only: a pong is an event that happened,\nand no node can un-happen another node's."
         }
       ]
     },
     "FileRecord": {
       "kind": "record",
+      "doc": "File record for blob metadata. Atomic whole-record LWW by `uploaded_at`\n(see `impl_atomic_lww_leaf!`); not a struct of CRDT fields, so no `Mergeable`\nderive.",
       "fields": [
         {
           "name": "id",
@@ -511,8 +521,7 @@
         {
           "name": "blob_id",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "kind": "string"
           }
         },
         {
@@ -543,6 +552,7 @@
     },
     "NestedMap": {
       "kind": "record",
+      "doc": "Nested map type for user storage.",
       "fields": [
         {
           "name": "map",
@@ -564,8 +574,29 @@
         }
       ]
     },
+    "WsClaim": {
+      "kind": "record",
+      "doc": "The workspace claim: its name and the account that made it. Written once,\nby `ws_init`, into a writer-set cell whose writers are the admins.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty is the \"not claimed\" sentinel — `ws_init` rejects an empty name."
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The account that ran `ws_init`, 64 hex."
+        }
+      ]
+    },
     "WsGroupRecord": {
       "kind": "record",
+      "doc": "A group in the workspace directory — the app-level mirror of a node subgroup.",
       "fields": [
         {
           "name": "group_id",
@@ -589,7 +620,8 @@
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "As `ChannelRecord::created_by`: read from the owner stamp."
         },
         {
           "name": "registered_at",

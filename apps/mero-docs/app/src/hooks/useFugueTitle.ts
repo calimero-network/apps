@@ -16,7 +16,7 @@ import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/r
 import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
-import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
+import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClient';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
@@ -156,11 +156,11 @@ export function useFugueTitle({
     }
     setStatus('saving');
     try {
-      // The generated ChangePayload is a tagged union; the contract takes
-      // serde's untagged form, which is what `ops` already is.
+      // The editor's ops leave `attributes` out where the generated type sends
+      // `null`; serde reads a missing Option as None, so they go as they are.
       // The anchor claims the write is an insert at it, which the node checks.
       const anchor = typed ? (anchorRef.current?.token ?? null) : null;
-      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[], anchor });
+      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as WireChange[], anchor });
       if (result.applied && result.token) {
         if (openGroupRef.current) openGroupRef.current.push(result.token);
         else historyRef.current.record((openGroupRef.current = [result.token]));

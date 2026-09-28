@@ -116,7 +116,7 @@ export default function MessageFileField({
         <FileIcon />
       </IconContainer>
       <FileInfo>
-        <FileTitle $truncate={truncate}>{formatDisplayName(file.name, truncate)}</FileTitle>
+        <FileTitle $truncate={truncate} title={file.name}>{formatDisplayName(file.name, truncate)}</FileTitle>
         <ButtonGroup>
           {onDownload && (
             <DownloadButton aria-label="Download attachment" onClick={onDownload}>

@@ -47,6 +47,7 @@ import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
 import PeoplePanel, { type ReplicaPolicy } from '../../components/PeoplePanel';
+import { NO_REPLICA_POLICY, replicaPolicyFrom, replicaPolicyRequest } from '../../spreadsheet/replicas';
 import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
@@ -484,14 +485,13 @@ export default function AppPage() {
     if (!showPeople || !mero || !ws.namespaceId) return;
     let live = true;
     mero.admin.getTeeAdmissionPolicy(ws.namespaceId)
-      .then((p) => { if (live) setReplicaPolicy({ mrtd: p.allowedMrtd, tcbStatuses: p.allowedTcbStatuses }); })
-      .catch(() => { if (live) setReplicaPolicy({ mrtd: [], tcbStatuses: [] }); });
+      .then((p) => { if (live) setReplicaPolicy(replicaPolicyFrom(p)); })
+      .catch(() => { if (live) setReplicaPolicy(NO_REPLICA_POLICY); });
     return () => { live = false; };
   }, [showPeople, mero, ws.namespaceId]);
   const selfMember = ss.members.find((m) => m.id === ss.selfId);
   const myRole = selfMember?.role ?? 'editor';
   const isOwner = myRole === 'owner';
-  const hasOwner = ss.members.some((m) => m.role === 'owner');
   const isGroupAdmin = !!selfMember?.account &&
     groupMembers.some((g) => g.identity === selfMember.account && g.role === 'Admin');
   const placed = activeSheetId && !isPrivateActive
@@ -1828,6 +1828,7 @@ export default function AppPage() {
             return {
               id: p.id,
               name: p.name,
+              canStop: p.created_by === ss.selfId || isOwner,
               target: ws.workspaces.find((w) => w.contextId === p.target_context)?.name ?? `${p.target_context.slice(0, 8)}…`,
               where: a && b ? `${sheet ? sheetPrefix(sheet) : ''}${rangeRef(a, b)}` : null,
             };
@@ -1968,7 +1969,7 @@ export default function AppPage() {
           selfId={ss.selfId}
           workspaceName={ws.namespaceName}
           nameOf={personName}
-          canManageRoles={isOwner || !hasOwner}
+          canManageRoles={isOwner}
           isGroupAdmin={isGroupAdmin}
           onSetRole={ss.setRole}
           onSetGroupRole={async (account, role) => {
@@ -1984,10 +1985,7 @@ export default function AppPage() {
           policy={replicaPolicy}
           onSetPolicy={async (p) => {
             if (!mero || !ws.namespaceId) return;
-            await mero.admin.setTeeAdmissionPolicy(ws.namespaceId, {
-              allowedMrtd: p.mrtd, allowedRtmr0: [], allowedRtmr1: [], allowedRtmr2: [], allowedRtmr3: [],
-              allowedTcbStatuses: p.tcbStatuses, acceptMock: false,
-            });
+            await mero.admin.setTeeAdmissionPolicy(ws.namespaceId, replicaPolicyRequest(p));
             setReplicaPolicy(p);
           }}
           onClose={() => setShowPeople(false)}

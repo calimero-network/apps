@@ -1,142 +1,60 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "GameState": {
+    "Answer": {
       "kind": "record",
+      "doc": "The defender's answer to the shot of the same turn, keyed\n`\"<defender account>/<turn>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "GameConfig": {
+      "kind": "record",
+      "doc": "Everything fixed when the match is created.",
       "fields": [
         {
           "name": "lobby_context_id",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
+            "kind": "string"
+          },
+          "nullable": true
         },
         {
           "name": "match_id",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
+            "kind": "string"
+          },
+          "nullable": true
         },
         {
-          "name": "player1",
+          "name": "players",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "PublicKey"
+            "kind": "list",
+            "items": {
+              "$ref": "Player"
             }
-          }
-        },
+          },
+          "doc": "`[player1, player2]`, or empty when `init` was not given both."
+        }
+      ]
+    },
+    "GameState": {
+      "kind": "record",
+      "fields": [
         {
-          "name": "player2",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "PublicKey"
-            }
-          }
-        },
-        {
-          "name": "turn",
+          "name": "config",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "$ref": "PublicKey"
+              "$ref": "GameConfig"
             }
-          }
-        },
-        {
-          "name": "winner",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "PublicKey"
-            }
-          }
-        },
-        {
-          "name": "placed_p1",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "bool"
-            }
-          }
-        },
-        {
-          "name": "placed_p2",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "bool"
-            }
-          }
-        },
-        {
-          "name": "pending",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "PendingShot"
-            }
-          }
-        },
-        {
-          "name": "shots_p1",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "u32"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "shots_p2",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "u32"
-              }
-            },
-            "crdt_type": "unordered_map"
           }
         },
         {
@@ -147,20 +65,103 @@
               "kind": "string"
             },
             "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bytes",
-                "size": 32
-              }
-            }
+              "kind": "bytes",
+              "size": 32
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<nonce>\"` -> that player's SHA-256 board commitment."
+        },
+        {
+          "name": "shots",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Shot"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Answer"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "reveals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Reveal"
+            },
+            "crdt_type": "authored_map"
           }
         }
       ]
     },
-    "PendingShot": {
+    "Player": {
       "kind": "record",
+      "doc": "One player: the context-member key the UI names them by, and the account\ncore stamps their rows with.\n\nA player id is a context member (a device); a row's owner stamp is the\nPERSON. Both are recorded because both are true, and the account is the one\nthe security rests on.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "$ref": "PublicKey"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "PublicKey": {
+      "kind": "alias",
+      "doc": "Player public key — 32-byte Ed25519 key with base58 encoding.\n\nNote: `from_executor_id()` lives in each service crate (requires calimero-sdk).",
+      "target": {
+        "kind": "bytes",
+        "size": 32
+      }
+    },
+    "Reveal": {
+      "kind": "record",
+      "doc": "A board opened at match end, keyed `\"<account>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "board_bytes",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
+          }
+        }
+      ]
+    },
+    "Shot": {
+      "kind": "record",
+      "doc": "A shot, keyed `\"<shooter account>/<turn>/<nonce>\"`.",
       "fields": [
         {
           "name": "x",
@@ -173,27 +174,8 @@
           "type": {
             "kind": "u32"
           }
-        },
-        {
-          "name": "shooter",
-          "type": {
-            "$ref": "PublicKey"
-          }
-        },
-        {
-          "name": "target",
-          "type": {
-            "$ref": "PublicKey"
-          }
         }
       ]
-    },
-    "PublicKey": {
-      "kind": "alias",
-      "target": {
-        "kind": "bytes",
-        "size": 32
-      }
     }
   },
   "methods": [],

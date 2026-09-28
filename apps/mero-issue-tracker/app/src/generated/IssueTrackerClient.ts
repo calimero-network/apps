@@ -6,15 +6,23 @@ import {
 
 // Generated types
 
+/**
+ * A discussion entry on an issue. `id`, `issue_id`, `created_at` are
+ * immutable; `body` and `edited_at` are LWW registers. The author is the
+ * entry's owner stamp, and only they may edit or delete it — on every node.
+ * `thread` is one issue's comments, oldest first.
+ */
 export interface Comment {
   id: string;
   issue_id: string;
-  author: string;
   body: string;
   created_at: number;
   edited_at: number;
 }
 
+/**
+ * A comment as returned to the frontend/scripts.
+ */
 export interface CommentView {
   id: string;
   issue_id: string;
@@ -72,9 +80,12 @@ export interface Event_RepoUrlChanged {
   url: string;
 }
 
+/**
+ * An issue's shared triage state. Every field is a `LwwRegister` so concurrent
+ * edits converge last-writer-wins. Labels live in a separate index (see
+ * `IssueTracker`).
+ */
 export interface Issue {
-  id: string;
-  title: string;
   summary: string;
   impact: string;
   repro: string;
@@ -82,22 +93,56 @@ export interface Issue {
   status: string;
   priority: string;
   assignee: string;
-  created_by: string;
-  created_at: number;
 }
 
+/**
+ * A full issue plus its comment thread (named struct — never a tuple return).
+ */
 export interface IssueDetail {
   issue: IssueView;
   comments: CommentView[];
 }
 
+/**
+ * Who filed an issue, and what they called it. Set once at creation. The filer
+ * is the entry's owner stamp, not a field, so nobody can re-attribute an issue.
+ */
+export interface IssueHeader {
+  title: string;
+  created_at: number;
+}
+
 export interface IssueTracker {
+  /**
+   * Issue id → header, owned by whoever filed it. An issue exists while its
+   * header does.
+   */
+  headers: Record<string, IssueHeader>;
+  /**
+   * Issue id → triage state. Shared — any teammate may triage.
+   */
   issues: Record<string, Issue>;
+  /**
+   * All comments across all issues, keyed by generated id, each owned by
+   * its author.
+   */
   comments: Record<string, Comment>;
-  labels: Record<string, number>;
+  /**
+   * Key `"{issue_id}\u{1}{label}"` → the label. Concurrent adds of the same
+   * label collapse to one entry (no duplicates); removal is a conflict-free
+   * key delete.
+   */
+  labels: Record<string, LabelTag>;
+  /**
+   * The GitHub repository URL this context (repo) tracks. Empty until set;
+   * LWW so concurrent edits from teammates converge last-writer-wins.
+   */
   repo_url: string;
 }
 
+/**
+ * An issue as returned to the frontend/scripts.
+ */
 export interface IssueView {
   id: string;
   title: string;
@@ -113,10 +158,25 @@ export interface IssueView {
   created_at: number;
 }
 
+/**
+ * One label on one issue.
+ */
+export interface LabelTag {
+  issue_id: string;
+  label: string;
+  added_at: number;
+}
+
+/**
+ * This context's repository metadata. `repo_url` is empty until `set_repo_url`.
+ */
 export interface RepoInfo {
   repo_url: string;
 }
 
+/**
+ * One board column's live count (named struct — never a `(String, u64)` tuple).
+ */
 export interface StatusCount {
   status: string;
   count: number;
@@ -134,17 +194,83 @@ export interface StatusCount {
 
 
 export type AbiEvent =
-  | { name: "CommentAdded"; payload: Event_CommentAdded }
-  | { name: "CommentDeleted"; payload: Event_CommentDeleted }
-  | { name: "CommentEdited"; payload: Event_CommentEdited }
-  | { name: "IssueAssigneeChanged"; payload: Event_IssueAssigneeChanged }
-  | { name: "IssueCreated"; payload: Event_IssueCreated }
-  | { name: "IssueDeleted"; payload: Event_IssueDeleted }
-  | { name: "IssueEdited"; payload: Event_IssueEdited }
-  | { name: "IssueLabelsChanged"; payload: Event_IssueLabelsChanged }
-  | { name: "IssuePriorityChanged"; payload: Event_IssuePriorityChanged }
-  | { name: "IssueStatusChanged"; payload: Event_IssueStatusChanged }
-  | { name: "RepoUrlChanged"; payload: Event_RepoUrlChanged }
+  | {
+    /**
+     * A comment was posted to an issue's thread.
+     */
+    name: "CommentAdded";
+    payload: Event_CommentAdded;
+  }
+  | {
+    /**
+     * A comment was deleted by its author.
+     */
+    name: "CommentDeleted";
+    payload: Event_CommentDeleted;
+  }
+  | {
+    /**
+     * A comment was edited by its author.
+     */
+    name: "CommentEdited";
+    payload: Event_CommentEdited;
+  }
+  | {
+    /**
+     * An issue's assignee changed.
+     */
+    name: "IssueAssigneeChanged";
+    payload: Event_IssueAssigneeChanged;
+  }
+  | {
+    /**
+     * A new issue was created on the board.
+     */
+    name: "IssueCreated";
+    payload: Event_IssueCreated;
+  }
+  | {
+    /**
+     * An issue was deleted, along with its comments and labels.
+     */
+    name: "IssueDeleted";
+    payload: Event_IssueDeleted;
+  }
+  | {
+    /**
+     * One of an issue's text sections changed (summary/impact/repro/resolution).
+     */
+    name: "IssueEdited";
+    payload: Event_IssueEdited;
+  }
+  | {
+    /**
+     * A label was added to or removed from an issue.
+     */
+    name: "IssueLabelsChanged";
+    payload: Event_IssueLabelsChanged;
+  }
+  | {
+    /**
+     * An issue's priority changed.
+     */
+    name: "IssuePriorityChanged";
+    payload: Event_IssuePriorityChanged;
+  }
+  | {
+    /**
+     * An issue's status changed (moved columns).
+     */
+    name: "IssueStatusChanged";
+    payload: Event_IssueStatusChanged;
+  }
+  | {
+    /**
+     * The repository URL this context tracks was set or changed.
+     */
+    name: "RepoUrlChanged";
+    payload: Event_RepoUrlChanged;
+  }
 ;
 
 
@@ -160,6 +286,8 @@ export class IssueTrackerClient {
   /**
    * add_comment
    *
+   * Post a comment to an issue's thread. Returns the generated comment id.
+   *
    * @intent mutating
    */
   public async addComment(params: { issue_id: string; body: string }): Promise<string> {
@@ -169,6 +297,9 @@ export class IssueTrackerClient {
 
   /**
    * add_label
+   *
+   * Add a label to an issue. Idempotent — a duplicate (even concurrent) add
+   * collapses to a single index entry.
    *
    * @intent mutating
    */
@@ -180,6 +311,8 @@ export class IssueTrackerClient {
   /**
    * create_issue
    *
+   * Create an issue. Returns its generated id. Starts in status `Open`.
+   *
    * @intent mutating
    */
   public async createIssue(params: { title: string; summary: string; impact: string; repro: string; resolution_criteria: string; priority: string; labels: string[] | null }): Promise<string> {
@@ -189,6 +322,8 @@ export class IssueTrackerClient {
 
   /**
    * delete_comment
+   *
+   * Delete a comment. Only the original author may delete.
    *
    * @intent mutating
    */
@@ -200,6 +335,13 @@ export class IssueTrackerClient {
   /**
    * delete_issue
    *
+   * Delete an issue with its triage state, its labels and the caller's own
+   * comments on it. Only the issue's creator may delete it.
+   *
+   * Other people's comments stay: each belongs to its author, and only they
+   * may remove it. Every comment read goes through a live issue, so those
+   * orphans are never shown.
+   *
    * @intent mutating
    */
   public async deleteIssue(params: { issue_id: string }): Promise<void> {
@@ -209,6 +351,8 @@ export class IssueTrackerClient {
 
   /**
    * edit_comment
+   *
+   * Edit a comment's body. Only the original author may edit.
    *
    * @intent mutating
    */
@@ -220,6 +364,8 @@ export class IssueTrackerClient {
   /**
    * get_issue
    *
+   * Read a single issue plus its full comment thread (ordered by created_at).
+   *
    * @intent read_only
    */
   public async getIssue(params: { issue_id: string }): Promise<IssueDetail> {
@@ -230,6 +376,8 @@ export class IssueTrackerClient {
   /**
    * get_repo_info
    *
+   * Read this context's repository metadata (empty `repo_url` until set).
+   *
    * @intent read_only
    */
   public async getRepoInfo(): Promise<RepoInfo> {
@@ -239,6 +387,10 @@ export class IssueTrackerClient {
 
   /**
    * get_status_counts
+   *
+   * Live count of issues per status column, in fixed column order. Each
+   * column is a seek on the `status` index; a row counts only if its issue
+   * still has a header.
    *
    * @intent read_only
    */
@@ -258,6 +410,12 @@ export class IssueTrackerClient {
   /**
    * list_issues
    *
+   * List issues, optionally filtered by status, assignee, and/or label.
+   * Results are ordered by creation time then id for stability.
+   *
+   * The first filter given is a seek on its index; the others are checked on
+   * the rows it returns. With no filter every issue is read.
+   *
    * @intent read_only
    */
   public async listIssues(params: { status: string | null; assignee: string | null; label: string | null }): Promise<IssueView[]> {
@@ -267,6 +425,8 @@ export class IssueTrackerClient {
 
   /**
    * remove_label
+   *
+   * Remove a label from an issue. No-op if the label was not present.
    *
    * @intent mutating
    */
@@ -278,6 +438,8 @@ export class IssueTrackerClient {
   /**
    * set_assignee
    *
+   * Set or clear an issue's assignee.
+   *
    * @intent mutating
    */
   public async setAssignee(params: { issue_id: string; assignee: string | null }): Promise<void> {
@@ -287,6 +449,8 @@ export class IssueTrackerClient {
 
   /**
    * set_impact
+   *
+   * Update an issue's impact. Rejects an empty value.
    *
    * @intent mutating
    */
@@ -298,6 +462,8 @@ export class IssueTrackerClient {
   /**
    * set_priority
    *
+   * Change an issue's priority. Rejects any value outside the allowed set.
+   *
    * @intent mutating
    */
   public async setPriority(params: { issue_id: string; priority: string }): Promise<void> {
@@ -307,6 +473,9 @@ export class IssueTrackerClient {
 
   /**
    * set_repo_url
+   *
+   * Set (or change) the GitHub repository URL this context tracks. Rejects an
+   * empty value or one that is not an `http(s)://` URL.
    *
    * @intent mutating
    */
@@ -318,6 +487,8 @@ export class IssueTrackerClient {
   /**
    * set_repro
    *
+   * Update an issue's reproduction steps. Rejects an empty value.
+   *
    * @intent mutating
    */
   public async setRepro(params: { issue_id: string; repro: string }): Promise<void> {
@@ -327,6 +498,8 @@ export class IssueTrackerClient {
 
   /**
    * set_resolution_criteria
+   *
+   * Update an issue's resolution criteria. Rejects an empty value.
    *
    * @intent mutating
    */
@@ -338,6 +511,8 @@ export class IssueTrackerClient {
   /**
    * set_status
    *
+   * Change an issue's status. Rejects any value outside the allowed set.
+   *
    * @intent mutating
    */
   public async setStatus(params: { issue_id: string; status: string }): Promise<void> {
@@ -347,6 +522,8 @@ export class IssueTrackerClient {
 
   /**
    * set_summary
+   *
+   * Update an issue's summary. Rejects an empty value.
    *
    * @intent mutating
    */

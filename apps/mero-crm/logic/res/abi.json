@@ -3,6 +3,7 @@
   "types": {
     "Activity": {
       "kind": "record",
+      "doc": "Something someone has to do: a call, a meeting, a task, an email, a deadline.",
       "fields": [
         {
           "name": "id",
@@ -15,7 +16,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "A deal's activities are one seek; `None` puts no row in the index."
         },
         {
           "name": "contact_id",
@@ -101,13 +103,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
+          "nullable": true,
+          "doc": "Set when an automation scheduled it rather than a person."
         },
         {
           "name": "created_at",
@@ -138,7 +135,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The deal's title, resolved here so the to-do list needs no join."
         },
         {
           "name": "contact_id",
@@ -214,6 +212,7 @@
     },
     "Automation": {
       "kind": "record",
+      "doc": "\"When a deal enters `stage_id`, schedule a `kind` activity called `subject`,\ndue `due_in_days` later.\" The simple rule that covers most of what sales\nautomation is actually used for: never letting a deal arrive somewhere with\nno next step.",
       "fields": [
         {
           "name": "id",
@@ -254,12 +253,6 @@
             "inner_type": {
               "kind": "bool"
             }
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
           }
         },
         {
@@ -325,6 +318,7 @@
     },
     "Contact": {
       "kind": "record",
+      "doc": "A person the team sells to.",
       "fields": [
         {
           "name": "id",
@@ -385,12 +379,6 @@
             "inner_type": {
               "kind": "string"
             }
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
           }
         },
         {
@@ -531,7 +519,7 @@
             "value": {
               "$ref": "Note"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -546,6 +534,20 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Record id → when it was created, written once with the record by the\naccount that created it. That owner stamp IS the record's `created_by`:\nno node accepts a rewrite of it, so neither can anyone take over a\nrecord's authorship by writing a field."
         },
         {
           "name": "currency",
@@ -573,6 +575,7 @@
     },
     "Deal": {
       "kind": "record",
+      "doc": "A deal: an opportunity with a value, moving through the stages.\n\nIndexed by the fields the board filters on, so a stage column, an owner's\ndeals or a person's deals is a seek rather than a scan of every deal.",
       "fields": [
         {
           "name": "id",
@@ -677,7 +680,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "Expected close date, ms since the epoch."
         },
         {
           "name": "source",
@@ -688,7 +692,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Where the deal came from (referral, inbound, outbound, event, …)."
         },
         {
           "name": "stage_entered_at",
@@ -699,7 +704,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "When the deal entered its current stage — what \"rotting\" measures."
         },
         {
           "name": "closed_at",
@@ -713,12 +719,6 @@
           }
         },
         {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "created_at",
           "type": {
             "kind": "u64"
@@ -728,6 +728,7 @@
     },
     "DealDetail": {
       "kind": "record",
+      "doc": "A deal with everything the detail page shows (named struct, never a tuple).",
       "fields": [
         {
           "name": "deal",
@@ -801,7 +802,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The linked person's name, resolved here so the board needs no join."
         },
         {
           "name": "owner",
@@ -845,7 +847,8 @@
           "name": "probability",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Win probability: the stage's while open, 100 when won, 0 when lost."
         },
         {
           "name": "stage_entered_at",
@@ -878,7 +881,8 @@
           "type": {
             "kind": "u64"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The most recent completed activity or note, if any."
         },
         {
           "name": "created_by",
@@ -1025,6 +1029,7 @@
     },
     "NextActivity": {
       "kind": "record",
+      "doc": "The earliest open activity on a deal — the \"next step\" the board shows.",
       "fields": [
         {
           "name": "id",
@@ -1054,6 +1059,7 @@
     },
     "Note": {
       "kind": "record",
+      "doc": "A note on a deal. Immutable once written; only its author may delete it —\nthe author being the entry's owner stamp, not a field.",
       "fields": [
         {
           "name": "id",
@@ -1063,12 +1069,6 @@
         },
         {
           "name": "deal_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -1141,6 +1141,7 @@
     },
     "Stage": {
       "kind": "record",
+      "doc": "A column of the pipeline.",
       "fields": [
         {
           "name": "id",
@@ -1168,7 +1169,8 @@
             "inner_type": {
               "kind": "u32"
             }
-          }
+          },
+          "doc": "Win probability in percent, 0..=100. Drives the weighted forecast."
         },
         {
           "name": "position",
@@ -1179,7 +1181,8 @@
             "inner_type": {
               "kind": "u32"
             }
-          }
+          },
+          "doc": "Sort key. Reordering rewrites every stage's position in one call."
         },
         {
           "name": "created_at",
@@ -1276,6 +1279,7 @@
     },
     {
       "name": "add_automation",
+      "doc": "\"When a deal enters `stage_id`, schedule a `kind` activity called\n`subject`, due in `due_in_days` days.\" Returns the rule's id.",
       "params": [
         {
           "name": "stage_id",
@@ -1330,6 +1334,7 @@
     },
     {
       "name": "add_stage",
+      "doc": "Append a stage at the end of the pipeline. Returns its id.",
       "params": [
         {
           "name": "name",
@@ -1390,6 +1395,7 @@
     },
     {
       "name": "create_deal",
+      "doc": "Add a deal to a stage. Returns its id. Runs the stage's automations.",
       "params": [
         {
           "name": "title",
@@ -1480,6 +1486,7 @@
     },
     {
       "name": "delete_contact",
+      "doc": "Delete a person. Only their creator may (the creation stamp, again).\nDeals keep their history but lose the link, so no deal points at\nsomeone who no longer exists.",
       "params": [
         {
           "name": "contact_id",
@@ -1495,6 +1502,7 @@
     },
     {
       "name": "delete_deal",
+      "doc": "Delete a deal with its activities and its creator's notes. Only its\ncreator may — checked against the creation stamp, which nobody can\nrewrite. Other members' notes are theirs to delete; they go dark with\nthe deal.",
       "params": [
         {
           "name": "deal_id",
@@ -1510,6 +1518,7 @@
     },
     {
       "name": "delete_note",
+      "doc": "Delete a note. Only its author may — the entry's owner, which every\nnode checks when it applies the removal.",
       "params": [
         {
           "name": "note_id",
@@ -1525,6 +1534,7 @@
     },
     {
       "name": "delete_stage",
+      "doc": "Remove a stage. Refused while any open deal sits in it, and for the last\nremaining stage — a pipeline always has somewhere to put a deal. A deal\nmoved into it concurrently is not lost: the board shows a deal whose\nstage is gone in the first stage (see `deal_view`).",
       "params": [
         {
           "name": "stage_id",
@@ -1540,6 +1550,7 @@
     },
     {
       "name": "get_deal",
+      "doc": "One deal with its person, activities (by due date) and notes (newest\nfirst). Reads only that deal's rows: its activities and notes are index\nseeks, its person one lookup.",
       "params": [
         {
           "name": "deal_id",
@@ -1570,6 +1581,7 @@
     },
     {
       "name": "list_activities",
+      "doc": "Activities, optionally for one deal and/or by done-ness, by due date.\nOne deal's activities are an index seek.",
       "params": [
         {
           "name": "deal_id",
@@ -1607,6 +1619,7 @@
     },
     {
       "name": "list_contacts",
+      "doc": "Everyone in the address book, by name, with their deal totals.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1618,6 +1631,7 @@
     },
     {
       "name": "list_deals",
+      "doc": "Deals, optionally filtered by status, stage and owner, newest first.\n\nThe most selective filter given is an index seek; the others filter\nwhat it returns.",
       "params": [
         {
           "name": "status",
@@ -1651,6 +1665,7 @@
     },
     {
       "name": "list_stages",
+      "doc": "Stages in pipeline order.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1662,6 +1677,7 @@
     },
     {
       "name": "mark_lost",
+      "doc": "Close a deal as lost, with the reason (feeds the lost-reasons report).",
       "params": [
         {
           "name": "deal_id",
@@ -1683,6 +1699,7 @@
     },
     {
       "name": "mark_won",
+      "doc": "Close a deal as won.",
       "params": [
         {
           "name": "deal_id",
@@ -1698,6 +1715,7 @@
     },
     {
       "name": "move_deal",
+      "doc": "Move an open deal to another stage and run that stage's automations.\nMoving to the stage it is already in is a no-op.",
       "params": [
         {
           "name": "deal_id",
@@ -1719,6 +1737,7 @@
     },
     {
       "name": "reopen_deal",
+      "doc": "Put a closed deal back on the board, in the stage it closed from.",
       "params": [
         {
           "name": "deal_id",
@@ -1734,6 +1753,7 @@
     },
     {
       "name": "reorder_stages",
+      "doc": "Reorder the pipeline. `stage_ids` must name every stage exactly once.",
       "params": [
         {
           "name": "stage_ids",
@@ -1752,6 +1772,7 @@
     },
     {
       "name": "reschedule_activity",
+      "doc": "Move an activity to a new due time.",
       "params": [
         {
           "name": "activity_id",
@@ -1773,6 +1794,7 @@
     },
     {
       "name": "set_activity_done",
+      "doc": "Mark an activity done (or undo that).",
       "params": [
         {
           "name": "activity_id",
@@ -1815,6 +1837,7 @@
     },
     {
       "name": "set_currency",
+      "doc": "Set the pipeline currency: a three-letter ISO 4217 code such as `EUR`.",
       "params": [
         {
           "name": "currency",
@@ -1830,6 +1853,7 @@
     },
     {
       "name": "set_rotting_days",
+      "doc": "Days without activity before an open deal is flagged as rotting (1..=365).",
       "params": [
         {
           "name": "days",
@@ -1890,6 +1914,7 @@
     },
     {
       "name": "update_deal",
+      "doc": "Edit a deal's fields. Only fields whose value differs are written, so a\nconcurrent teammate edit to another field survives.",
       "params": [
         {
           "name": "deal_id",
@@ -1950,6 +1975,7 @@
     },
     {
       "name": "update_stage",
+      "doc": "Rename a stage and/or change its win probability.",
       "params": [
         {
           "name": "stage_id",
@@ -1981,64 +2007,76 @@
       "name": "ActivityChanged",
       "payload": {
         "$ref": "Event_ActivityChanged"
-      }
+      },
+      "doc": "An activity was scheduled, completed, rescheduled or deleted."
     },
     {
       "name": "AutomationFired",
       "payload": {
         "$ref": "Event_AutomationFired"
-      }
+      },
+      "doc": "An automation scheduled an activity when a deal entered a stage."
     },
     {
-      "name": "AutomationsChanged"
+      "name": "AutomationsChanged",
+      "doc": "An automation rule was added, toggled or removed."
     },
     {
       "name": "ContactChanged",
       "payload": {
         "$ref": "Event_ContactChanged"
-      }
+      },
+      "doc": "A person was added, edited or removed."
     },
     {
       "name": "DealCreated",
       "payload": {
         "$ref": "Event_DealCreated"
-      }
+      },
+      "doc": "A deal was added to the pipeline."
     },
     {
       "name": "DealDeleted",
       "payload": {
         "$ref": "Event_DealDeleted"
-      }
+      },
+      "doc": "A deal was deleted, with its activities and notes."
     },
     {
       "name": "DealMoved",
       "payload": {
         "$ref": "Event_DealMoved"
-      }
+      },
+      "doc": "A deal moved to another stage."
     },
     {
       "name": "DealStatusChanged",
       "payload": {
         "$ref": "Event_DealStatusChanged"
-      }
+      },
+      "doc": "A deal was closed as won, closed as lost, or reopened."
     },
     {
       "name": "DealUpdated",
       "payload": {
         "$ref": "Event_DealUpdated"
-      }
+      },
+      "doc": "One of a deal's fields (title, value, contact, owner, …) changed."
     },
     {
       "name": "NoteChanged",
       "payload": {
         "$ref": "Event_NoteChanged"
-      }
+      },
+      "doc": "A note was added to or removed from a deal."
     },
     {
-      "name": "SettingsChanged"
+      "name": "SettingsChanged",
+      "doc": "The pipeline's currency or rotting threshold changed."
     },
     {
-      "name": "StagesChanged"
+      "name": "StagesChanged",
+      "doc": "A stage was added, renamed, re-weighted, reordered or removed."
     }
   ],
   "state_root": "Crm",

@@ -92,6 +92,7 @@ function buildTranscript(): Transcript {
       decrypted_by: [V.trustees[0], V.trustees[2]],
       transcript_digest: transcriptDigest(text),
       anchor: null,
+      uncounted: [],
     },
   } as unknown as Transcript;
 }

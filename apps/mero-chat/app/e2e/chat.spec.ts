@@ -473,3 +473,230 @@ test.describe("Chat UI — thread replies", () => {
     });
   });
 });
+
+// ── Drag and drop onto the composer ───────────────────────────────────────────
+
+/** A 1×1 transparent PNG: real image bytes, so the node stores a real blob. */
+const PNG_1X1_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+/**
+ * Drop `files` on the composer the way a browser does: dragenter, dragover,
+ * drop, all carrying one DataTransfer. Playwright has no OS-level file drag,
+ * so the events are dispatched with a DataTransfer built in the page.
+ */
+async function dropOnComposer(
+  page: Page,
+  files: { name: string; type: string; base64: string }[],
+) {
+  const dataTransfer = await page.evaluateHandle((specs) => {
+    const dt = new DataTransfer();
+    for (const { name, type, base64 } of specs) {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      dt.items.add(new File([bytes], name, { type }));
+    }
+    return dt;
+  }, files);
+  const composer = page.getByTestId("message-composer");
+  await composer.dispatchEvent("dragenter", { dataTransfer });
+  await composer.dispatchEvent("dragover", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeVisible();
+  await composer.dispatchEvent("drop", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeHidden();
+}
+
+test.describe("Chat UI — drag and drop attachments", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("a dropped PNG goes to the image slot and a dropped PDF to the file slot", async ({
+    page,
+  }) => {
+    const stamp = Date.now();
+    const imageName = `drop-${stamp}.png`;
+    const fileName = `drop-${stamp}.pdf`;
+    const pdfBase64 = Buffer.from(`%PDF-1.4\n% drop ${stamp}\n%%EOF\n`).toString("base64");
+
+    await dropOnComposer(page, [
+      { name: imageName, type: "image/png", base64: PNG_1X1_BASE64 },
+      { name: fileName, type: "application/pdf", base64: pdfBase64 },
+    ]);
+
+    // Both previews appear once the node has stored the bytes: the PNG as a
+    // picture, the PDF as a file card. Neither routes through the popup.
+    const composer = page.getByTestId("message-composer");
+    await expect(composer.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(composer.getByTitle(fileName)).toBeVisible({ timeout: 20_000 });
+
+    const marker = `ui-drop-${stamp}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    // The sent message reads the image back from the node by blob id, so this
+    // passes only if the drop uploaded real bytes against the channel.
+    const row = messageRow(page, marker);
+    await expect(row.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(row.getByTitle(fileName)).toBeVisible();
+  });
+
+  test("dragging text over the composer does not show the drop overlay", async ({
+    page,
+  }) => {
+    const dataTransfer = await page.evaluateHandle(() => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "just some text");
+      return dt;
+    });
+    const composer = page.getByTestId("message-composer");
+    await composer.dispatchEvent("dragenter", { dataTransfer });
+    await composer.dispatchEvent("dragover", { dataTransfer });
+    await expect(page.getByTestId("composer-drop-overlay")).toHaveCount(0);
+  });
+});
+
+// ── Attachment-only messages ──────────────────────────────────────────────────
+
+/** A 1×1 transparent PNG: real image bytes, so the node stores a real blob. */
+const ATTACH_PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** Attach `name` through the composer's upload popup, as a user would. */
+async function attachThroughPopup(
+  page: Page,
+  kind: "Image" | "File",
+  file: { name: string; mimeType: string; buffer: Buffer },
+) {
+  await page.getByRole("button", { name: "Attach" }).first().click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByText(`Upload ${kind}`, { exact: true }).click();
+  await (await chooser).setFiles(file);
+}
+
+/** The message row whose attachments include an element titled/named `name`. */
+function rowWithAttachment(page: Page, name: string) {
+  return page
+    .locator('[id^="actions-container-"]')
+    .locator("xpath=..")
+    .filter({
+      has: page.locator(`img[alt="${name}"], [title="${name}"]`),
+    })
+    .first();
+}
+
+test.describe("Chat UI — attachment-only messages", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("an image sends with no text, from the send button", async ({ page }) => {
+    const imageName = `only-image-${Date.now()}.png`;
+    await attachThroughPopup(page, "Image", {
+      name: imageName,
+      mimeType: "image/png",
+      buffer: ATTACH_PNG_1X1,
+    });
+    // The composer preview means the node has stored the bytes.
+    await expect(page.locator(`img[alt="${imageName}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.getByRole("button", { name: "Send message" }).first().click();
+
+    const row = rowWithAttachment(page, imageName);
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    // It left the optimistic `temp-` state, so the node accepted it.
+    await expect(row.locator('[id^="actions-container-"]').first()).not.toHaveAttribute(
+      "id",
+      /^actions-container-temp-/,
+      { timeout: 15_000 },
+    );
+    // And it read the image back from the node by blob id.
+    await expect(row.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    // The composer's preview is cleared after sending: only the sent copy is left.
+    await expect(page.locator(`img[alt="${imageName}"]`)).toHaveCount(1);
+  });
+
+  test("a file sends with no text, by pressing Enter", async ({ page }) => {
+    const fileName = `only-file-${Date.now()}.txt`;
+    await attachThroughPopup(page, "File", {
+      name: fileName,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`attachment-only ${fileName}\n`),
+    });
+    await expect(page.locator(`[title="${fileName}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.locator(".ProseMirror").first().click();
+    await page.keyboard.press("Enter");
+
+    const row = rowWithAttachment(page, fileName);
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.locator('[id^="actions-container-"]').first()).not.toHaveAttribute(
+      "id",
+      /^actions-container-temp-/,
+      { timeout: 15_000 },
+    );
+  });
+
+  test("an empty composer with no attachment still sends nothing", async ({ page }) => {
+    const marker = `ui-empty-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    await page.getByRole("button", { name: "Send message" }).first().click();
+    await page.waitForTimeout(1_500);
+
+    // Every message renders a `.msg-content`, even one with no text, so a
+    // phantom empty send would become the last one. Counting rows instead is
+    // unreliable: the optimistic row and the node's copy collapse into one,
+    // and the virtualized list shifts.
+    await expect(page.locator(".msg-content").last()).toContainText(marker);
+  });
+
+});
+
+test.describe("Chat UI — a file dropped outside the composer", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("is swallowed, so the browser does not open it in place of the app", async ({
+    page,
+  }) => {
+    const url = page.url();
+    // Dispatched on the message list, well away from the composer. The
+    // browser's default for an unhandled file drop is to navigate to the file.
+    const prevented = await page.evaluate(() => {
+      const target =
+        document.querySelector('[id^="actions-container-"]')?.parentElement ??
+        document.body;
+      const dt = new DataTransfer();
+      dt.items.add(new File(["stray"], "stray.txt", { type: "text/plain" }));
+      const over = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt });
+      const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+      target.dispatchEvent(over);
+      target.dispatchEvent(drop);
+      return { over: over.defaultPrevented, drop: drop.defaultPrevented };
+    });
+    expect(prevented).toEqual({ over: true, drop: true });
+    expect(page.url()).toBe(url);
+    // And nothing was attached: that only happens on the composer.
+    await expect(page.locator('[title="stray.txt"]')).toHaveCount(0);
+  });
+});

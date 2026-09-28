@@ -28,6 +28,7 @@ import { ToastProvider } from "@calimero-network/mero-ui";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
 import { log } from "./utils/logger.ts";
+import { APP_SLUG } from "./utils/invitation.ts";
 import { applyDevOverlay } from "./utils/devOverlay.ts";
 import { purgeLegacyIdentityDisplayNames } from "./utils/messengerName.ts";
 
@@ -224,7 +225,15 @@ function boot() {
       >
         <MeroProvider
           mode={MeroAppMode.MultiContext}
-          packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
+          // The package name is what lets hosted login trust this origin: the
+          // node's auth page hands tokens only to loopback, itself, or the
+          // `links.frontend` the registry declares for the NAMED package. With
+          // no name it cannot look that up and refuses every web login with
+          // "Login callback destination is not allowed" (desktop still works,
+          // loopback is always trusted). Production shipped `packageName:""`
+          // because Vercel's VITE_APPLICATION_PACKAGE was empty, so the env
+          // var is only an override now, never the source.
+          packageName={import.meta.env.VITE_APPLICATION_PACKAGE || APP_SLUG}
           registryUrl="https://apps.calimero.network"
           // 35s, not MeroProvider's 30s default.
           //

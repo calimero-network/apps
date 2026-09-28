@@ -219,6 +219,7 @@ const REASONS: Record<string, string> = {
   agreement: "by agreement",
   threefold: "threefold repetition",
   fiftyMove: "the fifty-move rule",
+  equivocation: "two different moves played at once",
 };
 
 /** The label on the claim-a-draw button, or `""` when there is nothing to claim. */

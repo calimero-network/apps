@@ -1299,6 +1299,14 @@ test.describe("multi-user (2-node)", () => {
   test("Bob can reply to Alice's thread", async () => {
     const parentText = `thread-alice-${Date.now()}`;
     const parent = await aliceSends(parentText);
+    // A reply names a parent the replier's node must already hold, as it
+    // does for anyone replying from the UI.
+    await pollUntil(async () => {
+      const r = await makeClient2().call<GetMessagesOut>("get_messages", {
+        parent_message: null, limit: 50, offset: 0, search_term: parentText,
+      });
+      return r.messages.find((m) => m.id === parent.id);
+    }, 30000);
 
     const reply = await makeClient2().call<MessageOut>("send_message", {
       message: `bob-reply-${Date.now()}`,

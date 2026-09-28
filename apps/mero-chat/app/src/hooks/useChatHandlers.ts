@@ -14,6 +14,7 @@ import { nameRepository } from "../repositories/names/useNames";
 import { bytesParser } from "../utils/bytesParser";
 import { messageMentionsMe } from "../utils/mentionsMe";
 import { isSelfSender } from "../utils/selfIdentity";
+import { notificationBody } from "../utils/plainText";
 
 /**
  * Custom hook for handling chat-related events (messages, DMs, channels)
@@ -187,20 +188,25 @@ export function useChatHandlers(
             const isFromCurrentUser = mine(lastMessage.sender);
 
             // Show notification for ALL channel messages (not just active chat)
-            // Guarded on the TEXT, not on a sender name. This used to require
+            // Guarded on the content, not on a sender name. This used to require
             // `senderUsername` to be truthy, so once messages stopped carrying
             // one the condition would be permanently false and channel
             // notifications would silently stop — a behaviour change no type
             // error would have reported.
-            if (!isFromCurrentUser && lastMessage.text) {
+            //
+            // An attachment-only message has no text, so the guard is on the
+            // notification body, which covers "Alice sent an image" too.
+            const senderName = resolveSenderName(lastMessage.sender);
+            const body = notificationBody(lastMessage, senderName);
+            if (!isFromCurrentUser && body) {
               // Use message.group to show the correct channel name
               const channelName = lastMessage.group || activeChatName;
               if (shouldNotifyMessage) {
                 refs.notifyChannel.current(
                   lastMessage.id,
                   channelName,
-                  resolveSenderName(lastMessage.sender),
-                  lastMessage.text,
+                  senderName,
+                  body,
                   messageMentionsMe(lastMessage, contextId)
                 );
               }
@@ -209,13 +215,11 @@ export function useChatHandlers(
             const isFromCurrentUser = lastMessage && mine(lastMessage.sender);
 
             // Show notification for DM messages from other users
-            if (!isFromCurrentUser && lastMessage.text) {
+            const senderName = resolveSenderName(lastMessage?.sender);
+            const body = lastMessage ? notificationBody(lastMessage, senderName) : "";
+            if (!isFromCurrentUser && body) {
               if (shouldNotifyMessage) {
-                refs.notifyDM.current(
-                  lastMessage.id,
-                  resolveSenderName(lastMessage.sender),
-                  lastMessage.text
-                );
+                refs.notifyDM.current(lastMessage.id, senderName, body);
               }
             }
           }
@@ -338,17 +342,20 @@ export function useChatHandlers(
           // carry a name at all.
           const isMine = isSelfSender(msg.sender, contextId, contextIdentity);
 
-          if (!isMine && msg.text && !msg.deleted) {
+          const senderName = resolveSenderName(msg.sender);
+          const body = notificationBody(msg, senderName);
+
+          if (!isMine && body && !msg.deleted) {
             if (isDMContext) {
-              refs.notifyDM.current(msg.id, resolveSenderName(msg.sender), msg.text);
+              refs.notifyDM.current(msg.id, senderName, body);
             } else {
               const contextName =
                 refs.contextNameMap.current.get(contextId) ?? messageGroup;
               refs.notifyChannel.current(
                 msg.id,
                 contextName,
-                resolveSenderName(msg.sender),
-                msg.text,
+                senderName,
+                body,
                 messageMentionsMe(msg, contextId),
               );
             }
@@ -402,7 +409,7 @@ export function useChatHandlers(
           const contextName =
             refs.contextNameMap.current.get(contextId) ?? messageGroup;
           const sender = resolveSenderName(msg?.sender);
-          const text = msg?.text ?? "";
+          const text = msg ? notificationBody(msg, sender) : "";
           const msgId = msg?.id ?? `thread-${Date.now()}`;
           refs.notifyThread.current(msgId, contextName, sender, text);
         }

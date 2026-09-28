@@ -3,41 +3,55 @@
   "types": {
     "ChunkCursor": {
       "kind": "record",
+      "doc": "Per-sender chunk bookkeeping — one row per sender, in `chunk_cursors`.\n\n**Every field is monotone and merges by `max`.** That is the whole point of\nthis type. The previous design held these as four *global* `LwwRegister`s\nshared by every sender, which meant two peers posting concurrently\nread-modify-wrote the same counter, minted the same `seq`, and then wrote the\nsame `chunk-{seq}` key — last-writer-wins silently destroyed one sender's\nvideo. Splitting per sender means a row is written only by the sender it\nbelongs to on the hot path, and `max`-merge is commutative, associative and\nidempotent, so it converges regardless of delivery order. There is no\nlast-writer to lose to.",
       "fields": [
         {
-          "name": "next_seq",
+          "name": "nextSeq",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Highest seq this sender has minted. Never reused (C3)."
         },
         {
-          "name": "oldest_live",
+          "name": "oldestLive",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Lowest seq of theirs still live; everything below was pruned."
         },
         {
-          "name": "last_keyframe",
+          "name": "lastKeyframe",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Seq of this sender's newest keyframe. Per-sender because each sender is\nan independent H.264 bitstream — a delta is only decodable against a\nkeyframe from the SAME sender, so a global pointer let the reaper drop\none sender's only keyframe while protecting another's."
         },
         {
-          "name": "newest_at",
+          "name": "newestAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "`created_at` of their newest chunk — drives the stale-sender sweep."
         },
         {
           "name": "pruned",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "How many of their chunks have been reaped (tombstone pressure, C3)."
+        },
+        {
+          "name": "framesPruned",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "How many of their approach-3 FRAMES they have pruned. Per sender for the\nsame reason as the rest: a shared counter lost concurrent increments and\nwas anyone's to rewrite."
         }
       ]
     },
     "ChunkView": {
       "kind": "record",
+      "doc": "Read model for the receive side: what a peer needs to drive its decoder.",
       "fields": [
         {
           "name": "seq",
@@ -58,7 +72,7 @@
           }
         },
         {
-          "name": "is_keyframe",
+          "name": "isKeyframe",
           "type": {
             "kind": "bool"
           }
@@ -82,19 +96,20 @@
           }
         },
         {
-          "name": "timestamp_us",
+          "name": "timestampUs",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "data_b64",
+          "name": "dataB64",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Base64 — the RPC layer is JSON, and a raw `Vec<u8>` serializes as a JSON\narray of numbers (~3 bytes of text per byte of payload). Base64 is ~1.37x\ninstead, so a 22 KB keyframe travels as ~30 KB of JSON rather than ~80 KB."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
@@ -103,6 +118,7 @@
     },
     "DecodedFrame": {
       "kind": "record",
+      "doc": "A frame reconstructed in-WASM by the decoder. `pixels` is raw luma\n(1 byte/pixel, row-major, `width * height` long) — the frontend paints it to\na canvas. This is the second half of \"decode straight from WASM logic\".",
       "fields": [
         {
           "name": "seq",
@@ -138,30 +154,35 @@
           "name": "pixels",
           "type": {
             "kind": "bytes"
-          }
+          },
+          "doc": "Raw luma, `width * height` bytes."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Capture timestamp in unix **milliseconds** (see `Fragment::created_at`) —\nthe receive side subtracts it from its own clock to get §4 latency."
         },
         {
-          "name": "encoded_bytes",
+          "name": "encodedBytes",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Sum of the stored (compressed) chunk bytes for this frame — lets the\nfrontend log compression ratio without a second call."
         }
       ]
     },
     "Fragment": {
       "kind": "record",
+      "doc": "One compressed media fragment produced by the in-WASM encoder. A frame with\nan encoded stream over `MAX_CHUNK_BYTES` is split across several `Fragment`s\nsharing one `seq` (the frame's base seq), distinguished by `chunk`.\n\n`data` is the ONLY field that meaningfully crosses the wire — the raw input\nnever leaves the sender (C1/approach-3 property).",
       "fields": [
         {
           "name": "seq",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Global monotone frame sequence; key `frag-{from}-{seq}-{chunk}`, NEVER\nreused (C3)."
         },
         {
           "name": "from",
@@ -173,25 +194,29 @@
           "name": "track",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "0 = video luma, 1 = audio (future)."
         },
         {
           "name": "chunk",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Sub-frame chunk index within this frame (C2)."
         },
         {
           "name": "chunks",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Total chunks for this frame."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Decode geometry."
         },
         {
           "name": "height",
@@ -203,42 +228,48 @@
           "name": "codec",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Which toy codec produced `data` (C4 ladder)."
         },
         {
           "name": "data",
           "type": {
             "kind": "bytes"
-          }
+          },
+          "doc": "Compressed bytes for this chunk — the only thing that gossips."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Sender-supplied capture timestamp, unix **MILLISECONDS**.\n\nDeliberately a different unit from `Member::joined_at`/`updated_at`\n(which are unix *seconds*). §4's headline metric is end-to-end fragment\nlatency — capture → apply on a peer → render — and the whole point of the\nprobe is that this lands in the hundreds-of-ms-to-seconds range. At\nsecond resolution the measurement quantizes to 0 s or 1 s and tells us\nnothing, so fragments carry millis.\n\nThe contract never interprets this value (pruning is by `seq`, not time);\nit is opaque payload, so the unit is purely a producer/consumer contract\nbetween `encodeFrame` in the frontend and the latency sampler. It IS used\nfor defensive newer-wins in `merge`, which only needs monotonicity.\n\nCross-machine caveat: this is the SENDER's clock, so a latency computed\nagainst the receiver's clock includes any skew between them (mero-meet\nhit exactly this and had to normalize on a room clock). Trustworthy on\nthe solo two-node harness, where both nodes share one host clock."
         }
       ]
     },
     "LiveStats": {
       "kind": "record",
+      "doc": "Approach-2 instrumentation snapshot.",
       "fields": [
         {
-          "name": "live_chunks",
+          "name": "liveChunks",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "live_bytes",
+          "name": "liveBytes",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Summed `data` bytes currently live — the real \"how much state is this\nstream holding\" figure."
         },
         {
-          "name": "pruned_chunks",
+          "name": "prunedChunks",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Total chunks reaped across every sender."
         },
         {
           "name": "senders",
@@ -247,18 +278,21 @@
             "items": {
               "$ref": "SenderStats"
             }
-          }
+          },
+          "doc": "Per-sender breakdown. The flat `nextChunkSeq` / `oldestLiveChunk` /\n`lastKeyframeSeq` fields this replaced were only meaningful while a\nsingle global seq space existed; with per-sender spaces a single number\nwould be a lie."
         }
       ]
     },
     "MediaChunk": {
       "kind": "record",
+      "doc": "One encoded chunk produced by **WebCodecs in the browser**, stored verbatim.\n\nThe whole point: this app cannot decode `data` and never tries. It is an\nH.264/VP8 access unit (or a fragment of one) that only a real decoder\nunderstands. We are a replicated ring buffer with metadata, nothing more.\n\nConsequences of not interpreting it:\n- **No determinism constraint.** Nodes store an identical blob without any\n  node computing it, so a float-heavy hardware codec is fine here.\n- **We cannot validate it.** A member can store arbitrary bytes and the peer's\n  decoder is what rejects them. Membership is the only gate; that is the same\n  trust model as `post_signal` in mero-meet.\n- **`is_keyframe` is sender-asserted.** We cannot verify it by parsing, and\n  pruning depends on it (see `last_keyframe_seq`). A member lying about it\n  degrades their own stream's recoverability, which is why it is acceptable —\n  but it is asserted, not proven.",
       "fields": [
         {
           "name": "seq",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Per-sender monotone sequence; key `chunk-{from}-{seq}`, NEVER reused (C3)."
         },
         {
           "name": "from",
@@ -270,25 +304,29 @@
           "name": "track",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "0 = video, 1 = audio. Both ride the same ring, interleaved by seq."
         },
         {
-          "name": "is_keyframe",
+          "name": "isKeyframe",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Sender-asserted: this chunk is independently decodable."
         },
         {
           "name": "codec",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Codec string the browser used, e.g. \"avc1.42001f\" or \"opus\". The peer\nfeeds this straight back into its decoder config, so it must round-trip\nverbatim — a decoder configured differently from the encoder produces\ngarbage or throws."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Decode geometry (video only; 0 for audio)."
         },
         {
           "name": "height",
@@ -297,30 +335,34 @@
           }
         },
         {
-          "name": "timestamp_us",
+          "name": "timestampUs",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Presentation timestamp in microseconds, as WebCodecs reports it. Distinct\nfrom `created_at`: this is the media clock the decoder needs, not a\nwall clock for latency arithmetic."
         },
         {
           "name": "data",
           "type": {
             "kind": "bytes"
-          }
+          },
+          "doc": "The encoded bytes. Opaque."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Sender's wall clock in unix MILLISECONDS (same convention as\n`Fragment::created_at` — §4 latency needs sub-second resolution)."
         }
       ]
     },
     "Member": {
       "kind": "record",
+      "doc": "A member of the stream context. Membership gates `encode_frame` (the probe\nstill requires an authenticated context member — never trust a client id).",
       "fields": [
         {
-          "name": "member_id",
+          "name": "memberId",
           "type": {
             "kind": "string"
           }
@@ -332,13 +374,13 @@
           }
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -362,18 +404,20 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Stream/room name; `Ownable` so only the owner's rename converges.\n\nEmpty until the first rename — see [`Self::initial_name`] for why, and\nread through [`Self::stream_name_str`] rather than touching either\ndirectly."
         },
         {
           "name": "initial_name",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The name `init` was called with.\n\n**`Ownable::insert` cannot be used inside `init` on core rc.20.** The cell\nis still detached from the state tree at that point: the writer set is\ncarried through by the constructor, but the inserted VALUE is silently\ndropped — `insert` returns `Ok`, and a later read returns `Ok(\"\")`.\n\nSo the init name lives here, and `stream_name` takes over from the first\nowner rename onwards. `Frozen`, because it is the name everyone sees until\nthat rename: as a plain register any member's patched node could rewrite\nit, walking straight around the `Ownable` gate."
         },
         {
           "name": "members",
@@ -385,8 +429,9 @@
             "value": {
               "$ref": "Member"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Context members, keyed by DEVICE. `Authored`: the account that first\njoins with a device owns its row, and `owner_of` is the account that\ndevice speaks for — the verified device→account pairing every node\nenforces, which a field or a side table could not be."
         },
         {
           "name": "fragments",
@@ -398,8 +443,9 @@
             "value": {
               "$ref": "Fragment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "The approach-3 buffer. Keyed `frag-{from}-{seq:020}-{chunk:05}`; owned by\nthe sender, so only they can overwrite or prune it, and `from` in the key\nkeeps two senders that mint one `seq` apart."
         },
         {
           "name": "next_seq",
@@ -410,29 +456,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
-        },
-        {
-          "name": "oldest_live_seq",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "pruned_frames",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "Global monotone frame sequence. LwwRegister: two senders may mint the\nsame base seq concurrently — that is fine here because fragment keys\nembed the sender and each frame stands alone (no cross-frame diff in\ncodec #1).\n\n⚠️ Still shared, so a member's patched node can jump it (to `u64::MAX`,\nsay) and stall approach 3 for everyone. A shared counter cannot be\nprotected against its members' own contributions; the fix is per-sender\nseq spaces with per-sender read cursors, which approach 2 has and this\ndeliberately-wrong probe path does not."
         },
         {
           "name": "roles",
@@ -445,26 +470,8 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
-        },
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bytes",
-                "size": 32
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Role registry: the creator is the sole initial admin."
         },
         {
           "name": "chunks",
@@ -476,8 +483,9 @@
             "value": {
               "$ref": "MediaChunk"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Opaque encoded chunks, keyed `chunk-{from}-{seq:020}`.\n\n`from` is in the key on purpose. Without it, two senders that minted the\nsame seq collided on one key and last-writer-wins destroyed one of them —\nthe defect behind the one-directional video in `retro/review.md`. The seq\nis zero-padded so key order is seq order and a sender's window is one\nrange read.\n\n`Moderated`: a chunk is owned by its sender's account, so nobody else can\noverwrite or delete it, and the moderators (the creator) may reap a\ndeparted sender's buffer. Readers still check each chunk's owner against\nthe sender's member row, because anyone can INSERT a new key under\nsomeone else's `from`."
         },
         {
           "name": "chunk_cursors",
@@ -489,13 +497,15 @@
             "value": {
               "$ref": "ChunkCursor"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Per-sender sequence / keyframe / pruning state, keyed by device and owned\nby its sender. See [`ChunkCursor`] for why this is per sender and merges\nby `max`; `Authored` is what stops another member from pushing someone\nelse's `max` to `u64::MAX` and freezing their stream for good."
         }
       ]
     },
     "SenderCursor": {
       "kind": "record",
+      "doc": "One sender's read cursor, both as input to `get_chunks` and as output from\n`keyframe_cursors`.\n\nSeq spaces are per sender now, so a single global \"after_seq\" is meaningless:\nseq 40 from Alice and seq 40 from Bob are unrelated positions in unrelated\nbitstreams.",
       "fields": [
         {
           "name": "from",
@@ -504,7 +514,7 @@
           }
         },
         {
-          "name": "after_seq",
+          "name": "afterSeq",
           "type": {
             "kind": "u64"
           }
@@ -513,6 +523,7 @@
     },
     "SenderStats": {
       "kind": "record",
+      "doc": "Per-sender slice of `get_live_stats`.",
       "fields": [
         {
           "name": "from",
@@ -521,25 +532,25 @@
           }
         },
         {
-          "name": "next_seq",
+          "name": "nextSeq",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "oldest_live",
+          "name": "oldestLive",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "last_keyframe",
+          "name": "lastKeyframe",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "newest_at",
+          "name": "newestAt",
           "type": {
             "kind": "u64"
           }
@@ -551,13 +562,13 @@
           }
         },
         {
-          "name": "live_chunks",
+          "name": "liveChunks",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "live_bytes",
+          "name": "liveBytes",
           "type": {
             "kind": "u64"
           }
@@ -566,6 +577,7 @@
     },
     "StreamStats": {
       "kind": "record",
+      "doc": "Instrumentation snapshot (§4 metrics — the deliverable). Cheap counters a\nload generator / e2e can poll to chart the failure curve.",
       "fields": [
         {
           "name": "name",
@@ -574,34 +586,38 @@
           }
         },
         {
-          "name": "member_count",
+          "name": "memberCount",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "live_fragments",
+          "name": "liveFragments",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Fragments (chunks) currently live in state."
         },
         {
-          "name": "next_seq",
+          "name": "nextSeq",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Highest frame seq ever allocated (monotone; also == total frames sent)."
         },
         {
-          "name": "oldest_live_seq",
+          "name": "oldestLiveSeq",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Lowest frame seq still live (frames below this were pruned → tombstones)."
         },
         {
-          "name": "pruned_frames",
+          "name": "prunedFrames",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "How many frames have been pruned (each pruned fragment is a tombstone, C3)."
         }
       ]
     }
@@ -609,6 +625,7 @@
   "methods": [
     {
       "name": "encode_frame",
+      "doc": "Encode one raw luma frame **inside the WASM runtime**, split it into\n`≤ MAX_CHUNK_BYTES` fragments, store them under monotone never-reused\nkeys, prune the caller's live window, and emit `FramePosted(base_seq)`.\n\n`raw` is `width * height` luma bytes (1 byte/pixel). It is a mutation\nargument, so it is local to THIS node — only the compressed fragments\nenter the replicated delta. Returns the frame's base seq.\n\nGuards: caller must be a member; `raw` must match the geometry and stay\nwithin `MAX_RAW_BYTES`; dimensions within `MAX_DIM`.\n`now` is the capture time in unix **milliseconds** — not seconds, unlike\nevery other `now` arg in this contract. See `Fragment::created_at`: §4's\nend-to-end latency metric is unmeasurable at second resolution.",
       "params": [
         {
           "name": "raw",
@@ -648,6 +665,7 @@
     },
     {
       "name": "frame_checksum",
+      "doc": "Checksum of frame `seq`'s DECODED pixels, computed in WASM (view).\n\nExists to make C1 — \"the in-WASM codec is bit-identical on every node\" —\nassertable across the wire. Two nodes that received the same fragments\nindependently decode and hash them; equal checksums mean equal pixels.\n\nThe alternative was comparing whole pixel arrays in the e2e, which\nmerobox's assertion DSL cannot express: `contains(...)`/`regex(...)` split\ntheir arguments on every comma, and `json_subset` does not recurse into\ndicts nested in a list. Asserting a substring like \"255\" instead — which\nis what the draft workflow did — passes on any response that merely\ncontains those digits anywhere, including a width or a byte count, so it\nproved nothing. A `u64` compares as a scalar.\n\nReturns `None` for a seq with no live, fully-present frame (pruned, never\nsent, or still missing chunks) — an absent frame is not an error.",
       "params": [
         {
           "name": "seq",
@@ -664,6 +682,7 @@
     },
     {
       "name": "get_chunks",
+      "doc": "Every live chunk newer than the caller's per-sender cursor, oldest first\n(view, no delta).\n\n`cursors` carries one `after_seq` per sender the caller is already\ndecoding. **A sender the caller has never seen is served from that\nsender's own newest live keyframe**, which is what makes joining\nmid-call work: feeding a decoder a delta frame with no preceding\nkeyframe cannot produce a picture, and each sender is an independent\nbitstream, so \"newest keyframe\" only means anything per sender.\n\nThat folds in the old `keyframe_cursor()` round-trip — joining is now one\ncall instead of \"ask for the cursor, then ask for chunks\".\n\nEach sender is one range read from its own start, so the cost is what is\nreturned, not the whole buffer. Returns base64 so the JSON transport\nstays ~1.37x rather than ~3x.",
       "params": [
         {
           "name": "cursors",
@@ -685,6 +704,7 @@
     },
     {
       "name": "get_frame",
+      "doc": "Reassemble + decode every frame with `seq > after_seq`, oldest first.\nRead-only (no delta). The frontend tracks the highest seq it has rendered\nand passes it back. Frames whose chunks are not all present yet are\nskipped (a partially-gossiped frame is not decodable), and so is any\nfragment its sender did not write.",
       "params": [
         {
           "name": "after_seq",
@@ -744,6 +764,7 @@
     },
     {
       "name": "is_member_admin",
+      "doc": "Whether the given MEMBER key's owner is an admin.\n\nTakes a device key (what the frontend has) but resolves it through the\nmember row's owner stamp to the `AccountId` that `AccessControl` is keyed\nby since rc.20. A member who has never joined has no known account, so\nthis is `false` rather than an error — the caller asked a yes/no\nquestion.",
       "params": [
         {
           "name": "member",
@@ -759,6 +780,7 @@
     },
     {
       "name": "join",
+      "doc": "Join the stream context. Idempotent (re-join updates the display name).",
       "params": [
         {
           "name": "username",
@@ -780,6 +802,7 @@
     },
     {
       "name": "keyframe_cursors",
+      "doc": "Newest live keyframe per sender — one entry for each sender that\ncurrently offers a decodable entry point.\n\n`get_chunks` already defaults unknown senders to this, so the receive\npath no longer needs to call it. Kept for diagnostics and e2e assertions.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -791,6 +814,7 @@
     },
     {
       "name": "post_chunk",
+      "doc": "Store one WebCodecs-encoded chunk. **The approach-2 core.**\n\n`data_b64` is base64 because the RPC layer is JSON (see `ChunkView`).\n`now` is unix MILLISECONDS, like `encode_frame`.\n\nNo codec work happens here — that is the entire design. We decode base64\nto bytes, store them, advance the window, and emit an event. Compare\n`encode_frame`, which burns ~10 ms of WASM on a 3 KB frame; this is a\nmemcpy, so a realistic resolution stops being CPU-bound on the node.\nNine parameters is past clippy's threshold, and deliberate: these arrive as\nNAMED fields in a JSON-RPC `argsJson` object, so the flat list *is* the wire\ncontract. Grouping them into a struct would nest the JSON one level and\nbreak every caller for a purely cosmetic win.",
       "params": [
         {
           "name": "data_b64",
@@ -848,6 +872,7 @@
     },
     {
       "name": "prune_chunks",
+      "doc": "Explicit reaper (membership-gated). Prunes **only the caller's own**\nchunks, and still honours their keyframe clamp — an operator cannot ask\nfor an undecodable stream, nor reach into someone else's buffer.\n\nAt most `MAX_PRUNE_PER_CALL` chunks per call, read as one range over the\nlive ones: `before_seq = u64::MAX` is one bounded call, not a walk.",
       "params": [
         {
           "name": "before_seq",
@@ -863,6 +888,7 @@
     },
     {
       "name": "prune_frames",
+      "doc": "Remove the CALLER'S fragments of frames with `seq < before_seq`.\nCallable explicitly (an experiment may drive it) and also inline after\nevery `encode_frame`. Requires membership, and reaches only the caller's\nown frames: every node refuses a delete of anyone else's.",
       "params": [
         {
           "name": "before_seq",
@@ -897,19 +923,22 @@
       "name": "ChunkPosted",
       "payload": {
         "kind": "u64"
-      }
+      },
+      "doc": "Approach 2: an opaque WebCodecs chunk was stored. Payload is its seq; a\npeer calls `get_chunks(after_seq)` to drain and feed its decoder."
     },
     {
       "name": "FramePosted",
       "payload": {
         "kind": "u64"
-      }
+      },
+      "doc": "A frame's fragments were stored. Payload is the frame's base seq; a peer\ncalls `get_frame(after_seq)` to drain and render."
     },
     {
       "name": "FramesPruned",
       "payload": {
         "kind": "u64"
-      }
+      },
+      "doc": "Frames below this seq were pruned (tombstones emitted, C3)."
     },
     {
       "name": "Initialized"
@@ -918,7 +947,8 @@
       "name": "MemberJoined",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A member joined the stream context."
     }
   ],
   "state_root": "MeroStream",

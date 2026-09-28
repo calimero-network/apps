@@ -24,20 +24,22 @@ Read [the app README](../README.md) for the product. This page is about
 ```rust
 #[app::state(emits = Event)]
 pub struct MeroPassApp {
-    vault_name: LwwRegister<String>,
+    vault_name: Frozen<String>,                   // the name at creation
     roles:      AccessControl,
     secrets:    PermissionedStorage<UnorderedMap<String, Secret>, ProtocolAuthorizer>,
-    history:    PermissionedStorage<UnorderedMap<String, Revision>, ProtocolAuthorizer>,
+    history:    PermissionedStorage<SortedMap<String, Revision>, ProtocolAuthorizer>,  // "secret/rev"
     admin:      PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
+    settings:   PermissionedStorage<UnorderedMap<String, LwwRegister<String>>, ProtocolAuthorizer>,
     devices:    AuthoredMap<String, DeviceKey>,   // fingerprint -> browser public key
-    key_wraps:  AuthoredMap<String, KeyWrap>,     // "key:recipient:wrapper" -> wrapped vault key
+    key_wraps:  AuthoredMap<String, KeyWrap>,     // "recipient:key:nonce" -> wrapped vault key
     audit:      AuthoredVector<AuditLogEntry>,
 }
 ```
 
 | Field | Who may write | Enforced at merge by |
 |---|---|---|
-| `vault_name` | Editors, Admins | API check only (see [decision 12](#12-the-vault-name-is-a-plain-register)) |
+| `vault_name` | nobody after `init` | `Frozen` (see [decision 12](#12-the-vault-name-is-frozen-renames-are-guarded)) |
+| `settings` | Editors, Admins | capability masks projected from `roles` |
 | `roles` | Admins | `AccessControl` writer set = the admin tier |
 | `secrets` | Editors (`WRITE`), Admins (`FULL`) | capability masks projected from `roles` |
 | `history` | Editors, Admins | same |
@@ -147,15 +149,14 @@ entry, requires the `DELETE` capability, and only works on a trashed secret.
 ### 6. History is its own guarded store of write-once values
 
 Every `update_secret` that changes a value writes a `Revision` holding the
-previous envelope, keyed by a fresh random id. `rekey: true` (re-encryption
+previous envelope, keyed `"<secret id>/<fresh random id>"`. `rekey: true` (re-encryption
 after a key rotation) writes none, because the plaintext didn't change.
 
 **Why a separate map instead of a `Vector` inside `Secret`.** Revisions are
 written once and never edited, so they need no merge logic at all. Keeping
 them out of `Secret` keeps `list_secrets` small, and puts them under their own
-capability mask. The cost is that `secret_history` scans all revisions and
-filters by `secret_id`. That is fine at vault scale; a `SortedMap` keyed
-`secret_id ‖ time` is the upgrade path.
+capability mask. It is a `SortedMap`, so `secret_history` and `purge_secret`
+read one secret's revisions as a key prefix instead of scanning them all.
 
 Old revisions stay sealed under whatever key wrote them, and the envelope says
 which. Members keep old keys in their keyring, so history survives rotation.
@@ -233,12 +234,14 @@ store. A string-keyed map of `LwwRegister<String>` is the smallest shape that
 is both guarded and mergeable. Revocations are flags rather than removals for
 the same add-wins reason as the trash.
 
-### 10. Devices: an `AuthoredMap` whose identity fields come from the host
+### 10. Devices: an `AuthoredMap` whose account is the owner stamp
 
 `register_device(fingerprint, public_key, label, kind)` stores a P-256
 public key under its SHA-256 fingerprint. `kind` is `browser` or `recovery`
-(a key pair the user holds as a printed code) and anything else is refused. `account` and `node_device` are
-taken from `env::account_id()` and `env::device_id()`, never from arguments.
+(a key pair the user holds as a printed code) and anything else is refused.
+The device's account is the entry's owner stamp, read with `owner_of` by
+`list_devices`, `list_members` and `remove_member`; `node_device` is taken
+from `env::device_id()`.
 
 **Why.**
 - **`AuthoredMap`, not a guarded store.** Any member, a viewer or a pending
@@ -247,8 +250,10 @@ taken from `env::account_id()` and `env::device_id()`, never from arguments.
 - **Only the owner may remove.** `AuthoredMap` stamps each entry with the
   inserting account and lets only that account update or remove it, enforced
   at merge. A member can't delete someone else's device.
-- **Host-derived identity.** A member cannot register a key "for" another
-  account.
+- **Owner-stamped identity.** A member cannot register a key "for" another
+  account. An `account` field in the value would not do: a modified node
+  writes any field it likes, and clients hand the vault key to a device by
+  the account listed with it.
 - **Insert refuses an existing key.** So one member can't replace another's
   public key.
 
@@ -279,18 +284,21 @@ as you (a stolen session, a shared machine) registers a browser and waits
 for your teammates' clients to hand it every key. With the rule, they get a
 request on your screen instead.
 
-### 11. Key wraps: one slot per (key, recipient, wrapper)
+### 11. Key wraps: owner-stamped slots with a random nonce
 
 The vault key is 32 random bytes. It is identified by
 `keyId = hex(SHA-256(key))` and wrapped to each device with ECIES (the
 details are in `app/src/lib/crypto.ts`). The contract stores wraps in an
-`AuthoredMap` keyed `"<keyId>:<recipient>:<wrapper>"`.
+`AuthoredMap` keyed `"<recipient>:<keyId>:<nonce>"`.
 
 **Why this key shape.**
-- **Squatting.** Keyed only by recipient, the first member to write a
-  garbage wrap for a newcomer would block the real one: `AuthoredMap`
-  refuses to overwrite. Including the wrapper gives every key holder their
-  own slot.
+- **Squatting.** Any key a member can predict, another member can write
+  first, and an authored map refuses to overwrite it. A random nonce means
+  there is no slot to squat. A repeat from the same wrapper is skipped.
+- **Approval counts role holders only.** Clients treat a device listed in
+  `wrapped_pairs` as approved, so that list counts only wraps whose owner
+  stamp holds a role. A pending or removed member's garbage wrap to their
+  own device approves nothing. `wrapped_by` is the owner stamp.
 - **Forged keys.** A hostile member *can* wrap a different key and label it
   with the real id. The recipient hashes what it unwrapped and discards
   anything that doesn't match `keyId`. The hash is why forged wraps are
@@ -303,17 +311,18 @@ details are in `app/src/lib/crypto.ts`). The contract stores wraps in an
 Switching the vault to a key nobody can open would make every later write
 unreadable to everyone.
 
-### 12. The vault name is a plain register
+### 12. The vault name is frozen; renames are guarded
 
-`vault_name` is an `LwwRegister`, set in `init` from `createContext`'s
-parameters and renamed by editors.
+`vault_name` is a `Frozen<String>`, set in `init` from `createContext`'s
+parameters. A rename by an editor goes into `settings` (key `vault_name`), a
+guarded store with the editor mask projected onto it, and wins over the
+frozen name when read.
 
-**Why not guarded.** Guarded cells silently drop a value inserted inside
+**Why two places.** Guarded cells silently drop a value inserted inside
 `init`: the cell isn't attached to the state tree yet, `insert` returns `Ok`,
 and a later read is empty (the same trap mero-design documents for
-`Ownable`). A renamed vault is recoverable and audited, so an API-plane check
-is proportionate here. It is the one field whose rule a patched node could
-bypass, and the table above says so.
+`Ownable`). `Frozen` is written in `init` and holds; the guarded store only
+ever holds renames. A pending or removed member's rename is refused at merge.
 
 The name is also written to the subgroup's metadata by the frontend, so
 people who haven't joined the vault yet can see it. This register is the
@@ -321,7 +330,9 @@ authoritative copy for members.
 
 ### 13. The audit trail is an `AuthoredVector`
 
-Every mutation appends `{action, target, account, device, timestamp}`. The
+Every mutation appends `{action, target, device, timestamp}`; the line's
+account is its slot's owner stamp, so nobody can write one in someone else's
+name. The
 target is a secret id, account or fingerprint, never a name: names are
 ciphertext, and an audit line echoing them would undo the encryption.
 
@@ -411,7 +422,6 @@ open the vault finishes steps 1–3 automatically.
   (decision 1): use invite-only vaults for a subset.
 - **Metadata.** Secret kinds, counts, timestamps, authors, the audit actions
   and the device list are cleartext to every member's node.
-- **The vault name** is guarded at the API plane only (decision 12).
 - **Timestamps** come from each node's `env::time_now()`. They order the audit
   log and history for display. Convergence never depends on them: the
   registers merge by HLC.
@@ -429,6 +439,7 @@ open the vault finishes steps 1–3 automatically.
 | Viewer as "no role" | A removed member who re-registered would be handed the key again |
 | Wraps keyed by recipient only | The first wrapper could squat the slot with garbage |
 | Seeding guarded cells in `init` | The value is silently dropped |
+| An `account` field on devices and audit lines | A modified node fills it with anyone's account |
 
 ## API
 
@@ -464,7 +475,7 @@ Audit
 ## Build and test
 
 ```bash
-cargo test -p mero-pass                     # 27 TestHost tests, src/tests.rs
+cargo test -p mero-pass                     # TestHost tests, src/tests.rs
 cargo mero bundle --manifest-path apps/mero-pass/logic/Cargo.toml --dev \
   --app-version 0.0.0 --output dist/com.calimero.mero-pass.mpk   # also writes res/abi.json
 merobox bootstrap run apps/mero-pass/logic/workflows/e2e.yml     # two real nodes

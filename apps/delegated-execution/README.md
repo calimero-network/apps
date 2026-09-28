@@ -52,18 +52,6 @@ Two things still have to be true beyond routing: the node's auth service must ha
 provider on), and the node's account must hold `CAN_AUTHOR_ON_BEHALF` on the group that
 owns the context — which the "Check first" button answers without signing anything.
 
-## It pins mero-js instead of using `catalog:`
-
-```json
-"@calimero-network/mero-js": "^19.13.0"
-```
-
-The workspace catalog is on `^18.3.0`, which predates `login()`, `RelayClient`,
-`generateAccountRoot` and `getAccountRelays` — the things this demo is built out of. Moving the catalog pin
-would re-resolve and re-test all sixteen apps for the benefit of this one, so the pin is
-local and this paragraph is the reason. **Fold it back into the catalog** the next time the
-catalog moves past this version.
-
 ## What you need running
 
 A node on **`merod 0.11.0-rc.38` or newer**. rc.38 is the first release carrying the
@@ -183,7 +171,7 @@ are two different audiences.
 | 3. Pin | The node&rsquo;s signing key is entered, and nothing on the page can supply it | The one value that must not be told to you. The login statement binds to it, so whoever chooses it chooses what you signed about |
 | 4. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
 | 5. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
-| 6. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node&rsquo;s — and the relay need not be the node that admitted you |
+| 6. Write | A warrant signed by the device, spent by the **cloud-resolved relay**, sealed to its attested TEE | The session plays **no part**. The delta is attributed to *your* account, not the node&rsquo;s — and the relay need not be the node that admitted you. Sealed, only the attested enclave reads the warrant and the arguments |
 | 7. Cloud (optional) | The **account root** signs a cloud challenge, once; the cloud records the ownership and opens a session over it | The only proof on the page a device credential cannot make. Certificates are public, so device proofs say *a device of X is asking*; only the root says *X is mine* |
 
 ## Two ways in, and only one of them needs an invitation
@@ -408,6 +396,79 @@ When no node holds the grant, step 2 says so and leaves the relay unset rather
 than falling back — a healthy fleet with no authorship grant is a real state, and
 the remedy is a governance op, not a retry. The write panel shows which node it
 will use, and says when that differs from the admitter.
+
+## Sealing the write to the relay&rsquo;s TEE
+
+Unsealed, the warrant and the method&rsquo;s arguments reach the relay over plain TLS,
+readable wherever that TLS ends: the load balancer, and whoever holds the relay&rsquo;s
+certificate. With **Seal to the relay&rsquo;s TEE** ticked (the default), step 6 first asks
+the relay for a TDX quote (`POST /admin-api/tee/attest`), verifies it **in the page**
+against Intel&rsquo;s root and the images below, and encrypts both relay calls to the key the
+quote binds (Noise NK over `/sealed/v2`). The proxy opens them inside the TD.
+
+A relay that cannot attest, or runs an image the page does not trust, is refused
+**before anything is sent**. The page does not fall back to writing in the clear, and says
+which of the two it was. For a relay that is not a TEE, untick the box. The page then
+says the write is unsealed.
+
+This app pins `@calimero-network/mero-js` ^21.2.0 itself instead of taking the
+workspace catalog&rsquo;s 19: whole-image trust (`trustedMeasurementsFromReleases`) is
+mero-js 20. The catalog cannot move yet. mero-react still depends on mero-js 19, so every
+app that uses both would carry two copies, and their `AdminApiClient` types do not
+match. Return this app to `catalog:` when the catalog reaches 21.
+
+`@phala/dcap-qvl`, the quote verifier, is loaded only when a quote needs checking. It is
+most of the page&rsquo;s weight, and a visitor who never seals never downloads it.
+
+### Which images are trusted
+
+The `locked-read-only` image of each mero-tee node release in `app/src/trusted/`:
+
+| Release | `published-mrtds.json` sha256 |
+| --- | --- |
+| 2.3.86 | `2cb081d4d741d1fdf2937594116ee869bf1bb44feeddf06e36135c62ef63abfd` |
+| 2.3.87 | `c05d8ba1d57b3b1478f163e1f8b8f8e10adaecb3dbab31885b273bc5143ff451` |
+
+A relay is trusted when its quote matches **all five registers** of one of them. The MRTD
+alone would not do: it measures the TD firmware, which every image and profile shares, and
+the image is in RTMR1&ndash;3. The debug profiles are never trusted, because they have a
+shell and their operator can read the TD&rsquo;s memory.
+
+The files ship with the page. Fetching them at run time would trust whoever serves them,
+which is the question the quote is meant to answer.
+
+### Adding a release
+
+List every release a relay may be running. During a rollout that is the old one and the
+new one, so the page works on either side of the upgrade. Drop a release once no relay
+runs it.
+
+1. Download the release&rsquo;s file and its signature bundle:
+
+   ```sh
+   V=2.3.88
+   base=https://github.com/calimero-network/mero-tee/releases/download/mero-tee-v$V
+   curl -fsSLo app/src/trusted/mero-tee-v$V.published-mrtds.json "$base/published-mrtds.json"
+   curl -fsSLo /tmp/published-mrtds.json.bundle.json "$base/published-mrtds.json.bundle.json"
+   ```
+
+2. Verify it was signed by the node release workflow, and not merely uploaded to the
+   release:
+
+   ```sh
+   cosign verify-blob app/src/trusted/mero-tee-v$V.published-mrtds.json \
+     --bundle /tmp/published-mrtds.json.bundle.json \
+     --certificate-identity https://github.com/calimero-network/mero-tee/.github/workflows/release-node-image-gcp.yaml@refs/heads/master \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+   This is the identity core pins when a node admits by signed release
+   (`NODE_RELEASE_IDENTITY` in `crates/tee-release`). Do not add a file that fails this
+   check.
+
+3. Import it in `app/src/lib/sealing.ts`, add it to `TRUSTED_RELEASES`, and add its
+   checksum to the table above. `sealing.test.ts` names the releases it expects, so update
+   that too.
 
 ## Things it deliberately does not do
 

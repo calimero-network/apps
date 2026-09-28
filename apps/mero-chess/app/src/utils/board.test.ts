@@ -140,6 +140,10 @@ describe("the status line", () => {
     expect(
       statusLine({ ...base, status: "finished", result: "0-1", reason: "resignation" }),
     ).toBe("Bo wins — resignation.");
+    // A player who wrote two moves at one ply forfeits; the contract says so.
+    expect(
+      statusLine({ ...base, status: "finished", result: "0-1", reason: "equivocation" }),
+    ).toBe("Bo wins — two different moves played at once.");
   });
 
   it("reads a draw as a draw rather than as a win for nobody", () => {

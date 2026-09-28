@@ -6,16 +6,45 @@ import {
 
 // Generated types
 
+/**
+ * A draw offer, or an answer to one, keyed `"<account>/<game>/<nonce>"`.
+ *
+ * `ply` is what makes it expire: an offer is good only for the position it was
+ * made in, exactly as at a board, so a move made after it silently voids it.
+ */
 export interface DrawOffer {
-  open: boolean;
+  /**
+   * Set when this row REFUSES the opponent's offer rather than making one.
+   * Only an entry's owner may write it, so a refusal cannot close the
+   * offerer's row; it is recorded here and the reader reads the pair.
+   */
   declined: boolean;
   ply: number;
   at: number;
 }
 
+/**
+ * A game ended by a PERSON, keyed `"<account>/<game>/<nonce>"`.
+ *
+ * Board endings (checkmate, stalemate, dead position, fivefold, seventy-five
+ * moves) are derived from the move list and never stored.
+ */
 export interface Ending {
+  /**
+   * `1-0`, `0-1` or `1/2-1/2`.
+   */
   result: string;
+  /**
+   * `resignation`, `agreement`, `threefold`, `fiftyMove`.
+   */
   reason: string;
+  /**
+   * The ply the game stood at when this was written.
+   *
+   * Load-bearing, not bookkeeping: the reader re-checks the ending against
+   * the position at this ply, and a valid one ENDS the game here — a move
+   * written at this ply afterwards cannot un-resign anybody.
+   */
   ply: number;
   at: number;
 }
@@ -57,35 +86,99 @@ export interface Event_Vacated {
   member: string;
 }
 
+/**
+ * A claim that this player started a rematch, keyed `"<account>/<game>/<nonce>"`.
+ */
 export interface GameRecord {
-  index: number;
   started_at: number;
 }
 
 export interface GameSummary {
   index: number;
   started_at: number;
+  /**
+   * `1-0`, `0-1`, `1/2-1/2`, or `*` while it is still being played.
+   */
   result: string;
   reason: string;
   plies: number;
+  /**
+   * The member who had White in that game.
+   */
   white: string;
   black: string;
 }
 
+/**
+ * Every map a player writes is owned and every key names its author, so a
+ * member can only ever write rows about themselves — and, outside presence,
+ * never change or remove one. Both are enforced by core at apply time, not by
+ * this code. The reader elects and re-derives; see the module docs for why
+ * that split is the whole security model.
+ */
 export interface MeroChess {
+  /**
+   * Fixed when the table is created: nobody can relabel it or move the
+   * date game 0 began.
+   */
   title: string;
   created_at: number;
+  /**
+   * One slot per account — only that account writes it, and nobody can
+   * file rows under anyone else's name to crowd it.
+   */
   players: Record<string, Player>;
+  /**
+   * `"<seat>/<account>/<nonce>"` -> one person's claim on that chair.
+   */
   seat_claims: Record<string, Seat>;
+  /**
+   * `"<seat>/<account>/<claim nonce>/<nonce>"` -> when that claim was given
+   * up. Honoured only for a claimant who never acted at the table.
+   */
+  vacated: Record<string, number>;
+  /**
+   * `"<account>/<game>/<nonce>"` -> a claim that this player started game.
+   */
   games: Record<string, GameRecord>;
+  /**
+   * `"<account>/<game>/<ply>/<nonce>"` -> the move that player wrote there.
+   */
   moves: Record<string, MoveRecord>;
+  /**
+   * `"<account>/<game>/<nonce>"` -> how that player says the game ended.
+   */
   endings: Record<string, Ending>;
+  /**
+   * `"<account>/<game>/<nonce>"` -> that player's offers and refusals.
+   */
   draw_offers: Record<string, DrawOffer>;
 }
 
+/**
+ * One played move, keyed `"<account>/<game>/<ply>/<nonce>"`.
+ *
+ * The game, the ply and the author come from the key and core's owner stamp;
+ * the SAN comes from the replay. What is left is what only the mover knows.
+ */
 export interface MoveRecord {
+  /**
+   * The move, and the only thing here a reader cannot work out for itself.
+   */
   uci: string;
+  /**
+   * When its author says they played it. Display only: nothing is ordered
+   * by it, because its author could set it to anything.
+   */
   at: number;
+  /**
+   * The member the mover saw in the other chair.
+   *
+   * Load-bearing: it is how a player's own, unforgeable rows vouch for who
+   * they were playing, which is what locks the chairs once a game is under
+   * way — see [`MeroChess::chairs`].
+   */
+  opponent: string;
 }
 
 export interface MoveView {
@@ -96,8 +189,11 @@ export interface MoveView {
   at: number;
 }
 
+/**
+ * A person's presence row — the one thing they keep RE-stating, so it lives in
+ * their own [`UserStorage`] slot and resolves to the newest copy.
+ */
 export interface Player {
-  id: string;
   name: string;
   joined_at: number;
   updated_at: number;
@@ -107,43 +203,108 @@ export interface PlayerView {
   id: string;
   name: string;
   online: boolean;
+  /**
+   * `white`, `black` or `""` — this player's colour in the CURRENT game.
+   */
   color: string;
 }
 
+/**
+ * One person's claim on one chair, keyed `"<seat>/<account>/<nonce>"`.
+ *
+ * Whose claim WINS is the reader's question (see [`MeroChess::chairs`]); the
+ * row carries no member id, because the owner stamp already says who wrote it.
+ */
 export interface Seat {
-  member: string;
   name: string;
   claimed_at: number;
-  vacated_at: number;
 }
 
 export interface SeatView {
+  /**
+   * `white` or `black` — which chair this is, i.e. its colour in game 0.
+   */
   seat: string;
+  /**
+   * The member holding it, or `""` when the chair is free.
+   */
   member: string;
   name: string;
   online: boolean;
 }
 
+/**
+ * Everything a client needs to draw the table, in one call.
+ *
+ * Deliberately ONE view rather than a dozen getters. Every field here is
+ * derived from the same replay of the move list, so serving them separately
+ * would replay the game once per call and — worse — let a client paint a board
+ * from one moment next to a status from another.
+ */
 export interface TableView {
   title: string;
   created_at: number;
+  /**
+   * Index of the game being played now.
+   */
   game: number;
+  /**
+   * The position after every move that has been played, as a FEN.
+   */
   fen: string;
+  /**
+   * `white` or `black`.
+   */
   side_to_move: string;
   moves: MoveView[];
+  /**
+   * Every legal move in this position, in UCI, sorted.
+   *
+   * The contract is the only implementation of the rules in this app: a
+   * client highlights squares from this list rather than shipping a second
+   * engine that could disagree with it.
+   */
   legal_moves: string[];
+  /**
+   * `awaitingPlayers`, `inProgress` or `finished`.
+   */
   status: string;
+  /**
+   * `1-0`, `0-1`, `1/2-1/2`, or `*` while the game is unfinished.
+   */
   result: string;
+  /**
+   * Why it ended: `checkmate`, `stalemate`, `insufficientMaterial`,
+   * `fivefold`, `seventyFiveMove`, `resignation`, `agreement`, `threefold`,
+   * `fiftyMove`, `equivocation` (a player wrote two different moves at one
+   * ply, and lost for it) — or `""`.
+   */
   reason: string;
   check: boolean;
+  /**
+   * `threefold`, `fiftyMove` or `""` — a draw the side to move may claim.
+   */
   claimable_draw: string;
   white: SeatView;
   black: SeatView;
+  /**
+   * The caller's own id, as the contract sees it. Never trust a client to
+   * tell you who it is; this is what it actually was.
+   */
   me: string;
+  /**
+   * The caller's colour in this game, or `""` for a spectator.
+   */
   my_color: string;
   my_turn: boolean;
+  /**
+   * The member whose draw offer is standing in this position, or `""`.
+   */
   draw_offer_from: string;
   players: PlayerView[];
+  /**
+   * How many games this table has started, including the current one.
+   */
   games_played: number;
 }
 
@@ -182,6 +343,8 @@ export class MeroChessClient {
   /**
    * accept_draw
    *
+   * Accept the opponent's standing offer.
+   *
    * @intent mutating
    */
   public async acceptDraw(params: { now: number }): Promise<void> {
@@ -191,6 +354,10 @@ export class MeroChessClient {
 
   /**
    * claim_draw
+   *
+   * Claim the draw the position allows — threefold repetition or the
+   * fifty-move rule. Both are claims under the rules of chess, so neither
+   * ends a game on its own.
    *
    * @intent mutating
    */
@@ -202,6 +369,8 @@ export class MeroChessClient {
   /**
    * decline_draw
    *
+   * Refuse the opponent's standing offer. (A move refuses it too.)
+   *
    * @intent mutating
    */
   public async declineDraw(params: { now: number }): Promise<void> {
@@ -212,6 +381,8 @@ export class MeroChessClient {
   /**
    * heartbeat
    *
+   * Presence only — no event, so a heartbeat does not wake every client.
+   *
    * @intent mutating
    */
   public async heartbeat(params: { now: number }): Promise<void> {
@@ -221,6 +392,8 @@ export class MeroChessClient {
 
   /**
    * history
+   *
+   * Every game this table has played, oldest first.
    *
    * @intent read_only
    */
@@ -240,6 +413,8 @@ export class MeroChessClient {
   /**
    * join
    *
+   * Announce yourself at the table, or refresh your presence and name.
+   *
    * @intent mutating
    */
   public async join(params: { name: string; now: number }): Promise<void> {
@@ -249,6 +424,9 @@ export class MeroChessClient {
 
   /**
    * offer_draw
+   *
+   * Offer a draw in the current position. The offer stands until the
+   * position changes.
    *
    * @intent mutating
    */
@@ -260,6 +438,13 @@ export class MeroChessClient {
   /**
    * play
    *
+   * Play a move, in UCI (`e2e4`, `e7e8q`). Returns its SAN.
+   *
+   * Every refusal here is a refusal the client could have predicted from
+   * `table()`: it holds the legal moves, whose turn it is, and whether the
+   * game is over. The checks exist because a client is not the authority on
+   * any of that — this is.
+   *
    * @intent mutating
    */
   public async play(params: { uci: string; now: number }): Promise<string> {
@@ -269,6 +454,9 @@ export class MeroChessClient {
 
   /**
    * rematch
+   *
+   * Start the next game. Colours swap, so the player who had Black has
+   * White. Only allowed once the current game is finished.
    *
    * @intent mutating
    */
@@ -280,6 +468,9 @@ export class MeroChessClient {
   /**
    * resign
    *
+   * Resign the current game. Only a seated player can, and only while it is
+   * still being played.
+   *
    * @intent mutating
    */
   public async resign(params: { now: number }): Promise<void> {
@@ -289,6 +480,11 @@ export class MeroChessClient {
 
   /**
    * sit
+   *
+   * Take the `white` or `black` chair, if it is free.
+   *
+   * The seat name is the colour you hold in the FIRST game; colours swap on
+   * every rematch.
    *
    * @intent mutating
    */
@@ -300,6 +496,10 @@ export class MeroChessClient {
   /**
    * stand
    *
+   * Give up your chair — allowed only before you have played at this table.
+   * A chair you have played from is the table's record of who played; the
+   * way out of a game is `resign`.
+   *
    * @intent mutating
    */
   public async stand(params: { now: number }): Promise<void> {
@@ -309,6 +509,8 @@ export class MeroChessClient {
 
   /**
    * table
+   *
+   * The whole table in one call — see [`TableView`].
    *
    * @intent read_only
    */

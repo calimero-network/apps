@@ -87,6 +87,20 @@ describe("redeemInvitation", () => {
     expect(shouldRetain(out)).toBe(false);
   });
 
+  it("does not keep an invitation the node refused as expired or invalid (core rc.56+)", async () => {
+    const group = "ContextGroupId(Identity([12, 34, 56, 78]))";
+    for (const message of [
+      `invitation for group ${group} expired at 1759000000 (unix seconds)`,
+      `invitation for group ${group} is invalid: it carries no application_id`,
+    ]) {
+      const out = await redeemInvitation(
+        PARSED,
+        redeemer({ join: vi.fn().mockRejectedValue(new Error(message)) }),
+      );
+      expect(out).toMatchObject({ status: "failed", retryable: false });
+    }
+  });
+
   it("treats an unreadable membership list as unknown, not as absent", async () => {
     const out = await redeemInvitation(
       PARSED,
