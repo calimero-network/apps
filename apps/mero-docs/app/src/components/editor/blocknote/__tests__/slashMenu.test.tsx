@@ -7,7 +7,6 @@ import {
   SECTION_LINK_TRIGGER,
   SLASH_TRIGGER,
   slashMenuItems,
-  typedNever,
 } from '../slashMenu';
 import { editorWith, typingEditor } from './editorTyping';
 
@@ -16,7 +15,7 @@ afterEach(() => vi.restoreAllMocks());
 const MENUS = [
   { triggerCharacter: SLASH_TRIGGER },
   { triggerCharacter: DOC_LINK_TRIGGER, shouldOpen: opensDocPicker },
-  { triggerCharacter: SECTION_LINK_TRIGGER, shouldOpen: typedNever },
+  { triggerCharacter: SECTION_LINK_TRIGGER, shouldOpen: () => false },
 ];
 
 const titled = (editor: ReturnType<typeof editorWith>, title: string) =>

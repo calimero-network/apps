@@ -28,7 +28,7 @@ import {
   type DocLinkItem,
 } from './docLinks';
 import { mentionPickerItems, pickLinkItem, recentPeople } from './mentions';
-import { SECTION_LINK_TRIGGER, typedNever } from './slashMenu';
+import { SECTION_LINK_TRIGGER } from './slashMenu';
 import type { DriveEditor } from './schema';
 
 const TEXT_PAUSE_MS = 80; // the text scan waits for a typing pause, as in the search palette
@@ -153,7 +153,7 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
       />
       <SuggestionMenuController
         triggerCharacter={SECTION_LINK_TRIGGER}
-        shouldOpen={typedNever}
+        shouldOpen={() => false}
         getItems={getSections}
         suggestionMenuComponent={SectionPickerMenu}
         onItemClick={pick}

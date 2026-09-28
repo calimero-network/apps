@@ -46,9 +46,6 @@ const ICONS: Record<string, LucideIcon> = {
   paragraph: Pilcrow,
 };
 
-/** Never true: the section picker opens from the / menu only. */
-export const typedNever = () => false;
-
 const sentenceCase = (text: string) =>
   text.charAt(0) + text.slice(1).toLowerCase();
 
