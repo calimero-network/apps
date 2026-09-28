@@ -18,7 +18,7 @@ description: >
   This is the backend-side guarantee the NamespaceSwitcher relies on
   to display only the active workspace's content.
 
-  Single node is sufficient for these flows — everything is local
+  Single node is sufficient for these flows - everything is local
   admin-API, no cross-node sync required.
 
 force_pull_image: true
@@ -26,7 +26,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -69,7 +69,7 @@ steps:
       app_id: applicationId
 
   # =================================================================
-  # Phase B: Two namespaces — isolation check
+  # Phase B: Two namespaces - isolation check
   # =================================================================
 
   # ⚠️ The nodes must be UP before the first admin call. merobox waits for
@@ -102,7 +102,7 @@ steps:
       - 'is_set({{ns_b}})'
       - '"{{ns_a}}" != "{{ns_b}}"'
 
-  - name: list_namespaces — both A and B appear
+  - name: list_namespaces - both A and B appear
     type: list_namespaces
     node: calimero-node-1
 
@@ -126,18 +126,18 @@ steps:
     outputs:
       folder_b: groupId
 
-  - name: list_namespace_groups on A — sees only folder-in-A
+  - name: list_namespace_groups on A - sees only folder-in-A
     type: list_namespace_groups
     node: calimero-node-1
     namespace_id: '{{ns_a}}'
 
-  - name: list_namespace_groups on B — sees only folder-in-B
+  - name: list_namespace_groups on B - sees only folder-in-B
     type: list_namespace_groups
     node: calimero-node-1
     namespace_id: '{{ns_b}}'
 
   # =================================================================
-  # Phase D: set_group_metadata — the rename flow
+  # Phase D: set_group_metadata - the rename flow
   #
   # Used by useFolderOperations.rename (via useSetGroupMetadata, the
   # successor to the removed useSetGroupAlias hook).
@@ -151,7 +151,7 @@ steps:
     group_id: '{{folder_a}}'
     record_name: renamed
 
-  - name: get_group_metadata — name is now 'renamed'
+  - name: get_group_metadata - name is now 'renamed'
     type: get_group_metadata
     node: calimero-node-1
     group_id: '{{folder_a}}'
@@ -169,7 +169,7 @@ steps:
     group_id: '{{folder_a}}'
     record_name: final-name
 
-  - name: get_group_metadata — name now 'final-name'
+  - name: get_group_metadata - name now 'final-name'
     type: get_group_metadata
     node: calimero-node-1
     group_id: '{{folder_a}}'
@@ -182,7 +182,7 @@ steps:
       - "equal({{folder_a_name2}}, 'final-name')"
 
   # =================================================================
-  # Phase E: delete_group — folder cleanup
+  # Phase E: delete_group - folder cleanup
   #
   # Mirrors useFolderOperations.remove's final step
   # (registry.unregisterFolder already tested in main workflow;
@@ -194,7 +194,7 @@ steps:
     node: calimero-node-1
     group_id: '{{folder_a}}'
 
-  - name: list_namespace_groups on A — now empty
+  - name: list_namespace_groups on A - now empty
     type: list_namespace_groups
     node: calimero-node-1
     namespace_id: '{{ns_a}}'
@@ -208,11 +208,11 @@ steps:
   # "folder disappeared" guarantee until merobox#214 ships.
 
   # =================================================================
-  # Phase F: delete_namespace — full teardown
+  # Phase F: delete_namespace - full teardown
   #
   # The NamespaceSettingsPanel's future "Delete workspace" action
   # hits this endpoint. Tests that the namespace's subgroups (like
-  # folder-in-B) are cleaned up or surface as orphaned — per
+  # folder-in-B) are cleaned up or surface as orphaned - per
   # core#2200's strict-group-tree invariant, the delete should
   # cascade the subgroups or refuse.
   # =================================================================
@@ -222,11 +222,11 @@ steps:
     node: calimero-node-1
     namespace_id: '{{ns_b}}'
 
-  - name: list_namespaces — only namespace A remains
+  - name: list_namespaces - only namespace A remains
     type: list_namespaces
     node: calimero-node-1
 
-  # See note above — delete_namespace has the same merobox#214
+  # See note above - delete_namespace has the same merobox#214
   # expected_failure gap + client-side requester guard; the positive
   # list_namespaces assertions are what give us the real coverage.
 
@@ -239,7 +239,7 @@ steps:
     node: calimero-node-1
     namespace_id: '{{ns_a}}'
 
-  - name: list_namespaces — empty
+  - name: list_namespaces - empty
     type: list_namespaces
     node: calimero-node-1
 

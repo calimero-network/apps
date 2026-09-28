@@ -1,4 +1,4 @@
-// Docs facade for a single folder — resolves the folder's bound
+// Docs facade for a single folder - resolves the folder's bound
 // docs context via the registry, instantiates a DocsClient against
 // it, and exposes list / get / create / edit / delete + SSE-driven
 // refresh. Consumers pass a folderId and get a reactive list of
@@ -14,6 +14,7 @@
 // Caller patterns:
 //   const docs = useDocs(folderId);
 //   const byId = useMemo(() => new Map(docs.list.map(d => [d.id, d])), [docs.list]);
+//   const forExistence = useDocs(folderId, { includeArchived: true });
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
@@ -22,7 +23,7 @@ import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import { FolderId } from '../generated/registry/RegistryClient';
@@ -30,14 +31,18 @@ import { FolderId } from '../generated/registry/RegistryClient';
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
   contextId: string | null;
-  /** True while `getFolderContext` is in flight — distinguishes
+  /** True while `getFolderContext` is in flight - distinguishes
    *  "registry hasn't told us about this folder yet" (transient,
    *  show a syncing message) from "folder genuinely has no binding"
    *  (legacy / unbound state, show the static empty copy). */
   contextResolving: boolean;
-  /** Non-archived docs in the folder (sorted by updated_at desc). */
+  /** Docs in the folder (archived excluded unless requested), sorted by
+   *  updated_at desc. */
   list: DocDto[];
   loading: boolean;
+  /** True once `list` is a completed read for the current folder (a genuine
+   *  empty binding, or a successful listDocs); false on a switch or error. */
+  listed: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
   create: (input: { title: string }) => Promise<string>;
@@ -46,6 +51,10 @@ export interface UseDocsState {
   edit: (id: string, patch: { title: string }) => Promise<void>;
   get: (id: string) => Promise<DocDto>;
   remove: (id: string) => Promise<void>;
+  addTag: (id: string, tag: string) => Promise<void>;
+  removeTag: (id: string, tag: string) => Promise<void>;
+  archive: (id: string) => Promise<void>;
+  unarchive: (id: string) => Promise<void>;
   /** The client bound to this folder's docs context, for the CRDT hooks. */
   client: DocsClient | null;
 }
@@ -53,14 +62,14 @@ export interface UseDocsState {
 // Module-level fan-out so every useDocs instance for the same
 // contextId re-reads the list when ANY instance mutates a doc.
 // Without this, DocumentEditor saves update its own state but the
-// sidebar's DocumentList stays stale until the page reloads — the
+// sidebar's DocumentList stays stale until the page reloads - the
 // SSE path via useDocEvents is supposed to cover this but isn't
 // firing reliably in dev. A module-level pub/sub is a safe
 // complement: on mutation, both the SSE event (when it works) and
-// the explicit notification trigger a refetch — refetch itself is
+// the explicit notification trigger a refetch - refetch itself is
 // guarded by inFlightRef so duplicate triggers collapse to one fetch.
 const docsRefetchersByContext = new Map<string, Set<() => void>>();
-function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
+export function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
   let bucket = docsRefetchersByContext.get(contextId);
   if (!bucket) {
     bucket = new Set();
@@ -74,22 +83,37 @@ function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
     }
   };
 }
-function notifyDocsRefetch(contextId: string | null) {
+export function notifyDocsRefetch(contextId: string | null) {
   if (!contextId) return;
   const bucket = docsRefetchersByContext.get(contextId);
   if (!bucket) return;
   for (const fn of bucket) fn();
 }
 
+// One self-heal join per docs context at a time, shared by every instance
+// that hits the missing identity together, so they never race each other.
+const healsByContext = new Map<string, Promise<unknown>>();
+function healContext(
+  contextId: string,
+  join: (id: string) => Promise<unknown>,
+): Promise<unknown> {
+  let heal = healsByContext.get(contextId);
+  if (!heal) {
+    heal = join(contextId).finally(() => healsByContext.delete(contextId));
+    healsByContext.set(contextId, heal);
+  }
+  return heal;
+}
+
 // core's `execute` (jsonrpc/execute.rs) rejects with this when the
 // node holds no owned `ContextIdentity` for the target context.
 //
-// IMPORTANT — error shape: mero-js throws the JSON-RPC error as
+// IMPORTANT - error shape: mero-js throws the JSON-RPC error as
 // `new E(code, message, data, type)`. For a FunctionCallError there
 // is no `error.message` on the wire, so `message` becomes the error
 // TYPE ("FunctionCallError") and the human string ("No owned
 // identity…") lands in `.data`. A predicate that only scans
-// `.message` silently misses it — so scan `data`/`type` too.
+// `.message` silently misses it - so scan `data`/`type` too.
 function isMissingOwnedIdentityError(err: unknown): boolean {
   if (err == null) return false;
   const parts: string[] = [];
@@ -104,39 +128,66 @@ function isMissingOwnedIdentityError(err: unknown): boolean {
   return /no owned identity/i.test(parts.join(' | '));
 }
 
-export function useDocs(folderId: string | null): UseDocsState {
+/** A folder's docs, joining its docs context when this node has no identity there
+ *  yet; `joined` holds contexts already tried, so a second miss is an error. */
+export async function listDocsJoining(
+  client: DocsClient,
+  contextId: string | null,
+  includeArchived: boolean,
+  join: (contextId: string) => Promise<unknown>,
+  joined: Set<string>,
+): Promise<DocDto[]> {
+  try {
+    return await client.listDocs({ include_archived: includeArchived });
+  } catch (e) {
+    // A node can be a folder-SUBGROUP member without an owned identity in the
+    // docs CONTEXT: core's join-via-inheritance is subgroup-scoped.
+    if (!contextId || joined.has(contextId) || !isMissingOwnedIdentityError(e))
+      throw e;
+    joined.add(contextId);
+    console.warn('[listDocsJoining] no owned identity in docs context; joining', contextId);
+    await healContext(contextId, join);
+    return client.listDocs({ include_archived: includeArchived });
+  }
+}
+
+export interface UseDocsOptions {
+  /** Include archived docs in `list`, for an existence check, not display. */
+  includeArchived?: boolean;
+}
+
+export function useDocs(
+  folderId: string | null,
+  opts?: UseDocsOptions,
+): UseDocsState {
+  const includeArchived = !!opts?.includeArchived;
   const { registryClient, selfIdentity: identity } = useDriveWorkspace();
   const { joinContext } = useJoinContext();
-  // Ref-captured so it isn't a `refetch` dependency — useJoinContext's
+  // Ref-captured so it isn't a `refetch` dependency - useJoinContext's
   // returned fn isn't guaranteed stable, and `refetch` feeds an effect.
   const joinContextRef = useRef(joinContext);
   joinContextRef.current = joinContext;
-  // Caps the docs-context self-heal at one attempt per context (see
-  // `refetch`) so a persistently-failing join can't loop.
-  const healedContextRef = useRef<string | null>(null);
+  // Caps the docs-context self-heal at one attempt per context, so a
+  // persistently-failing join can't loop.
+  const healedContextsRef = useRef(new Set<string>());
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
-  // True while getFolderContext is in flight for the current
-  // (registryClient, folderId). Set false on settle (success OR
-  // error) so the UI can tell "transient — wait for sync" apart
-  // from "settled to null — folder has no binding".
-  //
-  // Initial value derives from props directly so the very first
-  // paint of DocumentList already sees `contextResolving=true`
-  // when there's work pending. Without this, the useEffect runs
-  // post-paint and the legacy "no docs context bound yet" copy
-  // flashes for a frame.
+  // True while getFolderContext is in flight; seeded from props so the first
+  // paint already says "resolving" instead of flashing the unbound copy.
   const [contextResolving, setContextResolving] = useState<boolean>(
     () => !!registryClient && !!folderId,
   );
+  // The folder whose context read last succeeded; a null contextId only
+  // means "unbound" when this matches the current folder.
+  const [resolvedFolder, setResolvedFolder] = useState<string | null>(null);
+  // Bumped by an explicit retry after a failed context read.
+  const [resolveAttempt, setResolveAttempt] = useState(0);
 
-  // Resolve the docs context id for this folder. The registry's
-  // folder-context binding is authoritative; if it's missing (legacy
-  // folders pre-Phase-7), the hook surfaces contextId=null and
-  // loading=false rather than retrying — the UI decides whether to
-  // show an empty-state or force a reconcile.
+  // The registry's folder-to-context binding is authoritative; an unbound
+  // folder settles to contextId=null without retrying.
   useEffect(() => {
+    setResolvedFolder(null);
     if (!registryClient || !folderId) {
       setContextId(null);
       setResolveError(null);
@@ -150,7 +201,9 @@ export function useDocs(folderId: string | null): UseDocsState {
     registryClient
       .getFolderContext({ folder_id: FolderId(folderId) })
       .then((ctxId) => {
-        if (alive) setContextId(ctxId ?? null);
+        if (!alive) return;
+        setContextId(ctxId ?? null);
+        setResolvedFolder(folderId);
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -164,104 +217,129 @@ export function useDocs(folderId: string | null): UseDocsState {
     return () => {
       alive = false;
     };
-  }, [registryClient, folderId]);
+  }, [registryClient, folderId, resolveAttempt]);
 
   const docsClient = useDocsClient(contextId, identity);
 
   const [list, setList] = useState<DocDto[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(true);
   const [listError, setListError] = useState<Error | null>(null);
-  // Guards `refetch` from double-fetching under Strict Mode
-  // double-mount + useDocEvents firing on the same tick.
-  const inFlightRef = useRef(false);
-  // Last rendered list signature — lets refetch skip a no-op setList when
+  // What `list` is a completed read of: a folder's client, or null for a
+  // folder confirmed unbound. Anything else is a read still to come.
+  const [listedFor, setListedFor] = useState<{
+    folderId: string;
+    client: DocsClient | null;
+  } | null>(null);
+  // The client's read in flight. A refetch asked for meanwhile joins it and
+  // queues one more read, so its answer always postdates the ask.
+  const readRef = useRef<{
+    client: DocsClient;
+    again: boolean;
+    done: Promise<void>;
+  } | null>(null);
+  // The current client, so a read that lands after a folder switch is dropped.
+  const clientRef = useRef<DocsClient | null>(null);
+  clientRef.current = docsClient;
+  // Last rendered list signature - lets refetch skip a no-op setList when
   // an SSE-driven refetch returns visually-identical data (diff-guard).
   const lastListSigRef = useRef<string>('');
 
   const refetch = useCallback(async () => {
+    // The context read is still in flight; settling `list` now would be
+    // reporting on the PREVIOUS folder's client, not this one's.
+    if (contextResolving) return;
     if (!docsClient) {
       setList([]);
+      lastListSigRef.current = '';
       setListLoading(false);
+      if (folderId && resolvedFolder === folderId && !contextId) {
+        setListedFor({ folderId, client: null });
+      }
       return;
     }
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-    setListError(null);
-    try {
-      let result: DocDto[];
-      try {
-        result = await docsClient.listDocs({ include_archived: false });
-      } catch (e) {
-        // Self-heal. A node can be a folder-SUBGROUP member without an
-        // owned identity in the docs CONTEXT: core's join-via-
-        // inheritance is subgroup-scoped and never provisions a
-        // child-context `ContextIdentity` (see RestrictedFolderCard +
-        // core `join_context.rs`). RestrictedFolderCard joins the
-        // context proactively, but that card only renders for non-
-        // members — a node that became a subgroup member by any other
-        // path (or before that card existed) has no way to trigger the
-        // context join. So when `list_docs` reports the missing
-        // identity, join the docs context once and retry. core's
-        // join_context persists the identity, so this heal runs at
-        // most once per context per node, ever.
-        if (
-          contextId &&
-          healedContextRef.current !== contextId &&
-          isMissingOwnedIdentityError(e)
-        ) {
-          healedContextRef.current = contextId;
-          // One-time recovery breadcrumb. If `joinContext` throws it
-          // propagates to the outer catch and surfaces as `error`,
-          // same as any other list failure.
-          console.warn(
-            '[useDocs] docs context has no owned identity — ' +
-              'self-healing via joinContext',
-            contextId,
-          );
-          await joinContextRef.current(contextId);
-          result = await docsClient.listDocs({ include_archived: false });
-        } else {
-          throw e;
-        }
-      }
-      // Sort most-recent first so the list's default cursor lands
-      // on what the user likely wants to read.
-      result.sort((a, b) => b.updated_at - a.updated_at);
-      // Diff-guard: only push new state when the rendered signature differs, so
-      // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
-      // updated_at — the list shows title + structure, not timestamps, so a
-      // remote CONTENT edit (which only bumps updated_at) must NOT re-render
-      // the other window's folder pane. Structural changes (create / delete /
-      // rename / archive) still change the signature and refresh. Trade-off:
-      // most-recent-first order re-sorts on the next structural change, not live
-      // on content edits — the desired stable behaviour.
-      const sig = result
-        .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
-        .join('|');
-      if (sig !== lastListSigRef.current) {
-        lastListSigRef.current = sig;
-        setList(result);
-      }
-      setListLoading(false);
-    } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setListError(err);
-      setListLoading(false);
-    } finally {
-      inFlightRef.current = false;
+    const pending = readRef.current;
+    if (pending?.client === docsClient) {
+      pending.again = true;
+      return pending.done;
     }
-  }, [docsClient, contextId]);
+    const stale = () => clientRef.current !== docsClient;
+    const readList = async () => {
+      setListError(null);
+      try {
+        const result = await listDocsJoining(
+          docsClient,
+          contextId,
+          includeArchived,
+          joinContextRef.current,
+          healedContextsRef.current,
+        );
+        if (stale()) return;
+        // Sort most-recent first so the list's default cursor lands
+        // on what the user likely wants to read.
+        result.sort((a, b) => b.updated_at - a.updated_at);
+        // Diff-guard: only push new state when the rendered signature differs, so
+        // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
+        // updated_at - the list shows title + structure, not timestamps, so a
+        // remote CONTENT edit (which only bumps updated_at) must NOT re-render
+        // the other window's folder pane. Structural changes (create / delete /
+        // rename / archive) still change the signature and refresh. Trade-off:
+        // most-recent-first order re-sorts on the next structural change, not live
+        // on content edits - the desired stable behaviour.
+        const sig = result
+          .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
+          .join('|');
+        if (sig !== lastListSigRef.current) {
+          lastListSigRef.current = sig;
+          setList(result);
+        }
+        setListLoading(false);
+        if (folderId) setListedFor({ folderId, client: docsClient });
+      } catch (e: unknown) {
+        if (stale()) return;
+        // A failed read leaves `listedFor` as-is: a prior success for this
+        // same client still stands; otherwise this stays unlisted.
+        const err = e instanceof Error ? e : new Error(String(e));
+        setListError(err);
+        setListLoading(false);
+      }
+    };
+    const read = { client: docsClient, again: false, done: Promise.resolve() };
+    read.done = (async () => {
+      do {
+        read.again = false;
+        await readList();
+      } while (read.again && !stale());
+    })().finally(() => {
+      if (readRef.current === read) readRef.current = null;
+    });
+    readRef.current = read;
+    return read.done;
+  }, [
+    docsClient,
+    folderId,
+    contextId,
+    contextResolving,
+    resolvedFolder,
+    includeArchived,
+  ]);
+
+
+  // A failed context read has nothing to list against, so a retry re-reads it.
+  const retry = useCallback(async () => {
+    if (resolveError) setResolveAttempt((n) => n + 1);
+    else await refetch();
+  }, [resolveError, refetch]);
 
   useEffect(() => {
     setListLoading(true);
     void refetch();
   }, [refetch]);
 
-  // Refresh on SSE events from the docs context — covers remote
+  // Refresh on SSE events from the docs context - covers remote
   // creates/edits/deletes without polling. DEBOUNCED: the context emits
   // an event on every edit_doc, including the writer's OWN ~900ms
   // autosaves, so a 1:1 refetch makes the sidebar list re-fetch and
-  // re-sort (by updated_at) on every keystroke-burst — visible as
+  // re-sort (by updated_at) on every keystroke-burst - visible as
   // constant flicker. A trailing debounce collapses a burst into one
   // quiet refetch after activity settles. Explicit mutations (create /
   // delete / rename) bypass this and refetch immediately via
@@ -291,7 +369,7 @@ export function useDocs(folderId: string | null): UseDocsState {
     };
   }, []);
 
-  // Cross-instance refresh — when any other useDocs instance for the
+  // Cross-instance refresh - when any other useDocs instance for the
   // same docs context mutates, re-read our list too. See the
   // docsRefetchersByContext comment above.
   useEffect(() => {
@@ -340,17 +418,64 @@ export function useDocs(folderId: string | null): UseDocsState {
     [docsClient, refetch, contextId],
   );
 
+  const addTag = useCallback(
+    async (id: string, tag: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.addTag({ id, tag });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
+  const removeTag = useCallback(
+    async (id: string, tag: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.removeTag({ id, tag });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
+  const archive = useCallback(
+    async (id: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.archiveDoc({ id });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
+  const unarchive = useCallback(
+    async (id: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.unarchiveDoc({ id });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
+  const listed =
+    !!folderId &&
+    resolvedFolder === folderId &&
+    listedFor?.folderId === folderId &&
+    listedFor.client === docsClient;
+
   return {
     contextId,
     contextResolving,
     list,
     loading: listLoading,
+    listed,
     error: resolveError ?? listError,
-    refetch,
+    refetch: retry,
     create,
     edit,
     get,
     remove,
+    addTag,
+    removeTag,
+    archive,
+    unarchive,
     client: docsClient,
   };
 }

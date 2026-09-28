@@ -1,12 +1,12 @@
 // v9 namespace-based mero-docs config.
 //
-// ⚠️ The applicationId is resolved FROM THE NODE, by package — see
+// ⚠️ The applicationId is resolved FROM THE NODE, by package - see
 // `src/lib/appId.ts` and `src/hooks/useApplicationId.ts`. Neither
 // `useMero().applicationId` (whoever logged in last on this origin) nor
 // `VITE_APPLICATION_ID` (an id that is per-INSTALL, so a baked one goes stale
 // the moment the bundle is republished) says which app this is. They survive
 // below only as the fallback for a node whose application list carries no
-// package at all — a raw-`.wasm` dev install — where matching cannot answer.
+// package at all - a raw-`.wasm` dev install - where matching cannot answer.
 
 import { CAPABILITIES } from '@calimero-network/mero-js';
 
@@ -15,7 +15,7 @@ import { CAPABILITIES } from '@calimero-network/mero-js';
 export const ENV_APPLICATION_ID: string =
   (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
 
-/** The app's reverse-DNS package id — the single source for both the
+/** The app's reverse-DNS package id - the single source for both the
  *  MeroProvider registry lookup and invite deep links (the deep-link
  *  slug IS the package). */
 export const PACKAGE_NAME: string =
@@ -35,7 +35,7 @@ export const DOCS_SERVICE_ID = 'docs';
 // Alias used to find (or create) the Registry context inside a namespace.
 export const REGISTRY_CONTEXT_ALIAS = 'Registry';
 
-// Member-capability bitmask bits — re-exported verbatim from
+// Member-capability bitmask bits - re-exported verbatim from
 // @calimero-network/mero-js's CAPABILITIES (core's `MemberCapabilities`,
 // crates/context/config). This is the ONLY capability vocabulary in the
 // app; the per-(folder,member) "viewer vs editor on docs" concept is the
@@ -49,7 +49,7 @@ export {
 export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
 
 /** Default capability bitmask granted to members who join a workspace
- *  (namespace) by invite — the "Editor" preset: join open folders +
+ *  (namespace) by invite - the "Editor" preset: join open folders +
  *  create folders + create document contexts. Set via
  *  `mero.admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
  *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
@@ -62,7 +62,7 @@ export const DEFAULT_NEW_MEMBER_CAPS: number =
   CAPABILITIES.CAN_CREATE_CONTEXT;
 
 // Client-side depth cap for nested folders (UI refuses to create deeper).
-// Backend doesn't enforce — per spec it's an app-layer UX cap.
+// Backend doesn't enforce - per spec it's an app-layer UX cap.
 export const MAX_FOLDER_DEPTH = 8;
 
 // Client-side cap on workspace / folder alias length. Enforced at

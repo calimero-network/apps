@@ -4,7 +4,7 @@
 // Naming them precisely is the whole point of this file, because an id from
 // one looks exactly like an id from the other.
 //
-//   1. CORE GROUP ROLE + CAPABILITIES — per member of a core group (a
+//   1. CORE GROUP ROLE + CAPABILITIES - per member of a core group (a
 //      namespace root, or a folder's subgroup). Two orthogonal fields:
 //        `role`         : Admin | Member | ReadOnly
 //        `capabilities` : u32 bitmask
@@ -14,7 +14,7 @@
 //      This governs: creating contexts and folders, inviting, managing
 //      members, visibility, metadata.
 //
-//   2. THE REGISTRY CONTRACT'S OWNER / MANAGERS — state inside this app's
+//   2. THE REGISTRY CONTRACT'S OWNER / MANAGERS - state inside this app's
 //      own WASM, gating `set_folder_role`, `add_manager` and friends. Also
 //      keyed by ACCOUNT (as of the contract change that ships with this
 //      file; it used to be keyed by DEVICE id, which is why no grant it ever
@@ -232,7 +232,7 @@ export interface RoleChangeContext {
 
 export interface RoleChangeVerdict {
   allowed: boolean;
-  /** Present when `allowed` is false — shown to the user verbatim. */
+  /** Present when `allowed` is false - shown to the user verbatim. */
   reason?: string;
 }
 
@@ -257,7 +257,7 @@ export function canChangeRole(ctx: RoleChangeContext): RoleChangeVerdict {
   }
   // Self-demotion is a one-way door: drop your own Admin and the controls that
   // would let you undo it disappear with it, so the only way back is another
-  // admin — and on a workspace of one there is no other admin.
+  // admin - and on a workspace of one there is no other admin.
   if (ctx.isSelf) {
     return {
       allowed: false,
@@ -289,7 +289,7 @@ export function canChangeRole(ctx: RoleChangeContext): RoleChangeVerdict {
  * the badge mean what it says.
  *
  * Only the registry OWNER may appoint managers, so the caller has to be able
- * to tell "nothing to do" from "something to do that I cannot do" — hence
+ * to tell "nothing to do" from "something to do that I cannot do" - hence
  * `'add'`/`'remove'` describe the INTENT, and whether it can be carried out is
  * the caller's question.
  */
@@ -320,13 +320,13 @@ export function countAdmins(
  * reach a single existing member, which is the trap: an admin widens the
  * defaults, sees the save succeed, and every person already in the workspace
  * still cannot do the thing that was just granted. A sweep is the only way to
- * move them — and a naive sweep over the whole roster is worse than none:
+ * move them - and a naive sweep over the whole roster is worse than none:
  *
  *   * An Admin's bitmask is not consulted, so writing one is noise at best;
  *     if the defaults are narrow it also leaves a trap primed for the day they
  *     are demoted (see `WORKSPACE_ROLE_GRANTS`).
- *   * A ReadOnly member's bitmask IS consulted — the label is not a separate
- *     gate — so handing them the default mask makes a "read-only" member who
+ *   * A ReadOnly member's bitmask IS consulted - the label is not a separate
+ *     gate - so handing them the default mask makes a "read-only" member who
  *     can write. Silently.
  *
  * So the sweep covers plain Members only, and the caller reports the skips
@@ -335,9 +335,9 @@ export function countAdmins(
 export interface DefaultsSweepPlan<T> {
   /** Members whose bitmask should be overwritten with the new default. */
   apply: T[];
-  /** Admins — bitmask not consulted while they hold the role. */
+  /** Admins - bitmask not consulted while they hold the role. */
   skippedAdmins: T[];
-  /** ReadOnly members — a default mask here would grant them write access. */
+  /** ReadOnly members - a default mask here would grant them write access. */
   skippedReadOnly: T[];
 }
 

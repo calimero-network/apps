@@ -42,7 +42,7 @@ export function useAdminRenameMember(
 
   const renameTo = useCallback(
     async (next: string) => {
-      // Authorization first — never let a missing arg / out-of-window
+      // Authorization first - never let a missing arg / out-of-window
       // state mask a permission failure with a friendlier error.
       if (!canRename) {
         throw new Error('no permission to rename other members');

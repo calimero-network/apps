@@ -1,8 +1,8 @@
-// Per-(folder, member) registry `Role` — the "Viewer vs Editor vs
+// Per-(folder, member) registry `Role` - the "Viewer vs Editor vs
 // Manager on documents" concept that lives in the Registry WASM, NOT
 // in core's capability bitmask (see design spec §5.3 / §5.5).
 //
-// A member with NO explicit role row is treated as `Editor` — that's
+// A member with NO explicit role row is treated as `Editor` - that's
 // the WASM's own default (`clear_folder_role` resets to Editor; an
 // absent key reads back as Editor). So `role === null` here means
 // "still loading / unknown", never "no access".
@@ -13,11 +13,11 @@
 // refetch after a write (and via `refetch()` for external callers).
 //
 // Flicker-prevention: a re-fetch (tick bump or a registryClient re-
-// memo — useDriveWorkspace rebuilds the client on selfIdentity /
+// memo - useDriveWorkspace rebuilds the client on selfIdentity /
 // registryContextId churn) MUST NOT collapse `role` back to `null` in
 // the meantime; that briefly flips `canEditDocs` to false in the doc
 // editor and bounces the read-only banner. We only clear `role` when
-// the *folder id* actually changes — a genuinely different folder
+// the *folder id* actually changes - a genuinely different folder
 // legitimately warrants `null` while loading. For same-folder re-
 // fetches, the previous resolved value stays visible until the new
 // one lands.
@@ -26,11 +26,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import { FolderId } from '../generated/registry/RegistryClient';
-import type { Role, FolderRoleEntry } from '../generated/registry/RegistryClient';
+import type {
+  Role,
+  FolderRoleEntry,
+} from '../generated/registry/RegistryClient';
 
 export interface FolderRoleState {
   /** The caller's role on this folder. `null` = not-yet-resolved
@@ -39,13 +42,13 @@ export interface FolderRoleState {
    *  absent-on-server role resolves to `'Editor'` (the WASM default). */
   role: Role | null;
   /** True ONLY while a fetch is in flight. False when there's no
-   *  Registry context (nothing to fetch) — so consumers don't get
+   *  Registry context (nothing to fetch) - so consumers don't get
    *  pinned in a "checking permissions" state forever in a workspace
    *  that has no Registry context yet. */
   loading: boolean;
   error: Error | null;
   /** Whether a Registry context exists to read roles from. When false,
-   *  `role` is `null` and never resolves — callers should fall back to
+   *  `role` is `null` and never resolves - callers should fall back to
    *  folder membership for edit rights. */
   registryAvailable: boolean;
   /** Set a member's role (defaults to the current identity). Refetches
@@ -65,7 +68,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   const [fetching, setFetching] = useState(false);
   const [tick, setTick] = useState(0);
   // Registry role changes go through the registry context, not the
-  // group context — so subscribe there and force a refetch on any
+  // group context - so subscribe there and force a refetch on any
   // registry event. Coarse (re-runs for unrelated registry ops) but
   // cheap (single getFolderRole call).
   const refetch = useCallback(() => setTick((t) => t + 1), []);
@@ -78,19 +81,20 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
 
   // Last folder id we kicked a fetch off for. When `folderId` changes
   // (genuinely different folder), we DO want to clear the previous
-  // role to null while loading — a stale Editor/Viewer from a sibling
+  // role to null while loading - a stale Editor/Viewer from a sibling
   // folder would be a lie. For same-folder re-fetches (registryClient
   // re-memo, tick bump), we keep the prior value visible until the new
   // one resolves. Without this guard, every churn of useDriveWorkspace
   // bounces canEditDocs through false → true on the next render.
+  const resolvedForRef = useRef<string | null>(null); // folder whose role last resolved
   const lastFolderIdRef = useRef<string | null>(null);
 
   // `folderId` may be empty-string from `useFolderPermissions` when no
-  // folder is selected — treat that as "no folder", not "loading".
+  // folder is selected - treat that as "no folder", not "loading".
   const canFetch = !!registryClient && !!folderId && !!selfIdentity;
 
   useEffect(() => {
-    // Local non-null bindings — `canFetch` already implies these are
+    // Local non-null bindings - `canFetch` already implies these are
     // non-null, but the redundant guard keeps TypeScript honest without
     // non-null assertions (`!`) inside the effect body.
     const client = registryClient;
@@ -110,8 +114,9 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       // Different folder → clear prior role; loading from null is the
       // honest state until the new role resolves.
       setRoleState(null);
+      resolvedForRef.current = null;
     }
-    // Always clear the error before a fresh attempt — keeps a previous
+    // Always clear the error before a fresh attempt - keeps a previous
     // failure from haunting a subsequent successful refetch.
     setError(null);
     setFetching(true);
@@ -122,14 +127,21 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       .then((r) => {
         if (cancelled) return;
         const fetchedRole = (r as Role) ?? 'Editor';
+        resolvedForRef.current = folder;
         // Diff-guard: an SSE-triggered refetch that resolves to the
-        // same role should not touch state — returning `prev` lets
+        // same role should not touch state - returning `prev` lets
         // React bail the re-render (see useMemberCaps for why this
         // matters more once `role` sits inside a compound object).
         setRoleState((prev) => (prev === fetchedRole ? prev : fetchedRole));
       })
       .catch((e) => {
         if (cancelled) return;
+        // A fault is not an answer: a role this folder already resolved stands,
+        // or every failed sync re-read would flip the editor to read-only.
+        if (resolvedForRef.current === folder) {
+          console.warn('[useFolderRole] re-read failed; keeping last role', e);
+          return;
+        }
         setError(e instanceof Error ? e : new Error(String(e)));
       })
       .finally(() => {

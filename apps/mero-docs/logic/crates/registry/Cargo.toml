@@ -17,7 +17,7 @@ mero-docs-types        = { path = "../types" }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-# Every id this service stores is an ACCOUNT, hex-encoded — the same principal
+# Every id this service stores is an ACCOUNT, hex-encoded - the same principal
 # `listGroupMembers` rows are keyed by, so a row written from the client and a
 # caller checked in the contract name the same person. It stored DEVICE keys
 # until the roles pass; see `permissions::caller_account_hex`. core

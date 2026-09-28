@@ -1,9 +1,11 @@
 // Shared layout for "nothing here yet" screens, so every empty state uses
 // the same icon size, spacing and text tokens.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const QUIET_LOADER_DELAY_MS = 300; // a shorter wait shows nothing rather than flash a loader
 
 interface Props {
   title: string;
@@ -40,4 +42,14 @@ export function EmptyState({
       </div>
     </div>
   );
+}
+
+// A wait that is usually short: blank at first, then a plain loader.
+export function QuietLoading() {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShown(true), QUIET_LOADER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return shown ? <EmptyState title="Loading…" /> : null;
 }

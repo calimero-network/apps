@@ -1,11 +1,11 @@
-//! Cross-replica convergence for the collaborative Yjs op-log — the #1
+//! Cross-replica convergence for the collaborative Yjs op-log - the #1
 //! correctness requirement of the BlockNote-collab work.
 //!
 //! Two replicas of the docs service independently create the SAME logical doc
 //! (`doc-1`) and each appends a DISTINCT opaque "Yjs update" blob to that doc's
 //! `content_updates` set. They exchange deltas via `Root::sync` and we assert:
 //!
-//!   1. each replica ends up holding BOTH blobs (add-wins set union — concurrent
+//!   1. each replica ends up holding BOTH blobs (add-wins set union - concurrent
 //!      edits MERGE, they do not last-writer-wins-clobber each other), and
 //!   2. the replicas converge to the same root hash (deterministic state).
 //!
@@ -49,7 +49,7 @@ use serial_test::serial;
 // prove that the SHAPE (a custom Mergeable struct holding an `UnorderedSet`,
 // stored as a map value) converges when registered as a `RekeyTarget` and is
 // LWW-clobbered when not. Using a stand-in lets us instantiate BOTH the fixed
-// and the unfixed variant — the production `DocRecord` only exists in the fixed
+// and the unfixed variant - the production `DocRecord` only exists in the fixed
 // form, and the process-global rekey registry has no reset, so the two must be
 // DISTINCT types. The production type's own convergence is covered transitively
 // (it uses the exact same `rekey_field_if_supported!` + `register_*` calls,
@@ -57,7 +57,7 @@ use serial_test::serial;
 // ---------------------------------------------------------------------------
 
 /// FIXED: a `RekeyTarget` whose nested update-set is re-keyed deterministically
-/// — the production `DocRecord` shape. Concurrent appends converge.
+/// - the production `DocRecord` shape. Concurrent appends converge.
 #[app::mergeable(id = "collab_convergence::FixedDoc")]
 #[derive(BorshSerialize, BorshDeserialize, Default)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -71,7 +71,7 @@ impl Mergeable for FixedDoc {
     }
 }
 
-/// UNFIXED: identical shape, but never registered / re-keyed — the pre-fix
+/// UNFIXED: identical shape, but never registered / re-keyed - the pre-fix
 /// world. Its nested set keeps a per-replica-random id and never merges.
 #[derive(BorshSerialize, BorshDeserialize, Default)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -120,7 +120,7 @@ macro_rules! docs_app {
         // and NOT `#[app::mergeable]`, so the wrapper keeps the no-op re-key
         // that both the fixed (converge) and unfixed (negative control)
         // outcomes depend on. Root state merges through its own registered
-        // path either way — see `register_crdt_merge_for_test` below.
+        // path either way - see `register_crdt_merge_for_test` below.
         impl calimero_storage::collections::MergeStrategy for $app {
             const DISPATCHED: bool = false;
         }
@@ -131,8 +131,8 @@ macro_rules! docs_app {
         }
         // rc.9: satisfy the `Mergeable: RekeyTarget` supertrait bound. Re-keying
         // is driven by the explicit `register_rekey_if_supported!` calls in each
-        // test (the value + key types), mirroring the `#[app::state]` scan — not
-        // by this wrapper — so a no-op here preserves both the fixed (converge)
+        // test (the value + key types), mirroring the `#[app::state]` scan - not
+        // by this wrapper - so a no-op here preserves both the fixed (converge)
         // and unfixed (negative-control) outcomes.
         impl RekeyTarget for $app {
             fn rekey_relative_to(&mut self, _parent_id: Id) {}
@@ -140,7 +140,7 @@ macro_rules! docs_app {
         impl DocsApp for $app {
             fn append_update(&mut self, doc: &str, blob: Vec<u8>) -> Result<(), MergeError> {
                 // `entry().or_default()` write-back guard: the nested set insert
-                // persists when the guard drops — the same in-place mutation the
+                // persists when the guard drops - the same in-place mutation the
                 // production `append_doc_update_inner` does via `get_mut`.
                 let mut rec = self.docs.entry(doc.to_owned())?.or_default()?;
                 let _ = rec.updates.insert(blob)?;
@@ -250,7 +250,7 @@ fn registered_rekey_makes_doc_update_logs_converge() {
 #[test]
 #[serial]
 fn unregistered_doc_loses_concurrent_update_pre_fix() {
-    // NEGATIVE CONTROL — this is NOT a failing/bug test. It pins the WRONG
+    // NEGATIVE CONTROL - this is NOT a failing/bug test. It pins the WRONG
     // (pre-fix) behaviour of an UNregistered record so that the positive test
     // above (`registered_rekey_makes_doc_update_logs_converge`) is a meaningful
     // contrast and so a future regression that silently changes the
@@ -271,19 +271,19 @@ fn unregistered_doc_loses_concurrent_update_pre_fix() {
         converged,
         "negative control: the unregistered (pre-fix) path is expected to \
          converge to a single LWW value; if it diverges instead, this control \
-         no longer models the pre-fix behaviour — re-examine it"
+         no longer models the pre-fix behaviour - re-examine it"
     );
     assert_eq!(
         ua, ub,
         "negative control: both replicas should agree on the same LWW-clobbered \
-         value (the WRONG one — one side's blob was dropped)"
+         value (the WRONG one - one side's blob was dropped)"
     );
     assert_eq!(
         ua.len(),
         1,
         "negative control: without rekey the record is LWW'd to exactly ONE \
          blob (the pre-fix data-loss this test documents). If it ever holds \
-         BOTH, the unregistered path started converging correctly — re-examine \
+         BOTH, the unregistered path started converging correctly - re-examine \
          whether the rekey registration is still what makes production converge."
     );
 }

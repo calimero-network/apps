@@ -1,15 +1,15 @@
-//! Registry service — the per-namespace source of truth for folder
+//! Registry service - the per-namespace source of truth for folder
 //! *presentation* metadata that admin-API does not own.
 //!
 //! ## What lives here (and why)
 //!
 //! Admin API is authoritative for group shape, membership, and aliases.
-//! Anything admin-API doesn't have a concept for — color,
-//! folder→context binding, sort order under a parent — lives in this
+//! Anything admin-API doesn't have a concept for - color,
+//! folder→context binding, sort order under a parent - lives in this
 //! registry. The namespace holds one Registry context whose state is this
 //! struct, replicated across every member of the root group.
 //!
-//! `parent_id` is stored here too, as an **index** — admin-API remains
+//! `parent_id` is stored here too, as an **index** - admin-API remains
 //! authoritative for the tree shape, because it does not return a subgroup's
 //! parent. The client writes both sides in the same operation and rolls back
 //! on failure; there is no cross-system transaction and no repair pass, so a
@@ -146,7 +146,7 @@ pub struct FolderRoleEntry {
 /// because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
 /// trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
 /// resolution picks the inherent one from the derive expansion, which then
-/// fails the macro's `?` — same workaround battleships uses on
+/// fails the macro's `?` - same workaround battleships uses on
 /// `MatchSummary`.
 #[app::mergeable(id = "mero_drive_registry::FolderRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
@@ -160,7 +160,7 @@ pub struct FolderRecord {
     /// Display name. Mirrored from admin-API's group alias so namespace
     /// members who can't read the subgroup yet (Restricted folder before
     /// invite) can still see folder names. Empty string means "no
-    /// registry-side alias — fall back to the admin-API alias or a
+    /// registry-side alias - fall back to the admin-API alias or a
     /// truncated id stub on the client".
     pub alias: LwwRegister<String>,
     /// Inherit = namespace-member cascade descends through this folder.
@@ -234,6 +234,120 @@ fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
     }
 }
 
+/// `#rrggbb`: `#` followed by exactly six hex digits.
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+// ---------------------------------------------------------------------------
+// Tags and saved views
+// ---------------------------------------------------------------------------
+
+/// Workspace-wide tag: a stable key mapped to a display name and colour.
+/// `deleted` tombstones the row rather than removing it - see `delete_tag`.
+/// It merges by OR, so a delete on any replica is permanent.
+#[app::mergeable(id = "mero_drive_registry::TagRecord")]
+#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct TagRecord {
+    pub name: LwwRegister<String>,
+    pub color: LwwRegister<String>,
+    pub deleted: bool,
+}
+
+impl Mergeable for TagRecord {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        <LwwRegister<String> as Mergeable>::merge(&mut self.name, &other.name)?;
+        <LwwRegister<String> as Mergeable>::merge(&mut self.color, &other.color)?;
+        self.deleted |= other.deleted;
+        Ok(())
+    }
+}
+
+impl TagRecord {
+    fn new(name: String, color: String) -> Self {
+        TagRecord {
+            name: LwwRegister::new(name),
+            color: LwwRegister::new(color),
+            deleted: false,
+        }
+    }
+
+    fn edit(&mut self, name: String, color: String) {
+        self.name.set(name);
+        self.color.set(color);
+    }
+}
+
+/// Flat projection of a `TagRecord`. Deleted rows are included so clients
+/// can tell a tombstoned key apart from one that was never used.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TagDto {
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub deleted: bool,
+}
+
+fn project_tag(key: &str, rec: &TagRecord) -> TagDto {
+    TagDto {
+        key: key.to_string(),
+        name: rec.name.get().clone(),
+        color: rec.color.get().clone(),
+        deleted: rec.deleted,
+    }
+}
+
+/// A workspace-wide saved search. Its creator is not stored here but in
+/// `view_origins`, where nobody can rewrite it.
+#[app::mergeable(id = "mero_drive_registry::ViewRecord")]
+#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ViewRecord {
+    pub name: LwwRegister<String>,
+    pub query: LwwRegister<String>,
+}
+
+impl Mergeable for ViewRecord {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        <LwwRegister<String> as Mergeable>::merge(&mut self.name, &other.name)?;
+        <LwwRegister<String> as Mergeable>::merge(&mut self.query, &other.query)?;
+        Ok(())
+    }
+}
+
+impl ViewRecord {
+    fn new() -> Self {
+        ViewRecord {
+            name: LwwRegister::new(String::new()),
+            query: LwwRegister::new(String::new()),
+        }
+    }
+}
+
+/// Flat projection of a `ViewRecord`.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ViewDto {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    /// Hex account of whoever created the view, from `view_origins`' owner stamp.
+    pub created_by: String,
+}
+
+fn project_view(id: &str, rec: &ViewRecord, created_by: String) -> ViewDto {
+    ViewDto {
+        id: id.to_string(),
+        name: rec.name.get().clone(),
+        query: rec.query.get().clone(),
+        created_by,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Registry state
 // ---------------------------------------------------------------------------
@@ -272,11 +386,19 @@ pub struct RegistryState {
     /// clear any folder role). Writable by the owner only. The owner is
     /// implicitly a manager and is NOT stored here. Value `true` = is a
     /// manager, `false` = removed (kept around so the key is never
-    /// CRDT-tombstoned — a `remove` would silently swallow a later re-add).
+    /// CRDT-tombstoned - a `remove` would silently swallow a later re-add).
     managers: SharedStorage<UnorderedMap<String, LwwRegister<bool>>>,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
     /// Writable by the registry admins only (see `sync_admins`).
     folder_roles: SharedStorage<UnorderedMap<String, LwwRegister<Role>>>,
+    /// tag key → TagRecord. Public, like `sort_order`: any member may name,
+    /// recolour or delete a tag; which roles may is the app's to gate.
+    tags: UnorderedMap<String, TagRecord>,
+    /// saved-view id → ViewRecord. Public for the same reason as `tags`.
+    views: UnorderedMap<String, ViewRecord>,
+    /// saved-view id → created_at, written once by the view's creator. Its
+    /// owner stamp is who created the view, and nobody can rewrite either.
+    view_origins: WriteOnce<UnorderedMap<String, u64>>,
 }
 
 #[app::logic]
@@ -299,6 +421,9 @@ impl RegistryState {
                 BTreeSet::from([me]),
                 false,
             ),
+            tags: UnorderedMap::new_with_field_name("registry:tags"),
+            views: UnorderedMap::new_with_field_name("registry:views"),
+            view_origins: WriteOnce::new_with_field_name("registry:view_origins"),
         }
     }
 
@@ -333,6 +458,11 @@ impl RegistryState {
         let already = self.folder_holder(&id.0)?.is_some();
         if already {
             return Err(DriveError::AlreadyExists(id.0));
+        }
+        if let Some(c) = &color {
+            if !c.is_empty() && !is_hex_color(c) {
+                return Err(DriveError::Invalid(format!("invalid color: {c}")));
+            }
         }
         let parent_str = parent_id.map(|p| p.0);
         let rec = FolderRecord::new(parent_str, color, alias);
@@ -526,7 +656,7 @@ impl RegistryState {
     // ---- color / move ---------------------------------------------------
 
     pub fn set_color(&mut self, id: FolderId, color: String) -> app::Result<()> {
-        // Treat empty color as "clear" — matches how `get_folder` projects
+        // Treat empty color as "clear" - matches how `get_folder` projects
         // empty-string back to `None` on read.
         self.set_color_inner(&id.0, color)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -561,6 +691,9 @@ impl RegistryState {
     }
 
     pub(crate) fn set_color_inner(&mut self, id: &str, color: String) -> Result<(), DriveError> {
+        if !color.is_empty() && !is_hex_color(&color) {
+            return Err(DriveError::Invalid(format!("invalid color: {color}")));
+        }
         self.mutate_folder(id, |rec| rec.color.set(color))
     }
 
@@ -673,7 +806,7 @@ impl RegistryState {
 
     /// The base58 public key of the registry owner, or an empty string if
     /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
-    /// keeps the generated TS type honest — `Promise<string>`, not a lying
+    /// keeps the generated TS type honest - `Promise<string>`, not a lying
     /// non-nullable Option.)
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
@@ -752,6 +885,193 @@ impl RegistryState {
         self.list_folder_roles_inner(&folder_id.0)
             .map_err(|e| AppError::msg(e.to_string()))
     }
+
+    // ---- tags -------------------------------------------------------------
+
+    pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
+        let key_for_event = key.clone();
+        self.set_tag_inner(&key, name, color)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::TagChanged {
+            key: &key_for_event
+        });
+        Ok(())
+    }
+
+    pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
+        let key_for_event = key.clone();
+        self.delete_tag_inner(&key)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::TagChanged {
+            key: &key_for_event
+        });
+        Ok(())
+    }
+
+    #[app::view]
+    pub fn list_tags(&self) -> app::Result<Vec<TagDto>> {
+        let entries = self
+            .tags
+            .entries()
+            .map_err(|e| AppError::msg(format!("tags.entries: {e}")))?;
+        let mut out = Vec::new();
+        for (key, rec) in entries {
+            out.push(project_tag(&key, &rec));
+        }
+        Ok(out)
+    }
+
+    pub(crate) fn set_tag_inner(
+        &mut self,
+        key: &str,
+        name: String,
+        color: String,
+    ) -> Result<(), DriveError> {
+        if !mero_docs_types::is_valid_tag_key(key) {
+            return Err(DriveError::Invalid(format!("invalid tag key: {key}")));
+        }
+        let name = name.trim().to_string();
+        if !(1..=32).contains(&name.len()) {
+            return Err(DriveError::Invalid("invalid tag name".into()));
+        }
+        if !is_hex_color(&color) {
+            return Err(DriveError::Invalid(format!("invalid color: {color}")));
+        }
+        let mut rec = self
+            .tags
+            .get(&key.to_string())
+            .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?
+            .map(|v| v.clone())
+            .unwrap_or_else(|| TagRecord::new(String::new(), String::new()));
+        if rec.deleted {
+            return Err(DriveError::Invalid("tag deleted".into()));
+        }
+        rec.edit(name, color);
+        self.tags
+            .insert(key.to_string(), rec)
+            .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
+        Ok(())
+    }
+
+    pub(crate) fn delete_tag_inner(&mut self, key: &str) -> Result<(), DriveError> {
+        let mut rec = self
+            .tags
+            .get(&key.to_string())
+            .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?
+            .map(|v| v.clone())
+            .ok_or_else(|| DriveError::NotFound(key.to_string()))?;
+        rec.deleted = true;
+        self.tags
+            .insert(key.to_string(), rec)
+            .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
+        Ok(())
+    }
+
+    // ---- saved views --------------------------------------------------------
+
+    pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
+        let id_for_event = id.clone();
+        self.save_view_inner(&id, name, query)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ViewChanged { id: &id_for_event });
+        Ok(())
+    }
+
+    pub fn delete_view(&mut self, id: String) -> app::Result<()> {
+        let id_for_event = id.clone();
+        self.delete_view_inner(&id)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ViewChanged { id: &id_for_event });
+        Ok(())
+    }
+
+    #[app::view]
+    pub fn list_views(&self) -> app::Result<Vec<ViewDto>> {
+        let entries = self
+            .views
+            .entries()
+            .map_err(|e| AppError::msg(format!("views.entries: {e}")))?;
+        let mut out = Vec::new();
+        for (id, rec) in entries {
+            let created_by = self
+                .view_creator(&id)
+                .map_err(|e| AppError::msg(e.to_string()))?
+                .map(|owner| hex::encode(owner.as_bytes()))
+                .unwrap_or_default();
+            out.push(project_view(&id, &rec, created_by));
+        }
+        Ok(out)
+    }
+
+    /// Any member may save or rename a view; the first save records its creator.
+    pub(crate) fn save_view_inner(
+        &mut self,
+        id: &str,
+        name: String,
+        query: String,
+    ) -> Result<(), DriveError> {
+        let valid_id = (1..=64).contains(&id.len())
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+        if !valid_id {
+            return Err(DriveError::Invalid(format!("invalid view id: {id}")));
+        }
+        let name = name.trim().to_string();
+        if !(1..=60).contains(&name.len()) {
+            return Err(DriveError::Invalid("invalid view name".into()));
+        }
+        if query.len() > 1000 {
+            return Err(DriveError::Invalid("query too long".into()));
+        }
+        let mut rec = self
+            .views
+            .get(&id.to_string())
+            .map_err(|e| DriveError::Invalid(format!("views.get: {e}")))?
+            .map(|v| v.clone())
+            .unwrap_or_else(ViewRecord::new);
+        // Any account's origin, not just the caller's: keys are per owner, so a
+        // key-only `contains` would let every later editor file one of their own.
+        let first_save = self
+            .view_origins
+            .entries_at(&id.to_string())
+            .map_err(|e| DriveError::Invalid(format!("view_origins.entries_at: {e}")))?
+            .is_empty();
+        if first_save {
+            self.view_origins
+                .insert(id.to_string(), calimero_storage::env::time_now())
+                .map_err(|e| DriveError::Conflict(format!("view_origins.insert: {e}")))?;
+        }
+        rec.name.set(name);
+        rec.query.set(query);
+        self.views
+            .insert(id.to_string(), rec)
+            .map_err(|e| DriveError::Invalid(format!("views.insert: {e}")))?;
+        Ok(())
+    }
+
+    /// A view's creator: the one account holding an origin at `id`. Keys are
+    /// per owner, so a patched node can file its own; with several, the
+    /// creator is unknown rather than one a claimant chose.
+    fn view_creator(&self, id: &String) -> Result<Option<calimero_sdk::AccountId>, DriveError> {
+        let holders = self
+            .view_origins
+            .entries_at(id)
+            .map_err(|e| DriveError::Invalid(format!("view_origins.entries_at: {e}")))?;
+        Ok(match holders.as_slice() {
+            [(owner, _)] => Some(*owner),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn delete_view_inner(&mut self, id: &str) -> Result<(), DriveError> {
+        let existed = self
+            .views
+            .remove(&id.to_string())
+            .map_err(|e| DriveError::Invalid(format!("views.remove: {e}")))?;
+        if existed.is_none() {
+            return Err(DriveError::NotFound(id.to_string()));
+        }
+        Ok(())
+    }
 }
 
 // Inline tests drive the `_inner` helpers so `app::emit!` (which panics in
@@ -772,7 +1092,7 @@ mod tests {
     // they all pass `caller` in by hand: the bug lived entirely in how the
     // caller string is DERIVED. Ownership, managers and folder roles are
     // per-person state, and the client can only ever name a person by the
-    // ACCOUNT that `listGroupMembers` returns — so a contract deriving its
+    // ACCOUNT that `listGroupMembers` returns - so a contract deriving its
     // caller from `device_id` filed every grant under an id no caller could
     // ever present. Nothing failed; the grants simply authorised nobody.
     //
@@ -1021,6 +1341,45 @@ mod tests {
     }
 
     #[test]
+    fn set_color_rejects_non_hex_color() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        for bad in ["red", "#0f0"] {
+            let err = app.set_color_inner("f1", bad.into()).unwrap_err();
+            assert!(matches!(err, DriveError::Invalid(_)), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn register_folder_rejects_non_hex_color() {
+        let mut app = RegistryState::init();
+        for bad in ["red", "#0f0"] {
+            let err = app
+                .register_folder_inner(fid("f1"), None, Some(bad.into()), None)
+                .unwrap_err();
+            assert!(matches!(err, DriveError::Invalid(_)), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn register_folder_allows_no_color() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("f2"), None, Some("".into()), None)
+            .unwrap();
+        app.register_folder_inner(fid("f3"), None, Some("#3b82f6".into()), None)
+            .unwrap();
+        assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
+        assert_eq!(app.get_folder(fid("f2")).unwrap().color, None);
+        assert_eq!(
+            app.get_folder(fid("f3")).unwrap().color.as_deref(),
+            Some("#3b82f6")
+        );
+    }
+
+    #[test]
     fn move_folder_updates_parent_id() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("p1"), None, None, None)
@@ -1105,18 +1464,18 @@ mod tests {
     #[test]
     fn full_lifecycle_register_bind_recolor_reorder_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, Some("#f00".into()), None)
+        app.register_folder_inner(fid("a"), None, Some("#ff0000".into()), None)
             .unwrap();
         app.register_folder_inner(fid("b"), None, None, None)
             .unwrap();
         app.bind_folder_context_inner(fid("a"), cid("ctx-a"))
             .unwrap();
-        app.set_color_inner("a", "#0f0".into()).unwrap();
+        app.set_color_inner("a", "#00ff00".into()).unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("a")]).unwrap();
 
         let a = app.get_folder(fid("a")).unwrap();
         assert_eq!(a.context_id, Some(cid("ctx-a")));
-        assert_eq!(a.color.as_deref(), Some("#0f0"));
+        assert_eq!(a.color.as_deref(), Some("#00ff00"));
         assert_eq!(app.get_sort_order(None).unwrap(), vec![fid("b"), fid("a")]);
 
         app.unregister_folder_inner(fid("a")).unwrap();
@@ -1190,16 +1549,16 @@ mod tests {
         assert_eq!(a.parent_id.get(), &Some("new-parent".to_string()));
     }
 
-    // ---- tombstone behaviour — documents the CRDT invariant ----
+    // ---- tombstone behaviour - documents the CRDT invariant ----
     //
     // `UnorderedMap::remove` tombstones the entry for CRDT safety, but as
     // of core 0.11.0-rc.10 (core#3123, "D1") a strictly-newer insert LIFTS
     // the tombstone: unregister → register under the same id revives the
     // entry. (Before rc.10 the tombstone won forever and the re-insert was
-    // silently swallowed — this test used to pin that older semantic.)
+    // silently swallowed - this test used to pin that older semantic.)
     //
     // In production this never matters because admin-API allocates a fresh
-    // random group_id for every new folder — no `FolderId` ever recycles.
+    // random group_id for every new folder - no `FolderId` ever recycles.
     // This test pins down the current semantic so a future core change in
     // either direction fails obviously.
 
@@ -1215,5 +1574,268 @@ mod tests {
             app.get_folder(fid("f")).is_ok(),
             "rc.10 lifts the tombstone: re-registering a FolderId revives the entry",
         );
+    }
+
+    // ---- tags ----
+
+    #[test]
+    fn set_tag_creates_and_list_tags_shows_it() {
+        let mut app = RegistryState::init();
+        app.set_tag_inner("launch", "Launch".into(), "#ff0000".into())
+            .unwrap();
+        let tags = app.list_tags().unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].key, "launch");
+        assert_eq!(tags[0].name, "Launch");
+        assert_eq!(tags[0].color, "#ff0000");
+        assert!(!tags[0].deleted);
+    }
+
+    #[test]
+    fn set_tag_rejects_invalid_key() {
+        let mut app = RegistryState::init();
+        let err = app
+            .set_tag_inner("Launch", "Launch".into(), "#ff0000".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn set_tag_rejects_bad_name_length() {
+        let mut app = RegistryState::init();
+        let err = app
+            .set_tag_inner("launch", "".into(), "#ff0000".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+        let err = app
+            .set_tag_inner("launch", "a".repeat(33), "#ff0000".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn set_tag_trims_name() {
+        let mut app = RegistryState::init();
+        app.set_tag_inner("launch", "  Launch  ".into(), "#ff0000".into())
+            .unwrap();
+        assert_eq!(app.list_tags().unwrap()[0].name, "Launch");
+    }
+
+    #[test]
+    fn set_tag_rejects_bad_color() {
+        let mut app = RegistryState::init();
+        let err = app
+            .set_tag_inner("launch", "Launch".into(), "red".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn delete_tag_sets_deleted_and_keeps_row() {
+        let mut app = RegistryState::init();
+        app.set_tag_inner("launch", "Launch".into(), "#ff0000".into())
+            .unwrap();
+        app.delete_tag_inner("launch").unwrap();
+        let tags = app.list_tags().unwrap();
+        assert_eq!(tags.len(), 1);
+        assert!(tags[0].deleted);
+    }
+
+    #[test]
+    fn delete_tag_unknown_is_not_found() {
+        let mut app = RegistryState::init();
+        let err = app.delete_tag_inner("ghost").unwrap_err();
+        assert!(matches!(err, DriveError::NotFound(_)));
+    }
+
+    #[test]
+    fn set_tag_after_delete_is_rejected() {
+        let mut app = RegistryState::init();
+        app.set_tag_inner("launch", "Launch".into(), "#ff0000".into())
+            .unwrap();
+        app.delete_tag_inner("launch").unwrap();
+        let err = app
+            .set_tag_inner("launch", "Launch v2".into(), "#00ff00".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(ref m) if m == "tag deleted"));
+        let tags = app.list_tags().unwrap();
+        assert_eq!(tags[0].name, "Launch");
+        assert!(tags[0].deleted);
+    }
+
+    fn zero_tag() -> TagRecord {
+        TagRecord {
+            name: zero_lww("Launch".to_string()),
+            color: zero_lww("#ff0000".to_string()),
+            deleted: false,
+        }
+    }
+
+    /// Merges each side into a copy of the other and asserts both land on `want`.
+    fn assert_merges_both_ways(a: &TagRecord, b: &TagRecord, want: (&str, &str, bool)) {
+        for (x, y) in [(a, b), (b, a)] {
+            let mut m = x.clone();
+            <TagRecord as Mergeable>::merge(&mut m, y).unwrap();
+            <TagRecord as Mergeable>::merge(&mut m, y).unwrap();
+            let t = project_tag("launch", &m);
+            assert_eq!((t.name.as_str(), t.color.as_str(), t.deleted), want);
+        }
+    }
+
+    #[test]
+    fn tag_record_merge_rename_racing_delete_stays_deleted() {
+        let mut b = zero_tag();
+        b.deleted = true; // delete on B
+        let mut a = zero_tag();
+        a.edit("Launch v2".into(), "#ff0000".into()); // later rename on A
+        assert_merges_both_ways(&a, &b, ("Launch v2", "#ff0000", true));
+    }
+
+    #[test]
+    fn tag_record_merge_unsynced_recreate_stays_deleted() {
+        let mut b = zero_tag();
+        b.deleted = true; // delete on B
+        let a = TagRecord::new("Launch 2".into(), "#00ff00".into()); // A never saw it
+        assert_merges_both_ways(&a, &b, ("Launch 2", "#00ff00", true));
+    }
+
+    #[test]
+    fn tag_record_merge_is_per_field_lww_both_edits_hold() {
+        let mut a = TagRecord {
+            name: zero_lww("Launch".to_string()),
+            color: zero_lww("#ff0000".to_string()),
+            deleted: false,
+        };
+        let mut b = TagRecord {
+            name: zero_lww("Launch".to_string()),
+            color: zero_lww("#ff0000".to_string()),
+            deleted: false,
+        };
+        a.name.set("Launch v2".into()); // rename on A
+        b.color.set("#00ff00".into()); // recolour on B
+        <TagRecord as Mergeable>::merge(&mut a, &b).unwrap();
+        assert_eq!(a.name.get(), "Launch v2");
+        assert_eq!(a.color.get(), "#00ff00");
+    }
+
+    // ---- saved views ----
+
+    #[test]
+    fn save_view_creates_and_list_views_shows_it() {
+        let mut app = RegistryState::init();
+        app.save_view_inner("recent-docs", "Recent docs".into(), "q".into())
+            .unwrap();
+        let views = app.list_views().unwrap();
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].id, "recent-docs");
+        assert_eq!(views[0].name, "Recent docs");
+        assert_eq!(views[0].query, "q");
+    }
+
+    #[test]
+    fn save_view_rejects_empty_id() {
+        let mut app = RegistryState::init();
+        let err = app
+            .save_view_inner("", "Name".into(), "q".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn save_view_rejects_invalid_id() {
+        let mut app = RegistryState::init();
+        let err = app
+            .save_view_inner("bad id!", "Name".into(), "q".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn save_view_rejects_bad_name_length() {
+        let mut app = RegistryState::init();
+        let err = app
+            .save_view_inner("v1", "".into(), "q".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+        let err = app
+            .save_view_inner("v1", "a".repeat(61), "q".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn save_view_rejects_query_too_long() {
+        let mut app = RegistryState::init();
+        let err = app
+            .save_view_inner("v1", "Name".into(), "a".repeat(1001))
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn a_views_creator_is_its_origin_stamp_and_is_fixed() {
+        const ALICE: [u8; 32] = [0xA1; 32];
+        const BOB: [u8; 32] = [0xB0; 32];
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.call_as_account(ALICE, ALICE, |s| {
+            s.save_view("v1".into(), "Name".into(), "q1".into())
+        })
+        .unwrap();
+        host.call_as_account(BOB, BOB, |s| {
+            s.save_view("v1".into(), "Renamed".into(), "q2".into())
+        })
+        .unwrap();
+        let view = host.view(|s| s.list_views()).unwrap().remove(0);
+        assert_eq!(view.created_by, hex::encode(ALICE));
+        assert_eq!((view.name.as_str(), view.query.as_str()), ("Renamed", "q2"));
+
+        // Keys are per owner: Bob's write lands as his own entry at the id.
+        // Two holders make the creator unknown, never the claimant.
+        host.call_as_account(BOB, BOB, |s| s.view_origins.insert("v1".into(), 1))
+            .unwrap();
+        for who in [ALICE, BOB] {
+            let seen = host.call_as_account(who, who, |s| s.list_views()).unwrap();
+            assert_eq!(seen[0].created_by, "", "as {}", hex::encode(who));
+        }
+    }
+
+    #[test]
+    fn a_views_creator_reads_the_same_for_every_caller() {
+        const ALICE: [u8; 32] = [0xA1; 32];
+        const BOB: [u8; 32] = [0xB0; 32];
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.call_as_account(ALICE, ALICE, |s| {
+            s.save_view("v1".into(), "Name".into(), "q1".into())
+        })
+        .unwrap();
+        host.call_as_account(BOB, BOB, |s| {
+            s.save_view("v1".into(), "Renamed".into(), "q2".into())
+        })
+        .unwrap();
+        for who in [ALICE, BOB, [0xC3; 32]] {
+            let seen = host.call_as_account(who, who, |s| s.list_views()).unwrap();
+            assert_eq!(
+                seen[0].created_by,
+                hex::encode(ALICE),
+                "as {}",
+                hex::encode(who)
+            );
+        }
+    }
+
+    #[test]
+    fn delete_view_removes_it() {
+        let mut app = RegistryState::init();
+        app.save_view_inner("v1", "Name".into(), "q".into())
+            .unwrap();
+        app.delete_view_inner("v1").unwrap();
+        assert_eq!(app.list_views().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn delete_view_unknown_is_not_found() {
+        let mut app = RegistryState::init();
+        let err = app.delete_view_inner("ghost").unwrap_err();
+        assert!(matches!(err, DriveError::NotFound(_)));
     }
 }

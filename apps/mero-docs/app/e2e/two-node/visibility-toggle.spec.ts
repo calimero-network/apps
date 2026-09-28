@@ -1,4 +1,4 @@
-// Visibility toggle propagation — tests 33-36 from the design
+// Visibility toggle propagation - tests 33-36 from the design
 // catalog. Test 36 (wire-shape lowercase guard) is single-node and
 // already active; tests 33-35 need a two-node setup to verify Bob's
 // view reacts when Alice flips the bit.
@@ -23,18 +23,17 @@ test.describe('Visibility toggle (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.tree.expectFolderVisible('Mutable', { timeout: 60_000 });
     await bob.tree.openFolder('Mutable');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Mutable');
     await bob.docs.expectDocVisible('Visible Doc');
 
     // Alice: flip to Restricted.
     await alice.toggleVisibility('Mutable');
 
     // Restricted folders are hidden from non-members, so once the op reaches
-    // Bob's node the folder leaves his tree and his pane drops the selection,
-    // leaving him with no folders at all.
+    // Bob's node the folder leaves his tree and his open link says why.
     await bob.tree.expectFolderHidden('Mutable', { timeout: 60_000 });
     await expect(
-      bob.page.getByRole('heading', { name: 'No folders yet' }),
+      bob.page.getByRole('heading', { name: 'Mutable is a restricted folder' }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -58,14 +57,14 @@ test.describe('Visibility toggle (two-node)', () => {
     // Bob inherits the now-Open folder, so it and its docs appear.
     await bob.tree.expectFolderVisible('Liberating', { timeout: 60_000 });
     await bob.tree.openFolder('Liberating');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Liberating');
     await bob.docs.expectDocVisible('Future Public', { timeout: 60_000 });
   });
 
   test('set_subgroup_visibility wire payload is lowercase', async ({
     alice,
   }) => {
-    // Wire-shape regression guard — single-node, intercepts the
+    // Wire-shape regression guard - single-node, intercepts the
     // admin-api request and asserts the payload's
     // `subgroupVisibility` is lowercase. Core's handler returns 400
     // on capitalized values (set_subgroup_visibility.rs:31).
@@ -82,7 +81,7 @@ test.describe('Visibility toggle (two-node)', () => {
           try {
             payload = JSON.parse(body);
           } catch {
-            /* fall through — assertion below catches it */
+            /* fall through - assertion below catches it */
           }
         }
         await route.continue();

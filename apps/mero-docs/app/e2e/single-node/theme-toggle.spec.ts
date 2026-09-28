@@ -1,4 +1,4 @@
-// Theme toggle — new coverage for the PR1 top-bar dark/light switch.
+// Theme toggle - new coverage for the PR1 top-bar dark/light switch.
 //
 // The app defaults to light mode. The toggle button aria-label reads
 // "Switch to dark mode" when light, "Switch to light mode" when dark.

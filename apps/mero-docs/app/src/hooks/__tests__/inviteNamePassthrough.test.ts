@@ -1,6 +1,6 @@
 // The name a creator types has to reach the OTHER node. This file asserts the
-// two halves of the path that carries it — what goes onto the invite link, and
-// what goes onto the join request — at the level of the exact request body,
+// two halves of the path that carries it - what goes onto the invite link, and
+// what goes onto the join request - at the level of the exact request body,
 // because that is where every previous failure lived.
 //
 // ⚠️ Assertions here check the exact KEY SET, not `toHaveBeenCalledWith` on a

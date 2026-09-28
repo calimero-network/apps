@@ -62,6 +62,14 @@ export interface Event_OwnerClaimed {
   owner: string;
 }
 
+export interface Event_TagChanged {
+  key: string;
+}
+
+export interface Event_ViewChanged {
+  id: string;
+}
+
 /**
  * Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.
  */
@@ -100,7 +108,7 @@ export const FolderId = (value: string): FolderId => value as FolderId;
  * because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
  * trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
  * resolution picks the inherent one from the derive expansion, which then
- * fails the macro's `?` — same workaround battleships uses on
+ * fails the macro's `?` - same workaround battleships uses on
  * `MatchSummary`.
  */
 export interface FolderRecord {
@@ -117,7 +125,7 @@ export interface FolderRecord {
    * Display name. Mirrored from admin-API's group alias so namespace
    * members who can't read the subgroup yet (Restricted folder before
    * invite) can still see folder names. Empty string means "no
-   * registry-side alias — fall back to the admin-API alias or a
+   * registry-side alias - fall back to the admin-API alias or a
    * truncated id stub on the client".
    */
   alias: string;
@@ -177,7 +185,7 @@ export interface RegistryState {
    * clear any folder role). Writable by the owner only. The owner is
    * implicitly a manager and is NOT stored here. Value `true` = is a
    * manager, `false` = removed (kept around so the key is never
-   * CRDT-tombstoned — a `remove` would silently swallow a later re-add).
+   * CRDT-tombstoned - a `remove` would silently swallow a later re-add).
    */
   managers: Record<string, boolean>;
   /**
@@ -185,6 +193,20 @@ export interface RegistryState {
    * Writable by the registry admins only (see `sync_admins`).
    */
   folder_roles: Record<string, Role>;
+  /**
+   * tag key → TagRecord. Public, like `sort_order`: any member may name,
+   * recolour or delete a tag; which roles may is the app's to gate.
+   */
+  tags: Record<string, TagRecord>;
+  /**
+   * saved-view id → ViewRecord. Public for the same reason as `tags`.
+   */
+  views: Record<string, ViewRecord>;
+  /**
+   * saved-view id → created_at, written once by the view's creator. Its
+   * owner stamp is who created the view, and nobody can rewrite either.
+   */
+  view_origins: Record<string, number>;
 }
 
 /**
@@ -194,6 +216,50 @@ export interface RegistryState {
 export type Role = 'Viewer' | 'Editor' | 'Manager';
 
 /**
+ * Flat projection of a `TagRecord`. Deleted rows are included so clients
+ * can tell a tombstoned key apart from one that was never used.
+ */
+export interface TagDto {
+  key: string;
+  name: string;
+  color: string;
+  deleted: boolean;
+}
+
+/**
+ * Workspace-wide tag: a stable key mapped to a display name and colour.
+ * `deleted` tombstones the row rather than removing it - see `delete_tag`.
+ * It merges by OR, so a delete on any replica is permanent.
+ */
+export interface TagRecord {
+  name: string;
+  color: string;
+  deleted: boolean;
+}
+
+/**
+ * Flat projection of a `ViewRecord`.
+ */
+export interface ViewDto {
+  id: string;
+  name: string;
+  query: string;
+  /**
+   * Hex account of whoever created the view, from `view_origins`' owner stamp.
+   */
+  created_by: string;
+}
+
+/**
+ * A workspace-wide saved search. Its creator is not stored here but in
+ * `view_origins`, where nobody can rewrite it.
+ */
+export interface ViewRecord {
+  name: string;
+  query: string;
+}
+
+/**
  * Per-folder cascade flag. `Inherit` = namespace-member cascade descends
  * through this folder (Open subgroup); `Restricted` = explicit-invite wall,
  * cascade stops here. Mirrors the admin-API subgroup_visibility concept but
@@ -201,6 +267,8 @@ export type Role = 'Viewer' | 'Editor' | 'Manager';
  * admin-API call.
  */
 export type Visibility = 'Inherit' | 'Restricted';
+
+
 
 
 
@@ -233,6 +301,20 @@ export type AbiEvent =
   | { name: "ManagerAdded"; payload: Event_ManagerAdded }
   | { name: "ManagerRemoved"; payload: Event_ManagerRemoved }
   | { name: "OwnerClaimed"; payload: Event_OwnerClaimed }
+  | {
+    /**
+     * A tag's name, colour, or tombstone flag changed.
+     */
+    name: "TagChanged";
+    payload: Event_TagChanged;
+  }
+  | {
+    /**
+     * A saved view was created, edited, or deleted.
+     */
+    name: "ViewChanged";
+    payload: Event_ViewChanged;
+  }
 ;
 
 
@@ -286,6 +368,26 @@ export class RegistryClient {
   }
 
   /**
+   * delete_tag
+   *
+   * @intent mutating
+   */
+  public async deleteTag(params: { key: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_tag', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_view
+   *
+   * @intent mutating
+   */
+  public async deleteView(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_view', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * get_folder
    *
    * @intent read_only
@@ -330,7 +432,7 @@ export class RegistryClient {
    *
    * The base58 public key of the registry owner, or an empty string if
    * `claim_owner` has not been called yet. (Empty-string-means-unclaimed
-   * keeps the generated TS type honest — `Promise<string>`, not a lying
+   * keeps the generated TS type honest - `Promise<string>`, not a lying
    * non-nullable Option.)
    *
    * @intent read_only
@@ -379,6 +481,26 @@ export class RegistryClient {
   }
 
   /**
+   * list_tags
+   *
+   * @intent read_only
+   */
+  public async listTags(): Promise<TagDto[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_tags', argsJson: {} });
+    return response as TagDto[];
+  }
+
+  /**
+   * list_views
+   *
+   * @intent read_only
+   */
+  public async listViews(): Promise<ViewDto[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_views', argsJson: {} });
+    return response as ViewDto[];
+  }
+
+  /**
    * move_folder
    *
    * @intent mutating
@@ -419,6 +541,16 @@ export class RegistryClient {
   }
 
   /**
+   * save_view
+   *
+   * @intent mutating
+   */
+  public async saveView(params: { id: string; name: string; query: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'save_view', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * set_color
    *
    * @intent mutating
@@ -451,6 +583,16 @@ export class RegistryClient {
    */
   public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_tag
+   *
+   * @intent mutating
+   */
+  public async setTag(params: { key: string; name: string; color: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_tag', argsJson: params });
     return response as void;
   }
 

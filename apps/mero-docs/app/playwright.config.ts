@@ -29,6 +29,7 @@ export default defineConfig({
     ? undefined
     : {
         command: `pnpm dev --host 127.0.0.1 --port ${APP_PORT}`,
+        env: { E2E_NO_WATCH: '1' },
         url: `http://localhost:${APP_PORT}`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

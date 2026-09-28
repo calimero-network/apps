@@ -4,7 +4,7 @@ import { useMero } from '@calimero-network/mero-react';
 const DEFAULT_OFFLINE_GRACE_MS = 5000;
 
 /** `isOnline` from the SDK is a raw boolean mirroring the shared SSE socket's
- *  last lifecycle event — it flaps to false on any transient error (a failed
+ *  last lifecycle event - it flaps to false on any transient error (a failed
  *  subscribe POST, a reconnect blip) with no debounce and no "connecting"
  *  state. This wraps it so the UI shows green immediately, but only surfaces
  *  red after `isOnline` has stayed false continuously past the grace window.

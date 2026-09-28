@@ -228,7 +228,7 @@
     },
     "Comment": {
       "kind": "record",
-      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions — the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
+      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions - the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
       "fields": [
         {
           "name": "doc_id",
@@ -305,13 +305,6 @@
           }
         },
         {
-          "name": "creator",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Hex account of whoever created the doc, from `origins`' owner stamp."
-        },
-        {
           "name": "title",
           "type": {
             "kind": "string"
@@ -324,7 +317,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Keys only, sorted; the registry maps each to a name and colour."
         },
         {
           "name": "archived",
@@ -343,12 +337,32 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex account of whoever created the doc, from `origins`' owner stamp."
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "can_delete",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the caller may delete it: the same rule `delete_doc` enforces."
         }
       ]
     },
     "DocRecord": {
       "kind": "record",
-      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title` and `body`\nneed: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
       "fields": [
         {
           "name": "title",
@@ -373,13 +387,21 @@
         {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "map",
+            "key": {
               "kind": "string"
             },
-            "crdt_type": "unordered_set"
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
           },
-          "doc": "A set, so two members tagging the same doc at once both keep their tag.\n(It was an LWW-replaced list, and one side's whole list won.)"
+          "doc": "tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold."
         },
         {
           "name": "archived",
@@ -400,6 +422,17 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
             }
           }
         }
@@ -931,7 +964,7 @@
     },
     {
       "name": "comment_schema_version",
-      "doc": "The comment's stored per-entry `schema_version` — `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account holding the comment (the lowest, if several\ndo), read by name, so it answers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
+      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account holding the comment (the lowest, if several\ndo), read by name, so it answers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
       "params": [
         {
           "name": "id",

@@ -23,10 +23,10 @@ category = "productivity"
 tags        = ["productivity", "documents", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 docs        = "https://docs.calimero.network"
-# Relative to the directory of the table that supplied the metadata — this
+# Relative to the directory of the table that supplied the metadata - this
 # package's own dir, so logic/assets/icon-512x512.png.
 icon        = "assets/icon-512x512.png"
-# ⚠️ WAS "0.1.0" — cargo-mero's placeholder floor, which nobody verified. This
+# ⚠️ WAS "0.1.0" - cargo-mero's placeholder floor, which nobody verified. This
 # contract is built against rc.26, and a node older than that installs the bundle
 # happily and then dies at context creation with `link error: unknown import`.
 # check-app-metadata.sh now asserts this equals the workspace value.
@@ -35,7 +35,7 @@ frontend    = "https://mero-docs.vercel.app"
 
 # Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports
 # for "a crate that cannot declare a workspace table of its own (e.g. a member of
-# a larger workspace)" — `[workspace.metadata.calimero]` is unusable here because
+# a larger workspace)" - `[workspace.metadata.calimero]` is unusable here because
 # cargo-mero REPLACES an app's package table with the workspace one, masking every
 # other app in the repo.
 #
@@ -61,5 +61,5 @@ calimero-storage-macros = { workspace = true }
 calimero-storage = { workspace = true, features = ["testing"] }
 serial_test      = "3.2"
 
-# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# NOTE: no [profile.*] - cargo ignores profiles in a workspace member and
 # `cargo mero build` then fails with `profile 'app-release' is not defined`.

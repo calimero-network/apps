@@ -3,6 +3,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures/single-user';
+import { settled } from '../fixtures/workspace';
 
 const PHONE = { width: 375, height: 667 };
 
@@ -72,11 +73,7 @@ test.describe('Mobile layout (single-node)', () => {
 
     await toggle.click();
     await expect(drawer).toBeVisible();
-    // Radix arms its outside-click listener a task after opening; a click
-    // before that is dropped, so wait until the drawer has finished sliding in.
-    await drawer.evaluate((el) =>
-      Promise.all(el.getAnimations().map((a) => a.finished)),
-    );
+    await settled(drawer);
     await page.mouse.click(PHONE.width - 10, PHONE.height / 2);
     await expect(drawer).toBeHidden();
   });

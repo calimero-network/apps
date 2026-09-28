@@ -1,5 +1,5 @@
 // New-workspace modal. Delegates the full create flow to
-// useDriveWorkspace().createWorkspace — one call creates the
+// useDriveWorkspace().createWorkspace - one call creates the
 // namespace AND the Registry context atomically (see the hook's
 // file header for the convention). Errors surface as a visible
 // message; no silent no-ops.
@@ -49,7 +49,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     const nsId = await createWorkspace(alias);
     if (!nsId) {
       // createWorkspace sets createWorkspaceError internally via
-      // setCreateError — a React state update that only lands on the
+      // setCreateError - a React state update that only lands on the
       // next render. Reading createWorkspaceError here would return
       // the stale (pre-render) value, so we don't try. Instead,
       // displayError (below) picks up createWorkspaceError?.message
@@ -58,7 +58,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     }
 
     // Best-effort refetch on the caller side. Failure here is non-
-    // fatal — the workspace is created and selected.
+    // fatal - the workspace is created and selected.
     try {
       await onCreated?.();
     } catch (e) {
@@ -70,7 +70,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   // Dismissal is gated on !submitting across all three paths
   // (Cancel / backdrop / Escape). Without this, dismissing mid-
   // request unmounts the dialog while createWorkspace is still in
-  // flight — on failure, setSubmitError targets an unmounted
+  // flight - on failure, setSubmitError targets an unmounted
   // component and the user gets no feedback.
   const safeClose = () => {
     if (!submitting) onClose();

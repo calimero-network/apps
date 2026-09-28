@@ -1,6 +1,6 @@
 // New-folder modal. Wraps useFolderOperations.create with a small
 // form: alias + optional color + visibility toggle. Permission-gating
-// lives on the button that opens this dialog — once here, the caller
+// lives on the button that opens this dialog - once here, the caller
 // is authorised for this scope.
 //
 // Depth is capped at MAX_FOLDER_DEPTH (design-spec UX cap, not
@@ -67,7 +67,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
   // Default to Open: namespace members inherit access via core's
-  // parent-walk (PR #2261). Switch to Restricted for explicit-invite
+  // parent-walk. Switch to Restricted for explicit-invite
   // folders.
   const [visibility, setVisibility] = useState<'Open' | 'Restricted'>('Open');
   // Identities to add immediately (Restricted folders only). The

@@ -6,7 +6,7 @@
 // methods always target `selfIdentity` and ignore the `memberId` arg, so a
 // component holding a reference to `setName` cannot rename someone else
 // (the server gates that on `CAN_MANAGE_METADATA` anyway, but the hook
-// shouldn't even offer the API — defense-in-depth). Admin "rename any
+// shouldn't even offer the API - defense-in-depth). Admin "rename any
 // member" is an explicit follow-up surface, not this hook.
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,7 +33,7 @@ export interface MemberDisplayName {
   error: Error | null;
   /** Sets the current caller's display name in this namespace. Throws if
    *  trimmed input is empty or the caller's identity isn't resolved yet.
-   *  Always targets `selfIdentity` — see file header.
+   *  Always targets `selfIdentity` - see file header.
    *
    *  NOTE: There is no `clearName()` here. mero-js's `SetMetadataRequest`
    *  currently types `name` as `string | undefined`, which means "omit ⇒
@@ -69,10 +69,13 @@ export function useMemberDisplayName(
   );
 
   // Metadata changes without a context event; the registry's sync run is the tick.
+  // With no member there is nothing to refetch, so an idle caller holds no subscription.
   const onMetadataEvent = useCallback(() => {
     void refetch();
   }, [refetch]);
-  useContextEvents(registryContextId, onMetadataEvent, { strict: true });
+  useContextEvents(memberId ? registryContextId : null, onMetadataEvent, {
+    strict: true,
+  });
 
   const name = metadata?.name ?? null;
 
@@ -90,7 +93,7 @@ export function useMemberDisplayName(
       // setName is a *self*-only operation by contract. Callers must bind
       // the hook to selfIdentity if they want to write. Avoids the
       // refetch-vs-write mismatch where the hook is bound to memberId=X
-      // but we write to selfIdentity — refetch() would refresh X's
+      // but we write to selfIdentity - refetch() would refresh X's
       // metadata, leaving the caller's own state stale until next mount.
       if (memberId && memberId !== selfIdentity) {
         throw new Error(

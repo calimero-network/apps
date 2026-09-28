@@ -20,12 +20,14 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
 }));
 
 const setName = vi.fn().mockResolvedValue(undefined);
+const refetch = vi.fn().mockResolvedValue(undefined);
 const hookState = (over: object = {}) => ({
   name: null,
   loading: false,
   loaded: true,
   error: null,
   setName,
+  refetch,
   ...over,
 });
 
@@ -33,6 +35,7 @@ describe('DisplayNameGate', () => {
   beforeEach(() => {
     dnMock.mockReset();
     setName.mockClear();
+    refetch.mockClear();
     localStorage.clear();
     driveState.namespaceId = 'ns1';
     driveState.selfIdentity = 'me';
@@ -50,7 +53,7 @@ describe('DisplayNameGate', () => {
   });
 
   it('stays hidden on a long-gap session: no marker + hook null, but name is in the member rows', () => {
-    // Long-gap bug: no marker + hook null (#42), but the member rows have
+    // Long-gap bug: no marker + hook null, but the member rows have
     // the name → gate must not re-prompt.
     dnMock.mockReturnValue(hookState());
     driveState.namespaceMemberNames = { me: 'ronit' };
@@ -62,6 +65,43 @@ describe('DisplayNameGate', () => {
     dnMock.mockReturnValue(hookState({ loading: true, loaded: false }));
     render(<DisplayNameGate />);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('marks itself settled once it knows no gate is needed', () => {
+    dnMock.mockReturnValue(hookState({ loading: true, loaded: false }));
+    const { rerender } = render(<DisplayNameGate />);
+    expect(screen.queryByTestId('name-gate-settled')).toBeNull();
+    dnMock.mockReturnValue(hookState({ name: 'ronit' }));
+    rerender(<DisplayNameGate />);
+    expect(screen.getByTestId('name-gate-settled')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('says the name could not load in plain words, with Try again', () => {
+    dnMock.mockReturnValue(
+      hookState({ error: new Error('HTTP 400 Bad Request: Invalid group id') }),
+    );
+    render(<DisplayNameGate />);
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Couldn't load your name. Try again.",
+    );
+    expect(screen.queryByText(/HTTP 400/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a failed save in plain words, not the node error', async () => {
+    setName.mockRejectedValueOnce(new Error('HTTP 500 Internal Server Error'));
+    dnMock.mockReturnValue(hookState());
+    render(<DisplayNameGate />);
+    fireEvent.change(screen.getByPlaceholderText('Your display name'), {
+      target: { value: 'Ana' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      "Couldn't save your name. Try again.",
+    );
+    expect(screen.queryByText(/HTTP 500/)).toBeNull();
   });
 
   it('renders nothing when a name is already set', () => {
@@ -97,7 +137,7 @@ describe('DisplayNameGate', () => {
   });
 
   it('closes after a successful save even if the hook name stays null', async () => {
-    // Regression for mero-drive#42: useMemberMetadata can fail to
+    // Regression: useMemberMetadata can fail to
     // rehydrate after a write, so `name` stays null even though the PUT
     // succeeded. The gate must still close on a successful setName.
     dnMock.mockReturnValue(hookState());

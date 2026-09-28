@@ -125,6 +125,25 @@ describe('useContextEvents', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  it('names the context that fired, so a caller can refresh just that one', () => {
+    const onChange = vi.fn();
+    renderHook(() =>
+      useContextEvents(['ctx-a', 'ctx-b'], onChange, { strict: true }),
+    );
+    fire('ctx-b');
+    expect(onChange).toHaveBeenLastCalledWith('ctx-b');
+  });
+
+  it('names no context after a reconnect, since anything may have changed', () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange, { strict: true }));
+    reconnect();
+    vi.advanceTimersByTime(500);
+    vi.useRealTimers();
+    expect(onChange).toHaveBeenCalledWith();
+  });
+
   it('still subscribes to the same context ids in strict mode', () => {
     renderHook(() =>
       useContextEvents(['ctx-a', 'ctx-b'], vi.fn(), { strict: true }),
@@ -143,11 +162,52 @@ describe('useContextEvents', () => {
       fire('ctx-a');
       fire('ctx-a');
       fire('ctx-a');
-      expect(onChange).not.toHaveBeenCalled(); // nothing yet — still within window
+      expect(onChange).not.toHaveBeenCalled(); // nothing yet - still within window
       vi.advanceTimersByTime(399);
       expect(onChange).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
       expect(onChange).toHaveBeenCalledTimes(1); // exactly one fire for the burst
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A workspace switch inside the window swaps onChange; the old one would
+  // refetch the previous workspace and write its folders under the new one.
+  it('debounceMs: the trailing fire calls the latest onChange', () => {
+    vi.useFakeTimers();
+    try {
+      const before = vi.fn();
+      const after = vi.fn();
+      const { rerender } = renderHook(
+        ({ onChange }) =>
+          useContextEvents(['ctx-a'], onChange, { debounceMs: 300 }),
+        { initialProps: { onChange: before } },
+      );
+      fire('ctx-a');
+      rerender({ onChange: after });
+      vi.advanceTimersByTime(300);
+      expect(before).not.toHaveBeenCalled();
+      expect(after).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounceMs: an event pending for the old ids never fires once the ids change', () => {
+    vi.useFakeTimers();
+    try {
+      const onA = vi.fn();
+      const onB = vi.fn();
+      const { rerender } = renderHook(
+        ({ ids, onChange }) => useContextEvents(ids, onChange, { debounceMs: 300 }),
+        { initialProps: { ids: ['ctx-a'], onChange: onA } },
+      );
+      fire('ctx-a');
+      rerender({ ids: ['ctx-b'], onChange: onB });
+      vi.advanceTimersByTime(300);
+      expect(onA).not.toHaveBeenCalled();
+      expect(onB).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -160,7 +220,7 @@ describe('useContextEvents', () => {
       renderHook(() =>
         useContextEvents(['ctx-a'], onChange, { strict: true, debounceMs: 400 }),
       );
-      fire('other-ctx'); // filtered out — must not arm the timer
+      fire('other-ctx'); // filtered out - must not arm the timer
       vi.advanceTimersByTime(400);
       expect(onChange).not.toHaveBeenCalled();
       fire('ctx-a');

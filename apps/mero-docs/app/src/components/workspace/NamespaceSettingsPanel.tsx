@@ -1,4 +1,4 @@
-// Full settings view — composes the members panel and admin
+// Full settings view - composes the members panel and admin
 // actions panel into a single surface. Rendered by
 // WorkspaceLayout when the settings toggle is active.
 //

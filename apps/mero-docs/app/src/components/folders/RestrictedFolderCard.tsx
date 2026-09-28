@@ -2,11 +2,11 @@
 // selected folder. Three branches off `visibility`:
 //
 //   Open      → "Join folder" CTA. TWO core calls, in order:
-//               (1) `joinSubgroupInheritance` (#2360 /
-//                   POST /admin-api/groups/:id/join-via-inheritance)
-//                   — materialises inherited subgroup membership +
+//               (1) `joinSubgroupInheritance`
+//                   (POST /admin-api/groups/:id/join-via-inheritance)
+//                   - materialises inherited subgroup membership +
 //                   delivers the subgroup key;
-//               (2) `joinContext` on the folder's docs context —
+//               (2) `joinContext` on the folder's docs context -
 //                   writes this node's owned ContextIdentity so
 //                   `execute` (list_docs, create_doc, …) works.
 //               Then `refetch()` so useFolderPermissions re-evaluates
@@ -17,12 +17,12 @@
 //                the admin has to explicitly add this identity.
 //
 //   undefined  → Visibility metadata hasn't reached this node yet.
-//                Shows a "syncing" copy + "Try joining" — same
+//                Shows a "syncing" copy + "Try joining" - same
 //                action as Open (the call succeeds the moment
 //                inheritance becomes resolvable on this node).
 //
-// #2360's `join-via-inheritance` replaced the pre-#2360
-// `listGroupContexts` enumeration for SUBGROUP membership — but the
+// Core's `join-via-inheritance` replaced the older
+// `listGroupContexts` enumeration for SUBGROUP membership - but the
 // per-docs-context `joinContext` is STILL required: core's
 // `join_subgroup_inheritance` handler is subgroup-scoped (subgroup
 // key + namespace `MemberJoinedOpen` op only) and never provisions a
@@ -46,13 +46,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import { FolderId } from '../../generated/registry/RegistryClient';
 
 interface Props {
-  /** Folder subgroup id — the join target. */
+  /** Folder subgroup id - the join target. */
   folderId: string;
   folderAlias: string;
   /** Current subgroup visibility from core's GroupInfo. `undefined`
@@ -63,7 +63,7 @@ interface Props {
    *  membership and swaps to the real folder UI. Bind to
    *  `useDriveWorkspace().refetch`. */
   refetch?: () => void | Promise<void>;
-  /** Per-folder permissions refetch — the workspace-wide `refetch`
+  /** Per-folder permissions refetch - the workspace-wide `refetch`
    *  above doesn't touch `useMemberCaps` (its deps don't change on
    *  join), so a successful join wouldn't otherwise lift the cached
    *  "not a member" state. Bind to `useFolderPermissions(...).refetch`. */
@@ -82,7 +82,7 @@ export function RestrictedFolderCard({
   const [error, setError] = useState<string | null>(null);
   // `joining` is local state spanning the WHOLE join flow (subgroup
   // join → resolve docs context → context join), not just one hook's
-  // `loading` — the button must stay disabled until every step
+  // `loading` - the button must stay disabled until every step
   // settles.
   const [joining, setJoining] = useState(false);
   const { joinSubgroupInheritance } = useJoinSubgroupInheritance();
@@ -92,7 +92,7 @@ export function RestrictedFolderCard({
   const isRestricted = visibility === 'Restricted';
   const isSyncing = visibility === undefined;
   // Open (definitive) → "Join folder". Undefined (syncing) → "Try
-  // joining" — same action, softer copy.
+  // joining" - same action, softer copy.
   const showJoinCTA = visibility === 'Open' || visibility === undefined;
 
   const onCopy = async () => {
@@ -111,13 +111,13 @@ export function RestrictedFolderCard({
     setError(null);
     setJoining(true);
     try {
-      // 1) Materialise inherited subgroup membership (#2360):
+      // 1) Materialise inherited subgroup membership:
       //    delivers the subgroup key + publishes `MemberJoinedOpen`
       //    on the namespace DAG.
       await joinSubgroupInheritance(folderId);
 
       // 2) Join the folder's docs CONTEXT. join-via-inheritance does
-      //    NOT cascade into child contexts — without this step the
+      //    NOT cascade into child contexts - without this step the
       //    node holds no owned `ContextIdentity` for the docs
       //    context, and every `execute` (list_docs, create_doc, …)
       //    fails with "No owned identity found for this context".
@@ -134,7 +134,7 @@ export function RestrictedFolderCard({
 
       // Success: refetch workspace state AND the per-folder
       // permissions probe. The workspace refetch (folder list,
-      // subgroups, etc.) does not touch useMemberCaps — its deps
+      // subgroups, etc.) does not touch useMemberCaps - its deps
       // `[mero, groupId, memberId]` are stable across the join, so
       // without `refetchPerms` the parent re-renders with the same
       // stale "not a member" error and the card never unmounts.

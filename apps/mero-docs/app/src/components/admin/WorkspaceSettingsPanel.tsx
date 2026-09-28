@@ -1,13 +1,13 @@
 // Namespace-admin settings surface. One section:
 //
-//   1. Registry owner & managers — the fail-closed authorization roots
+//   1. Registry owner & managers - the fail-closed authorization roots
 //      for the per-folder Role API (set_folder_role / add_manager all
 //      require owner-or-manager). The owner can add/remove managers;
 //      managers (and non-owner admins) see the list read-only. If the
 //      registry is unclaimed (a namespace seeded before `claim_owner`
 //      was wired in), any namespace-admin can "Claim ownership".
 //
-// Admin-only — the panel returns null for non-admins so the settings
+// Admin-only - the panel returns null for non-admins so the settings
 // surface doesn't advertise actions the caller can't take.
 
 import React, { useState } from 'react';
@@ -19,7 +19,7 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
-import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
+import { useMemberName } from '@/hooks/useMemberName';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 // Resolves the name the same way <MemberLabel> does, so the remove
@@ -37,9 +37,9 @@ function ManagerRow({
   busy: boolean;
   onRemove: (memberId: string) => void;
 }) {
-  const { name } = useMemberDisplayName(namespaceId, memberId);
-  const { namespaceMemberNames } = useDriveWorkspace();
-  const resolvedName = name ?? namespaceMemberNames[memberId] ?? UNNAMED_MEMBER_LABEL;
+  const { name, settled } = useMemberName(namespaceId, memberId);
+  // Null while the name loads, so labels never call a named member unnamed.
+  const label = name ?? (settled ? UNNAMED_MEMBER_LABEL : null);
   return (
     <li className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1">
       <MemberLabel
@@ -53,7 +53,7 @@ function ManagerRow({
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
           disabled={busy}
-          aria-label={`Remove ${resolvedName} from people who can set folder roles`}
+          aria-label={`Remove ${label ?? 'member'} from people who can set folder roles`}
           onClick={() => onRemove(memberId)}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -72,7 +72,7 @@ export function WorkspaceSettingsPanel() {
     registryDuplicates,
   } = useDriveWorkspace();
   // Display-name routing in this panel uses the namespace id (not the
-  // registry context id) — display names are per-namespace, the same
+  // registry context id) - display names are per-namespace, the same
   // scope as core's MemberMetadata.
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const reg = useRegistryAdmin();
@@ -198,7 +198,7 @@ export function WorkspaceSettingsPanel() {
 
         {/* Leftovers from the `contexts[0]` era. A namespace could accumulate
             several registry contexts, and which one the app read depended on
-            list order — so one node showed the folders and another showed an
+            list order - so one node showed the folders and another showed an
             empty workspace. The resolver now adopts the one holding the data
             and pins it, but the extra contexts still exist on the node, and an
             admin looking for "why did I see nothing yesterday" deserves to be
@@ -300,7 +300,7 @@ export function WorkspaceSettingsPanel() {
                     {/* MemberPicker autocompletes against the namespace's
                         existing members; excludes the current owner and
                         anyone already a manager so they can't be re-added.
-                        Free-form Enter still commits a raw pubkey paste —
+                        Free-form Enter still commits a raw pubkey paste -
                         the existing looksLikeMemberIdentity check in
                         onAddManager runs unchanged. */}
                     <MemberPicker

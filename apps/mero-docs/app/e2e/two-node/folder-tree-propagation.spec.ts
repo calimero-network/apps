@@ -1,6 +1,6 @@
-// Folder tree propagation — tests 47-49. Verifies nested folder
+// Folder tree propagation - tests 47-49. Verifies nested folder
 // creation and deletion both replicate from Alice's node to Bob's.
-// Reparent is deferred — the driver doesn't yet expose a reparent
+// Reparent is deferred - the driver doesn't yet expose a reparent
 // helper (the underlying admin-api endpoint is wired but the UI
 // affordance is drag-driven).
 
@@ -58,7 +58,7 @@ test.describe('Folder tree propagation (two-node)', () => {
 
     await alice.deleteFolder('C');
     await bob.tree.expectFolderHidden('C', { timeout: 60_000 });
-    // A and B remain — verify the delete didn't cascade upward.
+    // A and B remain - verify the delete didn't cascade upward.
     await bob.tree.expectFolderVisible('A');
     await bob.tree.expectFolderVisible('B');
   });

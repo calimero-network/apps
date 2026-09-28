@@ -3,10 +3,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import {
+  PRESENCE_BEAT_MS as BEAT_MS,
+  PRESENCE_STALE_MS as STALE_MS,
+} from '@/lib/presenceTiming';
+import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
 import { useWarnOnError } from './useWarnOnError';
 
-const BEAT_MS = 10_000; // how often an open workspace changes its slice
-const STALE_MS = 25_000; // a closed tab's node keeps replaying its last slice, so age it out here
 const LEAVE_SLICE = {}; // carries no account, so every reader drops the author
 
 /** The author is the node's key, so `a` names the (self-asserted, never gating)
@@ -28,15 +31,16 @@ export function usePublishWorkspacePresence(
     if (!ephemeral || !contextId || !selfAccount) return;
     let n = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
-    const beat = () =>
-      ephemeral
+    const beat = () => {
+      cancelLeave(contextId);
+      return ephemeral
         .set(contextId, { a: selfAccount, n: n++ })
         .catch((err: unknown) =>
           console.warn('[useWorkspacePresence] presence off', err),
         );
+    };
     // The node heartbeats the last slice until it leaves the context, so say so.
-    const leave = () =>
-      void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+    const leave = () => leaveContext(ephemeral, contextId, LEAVE_SLICE);
     // A hidden tab's timers can be throttled past STALE_MS, so it leaves instead.
     const onVisibility = () => {
       clearInterval(timer);

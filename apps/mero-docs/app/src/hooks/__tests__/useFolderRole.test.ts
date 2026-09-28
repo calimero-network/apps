@@ -103,13 +103,36 @@ describe('useFolderRole', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('keeps the resolved role, with no error, when a re-read fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderHook(() => useFolderRole('f1'));
+    await waitFor(() => expect(result.current.role).toBe('Editor'));
+    getFolderRoleMock.mockRejectedValue(new Error('HTTP 502'));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(getFolderRoleMock).toHaveBeenCalledTimes(2));
+    expect(result.current.role).toBe('Editor');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('still surfaces a failed read for a folder it never resolved', async () => {
+    const { result, rerender } = renderHook(({ id }) => useFolderRole(id), {
+      initialProps: { id: 'f1' },
+    });
+    await waitFor(() => expect(result.current.role).toBe('Editor'));
+    getFolderRoleMock.mockRejectedValue(new Error('HTTP 502'));
+    rerender({ id: 'f2' });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.role).toBeNull();
+  });
+
   it('refetch() does NOT flip role back to null while the new fetch is pending', async () => {
     // First resolution: Editor.
     getFolderRoleMock.mockResolvedValue('Editor');
     const { result } = renderHook(() => useFolderRole('f1'));
     await waitFor(() => expect(result.current.role).toBe('Editor'));
 
-    // Set up the next fetch to be slow (pending) — we want to observe
+    // Set up the next fetch to be slow (pending) - we want to observe
     // the in-flight state directly. Then trigger a refetch.
     let resolveNext: (v: 'Viewer') => void = () => {};
     getFolderRoleMock.mockImplementation(
@@ -123,7 +146,7 @@ describe('useFolderRole', () => {
     });
 
     // While the new fetch is in flight, the *previous* role value
-    // remains visible — this is the flicker-prevention contract.
+    // remains visible - this is the flicker-prevention contract.
     // `loading` is true; `role` is not null.
     await waitFor(() => expect(result.current.loading).toBe(true));
     expect(result.current.role).toBe('Editor');

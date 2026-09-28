@@ -54,7 +54,7 @@ const seen = new Set();
 const queue = eagerSeeds.map((h) => basename(h));
 // Any chunk named by index.html that we cannot find on disk means the walk is
 // looking in the wrong place, and an unwalked graph reports an empty eager set
-// — a pass on whatever it failed to inspect. Fail instead of guessing.
+// - a pass on whatever it failed to inspect. Fail instead of guessing.
 const missing = [];
 
 while (queue.length > 0) {
@@ -91,7 +91,7 @@ for (const name of MUST_BE_LAZY) {
     console.error(
       `FAIL  ${hit} is in the eager graph but must be demand-loaded.\n` +
         `      Something the entry imports was merged into it. Check ` +
-        `manualChunks in vite.config.js — shared modules (vite's preload ` +
+        `manualChunks in vite.config.js - shared modules (vite's preload ` +
         `helper, clsx) must be pinned to an eager chunk so Rollup cannot ` +
         `fold them into a lazy one.`,
     );

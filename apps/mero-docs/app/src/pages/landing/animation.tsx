@@ -1,37 +1,40 @@
 /**
- * Mero Docs - the hero animation: the app's own workspace.
+ * Mero Docs - the hero animation: the app's own workspace, on Home.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
  * ⚠️ DRAWN FROM THE RUNNING APP. The workspace shell was booted with auth
  * injected and the node mocked, and screenshotted. Its own e2e suites are
- * `single-node` / `two-node` and need real merod, so the tree and the editor
- * are reconstructed from their components — but the CHROME below is traced off
+ * `single-node` / `two-node` and need real merod, so the rail and Home are
+ * reconstructed from their components, but the CHROME below is traced off
  * the real thing, and it corrected three guesses:
  *   • the shell is full-bleed. One bar across the top with a hairline under it
- *     and a hairline between rail and main — not floating rounded cards.
+ *     and a hairline between rail and main, not floating rounded cards.
  *   • the top bar carries a sidebar toggle, the mark, the name, then the
  *     workspace switcher (name and an up/down chevron; New and Join live in
- *     its menu), and on the right the node dot, the node URL, a theme toggle
- *     and Log out.
- *   • the rail has its own header row — FOLDERS, a New button, a bottom rule —
- *     above the tree.
+ *     its menu), the search field in the centre (`search/TopBarSearch.tsx`),
+ *     and on the right the node dot, the node URL, a theme toggle and Log out.
+ *   • the rail's sections each have a header row in small caps.
  *
  * The rest is component by component:
- *   • `folders/FolderTree.tsx` — the header row and the `<ul>` of rows.
- *   • `folders/FolderTreeItem.tsx` — chevron, folder icon, alias, and a LOCK
- *     on a restricted folder. The selected row is tinted.
- *   • `folders/FolderDocLeaves.tsx` — documents nested under their expanded
- *     folder with a file icon, indented past the chevron column.
- *   • `editor/EditorHeader.tsx` — "‹" and the folder it returns to, the file
- *     icon and title centred, then who else is here and a menu on the right.
- *   • `editor/EditorStatusBar.tsx` — save state, word count, character count.
+ *   • `workspace/SidebarNav.tsx`: Home with its count (selected), Mentions,
+ *     then Views and Tags, each row with a count on the right; a tag row leads
+ *     with its dot.
+ *   • `folders/FolderTree.tsx`: FOLDERS with a New button, colour swatches,
+ *     and a LOCK on a restricted folder.
+ *   • `home/HomeHeader.tsx`, `home/FilterBar.tsx`, `home/DocTable.tsx`: the
+ *     title and count, New document, the filter chips and sort, then the list
+ *     with Name, Folder, Tags and Updated, and "Bob is here" on a live row.
  *
- * COLOUR stays the page's tokens so the hero follows the page's theme toggle.
+ * COLOUR stays the page's tokens so the hero follows the page's theme toggle;
+ * folder swatches and tag dots are the app's own fixed palette.
  *
- * Coordinates are literal pixels against a 495x341 box — see STAGE_DESIGN_W in
+ * Coordinates are literal pixels against a 495x341 box: see STAGE_DESIGN_W in
  * LandingPage.tsx.
  */
+
+import { COLOR_PRESETS } from '@/constants/config';
+import { TAG_COLORS, TAG_COLOR_NAMES, TAG_NEUTRAL } from '@/lib/tags';
 
 /* ── Layout: the three-pane shell, full-bleed like the app ───────────── */
 const L = 20;
@@ -42,9 +45,13 @@ const BODY_TOP = BAR_TOP + BAR_H;
 const BODY_BOTTOM = 306;
 const RAIL_W = 136;
 const MAIN_X = L + RAIL_W + 1;
-const RAIL_HEAD = 18;
-const HEADER_H = 24;
-const STATUS_H = 21;
+const NAV_ROW_H = 16;
+const LIST_TOP = BODY_TOP + 80;
+const LIST_ROW_H = 22;
+const COL_FOLDER = MAIN_X + 132; // Name | Folder | Tags | Updated, as DocTable
+const COL_TAGS = MAIN_X + 204;
+const SEARCH_X = L + 176; // the search field is centred in the gap between the switcher and the node URL
+const SEARCH_W = 128;
 
 const TXT = { fontFamily: 'var(--cal-lp-font)', lineHeight: 1 } as const;
 const ROW = { display: 'flex', alignItems: 'center' } as const;
@@ -82,14 +89,9 @@ const Plus = () => (
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
-const Chevron = ({ open }: { open: boolean }) => (
+const Chevron = () => (
   <svg viewBox="0 0 24 24" width="8" height="8" {...S}>
-    {open ? <polyline points="6 9 12 15 18 9" /> : <polyline points="9 18 15 12 9 6" />}
-  </svg>
-);
-const FolderIcon = () => (
-  <svg viewBox="0 0 24 24" width="10" height="10" {...S}>
-    <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z" />
+    <polyline points="9 18 15 12 9 6" />
   </svg>
 );
 const FileIcon = ({ size = 10 }: { size?: number }) => (
@@ -100,6 +102,12 @@ const FileIcon = ({ size = 10 }: { size?: number }) => (
     <line x1="8" y1="17" x2="13" y2="17" />
   </svg>
 );
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" width="8" height="8" {...S}>
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
 const LockIcon = () => (
   <svg viewBox="0 0 24 24" width="8" height="8" {...S}>
     <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -107,85 +115,376 @@ const LockIcon = () => (
   </svg>
 );
 
-/* ── The tree ────────────────────────────────────────────────────────── */
-interface Row {
-  label: string;
-  depth: number;
-  kind: 'folder' | 'doc';
-  open?: boolean;
+const House = () => (
+  <svg viewBox="0 0 24 24" width="10" height="10" {...S}>
+    <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+    <path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+  </svg>
+);
+const AtSign = () => (
+  <svg viewBox="0 0 24 24" width="10" height="10" {...S}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+  </svg>
+);
+const Bookmark = () => (
+  <svg viewBox="0 0 24 24" width="9" height="9" {...S}>
+    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" />
+  </svg>
+);
+const SortIcon = () => (
+  <svg viewBox="0 0 24 24" width="8" height="8" {...S}>
+    <path d="m3 16 4 4 4-4M7 20V4M11 4h10M11 8h7M11 12h4" />
+  </svg>
+);
+
+/* ── The data both panes show ────────────────────────────────────────── */
+const tagHex = (name: (typeof TAG_COLOR_NAMES)[number]) =>
+  TAG_COLORS[TAG_COLOR_NAMES.indexOf(name)];
+const folderHex = (label: string) =>
+  COLOR_PRESETS.find((c) => c.label === label)?.value ?? TAG_NEUTRAL;
+const BLUE = folderHex('Blue');
+const PURPLE = folderHex('Purple');
+const GREEN = folderHex('Green');
+
+const TAGS = [
+  { name: 'roadmap', color: tagHex('Blue'), count: 3 },
+  { name: 'design', color: tagHex('Purple'), count: 2 },
+  { name: 'q3', color: tagHex('Slate'), count: 2 },
+];
+const FOLDERS = [
+  { name: 'Product', color: BLUE },
+  { name: 'Design', color: PURPLE, lock: true },
+  { name: 'Engineering', color: GREEN, lock: true },
+];
+const DOCS: {
+  title: string;
+  folder: string;
+  color: string;
+  tags: string[];
+  updated: string;
+  live?: string;
+}[] = [
+  {
+    title: 'Q3 roadmap',
+    folder: 'Product',
+    color: BLUE,
+    tags: ['roadmap', 'q3'],
+    updated: '2 min ago',
+    live: 'Bob is here',
+  },
+  {
+    title: 'API spec v2',
+    folder: 'Engineering / Specs',
+    color: GREEN,
+    tags: ['design'],
+    updated: '18 min ago',
+  },
+  {
+    title: 'Brand guidelines',
+    folder: 'Design',
+    color: PURPLE,
+    tags: ['design'],
+    updated: '1 h ago',
+  },
+  {
+    title: 'Launch plan',
+    folder: 'Product',
+    color: BLUE,
+    tags: ['roadmap'],
+    updated: 'Yesterday',
+  },
+  {
+    title: 'Pricing notes',
+    folder: 'Product',
+    color: BLUE,
+    tags: ['q3', 'roadmap'],
+    updated: 'Sep 20',
+  },
+  {
+    title: 'Incident runbook',
+    folder: 'Engineering',
+    color: GREEN,
+    tags: [],
+    updated: 'Sep 17',
+  },
+  {
+    title: 'Hiring loop',
+    folder: 'Design',
+    color: PURPLE,
+    tags: [],
+    updated: 'Sep 12',
+  },
+];
+const CHIPS = [
+  { label: 'Folder', w: 34 },
+  { label: 'Tag', w: 26 },
+  { label: 'Updated', w: 40 },
+  { label: 'Created by', w: 48 },
+  { label: 'Archived', w: 40 },
+];
+const tagColor = (name: string) =>
+  TAGS.find((t) => t.name === name)?.color ?? TAG_NEUTRAL;
+
+/** A rail section header, as SidebarSectionHeader draws it. */
+function RailHead({ label, top }: { label: string; top: number }) {
+  return (
+    <span
+      className="cal-lp-a-txt cal-lp-a-txt--head"
+      style={{ left: L + 10, top, fontSize: 6.5, letterSpacing: '0.08em' }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** A rail row: a lead (icon, dot or swatch), the name, and a count or a lock on the right. */
+function RailRow({
+  top,
+  lead,
+  name,
+  count,
+  lock,
+  selected,
+}: {
+  top: number;
+  lead: React.ReactNode;
+  name: string;
+  count?: number;
   lock?: boolean;
   selected?: boolean;
+}) {
+  return (
+    <span>
+      {selected && (
+        <span
+          className="cal-lp-a-box"
+          style={{
+            left: L + 6,
+            top,
+            width: RAIL_W - 12,
+            height: NAV_ROW_H,
+            borderRadius: 4,
+            background: 'var(--cal-lp-accent-soft)',
+            borderColor: 'transparent',
+          }}
+        />
+      )}
+      <span
+        style={{
+          ...ROW,
+          ...TXT,
+          position: 'absolute',
+          left: L + 10,
+          top: top + 4,
+          width: RAIL_W - 20,
+          gap: 5,
+          fontSize: 8,
+          fontWeight: selected ? 650 : 400,
+          color: selected ? 'var(--cal-lp-accent-ink)' : 'var(--cal-lp-text)',
+        }}
+      >
+        <span
+          style={{
+            display: 'inline-flex',
+            width: 10,
+            justifyContent: 'center',
+            color: 'var(--cal-lp-text-faint)',
+          }}
+        >
+          {lead}
+        </span>
+        <span style={{ flex: 1 }}>{name}</span>
+        {lock && (
+          <span
+            style={{
+              display: 'inline-flex',
+              color: 'var(--cal-lp-text-faint)',
+            }}
+          >
+            <LockIcon />
+          </span>
+        )}
+        {count !== undefined && (
+          <span style={{ fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>
+            {count}
+          </span>
+        )}
+      </span>
+    </span>
+  );
 }
-const TREE: Row[] = [
-  { label: 'Product team', depth: 0, kind: 'folder', open: true },
-  { label: 'Product', depth: 1, kind: 'folder', open: true },
-  { label: 'specs', depth: 2, kind: 'folder', open: true, lock: true },
-  { label: 'Q3 roadmap', depth: 3, kind: 'doc', selected: true },
-  { label: 'Auth rollout', depth: 3, kind: 'doc' },
-  { label: 'research', depth: 2, kind: 'folder' },
-  { label: 'Design', depth: 1, kind: 'folder', lock: true },
-  { label: 'Legal', depth: 1, kind: 'folder', lock: true },
-];
-const ROW_H = 21;
 
-/* ── The document, as BlockNote lays it out ──────────────────────────── */
-const BLOCKS: { w: number; kind: 'h' | 'p' | 'li'; d: string }[] = [
-  { w: 0.95, kind: 'p', d: '0.4s' },
-  { w: 0.88, kind: 'p', d: '0.5s' },
-  { w: 0.44, kind: 'p', d: '0.6s' },
-  { w: 0.34, kind: 'h', d: '1.0s' },
-  { w: 0.82, kind: 'li', d: '1.3s' },
-  { w: 0.7, kind: 'li', d: '1.5s' },
-  { w: 0.88, kind: 'li', d: '1.7s' },
-  { w: 0.93, kind: 'p', d: '2.2s' },
-  { w: 0.6, kind: 'p', d: '2.4s' },
-];
+const Swatch = ({ color, size = 6 }: { color: string; size?: number }) => (
+  <span
+    style={{
+      display: 'inline-block',
+      width: size,
+      height: size,
+      borderRadius: 1.5,
+      background: color,
+    }}
+  />
+);
+const Dot = ({ color }: { color: string }) => (
+  <span
+    style={{
+      display: 'inline-block',
+      width: 5,
+      height: 5,
+      borderRadius: '50%',
+      background: color,
+    }}
+  />
+);
 
-/** A bordered control in the top bar, the app's `Button variant="outline"`. */
 export default function DriveAnimation() {
   const mainW = R - MAIN_X;
-  const docX = MAIN_X + 26;
-  const docW = mainW - 52;
-  const bodyTop = BODY_TOP + HEADER_H + 12;
-  let y = bodyTop + 30;
+  const viewsTop = BODY_TOP + 6 + 2 * NAV_ROW_H + 8;
+  const tagsTop = viewsTop + 14 + NAV_ROW_H + 8;
+  const foldersTop = tagsTop + 14 + TAGS.length * NAV_ROW_H + 8;
 
   return (
     <div className="cal-lp-a" aria-hidden="true">
       {/* ── Top bar ─────────────────────────────────────────────────── */}
       <span
         className="cal-lp-a-pane"
-        style={{ left: L, top: BAR_TOP, width: R - L, height: BAR_H, border: 'none', borderRadius: 0 }}
+        style={{
+          left: L,
+          top: BAR_TOP,
+          width: R - L,
+          height: BAR_H,
+          border: 'none',
+          borderRadius: 0,
+        }}
       />
-      <span className="cal-lp-a-line" style={{ left: L, top: BAR_TOP + BAR_H, width: R - L, height: 1 }} />
+      <span
+        className="cal-lp-a-line"
+        style={{ left: L, top: BAR_TOP + BAR_H, width: R - L, height: 1 }}
+      />
 
-      <span style={{ position: 'absolute', left: L + 7, top: BAR_TOP + 8, color: 'var(--cal-lp-text-faint)' }}>
+      <span
+        style={{
+          position: 'absolute',
+          left: L + 7,
+          top: BAR_TOP + 8,
+          color: 'var(--cal-lp-text-faint)',
+        }}
+      >
         <PanelLeft />
       </span>
       <span
         className="cal-lp-a-box"
-        style={{ left: L + 23, top: BAR_TOP + 8, width: 11, height: 11, borderRadius: 3, background: 'var(--cal-lp-accent)', borderColor: 'transparent' }}
+        style={{
+          left: L + 23,
+          top: BAR_TOP + 8,
+          width: 11,
+          height: 11,
+          borderRadius: 3,
+          background: 'var(--cal-lp-accent)',
+          borderColor: 'transparent',
+        }}
       />
-      <span className="cal-lp-a-txt cal-lp-a-txt--val" style={{ left: L + 39, top: BAR_TOP + 10, fontSize: 8.5, fontWeight: 700 }}>
+      <span
+        className="cal-lp-a-txt cal-lp-a-txt--val"
+        style={{
+          left: L + 39,
+          top: BAR_TOP + 10,
+          fontSize: 8.5,
+          fontWeight: 700,
+        }}
+      >
         Mero Docs
       </span>
-      <span className="cal-lp-a-line" style={{ left: L + 92, top: BAR_TOP + 6, width: 1, height: 14 }} />
+      <span
+        className="cal-lp-a-line"
+        style={{ left: L + 92, top: BAR_TOP + 6, width: 1, height: 14 }}
+      />
 
       {/* NamespaceSwitcher: a ghost button, the name and an up/down chevron. */}
       <span
-        style={{ ...ROW, ...TXT, position: 'absolute', left: L + 100, top: BAR_TOP + 9, gap: 4, fontSize: 7.5, color: 'var(--cal-lp-text)' }}
+        style={{
+          ...ROW,
+          ...TXT,
+          position: 'absolute',
+          left: L + 100,
+          top: BAR_TOP + 9,
+          gap: 4,
+          fontSize: 7.5,
+          color: 'var(--cal-lp-text)',
+        }}
       >
         Product team
-        <span style={{ fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>⇅</span>
+        <span style={{ fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>
+          ⇅
+        </span>
+      </span>
+
+      {/* TopBarSearch: the field, its placeholder and the shortcut, centred. */}
+      <span
+        className="cal-lp-a-box"
+        style={{
+          ...ROW,
+          ...TXT,
+          left: SEARCH_X,
+          top: BAR_TOP + 5,
+          width: SEARCH_W,
+          height: 16,
+          gap: 4,
+          padding: '0 3px 0 6px',
+          fontSize: 6.5,
+          color: 'var(--cal-lp-text-faint)',
+        }}
+      >
+        <SearchIcon />
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Search docs, folders and #tags
+        </span>
+        <span
+          style={{
+            padding: '2px 3px',
+            borderRadius: 3,
+            border: '1px solid var(--cal-lp-border)',
+            background: 'var(--cal-lp-bg-1)',
+            fontSize: 5.5,
+          }}
+        >
+          ⌘K
+        </span>
       </span>
 
       <span
         className="cal-lp-a-dot"
-        style={{ left: R - 128, top: BAR_TOP + 11, width: 5, height: 5, background: 'var(--cal-lp-accent)' }}
+        style={{
+          left: R - 128,
+          top: BAR_TOP + 11,
+          width: 5,
+          height: 5,
+          background: 'var(--cal-lp-accent)',
+        }}
       />
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: R - 119, top: BAR_TOP + 10, fontSize: 7.5 }}>
+      <span
+        className="cal-lp-a-txt cal-lp-a-txt--dim"
+        style={{ left: R - 119, top: BAR_TOP + 10, fontSize: 7.5 }}
+      >
         localhost:2428
       </span>
-      <span style={{ position: 'absolute', left: R - 56, top: BAR_TOP + 8, color: 'var(--cal-lp-text-faint)' }}>
+      <span
+        style={{
+          position: 'absolute',
+          left: R - 56,
+          top: BAR_TOP + 8,
+          color: 'var(--cal-lp-text-faint)',
+        }}
+      >
         <Sun />
       </span>
       <span
@@ -204,83 +503,81 @@ export default function DriveAnimation() {
         Log out
       </span>
 
-      {/* ── Left rail: the folder tree ──────────────────────────────── */}
-      <span className="cal-lp-a-line" style={{ left: L + RAIL_W, top: BODY_TOP, width: 1, height: BODY_BOTTOM - BODY_TOP }} />
-      <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: L + 10, top: BODY_TOP + 6, fontSize: 7, letterSpacing: '0.07em' }}>
-        Folders
-      </span>
+      {/* ── Left rail: Home, Views, Tags, then the folder tree ──────── */}
+      <span
+        className="cal-lp-a-line"
+        style={{
+          left: L + RAIL_W,
+          top: BODY_TOP,
+          width: 1,
+          height: BODY_BOTTOM - BODY_TOP,
+        }}
+      />
+      <RailRow
+        top={BODY_TOP + 6}
+        lead={<House />}
+        name="Home"
+        count={12}
+        selected
+      />
+      <RailRow
+        top={BODY_TOP + 6 + NAV_ROW_H}
+        lead={<AtSign />}
+        name="Mentions"
+        count={2}
+      />
+
+      <RailHead label="Views" top={viewsTop} />
+      <RailRow
+        top={viewsTop + 10}
+        lead={<Bookmark />}
+        name="Design this week"
+        count={2}
+      />
+
+      <RailHead label="Tags" top={tagsTop} />
+      {TAGS.map((t, i) => (
+        <RailRow
+          key={t.name}
+          top={tagsTop + 10 + i * NAV_ROW_H}
+          lead={<Dot color={t.color} />}
+          name={t.name}
+          count={t.count}
+        />
+      ))}
+
+      <RailHead label="Folders" top={foldersTop} />
       <span
         style={{
           ...ROW,
           ...TXT,
           position: 'absolute',
-          left: L + RAIL_W - 34,
-          top: BODY_TOP + 5,
+          left: L + RAIL_W - 32,
+          top: foldersTop - 1,
           gap: 2,
-          fontSize: 7.5,
+          fontSize: 7,
           color: 'var(--cal-lp-text-dim)',
         }}
       >
         <Plus />
         New
       </span>
-      <span className="cal-lp-a-line" style={{ left: L, top: BODY_TOP + RAIL_HEAD, width: RAIL_W, height: 1 }} />
-
-      {TREE.map((row, i) => {
-        const top = BODY_TOP + RAIL_HEAD + 6 + i * ROW_H;
-        return (
-          <span key={row.label}>
-            {row.selected && (
-              <span
-                className="cal-lp-a-box"
-                style={{
-                  left: L + 6,
-                  top,
-                  width: RAIL_W - 14,
-                  height: ROW_H - 4,
-                  borderRadius: 4,
-                  background: 'var(--cal-lp-accent-soft)',
-                  borderColor: 'transparent',
-                }}
-              />
-            )}
-            <span
-              style={{
-                ...ROW,
-                ...TXT,
-                position: 'absolute',
-                left: L + 8 + row.depth * 9,
-                top: top + 4,
-                gap: 4,
-                fontSize: 8.5,
-                fontWeight: row.selected ? 650 : 400,
-                color: row.selected
-                  ? 'var(--cal-lp-accent-ink)'
-                  : row.kind === 'doc'
-                    ? 'var(--cal-lp-text-dim)'
-                    : 'var(--cal-lp-text)',
-              }}
-            >
-              {/* Docs get a blank chevron column, so their file icon lines up
-                  under a sibling subfolder's folder icon. */}
-              <span style={{ width: 8, display: 'inline-flex', color: 'var(--cal-lp-text-faint)' }}>
-                {row.kind === 'folder' && <Chevron open={!!row.open} />}
-              </span>
-              <span style={{ display: 'inline-flex', opacity: row.selected ? 1 : 0.75 }}>
-                {row.kind === 'folder' ? <FolderIcon /> : <FileIcon />}
-              </span>
-              {row.label}
-              {row.lock && (
-                <span style={{ display: 'inline-flex', color: 'var(--cal-lp-text-faint)' }}>
-                  <LockIcon />
-                </span>
-              )}
+      {FOLDERS.map((f, i) => (
+        <RailRow
+          key={f.name}
+          top={foldersTop + 10 + i * NAV_ROW_H}
+          lead={
+            <span style={{ ...ROW, gap: 3 }}>
+              <Chevron />
+              <Swatch color={f.color} />
             </span>
-          </span>
-        );
-      })}
+          }
+          name={f.name}
+          lock={f.lock}
+        />
+      ))}
 
-      {/* ── Main pane: the editor ───────────────────────────────────── */}
+      {/* ── Main pane: Home ─────────────────────────────────────────── */}
       <span
         className="cal-lp-a-pane"
         style={{
@@ -293,130 +590,227 @@ export default function DriveAnimation() {
           background: 'var(--cal-lp-bg-1)',
         }}
       />
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: MAIN_X + 10, top: BODY_TOP + 9, fontSize: 8 }}>
-        ‹ specs
+      <span
+        className="cal-lp-a-txt cal-lp-a-txt--val"
+        style={{
+          left: MAIN_X + 14,
+          top: BODY_TOP + 12,
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        Home
       </span>
+      <span
+        className="cal-lp-a-txt cal-lp-a-txt--dim"
+        style={{ left: MAIN_X + 14, top: BODY_TOP + 28, fontSize: 7 }}
+      >
+        12 documents across 4 folders
+      </span>
+      {/* New document: the primary button, a lime fill. */}
       <span
         style={{
           ...ROW,
           ...TXT,
           position: 'absolute',
-          left: MAIN_X,
-          top: BODY_TOP + 8,
-          width: mainW,
-          gap: 4,
-          justifyContent: 'center',
-          fontSize: 8.5,
-          fontWeight: 600,
-          color: 'var(--cal-lp-text)',
-        }}
-      >
-        <span style={{ display: 'inline-flex', color: 'var(--cal-lp-text-faint)' }}>
-          <FileIcon />
-        </span>
-        Q3 roadmap
-      </span>
-      {/* PeerAvatars: Ana, in her caret colour. */}
-      <span
-        className="cal-lp-a-dot"
-        style={{
-          ...ROW,
-          ...TXT,
-          left: R - 40,
-          top: BODY_TOP + 5,
-          width: 14,
-          height: 14,
-          justifyContent: 'center',
-          fontSize: 5.5,
-          fontWeight: 700,
+          left: R - 74,
+          top: BODY_TOP + 12,
+          height: 15,
+          padding: '0 6px',
+          gap: 3,
+          borderRadius: 4,
+          fontSize: 6.5,
+          fontWeight: 650,
           background: 'var(--cal-lp-accent)',
           color: 'var(--cal-lp-accent-text)',
         }}
       >
-        AN
+        <Plus />
+        New document
       </span>
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: R - 20, top: BODY_TOP + 7, fontSize: 10 }}>
-        ⋯
-      </span>
-      <span className="cal-lp-a-line" style={{ left: MAIN_X, top: BODY_TOP + HEADER_H, width: mainW, height: 1 }} />
 
-      <span className="cal-lp-a-txt cal-lp-a-txt--val" style={{ left: docX, top: bodyTop, fontSize: 15, fontWeight: 700 }}>
-        Q3 roadmap
-      </span>
-      {BLOCKS.map((b, i) => {
-        const isH = b.kind === 'h';
-        const top = y;
-        y += isH ? 24 : 16;
+      {/* FilterBar: the chips, then the sort on the right. */}
+      {CHIPS.map((c, i) => {
+        const left =
+          MAIN_X + 14 + CHIPS.slice(0, i).reduce((x, p) => x + p.w + 4, 0);
         return (
-          <span key={i}>
-            {b.kind === 'li' && (
-              <span
-                className="cal-lp-a-dot"
-                style={{ left: docX, top: top + 2, width: 3, height: 3, background: 'var(--cal-lp-text-faint)' }}
-              />
-            )}
+          <span
+            key={c.label}
+            className="cal-lp-a-box"
+            style={{
+              ...ROW,
+              ...TXT,
+              left,
+              top: BODY_TOP + 42,
+              width: c.w,
+              height: 12,
+              justifyContent: 'center',
+              borderRadius: 999,
+              fontSize: 6,
+              color: 'var(--cal-lp-text-dim)',
+              background: 'var(--cal-lp-bg-1)',
+            }}
+          >
+            {c.label}
+          </span>
+        );
+      })}
+      <span
+        style={{
+          ...ROW,
+          ...TXT,
+          position: 'absolute',
+          right: 34,
+          top: BODY_TOP + 45,
+          gap: 3,
+          fontSize: 6.5,
+          color: 'var(--cal-lp-text-dim)',
+        }}
+      >
+        <SortIcon />
+        Last updated
+      </span>
+      <span
+        className="cal-lp-a-line"
+        style={{ left: MAIN_X, top: BODY_TOP + 62, width: mainW, height: 1 }}
+      />
+
+      {/* DocTable: the header row, then one row per doc, newest first. */}
+      {[
+        ['Name', MAIN_X + 14],
+        ['Folder', COL_FOLDER],
+        ['Tags', COL_TAGS],
+      ].map(([label, left]) => (
+        <span
+          key={label}
+          className="cal-lp-a-txt cal-lp-a-txt--head"
+          style={{ left, top: BODY_TOP + 68, fontSize: 5.5 }}
+        >
+          {label}
+        </span>
+      ))}
+      <span
+        className="cal-lp-a-txt cal-lp-a-txt--head"
+        style={{ right: 34, top: BODY_TOP + 68, fontSize: 5.5 }}
+      >
+        Updated
+      </span>
+      {DOCS.map((d, i) => {
+        const top = LIST_TOP + i * LIST_ROW_H;
+        return (
+          // The newest row fades in: a peer's new doc arriving live.
+          <span
+            key={d.title}
+            className={i === 0 ? 'cal-lp-a-in' : undefined}
+            style={{ ['--t' as string]: '6s' }}
+          >
             <span
-              className="cal-lp-a-line cal-lp-a-grow"
+              className="cal-lp-a-line"
               style={{
-                left: b.kind === 'li' ? docX + 9 : docX,
-                top,
-                width: (b.kind === 'li' ? docW - 9 : docW) * b.w,
-                height: isH ? 9 : 6,
-                borderRadius: 3,
-                background: isH ? 'var(--cal-lp-border-strong)' : 'var(--cal-lp-border)',
-                transformOrigin: 'left',
-                ['--d' as string]: b.d,
-                ['--t' as string]: '6s',
+                left: MAIN_X + 8,
+                top: top - 2,
+                width: mainW - 16,
+                height: 1,
               }}
             />
+            <span
+              style={{
+                ...ROW,
+                ...TXT,
+                position: 'absolute',
+                left: MAIN_X + 14,
+                top: top + 6,
+                gap: 4,
+                fontSize: 7.5,
+                fontWeight: 600,
+                color: 'var(--cal-lp-text)',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  color: 'var(--cal-lp-text-faint)',
+                }}
+              >
+                <FileIcon size={8} />
+              </span>
+              {d.title}
+              {d.live && (
+                <span
+                  className="cal-lp-a-blink"
+                  style={{
+                    ...ROW,
+                    gap: 2,
+                    fontSize: 5.5,
+                    fontWeight: 650,
+                    color: 'var(--cal-lp-accent-ink)',
+                    ['--t' as string]: '3s',
+                  }}
+                >
+                  <Dot color="var(--cal-lp-accent)" />
+                  {d.live}
+                </span>
+              )}
+            </span>
+            <span
+              style={{
+                ...ROW,
+                ...TXT,
+                position: 'absolute',
+                left: COL_FOLDER,
+                top: top + 6,
+                gap: 3,
+                fontSize: 6.5,
+                color: 'var(--cal-lp-text-dim)',
+              }}
+            >
+              <Swatch color={d.color} size={5} />
+              {d.folder}
+            </span>
+            <span
+              style={{
+                ...ROW,
+                ...TXT,
+                position: 'absolute',
+                left: COL_TAGS,
+                top: top + 4,
+                gap: 2,
+              }}
+            >
+              {d.tags.map((t) => (
+                <span
+                  key={t}
+                  style={{
+                    ...ROW,
+                    gap: 2,
+                    padding: '1.5px 3px',
+                    borderRadius: 3,
+                    fontSize: 5.5,
+                    color: 'var(--cal-lp-text-dim)',
+                    background: 'var(--cal-lp-bg-3)',
+                  }}
+                >
+                  <Dot color={tagColor(t)} />
+                  {t}
+                </span>
+              ))}
+            </span>
+            <span
+              className="cal-lp-a-txt cal-lp-a-txt--dim"
+              style={{ right: 34, top: top + 6, fontSize: 6.5 }}
+            >
+              {d.updated}
+            </span>
           </span>
         );
       })}
 
-      {/* Somebody else's caret, mid-paragraph — the collab editor's presence. */}
       <span
-        className="cal-lp-a-box cal-lp-a-blink"
-        style={{
-          left: docX + docW * 0.6 + 4,
-          top: y - 16,
-          width: 1.5,
-          height: 11,
-          borderRadius: 0,
-          background: 'var(--cal-lp-accent)',
-          borderColor: 'transparent',
-          ['--t' as string]: '6s',
-        }}
-      />
-      <span
-        className="cal-lp-a-chip cal-lp-a-blink"
-        style={{
-          left: docX + docW * 0.6 + 6,
-          top: y - 27,
-          padding: '2px 5px',
-          fontSize: 7,
-          background: 'var(--cal-lp-accent)',
-          color: 'var(--cal-lp-accent-text)',
-          ['--t' as string]: '6s',
-        }}
+        className="cal-lp-a-txt cal-lp-a-txt--dim"
+        style={{ left: 20, bottom: 3, fontSize: 8.5 }}
       >
-        Ana
-      </span>
-
-      {/* EditorStatusBar: save state, then the two counts. */}
-      <span className="cal-lp-a-line" style={{ left: MAIN_X, top: BODY_BOTTOM - STATUS_H, width: mainW, height: 1 }} />
-      <span
-        className="cal-lp-a-dot"
-        style={{ left: MAIN_X + 10, top: BODY_BOTTOM - STATUS_H + 8, width: 5, height: 5, background: 'var(--cal-lp-accent)' }}
-      />
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: MAIN_X + 20, top: BODY_BOTTOM - STATUS_H + 7, fontSize: 8 }}>
-        Saved
-      </span>
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ right: 26, top: BODY_BOTTOM - STATUS_H + 7, fontSize: 8 }}>
-        412 words · 2,318 characters
-      </span>
-
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 20, bottom: 3, fontSize: 8.5 }}>
-        Each folder has its own members. A lock means it replicates only to them, not the rest of the workspace.
+        Home lists every document you can open, in every folder. A lock means a
+        folder replicates only to its members.
       </span>
     </div>
   );

@@ -8,21 +8,62 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import {
+  BrowserRouter,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const setSelectedFolder = vi.fn();
-vi.mock('@/hooks/useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({
-    namespaceId: 'ns',
-    registryContextId: 'reg',
-    selectedFolderId: null,
-    setSelectedFolder,
-    folders: [],
-    selfIdentity: 'me',
-    stage: 'ready',
-    syncStatus: null,
+// The real hook reads the selected folder from the URL too.
+vi.mock('@/hooks/useDriveWorkspace', async () => {
+  const { useAppRoute } = await import('@/hooks/useAppRoute');
+  return {
+    useDriveWorkspace: () => ({
+      namespaceId: 'ns',
+      namespaces: [{ namespaceId: 'ns' }],
+      namespacesLoading: false,
+      isJustJoined: false,
+      registryContextId: 'reg',
+      selectedFolderId: useAppRoute().route?.folder ?? null,
+      setSelectedFolder,
+      folders: [],
+      registryFolders: [{ id: 'f1', parent_id: null, color: null, alias: 'F1' }],
+      resolvedFolderIds: new Set(['f1']),
+      hiddenFolderIds: new Set<string>(),
+      selfIdentity: 'me',
+      namespaceMemberNames: {},
+      stage: 'ready',
+      syncStatus: null,
+      refetch: vi.fn(),
+    }),
+  };
+});
+// Every doc these tests route to resolves, so the link-target gate opens the
+// (separately mocked) editor as before.
+vi.mock('@/hooks/useDocs', () => ({
+  useDocs: () => ({
+    list: [{ id: 'doc-2' }, { id: 'd1' }],
+    loading: false,
+    listed: true,
+    contextResolving: false,
+    contextId: 'ctx',
+    error: null,
     refetch: vi.fn(),
+    create: vi.fn(),
+    edit: vi.fn(),
+    get: vi.fn(),
+    remove: vi.fn(),
+    client: null,
   }),
+}));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
 }));
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -35,12 +76,40 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ loading: false, caps: 0, refetch: vi.fn() }),
 }));
+vi.mock('@/hooks/useNamespacePermissions', () => ({
+  useNamespacePermissions: () => ({ loading: false, canCreateFolder: false }),
+}));
+// The layout's own screens are under test; the index has its own suite.
+vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/WorkspaceIndexContext')>()),
+  WorkspaceIndexProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
-vi.mock('@/components/folders/NoFolderStates', () => ({
-  SelectFolderState: () => null,
-}));
+vi.mock('@/components/home/HomePage', () => ({ HomePage: () => null }));
 vi.mock('../DisplayNameGate', () => ({ DisplayNameGate: () => null }));
+vi.mock('../NamespaceSettingsPanel', () => ({
+  NamespaceSettingsPanel: () => <div data-testid="settings-panel" />,
+}));
+vi.mock('@/components/docs/DocumentEditor', () => ({
+  DocumentEditor: ({
+    folderId,
+    docId,
+    onClose,
+    onDeleted,
+  }: {
+    folderId: string;
+    docId: string;
+    onClose: () => void;
+    onDeleted: () => void;
+  }) => (
+    <div>
+      <div data-testid="editor">{`${folderId}/${docId}`}</div>
+      <button onClick={onClose}>Back to folder</button>
+      <button onClick={onDeleted}>Delete doc</button>
+    </div>
+  ),
+}));
 vi.mock('@/components/folders/FolderTree', () => ({
   FolderTree: ({
     onSelectFolder,
@@ -55,6 +124,52 @@ vi.mock('@/components/folders/FolderTree', () => ({
     </div>
   ),
 }));
+
+function Url() {
+  const l = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="url">{l.pathname + l.search + l.hash}</output>
+      <button onClick={() => navigate(-1)}>History back</button>
+    </>
+  );
+}
+
+function renderAt(...entries: string[]) {
+  return render(
+    <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+      <Routes>
+        <Route
+          path="/app/*"
+          element={
+            <>
+              <WorkspaceLayout />
+              <Url />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+    { wrapper: ConfirmProvider },
+  );
+}
+
+const url = () => screen.getByTestId('url').textContent;
+
+// Settings close reads the browser's own history index, which MemoryRouter never writes.
+function renderInBrowser(path: string, state: unknown = {}) {
+  window.history.replaceState({}, '', '/prior');
+  window.history.pushState(state, '', path);
+  return render(
+    <BrowserRouter>
+      <Routes>
+        <Route path="/app/*" element={<WorkspaceLayout />} />
+      </Routes>
+    </BrowserRouter>,
+    { wrapper: ConfirmProvider },
+  );
+}
 
 type MediaChange = (e: { matches: boolean }) => void;
 let mediaListeners: MediaChange[] = [];
@@ -82,7 +197,7 @@ afterEach(() => {
 describe('WorkspaceLayout sidebar below md', () => {
   it('starts hidden and opens as a drawer from the top-bar toggle', () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     expect(screen.queryByRole('button', { name: 'Pick folder' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
@@ -94,7 +209,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 
   it('closes after choosing a folder', async () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick folder' }));
@@ -105,7 +220,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 
   it('closes after choosing a document', async () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick doc' }));
@@ -115,7 +230,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 
   it('closes on Escape', async () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
@@ -125,7 +240,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 
   it('closes from its own close button', async () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     const drawer = screen.getByRole('dialog', { name: 'Folders' });
@@ -136,7 +251,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 
   it('does not reopen the drawer after a round trip through a wide screen', () => {
     setDesktop(false);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
     resizeTo(true);
@@ -148,7 +263,7 @@ describe('WorkspaceLayout sidebar below md', () => {
   it('ignores a collapse saved on a wide screen', () => {
     setDesktop(false);
     localStorage.setItem('mero-sidebar-collapsed', 'true');
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
 
     fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
 
@@ -159,7 +274,7 @@ describe('WorkspaceLayout sidebar below md', () => {
 describe('WorkspaceLayout sidebar at md and up', () => {
   it('renders inline and the toggle collapses it', () => {
     setDesktop(true);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
     expect(screen.getByRole('button', { name: 'Pick folder' })).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -170,10 +285,72 @@ describe('WorkspaceLayout sidebar at md and up', () => {
 
   it('stays open after choosing a folder', () => {
     setDesktop(true);
-    render(<WorkspaceLayout />);
+    renderAt('/app/ns');
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick folder' }));
 
     expect(screen.getByRole('button', { name: 'Pick folder' })).toBeTruthy();
+  });
+});
+
+describe('WorkspaceLayout screens come from the URL', () => {
+  it('opens the doc a URL names', async () => {
+    setDesktop(true);
+    renderAt('/app/ns/f/f1/d/doc-2');
+    expect((await screen.findByTestId('editor')).textContent).toBe('f1/doc-2');
+  });
+
+  it('opens a doc at its own URL', () => {
+    setDesktop(true);
+    renderAt('/app/ns');
+    fireEvent.click(screen.getByRole('button', { name: 'Pick doc' }));
+    expect(url()).toBe('/app/ns/f/f1/d/d1');
+  });
+
+  it('shows settings at their URL and closing returns to the previous screen', async () => {
+    setDesktop(true);
+    renderInBrowser('/app/ns/f/f1');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(window.location.pathname).toBe('/app/ns/settings');
+    expect(screen.getByTestId('settings-panel')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/app/ns/f/f1'));
+    expect(screen.queryByTestId('settings-panel')).toBeNull();
+  });
+
+  it('closes settings opened cold to the workspace Home', () => {
+    setDesktop(true);
+    renderInBrowser('/app/ns/settings');
+    expect(screen.getByTestId('settings-panel')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(window.location.pathname).toBe('/app/ns');
+  });
+
+  // Signing in replaces the landing entry with the saved link, so the settings
+  // entry has a router key but nothing of this app behind it.
+  it('closes settings reached by a replace on the first entry to Home', async () => {
+    setDesktop(true);
+    renderInBrowser('/app/ns/settings', { usr: null, key: 'signin', idx: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/app/ns'));
+  });
+
+  it('after deleting the open doc, back skips the deleted doc', () => {
+    setDesktop(true);
+    renderAt('/app/ns', '/app/ns/f/f1/d/doc-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete doc' }));
+    expect(url()).toBe('/app/ns/f/f1');
+    fireEvent.click(screen.getByRole('button', { name: 'History back' }));
+    expect(url()).toBe('/app/ns');
+  });
+
+  it('the editor back button is its own history entry', () => {
+    setDesktop(true);
+    renderAt('/app/ns', '/app/ns/f/f1/d/doc-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to folder' }));
+    expect(url()).toBe('/app/ns/f/f1');
+    fireEvent.click(screen.getByRole('button', { name: 'History back' }));
+    expect(url()).toBe('/app/ns/f/f1/d/doc-2');
   });
 });

@@ -1,12 +1,12 @@
-// Paste-an-invite-link dialog. Sibling to NamespaceCreateDialog —
+// Paste-an-invite-link dialog. Sibling to NamespaceCreateDialog -
 // launched from NamespaceSwitcher when the user has a link rather
 // than wanting to create a new workspace.
 //
 // Two stages, both rendered inside the same modal shell:
-//   1. `input`   — textarea + Continue button. Parses the pasted
+//   1. `input`   - textarea + Continue button. Parses the pasted
 //                  text through extractInviteParams + parseInviteUrl.
 //                  Errors surface inline below the field.
-//   2. `preview` — hands the parsed invite to JoinInviteCard (the
+//   2. `preview` - hands the parsed invite to JoinInviteCard (the
 //                  same component the `/join` route uses). On
 //                  success, refetches the namespace list and closes.
 //

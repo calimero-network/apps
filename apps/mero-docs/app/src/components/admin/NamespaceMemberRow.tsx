@@ -53,12 +53,12 @@ interface Props {
   actorRole: GroupRole;
   /** The acting user's own capability bitmask on this group. */
   actorCaps: number | null;
-  /** How many Admins this group currently has — the last-admin guard. */
+  /** How many Admins this group currently has - the last-admin guard. */
   adminCount: number;
   /** Called after a successful role change so the parent can refetch the
    *  roster (the badge, and the admin count, both move). */
   onAfterRoleChange?: () => void;
-  /** True when this row is the caller's own identity — surfaces a
+  /** True when this row is the caller's own identity - surfaces a
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
   /** True for the workspace owner, whom the node never removes. */
@@ -93,7 +93,7 @@ export function NamespaceMemberRow({
   // Caps change without a context event; the registry's sync run is the tick.
   //
   // Depend on `caps.refetch` (stable useCallback inside mero-react)
-  // rather than the whole `caps` object — the object is a fresh
+  // rather than the whole `caps` object - the object is a fresh
   // literal each render and would otherwise churn the SSE handler.
   const capsRefetch = caps.refetch;
   const onMemberEvent = useCallback(() => {
@@ -114,7 +114,7 @@ export function NamespaceMemberRow({
   const [renameValue, setRenameValue] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
-  // Re-entry guard for submitRename — Enter and the Save button
+  // Re-entry guard for submitRename - Enter and the Save button
   // both call it, and Enter held / rapid double-click could
   // otherwise fire setMemberMetadata twice.
   const submitInFlightRef = useRef(false);

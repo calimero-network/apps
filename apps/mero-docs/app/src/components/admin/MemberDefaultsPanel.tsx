@@ -1,7 +1,7 @@
-// "Member defaults" admin section — sets the capability bitmask that
+// "Member defaults" admin section - sets the capability bitmask that
 // every NEW member of this namespace inherits when they join by invite
 // (core's `default_capabilities`, per design spec §5.2). Existing
-// members are unaffected by the save itself — which is the trap this panel
+// members are unaffected by the save itself - which is the trap this panel
 // now has an answer to. An admin widens the defaults, the save succeeds, and
 // every person already in the workspace still cannot do the newly-granted
 // thing, because `default_capabilities` is consulted at JOIN time and never
@@ -41,7 +41,7 @@ import { planDefaultsSweep } from '@/lib/roles';
 
 const C = CAPABILITIES;
 
-// Order matters — the most-common grants first so the checklist reads
+// Order matters - the most-common grants first so the checklist reads
 // "what a normal collaborator gets" at the top, "elevated" below.
 const CAP_ROWS: { bit: number; label: string; hint: string }[] = [
   {
@@ -100,7 +100,7 @@ export function MemberDefaultsPanel() {
   const [applyResult, setApplyResult] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  // The committed value the server currently has — null until loaded.
+  // The committed value the server currently has - null until loaded.
   // Once loaded, an unset default reads as `DEFAULT_NEW_MEMBER_CAPS`
   // (the "Editor" preset) so the checklist isn't all-unchecked for a
   // namespace created before this code ran.
@@ -110,7 +110,7 @@ export function MemberDefaultsPanel() {
 
   // Has the fetch completed at least once? `useDefaultCapabilities`
   // starts `{ defaultCapabilities: null, loading: false }` and only
-  // flips `loading` true on the *next* render — so we can't seed off
+  // flips `loading` true on the *next* render - so we can't seed off
   // `loading === false` on the first pass, or we'd stamp the
   // `DEFAULT_NEW_MEMBER_CAPS` fallback (37, "Editor") into `draft`
   // before the real value (e.g. 4 = Viewer) arrives, leave the
@@ -148,13 +148,13 @@ export function MemberDefaultsPanel() {
     setDraft(current ?? DEFAULT_NEW_MEMBER_CAPS);
   }, [loadedOnce, draft, current]);
 
-  // Namespace switched while the panel stayed mounted — drop the
+  // Namespace switched while the panel stayed mounted - drop the
   // previous namespace's draft + load state. Without this, the seed
   // effect's `if (draft !== null) return` guard permanently pins the
   // old namespace's bitmask: `dirty` then reads true against the new
   // namespace's real defaults, and "Save defaults" would write the
   // old mask onto the new namespace. Resetting forces a re-seed from
-  // the new namespace's server value. (No-op on first mount — these
+  // the new namespace's server value. (No-op on first mount - these
   // are already the initial values.)
   useEffect(() => {
     setDraft(null);

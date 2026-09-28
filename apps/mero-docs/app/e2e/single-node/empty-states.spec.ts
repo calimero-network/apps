@@ -29,9 +29,10 @@ test.describe('Empty states (single-node)', () => {
     await alice.tree.expectFolderVisible('Notes');
     await expect(sidebar.getByText('No folders yet.')).toBeHidden();
     await expect(headerNew).toBeVisible();
+    // Home, now that a folder exists, says it has no documents yet.
     await expect(
-      page.getByRole('main').getByRole('heading', { name: 'Select a folder' }),
-    ).toBeVisible();
+      page.getByRole('main').getByRole('heading', { name: 'No documents yet' }),
+    ).toBeVisible({ timeout: 15_000 });
 
     await alice.tree.folderRow('Notes').first().click();
     const main = page.getByRole('main');

@@ -23,7 +23,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
     format!("{folder_id}\u{1f}")
 }
 
-/// The caller's ACCOUNT — who is calling as a person, not which machine
+/// The caller's ACCOUNT - who is calling as a person, not which machine
 /// they are calling from.
 ///
 /// ⚠️ THIS WAS `device_id()`, AND THAT MADE EVERY GRANT IN THIS FILE A NO-OP.
@@ -40,7 +40,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
 ///   * `add_manager` / `set_folder_role` take a member key from the client,
 ///     and the only member list a client has is `listGroupMembers`, whose rows
 ///     are ACCOUNTS. So a manager row was filed under an account, while
-///     `is_admin` looked the caller up by DEVICE — the row could never match,
+///     `is_admin` looked the caller up by DEVICE - the row could never match,
 ///     and a promoted manager stayed `Forbidden` on everything.
 ///   * The frontend's "am I the owner" check compares `get_owner()` against
 ///     the account it holds, so the owner is recorded as an account too.
@@ -48,7 +48,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
 /// mero-js documents `GroupMember.identity` as "The member's ACCOUNT: 64
 /// hex", and `useNodeIdentity().identity.accountId` is the same value for
 /// oneself. So this keys on the account, and every id that crosses the wire in
-/// either direction is the same kind of id — the same one the writer sets
+/// either direction is the same kind of id - the same one the writer sets
 /// below are checked against.
 pub(crate) fn caller_account() -> AccountId {
     AccountId::from(calimero_sdk::env::account_id())
@@ -59,7 +59,7 @@ pub(crate) fn caller_account_hex() -> Result<String, DriveError> {
     Ok(hex::encode(caller_account().as_bytes()))
 }
 
-/// Validate & normalise an incoming hex 32-byte ACCOUNT id — the same
+/// Validate & normalise an incoming hex 32-byte ACCOUNT id - the same
 /// principal `caller_account_hex` produces, and the same one
 /// `listGroupMembers` rows are keyed by. Re-encoding lower-cases it, so the
 /// stored form is canonical regardless of input case.
@@ -123,7 +123,7 @@ impl RegistryState {
     /// fixed at `init`, so there is nothing left to claim: this succeeds for
     /// the owner and is `Forbidden` for everyone else. It used to set the
     /// owner first-come-first-served, which let any member take a registry
-    /// that had not been claimed yet — and let a patched node overwrite the
+    /// that had not been claimed yet - and let a patched node overwrite the
     /// owner of one that had.
     pub(crate) fn claim_owner_inner(&self, caller: &str) -> Result<(), DriveError> {
         let cur = self.owner_hex();
@@ -138,7 +138,7 @@ impl RegistryState {
 
     /// Owner-only. Validates `member` as hex. Re-adding / re-granting an
     /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
-    /// with the current HLC always wins — the key is never tombstoned).
+    /// with the current HLC always wins - the key is never tombstoned).
     pub(crate) fn add_manager_inner(
         &mut self,
         caller: &str,
@@ -161,7 +161,7 @@ impl RegistryState {
     }
 
     /// Owner-only. `NotFound` if `member` is not currently a manager. Does
-    /// not `remove` the key — it sets the value to `false` so a later
+    /// not `remove` the key - it sets the value to `false` so a later
     /// `add_manager` of the same key isn't swallowed by a tombstone.
     pub(crate) fn remove_manager_inner(
         &mut self,
@@ -279,7 +279,7 @@ impl RegistryState {
 
     /// Admin-gated. Resets the member to the implicit `Editor` role;
     /// idempotent (clearing an already-default/absent member is a harmless
-    /// no-op success). Does not `remove` the row — it overwrites it with
+    /// no-op success). Does not `remove` the row - it overwrites it with
     /// `Editor` so the key is never tombstoned (a later `set_folder_role`
     /// of the same folder+member would otherwise be swallowed).
     pub(crate) fn clear_folder_role_inner(
@@ -296,7 +296,7 @@ impl RegistryState {
         Ok(())
     }
 
-    /// Read — no caller gating. Validates `member` as a hex account; returns
+    /// Read - no caller gating. Validates `member` as a hex account; returns
     /// the stored role or `Role::Editor` if none.
     ///
     /// A role is what the app shows and gates in its own UI. Nothing below
@@ -342,7 +342,7 @@ impl RegistryState {
     }
 
     /// Drop every per-member role row for a folder (called from
-    /// `unregister_folder_inner`). Uses `remove` deliberately — the folder id
+    /// `unregister_folder_inner`). Uses `remove` deliberately - the folder id
     /// is tombstoned in `folders` alongside these rows. Since core rc.10 a
     /// strictly-newer register can revive the folder id; the revived folder
     /// then starts with default roles, so purging here stays correct.

@@ -6,18 +6,18 @@
 // `useSubscription` from mero-react opens one EventSource per
 // distinct contextId set, internally keyed on `JSON.stringify`, and
 // fans events to all handlers. Multiple components subscribing to
-// the same id set share a single connection — the dedupe happens at
+// the same id set share a single connection - the dedupe happens at
 // that layer, so this hook does not memoise the array itself; it
 // just normalises and sorts the input so a re-render with the same
 // content produces the same stringified key.
 //
 // Handler stability: pass a stable `onChange` (wrapped in
-// `useCallback`) — mero-react reads the callback via ref so a fresh
+// `useCallback`) - mero-react reads the callback via ref so a fresh
 // arrow each render does NOT disconnect the SSE socket, but the
 // caller should still keep handler identity stable so the
 // per-subscriber bookkeeping doesn't churn.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   useSubscription,
   type SseEventData,
@@ -32,7 +32,7 @@ import { useStreamReconnect } from './useStreamReconnect';
  * mero-react widened the `useSubscription` callback to a union: context events
  * plus the group-keyed membership and migration families, and those two carry
  * a `groupId` and no `contextId` at all. Reading `event.contextId` off the
- * union is how a filter silently starts comparing `undefined` — so this tests
+ * union is how a filter silently starts comparing `undefined` - so this tests
  * for the field the filter actually needs, and anything without it is simply
  * not a context event.
  */
@@ -75,7 +75,7 @@ export interface UseContextEventsOptions {
    * every delivered event, regardless of which context mutated).
    *
    * Use this for consumers that genuinely only care about *their own*
-   * contexts' state mutations — most notably the workspace hook, which
+   * contexts' state mutations - most notably the workspace hook, which
    * only needs the registry context's dings and should ignore docs-box
    * dings from an open editor (otherwise every autosave triggers a full
    * workspace refetch + getGroupInfo fan-out).
@@ -99,7 +99,8 @@ export function useContextEvents(
     | string
     | null
     | undefined,
-  onChange: () => void,
+  // Names the context that fired; none after a reconnect or a debounced burst.
+  onChange: (contextId?: string) => void,
   options?: UseContextEventsOptions,
 ): void {
   // Computing on every render is cheap (≤ a handful of strings) and lets
@@ -109,20 +110,25 @@ export function useContextEvents(
 
   const strict = options?.strict ?? false;
   const debounceMs = options?.debounceMs ?? 0;
-  // Stable, comparable key for the id set — context ids are hex
+  // Stable, comparable key for the id set - context ids are hex
   // so a comma separator never collides. Used as the callback dep
   // (the `ids` array is a fresh reference each render) and to rebuild
   // the allow-set inside the handler without capturing the array.
   const idsKey = ids.join(',');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear any pending debounced fire on unmount so a settled timer can't
-  // call onChange after the consumer is gone.
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  // A pending fire belongs to the ids it was armed for: drop it when they change
+  // (another workspace's event must not refetch this one) and on unmount.
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
     },
-    [],
+    [idsKey],
   );
 
   const handler = useCallback(
@@ -139,13 +145,14 @@ export function useContextEvents(
       if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
         return;
       if (debounceMs <= 0) {
-        onChange();
+        onChange(event.contextId);
         return;
       }
       if (timerRef.current) clearTimeout(timerRef.current);
+      // The latest onChange: one captured at the event may belong to a workspace since left.
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-        onChange();
+        onChangeRef.current();
       }, debounceMs);
     },
     [onChange, strict, idsKey, debounceMs],
@@ -155,8 +162,6 @@ export function useContextEvents(
 
   // Every consumer here refetches on `onChange`, so a reconnect is one more
   // reason to: nothing replays what changed while the stream was down.
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   useStreamReconnect(() => {
     if (idsKey.length > 0) onChangeRef.current();
   });

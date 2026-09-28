@@ -4,12 +4,9 @@
 // preview + accept experience stays single-source.
 
 import React, { useState } from 'react';
-import {
-  ConnectButton,
-  useMero,
-  useNamespacesForApplication,
-} from '@calimero-network/mero-react';
+import { ConnectButton, useMero } from '@calimero-network/mero-react';
 import { useApplicationId } from '@/hooks/useApplicationId';
+import { useAppNamespaces } from '@/hooks/useAppNamespaces';
 import { Button } from '@/components/ui/button';
 import { shouldRetain } from '@calimero-apps/invite';
 import {
@@ -44,7 +41,7 @@ export function JoinInviteCard({
   const { mero, isAuthenticated, isLoading } = useMero();
   // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
   // namespaces scoped by application id, and the provider's id belongs to
-  // whichever app last logged in on this origin — so on a shared dev origin
+  // whichever app last logged in on this origin - so on a shared dev origin
   // this listed another app's namespaces and told a real member they were not
   // one. Resolve mero-docs's own id from the node, by package. See lib/appId.
   const { appId } = useApplicationId();
@@ -64,12 +61,12 @@ export function JoinInviteCard({
   // "already a member" is an explicit state, not a server error. Folder
   // invites have no cheap client-side membership source; the join call's
   // error mapping covers them.
-  const { namespaces } = useNamespacesForApplication(
+  const { namespaces } = useAppNamespaces(
     isAuthenticated && parsed.kind === 'namespace' && appId ? appId : null,
   );
   const isMember =
     parsed.kind === 'namespace' &&
-    (namespaces ?? []).some((n) => n.namespaceId === parsed.targetId);
+    namespaces.some((n) => n.namespaceId === parsed.targetId);
 
   const onJoinClick = async () => {
     setJoining(true);
@@ -79,7 +76,7 @@ export function JoinInviteCard({
       // The name goes to the NODE, not just to this browser: `groupName` on
       // the join request is what files the creator's chosen workspace name
       // against the joiner's own governance row, so it is there for every
-      // tab and every future session on this machine — and for the desktop
+      // tab and every future session on this machine - and for the desktop
       // app, which shares the node and not the localStorage.
       const outcome = await redeemInvite(parsed, {
         joinNamespace: joinNs,
@@ -118,7 +115,7 @@ export function JoinInviteCard({
         markNamespaceJustJoined(parsed.targetId);
       }
       // For folder joins the namespace is already in place; no sync gate
-      // needed — the folder's docs context will sync in the background the
+      // needed - the folder's docs context will sync in the background the
       // usual way.
       await onJoined();
     } catch (e: unknown) {

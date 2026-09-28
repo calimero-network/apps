@@ -3,8 +3,8 @@
 // ⚠️ NOT the mechanism by which a name reaches another node. That is
 // `groupName` on the join request (see useNamespaceInvitation): the joiner
 // hands the invite-carried name to its OWN node, which files it against its
-// governance row, where every tab, every later session and the desktop app —
-// which shares the node, not this localStorage — all read it.
+// governance row, where every tab, every later session and the desktop app -
+// which shares the node, not this localStorage - all read it.
 //
 // This file is the gap-filler for the window in between. core's
 // `listNamespacesForApplication` omits a namespace's `name` until the node has
@@ -13,7 +13,7 @@
 //
 // It is read ONLY when the node reports no name of its own (see
 // useNamespaceDisplayNames), so it can never shadow a rename, and a browser
-// that never took the snapshot — a second device, a cleared profile — is not
+// that never took the snapshot - a second device, a cleared profile - is not
 // worse off than before: the node answers, just later.
 
 const STORAGE_KEY = 'mero-drive:namespace-names';
@@ -44,7 +44,7 @@ export function rememberNamespaceName(
     all[namespaceId] = name;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch {
-    // localStorage unavailable (private mode / quota) — non-fatal;
+    // localStorage unavailable (private mode / quota) - non-fatal;
     // the switcher just falls back to the namespace id.
   }
 }

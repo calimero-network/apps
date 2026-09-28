@@ -5,8 +5,8 @@
 //! one taking an arbitrary opaque string).
 //!
 //! `Visibility` is the registry's per-folder inheritance flag:
-//! - `Inherit`  — cascade parent members down from the parent folder
-//! - `Restricted` — subtree is opaque; cascades stop at the boundary
+//! - `Inherit`  - cascade parent members down from the parent folder
+//! - `Restricted` - subtree is opaque; cascades stop at the boundary
 //!
 //! `DriveError` is the *internal* error type used inside each service's
 //! helper functions. Public `#[app::logic]` methods return `app::Result<T>`
@@ -16,6 +16,17 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+pub const TAG_KEY_MAX: usize = 64; // tag keys are ids the registry maps to a name
+
+/// A tag key is a stable id, not the tag's display name: lowercase ASCII
+/// letters, digits and `-`, 1 to `TAG_KEY_MAX` characters.
+pub fn is_valid_tag_key(key: &str) -> bool {
+    (1..=TAG_KEY_MAX).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
 
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
@@ -69,7 +80,7 @@ pub enum Visibility {
     Restricted,
 }
 
-/// Per-folder collaborator role — the *application* permission for what a
+/// Per-folder collaborator role - the *application* permission for what a
 /// member may do inside a folder, distinct from core's namespace-level
 /// `MemberCapabilities` bitmask (core gates *joining* a subgroup; this gates
 /// what you do once you are in it).
@@ -152,6 +163,16 @@ mod tests {
         let a: FolderId = "abc".into();
         let b: FolderId = String::from("abc").into();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn a_tag_key_is_lowercase_letters_digits_and_dashes() {
+        assert!(is_valid_tag_key("launch-2"));
+        assert!(is_valid_tag_key(&"a".repeat(TAG_KEY_MAX)));
+        for bad in ["", "Launch", "a b", "a_b", "caf\u{e9}"] {
+            assert!(!is_valid_tag_key(bad), "{bad:?}");
+        }
+        assert!(!is_valid_tag_key(&"a".repeat(TAG_KEY_MAX + 1)));
     }
 
     #[test]

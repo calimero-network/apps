@@ -1,10 +1,10 @@
 // Single recursive row in the FolderTree. Renders the folder's
 // alias with an optional color chip and restricted-visibility lock
 // icon, and recurses into its children. Selection is a controlled
-// prop — parent owns the selectedId state.
+// prop - parent owns the selectedId state.
 //
 // Also hosts the per-row action trigger (FolderContextMenu, shown
-// on hover) and the inline-rename state — the rename action fires
+// on hover) and the inline-rename state - the rename action fires
 // from the context menu but the editing surface lives here because
 // the alias text is owned by this row's render.
 
@@ -57,7 +57,7 @@ export function FolderTreeItem({
   // starts the async rename, and if the input loses focus before
   // the await resolves (which it does when setRenaming(false) fires
   // and unmounts the input), the native blur event fires a second
-  // submitRename with the same state — `folder.alias` hasn't yet
+  // submitRename with the same state - `folder.alias` hasn't yet
   // refreshed from the registry, so the same-name guard doesn't
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
@@ -110,7 +110,7 @@ export function FolderTreeItem({
   return (
     <li>
       <div
-        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+        className={`group flex h-[30px] items-center gap-1.5 rounded-md px-1.5 text-sm cursor-pointer transition-colors ${
           isHighlighted
             ? 'bg-selected text-selected-foreground font-medium'
             : 'text-foreground hover:bg-muted/60'
@@ -121,7 +121,7 @@ export function FolderTreeItem({
           if (renaming) return;
           onSelect(node.id);
           // Selecting a folder also reveals its contents. Expand-only (not
-          // toggle) so clicking an already-open folder doesn't collapse it —
+          // toggle) so clicking an already-open folder doesn't collapse it -
           // the chevron remains the explicit collapse control.
           onExpand(node.id);
         }}
@@ -204,11 +204,11 @@ export function FolderTreeItem({
       </div>
       {isExpanded && (
         // Subtree guide: the left border draws the vertical tree line,
-        // ml-4 positions it under the parent's chevron, and pl-1 gives
+        // ml-[15px] positions it under the parent's chevron, and pl-1.5 gives
         // children a small gap to the right of the line. Indentation is
         // structural (one nested <ul> per level) rather than a computed
         // per-row padding, so the line and the indent always agree.
-        <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
+        <ul className="my-0.5 ml-[15px] space-y-px border-l border-border/50 pl-1.5">
           <FolderDocLeaves
             folderId={node.id}
             // Doc ids are per-folder counters, so only the open doc's folder may match.

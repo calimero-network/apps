@@ -105,11 +105,12 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     // Vitest's default `include` picks up every `*.spec.ts` in the
-    // tree — which would scoop our Playwright specs under `e2e/`
+    // tree - which would scoop our Playwright specs under `e2e/`
     // into the unit-test runner and fail them immediately on
     // `@playwright/test` import. Playwright owns its own runner; we
     // only want vitest to see `src/` here.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    css: { include: [/src\/index\.css\?raw$/] }, // a test reads index.css as text to check the section wash
     exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
     server: {
       deps: {
@@ -124,7 +125,7 @@ export default defineConfig({
   // ⚠️ Pinned, and strict.
   //
   // Vite's default is 5173, which mero-issue-tracker and mero-sheets also use,
-  // and its default on a busy port is to quietly move to the next free one —
+  // and its default on a busy port is to quietly move to the next free one -
   // where it lands on some OTHER app's pinned port. Two apps on one origin also
   // share a `localStorage`, so the wrong app on this port does not merely serve
   // the wrong UI: it inherits this app's session and application id. A
@@ -136,6 +137,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.PW_PORT) || 5179,
     strictPort: true,
+    // An edit made during an e2e run would hot-swap modules under the test and reset UI state.
+    watch: process.env.E2E_NO_WATCH ? null : undefined,
   },
   base: '/',
   build: {
@@ -153,7 +156,7 @@ export default defineConfig({
         // for a package *and everything Rollup decides to co-locate with it*.
         // It put clsx, react-dom/client and vite's own preload helper inside
         // `vendor-blocknote`, so the entry chunk statically imported the 1.2MB
-        // editor bundle and index.html preloaded it — defeating the lazy()
+        // editor bundle and index.html preloaded it - defeating the lazy()
         // boundary around DocumentEditor and making every visitor to the
         // landing page download the editor. The function form only ever
         // reassigns files under node_modules, leaving shared first-party and
@@ -164,7 +167,7 @@ export default defineConfig({
           // Vite's own dynamic-import preload helper is a virtual module used
           // by the entry (to call the lazy import) and by every lazy chunk.
           // Unassigned, Rollup merges such shared modules into their largest
-          // consumer — which was the editor chunk, pulling it into the entry
+          // consumer - which was the editor chunk, pulling it into the entry
           // graph. Pin it somewhere the entry already loads.
           if (id.includes('vite/preload-helper')) return 'vendor-shared';
           if (!id.includes('node_modules')) return;

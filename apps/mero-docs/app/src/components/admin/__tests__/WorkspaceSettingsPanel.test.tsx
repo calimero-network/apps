@@ -8,6 +8,7 @@ const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
 const PICKED = 'c'.repeat(64);
 const SELF = 'd'.repeat(64);
+const answered = { ids: null as Set<string> | null }; // members whose own name read has answered; null = all
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
@@ -26,6 +27,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: (_ns: unknown, memberId: string | null | undefined) => ({
     name: memberId === SELF ? 'Fresh Self Name' : null,
+    loaded: !answered.ids || answered.ids.has(memberId ?? ''),
   }),
 }));
 vi.mock('@/hooks/useNamespacePermissions', () => ({
@@ -56,6 +58,7 @@ describe('WorkspaceSettingsPanel folder role setters', () => {
   afterEach(() => {
     registryAdmin.error = null;
     registryAdmin.managers = [NAMED, UNNAMED];
+    answered.ids = null;
   });
 
   it('shows plain copy, not the raw error, when roles fail to load', () => {
@@ -70,6 +73,14 @@ describe('WorkspaceSettingsPanel folder role setters', () => {
     expect(screen.getByRole('button', { name: 'Remove Dana from people who can set folder roles' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Remove Unnamed member from people who can set folder roles' }),
+    ).toBeTruthy();
+  });
+
+  it('never calls a member unnamed while their name loads', () => {
+    answered.ids = new Set([NAMED]);
+    render(<WorkspaceSettingsPanel />);
+    expect(
+      screen.getByRole('button', { name: 'Remove member from people who can set folder roles' }),
     ).toBeTruthy();
   });
 

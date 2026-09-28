@@ -29,7 +29,7 @@ describe('parseGroupRole', () => {
     expect(parseGroupRole('ReadOnly')).toBe('ReadOnly');
   });
 
-  // Defaulting the other way would paint an admin badge on a plain member —
+  // Defaulting the other way would paint an admin badge on a plain member -
   // and, worse, let the last-admin guard miscount.
   it('defaults an unknown, empty or absent role to Member, never Admin', () => {
     expect(parseGroupRole(undefined)).toBe('Member');

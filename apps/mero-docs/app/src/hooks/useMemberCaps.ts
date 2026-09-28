@@ -1,7 +1,7 @@
 // Resolve the caller's EFFECTIVE capability bitmask for a given
 // group. Effective = role-OR-override.
 //
-// Background — the server uses two orthogonal fields for authz
+// Background - the server uses two orthogonal fields for authz
 // (core/context/group_store/membership.rs:172):
 //   - `role` (Admin | Member | ReadOnly): Admins bypass every cap
 //     check.
@@ -10,18 +10,18 @@
 //
 // Why we DON'T use mero-react's useGroupCapabilities / useGroupMembers:
 //   1. `listGroupMembers` is wire-shaped `{members, selfIdentity}` but
-//      mero-js's typed client expects `{data}` — so the typed path
+//      mero-js's typed client expects `{data}` - so the typed path
 //      returns an empty array. We bypass it by casting through unknown.
 //   2. Right after `create_group_in_namespace`, the creator's
 //      membership row is published as a governance op but materialised
 //      asynchronously. For a short window (~0-2s) both
 //      `listGroupMembers` shows no matching identity and
 //      `getMemberCapabilities` returns 500 "identity is not a member".
-//      mero-react's hooks fire once on mount and don't retry — we'd
+//      mero-react's hooks fire once on mount and don't retry - we'd
 //      stay stuck on that transient 500 until the next rerender. So
 //      we own the fetch here and retry on propagation-lag errors.
 //
-// Retry schedule: 4 attempts at 0 / 500ms / 1500ms / 3500ms — about
+// Retry schedule: 4 attempts at 0 / 500ms / 1500ms / 3500ms - about
 // 5.5s end-to-end. Empirically the governance op lands in <1s; the
 // long tail exists so hot-reloads / slow nodes also settle cleanly.
 //
@@ -29,7 +29,7 @@
 //   - `caps = null, error = null` → loading (including retries).
 //   - `caps = 0,    error = null` → non-admin with no override bits.
 //   - `caps > 0,    error = null` → actual bitmask (or 0xffffffff for
-//     Admins — `isAdmin` is the authoritative signal, the all-bits mask
+//     Admins - `isAdmin` is the authoritative signal, the all-bits mask
 //     just keeps `hasCap(...)` true for everything).
 //   - `caps = 0,    error = Error` → retries exhausted; caller shows
 //     an error affordance rather than silently rendering "all denied".
@@ -40,7 +40,7 @@ import { useMero } from '@calimero-network/mero-react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
-// A u32 with every bit set — what we report as `caps` for a group-admin
+// A u32 with every bit set - what we report as `caps` for a group-admin
 // so consumers' `isAdmin || hasCap(caps, bit)` checks all pass even if
 // they happen to ignore `isAdmin`. `>>> 0` normalises to unsigned.
 const ADMIN_CAPS_BITMASK = 0xffffffff >>> 0;
@@ -49,7 +49,7 @@ const RETRY_DELAYS_MS = [0, 500, 1500, 3500];
 
 export interface MemberCapsState {
   caps: number | null;
-  /** True when the caller is a core group-admin on this group — bypasses
+  /** True when the caller is a core group-admin on this group - bypasses
    *  the capability bitmask entirely (mirrors the server's
    *  `is_group_admin_or_has_capability`). */
   isAdmin: boolean;
@@ -58,7 +58,7 @@ export interface MemberCapsState {
   denied: boolean;
   /** Force the underlying fetch (members + capabilities) to re-run.
    *  Needed after an external membership-changing op (e.g. the
-   *  RestrictedFolderCard's join-via-inheritance click) — the
+   *  RestrictedFolderCard's join-via-inheritance click) - the
    *  effect's deps `[mero, groupId, memberId]` don't change, so a
    *  successful join wouldn't otherwise lift a previously-cached
    *  "identity is not a member" error. */
@@ -78,7 +78,7 @@ function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
       return;
     }
     const t = setTimeout(() => resolve(), ms);
-    // Poll the abort signal cheaply — if the hook unmounts mid-sleep
+    // Poll the abort signal cheaply - if the hook unmounts mid-sleep
     // we want to resolve immediately so the async loop can bail.
     const poll = setInterval(() => {
       if (signal.aborted) {
@@ -94,7 +94,7 @@ function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
 
 // `namespaceId` is retained in the signature (unused at this layer)
 // so consumers don't need to change imports. Identity comes from
-// the active workspace via useDriveWorkspace — every call site
+// the active workspace via useDriveWorkspace - every call site
 // operates on the currently-selected namespace.
 export function useMemberCaps(
   _namespaceId: string,
@@ -110,6 +110,8 @@ export function useMemberCaps(
     error: null,
     denied: false,
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
   // Caps change without a context event; the registry's sync run is the tick.
@@ -118,15 +120,8 @@ export function useMemberCaps(
     debounceMs: 400,
   });
 
-  // Track the last (groupId, memberId) we kicked off a fetch for.
-  // When those genuinely change, the previous caps are stale and we
-  // reset to null so callers don't briefly read another group's
-  // state. When they stay the same (a tick bump from
-  // useContextEvents / external refetch()), we keep the prior value
-  // visible while the refetch is in flight — otherwise every
-  // unrelated event flickers permission-gated UI through
-  // disabled→enabled, which Bugbot caught as the "Registry SSE
-  // drops edit permission" regression.
+  // Reset caps to null only when (groupId, memberId) really change; a plain
+  // refetch keeps the prior value, or every SSE tick flickers gated UI off/on.
   const lastIdsRef = useRef<{ groupId: string; memberId: string } | null>(null);
 
   useEffect(() => {
@@ -152,7 +147,7 @@ export function useMemberCaps(
         if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt], signal);
         if (signal.aborted) return;
         try {
-          // 1) Read the members list — used ONLY to detect the Admin
+          // 1) Read the members list - used ONLY to detect the Admin
           //    short-circuit. Cast through unknown because the DTS and
           //    wire shape disagree: some backend versions return
           //    `{ members, selfIdentity }`, others `{ data, selfIdentity }`.
@@ -168,11 +163,11 @@ export function useMemberCaps(
             (m) => m.identity === memberId,
           );
 
-          // 2) Admin short-circuit — mirrors the server's
+          // 2) Admin short-circuit - mirrors the server's
           //    `is_group_admin_or_has_capability` logic. Only DIRECT
           //    members carry a role on the list; an inherited Open-
           //    subgroup member has no row at all (and is never an
-          //    admin), so a list miss is NOT "not a member" — it just
+          //    admin), so a list miss is NOT "not a member" - it just
           //    means fall through to the capability probe below.
           if (me?.role === 'Admin') {
             if (!signal.aborted) {
@@ -192,13 +187,13 @@ export function useMemberCaps(
             return;
           }
 
-          // 3) Resolve the capability bitmask. This — NOT the members-
-          //    list lookup — is the authoritative membership gate. An
+          // 3) Resolve the capability bitmask. This - NOT the members-
+          //    list lookup - is the authoritative membership gate. An
           //    inherited Open-subgroup member is absent from
           //    `listGroupMembers` by core design (no materialised
-          //    GroupMember row — see `execute_member_joined_open` in
+          //    GroupMember row - see `execute_member_joined_open` in
           //    namespace_governance.rs), but `getMemberCapabilities`
-          //    resolves them via the parent-walk (core #2261/#2379)
+          //    resolves them via core's parent-walk
           //    and returns 0. A genuine non-member instead throws
           //    "identity is not a member" → propagation-lag retry.
           const result = await mero.admin.getMemberCapabilities(
@@ -209,7 +204,7 @@ export function useMemberCaps(
           const caps = result.capabilities ?? 0;
           // Diff-guard: an SSE-triggered refetch (tick bump) that
           // resolves to the same caps/isAdmin/error must not replace
-          // `state` with a new-but-equal object — a fresh object
+          // `state` with a new-but-equal object - a fresh object
           // literal here would always fail React's Object.is bail
           // check and re-render every row on every unrelated context
           // event (e.g. a doc autosave). Returning `prev` when nothing
@@ -229,12 +224,17 @@ export function useMemberCaps(
       if (signal.aborted) return;
       const finalErr =
         lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-      setState({
-        caps: 0,
-        isAdmin: false,
-        error: finalErr,
-        denied: isPropagationLagError(lastErr),
-      });
+      const refused = isPropagationLagError(lastErr);
+      // A fault is not an answer: only a refusal may take away caps a read already granted.
+      const last = stateRef.current;
+      if (!refused && last.caps !== null && last.error === null) {
+        console.warn(
+          '[useMemberCaps] re-read failed; keeping last caps',
+          finalErr,
+        );
+        return;
+      }
+      setState({ caps: 0, isAdmin: false, error: finalErr, denied: refused });
     })();
 
     return () => {

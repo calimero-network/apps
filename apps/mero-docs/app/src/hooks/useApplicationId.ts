@@ -1,6 +1,6 @@
 // mero-docs's application id on the connected node.
 //
-// Asked of the node and matched by package — see `lib/appId` for why the
+// Asked of the node and matched by package - see `lib/appId` for why the
 // session's id and `VITE_APPLICATION_ID` are both the wrong answer.
 //
 // Cached per node URL for the lifetime of the page: the answer only changes
@@ -29,7 +29,7 @@ export interface ApplicationIdState {
   /**
    * The node answered with no package on any row (a raw-wasm dev install, or the
    * list call failed). `appId` is then `''` because we could not tell, not
-   * because the app is absent — the caller should fall back rather than refuse.
+   * because the app is absent - the caller should fall back rather than refuse.
    */
   inconclusive: boolean;
 }

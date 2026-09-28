@@ -103,7 +103,7 @@ describe('blocksToPlainText', () => {
     expect(blocksToPlainText(nested)).toBe('parent\nchild');
   });
 
-  it('skips empty blocks (images / tables) — no stray leading newline', () => {
+  it('skips empty blocks (images / tables) - no stray leading newline', () => {
     const weird = [
       { type: 'image', content: undefined, children: [] },
       {

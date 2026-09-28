@@ -1,6 +1,6 @@
 /* Self-hosted, not fetched from fonts.googleapis.com. A remote stylesheet
    @import blocks rendering until it resolves, which for a local-first app
-   means the UI stalls on every offline load — the one condition this app is
+   means the UI stalls on every offline load - the one condition this app is
    built for. It also disclosed every viewer's IP to a third party.
    Variable builds: one file per family covers all weights we use. */
 @import '@fontsource-variable/inter';
@@ -57,6 +57,7 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --warning-ink: 26 90% 37%;
 
     /* Encryption/Security accent */
     --secure: 82 100% 19%;
@@ -111,6 +112,7 @@
     --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
     --warning-foreground: 260 8% 8%;
+    --warning-ink: 43 96% 56%;
 
     --secure: var(--primary-ink);
     --secure-foreground: 260 8% 8%;
@@ -155,7 +157,7 @@
    BlockNote ships its own complete styling (@blocknote/mantine/style.css);
    here we only re-point its CSS custom properties at our design tokens so
    the editor inherits the green accent + light/dark system. Both
-   data-color-scheme values map to the SAME hsl(var(--token)) — those
+   data-color-scheme values map to the SAME hsl(var(--token)) - those
    tokens already flip with the `.dark` class, so the editor follows the
    app theme automatically. The leading `html` raises specificity above
    BlockNote's own `.bn-container[data-color-scheme]` rules regardless of
@@ -221,4 +223,121 @@ html .bn-container[data-color-scheme='dark'] {
   100% {
     opacity: 0;
   }
+}
+
+/* A section opened from a link: a brief lime wash that fades out. */
+.section-wash {
+  --section-wash: hsl(var(--primary) / 0.2);
+  border-radius: 6px;
+  margin-inline: -10px;
+  padding-inline: 10px;
+  animation: section-wash 1.6s ease-out forwards;
+}
+
+.dark .section-wash {
+  --section-wash: hsl(var(--primary) / 0.1);
+}
+
+@keyframes section-wash {
+  0%,
+  40% {
+    background-color: var(--section-wash);
+    box-shadow: inset 3px 0 0 hsl(var(--primary));
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+/* Reduced motion: a static outline held for the same time, then gone. */
+@media (prefers-reduced-motion: reduce) {
+  .section-wash {
+    animation: section-wash-outline 1.6s steps(1, end) forwards;
+  }
+}
+
+@keyframes section-wash-outline {
+  0% {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  100% {
+    outline: none;
+  }
+}
+
+/* In-app links are document chips; other links get the link look below, since preflight strips the browser's. */
+.bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.2);
+  --doc-chip-hover: hsl(var(--primary) / 0.32);
+  --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E"); /* lucide file-text, as in the editor header */
+  color: hsl(var(--card-foreground));
+  text-decoration: none;
+  background-color: var(--doc-chip);
+  border-bottom: 1.5px solid hsl(var(--primary));
+  border-radius: 3px 3px 0 0;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  outline: none;
+}
+
+.dark .bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.1);
+  --doc-chip-hover: hsl(var(--primary) / 0.18);
+}
+
+.bn-editor a[href^='/app/']::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background-color: hsl(var(--muted-foreground));
+  -webkit-mask: var(--doc-chip-icon) center / contain no-repeat;
+  mask: var(--doc-chip-icon) center / contain no-repeat;
+}
+
+.bn-editor a[href^='/app/']:hover {
+  background-color: var(--doc-chip-hover);
+}
+
+.bn-editor a[href^='/app/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+/* A member mention is a person chip: a round pill with an avatar icon, set apart from doc chips. */
+.bn-editor a[href^='/app/'][href*='/m/'] {
+  --doc-chip: hsl(var(--secondary));
+  --doc-chip-hover: hsl(var(--accent));
+  --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 20a6 6 0 0 0-12 0'/%3E%3Ccircle cx='12' cy='10' r='4'/%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3C/svg%3E"); /* lucide circle-user-round */
+  border-bottom: none;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px hsl(var(--border));
+  padding: 0 6px 0 3px;
+}
+
+.bn-editor a[href^='/app/'][href*='/m/']::before {
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  vertical-align: -2px;
+}
+
+.bn-editor a[href^='/app/'][href*='/m/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+.bn-editor a:not([href^='/app/']) {
+  color: hsl(var(--primary-ink));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.bn-editor a:not([href^='/app/']):focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
 }

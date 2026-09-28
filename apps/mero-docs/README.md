@@ -4,22 +4,22 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
 
 ## What ships in this repo
 
-- **`logic/`** — Rust workspace (v9) that compiles to a **multi-service WASM bundle** (`.mpk`)
-  - `crates/registry` — folder metadata & the group-context registry for a namespace
-  - `crates/docs` — document CRUD + tags + archive inside a folder context
-  - `crates/types` — shared types (`FolderId`, `ContextId`, `Visibility`, `DriveError`) + ABI-stable constants
-- **`app/`** — React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
+- **`logic/`** - Rust workspace (v9) that compiles to a **multi-service WASM bundle** (`.mpk`)
+  - `crates/registry` - folder metadata & the group-context registry for a namespace
+  - `crates/docs` - document CRUD + tags + archive inside a folder context
+  - `crates/types` - shared types (`FolderId`, `ContextId`, `Visibility`, `DriveError`) + ABI-stable constants
+- **`app/`** - React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
 - **`logic/workflows/`** - the merobox scenarios CI runs (see [CI](#ci))
 
 ## Feature set
 
-- **Namespaces** — each namespace is a Calimero group hierarchy; switch between them from the top bar
-- **Folders as contexts** — each folder is a subgroup with its own CRDT state; members inherit from the parent unless visibility is `Restricted`
-- **Rich-text docs** — Tiptap editor, HTML-stored, autosave with ordering-safe sequence guard
-- **Fine-grained permissions** — per-member capability bitmask (`READ | WRITE | CREATE_GROUP | MANAGE_GROUP | INVITE_MEMBERS | MANAGE_MEMBERS`) layered on top of coarse roles (Admin / Member / ReadOnly)
-- **Member management** — invite, role transitions, per-member capability overrides, namespace-wide defaults
-- **Tags & archive** — tag docs, filter by tag, archive without deleting
-- **Cross-node sync** — every namespace and folder is a CRDT; writes converge without conflict
+- **Namespaces** - each namespace is a Calimero group hierarchy; switch between them from the top bar
+- **Folders as contexts** - each folder is a subgroup with its own CRDT state; members inherit from the parent unless visibility is `Restricted`
+- **Rich-text docs** - Tiptap editor, HTML-stored, autosave with ordering-safe sequence guard
+- **Fine-grained permissions** - per-member capability bitmask (`READ | WRITE | CREATE_GROUP | MANAGE_GROUP | INVITE_MEMBERS | MANAGE_MEMBERS`) layered on top of coarse roles (Admin / Member / ReadOnly)
+- **Member management** - invite, role transitions, per-member capability overrides, namespace-wide defaults
+- **Tags & archive** - tag docs, filter by tag, archive without deleting
+- **Cross-node sync** - every namespace and folder is a CRDT; writes converge without conflict
 
 ## Prerequisites
 
@@ -86,7 +86,7 @@ mero-docs/
 
 ## Backend surface (WASM service methods)
 
-### Docs service — one context per folder
+### Docs service - one context per folder
 
 | Method | Description |
 |---|---|
@@ -100,7 +100,7 @@ mero-docs/
 
 Events: `DocCreated`, `DocEdited`, `DocArchived`, `DocUnarchived`, `DocDeleted`, `DocTagsChanged`.
 
-### Registry service — one context per namespace
+### Registry service - one context per namespace
 
 | Method | Description |
 |---|---|
@@ -131,16 +131,16 @@ See [`useWorkspaceBootstrap`](app/src/hooks/useWorkspaceBootstrap.ts) for the lo
 
 Two-axis authorization, enforced server-side in `calimero-network/core`:
 
-- **Role** (`Admin` / `Member` / `ReadOnly`) — coarse tier. Admins bypass the capability check; role changes never mutate the capability column.
-- **Capability bitmask** (u32) — per-member delegation of specific bits. `get_member_capabilities` returns only this override (0 if never set), never a role-derived "effective" mask.
+- **Role** (`Admin` / `Member` / `ReadOnly`) - coarse tier. Admins bypass the capability check; role changes never mutate the capability column.
+- **Capability bitmask** (u32) - per-member delegation of specific bits. `get_member_capabilities` returns only this override (0 if never set), never a role-derived "effective" mask.
 
 Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
 
-One layer sits on top and is **not** enforced server-side: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service — what the sharing panel's "Read-only" writes). The app hides the editor from a `Viewer`, but core admits every member of a folder's group to write its docs, and the docs service does not consult the registry, so a `Viewer` running a modified client can still edit. Treat it as a UI preference until core can make a group member read-only. Who may *set* document roles (the registry owner and managers) is enforced by storage on every node.
+One layer sits on top and is **not** enforced server-side: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service - what the sharing panel's "Read-only" writes). The app hides the editor from a `Viewer`, but core admits every member of a folder's group to write its docs, and the docs service does not consult the registry, so a `Viewer` running a modified client can still edit. Treat it as a UI preference until core can make a group member read-only. Who may *set* document roles (the registry owner and managers) is enforced by storage on every node.
 
 UI helpers:
-- [`useFolderPermissions`](app/src/hooks/useFolderPermissions.ts) — wraps the role+caps read for a specific folder
-- [`useNamespacePermissions`](app/src/hooks/useNamespacePermissions.ts) — same at the namespace root
+- [`useFolderPermissions`](app/src/hooks/useFolderPermissions.ts) - wraps the role+caps read for a specific folder
+- [`useNamespacePermissions`](app/src/hooks/useNamespacePermissions.ts) - same at the namespace root
 
 ## Development workflow
 
@@ -164,9 +164,9 @@ pnpm run app:generate-client                  # regenerate DocsClient/RegistryCl
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every PR:
 
-- **Frontend** — lint + vitest + build
-- **Logic (Rust)** — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
-- **Bundle** — assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
+- **Frontend** - lint + vitest + build
+- **Logic (Rust)** - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
+- **Bundle** - assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
 - **E2E (mero-docs)** - every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
 - **Browser E2E (mero-docs)** - the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
 - **Browser E2E rich (mero-docs)** - the `rich` Playwright project, the live collab session, against a three-node rig brought up with CI's bundle

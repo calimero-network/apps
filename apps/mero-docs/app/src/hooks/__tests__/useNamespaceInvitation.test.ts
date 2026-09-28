@@ -17,13 +17,13 @@ vi.mock('@/constants/config', () => ({
 }));
 
 // The namespace display name rides the invite URL (`&name=`) so a
-// joined node can show it immediately — `listNamespacesForApplication`
+// joined node can show it immediately - `listNamespacesForApplication`
 // omits the name until the node syncs the namespace root metadata.
 // `buildInviteUrl` only JSON-stringifies the invitation, so an empty
 // object round-trips fine for these URL-shape assertions.
 const INV = {} as SignedGroupOpenInvitation;
 
-describe('buildInviteUrl — canonical deep link', () => {
+describe('buildInviteUrl - canonical deep link', () => {
   it('builds on links.calimero.network with the package as the slug', () => {
     const url = buildInviteUrl('namespace', 'ns1', INV);
     expect(url).toMatch(
@@ -57,7 +57,7 @@ describe('buildInviteUrl — canonical deep link', () => {
   });
 
   // A folder invite is the one whose recipient can least identify the target
-  // by id — the folder may be restricted, so the id is all they would see.
+  // by id - the folder may be restricted, so the id is all they would see.
   it('round-trips a FOLDER name through parseInviteUrl', () => {
     const url = buildInviteUrl('group', 'g-7', INV, 'Q3 Budget');
     const parsed = parseInviteUrl(new URL(url).searchParams);
@@ -132,7 +132,7 @@ describe('extractInviteParams', () => {
 
   it('returns null for a raw base64 payload (no surrounding params)', () => {
     // Just the payload value without `invitation=` and the other
-    // required params is not enough — parseInviteUrl needs `id` too.
+    // required params is not enough - parseInviteUrl needs `id` too.
     expect(extractInviteParams('eyJpbnZpdGF0aW9uIjp7fX0')).toBeNull();
   });
 
@@ -166,7 +166,7 @@ describe('invite expiry', () => {
 
   // ⚠️ `expiration_timestamp`, not `expirationTimestamp`.
   // `GroupInvitationFromAdmin` mirrors a core PRIMITIVE, which carries no
-  // camelCase rename — unlike every admin DTO around it. This fixture used the
+  // camelCase rename - unlike every admin DTO around it. This fixture used the
   // camelCase spelling and so did the code, so the pair agreed with each other
   // and with nothing core has ever put on the wire: `isInviteExpired` returned
   // `false` for every real invitation. A hand-written fixture cannot catch that

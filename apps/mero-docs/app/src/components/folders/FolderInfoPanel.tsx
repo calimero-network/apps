@@ -1,6 +1,6 @@
 // Folder details modal, opened from the folder's "⋯ → Info" item.
 // Shows the folder name, its visibility (with the change toggle for
-// those who can manage it), and the members/sharing controls — which
+// those who can manage it), and the members/sharing controls - which
 // previously lived in the main pane (FolderSharingPanel), and now have
 // their home here since the pane is the document editor.
 //

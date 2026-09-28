@@ -4,19 +4,20 @@
 // FolderTreeItem. Selection is also owned by useDriveWorkspace so
 // the right-pane DocumentList reads the same value.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { buildTree } from '@/utils/ancestry';
+import { ancestorsOf, buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { folderLoadErrorMessage } from '@/lib/folderLoadError';
 import { Button } from '@/components/ui/button';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 import { NoFoldersState } from './NoFolderStates';
+import { SidebarSectionHeader } from '@/components/workspace/SidebarNav';
 
 // Map useDriveWorkspace's DriveLoadingStage values to user-facing
 // labels. Keys that don't appear here fall through to a generic
-// "Loading…" — the stage enum is defined in hooks/useDriveWorkspace.ts.
+// "Loading…" - the stage enum is defined in hooks/useDriveWorkspace.ts.
 const STAGE_LABELS: Record<string, string> = {
   'awaiting-auth': 'Waiting for sign-in…',
   'resolving-namespaces': 'Loading workspaces…',
@@ -30,20 +31,36 @@ interface FolderTreeProps {
   selectedDocId: string | null;
   onSelectFolder: (folderId: string) => void;
   onOpenDoc: (folderId: string, docId: string) => void;
+  // Controlled when the caller persists section state; otherwise the tree keeps its own.
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 export function FolderTree({
   selectedDocId,
   onSelectFolder,
   onOpenDoc,
+  collapsed: collapsedProp,
+  onToggleCollapsed,
 }: FolderTreeProps) {
-  const { folders, loading, stage, error, selectedFolderId, namespaceId, refetch } =
-    useDriveWorkspace();
+  const [collapsedLocal, setCollapsedLocal] = useState(false);
+  const collapsed = collapsedProp ?? collapsedLocal;
+  const toggleCollapsed =
+    onToggleCollapsed ?? (() => setCollapsedLocal((c) => !c));
+  const {
+    folders,
+    loading,
+    stage,
+    error,
+    selectedFolderId,
+    namespaceId,
+    refetch,
+  } = useDriveWorkspace();
 
   // Expansion is owned here (was per-row state) so it survives the
   // frequent useMemo recompute of `folders` on SSE refetch and so a
   // future "expand all" can live in one place. Default: nothing
-  // forced open — the user expands what they want.
+  // forced open - the user expands what they want.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {
@@ -64,6 +81,30 @@ export function FolderTree({
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
+  // Reveal the routed folder (and an open doc's row) once per route, as soon as
+  // it has loaded; a later refetch must not reopen a folder the user closed.
+  const revealKey = selectedFolderId && `${selectedFolderId}:${selectedDocId ?? ''}`;
+  const revealedKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedFolderId || !byId.has(selectedFolderId)) return;
+    if (revealedKey.current === revealKey) return;
+    revealedKey.current = revealKey;
+    const ids = ancestorsOf(folders, selectedFolderId);
+    if (selectedDocId) ids.push(selectedFolderId);
+    setExpanded((prev) =>
+      ids.every((id) => prev.has(id)) ? prev : new Set([...prev, ...ids]),
+    );
+  }, [revealKey, selectedFolderId, selectedDocId, byId, folders]);
+
+  // Loading flags pulse on every refetch. Once this workspace's tree has shown,
+  // a later pulse or failed re-read keeps it, and any dialog opened from it, mounted.
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  const settled = !loading && !error;
+  useEffect(() => {
+    if (settled && namespaceId) setShownFor(namespaceId);
+  }, [settled, namespaceId]);
+  const shown = !!namespaceId && shownFor === namespaceId;
+
   // The raw error is implementation detail; keep it in the console and show plain copy.
   useEffect(() => {
     if (error) console.error('Failed to load folders', error);
@@ -77,7 +118,7 @@ export function FolderTree({
     );
   }
 
-  if (loading) {
+  if (loading && !shown) {
     return (
       <div
         role="status"
@@ -89,7 +130,7 @@ export function FolderTree({
     );
   }
 
-  if (error) {
+  if (error && !shown) {
     return (
       <div className="p-3 text-xs text-destructive break-words">
         <div className="font-medium mb-1">Failed to load folders</div>
@@ -107,22 +148,30 @@ export function FolderTree({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="box-content flex min-h-9 items-center justify-between border-b border-border/60 px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Folders
-        </span>
-        {/* Self-gates on canCreateFolder. Hidden while empty because
-            NoFoldersState carries the create action then. */}
-        {tree.roots.length > 0 && (
-          <NewFolderButton parentFolderId={null} label="New" />
-        )}
-      </div>
+    // The sidebar scrolls as one, so the tree takes its natural height.
+    <div className="flex flex-col">
+      <SidebarSectionHeader
+        title="Folders"
+        collapsed={collapsed}
+        onToggle={toggleCollapsed}
+        action={
+          // Self-gates on canCreateFolder. Hidden while empty because
+          // NoFoldersState carries the create action then.
+          tree.roots.length > 0 && (
+            <NewFolderButton
+              parentFolderId={null}
+              label="New"
+              variant="ghost"
+              className="h-6 gap-1 rounded-md px-1.5 text-xs [&_svg]:size-[13px]"
+            />
+          )
+        }
+      />
 
-      {tree.roots.length === 0 ? (
+      {collapsed ? null : tree.roots.length === 0 ? (
         <NoFoldersState />
       ) : (
-        <ul className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
+        <ul className="space-y-px px-2 pb-2">
           {tree.roots.map((n) => (
             <FolderTreeItem
               key={n.id}

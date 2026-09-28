@@ -1,4 +1,4 @@
-// Document CRUD — tests 18-23 from the design catalog.
+// Document CRUD - tests 18-23 from the design catalog.
 
 import { test, expect } from '../fixtures/single-user';
 
@@ -91,9 +91,11 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.openDoc('Returnable');
     await alice.editor.close();
     await alice.docs.expectDocVisible('Returnable');
+    const main = alice.page.getByRole('main');
     await expect(
-      alice.page.getByRole('heading', { name: /No document open/i }),
+      main.getByRole('heading', { level: 1, name: 'Drafts' }),
     ).toBeVisible();
+    await expect(main.getByRole('link', { name: 'Returnable' })).toBeVisible();
   });
 
   test('delete doc removes from list', async ({ alice }) => {
@@ -128,7 +130,7 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.createDoc('Doc A');
     await alice.createFolder({ name: 'Other', visibility: 'Open' });
     await alice.tree.openFolder('Other');
-    // No doc open in the new folder — editor unmounts, empty state shows.
+    // No doc open in the new folder - editor unmounts, empty state shows.
     await expect(alice.page.locator('.ProseMirror').first()).toBeHidden();
     await expect(
       alice.page.getByRole('heading', { name: 'No documents yet' }),

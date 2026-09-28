@@ -6,13 +6,13 @@ import { useMemberCaps } from '../useMemberCaps';
 // useMemberCaps fetches members + capabilities straight off
 // `mero.admin` and reads the caller identity from useDriveWorkspace.
 // Both are mocked so each test pins the server responses directly.
-// The hook has no other imports — notably it does NOT touch
+// The hook has no other imports - notably it does NOT touch
 // constants/config, so this file is insulated from the mero-js
 // CAPABILITIES re-export.
 
 const listMembers = vi.fn();
 const getCaps = vi.fn();
-// Stable mero ref — the effect deps include `mero`; a fresh object
+// Stable mero ref - the effect deps include `mero`; a fresh object
 // every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
   mero: {
@@ -48,7 +48,7 @@ function syncEnded(contextId: string, state: string) {
   );
 }
 
-// A u32 with every bit set — what the hook reports as `caps` for a
+// A u32 with every bit set - what the hook reports as `caps` for a
 // group-admin (mirrors ADMIN_CAPS_BITMASK in the hook).
 const ADMIN_MASK = 0xffffffff >>> 0;
 
@@ -106,6 +106,35 @@ describe('useMemberCaps', () => {
     12000,
   );
 
+  it('keeps the last good caps when a re-read fails for another reason', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getCaps.mockResolvedValue({ capabilities: 5 });
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.caps).toBe(5));
+    listMembers.mockRejectedValue(new Error('HTTP 502'));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(listMembers).toHaveBeenCalledTimes(2));
+    await new Promise((settled) => setTimeout(settled, 20)); // let the failed read finish
+    expect(result.current.caps).toBe(5);
+    expect(result.current.error).toBeNull();
+  });
+
+  it(
+    'drops to no caps when a re-read is refused as not a member',
+    async () => {
+      getCaps.mockResolvedValue({ capabilities: 5 });
+      const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+      await waitFor(() => expect(result.current.caps).toBe(5));
+      getCaps.mockRejectedValue(new Error('identity is not a member'));
+      act(() => result.current.refetch());
+      await waitFor(() => expect(result.current.denied).toBe(true), {
+        timeout: 9000,
+      });
+      expect(result.current.caps).toBe(0);
+    },
+    12000,
+  );
+
   it('refetch() re-runs the membership probe', async () => {
     getCaps.mockResolvedValue({ capabilities: 1 });
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
@@ -115,7 +144,7 @@ describe('useMemberCaps', () => {
     await waitFor(() => expect(result.current.caps).toBe(7));
   });
 
-  // The behaviour core PR #2379 unblocks: an inherited Open-subgroup
+  // The behaviour core unblocks: an inherited Open-subgroup
   // member has no materialised GroupMember row, so listGroupMembers
   // omits them entirely. getMemberCapabilities resolves them (returns
   // 0) rather than throwing "not a member". The hook must treat that

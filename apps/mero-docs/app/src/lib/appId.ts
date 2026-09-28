@@ -1,6 +1,6 @@
 // Resolving mero-docs's OWN application id.
 //
-// This used to be `useMero().applicationId || VITE_APPLICATION_ID` — the id
+// This used to be `useMero().applicationId || VITE_APPLICATION_ID` - the id
 // MeroProvider resolved during whichever login last ran on this origin, or one
 // baked into the hosting project at build time. Neither describes which app
 // this is:
@@ -10,7 +10,7 @@
 //     inherits that app's session and, with it, its application id. Every
 //     namespace read is scoped by that id, so the workspace switcher lists the
 //     OTHER app's namespaces and a freshly accepted invite appears to have
-//     joined nothing — the list is filtering correctly, for the wrong app.
+//     joined nothing - the list is filtering correctly, for the wrong app.
 //
 //   * `VITE_APPLICATION_ID` is worse: an ApplicationId is per-INSTALL, so a
 //     value baked into a Vercel project is an id no node has as soon as the
@@ -18,7 +18,7 @@
 //     create failed with an opaque 500 that never mentions application ids.
 //
 // The node is the only source that can answer "which installed app am I". So
-// ask it, and match on the bundle's `package` — the identity the registry and
+// ask it, and match on the bundle's `package` - the identity the registry and
 // the desktop launcher both resolve by, and the one thing that does not change
 // between releases, machines or sessions.
 
@@ -54,13 +54,13 @@ function compareVersions(a: string | undefined, b: string | undefined): number {
  * Pick this app's id out of everything installed on the node.
  *
  * Returns `''` when this app is not installed, rather than guessing. `apps[0]`
- * — the obvious fallback — is whichever app the node happens to list first,
+ * - the obvious fallback - is whichever app the node happens to list first,
  * which is the wrong-app bug above with extra steps. An empty id makes the
  * caller say "not installed here", which is the truth and is actionable.
  *
- * When several installs share the package — a registry build and a locally
+ * When several installs share the package - a registry build and a locally
  * dev-signed one have DIFFERENT ids, because an id is `hash(package, signer)`
- * — prefer the highest version, so a freshly published bundle wins over a
+ * - prefer the highest version, so a freshly published bundle wins over a
  * stale one.
  */
 export function pickApplicationId(apps: readonly InstalledApp[]): string {
@@ -90,7 +90,7 @@ export function listIsPackageAware(apps: readonly InstalledApp[]): boolean {
 export interface ResolvedApplicationId {
   /** The id, or `''` when this app is not installed on the node. */
   id: string;
-  /** False when no installed row carried a package — `id === ''` is then inconclusive. */
+  /** False when no installed row carried a package - `id === ''` is then inconclusive. */
   packageAware: boolean;
 }
 
@@ -104,7 +104,7 @@ export async function resolveApplicationId(
     const apps = (Array.isArray(raw) ? raw : []) as InstalledApp[];
     return { id: pickApplicationId(apps), packageAware: listIsPackageAware(apps) };
   } catch {
-    // A failed list is not "not installed" — say so, so the caller keeps its
+    // A failed list is not "not installed" - say so, so the caller keeps its
     // fallback rather than rendering a confident "install mero-docs first".
     return { id: '', packageAware: false };
   }

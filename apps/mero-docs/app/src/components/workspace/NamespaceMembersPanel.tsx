@@ -1,4 +1,4 @@
-// Namespace-level members list — shows every member of the
+// Namespace-level members list - shows every member of the
 // namespace root group with their current role and an admin-only
 // remove affordance. Individual member rows fetch + mutate their
 // capability bitmask via useGroupCapabilities so the row stays
@@ -6,7 +6,7 @@
 //
 // The invite flow lives in FolderSharingPanel for per-folder
 // membership; namespace-wide invites happen elsewhere (via
-// useCreateNamespaceInvitation — surfaced in a future settings
+// useCreateNamespaceInvitation - surfaced in a future settings
 // view, tracked separately).
 
 import React, { useMemo, useState } from 'react';
@@ -88,7 +88,7 @@ export function NamespaceMembersPanel() {
       try {
         await membership.refetch();
       } catch {
-        // swallow — outer refetch is best-effort.
+        // swallow - outer refetch is best-effort.
       }
     }
   };

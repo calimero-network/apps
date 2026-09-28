@@ -12,30 +12,45 @@ const RICH_KINDS = [
   'MarkApplied',
 ] as const;
 
+const META_KINDS = ['DocTagsChanged', 'DocArchived', 'DocUnarchived']; // change what get_doc returns
+
 type RichKind = (typeof RICH_KINDS)[number];
 
 export type RichEvent = { kind: RichKind; doc: string };
 
 /** Every rich-document event in one delivered SSE payload. */
 export function parseRichEvents(data: unknown): RichEvent[] {
+  return variants(data).flatMap(([kind, value]) => {
+    const parsed = parseVariant(kind, value);
+    return parsed ? [parsed] : [];
+  });
+}
+
+/** The ids of the docs whose tags or archive state changed, from one delivered SSE payload. */
+export function parseMetaChanges(data: unknown): string[] {
+  return variants(data).flatMap(([kind, value]) => {
+    const id = asRecord(value)?.id;
+    return META_KINDS.includes(kind) && typeof id === 'string' ? [id] : [];
+  });
+}
+
+/** Each event in the payload as its variant name and decoded value. */
+function variants(data: unknown): [string, unknown][] {
   const payload = asRecord(data);
   if (!payload) return [];
 
   if (Array.isArray(payload.events)) {
-    const out: RichEvent[] = [];
+    const out: [string, unknown][] = [];
     for (const entry of payload.events) {
       const event = asRecord(entry);
       if (!event || typeof event.kind !== 'string') continue;
-      const parsed = parseVariant(event.kind, decodePayload(event.data));
-      if (parsed) out.push(parsed);
+      out.push([event.kind, decodePayload(event.data)]);
     }
     return out;
   }
 
   const keys = Object.keys(payload);
-  if (keys.length !== 1) return [];
-  const parsed = parseVariant(keys[0], payload[keys[0]]);
-  return parsed ? [parsed] : [];
+  return keys.length === 1 ? [[keys[0], payload[keys[0]]]] : [];
 }
 
 function decodePayload(data: unknown): unknown {

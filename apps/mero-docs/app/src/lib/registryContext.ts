@@ -1,11 +1,11 @@
-// Which context IS the registry for a namespace — and when the honest answer
+// Which context IS the registry for a namespace - and when the honest answer
 // is "I don't know yet".
 //
 // ⚠️ THIS FILE EXISTS BECAUSE `contexts[0]` IS NOT AN ANSWER.
 //
 // The app used to read `useGroupContexts(ns).contexts[0].contextId`. That is
 // whatever the node happened to list first, and the ordering is neither stable
-// across reloads nor the same on two nodes — so two peers could disagree about
+// across reloads nor the same on two nodes - so two peers could disagree about
 // which context is the registry for one namespace, and a user who created
 // folders saw an empty workspace after a refresh. Measured on a live pair: one
 // namespace, THREE registry contexts, the folders in the second of them.
@@ -17,7 +17,7 @@
 //     (a) this namespace genuinely has no registry yet          → mint one
 //     (b) replication has not delivered it to THIS node yet     → wait
 //
-// Treating (b) as (a) mints a fresh, empty registry on every observation — on a
+// Treating (b) as (a) mints a fresh, empty registry on every observation - on a
 // reload, on a second node, on a re-render after a failed governance op. Each
 // one then competes to be `contexts[0]`.
 //
@@ -27,8 +27,8 @@
 // THE IDENTIFICATION MECHANISM, in order of authority:
 //
 //   1. A PIN in the namespace root group's metadata `data` map. Group metadata
-//      replicates to every member — it is the same channel a workspace's name
-//      travels on — so a pin written once by the creator is the one fact both
+//      replicates to every member - it is the same channel a workspace's name
+//      travels on - so a pin written once by the creator is the one fact both
 //      nodes can agree on without agreeing about list order. This is the only
 //      mechanism that is stable by construction; everything below is recovery
 //      for namespaces created before the pin existed.
@@ -46,7 +46,7 @@
 //      order.
 //
 // Whatever 2 or 3 chooses is then WRITTEN BACK as the pin, so the guess happens
-// once per namespace and every later read — on every node — is mechanism 1.
+// once per namespace and every later read - on every node - is mechanism 1.
 
 /** Key under the root group's metadata `data` map. */
 export const REGISTRY_PIN_KEY = 'mero-drive.registryContext';
@@ -66,7 +66,7 @@ export interface ResolveInput {
   /** What `listGroupContexts(namespaceId)` returned on THIS node. */
   listed: readonly RegistryCandidate[];
   /**
-   * `getGroupInfo(namespaceId).contextCount` — how many contexts the GROUP
+   * `getGroupInfo(namespaceId).contextCount` - how many contexts the GROUP
    * believes it has, which is governance state and arrives separately from the
    * contexts themselves. `null` when unknown.
    *
@@ -110,7 +110,7 @@ function pickDeterministic(
     a.contextId < b.contextId ? -1 : a.contextId > b.contextId ? 1 : 0,
   );
 
-  // 2. The one that holds the data — adopting beats orphaning.
+  // 2. The one that holds the data - adopting beats orphaning.
   if (folderCounts) {
     const withData = byId.filter((c) => (folderCounts[c.contextId] ?? 0) > 0);
     if (withData.length > 0) {
@@ -138,14 +138,14 @@ export function resolveRegistryContext(
   const listed = input.listed ?? [];
   // Sorted, not in list order: `duplicates` is compared and displayed, and
   // leaving it in whatever order the node listed would reintroduce exactly the
-  // node-dependent ordering this module exists to remove — just one field over.
+  // node-dependent ordering this module exists to remove - just one field over.
   const others = (winner: string) =>
     listed
       .map((c) => c.contextId)
       .filter((id) => id !== winner)
       .sort();
 
-  // 1. The pin is authoritative — including when it names something this node
+  // 1. The pin is authoritative - including when it names something this node
   //    has not received. That case is precisely the one that used to mint a
   //    duplicate: the registry demonstrably exists, because a member wrote its
   //    id into replicated group metadata.
@@ -179,7 +179,7 @@ export function resolveRegistryContext(
   }
 
   if (listed.length === 0) {
-    // `reported === null` means we could not read the group's count at all —
+    // `reported === null` means we could not read the group's count at all -
     // which is not evidence of absence. Refusing to mint on unknown is the
     // safe direction: a missing registry is recoverable by an admin, a
     // duplicate one silently splits the workspace in two.

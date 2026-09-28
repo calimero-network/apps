@@ -1,8 +1,8 @@
-// Member display name propagation — tests 40-42 from the catalog.
+// Member display name propagation - tests 40-42 from the catalog.
 //
 // Namespace member metadata propagates via the namespace root group's
-// own metadata records (#2338). All namespace members have the
-// namespace key, so this is straightforward propagation — not subject
+// own metadata records. All namespace members have the
+// namespace key, so this is straightforward propagation - not subject
 // to the subgroup-encryption ordering trap that folder names are.
 
 import { test, expect } from '../fixtures/two-user';
@@ -83,7 +83,7 @@ test.describe('Member metadata propagation (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Room');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Room');
     await bob.openDoc('Together');
     await alice.openDoc('Together');
     await alice.editor.type('hi');

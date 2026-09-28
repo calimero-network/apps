@@ -29,7 +29,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Shared');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Shared');
     await bob.docs.expectDocVisible('Joint');
 
     // Both open the same doc.
@@ -51,7 +51,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Room');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Room');
     await bob.openDoc('Together');
     await alice.openDoc('Together');
 
@@ -77,7 +77,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Pad');
     await bob.openDoc('A-writes');
 
     await alice.openDoc('A-writes');
@@ -98,7 +98,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Pad');
     await bob.openDoc('B-writes');
 
     await bob.editor.type('hello from bob');
@@ -107,9 +107,9 @@ test.describe('Document collab (two-node)', () => {
     await alice.editor.expectContent('hello from bob', { timeout: 60_000 });
   });
 
-  // FIXME — no longer the core bug this was parked for. On rc.41 presence
+  // FIXME - no longer the core bug this was parked for. On rc.41 presence
   // itself failed ("no current group key": presence keyed off the Open folder's
-  // subgroup keyring); core#4027 in rc.42 fixed that, and on an rc.42 rig every
+  // subgroup keyring); core rc.42 fixed that, and on an rc.42 rig every
   // set_ephemeral now succeeds. What still fails is the caret's anchor:
   // `anchor_at` is refused with "provided string contained invalid character
   // '-' at byte 8" because useBodyCursors → useFugueBody.backendIdOf falls back
@@ -130,7 +130,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Desk');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Desk');
     await bob.docs.expectDocVisible('Pointer');
 
     await alice.openDoc('Pointer');

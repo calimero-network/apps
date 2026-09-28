@@ -1,6 +1,6 @@
 // Document leaves for ONE expanded folder. Mounted by FolderTreeItem
-// only while its folder is expanded, so useDocs(folderId) — which
-// resolves a per-folder Calimero context — fires lazily rather than
+// only while its folder is expanded, so useDocs(folderId) - which
+// resolves a per-folder Calimero context - fires lazily rather than
 // for every folder in the tree on load. Collapsing the folder
 // unmounts this and releases the subscription.
 
@@ -38,13 +38,13 @@ export function FolderDocLeaves({
     void create().finally(onCreateSettled);
   }, [contextId, createPending, onCreateSettled, create]);
 
-  // Context not yet bound: a brief muted hint, never a red error —
+  // Context not yet bound: a brief muted hint, never a red error -
   // folders sync from peers and the context lands a moment later.
   if (!docs.contextId) {
     if (docs.error) return null; // access-denied / no membership: silent
     if (docs.contextResolving) {
       return (
-        <li className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+        <li className="flex items-center gap-1.5 px-1.5 py-1 text-xs text-muted-foreground">
           {/* Chevron-width spacer so the hint lines up with doc rows. */}
           <span className="h-4 w-4 shrink-0" aria-hidden />
           Syncing…
@@ -60,7 +60,7 @@ export function FolderDocLeaves({
   return (
     <>
       {newDoc.error && (
-        <li className="px-2 py-1 text-xs text-destructive" role="alert">
+        <li className="px-1.5 py-1 text-xs text-destructive" role="alert">
           Couldn't create a document: {newDoc.error}
         </li>
       )}
@@ -74,7 +74,7 @@ export function FolderDocLeaves({
               data-doc-id={d.id}
               aria-current={isSelected ? 'page' : undefined}
               onClick={() => onOpenDoc(folderId, d.id)}
-              className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+              className={`flex h-[30px] w-full items-center gap-1.5 rounded-md px-1.5 text-left text-sm transition-colors ${
                 isSelected
                   ? 'bg-selected text-selected-foreground font-medium'
                   : 'text-foreground hover:bg-muted/60'

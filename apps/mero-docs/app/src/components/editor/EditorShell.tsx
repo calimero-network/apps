@@ -5,7 +5,7 @@
 // editor library is underneath:
 //   - `initialContent` / `onContentChange` carry an OPAQUE string. With
 //     BlockNote that string is `JSON.stringify(editor.document)` (a
-//     serialized Block[]) instead of HTML — DocumentEditor only ever
+//     serialized Block[]) instead of HTML - DocumentEditor only ever
 //     compares the string, so its autosave / seq-guard / SSE-reconcile
 //     logic transfers verbatim.
 //   - `readOnly`, `saveStatus`, `lastSavedAt`, `isAppReady`, `isLoading`
@@ -14,7 +14,7 @@
 // The one delicate piece is remote-content application. Tiptap let us
 // inject remote edits with `setContent(html, { emitUpdate: false })`.
 // BlockNote's `replaceBlocks` ALWAYS fires `onChange` (no suppress flag
-// exists — verified against source), so an SSE refresh would otherwise
+// exists - verified against source), so an SSE refresh would otherwise
 // masquerade as a local keystroke and trigger a spurious autosave (and,
 // worse, a feedback loop between two collaborators). We guard every
 // programmatic replace with `applyingRemoteRef`: set it, replaceBlocks,
@@ -22,10 +22,15 @@
 // then we clear it. ProseMirror dispatches transactions synchronously,
 // so the flag is reliably down again before any real user edit.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { createExtension } from '@blocknote/core';
-import { useCreateBlockNote } from '@blocknote/react';
+import {
+  FormattingToolbarController,
+  LinkToolbarController,
+  SideMenuController,
+  useCreateBlockNote,
+} from '@blocknote/react';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -35,6 +40,27 @@ import type { Peer } from './PeerAvatars';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { presencePlugin } from './presence/presencePlugin';
+import { blockDecorations, setSectionWash } from './blocknote/blockDecorations';
+import {
+  BlockSideMenu,
+  SectionLinksContext,
+  sectionName,
+  type SectionLinks,
+} from './blocknote/BlockMenu';
+import { SectionBanner } from './SectionBanner';
+import { DocAwareLinkToolbar, DocLinkHover } from './DocLinkHover';
+import { DocLinkNav } from './blocknote/DocLinkNav';
+import { DocLinkPicker } from './blocknote/DocLinkPicker';
+import { EditorSlashMenu } from './blocknote/EditorSlashMenu';
+import { BlockFormattingToolbar } from './blocknote/BlockFormattingToolbar';
+import {
+  followDocLink,
+  insertDocLink,
+  openClickedLink,
+  pastedDocLink,
+  type EditorLinkNav,
+} from './blocknote/docLinks';
+import { useSectionFocus } from '@/hooks/useSectionFocus';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -54,6 +80,7 @@ export interface EditorShellProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onDelete?: () => void;
+  onCopyLink?: () => void;
   /** Called with the serialized document (JSON Block[] string) on every
    *  local edit. Caller debounces and persists. NOT called for remote
    *  content applied via the `initialContent` prop. */
@@ -76,18 +103,20 @@ export interface EditorShellProps {
   readOnly?: boolean;
   /** Everyone else with this document open. */
   peers?: Peer[];
-}
-
-// BlockNote renders its own block ids as `data-id`, which are the backend's
-// block tokens here; the browser suites address blocks through a stable testid.
-export function stampBlocks(root: HTMLElement | null): void {
-  if (!root) return;
-  for (const block of root.querySelectorAll<HTMLElement>('[data-id]')) {
-    const id = block.getAttribute('data-id');
-    if (!id || block.dataset.blockId === id) continue;
-    block.dataset.testid = 'doc-block';
-    block.dataset.blockId = id;
-  }
+  /** Backs the block menu's Copy link to section. */
+  sectionLinks?: SectionLinks;
+  /** The block a `#b=` link opened the document at, by the editor's id. */
+  focusBlock?: string;
+  /** The navigation that carried `focusBlock`; a new one focuses again. */
+  focusKey?: string;
+  /** The document's tag row, above the first line and outside the body. */
+  tags?: React.ReactNode;
+  detailsOpen?: boolean;
+  onToggleDetails?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
+  /** A status bar under the header, such as the archived banner. */
+  notice?: React.ReactNode;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -98,6 +127,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   onUndo,
   onRedo,
   onDelete,
+  onCopyLink,
   onContentChange,
   initialContent,
   saveStatus = 'saved',
@@ -108,6 +138,15 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   readOnly = false,
   onEditorReady,
   peers,
+  sectionLinks,
+  focusBlock,
+  focusKey,
+  tags,
+  detailsOpen,
+  onToggleDetails,
+  onArchive,
+  onUnarchive,
+  notice,
 }) => {
   const { theme } = useTheme();
 
@@ -129,11 +168,30 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       }),
     [],
   );
+  const blockAttrs = useMemo(
+    () =>
+      createExtension({
+        key: 'calimeroBlockAttrs',
+        prosemirrorPlugins: [blockDecorations()],
+      }),
+    [],
+  );
+
+  // The editor's link and paste handlers are fixed at creation; DocLinkNav keeps this current.
+  const linkNavRef = useRef<EditorLinkNav>(null!);
 
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialBlocks,
-    extensions: [presence],
+    extensions: [presence, blockAttrs],
+    links: { onClick: (event) => openClickedLink(event, linkNavRef.current) },
+    pasteHandler: ({ event, editor: target, defaultPasteHandler }) => {
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      const link = pastedDocLink(text, linkNavRef.current);
+      if (!link) return defaultPasteHandler();
+      insertDocLink(target as DriveEditor, link);
+      return true;
+    },
   });
 
   useEffect(() => {
@@ -142,11 +200,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
+  // Bumps on every document change, local or a peer's, so section focus can look again.
+  const [docRevision, setDocRevision] = useState(0);
 
   // True only while we are programmatically applying remote content, so
   // the resulting onChange does NOT round-trip back out as a local save.
   const applyingRemoteRef = useRef(false);
-  const editorRootRef = useRef<HTMLDivElement | null>(null);
   // The serialized content the editor is known to hold (last loaded /
   // applied / emitted). Two jobs:
   //   - onChange emits a save ONLY when the document genuinely differs
@@ -158,17 +217,16 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   const lastContentRef = useRef<string | undefined>(undefined);
 
   // Prime counts + the content baseline ONCE per editor instance. Kept
-  // in its own effect (deps: [editor]) — NOT folded into the onChange
-  // subscription below — so that a change in `onContentChange` identity
+  // in its own effect (deps: [editor]) - NOT folded into the onChange
+  // subscription below - so that a change in `onContentChange` identity
   // can't re-run the prime and reset `lastContentRef`, which would drop
   // the baseline for an in-progress edit. CRITICAL: priming must NOT
-  // emit onContentChange — the shell is mounted with an empty editor
+  // emit onContentChange - the shell is mounted with an empty editor
   // while the doc loads, and emitting here would schedule a save of
   // empty content that could land after the real content arrives and
   // wipe the document.
   useEffect(() => {
     if (!editor) return;
-    stampBlocks(editorRootRef.current);
     const text = blocksToPlainText(editor.document);
     setWordCount(countWords(text));
     setCharCount(countCharacters(text));
@@ -184,10 +242,10 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     if (!editor) return;
     const handler = () => {
       const doc = editor.document;
-      stampBlocks(editorRootRef.current);
       const text = blocksToPlainText(doc);
       setWordCount(countWords(text));
       setCharCount(countCharacters(text));
+      setDocRevision((value) => value + 1);
       if (applyingRemoteRef.current) return;
       const serialized = serializeBlocks(doc);
       if (serialized === lastContentRef.current) return; // no real change
@@ -202,12 +260,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // guards make this robust regardless of whether BlockNote dispatches the
   // transaction synchronously or (in some future version) asynchronously:
   //   1. `applyingRemoteRef` short-circuits onChange for the duration of
-  //      the apply — covers the synchronous case and the intermediate
+  //      the apply - covers the synchronous case and the intermediate
   //      transaction states. Cleared in `finally`, so a throw can't strand
   //      it true.
   //   2. `lastContentRef` is set to the applied content, so once the doc
   //      settles its serialization equals `lastContentRef` and onChange's
-  //      equality check drops it — covers any onChange that fires AFTER
+  //      equality check drops it - covers any onChange that fires AFTER
   //      the flag is cleared (i.e. an async dispatch). Belt and suspenders.
   useEffect(() => {
     if (!editor || initialContent === undefined) return;
@@ -262,7 +320,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           try {
             editor.setTextCursorPosition(target, 'end');
           } catch {
-            /* block no longer focusable — leave default caret */
+            /* block no longer focusable - leave default caret */
           }
         }
       }
@@ -271,9 +329,31 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     }
   }, [editor, initialContent]);
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sectionOf = useCallback(
+    (id: string) => sectionName(editor.getBlock(id) ?? { type: 'paragraph' }),
+    [editor],
+  );
+  const wash = useCallback(
+    (id: string | null) => {
+      if (editor.prosemirrorView) setSectionWash(editor.prosemirrorView, id);
+    },
+    [editor],
+  );
+  // Declared after the content effect, so the loaded blocks are in the DOM when it runs.
+  const section = useSectionFocus({
+    block: focusBlock,
+    navKey: focusKey,
+    ready: !isLoading && initialContent !== undefined,
+    revision: docRevision,
+    scrollRef,
+    sectionOf,
+    wash,
+  });
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-background">
+      <div className="flex min-w-0 flex-1 items-center justify-center h-full bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-ink mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading document…</p>
@@ -284,7 +364,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex min-w-0 flex-1 flex-col h-full bg-background">
         <EditorHeader
           documentName={documentName}
           title={readOnly ? undefined : title}
@@ -293,21 +373,66 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           folderName={folderName}
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
+          onCopyLink={onCopyLink}
+          detailsOpen={detailsOpen}
+          onToggleDetails={onToggleDetails}
+          onArchive={onArchive}
+          onUnarchive={onUnarchive}
           peers={peers}
         />
 
+        {notice}
+
+        {section.banner && (
+          <SectionBanner
+            variant={section.banner.variant}
+            section={section.banner.section}
+            onTop={section.goTop}
+            onDismiss={section.dismiss}
+          />
+        )}
+
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto bg-card">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto bg-card">
             <div
-              ref={editorRootRef}
               data-testid="doc-editor"
               className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
             >
-              <BlockNoteView
-                editor={editor}
-                editable={!readOnly}
-                theme={theme}
-              />
+              {tags}
+              <SectionLinksContext.Provider value={sectionLinks ?? null}>
+                <DocLinkHover>
+                  {/* BlockNote handles primary clicks only while editable; the rest land here. */}
+                  <div
+                    onClick={(e) =>
+                      readOnly && followDocLink(e.nativeEvent, linkNavRef.current)
+                    }
+                    onAuxClick={(e) =>
+                      followDocLink(e.nativeEvent, linkNavRef.current)
+                    }
+                  >
+                    <BlockNoteView
+                      editor={editor}
+                      editable={!readOnly}
+                      theme={theme}
+                      sideMenu={false}
+                      linkToolbar={false}
+                      slashMenu={false}
+                      formattingToolbar={false}
+                    >
+                      <SideMenuController sideMenu={BlockSideMenu} />
+                      <FormattingToolbarController
+                        formattingToolbar={BlockFormattingToolbar}
+                      />
+                      <LinkToolbarController
+                        linkToolbar={DocAwareLinkToolbar}
+                      />
+                      <DocLinkNav navRef={linkNavRef} />
+                      <DocLinkPicker editor={editor} />
+                      <EditorSlashMenu editor={editor} />
+                    </BlockNoteView>
+                  </div>
+                </DocLinkHover>
+              </SectionLinksContext.Provider>
             </div>
           </div>
 

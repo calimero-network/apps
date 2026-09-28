@@ -1,8 +1,8 @@
-// Landing surface — runs without a live merod node.
+// Landing surface - runs without a live merod node.
 //
 // ⚠️ TRIMMED. `/` is now the shared Calimero landing page, and its own contract
-// — hero, badge, sections, features, theme, FAQ, the connect CTA, the desktop
-// link — is asserted by the generated `marketing-landing.spec.ts` beside this
+// - hero, badge, sections, features, theme, FAQ, the connect CTA, the desktop
+// link - is asserted by the generated `marketing-landing.spec.ts` beside this
 // file. Re-asserting it here would be two copies of one contract, and the copy
 // nobody regenerates is the one that rots.
 //
@@ -33,7 +33,7 @@ test.describe('Landing (unauthenticated)', () => {
     page,
   }) => {
     // Without tokens, /app/* should bounce back to the landing or
-    // login page. Either way the workspace UI must NOT mount —
+    // login page. Either way the workspace UI must NOT mount -
     // FolderTree's "New folder" affordance is a definitive negative
     // signal.
     await page.goto('/app');

@@ -1,4 +1,4 @@
-// BlockNote editor — surface + slash menu + JSON persistence.
+// BlockNote editor - surface + slash menu + JSON persistence.
 //
 // doc-crud.spec.ts already covers generic CRUD/persist via the editor;
 // this spec pins the things that are specifically BlockNote: the
@@ -32,7 +32,7 @@ test.describe('BlockNote editor (single-node)', () => {
     const editor = alice.page.locator('.ProseMirror').first();
     await editor.click();
     await editor.pressSequentially('/');
-    // The slash suggestion menu lists block types — "Heading" is a
+    // The slash suggestion menu lists block types - "Heading" is a
     // stable default item.
     await expect(alice.page.getByText(/Heading/i).first()).toBeVisible({
       timeout: 10_000,

@@ -44,6 +44,7 @@ import {
   keepSelection,
   type RemoteTextEditor,
 } from '@/components/editor/remoteText';
+import { schema } from '@/components/editor/blocknote/schema';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
@@ -51,6 +52,16 @@ import { useRetry } from './useRetry';
 const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+const FRESH_PARAGRAPH_ATTRS = fromBlockNote([
+  {
+    id: '',
+    type: 'paragraph',
+    props: Object.fromEntries(
+      Object.entries(schema.blockSchema.paragraph.propSchema).map(([key, prop]) => [key, prop.default]),
+    ),
+    children: [],
+  },
+])[0].attrs; // what BlockNote's empty paragraph carries before anyone formats it
 
 /** The slice of the BlockNote editor the binding drives. */
 export interface BodyEditor {
@@ -91,6 +102,8 @@ export interface UseFugueBodyResult {
   /** The backend id of a block the editor knows by its own id, and back. */
   backendIdOf: (editorId: string) => string;
   editorIdOf: (backendId: string) => string;
+  /** False while a block the editor minted still waits for the node's id. */
+  isConfirmed: (editorId: string) => boolean;
 }
 
 interface Caret {
@@ -106,6 +119,14 @@ interface Outcome {
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
+
+/** BlockNote always holds a block, so it shows an empty document as one empty, unformatted paragraph. */
+const isEditorStandIn = (blocks: EditorBlock[]): boolean =>
+  blocks.length === 1 &&
+  blocks[0].kind === 'paragraph' &&
+  blocks[0].depth === 0 &&
+  blocks[0].inline.length === 0 &&
+  Object.entries(blocks[0].attrs).every(([key, value]) => FRESH_PARAGRAPH_ATTRS[key] === value);
 
 const structureOf = (blocks: EditorBlock[]): string =>
   JSON.stringify(blocks.map((b) => [b.id, b.kind, b.depth, b.attrs]));
@@ -182,14 +203,22 @@ export function useFugueBody({
     return backendId;
   }, []);
 
+  const isConfirmed = useCallback(
+    (editorId: string) =>
+      idMapRef.current.has(editorId) || serverRef.current.some((block) => block.id === editorId),
+    [],
+  );
+
   /** The editor's document as the flat list the diff takes, in backend ids. */
   const localBlocks = useCallback((): EditorBlock[] => {
     const live = editorRef.current;
     if (!live) return [];
-    return fromBlockNote(live.document).map((block) => ({
+    const blocks = fromBlockNote(live.document).map((block) => ({
       ...block,
       id: backendIdOf(block.id),
     }));
+    // Opening a document must not write to it, so this stays unsent until typed into.
+    return serverRef.current.length === 0 && isEditorStandIn(blocks) ? [] : blocks;
   }, [backendIdOf]);
 
   // Until the editor holds the loaded document, a diff against it would
@@ -356,6 +385,10 @@ export function useFugueBody({
           if (at) caret = { block: backendIdOf(block.id), at };
         }
       }
+      // A caret in the empty paragraph a peer's first blocks replace stays at the top.
+      if (caret && serverRef.current.length === 0 && remote.length > 0) {
+        caret = { block: remote[0].id, at: { anchor: 0, head: 0 } };
+      }
       const target = toBlockNote(remote.map((block) => ({ ...block, id: editorIdOf(block.id) })));
       asPeer((peer) => {
         const { at, remove, insert } = changedRange(peer.document, target);
@@ -388,7 +421,10 @@ export function useFugueBody({
         setContent(JSON.stringify(toBlockNote(remote)));
         return;
       }
-      if (!applyRemoteStructure(remote)) {
+      // A peer's first blocks take the empty paragraph's place rather than land beside it.
+      const replacesStandIn =
+        remote.length > 0 && serverRef.current.length === 0 && localBlocks().length === 0;
+      if (replacesStandIn || !applyRemoteStructure(remote)) {
         if (diffBlocks(serverRef.current, localBlocks()).length > 0) {
           // Our own block change is unsent; send it, then read again.
           dirtyRef.current = true;
@@ -671,5 +707,6 @@ export function useFugueBody({
     revision,
     backendIdOf,
     editorIdOf,
+    isConfirmed,
   };
 }

@@ -1,5 +1,5 @@
 // Memoized RegistryClient factory. The generated class takes
-// `(mero, contextId, executorPublicKey)` — we recreate only when
+// `(mero, contextId, executorPublicKey)` - we recreate only when
 // one of those inputs changes. Callers obtain the per-namespace
 // pubkey + Registry context id from useDriveWorkspace.
 //

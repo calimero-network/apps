@@ -56,7 +56,7 @@ export interface GroupRoleAdmin {
 }
 
 /**
- * @param groupId the core group whose membership is being edited — a namespace
+ * @param groupId the core group whose membership is being edited - a namespace
  *   root id for the workspace roster, a folder's subgroup id for a folder one.
  * @param syncRegistryManagers whether an Admin promotion here should also
  *   appoint a registry manager. True for the NAMESPACE roster, where "admin of
@@ -90,7 +90,7 @@ export function useGroupRoleAdmin(
         // returns and `useNodeIdentity().identity.accountId` gives for
         // oneself. A signing key or a device id is also 64 hex and would be
         // accepted here and by the server, naming a principal that exists
-        // nowhere — no error, no effect.
+        // nowhere - no error, no effect.
         const grant = WORKSPACE_ROLE_GRANTS[nextRole];
         const roleMoves = grant.role !== currentRole;
         if (roleMoves) {
@@ -117,7 +117,7 @@ export function useGroupRoleAdmin(
           const intent = registryManagerIntent(currentRole, grant.role);
           if (intent !== 'none') {
             if (!registryAdmin.isOwner) {
-              // Not a failure of this call — the contract permits only the
+              // Not a failure of this call - the contract permits only the
               // owner to write that list. Say what is missing so the user
               // knows who to ask rather than discovering it as a refusal
               // later, from the promoted person.

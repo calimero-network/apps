@@ -20,7 +20,7 @@ describe('pickApplicationId', () => {
 
   // The whole point. `apps[0]` is whichever app the node lists first, and
   // taking it is how mero-docs would end up listing another app's namespaces
-  // on a shared origin — filtering correctly, for the wrong app.
+  // on a shared origin - filtering correctly, for the wrong app.
   it('returns "" rather than guessing when this app is not installed', () => {
     const apps: InstalledApp[] = [
       { id: 'other', package: THEIRS, version: '1.0.0' },
@@ -71,7 +71,7 @@ describe('pickApplicationId', () => {
 
 describe('listIsPackageAware', () => {
   // A raw-`.wasm` install (what the dev scripts do) has no package, so a
-  // no-match against such a list means "cannot tell", not "not installed" —
+  // no-match against such a list means "cannot tell", not "not installed" -
   // and the caller must keep its fallback rather than claim the app is absent.
   it('is false when no row carries a package', () => {
     expect(

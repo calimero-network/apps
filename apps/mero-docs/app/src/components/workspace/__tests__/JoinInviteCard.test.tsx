@@ -7,19 +7,24 @@ import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 
 // JoinInviteCard reads useMero + useApplicationId directly; stub both so the
 // accept button is reachable without a real Mero client.
+// Answers like core: one id-ordered page per request, 100 rows unless asked.
+const listNamespacesForApplication = vi.hoisted(() =>
+  vi.fn(async (appIdAndQuery: string) => {
+    const query = new URLSearchParams(appIdAndQuery.split('?')[1] ?? '');
+    const offset = Number(query.get('offset') ?? 0);
+    const limit = Number(query.get('limit') ?? 100);
+    const ids = Array.from({ length: 101 }, (_, i) => `ns-${String(i).padStart(3, '0')}`);
+    return ids.slice(offset, offset + limit).map((namespaceId) => ({ namespaceId }));
+  }),
+);
+
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({
-    mero: {},
+    mero: { admin: { listNamespacesForApplication } },
     isAuthenticated: true,
     isLoading: false,
     applicationId: null,
-  }),
-  useNamespacesForApplication: () => ({
-    namespaces: [],
-    loading: false,
-    error: null,
-    refetch: async () => {},
   }),
   ConnectButton: () => <button>Connect</button>,
 }));
@@ -41,7 +46,7 @@ vi.mock('@/hooks/namespaceNames', () => ({
   rememberNamespaceName: vi.fn(),
 }));
 
-// Never resolves — stands in for a join request still in flight.
+// Never resolves - stands in for a join request still in flight.
 const join = vi.fn(() => new Promise(() => {}));
 
 vi.mock('@/hooks/useNamespaceInvitation', () => ({
@@ -79,6 +84,17 @@ describe('JoinInviteCard secondary action', () => {
 
     fireEvent.click(back);
     expect(onSecondary).not.toHaveBeenCalled();
+  });
+});
+
+describe('JoinInviteCard membership', () => {
+  it('knows a member of a workspace past the node’s first page of 100', async () => {
+    render(
+      <JoinInviteCard parsed={{ ...parsed, targetId: 'ns-100' }} onJoined={vi.fn()} />,
+    );
+    expect(
+      await screen.findByText(/already a member of this workspace/),
+    ).toBeTruthy();
   });
 });
 

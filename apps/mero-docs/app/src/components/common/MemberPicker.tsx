@@ -3,30 +3,37 @@
 // expecting a 64-char hex pubkey; this lets the admin start typing
 // a name or a pubkey prefix and pick from the workspace member list.
 // Free-form paste of an unknown pubkey still works (Enter commits the
-// raw text via onSelect — the downstream form validates / sends).
+// raw text via onSelect - the downstream form validates / sends).
 //
 // Filtering happens in the parent, on the *pre-loaded* `GroupMember.name`
-// field that `useGroupMembers` returns (core #2338 propagates each
+// field that `useGroupMembers` returns (core propagates each
 // member's MetadataRecord.name into the list rows). Only the rows that
 // matched render a <MemberLabel>, which itself calls useMemberDisplayName
-// — so the live-metadata lookup is bounded by what's actually visible,
+// - so the live-metadata lookup is bounded by what's actually visible,
 // not by the size of the workspace.
 //
 // Props:
-//   namespaceId — needed so each visible row can resolve its display
+//   namespaceId - needed so each visible row can resolve its display
 //                 name via <MemberLabel>; also the scope this picker
 //                 operates in.
-//   onSelect    — fired with the chosen identity. The parent decides
+//   onSelect    - fired with the chosen identity. The parent decides
 //                 what to do (set its own state, call the server, etc).
-//   exclude     — identities to omit from the dropdown (e.g. existing
+//   exclude     - identities to omit from the dropdown (e.g. existing
 //                 managers / members already in the folder).
-//   placeholder — passed through to the input.
+//   placeholder - passed through to the input.
 //   ariaLabel
 //   disabled
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useGroupMembers } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import {
+  foldForSearch,
+  matchScore,
+  queryWords,
+  TYPO_TIER,
+  typoFallback,
+} from '@/lib/search/match';
 import { MemberLabel } from './MemberLabel';
 
 interface Props {
@@ -61,7 +68,7 @@ export function MemberPicker({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   // Active option index for keyboard navigation (Arrow keys) + the
-  // listbox's aria-selected signal. -1 means "no active option" —
+  // listbox's aria-selected signal. -1 means "no active option" -
   // when the user is typing without having arrowed down yet.
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,20 +78,20 @@ export function MemberPicker({
 
   const excludeSet = useMemo(() => new Set(exclude ?? []), [exclude]);
 
-  // Filter in the parent — on the pre-loaded GroupMember.name and the
+  // Filter in the parent - on the pre-loaded GroupMember.name and the
   // pubkey prefix. Only matching rows render a MemberLabel, so the
   // useMemberDisplayName fan-out is bounded by what's actually shown.
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return members.filter((m) => {
-      if (excludeSet.has(m.identity)) return false;
-      if (q.length === 0) return true;
-      const name = m.name?.toLowerCase();
-      return (
-        (name !== undefined && name.includes(q)) ||
-        m.identity.toLowerCase().startsWith(q)
-      );
+    const candidates = members.filter((m) => !excludeSet.has(m.identity));
+    const key = query.trim().toLowerCase();
+    if (!key) return candidates;
+    const words = queryWords(query);
+    const hits = candidates.flatMap((m) => {
+      if (m.identity.toLowerCase().startsWith(key)) return [{ m, typo: false }];
+      const score = matchScore(foldForSearch(m.name ?? ''), words);
+      return score === null ? [] : [{ m, typo: score >= TYPO_TIER }];
     });
+    return typoFallback(hits).map((h) => h.m);
   }, [members, excludeSet, query]);
 
   const pick = (identity: string) => {
@@ -96,7 +103,7 @@ export function MemberPicker({
   };
 
   // Reset active highlight whenever the filtered list changes shape
-  // — otherwise an out-of-range index can persist after typing.
+  // - otherwise an out-of-range index can persist after typing.
   useEffect(() => {
     if (activeIndex >= matches.length) setActiveIndex(matches.length - 1);
   }, [matches.length, activeIndex]);

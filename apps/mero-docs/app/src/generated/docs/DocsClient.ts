@@ -72,7 +72,7 @@ export interface Change_Retain {
  * the runtime stamps the writer's identity and a per-entry schema version on
  * insert; only the owner can re-sign it (the basis of the migration banner).
  *
- * The value type is intentionally STABLE across schema versions — the v1→v2
+ * The value type is intentionally STABLE across schema versions - the v1→v2
  * migration bumps the *state* schema and adds a top-level marker, never a
  * field inside `Comment` (changing an authored value type is a content
  * rewrite, a different and harder migration class).
@@ -110,22 +110,30 @@ export interface CommentDto {
  */
 export interface DocDto {
   id: string;
-  /**
-   * Hex account of whoever created the doc, from `origins`' owner stamp.
-   */
-  creator: string;
   title: string;
+  /**
+   * Keys only, sorted; the registry maps each to a name and colour.
+   */
   tags: string[];
   archived: boolean;
   created_at: number;
   updated_at: number;
+  /**
+   * Hex account of whoever created the doc, from `origins`' owner stamp.
+   */
+  created_by: string;
+  updated_by: string;
+  /**
+   * Whether the caller may delete it: the same rule `delete_doc` enforces.
+   */
+  can_delete: boolean;
 }
 
 /**
  * Per-document record.
  *
- * The derive supplies the deterministic re-key cascade `title` and `body`
- * need: a nested collection stored under a value type that is not a
+ * The derive supplies the deterministic re-key cascade `title`, `body` and
+ * `tags` need: a nested collection stored under a value type that is not a
  * registered `RekeyTarget` keeps a per-replica random storage id and never
  * converges.
  */
@@ -133,12 +141,12 @@ export interface DocRecord {
   title: {  };
   body: Record<string, BlockView>;
   /**
-   * A set, so two members tagging the same doc at once both keep their tag.
-   * (It was an LWW-replaced list, and one side's whole list won.)
+   * tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
    */
-  tags: string[];
+  tags: Record<string, boolean>;
   archived: boolean;
   updated_at: number;
+  updated_by: string;
 }
 
 /**
@@ -397,7 +405,7 @@ export class DocsClient {
   /**
    * comment_schema_version
    *
-   * The comment's stored per-entry `schema_version` — `Some(1)` before
+   * The comment's stored per-entry `schema_version` - `Some(1)` before
    * convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
    * one-tap `migrate_my_entries` actually re-stamped it.
    *

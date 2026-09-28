@@ -1,21 +1,17 @@
-// Root of the app. Mirrors battleships' App.tsx shape exactly: a
-// single MeroProvider at the top, then the UI-level providers, then
-// the router. No session-timeout logic here — the per-page guard in
-// pages/workspace/index.tsx handles the "not authenticated" branch,
-// and Phase 3's useDriveWorkspace owns any cache invalidation on
-// namespace switch / logout.
+// Root of the app: MeroProvider, then the UI providers, then the router. Auth
+// is guarded by the workspace page; useDriveWorkspace owns cache invalidation.
 //
 // Env vars consumed:
-//   VITE_PACKAGE_NAME    — passed to MeroProvider so the OAuth flow
+//   VITE_PACKAGE_NAME    - passed to MeroProvider so the OAuth flow
 //                          can resolve the application id from the
 //                          public registry
-//   VITE_REGISTRY_URL    — optional registry override (self-hosted)
+//   VITE_REGISTRY_URL    - optional registry override (self-hosted)
 //
 // Routes:
 //   /          → landing page (public)
 //   /login     → Authenticate (ConnectButton entry)
 //   /app/*     → WorkspacePage (auth-guarded shell, mounts
-//                 WorkspaceLayout)
+//                 WorkspaceLayout; screen URLs in lib/routes)
 //   *          → redirect to /
 
 import React, { type ReactNode } from 'react';
@@ -35,6 +31,7 @@ import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
+import { readReturnTo } from '@/lib/routes';
 
 import DevPanel from '@/components/dev/DevPanel';
 
@@ -44,6 +41,11 @@ import JoinPage from './pages/join';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
+// Ternary, not `&&`, so a production build's dead-code elimination can drop
+// the whole `import()` - the gallery must never enter the eager bundle.
+const LayoutGallery = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/dev/LayoutGallery'))
+  : null;
 // Clears EditorStatusBar's bottom bar so a toast never covers "Saved • E2E Encrypted".
 const TOAST_BOTTOM_OFFSET = 64;
 
@@ -72,8 +74,8 @@ function InviteRedirect() {
 //
 //   …#node_url=…&access_token=…&refresh_token=…&app-id=…&expires_at=…
 //
-// mero-react owns that hash — MeroProvider runs `parseAuthCallback` on its first
-// render — but it will not store the tokens unless it can decide the node is
+// mero-react owns that hash - MeroProvider runs `parseAuthCallback` on its first
+// render - but it will not store the tokens unless it can decide the node is
 // trusted, and `resolveTrustedNodeUrl` (present since 4.2.0, so also in
 // the 4.6.1 this app pins) is default-DENY:
 //
@@ -82,7 +84,7 @@ function InviteRedirect() {
 //     candidate + neither          -> REJECT
 //
 // "initiated" is the node THIS browser context started a login against, and a
-// desktop hand-off never had one — the launcher did the login. So without an
+// desktop hand-off never had one - the launcher did the login. So without an
 // anchor a cold desktop open lands in the third branch, the provider logs
 // "OAuth callback node_url is not trusted … no tokens stored" and NOTHING ELSE,
 // and the user is left at the Connect screen holding a good session. This file
@@ -105,8 +107,8 @@ const hashNodeUrl =
  * An authenticated visitor has no business on the marketing page.
  *
  * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
+ * to wherever login started - `connectToNode` uses `window.location.href` as
+ * the callback URL - which for a visitor who pressed Connect on the landing
  * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
  * true, and the router renders the landing page again: you log in successfully
  * and end up exactly where you started.
@@ -114,6 +116,7 @@ const hashNodeUrl =
  * The app used to get this from a `RedirectIfAuthed` wrapped around its
  * `/login` route. Deleting that page took the redirect with it; the landing
  * routes need the same guard, because they are now where login begins and ends.
+ * A visitor bounced here from a deep link goes on to it (see WorkspacePage).
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -123,13 +126,13 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   // lands on `/` holding an `invitation` param, and two effects then fire in
   // the same commit: InviteRedirect's `navigate('/join?…')` and this
   // component's `<Navigate to="/app">`. `Navigate` renders deeper in the tree,
-  // so its effect runs LAST and wins — and `to="/app"` carries no query, so
+  // so its effect runs LAST and wins - and `to="/app"` carries no query, so
   // the invitation is gone. The invite simply vanished for exactly the people
   // most likely to have one: existing users. Standing down here leaves
   // InviteRedirect's navigation the only one in flight.
   if (hasInvitePayload(new URLSearchParams(location.search))) return null;
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/app" replace />;
+  if (isAuthenticated) return <Navigate to={readReturnTo() ?? '/app'} replace />;
   return <>{children}</>;
 }
 
@@ -140,7 +143,8 @@ function CatchAllRedirect() {
   return <Navigate to={search ? `/${search}` : '/'} replace />;
 }
 
-// `!` is needed: sonner's own colour rules outrank plain utility classes.
+// `!` is needed: sonner's own colour rules outrank plain utility classes. Only
+// an error is red; a confirmation like "Link copied" keeps the card colours.
 function AppToaster() {
   const { theme } = useTheme();
   return (
@@ -152,8 +156,8 @@ function AppToaster() {
         classNames: {
           toast: '!bg-card !text-card-foreground !border-border',
           description: '!text-muted-foreground',
-          title: '!text-destructive',
-          icon: '!text-destructive',
+          error:
+            '[&_[data-title]]:!text-destructive [&_[data-icon]]:!text-destructive',
         },
       }}
     />
@@ -175,60 +179,71 @@ export default function App() {
       >
         <AppToaster />
         <TooltipProvider>
-          <ConfirmProvider>
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <InviteRedirect />
-              <Routes>
-                {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-                    real URLs so they can be shared and opened cold, which needs a route
-                    here — otherwise this app's catch-all swallows the deep link before
-                    the page ever renders. */}
-                {LANDING_PATHS.map((landingPath) => (
-                  <Route
-                    key={landingPath}
-                    path={landingPath}
-                    // Only `/` bounces a signed-in visitor into the app; `/docs` and
-                    // `/preview` are reference pages someone signed in may still want.
-                    element={
-                      landingPath === '/' ? (
-                        <RedirectIfAuthed>
-                          <LandingPage />
-                        </RedirectIfAuthed>
-                      ) : (
-                        <LandingPage />
-                      )
-                    }
-                  />
-                ))}
-                {/* The /login PAGE is gone — every app had one, every one looked
-                    different, and its whole content was a button the visitor had
-                    already pressed to get there. The path stays as a redirect so a
-                    bookmark lands on the front door instead of a blank route. */}
-                <Route path="/login" element={<Navigate to="/" replace />} />
-                <Route path="/join" element={<JoinPage />} />
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <InviteRedirect />
+            <Routes>
+              {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                  real URLs so they can be shared and opened cold, which needs a route
+                  here - otherwise this app's catch-all swallows the deep link before
+                  the page ever renders. */}
+              {LANDING_PATHS.map((landingPath) => (
                 <Route
-                  path="/app/*"
+                  key={landingPath}
+                  path={landingPath}
+                  // Only `/` bounces a signed-in visitor into the app; `/docs` and
+                  // `/preview` are reference pages someone signed in may still want.
                   element={
-                    <DriveWorkspaceProvider>
-                      <WorkspacePage />
-                    </DriveWorkspaceProvider>
+                    landingPath === '/' ? (
+                      <RedirectIfAuthed>
+                        <LandingPage />
+                      </RedirectIfAuthed>
+                    ) : (
+                      <LandingPage />
+                    )
                   }
                 />
-                {/* The catch-all drops the query string, which for an invite
-                    deep link IS the invitation. InviteRedirect has already
-                    run by the time this renders, but its navigation is
-                    applied in an effect — so preserve the search here rather
-                    than racing it. */}
-                <Route path="*" element={<CatchAllRedirect />} />
-              </Routes>
-            </BrowserRouter>
-            {import.meta.env.DEV && <DevPanel />}
-          </ConfirmProvider>
+              ))}
+              {/* The /login PAGE is gone - every app had one, every one looked
+                  different, and its whole content was a button the visitor had
+                  already pressed to get there. The path stays as a redirect so a
+                  bookmark lands on the front door instead of a blank route. */}
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/join" element={<JoinPage />} />
+              {LayoutGallery && (
+                <Route
+                  path="/dev/layouts"
+                  element={
+                    <React.Suspense fallback={null}>
+                      <LayoutGallery />
+                    </React.Suspense>
+                  }
+                />
+              )}
+              <Route
+                path="/app/*"
+                element={
+                  <DriveWorkspaceProvider>
+                    {/* Inside the workspace: a confirmation's body may name members. */}
+                    <ConfirmProvider>
+                      <WorkspacePage />
+                    </ConfirmProvider>
+                  </DriveWorkspaceProvider>
+                }
+              />
+              {/* The catch-all drops the query string, which for an invite
+                  deep link IS the invitation. InviteRedirect has already
+                  run by the time this renders, but its navigation is
+                  applied in an effect - so preserve the search here rather
+                  than racing it. */}
+              <Route path="*" element={<CatchAllRedirect />} />
+            </Routes>
+          </BrowserRouter>
+          {import.meta.env.DEV && <DevPanel />}
         </TooltipProvider>
       </MeroProvider>
     </ThemeProvider>

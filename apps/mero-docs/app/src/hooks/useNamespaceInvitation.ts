@@ -1,7 +1,7 @@
 // Invite creation + join, for both namespace-scoped and folder-scoped
 // invites. We bypass mero-react's hooks because both wrap mero-js in
 // `useAsyncMutation`, which swallows exceptions into a `null` return
-// — callers can't distinguish "server rejected" from "still loading".
+// - callers can't distinguish "server rejected" from "still loading".
 // Calling mero.admin directly surfaces real errors to the user.
 //
 // Invite URL shape (canonical deep link; the slug IS the package):
@@ -20,7 +20,7 @@
 // (the pre-deep-link param) and `ns=` (alias for `id=`) are accepted.
 //
 // `name=` carries the target's HUMAN NAME, for both kinds. It is not the
-// authority on the name — core's group metadata is, and it replicates — but a
+// authority on the name - core's group metadata is, and it replicates - but a
 // joiner cannot read a group's metadata until it holds an identity in that
 // group, which is after the join it is being asked to confirm. Without the
 // param the accept card can only offer `9f3c1a2b…`, so the name is minted into
@@ -56,7 +56,7 @@ export interface ParsedInvite {
   kind: InviteKind;
   targetId: string;
   invitation: SignedGroupOpenInvitation;
-  /** The target's display name carried on the invite URL (`&name=`) — the
+  /** The target's display name carried on the invite URL (`&name=`) - the
    *  workspace for a `namespace` invite, the folder for a `group` one. Absent
    *  on links minted before the param existed, and on links whose minting node
    *  had no name for the group. */
@@ -123,7 +123,7 @@ export function hasInvitePayload(params: URLSearchParams): boolean {
  *  from any host (so links copied from older/staging deployments still
  *  work), a bare query string with or without the leading `?`, and
  *  tolerates surrounding whitespace. Returns `null` when no usable
- *  `invitation=`/`invite=` param is present — the caller should treat
+ *  `invitation=`/`invite=` param is present - the caller should treat
  *  that as "input doesn't contain an invite" and prompt the user. The
  *  returned `URLSearchParams` is suitable for direct hand-off to
  *  `parseInviteUrl`. */
@@ -131,7 +131,7 @@ export function extractInviteParams(input: string): URLSearchParams | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
-  // Path 1: full URL — works for any host, any path. The dialog's
+  // Path 1: full URL - works for any host, any path. The dialog's
   // primary input. We intentionally don't restrict the host so both
   // links.calimero.network deep links and links copied from the
   // localhost dev server or a previous Vercel preview domain parse.
@@ -139,7 +139,7 @@ export function extractInviteParams(input: string): URLSearchParams | null {
     const url = new URL(trimmed);
     if (hasInvitePayload(url.searchParams)) return url.searchParams;
   } catch {
-    /* not a URL — fall through to bare-query handling */
+    /* not a URL - fall through to bare-query handling */
   }
 
   // Path 2: bare query string. Covers users who copied only the
@@ -162,14 +162,14 @@ export function parseInviteUrl(
   const id = params.get('id') ?? params.get('ns'); // `ns` for back-compat
   const raw = params.get('invitation') ?? params.get('invite'); // `invite` pre-deep-link
 
-  // Validate kind first so the type narrowing below is sound — older
+  // Validate kind first so the type narrowing below is sound - older
   // versions of this code chained ternaries with an unreachable IIFE
   // returning `null as never`, which type-checked but would have leaked
   // a runtime null if the validation guard was ever moved or removed.
   if (rawKind !== null && rawKind !== 'namespace' && rawKind !== 'group') {
     return { error: `Unknown invite kind: ${rawKind}` };
   }
-  // Back-compat: early links had no `kind` — treat as namespace
+  // Back-compat: early links had no `kind` - treat as namespace
   // (the only invite shape that existed before the param was added).
   const kind: InviteKind = rawKind === 'group' ? 'group' : 'namespace';
 
@@ -209,7 +209,7 @@ export function inviteExpiryMs(ts: number): number {
  *
  *  ⚠️ The wire key is `expiration_timestamp`. `GroupInvitationFromAdmin`
  *  mirrors a core PRIMITIVE (`calimero_context_config::types`), which carries
- *  no camelCase rename — unlike the admin DTOs that wrap it, where every other
+ *  no camelCase rename - unlike the admin DTOs that wrap it, where every other
  *  field in this file is camelCase. This read was spelled
  *  `expirationTimestamp`, so it was `undefined` on every invitation core has
  *  ever minted, the guard below returned `false` unconditionally, and the
@@ -275,7 +275,7 @@ export function useJoinNamespaceByInvite() {
       // the joiner's node files a name for a group whose metadata it cannot
       // read yet, so passing it is what makes the creator's chosen workspace
       // name appear on the joiner's machine instead of a 64-hex id. Omitted
-      // when the link carried none, rather than sent as '' — a blank name
+      // when the link carried none, rather than sent as '' - a blank name
       // would overwrite a real one the node may already hold.
       groupName?: string,
     ): Promise<string> => {
@@ -285,7 +285,7 @@ export function useJoinNamespaceByInvite() {
         ...(groupName ? { groupName } : {}),
       });
       // ⚠️ `groupId` was renamed to `namespaceId` in core 0.11.0-rc.25
-      // (core#3598) and this read was never updated: it returned `undefined`
+      // and this read was never updated: it returned `undefined`
       // on every current node, silently. mero-js back-fills `namespaceId` from
       // whichever spelling the node sent, so reading it works on both sides of
       // that release; the `groupId` fall-back is belt and braces.
@@ -316,7 +316,7 @@ export function useCreateFolderInvite() {
       const single = response as CreateGroupInvitationResponseData;
       // `createGroupInvitation` resolves the folder's metadata name into
       // `groupName` exactly as the namespace call does, and this discarded it
-      // — so every folder invite asked its recipient to accept `9f3c1a2b…`
+      // - so every folder invite asked its recipient to accept `9f3c1a2b…`
       // while the namespace ones showed a real name. A folder invitee is the
       // person who can LEAST identify a group by id: the folder may be
       // restricted, so the id is all they will ever be shown.
@@ -353,7 +353,7 @@ export function useJoinFolderByInvite() {
     ): Promise<string> => {
       if (!mero) throw new Error('Mero client not ready');
       // mero-js's joinGroup uses the `group_id` carried inside the
-      // signed invitation — no separate groupId path param, unlike
+      // signed invitation - no separate groupId path param, unlike
       // joinNamespace.
       const response = await mero.admin.joinGroup({
         invitation,

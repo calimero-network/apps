@@ -1,12 +1,12 @@
 // Backfills a namespace's display `name` from the join-time snapshot.
 //
-// `useNamespacesForApplication` relays `listNamespacesForApplication`,
+// `useAppNamespaces` relays `listNamespacesForApplication`,
 // whose rows omit `name` until the node has synced the namespace's
-// root-group metadata — which, on a joined node, can lag indefinitely
+// root-group metadata - which, on a joined node, can lag indefinitely
 // (small-cluster gossip). The name is known at JOIN time though: it
 // rides the invite URL (core resolves it as `groupName`) and the join
 // flow persists it via `rememberNamespaceName`. This hook merges that
-// persisted name in, so the workspace switcher shows it immediately —
+// persisted name in, so the workspace switcher shows it immediately -
 // with no dependency on metadata sync.
 //
 // Namespaces the node created itself already carry `name` from the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRichEvents } from '../events';
+import { parseRichEvents, parseMetaChanges } from '../events';
 
 const bytes = (value: unknown) =>
   Array.from(new TextEncoder().encode(JSON.stringify(value)));
@@ -61,5 +61,39 @@ describe('parseRichEvents', () => {
     expect(parseRichEvents(data)).toEqual([
       { kind: 'BlockDeleted', doc: 'doc-1' },
     ]);
+  });
+});
+
+describe('parseMetaChanges', () => {
+  it('names the docs whose tags changed, in either payload shape', () => {
+    expect(
+      parseMetaChanges({
+        events: [
+          { kind: 'DocTagsChanged', data: bytes({ id: 'doc-1' }) },
+          { kind: 'TitleChanged', data: bytes({ doc: 'doc-2' }) },
+          { kind: 'DocTagsChanged', data: bytes({ id: 'doc-3' }) },
+        ],
+      }),
+    ).toEqual(['doc-1', 'doc-3']);
+    expect(parseMetaChanges({ DocTagsChanged: { id: 'doc-1' } })).toEqual([
+      'doc-1',
+    ]);
+  });
+
+  it('names the docs archived or unarchived', () => {
+    expect(
+      parseMetaChanges({
+        events: [
+          { kind: 'DocArchived', data: bytes({ id: 'doc-1' }) },
+          { kind: 'DocUnarchived', data: bytes({ id: 'doc-2' }) },
+        ],
+      }),
+    ).toEqual(['doc-1', 'doc-2']);
+  });
+
+  it('drops other events and a payload without an id', () => {
+    expect(parseMetaChanges({ DocEdited: { id: 'doc-1' } })).toEqual([]);
+    expect(parseMetaChanges({ DocTagsChanged: { doc: 'doc-1' } })).toEqual([]);
+    expect(parseMetaChanges(null)).toEqual([]);
   });
 });

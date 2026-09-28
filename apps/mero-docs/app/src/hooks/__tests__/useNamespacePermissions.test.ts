@@ -9,7 +9,7 @@ import { CAPABILITIES } from '../../constants/config';
 // (re-exported as CAPABILITIES from constants/config).
 const listMembersMock = vi.fn();
 const getMemberCapsMock = vi.fn();
-// Stable mero ref — useMemberCaps's effect deps include `mero`, so a
+// Stable mero ref - useMemberCaps's effect deps include `mero`, so a
 // new object every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
   mero: {
