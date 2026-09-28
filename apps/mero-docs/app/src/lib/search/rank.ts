@@ -59,8 +59,7 @@ export function searchV1(
   const { text, tagsOnly } = normalizeQuery(q);
   const counts = tagCounts(rows);
   const count = (t: Tag) => counts.get(t.key) ?? 0;
-  const byCount = (a: Tag, b: Tag) =>
-    count(b) - count(a) || nameCollator.compare(a.name, b.name);
+  // liveTags is already busiest-first, so equal scores keep its order.
   // A tag only on docs this member cannot read stays hidden, as in the sidebar.
   const liveTags = sidebarTags(tags, counts);
   const tagResult = (tag: Tag, match: Match): PaletteResult => ({
@@ -74,9 +73,13 @@ export function searchV1(
     return liveTags.map((t) => tagResult(t, { ranges: [], typo: false }));
   }
   const tagHits = (limit: number) =>
-    ranked(liveTags, (t) => t.name, text, byCount, limit).map(
-      ({ item, ...match }) => tagResult(item, match),
-    );
+    ranked(
+      liveTags,
+      (t) => t.name,
+      text,
+      () => 0,
+      limit,
+    ).map(({ item, ...match }) => tagResult(item, match));
   if (tagsOnly) return tagHits(Infinity);
   if (!text) return [];
 
