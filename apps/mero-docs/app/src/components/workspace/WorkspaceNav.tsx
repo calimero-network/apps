@@ -15,7 +15,7 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useNow } from '@/hooks/useNow';
-import { listedPersonName } from '@/hooks/usePersonName';
+import { usePersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
 import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
@@ -72,8 +72,7 @@ export function WorkspaceNav({
     useWorkspaceIndexValue();
   const { tags, byKey: tagsByKey, createTag } = useTags();
   const canManageTags = useCanManageTags();
-  const { namespaces, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
+  const { namespaces } = useDriveWorkspace();
   const {
     views: savedViews,
     save: saveView,
@@ -100,6 +99,8 @@ export function WorkspaceNav({
   const onHome = !!route && !route.folder && !route.settings;
   const q = parseHomeQuery(new URLSearchParams(search));
   const tagPage = onHome ? tagPageKey(q) : null;
+  // Only Home's person filter is named here, so no other page reads a member's profile.
+  const personName = usePersonName(onHome ? q.by : null);
   const liveRows = React.useMemo(
     () => withoutDeletedTags(rows, tagsByKey),
     [rows, tagsByKey],
@@ -148,8 +149,7 @@ export function WorkspaceNav({
     q,
     tagsByKey,
     paths,
-    personName: (id: string) =>
-      listedPersonName(id, selfIdentity, namespaceMemberNames),
+    personName,
     sortLabel: SORT_LABELS[q.sort],
   };
   const onAddView = () => {

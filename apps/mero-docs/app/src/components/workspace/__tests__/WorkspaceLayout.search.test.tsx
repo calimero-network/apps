@@ -50,6 +50,9 @@ vi.mock('@/hooks/useDocs', () => ({
     client: null,
   }),
 }));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
+}));
 vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useMero: () => ({ mero: null, nodeUrl: 'http://node', logout: vi.fn() }),

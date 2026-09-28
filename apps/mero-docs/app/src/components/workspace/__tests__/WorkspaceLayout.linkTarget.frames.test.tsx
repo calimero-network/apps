@@ -110,6 +110,9 @@ vi.mock('@/generated/docs/DocsClient', () => ({
     }
   },
 }));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
+}));
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => h.fixed.mero,
   useJoinContext: () => h.fixed.join,

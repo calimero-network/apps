@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useSubscription } from '@calimero-network/mero-react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useMemberDisplayName } from '../useMemberDisplayName';
 
@@ -21,6 +22,7 @@ const workspaceRefetch = vi.fn();
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     selfIdentity: 'self-pubkey',
+    registryContextId: 'registry-ctx',
     refetch: workspaceRefetch,
   }),
 }));
@@ -43,6 +45,27 @@ describe('useMemberDisplayName', () => {
       useMemberDisplayName('ns1', 'alice-key'),
     );
     await waitFor(() => expect(result.current.name).toBe('Alice'));
+  });
+
+  it('listens for renames only while it names a member', () => {
+    memberMetadataMock.mockReturnValue({
+      metadata: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const subscribed = vi.mocked(useSubscription);
+    subscribed.mockClear();
+    const { rerender } = renderHook(
+      ({ id }: { id: string | null }) => useMemberDisplayName('ns1', id),
+      { initialProps: { id: null as string | null } },
+    );
+    expect(subscribed).toHaveBeenLastCalledWith([], expect.any(Function));
+    rerender({ id: 'alice-key' });
+    expect(subscribed).toHaveBeenLastCalledWith(
+      ['registry-ctx'],
+      expect.any(Function),
+    );
   });
 
   it('returns null when no name set', async () => {

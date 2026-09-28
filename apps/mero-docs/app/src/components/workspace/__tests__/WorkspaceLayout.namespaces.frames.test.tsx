@@ -41,6 +41,9 @@ const h = vi.hoisted(() => {
   };
 });
 
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
+}));
 vi.mock('@calimero-network/mero-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
   return {

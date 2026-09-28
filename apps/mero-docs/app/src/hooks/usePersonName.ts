@@ -7,8 +7,7 @@ import { useMemberDisplayName } from './useMemberDisplayName';
 
 export const SELF_LABEL = 'You';
 
-/** A member named from the workspace list alone, for a surface that reads no member metadata. */
-export function listedPersonName(
+function listedPersonName(
   id: string,
   selfIdentity: string | null,
   namespaceMemberNames: Record<string, string>,

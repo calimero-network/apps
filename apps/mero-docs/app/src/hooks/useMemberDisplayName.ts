@@ -69,10 +69,13 @@ export function useMemberDisplayName(
   );
 
   // Metadata changes without a context event; the registry's sync run is the tick.
+  // With no member there is nothing to refetch, so an idle caller holds no subscription.
   const onMetadataEvent = useCallback(() => {
     void refetch();
   }, [refetch]);
-  useContextEvents(registryContextId, onMetadataEvent, { strict: true });
+  useContextEvents(memberId ? registryContextId : null, onMetadataEvent, {
+    strict: true,
+  });
 
   const name = metadata?.name ?? null;
 

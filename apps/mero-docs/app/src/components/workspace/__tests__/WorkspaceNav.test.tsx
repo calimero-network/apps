@@ -51,6 +51,13 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
   }),
 }));
+const displayNameOf = vi.fn();
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: (_ns: string, id: string | null | undefined) => {
+    displayNameOf(id);
+    return { name: id === 'carol' ? 'Carol' : null };
+  },
+}));
 let savedViews: SavedView[] = [];
 const saveView = vi.fn();
 const renameView = vi.fn();
@@ -125,6 +132,7 @@ beforeEach(() => {
   localStorage.clear();
   canManageTags = true;
   createTag.mockReset();
+  displayNameOf.mockReset();
   savedViews = [];
   saveView.mockReset();
   renameView.mockReset().mockResolvedValue(undefined);
@@ -311,6 +319,19 @@ describe('WorkspaceNav', () => {
       expect(
         await screen.findByRole('textbox', { name: 'Name' }),
       ).toBeTruthy();
+    });
+
+    it('names a person filter from their profile, as Home does', async () => {
+      mount('/app/ws1?by=carol');
+      fireEvent.click(screen.getByRole('button', { name: 'New view' }));
+      const input = await screen.findByRole('textbox', { name: 'Name' });
+      expect((input as HTMLInputElement).value).toBe('Carol');
+    });
+
+    it('reads no member profile away from Home', () => {
+      mount('/app/ws1/f/f1?by=carol');
+      expect(displayNameOf).toHaveBeenCalled();
+      expect(displayNameOf.mock.calls.every(([id]) => !id)).toBe(true);
     });
 
     it('saves the current filters as a personal view from the section header', async () => {
