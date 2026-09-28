@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
@@ -33,7 +34,8 @@ const SUMMARY_ICONS: Record<FilterSummary['icon'], LucideIcon> = {
 };
 
 interface Props {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
+  anchorRef?: React.RefObject<HTMLElement | null>; // opens beside a control that is not its trigger
   defaultName: string;
   filters: FilterSummary[];
   workspaceName: string;
@@ -46,16 +48,29 @@ interface Props {
 
 export function SaveViewPopover({
   trigger,
+  anchorRef,
   open,
   onOpenChange,
   ...form
 }: Props) {
+  // Without a trigger, Radix has nothing to return focus to on close.
+  const returnFocus = anchorRef
+    ? (e: Event) => {
+        e.preventDefault();
+        anchorRef.current?.focus();
+      }
+    : undefined;
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : (
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      )}
       <PopoverContent
         align="end"
         className="w-[320px] overflow-hidden rounded-[10px] p-0"
+        onCloseAutoFocus={returnFocus}
       >
         <SaveViewForm {...form} />
       </PopoverContent>
@@ -71,7 +86,7 @@ function SaveViewForm({
   canShare,
   saving,
   onSave,
-}: Omit<Props, 'trigger' | 'open' | 'onOpenChange'>) {
+}: Omit<Props, 'trigger' | 'anchorRef' | 'open' | 'onOpenChange'>) {
   const [name, setName] = React.useState(defaultName);
   const [scope, setScope] = React.useState<Scope>('me');
   const nameId = React.useId();

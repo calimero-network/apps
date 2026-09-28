@@ -75,6 +75,7 @@ export function WorkspaceNav({
   const paths = useFolderPaths(folders);
   const [newTag, setNewTag] = React.useState<{ error?: string } | null>(null);
   const [saveViewOpen, setSaveViewOpen] = React.useState(false);
+  const addViewRef = React.useRef<HTMLButtonElement>(null);
   const [savingView, setSavingView] = React.useState(false);
   const [renamingView, setRenamingView] = React.useState<SavedView | null>(
     null,
@@ -189,19 +190,6 @@ export function WorkspaceNav({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <span className="sr-only">
-        <SaveViewPopover
-          trigger={<button type="button">Save view</button>}
-          open={saveViewOpen}
-          onOpenChange={setSaveViewOpen}
-          defaultName={defaultViewName(summaryArgs)}
-          filters={summarizeHomeQuery(summaryArgs)}
-          workspaceName={workspaceName}
-          canShare={canManageTags}
-          saving={savingView}
-          onSave={(view) => void saveFromSidebar(view)}
-        />
-      </span>
       <SidebarNav
         home={{
           count: countKnown
@@ -231,6 +219,7 @@ export function WorkspaceNav({
           onSelect: () => go(tagPageSearch(t.key)),
         }))}
         onAddView={onAddView}
+        addViewRef={addViewRef}
         onAddTag={() => setNewTag({})}
         canManage={canManageTags}
         collapsed={collapsed}
@@ -242,6 +231,17 @@ export function WorkspaceNav({
         onOpenDoc={onOpenDoc}
         collapsed={collapsed.folders}
         onToggleCollapsed={() => toggle('folders')}
+      />
+      <SaveViewPopover
+        anchorRef={addViewRef}
+        open={saveViewOpen}
+        onOpenChange={setSaveViewOpen}
+        defaultName={defaultViewName(summaryArgs)}
+        filters={summarizeHomeQuery(summaryArgs)}
+        workspaceName={workspaceName}
+        canShare={canManageTags}
+        saving={savingView}
+        onSave={(view) => void saveFromSidebar(view)}
       />
       <NewTagDialog
         open={!!newTag}

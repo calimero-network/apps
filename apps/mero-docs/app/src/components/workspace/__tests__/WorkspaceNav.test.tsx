@@ -236,6 +236,22 @@ describe('WorkspaceNav', () => {
       );
     });
 
+    it('opens the save popover from the section "+" itself, and returns focus there', async () => {
+      const user = userEvent.setup();
+      mount('/app/ws1?tag=q3');
+      expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'New view' }));
+      await screen.findByRole('textbox', { name: 'Name' });
+      await user.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull(),
+      );
+      await user.keyboard('{Enter}'); // reopens only if the "+" has focus
+      expect(
+        await screen.findByRole('textbox', { name: 'Name' }),
+      ).toBeTruthy();
+    });
+
     it('saves the current filters as a personal view from the section header', async () => {
       saveView.mockResolvedValue({
         id: 'new',
