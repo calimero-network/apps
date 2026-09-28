@@ -239,6 +239,14 @@ fn is_hex_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Empty means "no color"; anything else must be `#rrggbb`.
+fn check_color(c: &str) -> Result<(), DriveError> {
+    if !c.is_empty() && !is_hex_color(c) {
+        return Err(DriveError::Invalid(format!("invalid color: {c}")));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Tags and saved views
 // ---------------------------------------------------------------------------
@@ -247,7 +255,7 @@ fn is_hex_color(s: &str) -> bool {
 /// `deleted` tombstones the row rather than removing it - see `delete_tag`.
 /// It merges by OR, so a delete on any replica is permanent.
 #[app::mergeable(id = "mero_drive_registry::TagRecord")]
-#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct TagRecord {
     pub name: LwwRegister<String>,
@@ -265,6 +273,7 @@ impl Mergeable for TagRecord {
 }
 
 impl TagRecord {
+    #[cfg(test)]
     fn new(name: String, color: String) -> Self {
         TagRecord {
             name: LwwRegister::new(name),
@@ -303,7 +312,7 @@ fn project_tag(key: &str, rec: &TagRecord) -> TagDto {
 /// A workspace-wide saved search. Its creator is not stored here but in
 /// `view_origins`, where nobody can rewrite it.
 #[app::mergeable(id = "mero_drive_registry::ViewRecord")]
-#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct ViewRecord {
     pub name: LwwRegister<String>,
@@ -318,15 +327,6 @@ impl Mergeable for ViewRecord {
     }
 }
 
-impl ViewRecord {
-    fn new() -> Self {
-        ViewRecord {
-            name: LwwRegister::new(String::new()),
-            query: LwwRegister::new(String::new()),
-        }
-    }
-}
-
 /// Flat projection of a `ViewRecord`.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -337,15 +337,6 @@ pub struct ViewDto {
     pub query: String,
     /// Hex account of whoever created the view, from `view_origins`' owner stamp.
     pub created_by: String,
-}
-
-fn project_view(id: &str, rec: &ViewRecord, created_by: String) -> ViewDto {
-    ViewDto {
-        id: id.to_string(),
-        name: rec.name.get().clone(),
-        query: rec.query.get().clone(),
-        created_by,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -460,9 +451,7 @@ impl RegistryState {
             return Err(DriveError::AlreadyExists(id.0));
         }
         if let Some(c) = &color {
-            if !c.is_empty() && !is_hex_color(c) {
-                return Err(DriveError::Invalid(format!("invalid color: {c}")));
-            }
+            check_color(c)?;
         }
         let parent_str = parent_id.map(|p| p.0);
         let rec = FolderRecord::new(parent_str, color, alias);
@@ -691,9 +680,7 @@ impl RegistryState {
     }
 
     pub(crate) fn set_color_inner(&mut self, id: &str, color: String) -> Result<(), DriveError> {
-        if !color.is_empty() && !is_hex_color(&color) {
-            return Err(DriveError::Invalid(format!("invalid color: {color}")));
-        }
+        check_color(&color)?;
         self.mutate_folder(id, |rec| rec.color.set(color))
     }
 
@@ -815,23 +802,17 @@ impl RegistryState {
 
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
-        let member_for_event = member.clone();
         self.add_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::ManagerAdded {
-            member: &member_for_event
-        });
+        app::emit!(Event::ManagerAdded { member: &member });
         Ok(())
     }
 
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
-        let member_for_event = member.clone();
         self.remove_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::ManagerRemoved {
-            member: &member_for_event
-        });
+        app::emit!(Event::ManagerRemoved { member: &member });
         Ok(())
     }
 
@@ -850,26 +831,22 @@ impl RegistryState {
         role: Role,
     ) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
-        let fid = folder_id.0.clone();
-        let member_for_event = member.clone();
         self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderRoleChanged {
-            folder_id: &fid,
-            member: &member_for_event,
+            folder_id: &folder_id.0,
+            member: &member,
         });
         Ok(())
     }
 
     pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
-        let fid = folder_id.0.clone();
-        let member_for_event = member.clone();
         self.clear_folder_role_inner(&caller, &folder_id.0, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderRoleChanged {
-            folder_id: &fid,
-            member: &member_for_event,
+            folder_id: &folder_id.0,
+            member: &member,
         });
         Ok(())
     }
@@ -889,22 +866,16 @@ impl RegistryState {
     // ---- tags -------------------------------------------------------------
 
     pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
-        let key_for_event = key.clone();
         self.set_tag_inner(&key, name, color)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::TagChanged {
-            key: &key_for_event
-        });
+        app::emit!(Event::TagChanged { key: &key });
         Ok(())
     }
 
     pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
-        let key_for_event = key.clone();
         self.delete_tag_inner(&key)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::TagChanged {
-            key: &key_for_event
-        });
+        app::emit!(Event::TagChanged { key: &key });
         Ok(())
     }
 
@@ -914,11 +885,10 @@ impl RegistryState {
             .tags
             .entries()
             .map_err(|e| AppError::msg(format!("tags.entries: {e}")))?;
-        let mut out = Vec::new();
-        for (key, rec) in entries {
-            out.push(project_tag(&key, &rec));
-        }
-        Ok(out)
+        Ok(entries
+            .into_iter()
+            .map(|(key, rec)| project_tag(&key, &rec))
+            .collect())
     }
 
     pub(crate) fn set_tag_inner(
@@ -942,7 +912,7 @@ impl RegistryState {
             .get(&key.to_string())
             .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?
             .map(|v| v.clone())
-            .unwrap_or_else(|| TagRecord::new(String::new(), String::new()));
+            .unwrap_or_default();
         if rec.deleted {
             return Err(DriveError::Invalid("tag deleted".into()));
         }
@@ -970,18 +940,16 @@ impl RegistryState {
     // ---- saved views --------------------------------------------------------
 
     pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
-        let id_for_event = id.clone();
         self.save_view_inner(&id, name, query)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::ViewChanged { id: &id_for_event });
+        app::emit!(Event::ViewChanged { id: &id });
         Ok(())
     }
 
     pub fn delete_view(&mut self, id: String) -> app::Result<()> {
-        let id_for_event = id.clone();
         self.delete_view_inner(&id)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::ViewChanged { id: &id_for_event });
+        app::emit!(Event::ViewChanged { id: &id });
         Ok(())
     }
 
@@ -998,7 +966,12 @@ impl RegistryState {
                 .map_err(|e| AppError::msg(e.to_string()))?
                 .map(|owner| hex::encode(owner.as_bytes()))
                 .unwrap_or_default();
-            out.push(project_view(&id, &rec, created_by));
+            out.push(ViewDto {
+                id,
+                name: rec.name.get().clone(),
+                query: rec.query.get().clone(),
+                created_by,
+            });
         }
         Ok(out)
     }
@@ -1027,7 +1000,7 @@ impl RegistryState {
             .get(&id.to_string())
             .map_err(|e| DriveError::Invalid(format!("views.get: {e}")))?
             .map(|v| v.clone())
-            .unwrap_or_else(ViewRecord::new);
+            .unwrap_or_default();
         // Any account's origin, not just the caller's: keys are per owner, so a
         // key-only `contains` would let every later editor file one of their own.
         let first_save = self
