@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import { defaultProps } from '@blocknote/core';
 import {
   useSubscription,
   type SubscriptionEventData,
@@ -44,6 +43,7 @@ import {
   keepSelection,
   type RemoteTextEditor,
 } from '@/components/editor/remoteText';
+import { schema } from '@/components/editor/blocknote/schema';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
@@ -55,7 +55,9 @@ const FRESH_PARAGRAPH_ATTRS = fromBlockNote([
   {
     id: '',
     type: 'paragraph',
-    props: Object.fromEntries(Object.entries(defaultProps).map(([key, prop]) => [key, prop.default])),
+    props: Object.fromEntries(
+      Object.entries(schema.blockSchema.paragraph.propSchema).map(([key, prop]) => [key, prop.default]),
+    ),
     children: [],
   },
 ])[0].attrs; // what BlockNote's empty paragraph carries before anyone formats it
