@@ -55,7 +55,8 @@ let savedViews: SavedView[] = [];
 const saveView = vi.fn();
 const renameView = vi.fn();
 const removeView = vi.fn();
-vi.mock('@/hooks/useSavedViews', () => ({
+vi.mock('@/hooks/useSavedViews', async (importActual) => ({
+  ...(await importActual<typeof import('@/hooks/useSavedViews')>()),
   useSavedViews: () => ({
     views: savedViews,
     save: saveView,
@@ -324,6 +325,7 @@ describe('WorkspaceNav', () => {
       fireEvent.click(screen.getByRole('button', { name: 'New view' }));
       const input = await screen.findByRole('textbox', { name: 'Name' });
       expect((input as HTMLInputElement).value).toBe('Q3');
+      expect((input as HTMLInputElement).maxLength).toBe(60);
       fireEvent.click(
         screen
           .getAllByRole('button', { name: /^Save view/ })
@@ -345,7 +347,11 @@ describe('WorkspaceNav', () => {
         screen.getByRole('button', { name: 'Actions for Design week' }),
       );
       await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
-      const input = await screen.findByRole('textbox', { name: 'Name' });
+      const input = await screen.findByRole('textbox', {
+        name: 'Name',
+        description: 'Up to 60 characters.',
+      });
+      expect((input as HTMLInputElement).maxLength).toBe(60);
       await user.clear(input);
       await user.type(input, 'Design this week{Enter}');
       expect(renameView).toHaveBeenCalledWith('v1', 'Design this week');
@@ -396,7 +402,7 @@ describe('WorkspaceNav', () => {
       expect(removeView).not.toHaveBeenCalled();
     });
 
-    it('lets any editor manage a shared view, but only the owner manage a personal one, and hides both from a guest except their own', () => {
+    it('lets a guest manage their own personal view, but not a shared one (R-22)', () => {
       canManageTags = false;
       savedViews = [
         { id: 'v1', name: 'Mine', query: 'tag=design', scope: 'me' },

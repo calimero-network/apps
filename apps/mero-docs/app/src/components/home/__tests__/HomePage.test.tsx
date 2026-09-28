@@ -94,7 +94,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ws,
 }));
 const saveView = vi.fn();
-vi.mock('@/hooks/useSavedViews', () => ({
+vi.mock('@/hooks/useSavedViews', async (importActual) => ({
+  ...(await importActual<typeof import('@/hooks/useSavedViews')>()),
   useSavedViews: () => ({ views: [], save: saveView, rename: vi.fn(), remove: vi.fn() }),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({

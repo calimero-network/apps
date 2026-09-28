@@ -100,6 +100,14 @@ describe('defaultViewName', () => {
     ).toBe('You, Archived');
   });
 
+  it('fits the name limit however many filters are on', () => {
+    const keys = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel'];
+    const tagsByKey = new Map(keys.map((k) => [k, tag(k, `${k} team`)]));
+    const name = defaultViewName(args({ q: { ...EMPTY, tags: keys }, tagsByKey }));
+    expect(name).toHaveLength(60);
+    expect(name.startsWith('alpha team, bravo team')).toBe(true);
+  });
+
   it('falls back to New view with nothing on', () => {
     expect(defaultViewName(args())).toBe('New view');
   });

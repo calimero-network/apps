@@ -15,7 +15,11 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useNow } from '@/hooks/useNow';
-import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
+import {
+  useSavedViews,
+  VIEW_NAME_MAX,
+  type SavedView,
+} from '@/hooks/useSavedViews';
 import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
 import { copyLink } from '@/lib/copyLink';
@@ -260,6 +264,7 @@ export function WorkspaceNav({
         <RenameTagDialog
           open
           title="Rename view"
+          maxLength={VIEW_NAME_MAX}
           name={renamingView.name}
           onSubmit={(name) => {
             const view = renamingView;

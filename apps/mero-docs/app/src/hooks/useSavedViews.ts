@@ -17,6 +17,7 @@ import { useDriveWorkspace } from './useDriveWorkspace';
 
 const VIEWS_KEY_PREFIX = 'mero-drive:views:'; // + workspace id
 const REGISTRY_EVENT_DEBOUNCE_MS = 300; // one re-read per burst of registry ops
+export const VIEW_NAME_MAX = 60; // the registry's limit on a view's name
 const SAVE_FAILED = "Couldn't save the view. Try again.";
 const RENAME_FAILED = "Couldn't rename the view. Try again.";
 const DELETE_FAILED = "Couldn't delete the view. Try again.";

@@ -19,6 +19,7 @@ import {
 import { TagChip } from '@/components/tags/TagChip';
 import { FILTER_ICONS } from '@/components/home/FilterBar';
 import { moveFocus } from '@/components/home/moveFocus';
+import { VIEW_NAME_MAX } from '@/hooks/useSavedViews';
 import type { FilterIcon } from '@/components/home/types';
 
 type Scope = 'me' | 'everyone';
@@ -113,6 +114,7 @@ function SaveViewForm({
           <Input
             id={nameId}
             autoFocus
+            maxLength={VIEW_NAME_MAX}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />

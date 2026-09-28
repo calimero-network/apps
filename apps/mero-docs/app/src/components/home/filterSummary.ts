@@ -2,6 +2,7 @@
 // starting name built from them, so a save has something better than "Untitled".
 
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { VIEW_NAME_MAX } from '@/hooks/useSavedViews';
 import type { HomeQuery } from '@/lib/homeQuery';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
@@ -77,8 +78,10 @@ export function summarizeHomeQuery({
   return items;
 }
 
-/** A starting name from the active filters, e.g. a lone tag's name. */
+/** A starting name from the active filters, e.g. a lone tag's name, cut to the name limit. */
 export function defaultViewName(args: Args): string {
   const parts = summarizeHomeQuery(args).filter((s) => s.icon !== 'sort');
-  return parts.length ? parts.map((p) => p.label).join(', ') : 'New view';
+  return parts.length
+    ? parts.map((p) => p.label).join(', ').slice(0, VIEW_NAME_MAX)
+    : 'New view';
 }
