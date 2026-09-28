@@ -200,6 +200,7 @@ const DOC = {
   updated_at: 1_700_000_000_000_000_000,
   created_by: 'a1'.repeat(32),
   updated_by: 'a1'.repeat(32),
+  can_delete: true,
 } satisfies DocDto;
 
 function deferred<T>() {
@@ -277,7 +278,7 @@ describe('DocumentEditor', () => {
     );
     await screen.findByText('Notes');
 
-    fireEvent.click(screen.getByText('Delete'));
+    fireEvent.click(await screen.findByText('Delete'));
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith("Couldn't delete document"),
@@ -299,10 +300,29 @@ describe('DocumentEditor', () => {
     );
     await screen.findByText('Notes');
 
-    fireEvent.click(screen.getByText('Delete'));
+    fireEvent.click(await screen.findByText('Delete'));
 
     await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('offers Delete only to an editor the folder lets delete this doc', async () => {
+    getDoc.mockResolvedValue({ ...DOC, can_delete: false });
+    const { unmount } = render(
+      <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+    );
+    // Archive shows once the doc has loaded, so Delete has had its chance.
+    await screen.findByText('Archive');
+    expect(screen.queryByText('Delete')).toBeNull();
+    unmount();
+
+    getDoc.mockResolvedValue(DOC);
+    canEditDocs = false;
+    render(
+      <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+    );
+    await screen.findByText('Notes');
+    expect(screen.queryByText('Delete')).toBeNull();
   });
 
   it('copies the URL of this document in its folder', async () => {

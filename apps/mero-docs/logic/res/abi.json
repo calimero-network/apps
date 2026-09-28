@@ -350,6 +350,13 @@
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "can_delete",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the caller may delete it: the same rule `delete_doc` enforces."
         }
       ]
     },

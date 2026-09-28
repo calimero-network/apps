@@ -304,7 +304,7 @@ export function DocumentEditor({
         }
         onBack={onClose}
         folderName={folderName}
-        onDelete={canEditDocs ? onDelete : undefined}
+        onDelete={canEditDocs && doc?.can_delete ? onDelete : undefined}
         onCopyLink={
           namespaceId
             ? () => void copyLink(docUrl(namespaceId, folderId, docId))
