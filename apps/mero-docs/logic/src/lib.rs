@@ -283,6 +283,8 @@ pub struct DocDto {
     /// Hex account of whoever created the doc, from `origins`' owner stamp.
     pub created_by: String,
     pub updated_by: String,
+    /// Whether the caller may delete it: the same rule `delete_doc` enforces.
+    pub can_delete: bool,
 }
 
 /// The keys whose register holds `true`, sorted.
@@ -959,12 +961,7 @@ impl DocsState {
         {
             return Err(DriveError::NotFound(id));
         }
-        let created_by_me = self
-            .origins
-            .owned_by_me(&id)
-            .map_err(|e| DriveError::Invalid(format!("origins.owned_by_me: {e}")))?;
-        let me = AccountId::from(calimero_sdk::env::account_id());
-        if !created_by_me && !self.comments.is_moderator(&me) {
+        if !self.caller_may_delete(&id)? {
             return Err(DriveError::Forbidden(format!(
                 "only the creator of {id} or a moderator may delete it"
             )));
@@ -1187,7 +1184,18 @@ impl DocsState {
                 .map(|owner| hex(owner.as_bytes()))
                 .unwrap_or_default(),
             updated_by: rec.updated_by.get().clone(),
+            can_delete: self.caller_may_delete(&key)?,
         })
+    }
+
+    /// The one rule `delete_doc` enforces and `DocDto::can_delete` reports.
+    fn caller_may_delete(&self, id: &String) -> Result<bool, DriveError> {
+        let created_by_me = self
+            .origins
+            .owned_by_me(id)
+            .map_err(|e| DriveError::Invalid(format!("origins.owned_by_me: {e}")))?;
+        let me = AccountId::from(calimero_sdk::env::account_id());
+        Ok(created_by_me || self.comments.is_moderator(&me))
     }
 
     fn comment_author(&self, id: &String) -> app::Result<String> {
@@ -2281,6 +2289,29 @@ mod tests {
             .unwrap();
         app.call_as_account(BOB, BOB, |s| s.delete_doc(own))
             .unwrap();
+    }
+
+    #[test]
+    fn can_delete_is_true_exactly_for_those_delete_doc_lets_through() {
+        let mut app = folder();
+        let founder = app.account_id();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        let mut can_delete = |who: [u8; 32]| {
+            app.call_as_account(who, who, |s| {
+                let one = s.get_doc(id.clone()).unwrap().can_delete;
+                let listed = s.list_docs(false).unwrap();
+                assert_eq!(listed.iter().find(|d| d.id == id).unwrap().can_delete, one);
+                one
+            })
+        };
+        assert!(can_delete(ALICE), "the creator");
+        assert!(can_delete(founder), "the folder's founder moderates");
+        assert!(!can_delete(BOB), "another member");
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.delete_doc(id.clone()))
+            .is_err());
     }
 
     #[test]

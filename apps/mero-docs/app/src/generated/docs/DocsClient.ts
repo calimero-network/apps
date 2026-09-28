@@ -123,6 +123,10 @@ export interface DocDto {
    */
   created_by: string;
   updated_by: string;
+  /**
+   * Whether the caller may delete it: the same rule `delete_doc` enforces.
+   */
+  can_delete: boolean;
 }
 
 /**
