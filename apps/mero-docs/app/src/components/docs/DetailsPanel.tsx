@@ -251,12 +251,9 @@ export function DetailsPanel(props: DetailsPanelProps) {
 }
 
 // The same details as a right-hand sheet below lg; Escape and the backdrop close it.
-export function DetailsSheet({
-  open,
-  ...props
-}: DetailsPanelProps & { open: boolean }) {
+export function DetailsSheet(props: DetailsPanelProps) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && props.onClose()}>
+    <Dialog open onOpenChange={(next) => !next && props.onClose()}>
       <DialogContent
         aria-describedby={undefined}
         className="left-auto right-0 top-0 flex h-full max-h-none w-[300px] max-w-[85vw] translate-x-0 translate-y-0 flex-col rounded-none border-y-0 border-r-0 bg-background p-0 data-[state=open]:animate-in data-[state=open]:slide-in-from-right"

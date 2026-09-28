@@ -148,5 +148,5 @@ export function DocDetails({
       if (open) goDoc(open.folder, open.doc, { block: open.block });
     },
   };
-  return sheet ? <DetailsSheet open {...props} /> : <DetailsPanel {...props} />;
+  return sheet ? <DetailsSheet {...props} /> : <DetailsPanel {...props} />;
 }

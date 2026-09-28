@@ -117,7 +117,7 @@ describe('DetailsSheet', () => {
   it('shows the details in a dialog that closes on Escape', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    render(<DetailsSheet {...PROPS} open onClose={onClose} />);
+    render(<DetailsSheet {...PROPS} onClose={onClose} />);
     const dialog = await screen.findByRole('dialog', { name: 'Details' });
     expect(within(dialog).getByText('Roadmap 2026')).toBeTruthy();
     await user.keyboard('{Escape}');
