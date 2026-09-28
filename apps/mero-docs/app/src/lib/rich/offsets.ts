@@ -8,8 +8,8 @@ export function scalarLength(text: string): number {
   return Array.from(text).length;
 }
 
-const isHigh = (unit: number) => unit >= 0xd800 && unit <= 0xdbff;
-const isLow = (unit: number) => unit >= 0xdc00 && unit <= 0xdfff;
+export const isHigh = (unit: number) => unit >= 0xd800 && unit <= 0xdbff;
+export const isLow = (unit: number) => unit >= 0xdc00 && unit <= 0xdfff;
 
 /** UTF-16 code unit index to scalar index. */
 export function utf16ToScalar(text: string, index: number): number {

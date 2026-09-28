@@ -1,5 +1,6 @@
 import { parseDocHref, parseMemberHref } from '../links';
 import type { BackendBlock } from '../rich/blocknote';
+import { isLow } from '../rich/offsets';
 import { rowKey, type DocText } from '../workspaceIndex/types';
 import {
   foldForSearch,
@@ -34,8 +35,8 @@ function windowAround(
   let start = Math.floor((from + to - body) / 2);
   start = Math.max(0, Math.min(start, text.length - body));
   let end = start + body;
-  if (isLowSurrogate(text.charCodeAt(start))) start++;
-  if (isLowSurrogate(text.charCodeAt(end))) end--;
+  if (isLow(text.charCodeAt(start))) start++;
+  if (isLow(text.charCodeAt(end))) end--;
   const prefix = start > 0 ? ELLIPSIS : '';
   const suffix = end < text.length ? ELLIPSIS : '';
   return {
@@ -43,10 +44,6 @@ function windowAround(
     offset: start - prefix.length,
     body: [prefix.length, prefix.length + end - start],
   };
-}
-
-function isLowSurrogate(code: number): boolean {
-  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 /** `range` moved into window coordinates and clipped to the window's own text. */

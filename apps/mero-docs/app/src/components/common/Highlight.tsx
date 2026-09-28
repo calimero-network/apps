@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import { isHigh, isLow } from '@/lib/rich/offsets';
+
 export interface HighlightRange {
   start: number;
   end: number;
@@ -13,15 +15,15 @@ interface HighlightProps {
 // A boundary between a high and low surrogate would split one UTF-16
 // character across two <mark> runs; widen it to the code point edge instead.
 function isMidSurrogatePair(text: string, index: number): boolean {
-  if (index <= 0 || index >= text.length) return false;
-  const before = text.charCodeAt(index - 1);
-  const after = text.charCodeAt(index);
-  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff;
+  return isHigh(text.charCodeAt(index - 1)) && isLow(text.charCodeAt(index));
 }
 
 // Clamps ranges to the text, snaps surrogate-pair boundaries outward, then
 // sorts and merges overlaps so rendering can walk the text once.
-function normalizeRanges(text: string, ranges: HighlightRange[]): HighlightRange[] {
+function normalizeRanges(
+  text: string,
+  ranges: HighlightRange[],
+): HighlightRange[] {
   const bounded = ranges
     .map(({ start, end }) => {
       const lo = Math.max(0, Math.min(start, end));
@@ -54,9 +56,12 @@ export function Highlight({ text, ranges }: HighlightProps) {
   merged.forEach((range, i) => {
     if (range.start > cursor) nodes.push(text.slice(cursor, range.start));
     nodes.push(
-      <mark key={i} className="rounded-[2px] bg-selected font-semibold text-selected-foreground">
+      <mark
+        key={i}
+        className="rounded-[2px] bg-selected font-semibold text-selected-foreground"
+      >
         {text.slice(range.start, range.end)}
-      </mark>
+      </mark>,
     );
     cursor = range.end;
   });
