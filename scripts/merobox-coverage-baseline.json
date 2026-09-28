@@ -50,15 +50,10 @@
     "update_shadow"
   ],
   "mero-docs": [
-    "add_manager",
-    "clear_folder_role",
     "comment_schema_version",
     "delete_comment",
     "edit_comment",
-    "list_comments",
-    "list_managers",
-    "remove_manager",
-    "set_folder_alias"
+    "list_comments"
   ],
   "mero-forum": [
     "delete_comment",
