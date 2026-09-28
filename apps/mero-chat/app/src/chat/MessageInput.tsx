@@ -958,6 +958,22 @@ export default function MessageInput({
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const dragDepthRef = useRef(0);
 
+  // A file dropped anywhere OUTSIDE the composer must not reach the browser's
+  // default, which opens the file in place of the app and loses the chat.
+  // The composer's own drop handler stops propagation, so this only ever sees
+  // the misses. Text and link drags are left alone.
+  useEffect(() => {
+    const swallowStrayFileDrop = (e: globalThis.DragEvent) => {
+      if (dragCarriesFiles(e.dataTransfer)) e.preventDefault();
+    };
+    window.addEventListener("dragover", swallowStrayFileDrop);
+    window.addEventListener("drop", swallowStrayFileDrop);
+    return () => {
+      window.removeEventListener("dragover", swallowStrayFileDrop);
+      window.removeEventListener("drop", swallowStrayFileDrop);
+    };
+  }, []);
+
   const uploadDroppedFile = useCallback(
     async (file: globalThis.File, kind: "image" | "file") => {
       const setBusy = kind === "image" ? handleImageUploading : handleFileUploading;
