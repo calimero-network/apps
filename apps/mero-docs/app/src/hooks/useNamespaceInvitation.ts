@@ -204,32 +204,6 @@ export function inviteExpiryMs(ts: number): number {
   return ts * 1000;
 }
 
-/** Which explicit state a failed join maps to. Server errors are prose, not
- *  a typed contract, so each rule below demands the vocabulary of its own
- *  condition and anything unrecognized falls through to `unknown`, which
- *  shows the raw message rather than a confidently wrong card. */
-export type JoinFailure = 'already-member' | 'expired' | 'unknown';
-
-/** Membership words only: "already in the trash" is not a membership
- *  rejection, and neither is "already removed from the member list". */
-const ALREADY_MEMBER = [
-  /\balready\s+(a\s+)?(member|joined)\b/i,
-  /\balready\s+in\s+(this|the)\s+(group|namespace|workspace|folder)\b/i,
-];
-
-/** Both signals, anywhere: prose splits subject from verdict across
- *  sentences ("Invitation validation failed. Reason: expired."), so
- *  requiring them adjacent misses real expiries. Naming an invite is what
- *  keeps an unrelated "the upload link has expired" out. */
-const INVITE_WORD = /\b(invitation|invite)\b/i;
-const EXPIRY_WORD = /\bexpire[ds]?\b/i;
-
-export function classifyJoinError(message: string): JoinFailure {
-  if (ALREADY_MEMBER.some((re) => re.test(message))) return 'already-member';
-  if (INVITE_WORD.test(message) && EXPIRY_WORD.test(message)) return 'expired';
-  return 'unknown';
-}
-
 /** True when the parsed invite carries a positive expiration timestamp
  *  that is already in the past. Missing/zero timestamps never expire.
  *

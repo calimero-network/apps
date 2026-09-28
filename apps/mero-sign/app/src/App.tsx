@@ -119,11 +119,22 @@ function AppContent() {
     [invitation, navigate],
   );
 
-  const handleInvitationError = useCallback(() => {
-    // Acked on decline too, or the store replays it on every reload and the
-    // prompt becomes impossible to dismiss.
+  const handleInvitationError = useCallback(
+    (retain: boolean) => {
+      // Acked on decline too, or the store replays it on every reload and the
+      // prompt becomes impossible to dismiss — unless the join failed for a
+      // reason a later load can get past (nobody online to let them in). That
+      // one is kept, and the capture's attempt cap bounds the replays.
+      if (!retain) invitation?.resolve();
+      setInvitation(null);
+    },
+    [invitation],
+  );
+
+  // A final refusal (expired, invalid, refused) is finished with the moment
+  // it happens, whether or not the prompt is dismissed.
+  const handleInvitationFinalFailure = useCallback(() => {
     invitation?.resolve();
-    setInvitation(null);
   }, [invitation]);
 
   return (
@@ -152,6 +163,7 @@ function AppContent() {
         <InvitationHandlerPopup
           invitation={invitation.token}
           onSuccess={handleInvitationSuccess}
+          onFinalFailure={handleInvitationFinalFailure}
           onError={handleInvitationError}
         />
       )}

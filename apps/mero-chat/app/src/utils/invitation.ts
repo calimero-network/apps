@@ -185,28 +185,6 @@ export function parseInvitationInput(input: string): string | null {
 }
 
 /**
- * True when a join error means the invitation itself is bad and will never
- * succeed (expired / invalid / malformed / bad signature) — safe to forget the
- * stored invitation. False for transient or unrecognized errors (network,
- * timeout, "no online member", or anything we don't recognize), so the pending
- * invitation is KEPT and retried on the next load. Errs toward keeping.
- */
-export function isTerminalInvitationError(message: string | undefined | null): boolean {
-  if (!message) return false;
-  const m = message.toLowerCase();
-  const TERMINAL = [
-    "expired",
-    "invalid",
-    "malformed",
-    "signature",
-    "not admin",
-    "revoked",
-    "already a member",
-  ];
-  return TERMINAL.some((t) => m.includes(t));
-}
-
-/**
  * Device-local deep link (`calimero://com.calimero.chat/join?invitation=…`).
  *
  * The platform SDK is HTTPS-only by design (the `calimero://` scheme is a

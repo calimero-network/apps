@@ -292,6 +292,9 @@ importers:
 
   apps/kv-store/app:
     dependencies:
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 19.26.0
@@ -323,6 +326,9 @@ importers:
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -514,6 +520,9 @@ importers:
       '@braintree/sanitize-url':
         specifier: ^7.1.2
         version: 7.1.2
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -683,6 +692,9 @@ importers:
 
   apps/mero-chess/app:
     dependencies:
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -953,6 +965,9 @@ importers:
       '@blocknote/react':
         specifier: ^0.51.4
         version: 0.51.4(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1970,6 +1985,9 @@ importers:
 
   apps/mero-vote/app:
     dependencies:
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 19.26.0
@@ -2007,6 +2025,9 @@ importers:
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
