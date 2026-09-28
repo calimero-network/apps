@@ -9,6 +9,13 @@
 //!   nobody can repoint another member's account at a key of their choosing.
 //! * `matches` is `Authored`: a match is owned by the member who created it,
 //!   and only they can link its game context.
+//!
+//!   Keys are per owner (core rc.57): another member can file an entry of
+//!   their own under an existing match id, and a key-only `get` reads only the
+//!   CALLER's entry. So every read by id goes through [`LobbyState::match_of`],
+//!   which reads every holder's entry and takes the one whose owner is the
+//!   account that registered the match's `player1` key (the id's prefix),
+//!   falling back to the lowest such holder.
 //! * `results` is `WriteOnce`: a reported result can be neither edited nor
 //!   removed. Which reports COUNT is the reader's question — see
 //!   [`LobbyState::result_of`] — and stats are derived from those, never
@@ -237,7 +244,13 @@ impl LobbyState {
             ));
         }
         let match_id = format!("{caller_hex}-{now_ms}-{nonce_hex}");
-        if self.matches.contains(&match_id).map_err(storage)? {
+        // Any account's entry, not just the caller's: keys are per owner.
+        if !self
+            .matches
+            .entries_at(&match_id)
+            .map_err(storage)?
+            .is_empty()
+        {
             return Err(GameError::MatchIdCollision);
         }
         self.matches
@@ -272,11 +285,16 @@ impl LobbyState {
         context_id: &str,
     ) -> Result<(), GameError> {
         let match_id = match_id.to_string();
-        let entry = self
-            .matches
-            .get(&match_id)
-            .map_err(storage)?
-            .ok_or(GameError::Invalid("unknown match_id".into()))?;
+        // The caller's OWN entry: keys are per owner, and only the creator's
+        // entry is theirs to link.
+        let Some(entry) = self.matches.get(&match_id).map_err(storage)? else {
+            if self.match_of(&match_id)?.is_some() {
+                return Err(GameError::Forbidden(
+                    "only the match's creator links it".into(),
+                ));
+            }
+            return Err(GameError::Invalid("unknown match_id".into()));
+        };
         // Only the Pending -> Active transition. Re-linking a match would point
         // it at a different game, whose results would then count for it.
         if entry.context_id.is_some() {
@@ -334,8 +352,11 @@ impl LobbyState {
 
     pub fn get_matches(&self) -> app::Result<Vec<MatchSummary>> {
         let mut out = Vec::new();
-        for (match_id, entry) in self.matches.entries()? {
-            let result = self.result_of(&match_id, &entry)?;
+        for match_id in self.match_ids()? {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
+                continue;
+            };
+            let result = self.result_of(&match_id, &creator, &entry)?;
             out.push(MatchSummary {
                 status: match (&result, &entry.context_id) {
                     (Some(_), _) => MatchStatus::Finished,
@@ -372,8 +393,11 @@ impl LobbyState {
     /// Every finished match, oldest first — one result per match.
     pub fn get_history(&self) -> app::Result<Vec<MatchRecord>> {
         let mut out = Vec::new();
-        for (match_id, entry) in self.matches.entries()? {
-            if let Some(record) = self.result_of(&match_id, &entry)? {
+        for match_id in self.match_ids()? {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
+                continue;
+            };
+            if let Some(record) = self.result_of(&match_id, &creator, &entry)? {
                 out.push(record);
             }
         }
@@ -416,10 +440,8 @@ impl LobbyState {
         finished_ms: u64,
     ) -> Result<(), GameError> {
         let id = match_id.to_string();
-        let entry = self
-            .matches
-            .get(&id)
-            .map_err(storage)?
+        let (creator, entry) = self
+            .match_of(&id)?
             .ok_or(GameError::Invalid("unknown match_id".into()))?;
         let from_its_game = entry
             .context_id
@@ -442,7 +464,7 @@ impl LobbyState {
         // delivered more than once. A repeat writes nothing; and even two
         // rows for one match count once, because stats are derived per match.
         if self
-            .result_of(&id, &entry)?
+            .result_of(&id, &creator, &entry)?
             .is_some_and(|known| known.winner == winner)
         {
             return Ok(());
@@ -469,6 +491,47 @@ impl LobbyState {
 }
 
 impl LobbyState {
+    /// Every match id, once: `entries()` lists a key once per account holding
+    /// it.
+    fn match_ids(&self) -> Result<BTreeSet<String>, GameError> {
+        Ok(self
+            .matches
+            .entries()
+            .map_err(storage)?
+            .map(|(match_id, _)| match_id)
+            .collect())
+    }
+
+    /// The match at `match_id` and its creator's account (hex).
+    ///
+    /// Keys are per owner, so several accounts can hold an entry at one id.
+    /// The genuine one names the id's prefix as `player1`, and is owned by the
+    /// account that registered that player key; failing a registration, the
+    /// lowest account whose entry names the prefix. The same pick on every
+    /// node.
+    fn match_of(&self, match_id: &String) -> Result<Option<(String, MatchEntry)>, GameError> {
+        let Some((prefix, _)) = match_id.split_once('-') else {
+            return Ok(None);
+        };
+        let mut holders: Vec<(String, MatchEntry)> = self
+            .matches
+            .entries_at(match_id)
+            .map_err(storage)?
+            .into_iter()
+            .filter(|(_, entry)| entry.player1 == prefix)
+            .map(|(owner, entry)| (account_hex(owner.as_bytes()), entry))
+            .collect();
+        holders.sort_by(|a, b| a.0.cmp(&b.0));
+        let registered = self.account_for(prefix).ok();
+        if let Some(i) = holders
+            .iter()
+            .position(|(owner, _)| Some(owner) == registered.as_ref())
+        {
+            return Ok(Some(holders.swap_remove(i)));
+        }
+        Ok(holders.into_iter().next())
+    }
+
     /// The account that registered `player` as its key — exactly one, or the
     /// match cannot say whose rows player 2's are.
     fn account_for(&self, player: &str) -> Result<String, GameError> {
@@ -505,33 +568,35 @@ impl LobbyState {
     /// report runs as. The result stands only if every counting report agrees
     /// on the winner: a player who files a contrary report can dispute a
     /// result, but never take it.
+    ///
+    /// Keys are per owner, so both players' nodes can file a report under the
+    /// same key. Each key the index names is read once, with every holder's
+    /// entry at it and that holder's account.
     fn result_of(
         &self,
         match_id: &String,
+        creator: &str,
         entry: &MatchEntry,
     ) -> Result<Option<MatchRecord>, GameError> {
-        let creator = self
-            .matches
-            .owner_of(match_id)
-            .map_err(storage)?
-            .map(|a| account_hex(a.as_bytes()));
-        let mut counting: Vec<MatchRecord> = Vec::new();
-        for (key, record) in self
+        let keys: BTreeSet<String> = self
             .results
             .query("match_id")
             .eq(match_id.as_str())
-            .entries()
+            .keys()
             .map_err(storage)?
-        {
-            let author = self
-                .results
-                .owner_of(&key)
-                .map_err(storage)?
-                .map(|a| account_hex(a.as_bytes()));
-            let by_a_player = author.is_some()
-                && (author == creator || author.as_deref() == Some(entry.player2_account.as_str()));
-            if by_a_player && Self::are_the_players(entry, &record.winner, &record.loser) {
-                counting.push(record);
+            .into_iter()
+            .collect();
+        let mut counting: Vec<MatchRecord> = Vec::new();
+        for key in keys {
+            for (owner, record) in self.results.entries_at(&key).map_err(storage)? {
+                if record.match_id != *match_id {
+                    continue;
+                }
+                let author = account_hex(owner.as_bytes());
+                let by_a_player = author == creator || author == entry.player2_account;
+                if by_a_player && Self::are_the_players(entry, &record.winner, &record.loser) {
+                    counting.push(record);
+                }
             }
         }
         let winners: BTreeSet<&str> = counting.iter().map(|r| r.winner.as_str()).collect();
@@ -553,16 +618,18 @@ impl LobbyState {
             .collect();
         let mut count = 0u64;
         for match_id in matches {
-            let Some(entry) = self.matches.get(&match_id)? else {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
                 continue;
             };
-            let counts = self.result_of(&match_id, &entry)?.is_some_and(|r| {
-                if side == "winner" {
-                    r.winner == player
-                } else {
-                    r.loser == player
-                }
-            });
+            let counts = self
+                .result_of(&match_id, &creator, &entry)?
+                .is_some_and(|r| {
+                    if side == "winner" {
+                        r.winner == player
+                    } else {
+                        r.loser == player
+                    }
+                });
             count += u64::from(counts);
         }
         Ok(count)
@@ -699,6 +766,34 @@ mod tests {
             .call_as_account(ALICE, ALICE_KEY, |s| s
                 .set_match_context_id(id.clone(), "cd".into()))
             .is_err());
+    }
+
+    /// Keys are per owner: Carol can file an entry of her own under Alice's
+    /// match id. It is a separate entry and never read as the match.
+    #[test]
+    fn an_entry_filed_under_someone_elses_match_id_is_never_the_match() {
+        let (mut app, id) = linked();
+        app.call_as_account(CAROL, CAROL_KEY, |s| {
+            s.matches.insert(
+                id.clone(),
+                MatchEntry {
+                    player1: hex::encode(ALICE_KEY),
+                    player2: hex::encode(CAROL_KEY),
+                    player2_account: hex::encode(CAROL),
+                    context_id: Some(hex::encode([0x99; 32])),
+                    created_ms: 0,
+                },
+            )
+        })
+        .expect("her own entry");
+        let listed = app.view(|s| s.get_matches()).expect("matches");
+        assert_eq!(listed.len(), 1, "one match, however many hold its id");
+        let m = summary(&app, &id);
+        assert_eq!(m.player2, hex::encode(BOB_KEY));
+        assert_eq!(m.context_id, Some(hex::encode(GAME_CTX)));
+        // Bob's report is read against Alice's entry, from another account.
+        report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("bob's node");
+        assert_eq!(summary(&app, &id).winner, Some(hex::encode(BOB_KEY)));
     }
 
     #[test]

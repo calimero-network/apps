@@ -30,10 +30,10 @@
 
 use battleships_types::{GameError, PublicKey};
 use calimero_sdk::abi::AbiType;
-use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::{Frozen, Guarded, Owning, SortedMap, WriteOnce};
 use sha2::{Digest, Sha256};
 
@@ -836,6 +836,10 @@ impl GameState {
 
     /// Every row under `prefix` that `author` really wrote: the prefix names
     /// the account, and core's owner stamp has to agree.
+    ///
+    /// Keys are per owner (core rc.57): one key appears once per account
+    /// holding it, and a key-only read answers only for the caller. So each
+    /// distinct key is read once, as `author`'s own entry, by name.
     fn owned_rows<V, P>(
         map: &Guarded<SortedMap<String, V>, P>,
         prefix: &str,
@@ -845,21 +849,22 @@ impl GameState {
         V: BorshSerialize + BorshDeserialize + 'static,
         P: Owning,
     {
-        let mut rows = Vec::new();
-        for (key, value) in map.prefix(prefix.as_bytes())? {
-            if map
-                .owner_of(&key)?
-                .is_some_and(|owner| owner.as_bytes() == author)
-            {
+        let author = AccountId::from(*author);
+        let mut rows: Vec<(String, V)> = Vec::new();
+        for (key, _) in map.prefix(prefix.as_bytes())? {
+            if rows.last().is_some_and(|(last, _)| *last == key) {
+                continue;
+            }
+            if let Some(value) = map.get_by(&author, &key)? {
                 rows.push((key, value));
             }
         }
         Ok(rows)
     }
 
-    /// A key nobody has written yet. The nonce is what stops another member
-    /// occupying the key a player's next row needs: an insert refuses an
-    /// existing key, so without it a squatter could wedge the match.
+    /// A key the caller has not written yet. Keys are per owner, so nobody
+    /// else can occupy it; the time-derived suffix only keeps a player's own
+    /// rows apart.
     fn free_key<V, P>(
         map: &Guarded<SortedMap<String, V>, P>,
         build: impl Fn(u64) -> String,
