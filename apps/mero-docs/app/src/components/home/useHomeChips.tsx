@@ -3,8 +3,8 @@
 
 import * as React from 'react';
 
-import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { usePersonName } from '@/hooks/usePersonName';
 import { useTags } from '@/hooks/useTags';
 import { nameCollator } from '@/lib/collate';
 import { folderLabel } from '@/lib/folderLabel';
@@ -15,7 +15,6 @@ import { FilterChecklist } from './FilterChecklist';
 import { UPDATED_OPTIONS, UpdatedMenu } from './UpdatedMenu';
 import type { FilterChipView } from './types';
 
-const SELF_LABEL = 'You';
 const UNKNOWN_TAG_LABEL = 'Unknown tag';
 export const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
 
@@ -89,12 +88,9 @@ export function useHomeChips({
   paths,
   base,
 }: Args): FilterChipView[] {
-  const { selfIdentity, namespaceMemberNames } = useDriveWorkspace();
+  const { selfIdentity } = useDriveWorkspace();
   const { tags, byKey: tagsByKey } = useTags();
-  const personName = (id: string) =>
-    id === selfIdentity
-      ? SELF_LABEL
-      : namespaceMemberNames[id] || UNNAMED_MEMBER_LABEL;
+  const personName = usePersonName(q.by);
   const tagName = (key: string) => {
     const t = tagsByKey.get(key);
     return t && !t.deleted ? t.name : UNKNOWN_TAG_LABEL;

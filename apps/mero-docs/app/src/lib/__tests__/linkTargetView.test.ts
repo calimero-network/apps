@@ -11,7 +11,9 @@ const live = row({ folderId: 'f1', docId: 'd1', title: 'Roadmap v2' });
 
 const ctx: DocLinkCardContext = {
   ws: 'w1',
-  readableFolders: new Set(['f1', 'f2']),
+  existingFolders: new Set(['f1', 'f2', 'f3', 'secret']),
+  readableFolders: new Set(['f1', 'f2', 'f3']),
+  failedFolders: new Set(['f3']),
   loadedFolders: new Set(['f1']),
   rows: new Map([[rowKey('f1', 'd1'), live]]),
 };
@@ -40,6 +42,31 @@ describe('docLinkCardState', () => {
   it('says loading, not deleted, while the folder is still loading', () => {
     expect(
       docLinkCardState({ ws: 'w1', folder: 'f2', doc: 'd9' }, ctx),
+    ).toEqual({ state: 'loading' });
+  });
+
+  it('says deleted when the folder itself is gone from the workspace', () => {
+    expect(
+      docLinkCardState({ ws: 'w1', folder: 'gone', doc: 'd1' }, ctx),
+    ).toEqual({ state: 'deleted' });
+  });
+
+  it('says unavailable when the folder could not be read, not loading or deleted', () => {
+    expect(
+      docLinkCardState({ ws: 'w1', folder: 'f3', doc: 'd1' }, ctx),
+    ).toEqual({ state: 'unavailable' });
+  });
+
+  it.each([
+    ['the workspace id', { ws: null }],
+    ['the folder list', { existingFolders: null }],
+    ['folder access', { readableFolders: null }],
+  ] as const)('says loading while %s is unknown', (_what, unknown) => {
+    expect(
+      docLinkCardState(
+        { ws: 'w1', folder: 'f1', doc: 'd1' },
+        { ...ctx, ...unknown },
+      ),
     ).toEqual({ state: 'loading' });
   });
 
