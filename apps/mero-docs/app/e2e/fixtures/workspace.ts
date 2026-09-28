@@ -21,6 +21,7 @@ export const SECTION_PARAGRAPH =
   'Pricing follows the model in Pricing notes, and the story lives in the blog'; // longer than a section name
 export const SECTIONS_LAST_LINE = `Closing line ${FILLER_LINES}`; // writeSections' final line, a peer's sync barrier
 const SEARCH_FIELD = 'Search docs, folders and tags'; // the top-bar field's accessible name
+const FOLDER_SYNC_MS = 60_000; // a member who just joined waits for the folder list to sync
 
 export type Visibility = 'Open' | 'Restricted';
 
@@ -370,7 +371,9 @@ export class FolderTreeDriver {
 
   // Select a folder AND ensure it is expanded so its doc leaves render.
   async openFolder(name: string): Promise<void> {
-    await this.folderRow(name).first().click(); // select → the folder's list in <main>
+    const row = this.folderRow(name).first();
+    await expect(row).toBeVisible({ timeout: FOLDER_SYNC_MS });
+    await row.click(); // select → the folder's list in <main>
     await this.expandFolder(name); // expand → doc leaves in sidebar
   }
 
