@@ -35,7 +35,6 @@ const RANDOM_KEY_PREFIX = 't-'; // for names with no latin letters or digits
 const RANDOM_KEY_LEN = 6;
 const RANDOM_KEY_RADIX = 36;
 const RANDOM_KEY_TRIES = 8; // then number the last random key, so a stuck `random` still ends
-const VALID_KEY = /^[a-z0-9-]+$/;
 const SUGGESTIONS_MAX = 8; // the Add tag list stays short; typing narrows it
 
 /** Trimmed, inner whitespace collapsed, cut to TAG_NAME_MAX characters. */
@@ -78,10 +77,6 @@ export function tagKeyFor(
   const stem = key;
   for (let n = 2; taken.has(key); n++) key = `${stem}-${n}`;
   return key;
-}
-
-export function isValidTagKey(key: string): boolean {
-  return key.length <= TAG_KEY_MAX && VALID_KEY.test(key);
 }
 
 /** A doc's tag keys as chips named from the workspace tags; a deleted tag shows nowhere. */
