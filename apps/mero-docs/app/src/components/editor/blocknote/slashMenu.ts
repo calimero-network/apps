@@ -30,7 +30,7 @@ const LINKS_GROUP = 'Links';
 // The blocks offered anywhere, by BlockNote's slash_menu key; the schema allows more than the app shows.
 const HEADING_BLOCKS = ['heading', 'heading_2', 'heading_3'] as const;
 const BASIC_BLOCKS = ['bullet_list', 'paragraph'] as const;
-const OFFERED_BLOCKS = [...HEADING_BLOCKS, ...BASIC_BLOCKS];
+const BASIC_BLOCK_TYPES = ['paragraph', 'bulletListItem']; // BASIC_BLOCKS as block types, for the toolbar
 const PLATFORM_MOD = /^(⌘|Ctrl)-/; // how BlockNote's badge spells Mod on this platform
 
 export type SlashItem = SlashMenuItem & {
@@ -90,11 +90,11 @@ export function slashMenuItems(editor: DriveEditor): SlashItem[] {
 
 /** The formatting toolbar's block type choices, cut to the same blocks as the / menu. */
 export function blockTypeSelectItems(dict: Dictionary): BlockTypeSelectItem[] {
-  // BlockNote names each choice with its slash_menu title, which is unique per key.
-  const offered = new Set(
-    OFFERED_BLOCKS.map((key) => dict.slash_menu[key].title),
-  );
-  return defaultBlockTypeSelectItems(dict).flatMap((item) =>
-    offered.has(item.name) ? [{ ...item, name: sentenceCase(item.name) }] : [],
-  );
+  const offered = ({ type, props }: BlockTypeSelectItem) =>
+    type === 'heading'
+      ? !props?.isToggleable && Number(props?.level) <= HEADING_BLOCKS.length
+      : BASIC_BLOCK_TYPES.includes(type);
+  return defaultBlockTypeSelectItems(dict)
+    .filter(offered)
+    .map((item) => ({ ...item, name: sentenceCase(item.name) }));
 }

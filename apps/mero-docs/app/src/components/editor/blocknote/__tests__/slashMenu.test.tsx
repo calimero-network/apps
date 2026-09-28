@@ -122,4 +122,18 @@ describe('blockTypeSelectItems', () => {
       ['Bullet list', 'bulletListItem', undefined],
     ]);
   });
+
+  it('picks blocks by type and level, not by their translated names', () => {
+    const { dictionary } = editorWith('');
+    const sameNames = {
+      ...dictionary,
+      slash_menu: {
+        ...dictionary.slash_menu,
+        heading_4: dictionary.slash_menu.heading,
+      },
+    };
+    expect(
+      blockTypeSelectItems(sameNames).map((item) => item.props?.level),
+    ).toEqual([undefined, 1, 2, 3, undefined]);
+  });
 });
