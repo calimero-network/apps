@@ -16,7 +16,7 @@ import { encodeInvite } from '../../lib/inviteCodec';
 import { invitationUrl } from '../../lib/inviteLink';
 import { adminApi, apiClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import { redeemInvitation } from '../../api/invitationJoin';
+import { joinWorkspaceFromInvitation } from '../../api/invitationJoin';
 import styles from './AgreementsPage.module.css';
 
 // ── The workspace picker ─────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ export default function WorkspacesPage() {
     setJoining(true);
     setBanner(null);
     try {
-      const result = await redeemInvitation(raw, app);
+      const result = await joinWorkspaceFromInvitation(raw, app);
       setJoinCode('');
       if (result.contextId) {
         navigate(`/agreements/${result.contextId}`);

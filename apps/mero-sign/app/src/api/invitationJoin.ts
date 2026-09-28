@@ -48,6 +48,11 @@ import {
 } from '../lib/agreements';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
 import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
+import {
+  describeInviteFailure,
+  redeemInvitation,
+  type RedeemOutcome,
+} from '@calimero-apps/invite';
 
 /**
  * The `app` handle `useCalimero()` returns.
@@ -87,6 +92,25 @@ export interface RedeemResult {
   name: string;
   /** The workspace's name, for the screen that lands on it. */
   workspaceName: string;
+}
+
+/**
+ * The node did not let this node into the workspace.
+ *
+ * Carries the shared package's outcome so a caller can decide whether the
+ * invitation is worth keeping (`shouldRetain`) and whether "Try again" means
+ * anything (`retryable`). The message is already the copy to show.
+ */
+export class InvitationRedeemError extends Error {
+  readonly outcome: Extract<RedeemOutcome, { status: 'failed' }>;
+
+  constructor(outcome: Extract<RedeemOutcome, { status: 'failed' }>) {
+    super(
+      describeInviteFailure(outcome.reason, 'workspace') ?? outcome.message,
+    );
+    this.name = 'InvitationRedeemError';
+    this.outcome = outcome;
+  }
 }
 
 const UNINITIALIZED = 'Uninitialized';
@@ -209,7 +233,12 @@ async function joinWorkspaceByInvitation(
     .joinContextByOpenInvitation(namespaceId, invitation);
 
   if (joined.error || !joined.data) {
-    throw new Error(joined.error?.message || 'Failed to join the workspace');
+    // The status goes with it: `redeemInvitation` reads `status` to tell a
+    // refusal (final) from a node nobody answered for (worth another try).
+    throw Object.assign(
+      new Error(joined.error?.message || 'Failed to join the workspace'),
+      { status: joined.error?.code },
+    );
   }
   return joined.data;
 }
@@ -230,7 +259,8 @@ async function joinByTargetedPayload(
  *
  * Throws with a message fit for a user on any step that cannot be recovered
  * from; the recoverable steps (participant registration, the private-context
- * bookkeeping) log and continue.
+ * bookkeeping) log and continue. A workspace join the node refused, or that
+ * nobody answered, throws `InvitationRedeemError`.
  *
  * ── The shape of this, since the workspace model ────────────────────────────
  *
@@ -246,7 +276,7 @@ async function joinByTargetedPayload(
  * Both land on the workspace screen. Only "the node refused the invitation" is
  * a failure.
  */
-export async function redeemInvitation(
+export async function joinWorkspaceFromInvitation(
   raw: string,
   app: CalimeroAppLike,
   onStage?: (stage: RedeemStage) => void,
@@ -309,23 +339,44 @@ export async function redeemInvitation(
     );
   }
 
-  const joined = await joinWorkspaceByInvitation(
-    namespaceId,
-    parsed.invitation as unknown as SignedOpenInvitation,
+  // Sent once, through the shared package, which decides whether it worked by
+  // membership rather than by the request resolving: the desktop proxy aborts
+  // at 30s while a join can take 95s and land anyway, and a link followed
+  // twice can fail for a node that already has you. Both are successes.
+  const admin = adminApi();
+  let joined: JoinNamespaceResult | null = null;
+  const outcome = await redeemInvitation(
+    { namespaceId, invitation: parsed.invitation },
+    {
+      join: async (id, invitation) => {
+        joined = await joinWorkspaceByInvitation(
+          id,
+          invitation as SignedOpenInvitation,
+        );
+      },
+      memberships: async () =>
+        (await admin.listNamespaces()).map((n) => n.namespaceId),
+    },
   );
+  if (outcome.status === 'failed') throw new InvitationRedeemError(outcome);
+  // Null on `already-member`: the join's answer never arrived.
+  const answer = joined as JoinNamespaceResult | null;
 
   // The node's own answer, not the id we asked with: if they ever disagree the
   // node is right about what it joined.
-  const workspaceId = joined.namespaceId || namespaceId;
+  const workspaceId = answer?.namespaceId || namespaceId;
   setActiveWorkspace(workspaceId);
   // Joined; the workspace's agreements have not replicated yet. Flagged so the
   // list the joiner lands on says "syncing" rather than showing the empty state
   // it is otherwise indistinguishable from.
   markNamespaceJustJoined(workspaceId);
-  const workspaceName = (joined.groupName || parsed.workspaceName || '').trim();
+  const workspaceName = (
+    answer?.groupName ||
+    parsed.workspaceName ||
+    ''
+  ).trim();
 
   onStage?.('entering');
-  const admin = adminApi();
   const agreements = await listAgreements(admin, workspaceId).catch(() => []);
   const target = pickInvitedAgreement(agreements, contextIdOfInvite(parsed));
 

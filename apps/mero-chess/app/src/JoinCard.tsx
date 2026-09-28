@@ -105,8 +105,9 @@ An invitation is waiting. Joining adds this node to:
           <pre className="err">{state.message}</pre>
           {/*
             The distinction the user actually needs: will trying again help?
-            `isTerminalInvitationError` errs toward retryable, because a dropped
-            invitation is unrecoverable and a retried one costs a round trip.
+            `@calimero-apps/invite` decides it from the node's status, and errs
+            toward retryable, because a dropped invitation is unrecoverable and
+            a retried one costs a round trip.
           */}
           {/*
             Two different truths. A LINK-delivered invitation is in the pending

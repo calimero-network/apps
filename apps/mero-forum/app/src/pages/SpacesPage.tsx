@@ -10,6 +10,7 @@ import {
   deleteSpace,
   listSpaceNamespaces,
   mintNamespaceInvite,
+  redeemFailureMessage,
   redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
@@ -219,7 +220,15 @@ export default function SpacesPage() {
         // Shared with the app-level link prompt, so the two cannot drift. A forum
         // invitation needs BOTH joins — the namespace grant and the forum's
         // context — and this sequence is where that lives.
-        const landed = await redeemInvite(mero.admin, payload, onStatus);
+        const { outcome, landed } = await redeemInvite(
+          mero.admin,
+          payload,
+          onStatus,
+        );
+        if (!landed) {
+          setError(redeemFailureMessage(outcome));
+          return;
+        }
         setJoinCode("");
         onStatus("Refreshing your spaces…");
         await load(false);

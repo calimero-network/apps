@@ -203,51 +203,6 @@ export function parseInvitationInput(input: string): string | null {
 }
 
 /**
- * True only when a join failure means the invitation itself will never work.
- *
- * Deliberately errs toward FALSE — an unrecognised error keeps the pending
- * invitation for the next load. The asymmetry is the whole point: a dropped
- * invitation is unrecoverable for the user (they have to ask for another one),
- * while a retried one costs a round trip. So "no online member", a timeout, a
- * network blip, or anything unfamiliar must not discard it.
- */
-export function isTerminalInvitationError(
-  message: string | undefined | null,
-): boolean {
-  if (!message) return false;
-  const m = message.toLowerCase();
-  // Phrases, not bare words. `"invalid"` on its own also matches an "invalid
-  // response" from a proxy or an "invalid gateway" — transient failures that
-  // would then DISCARD the invitation, which is the exact opposite of the bias
-  // this function documents. Each entry below names the invitation itself.
-  return [
-    "invitation expired",
-    "expired invitation",
-    "invalid invitation",
-    "invitation is invalid",
-    "malformed invitation",
-    "malformed payload",
-    "invalid signature",
-    "signature verification failed",
-    "not admin",
-    "revoked",
-    "already a member",
-  ].some((t) => m.includes(t)) || NODE_INVITATION_REFUSAL.test(m);
-}
-
-/**
- * The node's own wording since core 0.11.0-rc.56, which answers an expired
- * invitation as `409 invitation for group <id> expired at <secs> (unix
- * seconds)` and one with no application id as `400 invitation for group <id>
- * is invalid: <reason>`. The group id — a Debug rendering with spaces in it,
- * `ContextGroupId(Identity([12, 34, …]))` — sits between "invitation" and the
- * verdict, so none of the phrases above match it. Before rc.56 both were a
- * bare `500 Internal server error` with the message hidden.
- */
-const NODE_INVITATION_REFUSAL =
-  /\binvitation for group .+? (expired at \d+|is invalid:)/;
-
-/**
  * The canonical shareable link — HTTPS, built by the platform SDK:
  * `https://links.calimero.network/com.calimero.mero-vote/join?invitation=…`
  *
