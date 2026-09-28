@@ -71,6 +71,9 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ loading: false, caps: 0, refetch: vi.fn() }),
 }));
+vi.mock('@/hooks/useNamespacePermissions', () => ({
+  useNamespacePermissions: () => ({ loading: false, canCreateFolder: false }),
+}));
 // The layout's own screens are under test; the index has its own suite.
 vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/context/WorkspaceIndexContext')>()),

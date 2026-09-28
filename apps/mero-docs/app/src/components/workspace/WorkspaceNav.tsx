@@ -8,14 +8,23 @@ import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { useTags } from '@/hooks/useTags';
-import { parseHomeQuery, serializeHomeQuery } from '@/lib/homeQuery';
-import { sidebarTags, tagCounts } from '@/lib/tags';
+import { NewTagDialog } from '@/components/tags/NewTagDialog';
+import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
+import {
+  parseHomeQuery,
+  serializeHomeQuery,
+  tagPageKey,
+} from '@/lib/homeQuery';
+import {
+  findTagByName,
+  firstUnusedColor,
+  sidebarTags,
+  tagCounts,
+} from '@/lib/tags';
 import { SidebarNav } from './SidebarNav';
 
 const SECTIONS_KEY_PREFIX = 'mero-drive:sidebar:'; // + workspace id: which sections are collapsed
 const ALL_OPEN = { views: false, tags: false, folders: false };
-const noop = () => {};
 
 type Sections = typeof ALL_OPEN;
 type Section = keyof Sections;
@@ -39,7 +48,9 @@ export function WorkspaceNav({
   const { search } = useLocation();
   const { rows, folders, folderStatus } = useWorkspaceIndexValue();
   const { registryFolders } = useDriveWorkspace();
-  const { tags } = useTags();
+  const { tags, createTag } = useTags();
+  const canManageTags = useCanManageTags();
+  const [newTag, setNewTag] = React.useState<{ error?: string } | null>(null);
   const [stored, setStored] = useLocalStorage<Partial<Sections> | null>(
     `${SECTIONS_KEY_PREFIX}${ws}`,
     null,
@@ -48,18 +59,9 @@ export function WorkspaceNav({
   const toggle = (section: Section) =>
     setStored({ ...collapsed, [section]: !collapsed[section] });
 
-  // A tag's page is Home filtered to that one tag and nothing else.
   const onHome = !!route && !route.folder && !route.settings;
   const q = parseHomeQuery(new URLSearchParams(search));
-  const tagPage =
-    onHome &&
-    q.tags.length === 1 &&
-    q.folders.length === 0 &&
-    !q.updated &&
-    !q.by &&
-    !q.archived
-      ? q.tags[0]
-      : null;
+  const tagPage = onHome ? tagPageKey(q) : null;
   const counts = tagCounts(rows);
   // The Home count claims every folder was read; a failed one leaves nothing to claim from.
   const statuses = folders.map((f) => folderStatus[f.id]);
@@ -70,6 +72,27 @@ export function WorkspaceNav({
   const go = (homeSearch?: string) => {
     goHome(homeSearch);
     onNavigate();
+  };
+  const tagPageSearch = (key: string) =>
+    serializeHomeQuery({
+      folders: [],
+      tags: [key],
+      archived: false,
+      sort: 'updated',
+    });
+  // A new tag has no docs, so the sidebar cannot list it; its page shows it was made.
+  const createTagFromSidebar = async (name: string, color: string) => {
+    if (findTagByName(tags, name)) {
+      setNewTag({ error: TAG_NAME_TAKEN });
+      return;
+    }
+    try {
+      const key = await createTag(name, color);
+      setNewTag(null);
+      go(tagPageSearch(key));
+    } catch {
+      // Reported by a toast; the dialog stays for another try.
+    }
   };
 
   return (
@@ -89,19 +112,10 @@ export function WorkspaceNav({
           color: t.color,
           count: counts.get(t.key) ?? 0,
           selected: tagPage === t.key,
-          onSelect: () =>
-            go(
-              serializeHomeQuery({
-                folders: [],
-                tags: [t.key],
-                archived: false,
-                sort: 'updated',
-              }),
-            ),
+          onSelect: () => go(tagPageSearch(t.key)),
         }))}
-        onAddView={noop}
-        onAddTag={noop}
-        canManage={false}
+        onAddTag={() => setNewTag({})}
+        canManage={canManageTags}
         collapsed={collapsed}
         onToggleSection={toggle}
       />
@@ -111,6 +125,13 @@ export function WorkspaceNav({
         onOpenDoc={onOpenDoc}
         collapsed={collapsed.folders}
         onToggleCollapsed={() => toggle('folders')}
+      />
+      <NewTagDialog
+        open={!!newTag}
+        color={firstUnusedColor(tags)}
+        error={newTag?.error}
+        onSubmit={(name, color) => void createTagFromSidebar(name, color)}
+        onOpenChange={(open) => !open && setNewTag(null)}
       />
     </div>
   );

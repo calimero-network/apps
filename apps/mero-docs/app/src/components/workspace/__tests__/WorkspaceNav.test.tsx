@@ -1,6 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { WorkspaceNav } from '../WorkspaceNav';
@@ -27,7 +33,13 @@ vi.mock('@/context/WorkspaceIndexContext', () => ({
 }));
 const ws = { registryFolders: [{ id: 'f1' }] as { id: string }[] | null };
 vi.mock('@/hooks/useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
-vi.mock('@/hooks/useTags', () => ({ useTags: () => ({ tags }) }));
+const createTag = vi.fn();
+let canManageTags = true;
+vi.mock('@/hooks/useTags', async (importActual) => ({
+  ...(await importActual<typeof import('@/hooks/useTags')>()),
+  useTags: () => ({ tags, createTag }),
+  useCanManageTags: () => canManageTags,
+}));
 vi.mock('@/components/folders/FolderTree', () => ({
   FolderTree: ({
     collapsed,
@@ -79,6 +91,8 @@ const section = (name: string) => screen.getByRole('button', { name });
 
 beforeEach(() => {
   localStorage.clear();
+  canManageTags = true;
+  createTag.mockReset();
   index.rows = rows;
   index.folderStatus = { f1: 'ready' };
   ws.registryFolders = [{ id: 'f1' }];
@@ -121,10 +135,58 @@ describe('WorkspaceNav', () => {
     expect(home.getAttribute('aria-current')).toBeNull();
   });
 
-  it('offers no New view or New tag yet', () => {
-    mount('/app/ws1');
+  it('offers New tag to editors and above, never to a guest, and no New view yet (T-18)', () => {
+    const { unmount } = mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'New tag' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'New view' })).toBeNull();
+    unmount();
+
+    canManageTags = false;
+    mount('/app/ws1');
     expect(screen.queryByRole('button', { name: 'New tag' })).toBeNull();
+  });
+
+  it('creates a tag with no document from the sidebar, then opens its page', async () => {
+    const user = userEvent.setup();
+    createTag.mockResolvedValue('launch');
+    mount('/app/ws1');
+    await user.click(screen.getByRole('button', { name: 'New tag' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New tag' });
+    expect(
+      (within(dialog).getByRole('radio', { name: 'Blue' }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Launch');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    expect(createTag).toHaveBeenCalledWith('Launch', '#f59e0b');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(search).toBe('?tag=launch');
+  });
+
+  it('refuses a name another tag has, in the dialog', async () => {
+    const user = userEvent.setup();
+    mount('/app/ws1');
+    await user.click(screen.getByRole('button', { name: 'New tag' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New tag' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), ' q3 ');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    expect(
+      within(dialog).getByText('A tag with this name already exists'),
+    ).toBeTruthy();
+    expect(createTag).not.toHaveBeenCalled();
+  });
+
+  it('keeps the dialog open when creating fails', async () => {
+    const user = userEvent.setup();
+    createTag.mockRejectedValue(new Error('down'));
+    mount('/app/ws1');
+    await user.click(screen.getByRole('button', { name: 'New tag' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New tag' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'x');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(createTag).toHaveBeenCalled());
+    expect(screen.getByRole('dialog', { name: 'New tag' })).toBeTruthy();
+    expect(search).toBe('');
   });
 
   it('remembers collapsed sections per workspace', () => {
