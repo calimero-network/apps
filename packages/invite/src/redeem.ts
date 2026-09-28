@@ -52,7 +52,10 @@ export type RedeemOutcome =
   | {
       status: "failed";
       namespaceId: string | null;
+      /** The node's own words, for logs and for an app that shows detail. */
       message: string;
+      /** Why, in terms a person can act on — see `describeInviteFailure`. */
+      reason: InviteFailureReason;
       /**
        * Whether trying again later could plausibly work. A malformed token
        * cannot; an unreachable peer can. The caller uses this to decide whether
@@ -60,6 +63,28 @@ export type RedeemOutcome =
        */
       retryable: boolean;
     };
+
+/**
+ * Why a join failed, as far as it tells a person what to do next.
+ *
+ * Read off the HTTP status where the node gives one (core rc.56+ answers a
+ * refused join with a 4xx, not a 500), and off the message otherwise.
+ */
+export type InviteFailureReason =
+  /** The invitation's time ran out. Only a new link helps. */
+  | "expired"
+  /** The link is malformed or names nothing joinable. Only a new link helps. */
+  | "invalid"
+  /** The node refused this person (removed, blocked, not allowed). */
+  | "refused"
+  /** This browser's session with the node lapsed; signing in finishes it. */
+  | "signed-out"
+  /** No member was reachable to let them in yet. Trying later can work. */
+  | "no-one-online"
+  /** This browser could not reach its own node at all. */
+  | "node-unreachable"
+  /** Nothing more specific is known; the node's message is all there is. */
+  | "unknown";
 
 /** Whether an outcome means the invitation is finished with. */
 export function isSettled(outcome: RedeemOutcome): boolean {
@@ -100,25 +125,122 @@ function messageFrom(err: unknown, fallback: string): string {
 }
 
 /**
- * A failure nobody should retry: the invitation itself is not usable.
+ * The HTTP status a join error carries, in any of the shapes the apps' clients
+ * throw: mero-js's `HTTPError.status`, an axios-style `response.status`, or a
+ * bare `statusCode`. `undefined` when there is none (a thrown string, an error
+ * from before the request was sent).
+ */
+function statusOf(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const shaped = err as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+  };
+  for (const candidate of [
+    shaped.status,
+    shaped.response?.status,
+    shaped.statusCode,
+  ]) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Which reason the message alone names, for a node that answers without a
+ * useful status — older than rc.56, where every refusal was a bare 500.
  *
  * Kept narrow on purpose. Anything not recognised here stays retryable, because
  * the cost of retrying a dead link is one more attempt against the cap, while
  * the cost of discarding a live one is a user who cannot join at all.
  */
-function isTerminal(message: string): boolean {
+function reasonFromMessage(message: string): InviteFailureReason | null {
   const m = message.toLowerCase();
-  return (
+  if (
     m.includes("invitation has expired") ||
     m.includes("invitation expired") ||
+    // Core rc.56+ names the group between the words: "invitation for group
+    // <id> expired at <secs>".
+    /\binvitation for group .+? expired at \d+/.test(m)
+  ) {
+    return "expired";
+  }
+  if (
     m.includes("malformed") ||
     m.includes("does not match namespace_id") ||
     m.includes("invalid invitation") ||
-    // Core rc.56+ names the group between the two words: "invitation for group
-    // <id> expired at <secs>" (409) and "... is invalid: <reason>" (400). Before
-    // that both were a bare 500 with the message hidden.
-    /\binvitation for group .+? (expired at \d+|is invalid:)/.test(m)
-  );
+    /\binvitation for group .+? is invalid:/.test(m)
+  ) {
+    return "invalid";
+  }
+  return null;
+}
+
+/**
+ * Why the join failed, and whether a later attempt could work.
+ *
+ * The status decides where there is one. A 4xx the node chose is a definitive
+ * answer about this invitation or this person, so it is not retried; a 5xx, a
+ * 429 or no answer at all is about the moment, so it is. Two exceptions keep an
+ * invitation that is still good: a 401 is this browser's session, not the
+ * invitation, and a 404 is not specific enough to throw a link away on.
+ */
+function classify(
+  err: unknown,
+  message: string,
+): { reason: InviteFailureReason; retryable: boolean } {
+  const status = statusOf(err);
+  const fromText = reasonFromMessage(message);
+
+  if (status === 401) return { reason: "signed-out", retryable: true };
+  if (status === 400) return { reason: fromText ?? "invalid", retryable: false };
+  if (status === 410) return { reason: "expired", retryable: false };
+  if (status === 403) return { reason: "refused", retryable: false };
+  // An expired invitation, a spent one, a member who was removed or blocked:
+  // every 409 a join can answer is final.
+  if (status === 409) return { reason: fromText ?? "refused", retryable: false };
+  if (status === 503 || status === 504) {
+    return { reason: "no-one-online", retryable: true };
+  }
+  // mero-js reports a fetch that never reached the node as status 0.
+  if (status === 0 || err instanceof TypeError) {
+    return { reason: "node-unreachable", retryable: true };
+  }
+  // A 500 from a node older than rc.56 may still be a refusal in disguise;
+  // anything else without a status has only its message to go on.
+  if (fromText) return { reason: fromText, retryable: false };
+  return { reason: "unknown", retryable: true };
+}
+
+/**
+ * What to tell a person about a failed join, or `null` to show the node's own
+ * message (an `unknown` failure has nothing better to offer).
+ *
+ * `noun` is what the app calls the thing being joined: "team", "space", "vault".
+ */
+export function describeInviteFailure(
+  reason: InviteFailureReason,
+  noun = "team",
+): string | null {
+  switch (reason) {
+    case "expired":
+      return "This invitation has expired. Ask for a new link.";
+    case "invalid":
+      return "This invitation link isn't valid. Ask for a new one.";
+    case "refused":
+      return `You can't join this ${noun} with this invitation. Ask an admin to invite you again.`;
+    case "signed-out":
+      return "Your session with your node has ended. Sign in again to finish joining.";
+    case "no-one-online":
+      return `No one in this ${noun} is online to let you in yet. It will try again the next time you open the app.`;
+    case "node-unreachable":
+      return "Couldn't reach your node. Check that it is running, then try again.";
+    case "unknown":
+      return null;
+  }
 }
 
 /**
@@ -162,10 +284,12 @@ export async function redeemInvitation(
     joinError,
     "Could not join. Check the invitation.",
   );
+  const { reason, retryable } = classify(joinError, message);
   return {
     status: "failed",
     namespaceId,
     message,
-    retryable: !isTerminal(message),
+    reason,
+    retryable,
   };
 }
