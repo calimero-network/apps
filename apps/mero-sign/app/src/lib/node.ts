@@ -59,8 +59,15 @@ async function wrap<T>(run: () => Promise<T>): ApiResponse<T> {
   try {
     return { data: await run(), error: null };
   } catch (e) {
+    // The HTTP status rides along as `code` (mero-js's `HTTPError.status`), so
+    // a caller that has to tell "the node refused" from "the node was not
+    // there" still can — see `api/invitationJoin`.
+    const status = (e as { status?: unknown } | null)?.status;
     return {
-      error: { message: e instanceof Error ? e.message : String(e) },
+      error: {
+        message: e instanceof Error ? e.message : String(e),
+        ...(typeof status === 'number' ? { code: status } : {}),
+      },
     };
   }
 }
