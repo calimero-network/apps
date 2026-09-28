@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { WorkspaceNav } from '../WorkspaceNav';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
+import type { SavedView } from '@/hooks/useSavedViews';
 
 const rows = [
   row({ docId: 'a', tags: ['q3', 'design'] }),
@@ -36,9 +37,39 @@ const createTag = vi.fn();
 let canManageTags = true;
 vi.mock('@/hooks/useTags', async (importActual) => ({
   ...(await importActual<typeof import('@/hooks/useTags')>()),
-  useTags: () => ({ tags, createTag }),
+  useTags: () => ({ tags, byKey: new Map(tags.map((t) => [t.key, t])), createTag }),
   useCanManageTags: () => canManageTags,
 }));
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    namespaces: [
+      { namespaceId: 'ws1', name: 'Acme Product' },
+      { namespaceId: 'ws2', name: 'Other' },
+    ],
+    selfIdentity: 'me',
+    namespaceMemberNames: {},
+  }),
+}));
+let savedViews: SavedView[] = [];
+const saveView = vi.fn();
+const renameView = vi.fn();
+const removeView = vi.fn();
+vi.mock('@/hooks/useSavedViews', () => ({
+  useSavedViews: () => ({
+    views: savedViews,
+    save: saveView,
+    rename: renameView,
+    remove: removeView,
+  }),
+}));
+const confirm = vi.fn();
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  useConfirm: () => confirm,
+}));
+const copyLink = vi.fn();
+vi.mock('@/lib/copyLink', () => ({ copyLink: (...args: unknown[]) => copyLink(...args) }));
+const toastMessage = vi.fn();
+vi.mock('sonner', () => ({ toast: { message: (m: string) => toastMessage(m) } }));
 vi.mock('@/components/folders/FolderTree', () => ({
   FolderTree: ({
     collapsed,
@@ -92,6 +123,13 @@ beforeEach(() => {
   localStorage.clear();
   canManageTags = true;
   createTag.mockReset();
+  savedViews = [];
+  saveView.mockReset();
+  renameView.mockReset().mockResolvedValue(undefined);
+  removeView.mockReset().mockResolvedValue(undefined);
+  confirm.mockReset().mockResolvedValue(true);
+  copyLink.mockReset();
+  toastMessage.mockReset();
   index.rows = rows;
   index.folderStatus = { f1: 'ready' };
   index.folders = [{ id: 'f1', name: 'One' }];
@@ -135,15 +173,166 @@ describe('WorkspaceNav', () => {
     expect(home.getAttribute('aria-current')).toBeNull();
   });
 
-  it('offers New tag to editors and above, never to a guest, and no New view yet (T-18)', () => {
+  it('offers New tag and New view to editors and above, never to a guest', () => {
     const { unmount } = mount('/app/ws1');
     expect(screen.getByRole('button', { name: 'New tag' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'New view' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New view' })).toBeTruthy();
     unmount();
 
     canManageTags = false;
     mount('/app/ws1');
     expect(screen.queryByRole('button', { name: 'New tag' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New view' })).toBeNull();
+  });
+
+  describe('saved views', () => {
+    it('lists views with live counts, shared ones marked, selected by the view id (R-24)', () => {
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+        {
+          id: 'v2',
+          name: 'Q3 launch',
+          query: 'tag=q3',
+          scope: 'everyone',
+          createdBy: 'bob',
+        },
+      ];
+      mount('/app/ws1?tag=q3&view=v2');
+      const views = screen.getByRole('region', { name: 'Views' });
+      expect(
+        within(views).getByRole('button', { name: 'Design week, 2' }),
+      ).toBeTruthy();
+      const q3Row = within(views).getByRole('button', {
+        name: 'Q3 launch, shared with everyone, 1',
+      });
+      expect(q3Row.getAttribute('aria-current')).toBe('page');
+    });
+
+    it('is zero, not a crash, for a view whose filter no row carries any more (R-23)', () => {
+      savedViews = [
+        { id: 'v1', name: 'Stale', query: 'tag=deleted-tag', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      const views = screen.getByRole('region', { name: 'Views' });
+      expect(
+        within(views).getByRole('button', { name: 'Stale, 0' }),
+      ).toBeTruthy();
+    });
+
+    it('opens a view at its stored query plus its own id', () => {
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      fireEvent.click(screen.getByRole('button', { name: 'Design week, 2' }));
+      expect(search).toBe('?tag=design&view=v1');
+    });
+
+    it('shows a hint instead of the popover with no filter on', () => {
+      mount('/app/ws1');
+      fireEvent.click(screen.getByRole('button', { name: 'New view' }));
+      expect(toastMessage).toHaveBeenCalledWith(
+        'Turn on a filter to save it as a view.',
+      );
+    });
+
+    it('saves the current filters as a personal view from the section header', async () => {
+      saveView.mockResolvedValue({
+        id: 'new',
+        name: 'Q3',
+        query: 'tag=q3',
+        scope: 'me',
+      });
+      mount('/app/ws1?tag=q3');
+      fireEvent.click(screen.getByRole('button', { name: 'New view' }));
+      const input = await screen.findByRole('textbox', { name: 'Name' });
+      expect((input as HTMLInputElement).value).toBe('Q3');
+      fireEvent.click(
+        screen
+          .getAllByRole('button', { name: /^Save view/ })
+          .find((b) => b.getAttribute('type') === 'submit')!,
+      );
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith('Q3', 'tag=q3', 'me'),
+      );
+      await waitFor(() => expect(search).toBe('?tag=q3&view=new'));
+    });
+
+    it('renames a view through its menu', async () => {
+      const user = userEvent.setup();
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for Design week' }),
+      );
+      await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+      const input = await screen.findByRole('textbox', { name: 'Name' });
+      await user.clear(input);
+      await user.type(input, 'Design this week{Enter}');
+      expect(renameView).toHaveBeenCalledWith('v1', 'Design this week');
+    });
+
+    it('copies an absolute link to a view', async () => {
+      const user = userEvent.setup();
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for Design week' }),
+      );
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'Copy link' }),
+      );
+      expect(copyLink).toHaveBeenCalledWith(
+        `${window.location.origin}/app/ws1?tag=design&view=v1`,
+      );
+    });
+
+    it('deletes a view after a destructive confirm', async () => {
+      const user = userEvent.setup();
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1?tag=design&view=v1');
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for Design week' }),
+      );
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      await waitFor(() => expect(removeView).toHaveBeenCalledWith('v1'));
+      expect(search).toBe('?tag=design');
+    });
+
+    it('does nothing when the delete confirm is dismissed', async () => {
+      const user = userEvent.setup();
+      confirm.mockResolvedValue(false);
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for Design week' }),
+      );
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      expect(removeView).not.toHaveBeenCalled();
+    });
+
+    it('lets any editor manage a shared view, but only the owner manage a personal one, and hides both from a guest except their own', () => {
+      canManageTags = false;
+      savedViews = [
+        { id: 'v1', name: 'Mine', query: 'tag=design', scope: 'me' },
+        { id: 'v2', name: 'Shared', query: 'tag=q3', scope: 'everyone' },
+      ];
+      mount('/app/ws1');
+      expect(
+        screen.getByRole('button', { name: 'Actions for Mine' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Actions for Shared' }),
+      ).toBeNull();
+    });
   });
 
   it('creates a tag with no document from the sidebar, then opens its page', async () => {

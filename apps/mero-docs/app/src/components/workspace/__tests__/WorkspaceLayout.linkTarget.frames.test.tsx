@@ -142,6 +142,10 @@ vi.mock('@/components/docs/DocumentEditor', () => ({
     <div data-testid="editor">{docId}</div>
   ),
 }));
+vi.mock('@/hooks/useSavedViews', () => ({
+  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
+}));
+vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 
 window.matchMedia = vi.fn().mockImplementation((query: string) => ({

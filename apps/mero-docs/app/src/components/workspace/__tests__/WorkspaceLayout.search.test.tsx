@@ -83,6 +83,10 @@ vi.mock('@/components/docs/DocumentEditor', () => ({
     </div>
   ),
 }));
+vi.mock('@/hooks/useSavedViews', () => ({
+  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
+}));
+vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 
 function renderAt(path: string) {

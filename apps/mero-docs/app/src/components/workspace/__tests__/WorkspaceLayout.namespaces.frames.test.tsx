@@ -90,6 +90,10 @@ vi.mock('../DisplayNameGate', () => ({
   DisplayNameGate: () => <div data-testid="name-gate" />,
 }));
 vi.mock('../NamespaceSettingsPanel', () => ({ NamespaceSettingsPanel: () => null }));
+vi.mock('@/hooks/useSavedViews', () => ({
+  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
+}));
+vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 vi.mock('@/components/home/HomePage', () => ({
   HomePage: () => <div data-testid="home" />,

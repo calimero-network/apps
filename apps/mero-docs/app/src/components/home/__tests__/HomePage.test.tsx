@@ -63,6 +63,7 @@ const ws = {
   rootGroupId: 'ws1',
   selfIdentity: 'me',
   namespaceMemberNames: { me: 'Ann', bob: 'Bob' } as Record<string, string>,
+  namespaces: [{ namespaceId: 'ws1', name: 'Acme Product' }],
 };
 
 vi.mock('@/context/WorkspaceIndexContext', () => ({
@@ -90,6 +91,10 @@ vi.mock('@/hooks/usePresenceByDoc', () => ({
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ws,
+}));
+const saveView = vi.fn();
+vi.mock('@/hooks/useSavedViews', () => ({
+  useSavedViews: () => ({ views: [], save: saveView, rename: vi.fn(), remove: vi.fn() }),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: (_ns: string, folderId: string) => ({
@@ -183,6 +188,7 @@ beforeEach(() => {
   create.mockClear();
   presence = new Map();
   canEdit = {};
+  saveView.mockReset();
   renameTag.mockReset().mockResolvedValue(undefined);
   recolorTag.mockReset().mockResolvedValue(undefined);
   deleteTag.mockReset().mockResolvedValue(undefined);
@@ -687,6 +693,112 @@ describe('HomePage', () => {
       act(() => navigate('/app/ws1?tag=fresh'));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(heading().textContent).toBe('Fresh');
+    });
+  });
+
+  describe('Save view', () => {
+    function saveSubmit() {
+      return screen
+        .getAllByRole('button', { name: /^Save view/ })
+        .find((b) => b.getAttribute('type') === 'submit')!;
+    }
+
+    it('is not shown with no filter on', () => {
+      mount();
+      expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+    });
+
+    it('opens with the filters summarised, a default name and the workspace name', async () => {
+      mount('/app/ws1?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      expect(
+        (screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement)
+          .value,
+      ).toBe('Last 7 days');
+      expect(screen.getByText('Last 7 days')).toBeTruthy();
+      expect(
+        screen.getByRole('radio', { name: /Everyone in Acme Product/ }),
+      ).toBeTruthy();
+    });
+
+    it('disables sharing for a viewer without workspace caps', () => {
+      nsPerms = { canCreateFolder: false, loading: false };
+      mount('/app/ws1?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      expect(
+        (
+          screen.getByRole('radio', {
+            name: /Everyone in Acme Product/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    });
+
+    it('saves as a personal view and selects it, replacing the history entry', async () => {
+      saveView.mockResolvedValue({
+        id: 'v1',
+        name: 'Last 7 days',
+        query: 'updated=7d',
+        scope: 'me',
+      });
+      mount('/app/ws1?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      fireEvent.click(saveSubmit());
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith('Last 7 days', 'updated=7d', 'me'),
+      );
+      await waitFor(() => expect(location.search).toBe('?updated=7d&view=v1'));
+      expect(navType).toBe('REPLACE');
+      expect(
+        screen.queryByRole('textbox', { name: 'Name' }),
+      ).toBeNull();
+    });
+
+    it('saves as a shared view when Everyone is picked', async () => {
+      saveView.mockResolvedValue({
+        id: 'v2',
+        name: 'Last 7 days',
+        query: 'updated=7d',
+        scope: 'everyone',
+      });
+      mount('/app/ws1?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      fireEvent.click(
+        screen.getByRole('radio', { name: /Everyone in Acme Product/ }),
+      );
+      fireEvent.click(saveSubmit());
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith(
+          'Last 7 days',
+          'updated=7d',
+          'everyone',
+        ),
+      );
+    });
+
+    it('drops any already-selected view from the query before saving a new one', async () => {
+      saveView.mockResolvedValue({
+        id: 'v2',
+        name: 'Last 7 days',
+        query: 'updated=7d',
+        scope: 'me',
+      });
+      mount('/app/ws1?updated=7d&view=v1');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      fireEvent.click(saveSubmit());
+      await waitFor(() =>
+        expect(saveView).toHaveBeenCalledWith('Last 7 days', 'updated=7d', 'me'),
+      );
+    });
+
+    it('keeps the popover open, and the URL put, when saving fails', async () => {
+      saveView.mockRejectedValue(new Error('down'));
+      mount('/app/ws1?updated=7d');
+      fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
+      fireEvent.click(saveSubmit());
+      await waitFor(() => expect(saveView).toHaveBeenCalled());
+      expect(screen.getByRole('textbox', { name: 'Name' })).toBeTruthy();
+      expect(location.search).toBe('?updated=7d');
     });
   });
 });
