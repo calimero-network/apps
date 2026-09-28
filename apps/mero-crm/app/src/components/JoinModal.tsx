@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
+import type { RedeemOutcome } from '@calimero-apps/invite';
 import { tokens as t } from '../theme';
+import { inviteFailureCopy } from '../utils/redeemInvite';
 
 interface JoinModalProps {
-  onJoin: (invitationCode: string) => Promise<void>;
+  /** Redeems the code. A failure is shown here; on success the caller closes the dialog. */
+  onJoin: (invitationCode: string) => Promise<RedeemOutcome>;
   onClose: () => void;
   /** Prefill from a captured deep link; `autoSubmit` also joins straight away. */
   initialCode?: string;
@@ -14,6 +17,9 @@ export default function JoinModal({ onJoin, onClose, initialCode = '', autoSubmi
   const [code, setCode] = useState(initialCode);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether the failure shown could go differently on another attempt. A final
+  // one (an expired or refused invitation) offers no retry until the code changes.
+  const [retryable, setRetryable] = useState(true);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !joining) onClose(); };
@@ -25,8 +31,13 @@ export default function JoinModal({ onJoin, onClose, initialCode = '', autoSubmi
     if (!value.trim() || joining) return;
     setJoining(true);
     setError(null);
+    setRetryable(true);
     try {
-      await onJoin(value.trim());
+      const outcome = await onJoin(value.trim());
+      if (outcome.status === 'failed') {
+        setError(inviteFailureCopy(outcome));
+        setRetryable(outcome.retryable);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join — check the invite link.');
     } finally {
@@ -77,8 +88,8 @@ export default function JoinModal({ onJoin, onClose, initialCode = '', autoSubmi
 
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={joining}>Cancel</SecondaryBtn>
-          <PrimaryBtn data-testid="join-submit-btn" onClick={() => void handleJoin(code)} disabled={!code.trim() || joining}>
-            {joining ? <Spin /> : 'Join workspace'}
+          <PrimaryBtn data-testid="join-submit-btn" onClick={() => void handleJoin(code)} disabled={!code.trim() || joining || (error !== null && !retryable)}>
+            {joining ? <Spin /> : error && retryable ? 'Try again' : 'Join workspace'}
           </PrimaryBtn>
         </Actions>
       </Dialog>
