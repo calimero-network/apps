@@ -30,8 +30,9 @@ vi.mock('../useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('../useDocs', () => ({
   notifyDocsRefetch: (id: string) => notifyDocsRefetch(id),
 }));
+let mero: object | null = {};
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: {} }),
+  useMero: () => ({ mero }),
 }));
 vi.mock('@/generated/docs/DocsClient', () => ({
   DocsClient: class {
@@ -67,6 +68,7 @@ beforeEach(() => {
   removeTag.mockReset().mockResolvedValue(undefined);
   ws.registryClient = { listTags, setTag, deleteTag };
   index.rows = [];
+  mero = {};
   onRegistryEvent = null;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -137,7 +139,9 @@ describe('useTagsSource', () => {
 async function loaded(tags: ReturnType<typeof tag>[]) {
   listTags.mockResolvedValue(tags);
   const view = renderHook(() => useTagsSource(index));
-  await waitFor(() => expect(view.result.current.tags).toHaveLength(tags.length));
+  await waitFor(() =>
+    expect(view.result.current.tags).toHaveLength(tags.length),
+  );
   listTags.mockReturnValue(new Promise(() => {})); // the re-read after a write stays out of the way
   return view;
 }
@@ -175,7 +179,11 @@ describe('useTagsSource writes', () => {
       key = await result.current.createTag('日本', '#3b82f6');
     });
     expect(key).toMatch(/^t-[a-z0-9]{6}$/);
-    expect(setTag).toHaveBeenCalledWith({ key, name: '日本', color: '#3b82f6' });
+    expect(setTag).toHaveBeenCalledWith({
+      key,
+      name: '日本',
+      color: '#3b82f6',
+    });
   });
 
   it('refuses an empty name without writing', async () => {
@@ -190,22 +198,34 @@ describe('useTagsSource writes', () => {
       tag('plan', 'Plan'),
       tag('old', 'Old', true),
     ]);
-    await expect(result.current.renameTag('q3', ' plan ')).rejects.toBeInstanceOf(
-      TagNameTakenError,
-    );
+    await expect(
+      result.current.renameTag('q3', ' plan '),
+    ).rejects.toBeInstanceOf(TagNameTakenError);
     expect(setTag).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
 
     await act(async () => result.current.renameTag('q3', 'old'));
     await act(async () => result.current.renameTag('q3', 'q3'));
-    expect(setTag).toHaveBeenNthCalledWith(1, { key: 'q3', name: 'old', color: '#3b82f6' });
-    expect(setTag).toHaveBeenNthCalledWith(2, { key: 'q3', name: 'q3', color: '#3b82f6' });
+    expect(setTag).toHaveBeenNthCalledWith(1, {
+      key: 'q3',
+      name: 'old',
+      color: '#3b82f6',
+    });
+    expect(setTag).toHaveBeenNthCalledWith(2, {
+      key: 'q3',
+      name: 'q3',
+      color: '#3b82f6',
+    });
   });
 
   it('recolours a tag and keeps its name', async () => {
     const { result } = await loaded([tag('q3', 'Q3')]);
     await act(async () => result.current.recolorTag('q3', '#ef4444'));
-    expect(setTag).toHaveBeenCalledWith({ key: 'q3', name: 'Q3', color: '#ef4444' });
+    expect(setTag).toHaveBeenCalledWith({
+      key: 'q3',
+      name: 'Q3',
+      color: '#ef4444',
+    });
     expect(result.current.byKey.get('q3')?.color).toBe('#ef4444');
   });
 
@@ -220,7 +240,9 @@ describe('useTagsSource writes', () => {
     const order: string[] = [];
     removeTag.mockImplementation(async (ctx: string) => void order.push(ctx));
     deleteTag.mockImplementation(async () => void order.push('delete'));
-    await act(async () => result.current.deleteTag('q3', new Set(['f1', 'f2'])));
+    await act(async () =>
+      result.current.deleteTag('q3', new Set(['f1', 'f2'])),
+    );
     expect(removeTag.mock.calls).toEqual([
       ['ctx-f1', { id: 'a', tag: 'q3' }],
       ['ctx-f2', { id: 'c', tag: 'q3' }],
@@ -250,5 +272,67 @@ describe('useTagsSource writes', () => {
       ["Couldn't delete the tag. Try again."],
     ]);
     expect(result.current.byKey.get('q3')?.color).toBe('#3b82f6');
+  });
+
+  it('refuses every write until the first read lands, so no key or record is guessed', async () => {
+    listTags.mockReturnValue(new Promise(() => {}));
+    index.rows = [row({ folderId: 'f1', docId: 'a', tags: ['q3'] })];
+    const { result } = renderHook(() => useTagsSource(index));
+    await expect(
+      result.current.createTag('launch', '#3b82f6'),
+    ).rejects.toThrow();
+    await expect(result.current.renameTag('q3', 'plan')).rejects.toThrow();
+    await expect(result.current.recolorTag('q3', '#ef4444')).rejects.toThrow();
+    await expect(
+      result.current.deleteTag('q3', new Set(['f1'])),
+    ).rejects.toThrow();
+    expect(setTag).not.toHaveBeenCalled();
+    expect(removeTag).not.toHaveBeenCalled();
+    expect(deleteTag).not.toHaveBeenCalled();
+    expect(toastError.mock.calls).toEqual([
+      ["Couldn't save the tag. Try again."],
+      ["Couldn't save the tag. Try again."],
+      ["Couldn't save the tag. Try again."],
+      ["Couldn't delete the tag. Try again."],
+    ]);
+  });
+
+  it('refuses to rename or recolour a tag the latest read shows deleted', async () => {
+    const { result } = await loaded([tag('old', 'Old', true)]);
+    await expect(result.current.renameTag('old', 'New')).rejects.toThrow();
+    await expect(result.current.recolorTag('old', '#ef4444')).rejects.toThrow();
+    expect(setTag).not.toHaveBeenCalled();
+    expect(toastError.mock.calls).toEqual([
+      ['This tag has been deleted.'],
+      ['This tag has been deleted.'],
+    ]);
+  });
+
+  it('still deletes the tag with no node connection to untag docs through', async () => {
+    mero = null;
+    index.rows = [row({ folderId: 'f1', docId: 'a', tags: ['q3'] })];
+    const { result } = await loaded([tag('q3', 'Q3')]);
+    await act(async () => result.current.deleteTag('q3', new Set(['f1'])));
+    expect(removeTag).not.toHaveBeenCalled();
+    expect(deleteTag).toHaveBeenCalledWith({ key: 'q3' });
+  });
+
+  it('untags at most four docs at once', async () => {
+    index.rows = Array.from({ length: 10 }, (_, i) =>
+      row({ folderId: 'f1', docId: `d${i}`, tags: ['q3'] }),
+    );
+    const { result } = await loaded([tag('q3', 'Q3')]);
+    let running = 0;
+    let peak = 0;
+    removeTag.mockImplementation(async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 1));
+      running--;
+    });
+    await act(async () => result.current.deleteTag('q3', new Set(['f1'])));
+    expect(removeTag).toHaveBeenCalledTimes(10);
+    expect(peak).toBe(4);
+    expect(deleteTag).toHaveBeenCalledTimes(1);
   });
 });

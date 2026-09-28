@@ -20,6 +20,7 @@ import {
   tagKeyFor,
   type Tag,
 } from '@/lib/tags';
+import { settleInPool } from '@/lib/pool';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
 import { useContextEvents } from './useContextEvents';
 import { notifyDocsRefetch } from './useDocs';
@@ -32,6 +33,8 @@ const RETRY_BASE_MS = 1_000; // doubles after each failed first read
 export const TAG_NAME_TAKEN = 'A tag with this name already exists';
 const SAVE_FAILED = "Couldn't save the tag. Try again.";
 const DELETE_FAILED = "Couldn't delete the tag. Try again.";
+const TAG_DELETED = 'This tag has been deleted.';
+const UNTAG_IN_FLIGHT = 4; // docs untagged at once while a tag is deleted
 
 export class TagNameTakenError extends Error {
   constructor() {
@@ -182,15 +185,31 @@ export function useTagsSource(index: IndexSource): TagsState {
   );
 
   const setTag = useCallback(
-    async (next: Tag) => {
-      await write(
-        (client) =>
-          client.setTag({ key: next.key, name: next.name, color: next.color }),
-        SAVE_FAILED,
-      );
-      apply(next);
+    async (next: Tag | undefined) => {
+      await write((client) => {
+        if (!next) throw new Error('unknown tag');
+        return client.setTag({
+          key: next.key,
+          name: next.name,
+          color: next.color,
+        });
+      }, SAVE_FAILED);
+      if (next) apply(next);
     },
     [write, apply],
+  );
+
+  // Writing a deleted tag's record would bring it back everywhere.
+  const changeTag = useCallback(
+    async (key: string, change: (tag: Tag) => Tag) => {
+      const tag = tagsRef.current?.find((t) => t.key === key);
+      if (tag?.deleted) {
+        toast.error(TAG_DELETED);
+        throw new Error(`tag ${key} is deleted`);
+      }
+      await setTag(tag && change(tag));
+    },
+    [setTag],
   );
 
   const createTag = useCallback(
@@ -213,47 +232,46 @@ export function useTagsSource(index: IndexSource): TagsState {
     async (key: string, raw: string) => {
       const name = normalizeTagName(raw);
       if (!name) throw new Error('empty tag name');
-      const current = tagsRef.current ?? [];
-      const taken = findTagByName(current, name);
+      const taken = findTagByName(tagsRef.current ?? [], name);
       if (taken && taken.key !== key) throw new TagNameTakenError();
-      const tag = current.find((t) => t.key === key);
-      if (!tag) throw new Error(`unknown tag ${key}`);
-      await setTag({ ...tag, name });
+      await changeTag(key, (tag) => ({ ...tag, name }));
     },
-    [setTag],
+    [changeTag],
   );
 
   const recolorTag = useCallback(
-    async (key: string, color: string) => {
-      const tag = tagsRef.current?.find((t) => t.key === key);
-      if (!tag) throw new Error(`unknown tag ${key}`);
-      await setTag({ ...tag, color });
-    },
-    [setTag],
+    (key: string, color: string) =>
+      changeTag(key, (tag) => ({ ...tag, color })),
+    [changeTag],
   );
 
   const deleteTag = useCallback(
     async (key: string, editable: ReadonlySet<string>) => {
-      const { rows, contextOf } = indexRef.current;
-      const clients = new Map<string, DocsClient>();
-      const removals = rows.flatMap((r) => {
-        const contextId = contextOf(r.folderId);
-        if (!mero || !contextId || !editable.has(r.folderId)) return [];
-        if (!r.tags.includes(key)) return [];
-        let client = clients.get(contextId);
-        if (!client) {
-          client = new DocsClient(mero, contextId);
-          clients.set(contextId, client);
+      await write(async (registry) => {
+        const { rows, contextOf } = indexRef.current;
+        const clients = new Map<string, DocsClient>();
+        const untag = rows.flatMap((r) => {
+          const contextId = contextOf(r.folderId);
+          if (!mero || !contextId || !editable.has(r.folderId)) return [];
+          if (!r.tags.includes(key)) return [];
+          let client = clients.get(contextId);
+          if (!client) {
+            client = new DocsClient(mero, contextId);
+            clients.set(contextId, client);
+          }
+          return [{ client, id: r.docId }];
+        });
+        const results = await settleInPool(untag, UNTAG_IN_FLIGHT, (doc) =>
+          doc.client.removeTag({ id: doc.id, tag: key }),
+        );
+        // A doc left with the key shows nothing once the tag is deleted.
+        for (const result of results) {
+          if (result.status === 'rejected')
+            console.warn('[useTags] untagging a doc failed', result.reason);
         }
-        return [client.removeTag({ id: r.docId, tag: key })];
-      });
-      // A doc left with the key shows nothing once the tag is deleted.
-      for (const result of await Promise.allSettled(removals)) {
-        if (result.status === 'rejected')
-          console.warn('[useTags] untagging a doc failed', result.reason);
-      }
-      clients.forEach((_client, contextId) => notifyDocsRefetch(contextId));
-      await write((client) => client.deleteTag({ key }), DELETE_FAILED);
+        clients.forEach((_client, contextId) => notifyDocsRefetch(contextId));
+        await registry.deleteTag({ key });
+      }, DELETE_FAILED);
       const tag = tagsRef.current?.find((t) => t.key === key);
       if (tag) apply({ ...tag, deleted: true });
     },
