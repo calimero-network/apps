@@ -75,16 +75,27 @@ test.describe('Search live (two-node)', () => {
     await expect(hit.locator('mark')).toHaveText('zebra');
   });
 
-  test("a doc deleted by Bob drops out of Alice's results (S-20)", async ({
+  test("a doc Bob created and deleted drops out of Alice's results (S-20)", async ({
     alice,
     bob,
   }) => {
     await inviteBob(alice, bob);
-    await alice.palette.search('plan');
-    const rows = alice.palette.group('Documents').getByRole('option');
-    await expect(rows).toHaveText([/^Plan/]);
-
+    // Only a doc's creator or the folder's founder may delete it.
     await bob.openDoc('Plan');
+    await bob.page.getByRole('button', { name: 'Document actions' }).click();
+    await expect(bob.page.getByRole('menuitem', { name: 'Archive' })).toBeVisible();
+    await expect(
+      bob.page.getByRole('menuitem', { name: 'Delete document' }),
+    ).toHaveCount(0);
+    await bob.page.keyboard.press('Escape');
+    await bob.editor.close();
+
+    await bob.createDoc('Minutes');
+    await alice.palette.search('minutes');
+    const rows = alice.palette.group('Documents').getByRole('option');
+    await expect(rows).toHaveText([/^Minutes/], { timeout: 60_000 });
+
+    await bob.openDoc('Minutes');
     await bob.editor.deleteDocument();
 
     await expect(rows).toHaveCount(0, { timeout: 60_000 });
