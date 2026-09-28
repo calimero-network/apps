@@ -1,7 +1,7 @@
 // Pure tree helpers over a flat `{ id, parent_id }` folder list, used by
 // permission hooks (walk root-ward for cap inheritance) and the folder
 // tree renderer (walk leaf-first for cascade delete). No network / no
-// admin-API access — the caller hands us the materialised list.
+// admin-API access - the caller hands us the materialised list.
 
 export interface FolderLite {
   id: string;
@@ -33,7 +33,7 @@ export function buildTree(folders: FolderLite[]): Tree {
   return { roots, byId };
 }
 
-// Returns [] on a cycle — a corrupted group graph from admin-API must
+// Returns [] on a cycle - a corrupted group graph from admin-API must
 // not hang the UI. Better to show a folder as detached than spin forever.
 export function ancestorsOf(folders: FolderLite[], id: string): string[] {
   const map = new Map(folders.map((f) => [f.id, f.parent_id]));
@@ -58,7 +58,7 @@ export function descendantsOf(folders: FolderLite[], id: string): string[] {
     children.set(f.parent_id, arr);
   }
   // `seen` guards against stack overflow on a cyclic parent_id graph
-  // (same concern as ancestorsOf — both consume admin-API data).
+  // (same concern as ancestorsOf - both consume admin-API data).
   const out: string[] = [];
   const seen = new Set<string>();
   const walk = (n: string) => {

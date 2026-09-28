@@ -1,5 +1,5 @@
 // "The folder list flickers because of the refresh and it's building components
-// again" — as a test.
+// again" - as a test.
 //
 // The flicker was a TEARDOWN, not a repaint: `FolderTree` returns a one-line
 // placeholder whenever the workspace reports `loading`, and the workspace
@@ -73,7 +73,7 @@ function renderTree() {
 
 describe('a background refresh does not rebuild the tree', () => {
   // ⚠️ THE REGRESSION. `loading` must stay false while a refetch is in flight
-  // for a workspace whose folders have already loaded once — that is the
+  // for a workspace whose folders have already loaded once - that is the
   // contract `deriveDriveStage` now enforces, and this is what depends on it.
   it('keeps the same DOM node for a folder across a refresh with equal data', () => {
     const { rerender } = renderTree();
@@ -90,7 +90,7 @@ describe('a background refresh does not rebuild the tree', () => {
     const { rerender } = renderTree();
     const before = screen.getByText('Budget');
 
-    // A fresh array with equal contents — what a refetch produces if the
+    // A fresh array with equal contents - what a refetch produces if the
     // content compare is ever removed. Row identity must survive it, because
     // the rows are keyed by folder id.
     workspace.folders = [folder('f1', 'Budget'), folder('f2', 'Designs')];

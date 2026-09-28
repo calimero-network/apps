@@ -41,7 +41,7 @@ vi.mock('@/hooks/namespaceNames', () => ({
   rememberNamespaceName: vi.fn(),
 }));
 
-// Never resolves — stands in for a join request still in flight.
+// Never resolves - stands in for a join request still in flight.
 const join = vi.fn(() => new Promise(() => {}));
 
 vi.mock('@/hooks/useNamespaceInvitation', () => ({

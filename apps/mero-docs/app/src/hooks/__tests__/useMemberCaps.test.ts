@@ -6,13 +6,13 @@ import { useMemberCaps } from '../useMemberCaps';
 // useMemberCaps fetches members + capabilities straight off
 // `mero.admin` and reads the caller identity from useDriveWorkspace.
 // Both are mocked so each test pins the server responses directly.
-// The hook has no other imports — notably it does NOT touch
+// The hook has no other imports - notably it does NOT touch
 // constants/config, so this file is insulated from the mero-js
 // CAPABILITIES re-export.
 
 const listMembers = vi.fn();
 const getCaps = vi.fn();
-// Stable mero ref — the effect deps include `mero`; a fresh object
+// Stable mero ref - the effect deps include `mero`; a fresh object
 // every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
   mero: {
@@ -48,7 +48,7 @@ function syncEnded(contextId: string, state: string) {
   );
 }
 
-// A u32 with every bit set — what the hook reports as `caps` for a
+// A u32 with every bit set - what the hook reports as `caps` for a
 // group-admin (mirrors ADMIN_CAPS_BITMASK in the hook).
 const ADMIN_MASK = 0xffffffff >>> 0;
 

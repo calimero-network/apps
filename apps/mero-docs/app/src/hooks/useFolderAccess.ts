@@ -1,4 +1,4 @@
-// Orphan detection — a folder is "orphaned" when the caller is a
+// Orphan detection - a folder is "orphaned" when the caller is a
 // direct member of the subgroup but NOT of its parent (e.g. they got
 // added to a deep folder via INVITE_MEMBERS but the parent's
 // restricted-visibility wall hides the chain above). The UI renders
@@ -38,7 +38,7 @@ export interface FolderAccessState {
   ancestorChain: string[];
 }
 
-// `useMemo` wrapper earns this function its `use*` name — consumers
+// `useMemo` wrapper earns this function its `use*` name - consumers
 // inside render paths get a stable reference across renders where
 // inputs are unchanged. Pure callers (e.g. tests, one-shot checks)
 // should call `deriveOrphanState` directly.

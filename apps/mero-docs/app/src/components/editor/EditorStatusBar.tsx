@@ -1,4 +1,4 @@
-// 100% presentational status bar. Decoupled from any editor library —
+// 100% presentational status bar. Decoupled from any editor library -
 // word/character counts arrive as plain props (the BlockNote shell
 // derives them from `editor.document` via blocksToPlainText), so this
 // file no longer imports Tiptap.

@@ -27,7 +27,7 @@ export function serializeBlocks(blocks: Block[]): string {
 //   - anything that isn't a non-empty JSON array.
 //
 // The last case deliberately swallows legacy HTML and malformed strings:
-// this is a NEW editor for a NEW app — there is no HTML history to
+// this is a NEW editor for a NEW app - there is no HTML history to
 // migrate, so non-JSON content simply opens as a fresh empty document
 // rather than throwing. Never pass `[]` to BlockNote (a document needs
 // at least one block); an empty array maps to `undefined` here too.
@@ -41,7 +41,7 @@ export function parseStoredContent(
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    // Legacy HTML or otherwise non-JSON — start fresh (nothing to migrate).
+    // Legacy HTML or otherwise non-JSON - start fresh (nothing to migrate).
     return undefined;
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return undefined;
@@ -90,7 +90,7 @@ export function blocksToPlainText(blocks: readonly BlockLike[]): string {
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
     // Skip empty blocks (images, tables, blank paragraphs) so they don't
-    // inject stray newlines — e.g. a leading image must not produce a
+    // inject stray newlines - e.g. a leading image must not produce a
     // leading "\n" that throws off the counted text.
     const text = inlineToText(block.content);
     if (text) parts.push(text);

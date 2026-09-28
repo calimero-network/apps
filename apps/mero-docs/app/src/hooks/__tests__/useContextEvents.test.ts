@@ -162,7 +162,7 @@ describe('useContextEvents', () => {
       fire('ctx-a');
       fire('ctx-a');
       fire('ctx-a');
-      expect(onChange).not.toHaveBeenCalled(); // nothing yet — still within window
+      expect(onChange).not.toHaveBeenCalled(); // nothing yet - still within window
       vi.advanceTimersByTime(399);
       expect(onChange).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
@@ -220,7 +220,7 @@ describe('useContextEvents', () => {
       renderHook(() =>
         useContextEvents(['ctx-a'], onChange, { strict: true, debounceMs: 400 }),
       );
-      fire('other-ctx'); // filtered out — must not arm the timer
+      fire('other-ctx'); // filtered out - must not arm the timer
       vi.advanceTimersByTime(400);
       expect(onChange).not.toHaveBeenCalled();
       fire('ctx-a');

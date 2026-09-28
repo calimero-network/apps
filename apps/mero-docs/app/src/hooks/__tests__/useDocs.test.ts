@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { subscribeDocsRefetch, useDocs } from '../useDocs';
 
-// Regression layer for useDocs — the docs facade for a folder. The
+// Regression layer for useDocs - the docs facade for a folder. The
 // behaviour under test spans: the happy path, the docs-context
 // self-heal (a node can be a folder-SUBGROUP member without an owned
-// identity in the docs CONTEXT — core's join-via-inheritance is
+// identity in the docs CONTEXT - core's join-via-inheritance is
 // subgroup-scoped), the one-attempt heal cap, and error surfacing.
 // All dependencies are mocked so each path is driven directly.
 const listDocs = vi.fn();
@@ -38,7 +38,7 @@ vi.mock('../useDriveWorkspace', () => ({
     selfIdentity: workspace.selfIdentity,
   }),
 }));
-// A client only once a context id has resolved — mirrors the real
+// A client only once a context id has resolved - mirrors the real
 // useDocsClient so `refetch` doesn't fire before the context is known.
 vi.mock('../useDocsClient', () => ({
   useDocsClient: (ctxId: string | null, identity: string | null) =>
@@ -57,7 +57,7 @@ function deferred<T>() {
 const OWNED_IDENTITY_ERR = 'No owned identity found for this context';
 
 // Mirror the error mero-js actually throws for a JSON-RPC
-// FunctionCallError: `new E(code, message, data, type)` — `.message`
+// FunctionCallError: `new E(code, message, data, type)` - `.message`
 // is the error TYPE ("FunctionCallError"), and the human-readable
 // string lives in `.data`. A predicate that only scans `.message`
 // would miss it (this is the bug this shape regression-guards).
@@ -105,7 +105,7 @@ describe('useDocs', () => {
   });
 
   it('caps the self-heal at one joinContext attempt per context', async () => {
-    // list_docs never recovers — the heal must fire exactly once and
+    // list_docs never recovers - the heal must fire exactly once and
     // then surface the error rather than looping joinContext forever.
     listDocs.mockRejectedValue(rpcFunctionCallError(OWNED_IDENTITY_ERR));
     const { result } = renderHook(() => useDocs('folder-1'));

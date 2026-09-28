@@ -39,7 +39,7 @@ describe('mergeAdminAndRegistry', () => {
 
   it('still renders folders when admin is empty - falls back to a plain name and undefined visibility', () => {
     // This protects against the upstream listSubgroups bug (mero-js
-    // unwraps `.data` from a `{subgroups}` response — folder list
+    // unwraps `.data` from a `{subgroups}` response - folder list
     // comes back empty). Registry is authoritative, so folders must
     // still appear. visibilityById omitted so we exercise the
     // "loading" path (undefined per-folder).

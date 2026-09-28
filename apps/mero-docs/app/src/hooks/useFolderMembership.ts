@@ -3,7 +3,7 @@
 //
 // Why we DON'T use mero-react's useGroupMembers here:
 //   `mero.admin.listGroupMembers` is wire-shaped `{members, selfIdentity}`
-//   but mero-js's typed client reads `.data` — returning `{data: undefined}`
+//   but mero-js's typed client reads `.data` - returning `{data: undefined}`
 //   that mero-react propagates as an empty list. Every namespace shows
 //   "No members yet" even when the server response has entries. Same
 //   workaround as useMemberCaps: call the admin client directly and
@@ -44,7 +44,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   // captures its own seq. When a response arrives, we drop it if a
   // newer fetch has been issued in the meantime. This guards against
   // BOTH unmount (the cleanup bumps the counter via the effect below)
-  // AND folderId changes mid-flight — an earlier `aliveRef`-only
+  // AND folderId changes mid-flight - an earlier `aliveRef`-only
   // pattern only handled unmount, so a stale folder's response could
   // still overwrite the new folder's members.
   const fetchSeqRef = useRef(0);

@@ -50,7 +50,7 @@ const VALID_URL = buildInviteUrl(
 const noop = () => {};
 
 // Project convention (see RestrictedFolderCard.test.tsx) avoids
-// `@testing-library/jest-dom` matchers — we use plain chai/vitest
+// `@testing-library/jest-dom` matchers - we use plain chai/vitest
 // assertions throughout the suite so the test file stays import-
 // minimal and doesn't depend on a global setup file.
 
@@ -78,7 +78,7 @@ describe('NamespaceJoinDialog', () => {
 
   it('surfaces the parseInviteUrl error message verbatim', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
-    // URL has invite= but the payload itself is garbage — parseInviteUrl
+    // URL has invite= but the payload itself is garbage - parseInviteUrl
     // returns its decoder error message rather than extractInviteParams
     // returning null.
     fireEvent.change(screen.getByPlaceholderText(/mero-docs.vercel.app/i), {

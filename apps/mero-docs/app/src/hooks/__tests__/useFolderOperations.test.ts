@@ -66,7 +66,7 @@ describe('useFolderOperations.create - members', () => {
     });
     expect(outcome).toEqual([]);
 
-    // Role MUST be the PascalCase core MemberRole variant — lowercase
+    // Role MUST be the PascalCase core MemberRole variant - lowercase
     // 'member' is rejected by the server with a deserialize 400.
     expect(addGroupMembers).toHaveBeenCalledWith('new-folder', {
       members: [
@@ -133,7 +133,7 @@ describe('useFolderOperations.create - members', () => {
     );
 
     // create RESOLVES with the folder id even though the member-add
-    // failed — it must not throw, or NewFolderDialog would stay open
+    // failed - it must not throw, or NewFolderDialog would stay open
     // with Create re-enabled and the user could create a duplicate.
     const outcome = await result.current.create({
       namespaceId: 'ns-1',
@@ -376,7 +376,7 @@ describe('useFolderOperations.create - drift on partial failure', () => {
   // The mechanism by which drift becomes possible: every rollback call is
   // `.catch()`-ed and logged, so if cleanup ALSO fails the artifact survives
   // and nothing surfaces. This test asserts that reality rather than wishing
-  // it away — it is the reproducer for the condition Reconcile repairs.
+  // it away - it is the reproducer for the condition Reconcile repairs.
   it('leaves an orphaned group when the create fails AND its rollback fails', async () => {
     const registry = makeRegistry() as unknown as {
       registerFolder: ReturnType<typeof vi.fn>;

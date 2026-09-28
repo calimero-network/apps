@@ -16,7 +16,7 @@ describe('looksLikeMemberIdentity', () => {
     expect(looksLikeMemberIdentity('AbCdEf01'.repeat(8))).toBe(true);
   });
 
-  it('accepts `0` — a valid hex digit, which base58 excluded', () => {
+  it('accepts `0` - a valid hex digit, which base58 excluded', () => {
     // The whole point of the migration: `0` used to be rejected, now it is not.
     expect(looksLikeMemberIdentity('0'.repeat(64))).toBe(true);
   });

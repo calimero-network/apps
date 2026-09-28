@@ -2,10 +2,10 @@
 // is guarded by the workspace page; useDriveWorkspace owns cache invalidation.
 //
 // Env vars consumed:
-//   VITE_PACKAGE_NAME    — passed to MeroProvider so the OAuth flow
+//   VITE_PACKAGE_NAME    - passed to MeroProvider so the OAuth flow
 //                          can resolve the application id from the
 //                          public registry
-//   VITE_REGISTRY_URL    — optional registry override (self-hosted)
+//   VITE_REGISTRY_URL    - optional registry override (self-hosted)
 //
 // Routes:
 //   /          → landing page (public)
@@ -42,7 +42,7 @@ import JoinPage from './pages/join';
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
 // Ternary, not `&&`, so a production build's dead-code elimination can drop
-// the whole `import()` — the gallery must never enter the eager bundle.
+// the whole `import()` - the gallery must never enter the eager bundle.
 const LayoutGallery = import.meta.env.DEV
   ? React.lazy(() => import('./pages/dev/LayoutGallery'))
   : null;
@@ -74,8 +74,8 @@ function InviteRedirect() {
 //
 //   …#node_url=…&access_token=…&refresh_token=…&app-id=…&expires_at=…
 //
-// mero-react owns that hash — MeroProvider runs `parseAuthCallback` on its first
-// render — but it will not store the tokens unless it can decide the node is
+// mero-react owns that hash - MeroProvider runs `parseAuthCallback` on its first
+// render - but it will not store the tokens unless it can decide the node is
 // trusted, and `resolveTrustedNodeUrl` (present since 4.2.0, so also in
 // the 4.6.1 this app pins) is default-DENY:
 //
@@ -84,7 +84,7 @@ function InviteRedirect() {
 //     candidate + neither          -> REJECT
 //
 // "initiated" is the node THIS browser context started a login against, and a
-// desktop hand-off never had one — the launcher did the login. So without an
+// desktop hand-off never had one - the launcher did the login. So without an
 // anchor a cold desktop open lands in the third branch, the provider logs
 // "OAuth callback node_url is not trusted … no tokens stored" and NOTHING ELSE,
 // and the user is left at the Connect screen holding a good session. This file
@@ -107,8 +107,8 @@ const hashNodeUrl =
  * An authenticated visitor has no business on the marketing page.
  *
  * ⚠️ THIS IS THE STEP THAT CARRIES YOU INTO THE APP. The SSO callback returns
- * to wherever login started — `connectToNode` uses `window.location.href` as
- * the callback URL — which for a visitor who pressed Connect on the landing
+ * to wherever login started - `connectToNode` uses `window.location.href` as
+ * the callback URL - which for a visitor who pressed Connect on the landing
  * page is `/`. Without this guard the tokens land, `isAuthenticated` flips
  * true, and the router renders the landing page again: you log in successfully
  * and end up exactly where you started.
@@ -126,7 +126,7 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   // lands on `/` holding an `invitation` param, and two effects then fire in
   // the same commit: InviteRedirect's `navigate('/join?…')` and this
   // component's `<Navigate to="/app">`. `Navigate` renders deeper in the tree,
-  // so its effect runs LAST and wins — and `to="/app"` carries no query, so
+  // so its effect runs LAST and wins - and `to="/app"` carries no query, so
   // the invitation is gone. The invite simply vanished for exactly the people
   // most likely to have one: existing users. Standing down here leaves
   // InviteRedirect's navigation the only one in flight.
@@ -190,7 +190,7 @@ export default function App() {
               <Routes>
                 {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
                     real URLs so they can be shared and opened cold, which needs a route
-                    here — otherwise this app's catch-all swallows the deep link before
+                    here - otherwise this app's catch-all swallows the deep link before
                     the page ever renders. */}
                 {LANDING_PATHS.map((landingPath) => (
                   <Route
@@ -209,7 +209,7 @@ export default function App() {
                     }
                   />
                 ))}
-                {/* The /login PAGE is gone — every app had one, every one looked
+                {/* The /login PAGE is gone - every app had one, every one looked
                     different, and its whole content was a button the visitor had
                     already pressed to get there. The path stays as a redirect so a
                     bookmark lands on the front door instead of a blank route. */}
@@ -236,7 +236,7 @@ export default function App() {
                 {/* The catch-all drops the query string, which for an invite
                     deep link IS the invitation. InviteRedirect has already
                     run by the time this renders, but its navigation is
-                    applied in an effect — so preserve the search here rather
+                    applied in an effect - so preserve the search here rather
                     than racing it. */}
                 <Route path="*" element={<CatchAllRedirect />} />
               </Routes>

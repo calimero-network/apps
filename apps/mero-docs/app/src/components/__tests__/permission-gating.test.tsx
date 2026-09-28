@@ -1,8 +1,8 @@
 // Permission-gating smoke tests. For each permission-gated
 // component, assert the rendered output changes as the mocked
-// hook results change. Focus is on the *boundary* — does the
+// hook results change. Focus is on the *boundary* - does the
 // component hide / disable the right affordance for the right
-// caller? — not on the component's full behaviour.
+// caller? - not on the component's full behaviour.
 //
 // Hooks are mocked at the module level so we don't need a live
 // MeroProvider / RegistryProvider tree to mount these components.
@@ -158,7 +158,7 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  // Stable reference — used by invite/membership hooks. Returns
+  // Stable reference - used by invite/membership hooks. Returns
   // stubbed admin methods; tests don't exercise real creation flows.
   useMero: () => ({
     mero: {
@@ -256,7 +256,7 @@ describe('permission-gating', () => {
     const trigger = screen.getByLabelText('Folder actions');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(trigger);
-    // Info is always present — read-only members can reach it.
+    // Info is always present - read-only members can reach it.
     expect(screen.getByRole('menuitem', { name: /Info/ })).toBeTruthy();
     // Permission-gated items are absent for a caller with no caps.
     expect(screen.queryByRole('menuitem', { name: /Rename/ })).toBeNull();

@@ -1,6 +1,6 @@
 // The bug this file is the regression suite for, in one sentence: an empty
 // context list was read as "this namespace has no registry", so every node that
-// had not finished replicating minted another one — and `contexts[0]` then
+// had not finished replicating minted another one - and `contexts[0]` then
 // picked between them by list order, which two nodes do not agree on.
 //
 // A test that only covers "empty because the namespace is new" would pass
@@ -52,7 +52,7 @@ describe('the pin is authoritative', () => {
 
   // ⚠️ THE BUG. A pin naming a context this node has not received proves a
   // registry EXISTS. Minting here is what produced three of them.
-  it('says UNSYNCED — never absent — when the pinned context has not arrived', () => {
+  it('says UNSYNCED - never absent - when the pinned context has not arrived', () => {
     const r = resolveRegistryContext(
       { pin: B, listed: [], reportedCount: 0 },
       REG,

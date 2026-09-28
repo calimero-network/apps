@@ -1,4 +1,4 @@
-//! Docs service — per-folder document storage. One WASM instance of this
+//! Docs service - per-folder document storage. One WASM instance of this
 //! runs per folder context, isolating each folder's docs into its own
 //! replicated state so access control reduces to "are you a member of the
 //! folder's group?".
@@ -21,7 +21,7 @@
 //! ## Scope
 //!
 //! No cross-service calls into the registry. The docs service knows nothing
-//! about the folder tree, color, or visibility — those live in the registry
+//! about the folder tree, color, or visibility - those live in the registry
 //! context, which the client queries separately and joins on the folder id.
 
 use std::collections::BTreeMap;
@@ -310,14 +310,14 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
 }
 
 // ---------------------------------------------------------------------------
-// Comments — authored (identity-gated) annotations on a doc
+// Comments - authored (identity-gated) annotations on a doc
 // ---------------------------------------------------------------------------
 
 /// A per-document comment, owned by its author. Stored in an `AuthoredMap`, so
 /// the runtime stamps the writer's identity and a per-entry schema version on
 /// insert; only the owner can re-sign it (the basis of the migration banner).
 ///
-/// The value type is intentionally STABLE across schema versions — the v1→v2
+/// The value type is intentionally STABLE across schema versions - the v1→v2
 /// migration bumps the *state* schema and adds a top-level marker, never a
 /// field inside `Comment` (changing an authored value type is a content
 /// rewrite, a different and harder migration class).
@@ -1061,7 +1061,7 @@ impl DocsState {
             .map_err(|e| AppError::msg(format!("comments.len: {e}")))? as u64)
     }
 
-    /// The comment's stored per-entry `schema_version` — `Some(1)` before
+    /// The comment's stored per-entry `schema_version` - `Some(1)` before
     /// convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
     /// one-tap `migrate_my_entries` actually re-stamped it.
     #[app::view]

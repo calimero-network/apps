@@ -1,6 +1,6 @@
 // Per-folder actions dropdown, triggered by a "⋯" icon button on
 // each FolderTreeItem row. Each menu item is gated by the relevant
-// permission hook — the dropdown only renders items the caller
+// permission hook - the dropdown only renders items the caller
 // actually has rights to use.
 //
 // Rename flows through a parent-supplied callback because the

@@ -1,4 +1,4 @@
-// Namespace-scope permissions — derived from the caller's capability
+// Namespace-scope permissions - derived from the caller's capability
 // bitmask on the namespace's root group. Consumed by the namespace
 // switcher / namespace-level admin panels to gate "create folder",
 // "manage namespace", "manage members" affordances.
@@ -15,7 +15,7 @@ export interface NamespacePermissions {
   canCreateFolder: boolean;
   /** Join Open folders (default-on for new members). */
   canJoinOpenFolders: boolean;
-  canCreateContext: boolean; // CAN_CREATE_CONTEXT — needed to create a folder's docs ctx
+  canCreateContext: boolean; // CAN_CREATE_CONTEXT - needed to create a folder's docs ctx
   canManageVisibility: boolean; // CAN_MANAGE_VISIBILITY
   canManageMetadata: boolean; // CAN_MANAGE_METADATA (rename folders / set display names)
   canInviteMembers: boolean; // CAN_INVITE_MEMBERS

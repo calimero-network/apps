@@ -1,6 +1,6 @@
 // What a promotion actually WRITES.
 //
-// The failure these tests exist for is not an exception — it is a role change
+// The failure these tests exist for is not an exception - it is a role change
 // that succeeds and confers nothing, because the second and third writes it
 // implies were never made. So every assertion here is about the calls that
 // went out, in which system, with which arguments.
@@ -84,7 +84,7 @@ describe('promotion to Admin', () => {
     expect(removeManager).not.toHaveBeenCalled();
   });
 
-  it('reports — not throws — when the caller cannot appoint managers', async () => {
+  it('reports - not throws - when the caller cannot appoint managers', async () => {
     registryAdmin.isOwner = false;
     const { result } = renderHook(() => useGroupRoleAdmin('ns-1', true));
     let out = { ok: false, warnings: [] as string[] };
@@ -185,7 +185,7 @@ describe('demotion to Guest', () => {
 });
 
 describe('ordering and failure', () => {
-  // If the role write fails, nothing it implies should be attempted — the
+  // If the role write fails, nothing it implies should be attempted - the
   // person's role did not move, so widening or narrowing anything else would
   // leave the two systems disagreeing.
   it('attempts nothing else when the role write fails', async () => {

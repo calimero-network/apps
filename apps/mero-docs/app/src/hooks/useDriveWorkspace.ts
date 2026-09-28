@@ -8,12 +8,12 @@
 // atomically with the namespace (in `createWorkspace`), so every
 // namespace this app produces has exactly one context in its root
 // group from day one. We then discover the Registry context id via
-// `useGroupContexts(namespaceId)[0]` — the same "first context in
+// `useGroupContexts(namespaceId)[0]` - the same "first context in
 // the root group" convention battleships uses for its lobby context.
 // This eliminates the alias-lookup + lazy-create + cross-tab race
 // dance that the old `useWorkspaceBootstrap` needed.
 //
-// Identity comes from `useNodeIdentity().identity.accountId` — the
+// Identity comes from `useNodeIdentity().identity.accountId` - the
 // ACCOUNT this node writes as, which is exactly the key
 // `listGroupMembers` rows are filed under. No custom fetch, no
 // localStorage cache, no mero-js unwrap() workaround needed.
@@ -125,10 +125,10 @@ export interface RegistryAdminSlice {
   /** Registry owner identity, or `null` when unclaimed. */
   owner: string | null;
   managers: string[];
-  /** Current identity is owner OR manager — gates writing folder roles /
+  /** Current identity is owner OR manager - gates writing folder roles /
    *  the sharing-panel admin section (`canManagePermissions`). */
   isOwnerOrManager: boolean;
-  /** Current identity is the owner — managers can't add/remove managers. */
+  /** Current identity is the owner - managers can't add/remove managers. */
   isOwner: boolean;
   loading: boolean;
   error: Error | null;
@@ -213,14 +213,14 @@ export interface DriveWorkspaceState {
    *  means this workspace was split by the old `contexts[0]` pick; the resolver
    *  has adopted the one holding the data and these are the leftovers. */
   registryDuplicates: string[];
-  /** A registry exists but has not replicated to this node yet — distinct from
+  /** A registry exists but has not replicated to this node yet - distinct from
    *  "this workspace has no registry", which is what the app used to infer and
    *  then act on by minting another one. */
   registryUnsynced: boolean;
   registryClient: RegistryClient | null;
   folders: MergedFolder[];
   /** The COMPLETE folder tree shape (id + parent_id) straight from the
-   *  registry — NOT filtered by visibility like `folders`. Use this for
+   *  registry - NOT filtered by visibility like `folders`. Use this for
    *  structural operations that must see hidden/unresolved folders too,
    *  e.g. depth-cap checks: filtering would drop a hidden ancestor and
    *  undercount depth. (Deletion reads the tree directly from the
@@ -234,7 +234,7 @@ export interface DriveWorkspaceState {
   resolvedFolderIds: Set<string>;
   /** Folder ids hidden from this caller: restricted folders it isn't a member of. */
   hiddenFolderIds: Set<string>;
-  /** Registry owner/managers — fetched once here, read by
+  /** Registry owner/managers - fetched once here, read by
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
   registryAdmin: RegistryAdminSlice;
 
@@ -257,7 +257,7 @@ export interface DriveWorkspaceState {
 // Provider level, and every consumer reads the same state via
 // useDriveWorkspace (see bottom of file). Multiple consumers calling
 // the hook directly would each get independent `regFolders` /
-// `selectedFolderId` state — so a refetch in one component's copy
+// `selectedFolderId` state - so a refetch in one component's copy
 // never reaches another's, and selection clicks never propagate.
 function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const {
@@ -272,14 +272,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // Everything below is scoped by application id: the namespace list, every
   // create, every invite pre-check. It used to be
   // `useMero().applicationId || VITE_APPLICATION_ID`, and neither of those
-  // says which app this is — see lib/appId. Ask the node and match on the
+  // says which app this is - see lib/appId. Ask the node and match on the
   // bundle package instead.
   //
   // The old pair survives only as a fallback for the one case where matching
   // by package cannot answer: a node that installed this app from a raw
   // `.wasm` files it with no package at all, which is what the dev scripts
   // produce. `inconclusive` is that case specifically, and is NOT the same as
-  // "not installed" — which resolves to null so the UI can say so rather than
+  // "not installed" - which resolves to null so the UI can say so rather than
   // quietly running against another app's id.
   const {
     appId: nodeApplicationId,
@@ -304,7 +304,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   } = useAppNamespaces(applicationId);
 
   // `listNamespacesForApplication` omits a namespace's `name` until the
-  // node has synced its root-group metadata — which lags a join by a
+  // node has synced its root-group metadata - which lags a join by a
   // few seconds. Backfill it by polling `getGroupMetadata`, so the
   // workspace switcher shows the real name instead of the raw id.
   const namespaces = useNamespaceDisplayNames(rawNamespaces);
@@ -358,10 +358,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   //
   // ⚠️ This used to read `selfIdentity` off `useGroupMembers`. mero-react
   // removed that field, so the destructure resolved to `undefined` and the
-  // value returned below fell through to `contextIdentity` — the EXECUTOR
+  // value returned below fell through to `contextIdentity` - the EXECUTOR
   // PUBLIC KEY from the auth flow. Both are 64 hex, so nothing complained:
   // the app simply addressed a principal that exists in no member list.
-  // Every identity-keyed surface went wrong at once — `setMemberMetadata`
+  // Every identity-keyed surface went wrong at once - `setMemberMetadata`
   // wrote a display name against a nonexistent member, `isSelf` was never
   // true, `useMemberCaps` reported no capabilities, and the registry's
   // owner/manager comparison never matched. In MultiContext mode
@@ -384,8 +384,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // Identity → server-reported display name map for THIS namespace.
   // Sourced from the namespace's root-group member rows, where
   // setMemberMetadata(namespaceId, identity, {name}) lands. Exposed
-  // so MemberLabel — and any other surface that renders an arbitrary
-  // identity within the namespace context — can show the user's
+  // so MemberLabel - and any other surface that renders an arbitrary
+  // identity within the namespace context - can show the user's
   // chosen name instead of a truncated pubkey, without each render
   // site firing its own getMemberMetadata round-trip.
   //
@@ -416,7 +416,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // reading an empty one after a refresh.
   //
   // The duplicates came from the lazy-create below, which minted a registry
-  // whenever this list came back empty — and an empty list means either "no
+  // whenever this list came back empty - and an empty list means either "no
   // registry yet" or "not replicated to this node yet", which are
   // indistinguishable from here and need opposite responses. `lib/registryContext`
   // separates them and picks deterministically; see that file for the full
@@ -439,14 +439,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // `contextCount` is governance state and arrives separately from the
   // contexts themselves, so "the group says 1, the list says 0" is a positive
-  // signal that this node is mid-replication — the distinction the old code
+  // signal that this node is mid-replication - the distinction the old code
   // could not make.
   const { groupInfo: nsGroupInfo, loading: nsInfoLoading } = useGroupInfo(
     selectedNsId ?? undefined,
   );
 
   // Folder counts per candidate, probed ONLY when there is more than one
-  // candidate — i.e. only for a namespace that already has duplicates. Picking
+  // candidate - i.e. only for a namespace that already has duplicates. Picking
   // the context that actually holds folders is what stops a recovery from
   // orphaning the data the user already created.
   const [folderCounts, setFolderCounts] = useState<Record<
@@ -494,7 +494,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   const registryResolution = useMemo<RegistryResolution>(() => {
     if (!selectedNsId) return { status: 'absent' };
-    // Never answer off a half-loaded picture — an in-flight read looks exactly
+    // Never answer off a half-loaded picture - an in-flight read looks exactly
     // like an empty one, and answering "absent" here is what minted duplicates.
     if (contextsLoading || nsMetadataLoading || nsInfoLoading) {
       return { status: 'unsynced', reason: 'Reading this workspace…' };
@@ -529,7 +529,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // That is not a cosmetic flicker: a null id rebuilds the `registryClient`
   // memo, `loadRegFolders` takes its `if (!registryClient) setRegFolders([])`
   // branch, and for a moment the app genuinely says the workspace has no
-  // folders — while the sidebar unmounts to a spinner and remounts.
+  // folders - while the sidebar unmounts to a spinner and remounts.
   //
   // A namespace's registry does not change, so holding the last resolved answer
   // across an in-flight read is also the truthful thing to do. A genuinely
@@ -548,7 +548,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         : { nsId: selectedNsId, contextId: next },
     );
   }, [registryResolution, selectedNsId]);
-  // Drop it on a namespace switch — never show one workspace's registry under
+  // Drop it on a namespace switch - never show one workspace's registry under
   // another's id.
   useEffect(() => {
     setStickyRegistry((prev) =>
@@ -564,8 +564,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         : null;
   // Memoised, and not just to quiet the linter: the `: []` branch would mint a
   // fresh array on every render, which lands in the deps of the big state memo
-  // at the bottom of this hook and rebuilds the whole workspace object — and
-  // with it every consumer — on every single render. That is the same class of
+  // at the bottom of this hook and rebuilds the whole workspace object - and
+  // with it every consumer - on every single render. That is the same class of
   // bug as the flicker this change is about, one field over.
   const registryDuplicates = useMemo(
     () =>
@@ -577,7 +577,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const registryUnsynced = registryResolution.status === 'unsynced';
 
   // Adopt: write a guessed answer back as the pin, so the guess happens once
-  // per namespace and every later read — on every node — is the pin. Keyed by
+  // per namespace and every later read - on every node - is the pin. Keyed by
   // namespace so one failed attempt does not retry on every render.
   const adoptedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -615,7 +615,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // "Bootstrapping workspace…" forever.
   //
   // ⚠️ THIS IS WHAT MINTED THE DUPLICATE REGISTRIES. It fired on "no contexts
-  // in the list", which is also what a node mid-replication sees — so every
+  // in the list", which is also what a node mid-replication sees - so every
   // observation of a transient empty list created another registry, and
   // `lazyCreateRef` only ever guarded concurrent calls within ONE mount: not a
   // reload, not a second node, not a later re-observation. Three registries in
@@ -623,7 +623,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   //
   // Four things now have to hold before anything is created:
   //
-  //   1. `registryResolution.status === 'absent'` — the resolver's positive
+  //   1. `registryResolution.status === 'absent'` - the resolver's positive
   //      "no registry, and nothing says one is coming". An unsynced list, an
   //      unread context count and a pin naming a context we do not have are
   //      all `unsynced`, which mints nothing and waits.
@@ -631,14 +631,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   //      incomplete list must never fork the workspace; the admin heals it.
   //   3. An authoritative re-read right before creating, so a stale cached
   //      list cannot trigger it.
-  //   4. A once-per-namespace ref, kept SET on failure — retrying a mint in a
+  //   4. A once-per-namespace ref, kept SET on failure - retrying a mint in a
   //      loop is how one transient error becomes several registries.
   //
   // And on success it writes the pin, so no other node ever reaches step 1
   // for this namespace again.
   // One attempt per namespace per mount. Not an in-flight flag: an in-flight
   // flag is released when the attempt ends, which lets the very next render
-  // start another one — the loop that produced the duplicates.
+  // start another one - the loop that produced the duplicates.
   const lazyCreateRef = useRef<string | null>(null);
   useEffect(() => {
     if (!mero || !applicationId || !selectedNsId) return;
@@ -661,7 +661,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // (2) Admin only. Read the roster BEFORE creating, not after: the old
         // code created unconditionally and only gated `claimOwner` on admin,
         // so a non-admin member of a mid-replication namespace still minted a
-        // registry — it just did not claim it.
+        // registry - it just did not claim it.
         let callerIsNsAdmin = false;
         try {
           const raw = (await mero.admin.listGroupMembers(
@@ -694,19 +694,19 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           initializationParams: [],
           // Name it on the wire. `CreateContextRequest.name` is a replicated
           // label every member of the group reads back from
-          // `listGroupContexts` — so the registry context is identifiable on
+          // `listGroupContexts` - so the registry context is identifiable on
           // the joiner's node too, not just by being `contexts[0]` on the
           // node that happened to create it.
           name: REGISTRY_CONTEXT_ALIAS,
         });
-        // Best-effort: claim the registry owner slot — but ONLY if the
+        // Best-effort: claim the registry owner slot - but ONLY if the
         // caller is a core namespace-admin. `claim_owner` in the WASM
         // is first-come-first-served with NO authz gate (see
-        // logic/crates/registry/src/permissions.rs::claim_owner_inner —
+        // logic/crates/registry/src/permissions.rs::claim_owner_inner -
         // it sets the owner when unclaimed regardless of caller), so a
         // non-admin member opening a legacy/half-set-up workspace would
         // otherwise seize the registry. We mirror useMemberCaps's admin
-        // check inline (we can't call useMemberCaps here — it consumes
+        // check inline (we can't call useMemberCaps here - it consumes
         // this very hook's context, which isn't established yet).
         //
         // Identity sourcing: use `callerIdentity` (a copy of
@@ -718,8 +718,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // identity that ranks as Admin in the namespace.
         if (reg?.contextId) {
           // Caller is already known to be a namespace admin (checked above),
-          // so claiming is safe. `claim_owner` has no authz gate of its own —
-          // it takes the owner slot for whoever calls it first — which is why
+          // so claiming is safe. `claim_owner` has no authz gate of its own -
+          // it takes the owner slot for whoever calls it first - which is why
           // the admin check has to happen on this side.
           await new RegistryClient(mero, reg.contextId)
             .claimOwner()
@@ -739,7 +739,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         }
         await refetchContexts();
       } catch (err) {
-        // Non-fatal — surface via regError so the UI can show a
+        // Non-fatal - surface via regError so the UI can show a
         // diagnostic instead of a perpetual spinner. Users can
         // retry by switching namespace or reloading.
         setRegError(err instanceof Error ? err : new Error(String(err)));
@@ -748,7 +748,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // namespace for the life of the mount, success or failure, because a
       // retry loop around `createContext` is precisely how one transient error
       // became several registries. A reload or a namespace switch is the
-      // retry — and by then the pin, or the freshly-listed context, has made
+      // retry - and by then the pin, or the freshly-listed context, has made
       // this branch unreachable anyway.
     })();
   }, [
@@ -769,11 +769,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const registryClient = useMemo<RegistryClient | null>(() => {
     if (!mero || !registryContextId || !selfIdentity) return null;
     // The third argument is the generated client's `executorPublicKey`, which
-    // mero-js marks `@deprecated — no longer used by the server`: the node
+    // mero-js marks `@deprecated - no longer used by the server`: the node
     // derives the caller from the authenticated session, and the contract
     // reads it back as `env::account_id()`. Passing the account here is
     // therefore both inert on the wire and the honest description of who is
-    // calling — do not "fix" it to a signing key on the strength of the
+    // calling - do not "fix" it to a signing key on the strength of the
     // parameter's name.
     return new RegistryClient(mero, registryContextId);
   }, [mero, registryContextId, selfIdentity]);
@@ -847,7 +847,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const registryAdmin = useMemo<RegistryAdminSlice>(() => {
     // ⚠️ Both sides of this comparison must be ACCOUNTS. `getOwner()` returns
     // whatever `claim_owner` stored, which the contract derives from
-    // `env::account_id()` — it used to derive it from `env::device_id()`, and
+    // `env::account_id()` - it used to derive it from `env::device_id()`, and
     // an account never equals a device id, so this was permanently false and
     // the real owner's own client hid every admin control from them. Two
     // 64-hex ids compare happily and say nothing about whether they name the
@@ -961,7 +961,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // `listSubgroups` is broken upstream (mero-js unwraps `.data` from a
   // response whose actual wire shape is `{subgroups: [...]}`) so we
   // can't read folder names from the subgroup list. `getGroupInfo`
-  // IS correctly shaped (`{data: {..., metadata}}`) — unwrap works,
+  // IS correctly shaped (`{data: {..., metadata}}`) - unwrap works,
   // and the human-readable name lives at `metadata.name`. We fan out
   // one getGroupInfo per folder and cache by id.
   //
@@ -974,7 +974,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const [visibilities, setVisibilities] = useState<
     Map<string, 'Open' | 'Restricted'>
   >(new Map());
-  // Folders the caller may NOT see — their getGroupInfo came back
+  // Folders the caller may NOT see - their getGroupInfo came back
   // "not a member" (core rejects non-members of restricted subgroups,
   // crates/context/.../get_group_info.rs). These are filtered out of
   // the rail. A folder leaves this set automatically once the caller
@@ -985,7 +985,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     new Set(),
   );
   // Folders whose access has been *resolved* by the fan-out below
-  // (getGroupInfo settled — success, access-denied, or transient).
+  // (getGroupInfo settled - success, access-denied, or transient).
   // The folder list is gated on this so a restricted folder the caller
   // can't see never flashes in the rail during the async window before
   // hiddenFolderIds is populated (the fan-out is NOT part of the
@@ -1007,7 +1007,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (!mero) return;
     const ids = regFolders.map((f) => f.id);
     // Capture via the ref (not a direct `selectedNsId` read) so this
-    // stays out of the dependency array — the effect intentionally
+    // stays out of the dependency array - the effect intentionally
     // re-runs on regFolders/aliasRevision, not on namespace.
     const nsAtStart = selectedNsIdRef.current;
     if (ids.length === 0) {
@@ -1038,7 +1038,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       ),
     ).then((entries) => {
       // Drop the result if this effect was torn down, OR if the active
-      // namespace changed while the fan-out was in flight — otherwise a
+      // namespace changed while the fan-out was in flight - otherwise a
       // stale old-namespace batch would repopulate resolvedFolderIds
       // after the namespace-switch clear effect.
       if (!alive || selectedNsIdRef.current !== nsAtStart) return;
@@ -1063,20 +1063,20 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setHiddenFolderIds(nextHidden);
       // Mark every folder in this batch resolved. Updated atomically on
       // completion so a re-fan (e.g. SSE refetch with the same ids)
-      // keeps the previous resolved set applied meanwhile — no flicker.
+      // keeps the previous resolved set applied meanwhile - no flicker.
       setResolvedFolderIds(new Set(ids));
     });
     return () => {
       alive = false;
     };
-    // aliasRevision is intentional — bumping it forces this effect to
+    // aliasRevision is intentional - bumping it forces this effect to
     // re-run after a rename even if regFolders is referentially stable.
   }, [mero, regFolders, aliasRevision]);
 
   // Re-arm the first-paint gate on namespace switch: clear the resolved
   // set so the new workspace's folders aren't rendered (with a stale
   // hidden set) before their access is known. Keyed on selectedNsId
-  // ONLY — a same-namespace SSE refetch must not reset this, or the rail
+  // ONLY - a same-namespace SSE refetch must not reset this, or the rail
   // would blank on every event.
   useEffect(() => {
     setResolvedFolderIds(new Set());
@@ -1110,7 +1110,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // resolved, so a restricted folder never flashes before
       // hiddenFolderIds is known. Already-resolved folders persist in
       // resolvedFolderIds across re-fans, so when a new folder arrives
-      // only that folder is withheld until it resolves — the existing
+      // only that folder is withheld until it resolves - the existing
       // rows keep rendering, never blanked.
     ).folders.filter((f) => resolvedFolderIds.has(f.id));
   }, [
@@ -1124,7 +1124,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   ]);
 
   // Complete, UNFILTERED tree shape (id + parent_id) for structural
-  // operations that must account for hidden/unresolved folders — e.g.
+  // operations that must account for hidden/unresolved folders - e.g.
   // the new-folder depth cap, which would undercount through a hidden
   // ancestor if it used the filtered `folders` above.
   const allFolderNodes = useMemo(
@@ -1156,7 +1156,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // would otherwise hit a generic admin-api error here. Keep the
       // contract local to this function.
       // Validation failures return `null` (not throw) to honor the
-      // documented `Promise<string | null>` contract — null = failure,
+      // documented `Promise<string | null>` contract - null = failure,
       // with the reason exposed via `createWorkspaceError`. The sole
       // caller (`NamespaceCreateDialog`) awaits without a try/catch and
       // branches on the null; a throw here would surface as an
@@ -1177,7 +1177,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setCreateLoading(true);
       setCreateError(null);
       try {
-        // Step 1 — create the namespace (root group).
+        // Step 1 - create the namespace (root group).
         // ⚠️ NO `upgradePolicy`. core deleted the concept and this endpoint
         // denies unknown fields, so it answers 400 with
         //   upgradePolicy: unknown field `upgradePolicy`, expected one of
@@ -1187,8 +1187,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // page.
         //
         // ⚠️ REMOVING IT HERE IS NOT ENOUGH ON ITS OWN. mero-js 13.x injects
-        // the field itself — `post(url, { upgradePolicy: "LazyOnAccess",
-        // ...request })` — so the key is on the wire whatever the caller
+        // the field itself - `post(url, { upgradePolicy: "LazyOnAccess",
+        // ...request })` - so the key is on the wire whatever the caller
         // passes. Only mero-js 18.3.0 drops the injection, and the latest
         // mero-react (8.0.0) still depends on `^15.0.0`, which does not. So
         // this line is correct and the call still fails until the SDK moves;
@@ -1200,13 +1200,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         if (!ns?.namespaceId) {
           throw new Error('createNamespace returned no namespaceId');
         }
-        // Step 2 — set the default capabilities every future member of
+        // Step 2 - set the default capabilities every future member of
         // this namespace inherits on join: the "Editor" set (join open
         // folders + create folders + create document contexts). Per
         // design spec §5.2. Existing members are unaffected; an admin
         // can change this later via the Member-defaults panel.
         //
-        // Best-effort: a failure here must NOT abort the create — the
+        // Best-effort: a failure here must NOT abort the create - the
         // namespace already exists, and leaving it unselected +
         // unconfigured is worse than just shipping it with core's
         // built-in default; the admin can re-set defaults via the
@@ -1223,9 +1223,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
             e,
           );
         }
-        // Step 3 — seed the Registry context inside the namespace's
+        // Step 3 - seed the Registry context inside the namespace's
         // root group. This is the convention the rest of the hook
-        // relies on: contexts[0] === Registry context. Hard failure —
+        // relies on: contexts[0] === Registry context. Hard failure -
         // without a Registry context the workspace is unusable.
         const reg = await mero.admin.createContext({
           applicationId,
@@ -1234,7 +1234,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           initializationParams: [],
           name: REGISTRY_CONTEXT_ALIAS,
         });
-        // Step 4 — claim the registry's owner slot for the creator.
+        // Step 4 - claim the registry's owner slot for the creator.
         // The permissions layer is fail-closed (set_folder_role,
         // add_manager etc. all require owner/manager) until this runs,
         // so a freshly-created workspace would be unmanageable without
@@ -1316,7 +1316,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // active namespace + registry context covers:
   //   - new subgroups / folder renames / re-parents / visibility flips
   //     (namespace op-DAG events)
-  //   - registry folder metadata changes — colors, parent_id, alias
+  //   - registry folder metadata changes - colors, parent_id, alias
   //     mirror (registry context events)
   //   - namespace member adds/removes/role changes (namespace events)
   // The full refetch() above is cheap relative to the user-visible
@@ -1330,7 +1330,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     void refetch();
   }, [refetch]);
   // `strict`: only refetch the workspace for mutations of the contexts
-  // it actually owns — the namespace + the registry. Folder structure
+  // it actually owns - the namespace + the registry. Folder structure
   // (create / color / role) writes the registry, so those still ding
   // here. What this filters OUT is docs-context mutations: editing a
   // doc fires rapid state-DAG events on that folder's docs context, and
@@ -1371,7 +1371,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     string | null
   >(null);
   // Track when the current namespace's regFolders load finishes
-  // cleanly — that's the signal the sync gate should lift.
+  // cleanly - that's the signal the sync gate should lift.
   useEffect(() => {
     if (!selectedNsId) return;
     if (regLoading) return;
@@ -1388,13 +1388,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       justJoinedAt.current.set(selectedNsId, Date.now());
     }
     return true;
-    // justJoinedTick is a bump-to-re-evaluate lever — used below when
+    // justJoinedTick is a bump-to-re-evaluate lever - used below when
     // the watchdog fires to flip us out of the gate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNsId, justJoinedTick]);
 
   // Watchdog: past the base window, drop the gate ONLY if no sync is
-  // actively in flight — a cold cross-network join legitimately exceeds
+  // actively in flight - a cold cross-network join legitimately exceeds
   // 30s (the peer-discovery floor alone is 30-60s), and a large snapshot
   // streams for a while, both of which keep reporting SSE activity. We
   // read live activity from a ref (no effect re-run per event) and poll
@@ -1407,8 +1407,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     const tick = () => {
       const elapsed = Date.now() - firstSeen;
       // Active = a sync making forward progress (discovering peers /
-      // streaming). `backingOff` is the stuck signal — the UI shows Retry
-      // for it — so it counts as inactive: no reason to hold the gate to the
+      // streaming). `backingOff` is the stuck signal - the UI shows Retry
+      // for it - so it counts as inactive: no reason to hold the gate to the
       // 120s cap when the sync is failing and the user can act. `idle` (or
       // no event yet) is also inactive.
       const snap = syncStatusRef.current;
@@ -1459,7 +1459,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // resolved by the getGroupInfo fan-out yet. Keep the rail in
   // "Loading folders…" rather than rendering an empty (and potentially
   // leaky) list. This fires only on the *initial* paint of a folder set
-  // — on first load and on namespace switch (the effect above clears
+  // - on first load and on namespace switch (the effect above clears
   // resolvedFolderIds keyed on selectedNsId). It does NOT fire when a
   // single new folder arrives mid-session: resolvedFolderIds is already
   // non-empty then, so the memo's `.filter` keeps the existing rows
@@ -1491,7 +1491,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   const loading = stageHidesContent(stage);
   // A node that knows packages and does not have this one installed is a real,
-  // reportable condition — not an auth problem and not an empty workspace list.
+  // reportable condition - not an auth problem and not an empty workspace list.
   // Without this it surfaced as a permanently empty switcher, which reads as
   // "you have no workspaces" and sends the user off to create another one on a
   // node that cannot run them.

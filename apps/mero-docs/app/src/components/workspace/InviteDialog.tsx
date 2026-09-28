@@ -3,7 +3,7 @@
 // settings panel) and folder-scoped invites (from the folder's
 // Sharing panel). The only things that differ between the two are
 // the title/body copy and the create-function handed in; everything
-// else — the generate → display → copy interaction — is identical.
+// else - the generate → display → copy interaction - is identical.
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -69,7 +69,7 @@ export function InviteDialog({
     } catch {
       // Clipboard API can fail on http:// or with no user gesture.
       // Fall back to selecting the link so users can Cmd+C manually
-      // — and surface the failure so they know to actually do it.
+      // - and surface the failure so they know to actually do it.
       const el = document.getElementById('invite-url-text');
       if (el instanceof HTMLInputElement) el.select();
       setCopyFallback(true);

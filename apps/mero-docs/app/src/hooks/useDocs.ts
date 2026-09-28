@@ -1,4 +1,4 @@
-// Docs facade for a single folder — resolves the folder's bound
+// Docs facade for a single folder - resolves the folder's bound
 // docs context via the registry, instantiates a DocsClient against
 // it, and exposes list / get / create / edit / delete + SSE-driven
 // refresh. Consumers pass a folderId and get a reactive list of
@@ -23,7 +23,7 @@ import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import { FolderId } from '../generated/registry/RegistryClient';
@@ -31,7 +31,7 @@ import { FolderId } from '../generated/registry/RegistryClient';
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
   contextId: string | null;
-  /** True while `getFolderContext` is in flight — distinguishes
+  /** True while `getFolderContext` is in flight - distinguishes
    *  "registry hasn't told us about this folder yet" (transient,
    *  show a syncing message) from "folder genuinely has no binding"
    *  (legacy / unbound state, show the static empty copy). */
@@ -62,11 +62,11 @@ export interface UseDocsState {
 // Module-level fan-out so every useDocs instance for the same
 // contextId re-reads the list when ANY instance mutates a doc.
 // Without this, DocumentEditor saves update its own state but the
-// sidebar's DocumentList stays stale until the page reloads — the
+// sidebar's DocumentList stays stale until the page reloads - the
 // SSE path via useDocEvents is supposed to cover this but isn't
 // firing reliably in dev. A module-level pub/sub is a safe
 // complement: on mutation, both the SSE event (when it works) and
-// the explicit notification trigger a refetch — refetch itself is
+// the explicit notification trigger a refetch - refetch itself is
 // guarded by inFlightRef so duplicate triggers collapse to one fetch.
 const docsRefetchersByContext = new Map<string, Set<() => void>>();
 export function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
@@ -108,12 +108,12 @@ function healContext(
 // core's `execute` (jsonrpc/execute.rs) rejects with this when the
 // node holds no owned `ContextIdentity` for the target context.
 //
-// IMPORTANT — error shape: mero-js throws the JSON-RPC error as
+// IMPORTANT - error shape: mero-js throws the JSON-RPC error as
 // `new E(code, message, data, type)`. For a FunctionCallError there
 // is no `error.message` on the wire, so `message` becomes the error
 // TYPE ("FunctionCallError") and the human string ("No owned
 // identity…") lands in `.data`. A predicate that only scans
-// `.message` silently misses it — so scan `data`/`type` too.
+// `.message` silently misses it - so scan `data`/`type` too.
 function isMissingOwnedIdentityError(err: unknown): boolean {
   if (err == null) return false;
   const parts: string[] = [];
@@ -163,7 +163,7 @@ export function useDocs(
   const includeArchived = !!opts?.includeArchived;
   const { registryClient, selfIdentity: identity } = useDriveWorkspace();
   const { joinContext } = useJoinContext();
-  // Ref-captured so it isn't a `refetch` dependency — useJoinContext's
+  // Ref-captured so it isn't a `refetch` dependency - useJoinContext's
   // returned fn isn't guaranteed stable, and `refetch` feeds an effect.
   const joinContextRef = useRef(joinContext);
   joinContextRef.current = joinContext;
@@ -240,7 +240,7 @@ export function useDocs(
   // The current client, so a read that lands after a folder switch is dropped.
   const clientRef = useRef<DocsClient | null>(null);
   clientRef.current = docsClient;
-  // Last rendered list signature — lets refetch skip a no-op setList when
+  // Last rendered list signature - lets refetch skip a no-op setList when
   // an SSE-driven refetch returns visually-identical data (diff-guard).
   const lastListSigRef = useRef<string>('');
 
@@ -279,12 +279,12 @@ export function useDocs(
         result.sort((a, b) => b.updated_at - a.updated_at);
         // Diff-guard: only push new state when the rendered signature differs, so
         // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
-        // updated_at — the list shows title + structure, not timestamps, so a
+        // updated_at - the list shows title + structure, not timestamps, so a
         // remote CONTENT edit (which only bumps updated_at) must NOT re-render
         // the other window's folder pane. Structural changes (create / delete /
         // rename / archive) still change the signature and refresh. Trade-off:
         // most-recent-first order re-sorts on the next structural change, not live
-        // on content edits — the desired stable behaviour.
+        // on content edits - the desired stable behaviour.
         const sig = result
           .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
           .join('|');
@@ -335,11 +335,11 @@ export function useDocs(
     void refetch();
   }, [refetch]);
 
-  // Refresh on SSE events from the docs context — covers remote
+  // Refresh on SSE events from the docs context - covers remote
   // creates/edits/deletes without polling. DEBOUNCED: the context emits
   // an event on every edit_doc, including the writer's OWN ~900ms
   // autosaves, so a 1:1 refetch makes the sidebar list re-fetch and
-  // re-sort (by updated_at) on every keystroke-burst — visible as
+  // re-sort (by updated_at) on every keystroke-burst - visible as
   // constant flicker. A trailing debounce collapses a burst into one
   // quiet refetch after activity settles. Explicit mutations (create /
   // delete / rename) bypass this and refetch immediately via
@@ -369,7 +369,7 @@ export function useDocs(
     };
   }, []);
 
-  // Cross-instance refresh — when any other useDocs instance for the
+  // Cross-instance refresh - when any other useDocs instance for the
   // same docs context mutates, re-read our list too. See the
   // docsRefetchersByContext comment above.
   useEffect(() => {

@@ -18,7 +18,7 @@ export function safeColor(raw: string | null | undefined): string | undefined {
   return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
 }
 
-// Rough sanity-check on the pubkey format — Calimero identities are
+// Rough sanity-check on the pubkey format - Calimero identities are
 // Ed25519 device keys. core 0.11.0-rc.27 removed base58, so a
 // 32-byte key is now exactly 64 hex characters. This is a client-side UX
 // guard (catch typos / truncated paste); the node validates the real format,

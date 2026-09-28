@@ -1,4 +1,4 @@
-// Which loading stage the workspace is in — extracted from `useDriveWorkspace`
+// Which loading stage the workspace is in - extracted from `useDriveWorkspace`
 // so the one rule that matters here can actually be asserted.
 //
 // ⚠️ THE RULE: A BACKGROUND REFRESH MUST NOT REACH A LOADING STAGE.
@@ -6,7 +6,7 @@
 // `FolderTree` renders a single "Loading folders…" line whenever the workspace
 // reports `loading`, which unmounts the entire `<ul>` and every row in it. And
 // mero-react's `useAsyncResource.refetch` calls `setLoading(true)` on EVERY
-// refetch — so an SSE ding, which refetches the whole workspace, flipped
+// refetch - so an SSE ding, which refetches the whole workspace, flipped
 // `regLoading` / `subLoading` / `contextsLoading` true a few times a minute and
 // the sidebar was torn down and rebuilt each time. That is the flicker.
 //
@@ -17,7 +17,7 @@
 //
 // So a stage that hides content is only reachable before the FIRST load for a
 // namespace completes. After that a refresh keeps the rendered rows and swaps
-// the data underneath them — which is also the honest answer, because during a
+// the data underneath them - which is also the honest answer, because during a
 // background refresh the app does know what the folders are.
 
 export type DriveLoadingStage =

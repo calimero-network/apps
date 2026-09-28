@@ -1,37 +1,37 @@
-// Folder-scope permissions — derived from TWO orthogonal sources:
+// Folder-scope permissions - derived from TWO orthogonal sources:
 //
 //  1. The caller's core capability bitmask on the folder's subgroup
-//     (`useMemberCaps`) — the same `MemberCapabilities` layout the
+//     (`useMemberCaps`) - the same `MemberCapabilities` layout the
 //     backend enforces via `is_group_admin_or_has_capability`
 //     (core/context/group_store/membership.rs). Drives the
 //     folder-admin affordances: rename / visibility / delete / invite /
 //     manage-members. `isAdmin` (core group-admin role) bypasses it.
 //
-//  2. The Registry per-(folder, member) `Role` (`useFolderRole`) — the
+//  2. The Registry per-(folder, member) `Role` (`useFolderRole`) - the
 //     "Viewer vs Editor vs Manager on documents" concept that does NOT
 //     exist in the core bitmask (design spec §5.3 / §5.5). Drives
 //     `canEditDocs`. An absent role row resolves to `Editor` (the WASM
 //     default), so a brand-new member can edit by default; an explicit
 //     `Viewer` downgrades them to read-only.
 //
-//  3. Registry ownership/managers — gates `canManagePermissions` (who
+//  3. Registry ownership/managers - gates `canManagePermissions` (who
 //     may change folder roles / see the sharing-panel admin section).
 //     Fail-closed: until someone `claim_owner`s the registry, nobody is
 //     an owner/manager. Read from `useDriveWorkspace().registryAdmin`
-//     (fetched ONCE for the whole tree) — NOT via a per-row hook call.
+//     (fetched ONCE for the whole tree) - NOT via a per-row hook call.
 //
 // Open subgroups inherit membership from the
 // parent namespace via the server's parent-walk, so a namespace member
 // with `CAN_JOIN_OPEN_SUBGROUPS` (default-on) gets real caps from the
-// admin API directly — no app-layer fallback needed.
+// admin API directly - no app-layer fallback needed.
 //
 // `isMember` (folder subgroup membership) implies read access. Editing
-// docs is `canEditDocs` — and it's deliberately CONSERVATIVE: a member
+// docs is `canEditDocs` - and it's deliberately CONSERVATIVE: a member
 // can edit only once their registry Role has *definitively* resolved to
 // non-Viewer (or the workspace has no Registry context at all, in which
 // case there's no Role to wait on and we fall back to membership). A
 // still-loading role, a role-fetch error, or a definitively-`Viewer`
-// role all keep `canEditDocs` false — autosave must never persist a
+// role all keep `canEditDocs` false - autosave must never persist a
 // would-be Viewer's edits during the resolve window (core gates doc
 // writes on folder membership only, so the app is the only guard).
 //
@@ -49,13 +49,13 @@ import { useFolderRole } from './useFolderRole';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 export interface FolderPermissions {
-  /** Member of the folder subgroup at all — true only when the caps
+  /** Member of the folder subgroup at all - true only when the caps
    *  fetch *succeeded* (`caps !== null && error === null`). A genuine
    *  member with the empty bitmask still has `caps === 0, error === null`
    *  so they count; a failed fetch (`caps === 0, error !== null`) does
    *  NOT, so consumers don't render write affordances on error. */
   isMember: boolean;
-  /** Create a *sub*folder — note core only allows subgroups directly
+  /** Create a *sub*folder - note core only allows subgroups directly
    *  under the namespace root, so this is effectively a namespace-scope
    *  grant; kept here for the folder context menu's "new subfolder". */
   canCreateSubfolder: boolean;
@@ -69,7 +69,7 @@ export interface FolderPermissions {
   canManageMembers: boolean; // MANAGE_MEMBERS
   /** Edit documents in this folder. CONSERVATIVE: `isAdmin`, or a
    *  folder member whose registry `Role` has *definitively resolved* to
-   *  non-Viewer — OR a folder member when the workspace has no Registry
+   *  non-Viewer - OR a folder member when the workspace has no Registry
    *  context at all (nothing to resolve, fall back to membership).
    *  While the role is still loading, on a role-fetch error, or on a
    *  definitive `Viewer`, this is `false` (the editor stays read-only
@@ -101,7 +101,7 @@ export interface FolderPermissions {
   denied: boolean;
   /** Re-run the membership probe. Use after an action that may have
    *  changed the caller's membership server-side (e.g. the join-via-
-   *  inheritance call on the Open-folder card) — useMemberCaps's deps
+   *  inheritance call on the Open-folder card) - useMemberCaps's deps
    *  don't change on those flows, so the cached "not a member" stays
    *  unless something forces a re-fetch. */
   refetch: () => void;
@@ -145,7 +145,7 @@ export function useFolderPermissions(
   // No-Registry-context fallback: when there's no registry to read
   // roles from (`!registryAvailable`), the Manager gate has nothing to
   // resolve and `role` would be `null` forever. In that case fall back
-  // to the cap-only check — same approach as `canEditDocs` below for
+  // to the cap-only check - same approach as `canEditDocs` below for
   // its registry-unavailable branch. Without this, a non-admin holding
   // `CAN_DELETE_SUBGROUP` could never delete folders in a workspace
   // without a Registry context.
@@ -153,7 +153,7 @@ export function useFolderPermissions(
     isAdmin ||
     (hasDeleteCap && (registryAvailable ? role === 'Manager' : true));
 
-  // Doc editing — CONSERVATIVE. Core only gates doc-context writes on
+  // Doc editing - CONSERVATIVE. Core only gates doc-context writes on
   // folder membership, so this app-layer check is the ONLY thing
   // stopping a registry-`Viewer` from autosaving edits during the role
   // resolve window. Therefore:
@@ -186,12 +186,12 @@ export function useFolderPermissions(
     role,
     roleLoading,
     roleError,
-    // Aggregate "folder-admin-ish" power — the union of the per-cap
+    // Aggregate "folder-admin-ish" power - the union of the per-cap
     // grants. Used to reveal the sharing-panel admin section / context-
     // menu admin items. (Mirrors `canManageGroup` in namespace perms;
     // deliberately excludes `canCreateSubfolder`, which is a namespace-
     // scope grant, not a folder-admin signal.) Pure capability-bit
-    // aggregate — `canManagePermissions` (registry owner/manager) is
+    // aggregate - `canManagePermissions` (registry owner/manager) is
     // an orthogonal concept gated separately by the sharing panel, so
     // it is NOT folded in here: a registry-only manager with zero
     // folder caps would otherwise see an admin context-menu trigger

@@ -1,15 +1,15 @@
-//! Registry service — the per-namespace source of truth for folder
+//! Registry service - the per-namespace source of truth for folder
 //! *presentation* metadata that admin-API does not own.
 //!
 //! ## What lives here (and why)
 //!
 //! Admin API is authoritative for group shape, membership, and aliases.
-//! Anything admin-API doesn't have a concept for — color,
-//! folder→context binding, sort order under a parent — lives in this
+//! Anything admin-API doesn't have a concept for - color,
+//! folder→context binding, sort order under a parent - lives in this
 //! registry. The namespace holds one Registry context whose state is this
 //! struct, replicated across every member of the root group.
 //!
-//! `parent_id` is stored here too, as an **index** — admin-API remains
+//! `parent_id` is stored here too, as an **index** - admin-API remains
 //! authoritative for the tree shape, because it does not return a subgroup's
 //! parent. The client writes both sides in the same operation and rolls back
 //! on failure; there is no cross-system transaction and no repair pass, so a
@@ -142,7 +142,7 @@ pub struct FolderRoleEntry {
 /// because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
 /// trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
 /// resolution picks the inherent one from the derive expansion, which then
-/// fails the macro's `?` — same workaround battleships uses on
+/// fails the macro's `?` - same workaround battleships uses on
 /// `MatchSummary`.
 #[app::mergeable(id = "mero_drive_registry::FolderRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
@@ -156,7 +156,7 @@ pub struct FolderRecord {
     /// Display name. Mirrored from admin-API's group alias so namespace
     /// members who can't read the subgroup yet (Restricted folder before
     /// invite) can still see folder names. Empty string means "no
-    /// registry-side alias — fall back to the admin-API alias or a
+    /// registry-side alias - fall back to the admin-API alias or a
     /// truncated id stub on the client".
     pub alias: LwwRegister<String>,
     /// Inherit = namespace-member cascade descends through this folder.
@@ -240,7 +240,7 @@ fn is_hex_color(s: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Workspace-wide tag: a stable key mapped to a display name and colour.
-/// `deleted` tombstones the row rather than removing it — see `delete_tag`.
+/// `deleted` tombstones the row rather than removing it - see `delete_tag`.
 /// It merges by OR, so a delete on any replica is permanent.
 #[app::mergeable(id = "mero_drive_registry::TagRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
@@ -360,7 +360,7 @@ pub struct RegistryState {
     /// folder_id (string) → FolderRecord
     folders: UnorderedMap<String, FolderRecord>,
     /// folder_id (string) → Docs context id bound to that folder.
-    /// Once bound, the value never changes — `FrozenValue` supplies the
+    /// Once bound, the value never changes - `FrozenValue` supplies the
     /// no-op `Mergeable` impl required by `UnorderedMap` values.
     folder_contexts: UnorderedMap<String, FrozenValue<ContextId>>,
     /// parent_id-or-empty → LWW list of child folder ids in display order
@@ -371,7 +371,7 @@ pub struct RegistryState {
     /// base58 public keys granted manager rights over the whole registry
     /// (may set/clear any folder role). The owner is implicitly a manager
     /// and is NOT stored here. Value `true` = is a manager, `false` =
-    /// removed (kept around so the key is never CRDT-tombstoned — a
+    /// removed (kept around so the key is never CRDT-tombstoned - a
     /// `remove` would silently swallow a later re-add of the same key).
     managers: UnorderedMap<String, LwwRegister<bool>>,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
@@ -466,7 +466,7 @@ impl RegistryState {
         // CRDT-tombstoned (unlike the live clear_folder_role path), which is
         // correct here: the folder id is tombstoned in `folders` alongside
         // them. (Since core rc.10 a strictly-newer register lifts the
-        // tombstone and revives the id — the revived folder then starts
+        // tombstone and revives the id - the revived folder then starts
         // with default roles, which is what we want.)
         self.purge_folder_roles(&id.0)?;
         Ok(())
@@ -561,7 +561,7 @@ impl RegistryState {
     // ---- color / move ---------------------------------------------------
 
     pub fn set_color(&mut self, id: FolderId, color: String) -> app::Result<()> {
-        // Treat empty color as "clear" — matches how `get_folder` projects
+        // Treat empty color as "clear" - matches how `get_folder` projects
         // empty-string back to `None` on read.
         self.set_color_inner(&id.0, color)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -717,7 +717,7 @@ impl RegistryState {
 
     /// The base58 public key of the registry owner, or an empty string if
     /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
-    /// keeps the generated TS type honest — `Promise<string>`, not a lying
+    /// keeps the generated TS type honest - `Promise<string>`, not a lying
     /// non-nullable Option.)
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
@@ -973,7 +973,7 @@ mod tests {
     // they all pass `caller` in by hand: the bug lived entirely in how the
     // caller string is DERIVED. Ownership, managers and folder roles are
     // per-person state, and the client can only ever name a person by the
-    // ACCOUNT that `listGroupMembers` returns — so a contract deriving its
+    // ACCOUNT that `listGroupMembers` returns - so a contract deriving its
     // caller from `device_id` filed every grant under an id no caller could
     // ever present. Nothing failed; the grants simply authorised nobody.
     //
@@ -1433,16 +1433,16 @@ mod tests {
         assert_eq!(a.parent_id.get(), &Some("new-parent".to_string()));
     }
 
-    // ---- tombstone behaviour — documents the CRDT invariant ----
+    // ---- tombstone behaviour - documents the CRDT invariant ----
     //
     // `UnorderedMap::remove` tombstones the entry for CRDT safety, but as
     // of core 0.11.0-rc.10 (core#3123, "D1") a strictly-newer insert LIFTS
     // the tombstone: unregister → register under the same id revives the
     // entry. (Before rc.10 the tombstone won forever and the re-insert was
-    // silently swallowed — this test used to pin that older semantic.)
+    // silently swallowed - this test used to pin that older semantic.)
     //
     // In production this never matters because admin-API allocates a fresh
-    // random group_id for every new folder — no `FolderId` ever recycles.
+    // random group_id for every new folder - no `FolderId` ever recycles.
     // This test pins down the current semantic so a future core change in
     // either direction fails obviously.
 

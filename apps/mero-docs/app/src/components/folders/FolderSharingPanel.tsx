@@ -1,11 +1,11 @@
 // Members + sharing controls for a single folder. Two layouts,
 // branched on the folder's subgroup visibility (owned by core):
 //
-//   Restricted — explicit membership: add-by-identity / invite-link /
+//   Restricted - explicit membership: add-by-identity / invite-link /
 //     remove, plus (for owner/managers) a per-member folder-role
 //     dropdown (RoleSelect: Manager / Editor / Read only).
 //
-//   Open — inherits membership from the workspace root: there's no
+//   Open - inherits membership from the workspace root: there's no
 //     add/remove (anyone in the workspace is already in), so we show
 //     "open to all workspace members" copy instead, but STILL list the
 //     inherited members each with the folder-role dropdown so an admin
@@ -20,7 +20,7 @@
 // Read-only viewers still see the members list.
 //
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
-// the Role radio) — a follow-up; today only the preset dropdown ships.
+// the Role radio) - a follow-up; today only the preset dropdown ships.
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
@@ -90,7 +90,7 @@ export function FolderSharingPanel({ folderId }: Props) {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  // Per-row remove error — surfaced inline under the affected row
+  // Per-row remove error - surfaced inline under the affected row
   // so the user sees which identity's removal failed and why,
   // rather than the error being swallowed to the console.
   const [removeError, setRemoveError] = useState<
@@ -164,7 +164,7 @@ export function FolderSharingPanel({ folderId }: Props) {
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError({ identity: id, message: err.message });
       // Refetch so the UI stays consistent with the node's actual
-      // member list — remove() may have partially applied. Wrapped
+      // member list - remove() may have partially applied. Wrapped
       // in its own try/catch because the outer call is
       // fire-and-forget from the button's onClick; if refetch()
       // also fails (likely the same network issue that failed
@@ -321,7 +321,7 @@ export function FolderSharingPanel({ folderId }: Props) {
               <div className="flex-1">
                 {/* Autocompletes against workspace members; existing
                     folder members are filtered out. Raw-paste of an
-                    unknown pubkey still works via Enter — looksLike-
+                    unknown pubkey still works via Enter - looksLike-
                     MemberIdentity validation runs unchanged in
                     onInvite below. */}
                 <MemberPicker

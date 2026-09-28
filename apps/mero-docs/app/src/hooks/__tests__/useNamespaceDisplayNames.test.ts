@@ -21,7 +21,7 @@ describe('useNamespaceDisplayNames', () => {
 
   it('leaves a namespace that already has a name untouched', () => {
     // A namespace the node created carries its name from the list
-    // endpoint — the store must not override it.
+    // endpoint - the store must not override it.
     rememberNamespaceName('ns1', 'stale stored value');
     const { result } = renderHook(() =>
       useNamespaceDisplayNames([{ namespaceId: 'ns1', name: 'Canonical' }]),

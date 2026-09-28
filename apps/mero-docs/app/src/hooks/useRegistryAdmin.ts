@@ -1,4 +1,4 @@
-// Registry-level ownership + managers — the fail-closed authorization
+// Registry-level ownership + managers - the fail-closed authorization
 // gate for the per-folder `Role` API (set_folder_role, add_manager,
 // etc. all require owner-or-manager). See design spec §5.4.
 //
@@ -7,7 +7,7 @@
 //
 // `owner` is `null` when unclaimed; `isOwnerOrManager` gates writing
 // folder roles / the sharing-panel admin section; `isOwner` is the
-// stricter "can edit the manager list" signal (mirrors the WASM —
+// stricter "can edit the manager list" signal (mirrors the WASM -
 // managers can mutate folder roles but not the manager list itself).
 
 import { useDriveWorkspace } from './useDriveWorkspace';

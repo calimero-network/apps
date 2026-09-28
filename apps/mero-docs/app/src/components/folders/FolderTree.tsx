@@ -17,7 +17,7 @@ import { SidebarSectionHeader } from '@/components/workspace/SidebarNav';
 
 // Map useDriveWorkspace's DriveLoadingStage values to user-facing
 // labels. Keys that don't appear here fall through to a generic
-// "Loading…" — the stage enum is defined in hooks/useDriveWorkspace.ts.
+// "Loading…" - the stage enum is defined in hooks/useDriveWorkspace.ts.
 const STAGE_LABELS: Record<string, string> = {
   'awaiting-auth': 'Waiting for sign-in…',
   'resolving-namespaces': 'Loading workspaces…',
@@ -60,7 +60,7 @@ export function FolderTree({
   // Expansion is owned here (was per-row state) so it survives the
   // frequent useMemo recompute of `folders` on SSE refetch and so a
   // future "expand all" can live in one place. Default: nothing
-  // forced open — the user expands what they want.
+  // forced open - the user expands what they want.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {

@@ -5,7 +5,7 @@ import { RestrictedFolderCard } from '../RestrictedFolderCard';
 
 // Regression layer for the Open-folder join flow. The card drives a
 // TWO-context join (verified against core): `joinSubgroupInheritance`
-// is subgroup-scoped — key + namespace op — while `joinContext` writes
+// is subgroup-scoped - key + namespace op - while `joinContext` writes
 // the node's owned ContextIdentity for the docs context. Miss either
 // and `execute`/`list_docs` fails with "No owned identity found for
 // this context". The mocks below let each branch + failure mode be
@@ -42,7 +42,7 @@ describe('RestrictedFolderCard', () => {
     joinContext.mockResolvedValue({});
   });
 
-  describe('Open folder — join flow', () => {
+  describe('Open folder - join flow', () => {
     it('joins the subgroup then the docs context, in that order', async () => {
       render(<RestrictedFolderCard {...baseProps} visibility="Open" />);
       fireEvent.click(screen.getByRole('button', { name: /join folder/i }));
@@ -52,7 +52,7 @@ describe('RestrictedFolderCard', () => {
       );
       expect(joinSubgroupInheritance).toHaveBeenCalledWith('folder-1');
       expect(getFolderContext).toHaveBeenCalledWith({ folder_id: 'folder-1' });
-      // Subgroup join must precede the context join — the docs context
+      // Subgroup join must precede the context join - the docs context
       // join is authorised via the (just-materialised) membership.
       expect(
         joinSubgroupInheritance.mock.invocationCallOrder[0],
@@ -99,7 +99,7 @@ describe('RestrictedFolderCard', () => {
       fireEvent.click(screen.getByRole('button', { name: /join folder/i }));
 
       expect(await screen.findByRole('alert')).toBeTruthy();
-      // The join did not complete — no workspace refetch.
+      // The join did not complete - no workspace refetch.
       expect(refetch).not.toHaveBeenCalled();
     });
   });

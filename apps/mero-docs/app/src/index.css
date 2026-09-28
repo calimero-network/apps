@@ -1,6 +1,6 @@
 /* Self-hosted, not fetched from fonts.googleapis.com. A remote stylesheet
    @import blocks rendering until it resolves, which for a local-first app
-   means the UI stalls on every offline load — the one condition this app is
+   means the UI stalls on every offline load - the one condition this app is
    built for. It also disclosed every viewer's IP to a third party.
    Variable builds: one file per family covers all weights we use. */
 @import '@fontsource-variable/inter';
@@ -157,7 +157,7 @@
    BlockNote ships its own complete styling (@blocknote/mantine/style.css);
    here we only re-point its CSS custom properties at our design tokens so
    the editor inherits the green accent + light/dark system. Both
-   data-color-scheme values map to the SAME hsl(var(--token)) — those
+   data-color-scheme values map to the SAME hsl(var(--token)) - those
    tokens already flip with the `.dark` class, so the editor follows the
    app theme automatically. The leading `html` raises specificity above
    BlockNote's own `.bn-container[data-color-scheme]` rules regardless of

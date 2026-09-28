@@ -1,4 +1,4 @@
-// Workspace folder tree merge logic — merges admin-API subgroup
+// Workspace folder tree merge logic - merges admin-API subgroup
 // entries (source of truth for tree shape, aliases, and
 // subgroup_visibility) with registry FolderDto
 // entries (source of truth for color + context binding + parent_id
@@ -7,7 +7,7 @@
 // Originally also exported a `useWorkspaceTree` hook that wrapped
 // `mergeAdminAndRegistry` with reactive fetching, but it was deleted
 // when `useDriveWorkspace` was rewritten to inline the fetch logic.
-// Only the pure merge function and shared types remain — they're
+// Only the pure merge function and shared types remain - they're
 // imported by `useDriveWorkspace`, the merge unit tests, and the
 // FolderTreeItem UI component.
 //
@@ -53,7 +53,7 @@ export function mergeAdminAndRegistry(
   rootId: string,
   visibilityById?: Map<string, 'Open' | 'Restricted'>,
   // Folder ids the current caller is NOT allowed to see (their
-  // per-folder getGroupInfo came back access-denied — core rejects
+  // per-folder getGroupInfo came back access-denied - core rejects
   // non-members of a restricted subgroup). Restricted folders the
   // caller isn't a member of land here and are dropped from the tree
   // entirely, so they never appear in the rail.

@@ -132,7 +132,7 @@ describe('useFolderRole', () => {
     const { result } = renderHook(() => useFolderRole('f1'));
     await waitFor(() => expect(result.current.role).toBe('Editor'));
 
-    // Set up the next fetch to be slow (pending) — we want to observe
+    // Set up the next fetch to be slow (pending) - we want to observe
     // the in-flight state directly. Then trigger a refetch.
     let resolveNext: (v: 'Viewer') => void = () => {};
     getFolderRoleMock.mockImplementation(
@@ -146,7 +146,7 @@ describe('useFolderRole', () => {
     });
 
     // While the new fetch is in flight, the *previous* role value
-    // remains visible — this is the flicker-prevention contract.
+    // remains visible - this is the flicker-prevention contract.
     // `loading` is true; `role` is not null.
     await waitFor(() => expect(result.current.loading).toBe(true));
     expect(result.current.role).toBe('Editor');

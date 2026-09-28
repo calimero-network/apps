@@ -11,7 +11,7 @@
 // rather than parsing the storage key by hand. If mero-js ever
 // changes the on-disk format the public class moves with it; we
 // don't have to chase the change. We also check `expires_at` so an
-// expired token isn't sent — the server would reject it anyway, but
+// expired token isn't sent - the server would reject it anyway, but
 // failing fast gives the caller a useful error.
 //
 // Drop this helper when mero-js surfaces reparent as a first-class
@@ -46,7 +46,7 @@ export async function reparentGroup(
   if (!token) {
     throw new Error('Not authenticated: missing access token');
   }
-  // Trailing slash on nodeUrl can cause double-slash URL — strip once.
+  // Trailing slash on nodeUrl can cause double-slash URL - strip once.
   const base = nodeUrl.replace(/\/+$/, '');
   const res = await fetch(
     `${base}/admin-api/groups/${childGroupId}/reparent`,

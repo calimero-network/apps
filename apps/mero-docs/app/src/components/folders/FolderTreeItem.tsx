@@ -1,10 +1,10 @@
 // Single recursive row in the FolderTree. Renders the folder's
 // alias with an optional color chip and restricted-visibility lock
 // icon, and recurses into its children. Selection is a controlled
-// prop — parent owns the selectedId state.
+// prop - parent owns the selectedId state.
 //
 // Also hosts the per-row action trigger (FolderContextMenu, shown
-// on hover) and the inline-rename state — the rename action fires
+// on hover) and the inline-rename state - the rename action fires
 // from the context menu but the editing surface lives here because
 // the alias text is owned by this row's render.
 
@@ -57,7 +57,7 @@ export function FolderTreeItem({
   // starts the async rename, and if the input loses focus before
   // the await resolves (which it does when setRenaming(false) fires
   // and unmounts the input), the native blur event fires a second
-  // submitRename with the same state — `folder.alias` hasn't yet
+  // submitRename with the same state - `folder.alias` hasn't yet
   // refreshed from the registry, so the same-name guard doesn't
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
@@ -121,7 +121,7 @@ export function FolderTreeItem({
           if (renaming) return;
           onSelect(node.id);
           // Selecting a folder also reveals its contents. Expand-only (not
-          // toggle) so clicking an already-open folder doesn't collapse it —
+          // toggle) so clicking an already-open folder doesn't collapse it -
           // the chevron remains the explicit collapse control.
           onExpand(node.id);
         }}

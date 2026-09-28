@@ -1,11 +1,11 @@
 // Blocking "set your name" overlay. State-driven: it appears whenever
-// the active namespace has no display name for the current member —
+// the active namespace has no display name for the current member -
 // which covers just-created, just-joined, and older nameless
 // workspaces alike, with no per-event wiring. It decides only once the
 // name read has answered, and a background refetch never hides it.
 //
 // Rendered INSIDE the workspace body (an `absolute inset-0` overlay
-// over sidebar + main), NOT over the top bar — so the namespace
+// over sidebar + main), NOT over the top bar - so the namespace
 // switcher and Log out stay reachable as an escape hatch.
 
 import React, { useEffect, useState } from 'react';
@@ -19,7 +19,7 @@ import {
 // localStorage marker recording that a display name is already set for a
 // given (namespace, member). Bridges a mero-react bug where
 // useMemberMetadata can return name=null on a fresh load even though the
-// name IS set server-side — without this, the gate re-appears on EVERY
+// name IS set server-side - without this, the gate re-appears on EVERY
 // page refresh. The marker is only ever written once we KNOW a name
 // exists (a successful save, or any fetch that returns a real name), and
 // names can't be cleared today, so it never suppresses the gate wrongly.
@@ -28,7 +28,7 @@ function rememberNameSet(key: string): void {
   try {
     localStorage.setItem(key, '1');
   } catch {
-    /* storage unavailable — in-memory dismissal still applies this session */
+    /* storage unavailable - in-memory dismissal still applies this session */
   }
 }
 
@@ -69,7 +69,7 @@ function NameGate({
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  // Close immediately once OUR OWN save succeeds — don't wait for `name`
+  // Close immediately once OUR OWN save succeeds - don't wait for `name`
   // to flip non-null via refetch (see the marker note above).
   const [dismissed, setDismissed] = useState(false);
 

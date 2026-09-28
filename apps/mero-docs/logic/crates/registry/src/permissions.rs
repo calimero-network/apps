@@ -20,7 +20,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
     format!("{folder_id}\u{1f}")
 }
 
-/// Hex ACCOUNT id of the caller — who is calling as a person, not which
+/// Hex ACCOUNT id of the caller - who is calling as a person, not which
 /// machine they are calling from.
 ///
 /// ⚠️ THIS WAS `device_id()`, AND THAT MADE EVERY GRANT IN THIS FILE A NO-OP.
@@ -37,7 +37,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
 ///   * `add_manager` / `set_folder_role` take a member key from the client,
 ///     and the only member list a client has is `listGroupMembers`, whose rows
 ///     are ACCOUNTS. So a manager row was filed under an account, while
-///     `is_admin` looked the caller up by DEVICE — the row could never match,
+///     `is_admin` looked the caller up by DEVICE - the row could never match,
 ///     and a promoted manager stayed `Forbidden` on everything.
 ///   * The frontend's "am I the owner" check compares `get_owner()` against
 ///     the account it holds. `claim_owner` stored a device id, so the real
@@ -53,7 +53,7 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
 /// Consequence for deployed state: an existing registry's `owner` row holds a
 /// device id and will never equal an account, so a workspace created before
 /// this change cannot be administered after it. Those contexts must be
-/// recreated — see the PR.
+/// recreated - see the PR.
 pub(crate) fn caller_account_hex() -> Result<String, DriveError> {
     let id = calimero_sdk::env::account_id();
     if id.len() != 32 {
@@ -62,7 +62,7 @@ pub(crate) fn caller_account_hex() -> Result<String, DriveError> {
     Ok(hex::encode(id))
 }
 
-/// Validate & normalise an incoming hex 32-byte ACCOUNT id — the same
+/// Validate & normalise an incoming hex 32-byte ACCOUNT id - the same
 /// principal `caller_account_hex` produces, and the same one
 /// `listGroupMembers` rows are keyed by. Re-encoding lower-cases it, so the
 /// stored form is canonical regardless of input case.
@@ -129,7 +129,7 @@ impl RegistryState {
 
     /// Owner-only. Validates `member` as hex. Re-adding / re-granting an
     /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
-    /// with the current HLC always wins — the key is never tombstoned).
+    /// with the current HLC always wins - the key is never tombstoned).
     pub(crate) fn add_manager_inner(
         &mut self,
         caller: &str,
@@ -152,7 +152,7 @@ impl RegistryState {
     }
 
     /// Owner-only. `NotFound` if `member` is not currently a manager. Does
-    /// not `remove` the key — it sets the value to `false` so a later
+    /// not `remove` the key - it sets the value to `false` so a later
     /// `add_manager` of the same key isn't swallowed by a tombstone.
     pub(crate) fn remove_manager_inner(
         &mut self,
@@ -220,7 +220,7 @@ impl RegistryState {
 
     /// Admin-gated. Resets the member to the implicit `Editor` role;
     /// idempotent (clearing an already-default/absent member is a harmless
-    /// no-op success). Does not `remove` the row — it overwrites it with
+    /// no-op success). Does not `remove` the row - it overwrites it with
     /// `Editor` so the key is never tombstoned (a later `set_folder_role`
     /// of the same folder+member would otherwise be swallowed).
     pub(crate) fn clear_folder_role_inner(
@@ -237,7 +237,7 @@ impl RegistryState {
         Ok(())
     }
 
-    /// Read — no caller gating. Validates `member` as a hex account; returns
+    /// Read - no caller gating. Validates `member` as a hex account; returns
     /// the stored role or `Role::Editor` if none.
     pub(crate) fn get_folder_role_inner(
         &self,
@@ -274,7 +274,7 @@ impl RegistryState {
     }
 
     /// Drop every per-member role row for a folder (called from
-    /// `unregister_folder_inner`). Uses `remove` deliberately — the folder id
+    /// `unregister_folder_inner`). Uses `remove` deliberately - the folder id
     /// is tombstoned in `folders` alongside these rows. Since core rc.10 a
     /// strictly-newer register can revive the folder id; the revived folder
     /// then starts with default roles, so purging here stays correct.
@@ -418,7 +418,7 @@ mod tests {
             app.remove_manager_inner(&key(1), &key(9)).unwrap_err(),
             DriveError::NotFound(_)
         ));
-        // After add + remove, the value is `false` — a second remove of the
+        // After add + remove, the value is `false` - a second remove of the
         // same key is also NotFound (not a no-op success).
         app.add_manager_inner(&key(1), &key(2)).unwrap();
         app.remove_manager_inner(&key(1), &key(2)).unwrap();

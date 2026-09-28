@@ -1,9 +1,9 @@
 // Headless tests against a live BlockNote editor model (created via
-// useCreateBlockNote, but WITHOUT mounting <BlockNoteView> — so no
+// useCreateBlockNote, but WITHOUT mounting <BlockNoteView> - so no
 // Mantine/DOM polyfills are needed). These pin the three facts the
 // EditorShell integration depends on:
 //
-//   1. `replaceBlocks` fires `onChange` — there is no suppress flag, which
+//   1. `replaceBlocks` fires `onChange` - there is no suppress flag, which
 //      is precisely why the shell needs the `applyingRemoteRef` guard.
 //   2. `serializeBlocks(editor.document)` round-trips through
 //      `parseStoredContent` → `replaceBlocks` unchanged (the storage
@@ -17,7 +17,7 @@ import { schema } from '../schema';
 import { serializeBlocks, parseStoredContent } from '../content';
 
 describe('BlockNote editor model (headless)', () => {
-  it('replaceBlocks fires onChange — the reason the remote-apply guard exists', () => {
+  it('replaceBlocks fires onChange - the reason the remote-apply guard exists', () => {
     const { result } = renderHook(() => useCreateBlockNote({ schema }));
     const editor = result.current;
 

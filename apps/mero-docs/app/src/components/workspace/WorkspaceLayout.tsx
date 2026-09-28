@@ -90,12 +90,12 @@ export function WorkspaceLayout() {
   usePublishWorkspacePresence(registryContextId, selfIdentity);
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
-  // Explicit re-trigger for a stalled post-join sync — a real action so a
+  // Explicit re-trigger for a stalled post-join sync - a real action so a
   // user staring at a stuck "syncing" state re-fires the sync instead of
   // re-joining. Best-effort: the SSE stream + refetch surface the outcome.
   const onRetrySync = useCallback(() => {
     // `mero` is null until the provider has a session. The button can only be
-    // pressed from a rendered workspace, so this is defensive — but an
+    // pressed from a rendered workspace, so this is defensive - but an
     // unguarded call here would throw inside an onClick and take the layout
     // down with it rather than doing nothing.
     if (!mero) return;
@@ -117,7 +117,7 @@ export function WorkspaceLayout() {
     selectedFolder?.id ?? '',
   );
 
-  // Friendly display of the node URL — stripped of protocol for
+  // Friendly display of the node URL - stripped of protocol for
   // compactness, full URL kept in the title attribute for copy-paste.
   const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
@@ -320,7 +320,7 @@ export function WorkspaceLayout() {
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {/* Connection indicator — shows the node URL and online
+          {/* Connection indicator - shows the node URL and online
               state. Hidden on narrow viewports; title carries the
               full URL for copy-paste. */}
           {nodeUrl && (
@@ -407,7 +407,7 @@ export function WorkspaceLayout() {
               </div>
             ) : selectedFolderId && selectedDocId && showEditor ? (
               // Editor gated on selectedFolderId (stable persistent state),
-              // NOT selectedFolder — `folders` is a useMemo that recomputes on
+              // NOT selectedFolder - `folders` is a useMemo that recomputes on
               // every workspace SSE refetch, and a momentary gap where the
               // folder isn't yet in the recomputed array would otherwise flip
               // this to "Select a folder", unmount DocumentEditor mid-save,
@@ -460,7 +460,7 @@ export function WorkspaceLayout() {
               <HomePage />
             ) : !selectedFolder ? (
               // A folder IS selected (selectedFolderId set) but its object
-              // isn't in the recomputed `folders` list yet — a transient gap
+              // isn't in the recomputed `folders` list yet - a transient gap
               // during an SSE refetch. Show a neutral loading state rather
               // than flashing "Select a folder" (same stable-id reasoning as
               // the editor branch above).
@@ -544,7 +544,7 @@ function describeSync(snap: SyncSnapshot | null): {
 }
 
 // Post-join "syncing" state, driven by live SSE sync-status so the user
-// can tell "still connecting / receiving X%" from "stuck" — the whole
+// can tell "still connecting / receiving X%" from "stuck" - the whole
 // point of the fix (a static message reads the same as a failure, so
 // people re-click Join). Falls back to a generic connecting message
 // until the first SyncStatus event arrives.
@@ -558,7 +558,7 @@ function SyncingWorkspaceState({
   const phase = syncStatus?.phase;
   // `backingOff` is the authoritative "stuck" signal. A `lastError` can
   // linger on the wire during an active phase, so it must NOT hide the
-  // spinner / show Retry — it's rendered separately as informational text.
+  // spinner / show Retry - it's rendered separately as informational text.
   const stalled = phase === 'backingOff';
   const percent = phase === 'receivingSnapshot' ? syncStatus?.percent : null;
   const { title, body } = describeSync(syncStatus);

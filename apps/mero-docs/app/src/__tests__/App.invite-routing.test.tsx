@@ -1,7 +1,7 @@
 // An invite deep link has to survive the router.
 //
 // links.calimero.network forwards the invite query to the frontend ROOT, so
-// every invite arrives on `/` with `?invitation=…` — including for people who
+// every invite arrives on `/` with `?invitation=…` - including for people who
 // are already signed in, who are most of the people who get one. `/` also
 // carries the "you're signed in, go to the app" redirect, and `<Navigate
 // to="/app">` drops the query string. The two fire in the same commit, and the

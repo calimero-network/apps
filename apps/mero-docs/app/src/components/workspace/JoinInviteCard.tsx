@@ -43,7 +43,7 @@ export function JoinInviteCard({
   const { isAuthenticated, isLoading } = useMero();
   // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
   // namespaces scoped by application id, and the provider's id belongs to
-  // whichever app last logged in on this origin — so on a shared dev origin
+  // whichever app last logged in on this origin - so on a shared dev origin
   // this listed another app's namespaces and told a real member they were not
   // one. Resolve mero-docs's own id from the node, by package. See lib/appId.
   const { appId } = useApplicationId();
@@ -80,7 +80,7 @@ export function JoinInviteCard({
         // The name goes to the NODE, not just to this browser: `groupName` on
         // the join request is what files the creator's chosen workspace name
         // against the joiner's own governance row, so it is there for every
-        // tab and every future session on this machine — and for the desktop
+        // tab and every future session on this machine - and for the desktop
         // app, which shares the node and not the localStorage.
         await joinNs(parsed.targetId, parsed.invitation, parsed.targetName);
         // Mirror it into the local snapshot as well. Belt and braces for the
@@ -100,7 +100,7 @@ export function JoinInviteCard({
       } else {
         await joinGroup(parsed.invitation, parsed.targetName);
         // For folder joins the namespace is already in place; no
-        // sync gate needed — the folder's docs context will sync
+        // sync gate needed - the folder's docs context will sync
         // in the background the usual way.
       }
       await onJoined();

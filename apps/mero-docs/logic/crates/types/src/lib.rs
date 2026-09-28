@@ -5,8 +5,8 @@
 //! one taking an arbitrary opaque string).
 //!
 //! `Visibility` is the registry's per-folder inheritance flag:
-//! - `Inherit`  — cascade parent members down from the parent folder
-//! - `Restricted` — subtree is opaque; cascades stop at the boundary
+//! - `Inherit`  - cascade parent members down from the parent folder
+//! - `Restricted` - subtree is opaque; cascades stop at the boundary
 //!
 //! `DriveError` is the *internal* error type used inside each service's
 //! helper functions. Public `#[app::logic]` methods return `app::Result<T>`
@@ -80,7 +80,7 @@ pub enum Visibility {
     Restricted,
 }
 
-/// Per-folder collaborator role — the *application* permission for what a
+/// Per-folder collaborator role - the *application* permission for what a
 /// member may do inside a folder, distinct from core's namespace-level
 /// `MemberCapabilities` bitmask (core gates *joining* a subgroup; this gates
 /// what you do once you are in it).

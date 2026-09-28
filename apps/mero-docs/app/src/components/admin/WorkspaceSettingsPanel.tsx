@@ -1,13 +1,13 @@
 // Namespace-admin settings surface. One section:
 //
-//   1. Registry owner & managers — the fail-closed authorization roots
+//   1. Registry owner & managers - the fail-closed authorization roots
 //      for the per-folder Role API (set_folder_role / add_manager all
 //      require owner-or-manager). The owner can add/remove managers;
 //      managers (and non-owner admins) see the list read-only. If the
 //      registry is unclaimed (a namespace seeded before `claim_owner`
 //      was wired in), any namespace-admin can "Claim ownership".
 //
-// Admin-only — the panel returns null for non-admins so the settings
+// Admin-only - the panel returns null for non-admins so the settings
 // surface doesn't advertise actions the caller can't take.
 
 import React, { useState } from 'react';
@@ -72,7 +72,7 @@ export function WorkspaceSettingsPanel() {
     registryDuplicates,
   } = useDriveWorkspace();
   // Display-name routing in this panel uses the namespace id (not the
-  // registry context id) — display names are per-namespace, the same
+  // registry context id) - display names are per-namespace, the same
   // scope as core's MemberMetadata.
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const reg = useRegistryAdmin();
@@ -198,7 +198,7 @@ export function WorkspaceSettingsPanel() {
 
         {/* Leftovers from the `contexts[0]` era. A namespace could accumulate
             several registry contexts, and which one the app read depended on
-            list order — so one node showed the folders and another showed an
+            list order - so one node showed the folders and another showed an
             empty workspace. The resolver now adopts the one holding the data
             and pins it, but the extra contexts still exist on the node, and an
             admin looking for "why did I see nothing yesterday" deserves to be
@@ -300,7 +300,7 @@ export function WorkspaceSettingsPanel() {
                     {/* MemberPicker autocompletes against the namespace's
                         existing members; excludes the current owner and
                         anyone already a manager so they can't be re-added.
-                        Free-form Enter still commits a raw pubkey paste —
+                        Free-form Enter still commits a raw pubkey paste -
                         the existing looksLikeMemberIdentity check in
                         onAddManager runs unchanged. */}
                     <MemberPicker

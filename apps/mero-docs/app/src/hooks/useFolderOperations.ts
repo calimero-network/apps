@@ -1,6 +1,6 @@
 // Folder CRUD. Creates a subgroup under a parent, attaches a fresh
 // docs context, registers the folder in the namespace registry, and
-// sets `subgroup_visibility` on the new subgroup (Open by default —
+// sets `subgroup_visibility` on the new subgroup (Open by default -
 // namespace members inherit membership via core's parent-walk;
 // Restricted for explicit-invite-only folders).
 //
@@ -21,7 +21,7 @@ import {
   useMero,
 } from '@calimero-network/mero-react';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import {
@@ -42,7 +42,7 @@ export interface CreateFolderInput {
    *  'Restricted' = explicit invite required (per-subgroup wall). */
   visibility: 'Open' | 'Restricted';
   /** Identities to add to the new subgroup immediately (Restricted
-   *  folders only — Open folders inherit members from the namespace).
+   *  folders only - Open folders inherit members from the namespace).
    *  Added best-effort as the final create step; a failure here does
    *  NOT roll back the folder. */
   members?: string[];
@@ -101,7 +101,7 @@ export function useFolderOperations(
       let registryEntryCreated = false;
       // Flips true once the folder + docs context exist and are bound.
       // Past this point a failure (e.g. adding members) must NOT roll
-      // back a perfectly good folder — it should surface instead.
+      // back a perfectly good folder - it should surface instead.
       let folderReady = false;
 
       try {
@@ -114,13 +114,13 @@ export function useFolderOperations(
         // to direct subgroup members). The create-time `name` stamp
         // and any subsequent `setGroupMetadata` BEFORE
         // `setSubgroupVisibility(Open)` therefore land subgroup-key-
-        // encrypted — namespace-only members can't decrypt them, and
+        // encrypted - namespace-only members can't decrypt them, and
         // see the folder as unnamed.
         //
         // Order below: create with no name → reparent → flip
         // visibility → set name. For Restricted subgroups the
         // visibility flip is a no-op (Restricted is the default),
-        // and the name write still encrypts with the subgroup key —
+        // and the name write still encrypts with the subgroup key -
         // which is fine because only subgroup members ever read it.
         const group = await createGroupInNamespace(input.namespaceId, {});
         if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
@@ -134,7 +134,7 @@ export function useFolderOperations(
 
         // Core expects lowercase `"open"` / `"restricted"`; see
         // `crates/server/src/admin/handlers/groups/set_subgroup_visibility.rs:31`
-        // — capitalized values return 400 Bad Request.
+        // - capitalized values return 400 Bad Request.
         await setSubgroupVisibility(newId, {
           subgroupVisibility: input.visibility.toLowerCase(),
         });
@@ -182,7 +182,7 @@ export function useFolderOperations(
         // up to and including bindFolderContext). Roll back the
         // half-built folder, reversing creation order. Each cleanup is
         // try/catch-wrapped and logged so one cleanup failure doesn't
-        // mask the original error — the caller still sees the real
+        // mask the original error - the caller still sees the real
         // cause via the outer rethrow.
         if (registryEntryCreated && createdGroupId) {
           await registryClient
@@ -204,10 +204,10 @@ export function useFolderOperations(
 
       // --- Post-creation, best-effort (folder is fully built here) ---
       // These steps must NOT throw: a throw propagates to the dialog,
-      // which keeps it open with "Create" re-enabled — letting the user
+      // which keeps it open with "Create" re-enabled - letting the user
       // resubmit and create a DUPLICATE folder. The folder is already
       // valid, so on failure we log loudly (the role must be a core
-      // MemberRole variant — `Member`, not `member` — which silently
+      // MemberRole variant - `Member`, not `member` - which silently
       // broke adds before) and let the dialog close. Missing members
       // can be re-added from the folder's sharing panel.
       if (folderReady && createdGroupId) {
@@ -289,7 +289,7 @@ export function useFolderOperations(
       // display list. The workspace `folders` list is filtered to what
       // the caller can see (hidden restricted folders are dropped), so
       // using it here would miss a hidden restricted child under a
-      // visible parent — `descendantsOf` wouldn't enumerate it, and
+      // visible parent - `descendantsOf` wouldn't enumerate it, and
       // `deleteGroup(parent)` would then fail server-side ("live
       // subgroups"). The registry owns the authoritative tree shape, so
       // re-read it here.
@@ -299,7 +299,7 @@ export function useFolderOperations(
         parent_id: f.parent_id ?? null,
       }));
       // `descendantsOf` from utils/ancestry already returns leaf-first
-      // (post-order) — deepest first, root last — which is exactly
+      // (post-order) - deepest first, root last - which is exactly
       // what the admin API's "no deletes with live subgroups"
       // invariant needs. Append the folder itself at the end so it's
       // deleted after all of its children.

@@ -44,7 +44,7 @@ function findViolations(
   const violations: Violation[] = [];
 
   function check(text: string): void {
-    if (text.includes('—')) violations.push({ file, text, reason: 'em-dash' });
+    if (text.includes('\u2014')) violations.push({ file, text, reason: 'em-dash' });
     if (text.includes('...')) {
       violations.push({ file, text, reason: 'triple-dot' });
     }

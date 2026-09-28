@@ -1,6 +1,6 @@
 // Document leaves for ONE expanded folder. Mounted by FolderTreeItem
-// only while its folder is expanded, so useDocs(folderId) — which
-// resolves a per-folder Calimero context — fires lazily rather than
+// only while its folder is expanded, so useDocs(folderId) - which
+// resolves a per-folder Calimero context - fires lazily rather than
 // for every folder in the tree on load. Collapsing the folder
 // unmounts this and releases the subscription.
 
@@ -38,7 +38,7 @@ export function FolderDocLeaves({
     void create().finally(onCreateSettled);
   }, [contextId, createPending, onCreateSettled, create]);
 
-  // Context not yet bound: a brief muted hint, never a red error —
+  // Context not yet bound: a brief muted hint, never a red error -
   // folders sync from peers and the context lands a moment later.
   if (!docs.contextId) {
     if (docs.error) return null; // access-denied / no membership: silent

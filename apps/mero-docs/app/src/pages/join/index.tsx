@@ -15,7 +15,7 @@
 //      will surface the new membership on the next render).
 //
 // The accept-card body is shared with the in-app paste-link dialog
-// (NamespaceJoinDialog) via JoinInviteCard — this page is the thin
+// (NamespaceJoinDialog) via JoinInviteCard - this page is the thin
 // route wrapper around it.
 
 import React, { useMemo } from 'react';

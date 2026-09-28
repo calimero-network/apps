@@ -5,7 +5,7 @@
 // editor library is underneath:
 //   - `initialContent` / `onContentChange` carry an OPAQUE string. With
 //     BlockNote that string is `JSON.stringify(editor.document)` (a
-//     serialized Block[]) instead of HTML — DocumentEditor only ever
+//     serialized Block[]) instead of HTML - DocumentEditor only ever
 //     compares the string, so its autosave / seq-guard / SSE-reconcile
 //     logic transfers verbatim.
 //   - `readOnly`, `saveStatus`, `lastSavedAt`, `isAppReady`, `isLoading`
@@ -14,7 +14,7 @@
 // The one delicate piece is remote-content application. Tiptap let us
 // inject remote edits with `setContent(html, { emitUpdate: false })`.
 // BlockNote's `replaceBlocks` ALWAYS fires `onChange` (no suppress flag
-// exists — verified against source), so an SSE refresh would otherwise
+// exists - verified against source), so an SSE refresh would otherwise
 // masquerade as a local keystroke and trigger a spurious autosave (and,
 // worse, a feedback loop between two collaborators). We guard every
 // programmatic replace with `applyingRemoteRef`: set it, replaceBlocks,
@@ -214,11 +214,11 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   const lastContentRef = useRef<string | undefined>(undefined);
 
   // Prime counts + the content baseline ONCE per editor instance. Kept
-  // in its own effect (deps: [editor]) — NOT folded into the onChange
-  // subscription below — so that a change in `onContentChange` identity
+  // in its own effect (deps: [editor]) - NOT folded into the onChange
+  // subscription below - so that a change in `onContentChange` identity
   // can't re-run the prime and reset `lastContentRef`, which would drop
   // the baseline for an in-progress edit. CRITICAL: priming must NOT
-  // emit onContentChange — the shell is mounted with an empty editor
+  // emit onContentChange - the shell is mounted with an empty editor
   // while the doc loads, and emitting here would schedule a save of
   // empty content that could land after the real content arrives and
   // wipe the document.
@@ -257,12 +257,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // guards make this robust regardless of whether BlockNote dispatches the
   // transaction synchronously or (in some future version) asynchronously:
   //   1. `applyingRemoteRef` short-circuits onChange for the duration of
-  //      the apply — covers the synchronous case and the intermediate
+  //      the apply - covers the synchronous case and the intermediate
   //      transaction states. Cleared in `finally`, so a throw can't strand
   //      it true.
   //   2. `lastContentRef` is set to the applied content, so once the doc
   //      settles its serialization equals `lastContentRef` and onChange's
-  //      equality check drops it — covers any onChange that fires AFTER
+  //      equality check drops it - covers any onChange that fires AFTER
   //      the flag is cleared (i.e. an async dispatch). Belt and suspenders.
   useEffect(() => {
     if (!editor || initialContent === undefined) return;
@@ -317,7 +317,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           try {
             editor.setTextCursorPosition(target, 'end');
           } catch {
-            /* block no longer focusable — leave default caret */
+            /* block no longer focusable - leave default caret */
           }
         }
       }

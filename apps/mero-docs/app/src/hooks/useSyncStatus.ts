@@ -12,7 +12,7 @@
 //     data: { syncState: { state, percent?, etaSecs?, recordsReceived?,
 //                          retryInSecs? }, failureCount, lastError? } }
 // `syncState` is internally tagged on `state` (camelCase). `is_initialized`
-// is deliberately NOT on this event — it's a context-layer fact; the join
+// is deliberately NOT on this event - it's a context-layer fact; the join
 // gate infers "data arrived" from the folder-list load instead.
 
 import { useCallback, useMemo, useState } from 'react';
@@ -69,7 +69,7 @@ function sameSnapshot(a: SyncSnapshot | null, b: SyncSnapshot): boolean {
   );
 }
 
-/** Coerce a wire value to a finite number, else null — the payload is
+/** Coerce a wire value to a finite number, else null - the payload is
  *  untrusted network input, and a bad `percent` would otherwise render as
  *  `NaN%` (and a broken width) in the progress bar. */
 function num(v: unknown): number | null {
@@ -77,7 +77,7 @@ function num(v: unknown): number | null {
 }
 
 /** Parse a raw SSE event into a SyncSnapshot, or null if it isn't a
- *  well-formed `SyncStatus` event. Pure — this is the unit under test. */
+ *  well-formed `SyncStatus` event. Pure - this is the unit under test. */
 export function parseSyncStatusEvent(
   event: SseEventData | null | undefined,
 ): SyncSnapshot | null {
@@ -130,7 +130,7 @@ export function useSyncStatus(
 
   const [latest, setLatest] = useState<SyncSnapshot | null>(null);
   // Drop the previous id-set's snapshot the moment the subscription changes
-  // (e.g. a namespace switch), synchronously during render — React re-renders
+  // (e.g. a namespace switch), synchronously during render - React re-renders
   // immediately without committing, so no consumer (nor the useDriveWorkspace
   // watchdog, which treats a lingering non-idle snapshot as "still syncing")
   // ever reads a stale phase for the new set. Resetting in an effect instead

@@ -7,8 +7,8 @@ import type { Role } from '../../generated/registry/RegistryClient';
 // The registry-Role layer (useFolderRole) is mocked so each test can
 // pin a role / loading / error / registry-availability independently of
 // the (no-op without a registryClient) real hook. The owner-or-manager
-// flag now lives on useDriveWorkspace().registryAdmin (hoisted) — pinned
-// via the useDriveWorkspace mock below. useMemberCaps stays real — it's
+// flag now lives on useDriveWorkspace().registryAdmin (hoisted) - pinned
+// via the useDriveWorkspace mock below. useMemberCaps stays real - it's
 // what drives the cap-derived booleans.
 const folderRoleState: {
   role: Role | null;
@@ -43,7 +43,7 @@ vi.mock('../useFolderRole', () => ({
 // (re-exported as CAPABILITIES from constants/config).
 const listMembersMock = vi.fn();
 const getMemberCapsMock = vi.fn();
-// Stable mero ref — useMemberCaps's effect deps include `mero`, so a
+// Stable mero ref - useMemberCaps's effect deps include `mero`, so a
 // new object every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
   mero: {
@@ -59,7 +59,7 @@ vi.mock('@calimero-network/mero-react', () => ({
 }));
 
 const identityMock: { value: string | null } = { value: 'me' };
-// useFolderPermissions no longer reads workspace state — capabilities
+// useFolderPermissions no longer reads workspace state - capabilities
 // come straight from useMemberCaps now that core handles
 // open-subgroup membership inheritance server-side. The mock stays so
 // any transitive consumer that imports useDriveWorkspace gets a stub.
@@ -156,7 +156,7 @@ describe('useFolderPermissions', () => {
 
   it('null caps → loading true, isMember false', async () => {
     // Drop the identity so the hook short-circuits to its loading state
-    // (caps stay null) — exercises the loading/isMember boundary.
+    // (caps stay null) - exercises the loading/isMember boundary.
     identityMock.value = null;
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     expect(result.current.loading).toBe(true);
@@ -173,7 +173,7 @@ describe('useFolderPermissions', () => {
 
   it('caps-fetch error → isMember false (NOT writable on error)', async () => {
     // useMemberCaps reports `caps = 0, error = Error` when retries are
-    // exhausted. `isMember` must be false here — otherwise consumers
+    // exhausted. `isMember` must be false here - otherwise consumers
     // that gate on `perms.isMember` (e.g. the doc editor's
     // `canEditDocs`) would become writable on a transient fetch
     // failure, a regression from the old `canWrite` (false on error
@@ -221,7 +221,7 @@ describe('useFolderPermissions', () => {
 
   it('role still loading (registry exists) → canEditDocs false for a member', async () => {
     // Conservative default: until the registry Role *definitively*
-    // resolves, a folder member is read-only — autosave must not
+    // resolves, a folder member is read-only - autosave must not
     // persist a would-be Viewer's edits during the resolve window.
     folderRoleState.role = null;
     folderRoleState.loading = true;
@@ -286,7 +286,7 @@ describe('useFolderPermissions', () => {
     // sharing-panel admin gate; `canManageGroup` is the "any folder-
     // admin power" aggregate over folder caps. A registry-only manager
     // with zero folder caps gets `canManagePermissions=true` but NOT
-    // `canManageGroup` — otherwise the FolderContextMenu would show
+    // `canManageGroup` - otherwise the FolderContextMenu would show
     // its ⋯ trigger with no enabled items underneath.
     registryAdminState.isOwnerOrManager = true;
     const { result } = renderWithCaps(0);

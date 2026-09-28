@@ -3,12 +3,12 @@
 // Two modes:
 //   - parentFolderId=null → top-level folder; gated by
 //     useNamespacePermissions.canCreateFolder on the namespace
-//     root group (core's CAN_CREATE_SUBGROUP — root-only).
+//     root group (core's CAN_CREATE_SUBGROUP - root-only).
 //   - parentFolderId=<id> → nested under a specific parent; gated
 //     by useFolderPermissions.canCreateSubfolder on that folder.
 //
 // Renders nothing (not a disabled stub) when the caller lacks the
-// cap — keeps the UI uncluttered. Callers wanting a persistent
+// cap - keeps the UI uncluttered. Callers wanting a persistent
 // "Create" affordance even without permission should render a
 // tooltip-explained disabled button themselves.
 

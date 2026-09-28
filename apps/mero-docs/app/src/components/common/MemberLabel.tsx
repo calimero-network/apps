@@ -27,13 +27,13 @@ export function MemberLabel({
   isSelf,
 }: Props) {
   // Two name sources:
-  //   1. The per-(namespace, identity) metadata fetch — authoritative
+  //   1. The per-(namespace, identity) metadata fetch - authoritative
   //      when it resolves with a name. Refreshes live via the
   //      namespace SSE subscription.
   //   2. The namespace-wide identity→name map in useDriveWorkspace.
   //      Sourced from the namespace's root-group GroupMember rows,
   //      so folder / sharing panels resolve names without each row
-  //      firing its own metadata HTTP call — and crucially, it still
+  //      firing its own metadata HTTP call - and crucially, it still
   //      surfaces a name when the per-row metadata fetch resolves to
   //      null (e.g. a non-admin viewer who lacks the capability to
   //      read another member's metadata directly). The map itself is

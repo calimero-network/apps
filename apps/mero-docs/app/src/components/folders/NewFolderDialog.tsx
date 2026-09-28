@@ -1,6 +1,6 @@
 // New-folder modal. Wraps useFolderOperations.create with a small
 // form: alias + optional color + visibility toggle. Permission-gating
-// lives on the button that opens this dialog — once here, the caller
+// lives on the button that opens this dialog - once here, the caller
 // is authorised for this scope.
 //
 // Depth is capped at MAX_FOLDER_DEPTH (design-spec UX cap, not

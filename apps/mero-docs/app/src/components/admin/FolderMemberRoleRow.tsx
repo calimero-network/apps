@@ -26,7 +26,7 @@ import {
   type FolderAccessRole,
 } from '@/lib/roles';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point —
+// The generated constructor is the only way to make one, which is the point -
 // this fleet has had folder ids, context ids and account ids all be bare 64-hex
 // strings that type-check in each other's slots.
 import { FolderId } from '@/generated/registry/RegistryClient';
@@ -42,7 +42,7 @@ interface Props {
   coreRole?: string;
   /** Registry folder Role for this member (default 'Editor' if absent). */
   registryRole: Role;
-  /** True when this row is the caller's own identity — surfaces a
+  /** True when this row is the caller's own identity - surfaces a
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
   canManage: boolean;
@@ -76,7 +76,7 @@ export function FolderMemberRoleRow({
   //
   // Depend on `caps.refetch` (the stable useCallback inside
   // mero-react's useGroupCapabilities), NOT the whole `caps`
-  // object — mero-react returns a fresh object literal each
+  // object - mero-react returns a fresh object literal each
   // render, which would otherwise churn the SSE handler identity.
   const capsRefetch = caps.refetch;
   const onCapsEvent = useCallback(() => {
@@ -118,7 +118,7 @@ export function FolderMemberRoleRow({
       await caps.setCapabilities(grant.folderCaps);
       // `useGroupCapabilities.setCapabilities` resolves with the new
       // bitmask but mero-react does NOT necessarily update the hook's
-      // own `capabilities` state until the next read — and the
+      // own `capabilities` state until the next read - and the
       // RoleSelect's current role derives from that value.
       // Explicitly refetching keeps the dropdown label honest after
       // the write lands.

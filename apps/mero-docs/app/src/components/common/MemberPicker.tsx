@@ -3,24 +3,24 @@
 // expecting a 64-char hex pubkey; this lets the admin start typing
 // a name or a pubkey prefix and pick from the workspace member list.
 // Free-form paste of an unknown pubkey still works (Enter commits the
-// raw text via onSelect — the downstream form validates / sends).
+// raw text via onSelect - the downstream form validates / sends).
 //
 // Filtering happens in the parent, on the *pre-loaded* `GroupMember.name`
 // field that `useGroupMembers` returns (core propagates each
 // member's MetadataRecord.name into the list rows). Only the rows that
 // matched render a <MemberLabel>, which itself calls useMemberDisplayName
-// — so the live-metadata lookup is bounded by what's actually visible,
+// - so the live-metadata lookup is bounded by what's actually visible,
 // not by the size of the workspace.
 //
 // Props:
-//   namespaceId — needed so each visible row can resolve its display
+//   namespaceId - needed so each visible row can resolve its display
 //                 name via <MemberLabel>; also the scope this picker
 //                 operates in.
-//   onSelect    — fired with the chosen identity. The parent decides
+//   onSelect    - fired with the chosen identity. The parent decides
 //                 what to do (set its own state, call the server, etc).
-//   exclude     — identities to omit from the dropdown (e.g. existing
+//   exclude     - identities to omit from the dropdown (e.g. existing
 //                 managers / members already in the folder).
-//   placeholder — passed through to the input.
+//   placeholder - passed through to the input.
 //   ariaLabel
 //   disabled
 
@@ -61,7 +61,7 @@ export function MemberPicker({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   // Active option index for keyboard navigation (Arrow keys) + the
-  // listbox's aria-selected signal. -1 means "no active option" —
+  // listbox's aria-selected signal. -1 means "no active option" -
   // when the user is typing without having arrowed down yet.
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +71,7 @@ export function MemberPicker({
 
   const excludeSet = useMemo(() => new Set(exclude ?? []), [exclude]);
 
-  // Filter in the parent — on the pre-loaded GroupMember.name and the
+  // Filter in the parent - on the pre-loaded GroupMember.name and the
   // pubkey prefix. Only matching rows render a MemberLabel, so the
   // useMemberDisplayName fan-out is bounded by what's actually shown.
   const matches = useMemo(() => {
@@ -96,7 +96,7 @@ export function MemberPicker({
   };
 
   // Reset active highlight whenever the filtered list changes shape
-  // — otherwise an out-of-range index can persist after typing.
+  // - otherwise an out-of-range index can persist after typing.
   useEffect(() => {
     if (activeIndex >= matches.length) setActiveIndex(matches.length - 1);
   }, [matches.length, activeIndex]);

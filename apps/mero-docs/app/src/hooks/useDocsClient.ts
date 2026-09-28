@@ -1,4 +1,4 @@
-// Memoized DocsClient factory — same shape as useRegistryClient but
+// Memoized DocsClient factory - same shape as useRegistryClient but
 // scoped to a folder's docs context rather than the namespace-wide
 // registry. Returns null until all three inputs resolve so consumers
 // can gate rendering on the client being ready.

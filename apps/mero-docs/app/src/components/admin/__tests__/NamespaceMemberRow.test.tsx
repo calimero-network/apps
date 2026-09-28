@@ -166,7 +166,7 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
     fireEvent.change(input, { target: { value: 'Alice' } });
     fireEvent.click(screen.getByLabelText('Save'));
     // submitRename awaits renameTo + refetchName then exits edit mode.
-    // We don't need to await the promise chain here — the mock fired
+    // We don't need to await the promise chain here - the mock fired
     // synchronously when click handler invoked it; flush microtasks
     // to let promise resolution settle for any post-assertions.
     await Promise.resolve();

@@ -27,7 +27,7 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (v: T) => void]
           window.localStorage.setItem(key, JSON.stringify(v));
         }
       } catch {
-        // storage unavailable / quota — state is already updated in
+        // storage unavailable / quota - state is already updated in
         // memory, so the UI is correct even if the persist failed.
       }
     },
