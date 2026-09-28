@@ -14,6 +14,7 @@ import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
@@ -22,6 +23,7 @@ import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
 import { copyLink } from '@/lib/copyLink';
 import {
   isHomeQueryFiltered,
+  isMentionsPage,
   parseHomeQuery,
   serializeHomeQuery,
   tagPageKey,
@@ -99,6 +101,8 @@ export function WorkspaceNav({
   const onHome = !!route && !route.folder && !route.settings;
   const q = parseHomeQuery(new URLSearchParams(search));
   const tagPage = onHome ? tagPageKey(q) : null;
+  const mentionsPage = onHome && isMentionsPage(q);
+  const mentioned = useMentionedMe();
   // Only Home's person filter is named here, so no other page reads a member's profile.
   const personName = usePersonName(onHome ? q.by : null);
   const liveRows = React.useMemo(
@@ -117,6 +121,13 @@ export function WorkspaceNav({
     goHome(homeSearch);
     onNavigate();
   };
+  const mentionsSearch = serializeHomeQuery({
+    folders: [],
+    tags: [],
+    mentions: 'me',
+    archived: false,
+    sort: 'updated',
+  });
   const tagPageSearch = (key: string) =>
     serializeHomeQuery({
       folders: [],
@@ -207,13 +218,27 @@ export function WorkspaceNav({
           count: countKnown
             ? rows.filter((r) => !r.archived).length
             : undefined,
-          selected: onHome && !tagPage && !selectedViewId,
+          selected: onHome && !tagPage && !mentionsPage && !selectedViewId,
           onSelect: () => go(),
+        }}
+        mentions={{
+          count:
+            countKnown && mentioned.known
+              ? viewRowCount(
+                  liveRows,
+                  folders,
+                  now,
+                  mentionsSearch,
+                  mentioned.keys,
+                )
+              : undefined,
+          selected: mentionsPage && !selectedViewId,
+          onSelect: () => go(mentionsSearch),
         }}
         views={savedViews.map((v) => ({
           id: v.id,
           name: v.name,
-          count: viewRowCount(liveRows, folders, now, v.query),
+          count: viewRowCount(liveRows, folders, now, v.query, mentioned.keys),
           shared: v.scope === 'everyone',
           selected: selectedViewId === v.id,
           onSelect: () => go(withView(v.query, v.id)),

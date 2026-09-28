@@ -31,8 +31,23 @@ const index = {
   foldersKnown: true,
   folderStatus: { f1: 'ready' } as Record<string, string>,
 };
+const mentionOf = (docId: string, member = 'me', folderId = 'f1') => ({
+  folderId,
+  docId,
+  blocks: [],
+  links: [],
+  mentions: [{ ws: 'ws1', member, blockId: 'b1', sentence: '' }],
+});
+const textIndex = {
+  texts: new Map<string, ReturnType<typeof mentionOf>>(),
+  foldersDone: 1,
+  foldersTotal: 1,
+  pending: [] as string[],
+  failed: [] as string[],
+};
 vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => index,
+  useTextIndexValue: () => textIndex,
 }));
 const createTag = vi.fn();
 let canManageTags = true;
@@ -47,6 +62,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
       { namespaceId: 'ws1', name: 'Acme Product' },
       { namespaceId: 'ws2', name: 'Other' },
     ],
+    namespaceId: 'ws1',
     selfIdentity: 'me',
     namespaceMemberNames: {},
   }),
@@ -145,6 +161,9 @@ beforeEach(() => {
   index.folderStatus = { f1: 'ready' };
   index.folders = [{ id: 'f1', name: 'One' }];
   index.foldersKnown = true;
+  textIndex.texts = new Map();
+  textIndex.foldersDone = 1;
+  textIndex.failed = [];
 });
 
 describe('WorkspaceNav', () => {
@@ -172,6 +191,48 @@ describe('WorkspaceNav', () => {
     expect(
       screen
         .getByRole('button', { name: 'Q3, 1' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    const home = screen.getByRole('button', { name: 'Home, 2' });
+    expect(home.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('counts the readable, unarchived docs that mention you under Mentions', () => {
+    textIndex.texts = new Map(
+      [
+        mentionOf('a'),
+        mentionOf('b', 'bob'),
+        mentionOf('c'),
+        mentionOf('x', 'me', 'secret'),
+      ].map((t) => [`${t.folderId}/${t.docId}`, t]),
+    );
+    mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Mentions, 1' })).toBeTruthy();
+  });
+
+  it('shows no Mentions count while documents are still being read', () => {
+    textIndex.foldersDone = 0;
+    mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Mentions' })).toBeTruthy();
+  });
+
+  it('shows no Mentions count when a folder could not be fully read', () => {
+    textIndex.foldersDone = 0;
+    textIndex.failed = ['f1'];
+    mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Mentions' })).toBeTruthy();
+  });
+
+  it('opens Mentions as Home filtered to Mentioned me, and marks that row, not Home', () => {
+    const { unmount } = mount('/app/ws1');
+    fireEvent.click(screen.getByRole('button', { name: 'Mentions, 0' }));
+    expect(search).toBe('?mentions=me');
+    unmount();
+
+    mount('/app/ws1?mentions=me');
+    expect(
+      screen
+        .getByRole('button', { name: 'Mentions, 0' })
         .getAttribute('aria-current'),
     ).toBe('page');
     const home = screen.getByRole('button', { name: 'Home, 2' });

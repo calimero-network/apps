@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 
-type Kind = 'no-folders' | 'no-docs' | 'no-matches' | 'no-tagged';
+type Kind = 'no-folders' | 'no-docs' | 'no-matches' | 'no-tagged' | 'partial';
 
 const COPY: Record<
   Kind,
@@ -48,6 +48,11 @@ const COPY: Record<
     icon: Tag,
     title: 'No documents have this tag yet',
     body: 'Add it from the Tags row at the top of a document.',
+  },
+  partial: {
+    icon: SearchX,
+    title: 'No matches in the documents read so far',
+    body: 'Some documents could not be read, so this list may be incomplete.',
   },
 };
 

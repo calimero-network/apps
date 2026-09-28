@@ -4,6 +4,7 @@ import { Kbd } from '@/components/common/Kbd';
 import { cn } from '@/lib/utils';
 import { shortcutLabel } from '@/lib/platform';
 import {
+  byGroup,
   MENU_EMPTY,
   MENU_ICON,
   MENU_ID,
@@ -27,17 +28,6 @@ interface SlashMenuProps<Item extends SlashMenuItem> {
   items: Item[];
   activeIndex: number;
   onPick: (item: Item) => void;
-}
-
-/** Items in runs of the same group, each with its index in the flat list the keyboard walks. */
-function byGroup<Item extends SlashMenuItem>(items: Item[]) {
-  const groups: { name: string; rows: { item: Item; index: number }[] }[] = [];
-  items.forEach((item, index) => {
-    const last = groups[groups.length - 1];
-    if (last?.name === item.group) last.rows.push({ item, index });
-    else groups.push({ name: item.group, rows: [{ item, index }] });
-  });
-  return groups;
 }
 
 // The / menu. The editor's suggestion controller owns the keyboard, so the active row is controlled.

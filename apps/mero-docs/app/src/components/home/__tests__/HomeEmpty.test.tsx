@@ -18,6 +18,16 @@ describe('HomeEmpty', () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
+  it('says only part of the documents were read, with nothing to click', () => {
+    render(<HomeEmpty kind="partial" onAction={vi.fn()} />);
+    expect(
+      screen.getByRole('heading', {
+        name: 'No matches in the documents read so far',
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('says a tag has no documents yet, with nothing to click', () => {
     render(<HomeEmpty kind="no-tagged" onAction={vi.fn()} />);
     expect(

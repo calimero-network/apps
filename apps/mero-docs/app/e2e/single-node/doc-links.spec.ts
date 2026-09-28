@@ -46,7 +46,7 @@ test.describe('Doc links (single-node)', () => {
   }) => {
     const { page, editor } = alice;
     await page.keyboard.type('@');
-    await expect(page.getByText('Link to a document')).toBeVisible();
+    await expect(editor.linkPicker()).toBeVisible();
     await page.keyboard.type('pric');
     await expect(editor.linkPicker().getByRole('option').first()).toContainText(
       'Pricing notes',
@@ -70,11 +70,11 @@ test.describe('Doc links (single-node)', () => {
     await page.keyboard.type('@pr');
     await expect(editor.linkPicker()).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByText('Link to a document')).toBeHidden();
+    await expect(editor.linkPicker()).toBeHidden();
     await editor.expectContent('Pricing follows the model in @pr');
 
     await page.keyboard.type(' and @zzzzzz');
-    await expect(page.getByText('Link to a document')).toBeHidden();
+    await expect(editor.linkPicker()).toBeHidden();
     await editor.expectContent('@pr and @zzzzzz');
     await expect(editor.docLink('Pricing notes')).toHaveCount(0);
   });
@@ -82,7 +82,7 @@ test.describe('Doc links (single-node)', () => {
   test('an email address and [[ stay plain text', async ({ alice }) => {
     const { page, editor } = alice;
     await page.keyboard.type('ada@example.com or [[pr');
-    await expect(page.getByText('Link to a document')).toBeHidden();
+    await expect(editor.linkPicker()).toBeHidden();
     await editor.expectContent('ada@example.com or [[pr');
   });
 

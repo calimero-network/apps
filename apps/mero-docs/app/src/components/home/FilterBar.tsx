@@ -2,6 +2,7 @@ import * as React from 'react';
 import {
   Archive,
   ArrowDownWideNarrow,
+  AtSign,
   Calendar,
   ChevronDown,
   Folder,
@@ -26,6 +27,7 @@ export const FILTER_ICONS: Record<FilterIcon, LucideIcon> = {
   calendar: Calendar,
   user: User,
   archive: Archive,
+  mention: AtSign,
 };
 
 interface Props {

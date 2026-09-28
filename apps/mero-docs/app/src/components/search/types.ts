@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 export type PaletteItemView = {
   id: string;
@@ -10,6 +11,7 @@ export type PaletteItemView = {
   snippetRanges?: [number, number][];
   right?: ReactNode; // LivePill, arrow for tags
   tagColor?: string; // for kind 'tag'
+  icon?: LucideIcon; // overrides the kind's icon, e.g. for a tip
 };
 
 export type PaletteGroupView = { id: string; label: string; aside?: ReactNode; items: PaletteItemView[] };

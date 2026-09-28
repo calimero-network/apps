@@ -71,8 +71,23 @@ const ws = {
   ],
 };
 
+const mentionOf = (folderId: string, docId: string, member = 'me') => ({
+  folderId,
+  docId,
+  blocks: [],
+  links: [],
+  mentions: [{ ws: 'ws1', member, blockId: 'b1', sentence: '' }],
+});
+const textIndex = {
+  texts: new Map<string, ReturnType<typeof mentionOf>>(),
+  foldersDone: 3,
+  foldersTotal: 3,
+  pending: [] as string[],
+  failed: [] as string[],
+};
 vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => index,
+  useTextIndexValue: () => textIndex,
 }));
 const renameTag = vi.fn();
 const recolorTag = vi.fn();
@@ -211,6 +226,14 @@ beforeEach(() => {
   permError = null;
   index.folders = FOLDERS;
   settle(ROWS);
+  textIndex.texts = new Map(
+    [mentionOf('design', 'd2'), mentionOf('specs', 'd1', 'bob')].map((t) => [
+      `${t.folderId}/${t.docId}`,
+      t,
+    ]),
+  );
+  textIndex.foldersDone = 3;
+  textIndex.failed = [];
 });
 
 afterEach(() => vi.useRealTimers());
@@ -324,6 +347,55 @@ describe('HomePage', () => {
       expect(
         screen.getByRole('checkbox', { name: /^Engineering\s*1$/ }),
       ).toBeTruthy();
+    });
+
+    it('turns Mentioned me on and off in the URL, listing the docs that mention you', () => {
+      mount();
+      fireEvent.click(chip(/^Mentioned me$/));
+      expect(location.search).toBe('?mentions=me');
+      expect(titles()).toEqual(['Brand']);
+      fireEvent.click(chip(/^Mentioned me$/));
+      expect(location.search).toBe('');
+      expect(titles()).toHaveLength(3);
+    });
+
+    it('waits for the documents to be read before saying nothing mentions you', () => {
+      textIndex.texts = new Map();
+      textIndex.foldersDone = 1;
+      const { unmount } = mount('/app/ws1?mentions=me');
+      expect(
+        screen.queryByText('No documents match these filters'),
+      ).toBeNull();
+      unmount();
+
+      textIndex.foldersDone = 3;
+      mount('/app/ws1?mentions=me');
+      expect(
+        screen.getByText('No documents match these filters'),
+      ).toBeTruthy();
+    });
+
+    it('says which folders it could not fully read instead of claiming nothing mentions you', () => {
+      textIndex.texts = new Map();
+      textIndex.foldersDone = 2;
+      textIndex.failed = ['design'];
+      mount('/app/ws1?mentions=me');
+      expect(
+        screen.getByRole('heading', {
+          name: 'No matches in the documents read so far',
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Some documents could not be read, so this list may be incomplete.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('status').textContent,
+      ).toContain("Couldn't read every document in Design.");
+      expect(screen.queryByText('No documents match these filters')).toBeNull();
+      // The no-docs state, whose New document is the empty state's own action.
+      expect(screen.queryByText('No documents yet')).toBeNull();
     });
 
     it('cycles the sort and keeps it in the URL', () => {

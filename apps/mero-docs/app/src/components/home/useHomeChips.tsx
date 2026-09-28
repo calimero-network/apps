@@ -17,6 +17,7 @@ import type { FilterChipView } from './types';
 
 export const UNKNOWN_TAG_LABEL = 'Unknown tag';
 export const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
+export const MENTIONED_ME_LABEL = 'Mentioned me';
 
 export type FolderPaths = Map<
   string,
@@ -232,6 +233,15 @@ export function useHomeChips({
           footerHint="Pick one person"
         />
       ),
+    },
+    {
+      id: 'mentions',
+      icon: 'mention',
+      label: MENTIONED_ME_LABEL,
+      active: !!q.mentions,
+      toggle: true,
+      onToggle: () =>
+        setQuery({ ...q, mentions: q.mentions ? undefined : 'me' }),
     },
     {
       id: 'archived',

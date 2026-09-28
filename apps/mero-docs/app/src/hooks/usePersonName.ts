@@ -7,7 +7,7 @@ import { useMemberDisplayName } from './useMemberDisplayName';
 
 export const SELF_LABEL = 'You';
 
-function listedPersonName(
+export function listedPersonName(
   id: string,
   selfIdentity: string | null,
   namespaceMemberNames: Record<string, string>,

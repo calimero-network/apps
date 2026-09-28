@@ -20,6 +20,7 @@ import { useCreateDocument } from '@/hooks/useCreateDocument';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
@@ -174,7 +175,14 @@ export function HomePage({ folderId }: Props) {
   );
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;
   const personName = usePersonName(q.by);
-  const shown = applyHomeQuery(liveRows, effective, now, folders);
+  const mentioned = useMentionedMe();
+  const shown = applyHomeQuery(
+    liveRows,
+    effective,
+    now,
+    folders,
+    mentioned.keys,
+  );
   // What the chip counts are taken over: the scope and the Archived switch, no other filter.
   const base = liveRows.filter(
     (r) => scopeIds.has(r.folderId) && r.archived === q.archived,
@@ -183,9 +191,15 @@ export function HomePage({ folderId }: Props) {
   const statusOf = (id: string): FolderIndexStatus =>
     folderStatus[id] ?? 'loading';
   const loading =
-    !foldersKnown || scope.some((f) => statusOf(f.id) === 'loading');
+    !foldersKnown ||
+    scope.some((f) => statusOf(f.id) === 'loading') ||
+    (!!q.mentions && mentioned.reading);
   const syncing = scope.filter((f) => statusOf(f.id) === 'syncing');
   const failed = scope.filter((f) => statusOf(f.id) === 'error');
+  // Mentions come from doc text, so a folder with an unread doc may hide some.
+  const partlyRead = q.mentions
+    ? scope.filter((f) => mentioned.failed.includes(f.id))
+    : [];
 
   // --- New document ---
   // Undefined while a folder's write access is still being checked.
@@ -360,7 +374,8 @@ export function HomePage({ folderId }: Props) {
   // A number is a claim about every folder in scope, so none is made until they are all read.
   const countKnown =
     !loading &&
-    (view.length > 0 || (syncing.length === 0 && failed.length === 0));
+    (view.length > 0 ||
+      (syncing.length === 0 && failed.length === 0 && partlyRead.length === 0));
   const emptyKind =
     !foldersKnown || view.length > 0
       ? null
@@ -368,13 +383,15 @@ export function HomePage({ folderId }: Props) {
         ? 'no-folders'
         : loading
           ? null
-          : tagPage && syncing.length === 0 && failed.length === 0
-            ? 'no-tagged'
-            : isHomeQueryFiltered(q)
-              ? 'no-matches'
-              : syncing.length === 0 && failed.length === 0
-                ? 'no-docs'
-                : null;
+          : partlyRead.length > 0
+            ? 'partial'
+            : tagPage && syncing.length === 0 && failed.length === 0
+              ? 'no-tagged'
+              : isHomeQueryFiltered(q)
+                ? 'no-matches'
+                : syncing.length === 0 && failed.length === 0
+                  ? 'no-docs'
+                  : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
   const emptyBody = {
     'no-folders':
@@ -385,6 +402,7 @@ export function HomePage({ folderId }: Props) {
           : NO_FOLDERS_READ_ONLY,
     'no-matches': undefined,
     'no-tagged': undefined,
+    partial: undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -399,6 +417,7 @@ export function HomePage({ folderId }: Props) {
       : undefined,
     'no-matches': clearFilters,
     'no-tagged': undefined,
+    partial: undefined,
     'no-docs': writable.length ? newDocument : undefined,
   } as const;
   const saveViewButton = isHomeQueryFiltered(q) && (
@@ -495,7 +514,7 @@ export function HomePage({ folderId }: Props) {
           onClear={clearFilters}
         />
       )}
-      {(syncing.length > 0 || failed.length > 0) && (
+      {(syncing.length > 0 || failed.length > 0 || partlyRead.length > 0) && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground md:px-7"
@@ -517,6 +536,12 @@ export function HomePage({ folderId }: Props) {
               >
                 Try again
               </Button>
+            </span>
+          )}
+          {partlyRead.length > 0 && (
+            <span>
+              Couldn't read every document in{' '}
+              {partlyRead.map((f) => folderLabel(f.name)).join(', ')}.
             </span>
           )}
         </div>

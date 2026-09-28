@@ -21,6 +21,8 @@ import { useDriveWorkspace } from './useDriveWorkspace';
 
 export interface FolderMembershipState {
   members: GroupMember[];
+  /** The folder `members` was last read for; a failed or running read keeps it. */
+  readFor: string | null;
   loading: boolean;
   error: Error | null;
   /** Invite by identity; server assigns the default role for the
@@ -37,6 +39,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const { registryContextId } = useDriveWorkspace();
 
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [readFor, setReadFor] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -52,6 +55,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const refetch = useCallback(async () => {
     if (!mero || !folderId) {
       setMembers([]);
+      setReadFor(null);
       setLoading(false);
       setError(null);
       return;
@@ -71,6 +75,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
       };
       if (seq !== fetchSeqRef.current) return;
       setMembers(raw.members ?? raw.data ?? []);
+      setReadFor(folderId);
     } catch (e: unknown) {
       if (seq !== fetchSeqRef.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -122,5 +127,5 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     [folderId, removeGroupMembers, refetch],
   );
 
-  return { members, loading, error, add, remove, refetch };
+  return { members, readFor, loading, error, add, remove, refetch };
 }

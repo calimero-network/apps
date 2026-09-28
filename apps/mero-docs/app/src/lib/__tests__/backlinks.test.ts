@@ -28,7 +28,7 @@ function doc(
   docId: string,
   links: DocText['links'],
 ): DocText {
-  return { folderId, docId, blocks: [], links };
+  return { folderId, docId, blocks: [], links, mentions: [] };
 }
 
 function index(...texts: DocText[]): Map<string, DocText> {

@@ -14,6 +14,18 @@ export const MENU_EMPTY = 'px-3 py-2.5 text-[13px] text-muted-foreground';
 export const MENU_ID = 'bn-suggestion-menu';
 export const menuRowId = (index: number) => `${MENU_ID}-item-${index}`;
 
+/** Items in runs of the same group, each with its index in the flat list the keyboard walks. */
+export function byGroup<Item extends { group?: string }>(items: Item[]) {
+  const groups: { name: string; rows: { item: Item; index: number }[] }[] = [];
+  items.forEach((item, index) => {
+    const name = item.group ?? '';
+    const last = groups[groups.length - 1];
+    if (last?.name === name) last.rows.push({ item, index });
+    else groups.push({ name, rows: [{ item, index }] });
+  });
+  return groups;
+}
+
 /** A ref for the menu panel that keeps the keyboard's active row in view. */
 export function useActiveRowInView(activeIndex: number) {
   const ref = useRef<HTMLDivElement>(null);

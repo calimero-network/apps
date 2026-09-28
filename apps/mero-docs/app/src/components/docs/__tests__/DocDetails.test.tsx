@@ -53,7 +53,10 @@ function text(
   docId: string,
   links: DocText['links'],
 ): [string, DocText] {
-  return [rowKey(folderId, docId), { folderId, docId, blocks: [], links }];
+  return [
+    rowKey(folderId, docId),
+    { folderId, docId, blocks: [], links, mentions: [] },
+  ];
 }
 
 function link(

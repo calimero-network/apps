@@ -27,6 +27,10 @@ import {
   DocLinkPickerMenu,
   type DocLinkPickerItem,
 } from '@/components/editor/DocLinkPickerMenu';
+import {
+  MemberCard,
+  type MemberCardProps,
+} from '@/components/editor/MemberCard';
 import { SlashMenu, type SlashMenuItem } from '@/components/editor/SlashMenu';
 import {
   DetailsPanel,
@@ -43,6 +47,7 @@ export const title = 'Editor';
 export const order = 30;
 
 const DOC = DOCS[0]; // Q3 launch plan
+const GALLERY_MEMBER = 'ad'.repeat(32); // a member account id, as mentions store it
 
 const tag = (name: string) => ({
   key: name,
@@ -139,7 +144,14 @@ function DocLinks() {
       <a href="https://example.com/p2p-pricing" onClick={stopNavigation}>
         peer-to-peer pricing
       </a>
-      .
+      . Ask{' '}
+      <a
+        href={`/app/acme-product/m/${GALLERY_MEMBER}`}
+        onClick={stopNavigation}
+      >
+        @Ada Lovelace
+      </a>{' '}
+      before changing it.
     </>
   );
 }
@@ -347,10 +359,39 @@ const CARD_STATES: DocLinkCardProps[] = [
   { state: 'unavailable', onRetry: () => {} },
 ];
 
+const MEMBER_CARDS: MemberCardProps[] = [
+  {
+    state: 'ok',
+    id: GALLERY_MEMBER,
+    name: 'Ada Lovelace',
+    role: 'Editor',
+    access: 'yes',
+  },
+  { state: 'ok', id: 'b0', name: 'Bob', role: 'Guest', access: 'no' },
+  { state: 'ok', id: 'c0', name: 'Chloé', access: 'left' },
+  { state: 'other-workspace' },
+];
+
 const PICKER_ITEMS: DocLinkPickerItem[] = [
+  {
+    id: 'person-ada',
+    kind: 'person',
+    group: 'People',
+    title: 'Ada Lovelace',
+    folderLabel: '',
+  },
+  {
+    id: 'person-bob',
+    kind: 'person',
+    group: 'People',
+    title: 'Bob Price',
+    titleRanges: [{ start: 4, end: 8 }],
+    folderLabel: "Can't open this folder",
+  },
   {
     id: 'doc-7',
     kind: 'doc',
+    group: 'Documents',
     title: 'Pricing notes',
     titleRanges: [{ start: 0, end: 4 }],
     folderLabel: 'Product',
@@ -358,6 +399,7 @@ const PICKER_ITEMS: DocLinkPickerItem[] = [
   {
     id: 'doc-6',
     kind: 'text',
+    group: 'Documents',
     title: 'Design review notes',
     quote: 'Pricing page',
     quoteRanges: [{ start: 0, end: 4 }],
@@ -366,6 +408,7 @@ const PICKER_ITEMS: DocLinkPickerItem[] = [
   {
     id: 'doc-5',
     kind: 'text',
+    group: 'Documents',
     title: 'Launch blog post',
     quote: 'Pricing',
     quoteRanges: [{ start: 0, end: 4 }],
@@ -533,6 +576,14 @@ export function Gallery(): React.JSX.Element {
               className="rounded-[10px] border bg-popover text-popover-foreground shadow-md"
             >
               <DocLinkCard {...card} />
+            </div>
+          ))}
+          {MEMBER_CARDS.map((card, i) => (
+            <div
+              key={`member-${i}`}
+              className="rounded-[10px] border bg-popover text-popover-foreground shadow-md"
+            >
+              <MemberCard {...card} />
             </div>
           ))}
         </div>
