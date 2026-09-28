@@ -17,7 +17,7 @@
 // caller should still keep handler identity stable so the
 // per-subscriber bookkeeping doesn't churn.
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   useSubscription,
   type SseEventData,
@@ -118,14 +118,17 @@ export function useContextEvents(
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  // Clear any pending debounced fire on unmount so a settled timer can't
-  // call onChange after the consumer is gone.
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  // A pending fire belongs to the ids it was armed for: drop it when they change
+  // (another workspace's event must not refetch this one) and on unmount.
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
     },
-    [],
+    [idsKey],
   );
 
   const handler = useCallback(

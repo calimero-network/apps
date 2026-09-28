@@ -194,6 +194,25 @@ describe('useContextEvents', () => {
     }
   });
 
+  it('debounceMs: an event pending for the old ids never fires once the ids change', () => {
+    vi.useFakeTimers();
+    try {
+      const onA = vi.fn();
+      const onB = vi.fn();
+      const { rerender } = renderHook(
+        ({ ids, onChange }) => useContextEvents(ids, onChange, { debounceMs: 300 }),
+        { initialProps: { ids: ['ctx-a'], onChange: onA } },
+      );
+      fire('ctx-a');
+      rerender({ ids: ['ctx-b'], onChange: onB });
+      vi.advanceTimersByTime(300);
+      expect(onA).not.toHaveBeenCalled();
+      expect(onB).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('debounceMs with strict: filters first, then debounces allowed events', () => {
     vi.useFakeTimers();
     try {

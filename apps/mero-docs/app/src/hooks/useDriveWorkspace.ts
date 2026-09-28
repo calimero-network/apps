@@ -907,9 +907,15 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     null,
   );
 
+  // The workspace on screen; a load captured before a switch must neither run nor win.
+  const registryClientRef = useRef(registryClient);
+  registryClientRef.current = registryClient;
+
   const loadRegFolders = useCallback(async () => {
+    if (registryClient !== registryClientRef.current) return;
     const seq = ++regSeqRef.current;
-    const stale = () => regSeqRef.current !== seq;
+    const stale = () =>
+      regSeqRef.current !== seq || registryClient !== registryClientRef.current;
     if (!registryClient) {
       setRegFolders([]);
       setRegLoading(false);
