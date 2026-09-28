@@ -278,7 +278,7 @@ export const IconUploadSvg = styled.div`
 `;
 
 export const IconUpload = ({ onClick }: { onClick: () => void }) => (
-  <IconUploadSvg onClick={onClick}>
+  <IconUploadSvg onClick={onClick} role="button" aria-label="Attach">
     <svg
       width="20px"
       height="20px"
@@ -320,6 +320,8 @@ export const IconSend = ({
 }) => (
   <IconSendSvg
     onClick={onClick}
+    role="button"
+    aria-label="Send message"
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="18"
@@ -817,7 +819,9 @@ export default function MessageInput({
 
   const hasAttachments = Boolean(uploadedImage || uploadedFile);
 
-  const isActive = hasText;
+  // An attachment is a message on its own. Text is optional, and the contract
+  // does not require it either.
+  const isActive = hasText || hasAttachments;
 
   const buildAttachmentDraft = useCallback(
     (chatFile: ChatFile | null): AttachmentDraft | null => {
@@ -854,7 +858,7 @@ export default function MessageInput({
           .trim() === "" ||
         emptyText.test(markdownParser(rawContent, []));
 
-      if (isEmptyContent) {
+      if (isEmptyContent && !fileDraft && !imageDraft) {
         handleMessageChange(null);
         return;
       }
@@ -873,7 +877,9 @@ export default function MessageInput({
       }
 
       const payload: SendMessagePayload = {
-        text: markdownParser(rawContent ?? "", tagList),
+        // Empty rather than an empty paragraph, so an attachment-only message
+        // stores no text and notifications can tell there was none.
+        text: isEmptyContent ? "" : markdownParser(rawContent ?? "", tagList),
         files: fileDraft ? [fileDraft] : [],
         images: imageDraft ? [imageDraft] : [],
       };
