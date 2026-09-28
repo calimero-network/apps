@@ -1,8 +1,18 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EditorHeader } from '../EditorHeader';
+
+let wide = true; // at least Tailwind sm
+vi.mock('@/hooks/useMediaQuery', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/useMediaQuery')>()),
+  useMediaQuery: () => wide,
+}));
+
+beforeEach(() => {
+  wide = true;
+});
 
 describe('EditorHeader back button', () => {
   it('names the folder it goes back to', () => {
@@ -93,5 +103,50 @@ describe('EditorHeader archive', () => {
     await screen.findByRole('menuitem', { name: 'Delete document' });
     expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Unarchive' })).toBeNull();
+  });
+});
+
+describe('EditorHeader undo and redo', () => {
+  it('are header buttons from sm up, outside the menu', async () => {
+    const user = userEvent.setup();
+    render(
+      <EditorHeader documentName="Plan" onUndo={vi.fn()} onRedo={vi.fn()} onDelete={vi.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    await screen.findByRole('menuitem', { name: 'Delete document' });
+    expect(screen.queryByRole('menuitem', { name: 'Undo' })).toBeNull();
+  });
+
+  it('move into the Document actions menu on a phone', async () => {
+    wide = false;
+    const user = userEvent.setup();
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    render(<EditorHeader documentName="Plan" onUndo={onUndo} onRedo={onRedo} />);
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Redo' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Undo' }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Redo' }));
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('sit above the document actions on a phone, split by a separator', async () => {
+    wide = false;
+    const user = userEvent.setup();
+    render(
+      <EditorHeader documentName="Plan" onUndo={vi.fn()} onDelete={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Undo',
+      'Delete document',
+    ]);
+    expect(within(menu).getByRole('separator')).toBeTruthy();
   });
 });

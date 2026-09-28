@@ -41,7 +41,7 @@ interface Props {
   docId: string;
   /** The folder's name while the index has not listed it yet. */
   folderName?: string;
-  /** Below md the details open as a sheet over the document. */
+  /** Below lg the details open as a sheet over the document. */
   sheet: boolean;
   onClose: () => void;
 }

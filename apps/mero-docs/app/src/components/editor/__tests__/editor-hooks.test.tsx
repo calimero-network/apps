@@ -16,6 +16,11 @@ const CARET = {
 };
 
 const onTitleKeyDown = vi.fn();
+const wide = true; // a phone moves undo and redo into the menu
+vi.mock('@/hooks/useMediaQuery', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/useMediaQuery')>()),
+  useMediaQuery: () => wide,
+}));
 
 function Header(props: {
   undo?: boolean;

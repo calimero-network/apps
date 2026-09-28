@@ -28,6 +28,7 @@ import {
 } from '@/components/docs/DetailsPanel';
 import { DocTagRow, type DocTag } from '@/components/tags/DocTagRow';
 import { AddTagPopover } from '@/components/tags/AddTagPopover';
+import { LG_QUERY } from '@/hooks/useMediaQuery';
 import { TAG_COLORS } from '@/lib/tags';
 import { DOCS, FOLDERS, TAGS } from './mockData';
 
@@ -35,7 +36,6 @@ export const title = 'Editor';
 export const order = 30;
 
 const DOC = DOCS[0]; // Q3 launch plan
-const MD_QUERY = '(min-width: 768px)'; // Tailwind md, where Details docks beside the document
 
 const tag = (name: string) => ({
   key: name,
@@ -419,7 +419,7 @@ function DetailsFrame() {
   const [panelOpen, setPanelOpen] = React.useState(true);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const toggle = () =>
-    window.matchMedia(MD_QUERY).matches
+    window.matchMedia(LG_QUERY).matches
       ? setPanelOpen((o) => !o)
       : setSheetOpen(true);
 
@@ -443,7 +443,7 @@ function DetailsFrame() {
           <StatusBar />
         </div>
         {panelOpen && (
-          <div className="hidden md:flex">
+          <div className="hidden lg:flex">
             <DetailsPanel {...DETAILS} onClose={() => setPanelOpen(false)} />
           </div>
         )}

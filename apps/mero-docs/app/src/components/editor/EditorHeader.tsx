@@ -1,6 +1,6 @@
 // The editor's top bar: back, the title field, Details, undo/redo and the actions menu.
-// Purely presentational - the title is a live input because it writes through
-// the title CRDT on every keystroke, not on a commit.
+// Presentational apart from the breakpoint - the title is a live input because
+// it writes through the title CRDT on every keystroke, not on a commit.
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
@@ -23,8 +23,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SM_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 
 const MIN_TITLE_CH = 8; // keeps a short or empty title easy to click
@@ -70,139 +72,165 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onArchive,
   onUnarchive,
   peers = [],
-}) => (
-  <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
-    <div className="flex shrink-0 items-center gap-4">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="max-w-48 gap-1.5"
-        aria-label={folderName ? `Back to ${folderName}` : 'Back'}
-        title={folderName ? `Back to ${folderName}` : undefined}
-        onClick={onBack}
-      >
-        <ChevronLeft className="w-4 h-4 shrink-0" />
-        <span className="hidden truncate sm:inline">{folderName ?? 'Back'}</span>
-      </Button>
-    </div>
-
-    <div className="flex min-w-0 flex-1 justify-center px-4">
-      {title ? (
-        <div className="relative flex items-center gap-1.5 max-w-xs min-w-0">
-          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-          <input
-            type="text"
-            data-testid="doc-title-input"
-            aria-label="Document title"
-            ref={title.inputRef}
-            value={title.value}
-            maxLength={MAX_ALIAS_LENGTH}
-            onChange={title.onChange}
-            onSelect={title.onSelect}
-            onKeyDown={title.onKeyDown}
-            // Sized to the text so the icon sits beside a centred title, not beside an empty box.
-            style={{ width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch` }}
-            className="max-w-full text-ellipsis bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
-          />
-          <TitleCursors
-            carets={title.carets}
-            text={title.value}
-            inputRef={title.inputRef}
-          />
-        </div>
-      ) : (
-        <span className="text-sm font-medium flex min-w-0 items-center gap-1.5 text-foreground">
-          <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{documentName}</span>
-        </span>
-      )}
-    </div>
-
-    <div className="flex shrink-0 items-center gap-2">
-      <PeerAvatars peers={peers} />
-      {onCopyLink && (
+}) => {
+  // A phone header has no room for undo and redo, so they move into the menu.
+  const wide = useMediaQuery(SM_QUERY);
+  const menuUndo = !wide && onUndo;
+  const menuRedo = !wide && onRedo;
+  const menuDoc = onArchive || onUnarchive || onDelete;
+  return (
+    <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+      <div className="flex shrink-0 items-center gap-4">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="gap-1.5"
-          aria-label="Copy link"
-          onClick={onCopyLink}
+          className="max-w-48 gap-1.5"
+          aria-label={folderName ? `Back to ${folderName}` : 'Back'}
+          title={folderName ? `Back to ${folderName}` : undefined}
+          onClick={onBack}
         >
-          <Link className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Copy link</span>
+          <ChevronLeft className="w-4 h-4 shrink-0" />
+          <span className="hidden truncate sm:inline">
+            {folderName ?? 'Back'}
+          </span>
         </Button>
-      )}
-      {onToggleDetails && (
-        <Button
-          variant={detailsOpen ? 'selected' : 'ghost'}
-          size="icon"
-          className="h-9 w-9"
-          aria-label="Details"
-          aria-pressed={detailsOpen}
-          onClick={onToggleDetails}
-        >
-          <PanelRight className="w-4 h-4" />
-        </Button>
-      )}
-      {onUndo && (
-        <Button
-          variant="ghost"
-          size="icon"
-          // No room below sm: a phone header keeps Copy link, Details and the menu.
-          className="hidden h-9 w-9 sm:inline-flex"
-          data-testid="doc-undo"
-          aria-label="Undo"
-          onClick={onUndo}
-        >
-          <Undo2 className="w-4 h-4" />
-        </Button>
-      )}
-      {onRedo && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden h-9 w-9 sm:inline-flex"
-          data-testid="doc-redo"
-          aria-label="Redo"
-          onClick={onRedo}
-        >
-          <Redo2 className="w-4 h-4" />
-        </Button>
-      )}
-      {(onDelete || onArchive || onUnarchive) && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              aria-label="Document actions"
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {onArchive && (
-              <DropdownMenuItem onClick={onArchive}>
-                <Archive className="w-4 h-4 mr-2" />
-                Archive
-              </DropdownMenuItem>
-            )}
-            {onUnarchive && (
-              <DropdownMenuItem onClick={onUnarchive}>
-                <ArchiveRestore className="w-4 h-4 mr-2" />
-                Unarchive
-              </DropdownMenuItem>
-            )}
-            {onDelete && (
-              <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete document
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  </header>
-);
+      </div>
+
+      <div className="flex min-w-0 flex-1 justify-center px-4">
+        {title ? (
+          <div className="relative flex items-center gap-1.5 max-w-xs min-w-0">
+            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              data-testid="doc-title-input"
+              aria-label="Document title"
+              ref={title.inputRef}
+              value={title.value}
+              maxLength={MAX_ALIAS_LENGTH}
+              onChange={title.onChange}
+              onSelect={title.onSelect}
+              onKeyDown={title.onKeyDown}
+              // Sized to the text so the icon sits beside a centred title, not beside an empty box.
+              style={{
+                width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch`,
+              }}
+              className="max-w-full text-ellipsis bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+            <TitleCursors
+              carets={title.carets}
+              text={title.value}
+              inputRef={title.inputRef}
+            />
+          </div>
+        ) : (
+          <span className="text-sm font-medium flex min-w-0 items-center gap-1.5 text-foreground">
+            <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{documentName}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <PeerAvatars peers={peers} />
+        {onCopyLink && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            aria-label="Copy link"
+            onClick={onCopyLink}
+          >
+            <Link className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Copy link</span>
+          </Button>
+        )}
+        {onToggleDetails && (
+          <Button
+            variant={detailsOpen ? 'selected' : 'ghost'}
+            size="icon"
+            className="h-9 w-9"
+            aria-label="Details"
+            aria-pressed={detailsOpen}
+            onClick={onToggleDetails}
+          >
+            <PanelRight className="w-4 h-4" />
+          </Button>
+        )}
+        {wide && onUndo && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            data-testid="doc-undo"
+            aria-label="Undo"
+            onClick={onUndo}
+          >
+            <Undo2 className="w-4 h-4" />
+          </Button>
+        )}
+        {wide && onRedo && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            data-testid="doc-redo"
+            aria-label="Redo"
+            onClick={onRedo}
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+        )}
+        {(menuUndo || menuRedo || menuDoc) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                aria-label="Document actions"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {menuUndo && (
+                <DropdownMenuItem onClick={onUndo}>
+                  <Undo2 className="w-4 h-4 mr-2" />
+                  Undo
+                </DropdownMenuItem>
+              )}
+              {menuRedo && (
+                <DropdownMenuItem onClick={onRedo}>
+                  <Redo2 className="w-4 h-4 mr-2" />
+                  Redo
+                </DropdownMenuItem>
+              )}
+              {(menuUndo || menuRedo) && menuDoc && <DropdownMenuSeparator />}
+              {onArchive && (
+                <DropdownMenuItem onClick={onArchive}>
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archive
+                </DropdownMenuItem>
+              )}
+              {onUnarchive && (
+                <DropdownMenuItem onClick={onUnarchive}>
+                  <ArchiveRestore className="w-4 h-4 mr-2" />
+                  Unarchive
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={onDelete}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete document
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </header>
+  );
+};

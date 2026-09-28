@@ -20,7 +20,7 @@ test.describe('Archive (single-node)', () => {
     await alice.openDoc('Old plan');
     await page.getByRole('button', { name: 'Document actions' }).click();
     await page.getByRole('menuitem', { name: 'Archive' }).click();
-    const banner = page.getByRole('status').filter({ hasText: BANNER });
+    const banner = page.getByRole('group', { name: BANNER });
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('doc-title-input')).toHaveValue('Old plan');
     const docUrl = page.url();
@@ -44,7 +44,7 @@ test.describe('Archive (single-node)', () => {
     await page.goto(docUrl);
     await editor.expectMounted();
     await expect(banner).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Unarchive', exact: true }).click();
+    await banner.getByRole('button', { name: 'Unarchive' }).click();
     await expect(banner).toBeHidden({ timeout: 15_000 });
 
     await home.open();

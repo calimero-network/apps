@@ -24,7 +24,7 @@ import { isContextEvent } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { LG_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
@@ -47,8 +47,7 @@ const TAG_ADD_FAILED = "Couldn't add the tag. Try again.";
 const TAG_REMOVE_FAILED = "Couldn't remove the tag. Try again.";
 const ARCHIVE_FAILED = "Couldn't archive the document. Try again.";
 const UNARCHIVE_FAILED = "Couldn't unarchive the document. Try again.";
-const DETAILS_OPEN_KEY = 'mero-drive:details-open'; // this device's Details panel, from md up
-const MD_QUERY = '(min-width: 768px)'; // Tailwind md, where Details docks beside the document
+const DETAILS_OPEN_KEY = 'mero-drive:details-open'; // this device's Details panel, from lg up
 
 interface Props {
   folderId: string;
@@ -229,8 +228,8 @@ export function DocumentEditor({
     [docsArchive, docsUnarchive, docId, rereadDoc],
   );
 
-  // The panel beside the document is remembered; the phone sheet opens only when asked.
-  const isDesktop = useMediaQuery(MD_QUERY);
+  // The panel beside the document is remembered; the sheet below lg opens only when asked.
+  const isDesktop = useMediaQuery(LG_QUERY);
   const [panelOpen, setPanelOpen] = useLocalStorage(DETAILS_OPEN_KEY, false);
   const [sheetOpen, setSheetOpen] = useState(false);
   useEffect(() => {

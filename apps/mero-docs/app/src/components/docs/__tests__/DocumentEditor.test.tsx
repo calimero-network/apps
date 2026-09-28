@@ -3,7 +3,7 @@
 // document read resolves, whichever read wins the race.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { DocumentEditor } from '../DocumentEditor';
 
@@ -16,7 +16,7 @@ const addTag = vi.fn();
 const removeTag = vi.fn();
 const archive = vi.fn();
 const unarchive = vi.fn();
-let isDesktop = true;
+let lgUp = true; // Details docks from Tailwind lg; every smaller query matches
 let canEditDocs = true;
 let canManageTags = true;
 let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
@@ -57,7 +57,13 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 }));
 let location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
 vi.mock('react-router-dom', () => ({ useLocation: () => location }));
-vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => isDesktop }));
+vi.mock('@/hooks/useMediaQuery', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useMediaQuery')>();
+  return {
+    ...actual,
+    useMediaQuery: (query: string) => query !== actual.LG_QUERY || lgUp,
+  };
+});
 vi.mock('../DocDetails', () => ({
   DocDetails: ({ sheet, onClose }: { sheet: boolean; onClose: () => void }) => (
     <div data-testid="details" data-sheet={String(sheet)}>
@@ -195,7 +201,7 @@ beforeEach(() => {
   deliver = undefined;
   canEditDocs = true;
   canManageTags = true;
-  isDesktop = true;
+  lgUp = true;
   localStorage.clear();
   archive.mockResolvedValue(undefined);
   unarchive.mockResolvedValue(undefined);
@@ -475,7 +481,7 @@ describe('DocumentEditor', () => {
       );
     const toggle = () => screen.getByRole('button', { name: 'Details' });
 
-    it('docks Details beside the document from md up, and remembers it on this device', async () => {
+    it('docks Details beside the document from lg up, and remembers it on this device', async () => {
       const { unmount } = mount();
       await screen.findByText('Notes');
       expect(screen.queryByTestId('details')).toBeNull();
@@ -494,8 +500,8 @@ describe('DocumentEditor', () => {
       expect(localStorage.getItem('mero-drive:details-open')).toBe('false');
     });
 
-    it('opens Details as a sheet below md, without changing the remembered panel (L-27)', async () => {
-      isDesktop = false;
+    it('opens Details as a sheet below lg, without changing the remembered panel (L-27)', async () => {
+      lgUp = false;
       mount();
       await screen.findByText('Notes');
       fireEvent.click(toggle());
@@ -524,9 +530,8 @@ describe('DocumentEditor', () => {
       expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
 
       getDoc.mockResolvedValue(DOC);
-      const inBanner = screen.getAllByRole('button', { name: 'Unarchive' });
-      expect(inBanner).toHaveLength(2); // the menu item and the banner's button
-      fireEvent.click(inBanner[1]);
+      const bar = screen.getByRole('group', { name: 'This document is archived' });
+      fireEvent.click(within(bar).getByRole('button', { name: 'Unarchive' }));
       await waitFor(() => expect(banner()).toBeNull());
       expect(unarchive).toHaveBeenCalledWith('doc-1');
     });
