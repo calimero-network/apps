@@ -141,6 +141,14 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
       body: JSON.stringify({ data: [TEST_IDENTITY] }),
     }),
   );
+  // The board keys members by account, and loads its roster only once this answers.
+  await page.route("**/admin-api/identity", (r: Route) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { accountId: TEST_IDENTITY } }),
+    }),
+  );
   if (opts.serveBlob) {
     // 8x8 PNGs. The transparent one is the default and was previously commented
     // as "red" — it is not, and that mislabelling is what makes a naive pixel
