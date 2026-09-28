@@ -89,6 +89,19 @@ label {
   color: var(--muted);
 }
 
+label.check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+label.check input {
+  margin-top: 3px;
+  flex: none;
+}
+
 input[type='text'],
 textarea {
   width: 100%;

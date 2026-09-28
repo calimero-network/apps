@@ -19,6 +19,9 @@ import styled, { keyframes } from 'styled-components';
 import { C } from '../theme';
 import type { Member } from '../hooks/useSpreadsheet';
 import { ROLE_HELP, ROLE_NOTE, WORKBOOK_ROLES } from '../spreadsheet/access';
+import { REPLICA_PROFILES, isReleaseVersion, type ReplicaPolicy } from '../spreadsheet/replicas';
+
+export type { ReplicaPolicy };
 
 /** One entry of core's group roster. */
 export interface GroupPerson {
@@ -32,12 +35,6 @@ const NETWORK_ROLES: { value: string; label: string }[] = [
   { value: 'ReadOnly', label: 'Read only' },
 ];
 
-/** The workspace's rule for admitting always-on replicas. */
-export interface ReplicaPolicy {
-  /** Approved image measurements; none means no replica is admitted. */
-  mrtd: string[];
-  tcbStatuses: string[];
-}
 
 interface PeoplePanelProps {
   members: Member[];
@@ -193,9 +190,36 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
   onSave: (p: ReplicaPolicy) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [mrtd, setMrtd] = useState('');
-  const on = !!policy && policy.mrtd.length > 0;
-  const lines = (s: string) => s.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [minRelease, setMinRelease] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const on = !!policy && policy.profiles.length > 0;
+  const legacy = !!policy && !on && policy.legacyMeasurements > 0;
+  const minValid = minRelease.trim() === '' || isReleaseVersion(minRelease);
+  const labelOf = (value: string) => REPLICA_PROFILES.find((p) => p.value === value)?.label ?? value;
+
+  const startEditing = () => {
+    setProfiles(on ? policy.profiles : ['locked-read-only']);
+    setMinRelease(policy?.minRelease ?? '');
+    setError(null);
+    setEditing(true);
+  };
+  const toggle = (value: string) =>
+    setProfiles((current) => current.includes(value) ? current.filter((p) => p !== value) : [...current, value]);
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave({ profiles, minRelease: minRelease.trim().replace(/^v/, '') || null, legacyMeasurements: 0 });
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Section data-testid="always-on">
       <h4>Always-on copy</h4>
@@ -204,28 +228,54 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
           ? `${replicas} always-on replica${replicas === 1 ? '' : 's'} hold${replicas === 1 ? 's' : ''} a read-only copy, so the workspace stays available while everyone is offline.`
           : 'No always-on replica yet: the workspace is available while at least one member is online.'}
       </p>
-      <p className="muted">
+      <p className="muted" data-testid="replica-policy">
         {policy === null ? 'Reading the admission policy…'
-          : on ? `Replicas running one of ${policy.mrtd.length} approved image${policy.mrtd.length === 1 ? '' : 's'} admit themselves, read-only.`
-            : 'Replicas are not admitted.'}
+          : on ? `Replicas running a signed release${policy.minRelease ? ` (${policy.minRelease} or newer)` : ''} of ${policy.profiles.map(labelOf).join(' or ')} admit themselves, read-only.`
+            : legacy ? `The policy lists ${policy.legacyMeasurements} image measurement${policy.legacyMeasurements === 1 ? '' : 's'} by hand, which no longer identifies an image. Switch it to signed releases.`
+              : 'Replicas are not admitted.'}
       </p>
       {canEdit && !editing && (
         <div className="row">
-          <button type="button" onClick={() => { setMrtd((policy?.mrtd ?? []).join('\n')); setEditing(true); }} data-testid="action-edit-replicas">
-            {on ? 'Change approved images' : 'Admit replicas…'}
+          <button type="button" onClick={startEditing} data-testid="action-edit-replicas">
+            {on ? 'Change admitted images' : legacy ? 'Switch to signed releases…' : 'Admit replicas…'}
           </button>
-          {on && <button type="button" onClick={() => void onSave({ mrtd: [], tcbStatuses: [] })}>Stop admitting</button>}
         </div>
       )}
       {canEdit && editing && (
         <div>
-          <label htmlFor="mrtd">Approved image measurements (MRTD), one per line, from your replica provider</label>
-          <textarea id="mrtd" value={mrtd} onChange={(e) => setMrtd(e.target.value)} rows={3} data-testid="field-mrtd" />
+          <fieldset>
+            <legend>Admit replicas running a signed mero-tee release of</legend>
+            {REPLICA_PROFILES.map((profile) => (
+              <label key={profile.value} className="check">
+                <input
+                  type="checkbox"
+                  checked={profiles.includes(profile.value)}
+                  onChange={() => toggle(profile.value)}
+                  data-testid={`field-profile-${profile.value}`}
+                />
+                <span><b>{profile.label}</b> — {profile.help}</span>
+              </label>
+            ))}
+          </fieldset>
+          <label htmlFor="min-release">Oldest release to admit (optional, e.g. 2.3.86)</label>
+          <input
+            id="min-release"
+            type="text"
+            value={minRelease}
+            onChange={(e) => setMinRelease(e.target.value)}
+            placeholder="any signed release"
+            data-testid="field-min-release"
+          />
+          {!minValid && <p className="muted">A release is three numbers, like 2.3.86.</p>}
+          <p className="muted">
+            A new release is admitted without changing this. Once admitted, a replica stays in the workspace: nodes have no way to switch admission off, so choose the profiles with care.
+          </p>
+          {error && <p className="muted" role="alert">Not saved: {error}</p>}
           <div className="row">
-            <button type="button" disabled={lines(mrtd).length === 0}
-              onClick={() => void onSave({ mrtd: lines(mrtd), tcbStatuses: ['UpToDate'] }).then(() => setEditing(false))}
+            <button type="button" disabled={profiles.length === 0 || !minValid || saving}
+              onClick={() => void save()}
               data-testid="action-save-replicas">
-              Admit
+              {saving ? 'Saving…' : 'Admit'}
             </button>
             <button type="button" onClick={() => setEditing(false)}>Cancel</button>
           </div>
@@ -294,7 +344,11 @@ const Section = styled.section`
   p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.45; color: ${C.ink}; }
   .muted { color: ${C.muted}; }
   label { display: block; font-size: 11.5px; color: ${C.muted}; margin: 4px 0; }
-  textarea { width: 100%; box-sizing: border-box; font: 11.5px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; padding: 6px 8px; }
+  fieldset { border: 0; margin: 0 0 6px; padding: 0; min-width: 0; }
+  legend { font-size: 11.5px; color: ${C.muted}; padding: 0; margin-bottom: 2px; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: ${C.ink}; line-height: 1.4; }
+  label.check input { margin-top: 2px; flex: none; }
+  input[type='text'] { width: 100%; box-sizing: border-box; font: 12px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; padding: 6px 8px; }
   .row { display: flex; gap: 8px; margin-top: 6px; }
   button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
   button:disabled { opacity: 0.5; }
