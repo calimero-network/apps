@@ -64,6 +64,7 @@ function text(
       text: t,
     })),
     links: [],
+    mentions: [],
   };
 }
 

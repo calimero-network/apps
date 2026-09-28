@@ -8,6 +8,7 @@ import { rowKey, type FolderInfo, type IndexRow } from './workspaceIndex/types';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UPDATED_WINDOWS = ['1d', '7d', '30d'] as const; // 1d is "today", the others roll
 const SORTS = ['updated', 'name', 'created'] as const;
+const MENTIONS = ['me'] as const; // `mentions=me`: docs that mention the signed-in member
 const DEFAULT_SORT: HomeQuery['sort'] = 'updated';
 const LIST_SEPARATOR = ',';
 
@@ -16,6 +17,7 @@ export type HomeQuery = {
   tags: string[];
   updated?: (typeof UPDATED_WINDOWS)[number];
   by?: string;
+  mentions?: (typeof MENTIONS)[number];
   archived: boolean;
   sort: (typeof SORTS)[number];
   view?: string;
@@ -49,6 +51,8 @@ export function parseHomeQuery(search: URLSearchParams): HomeQuery {
   if (updated) q.updated = updated;
   const by = search.get('by');
   if (by) q.by = by;
+  const mentions = oneOf(MENTIONS, search.get('mentions'));
+  if (mentions) q.mentions = mentions;
   const view = search.get('view');
   if (view) q.view = view;
   return q;
@@ -63,6 +67,7 @@ export function serializeHomeQuery(q: HomeQuery): string {
     ['tag', list(q.tags)],
     ['updated', q.updated],
     ['by', q.by && encodeURIComponent(q.by)],
+    ['mentions', q.mentions],
     ['archived', q.archived ? 'true' : undefined],
     ['sort', q.sort === DEFAULT_SORT ? undefined : q.sort],
     ['view', q.view && encodeURIComponent(q.view)],
@@ -80,8 +85,14 @@ export function isHomeQueryFiltered(q: HomeQuery): boolean {
     q.tags.length > 0 ||
     !!q.updated ||
     !!q.by ||
+    !!q.mentions ||
     q.archived
   );
+}
+
+/** The sidebar's Mentions page: Mentioned me and no other filter, any sort. */
+export function isMentionsPage(q: HomeQuery): boolean {
+  return !!q.mentions && !isHomeQueryFiltered({ ...q, mentions: undefined });
 }
 
 /** A stored view's query with its id set as the selected view, in canonical order. */
@@ -98,12 +109,14 @@ export function viewRowCount(
   folders: FolderInfo[],
   nowMs: number,
   query: string,
+  mentioned?: ReadonlySet<string>,
 ): number {
   return applyHomeQuery(
     rows,
     parseHomeQuery(new URLSearchParams(query)),
     nowMs,
     folders,
+    mentioned,
   ).length;
 }
 
@@ -114,6 +127,7 @@ export function tagPageKey(q: HomeQuery): string | null {
     q.folders.length === 0 &&
     !q.updated &&
     !q.by &&
+    !q.mentions &&
     !q.archived;
   return onlyTag ? q.tags[0] : null;
 }
@@ -150,12 +164,13 @@ function compareBy(sort: HomeQuery['sort'], a: IndexRow, b: IndexRow): number {
   return b.updatedAt - a.updatedAt;
 }
 
-/** The rows Home shows for `q`; a folder filter includes its subfolders. */
+/** The rows Home shows for `q`; a folder filter includes its subfolders; `mentioned` holds the rowKeys of docs that mention you. */
 export function applyHomeQuery(
   rows: IndexRow[],
   q: HomeQuery,
   nowMs: number,
   folders: FolderInfo[],
+  mentioned?: ReadonlySet<string>,
 ): IndexRow[] {
   const inFolders = q.folders.length
     ? withDescendants(q.folders, folders)
@@ -169,7 +184,8 @@ export function applyHomeQuery(
         (!inFolders || inFolders.has(r.folderId)) &&
         (!tags.size || r.tags.some((t) => tags.has(t))) &&
         (since === null || r.updatedAt >= since) &&
-        (!q.by || r.createdBy === q.by),
+        (!q.by || r.createdBy === q.by) &&
+        (!q.mentions || !!mentioned?.has(rowKey(r.folderId, r.docId))),
     )
     .sort(
       (a, b) =>

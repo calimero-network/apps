@@ -52,6 +52,7 @@ const docText: DocText = {
     { id: 'b2', kind: 'paragraph', text: 'Later.' },
   ],
   links: [],
+  mentions: [],
 };
 
 const refetchFolder = vi.fn();

@@ -34,7 +34,7 @@ export type DocHrefTarget = {
   block?: string;
 };
 
-/** A doc's searchable text; `linkRange` is the link text's span inside `sentence`. */
+/** A doc's searchable text; `linkRange` is the link text's span inside `sentence`; `mentions` name members. */
 export type DocText = {
   folderId: string;
   docId: string;
@@ -46,6 +46,7 @@ export type DocText = {
     linkRange: [number, number];
     section?: string;
   }[];
+  mentions: { ws: string; member: string; blockId: string; sentence: string }[];
 };
 
 export const rowKey = (folderId: string, docId: string) =>

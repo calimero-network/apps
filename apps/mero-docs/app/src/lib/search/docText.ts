@@ -1,4 +1,4 @@
-import { parseDocHref } from '../links';
+import { parseDocHref, parseMemberHref } from '../links';
 import type { BackendBlock } from '../rich/blocknote';
 import { rowKey, type DocText } from '../workspaceIndex/types';
 import {
@@ -16,6 +16,7 @@ const ELLIPSIS = '…';
 const SENTENCE_END = /[.!?](?=\s)/g;
 
 type Link = DocText['links'][number];
+type Mention = DocText['mentions'][number];
 
 /** A cut of a longer text: window index = original index - `offset`; `body` excludes the `…`. */
 type TextWindow = { text: string; offset: number; body: [number, number] };
@@ -121,14 +122,33 @@ function linksIn(
   });
 }
 
-/** A doc's block text, nearest headings and outgoing doc links, from `get_document` blocks. */
+function mentionsIn(
+  block: BackendBlock,
+  text: string,
+  origin: string,
+): Mention[] {
+  return linkRuns(block).flatMap(({ href, from, to }) => {
+    const target = parseMemberHref(href, origin);
+    if (!target) return [];
+    const [start, end] = sentenceAround(text, from, to);
+    const sentence = windowAround(
+      text.slice(start, end),
+      from - start,
+      to - start,
+      SENTENCE_MAX,
+    ).text;
+    return [{ ...target, blockId: block.id, sentence }];
+  });
+}
+
+/** A doc's block text, nearest headings, outgoing doc links and member mentions, from `get_document` blocks. */
 export function docTextFromBlocks(
   folderId: string,
   docId: string,
   blocks: BackendBlock[],
   origin: string,
 ): DocText {
-  const out: DocText = { folderId, docId, blocks: [], links: [] };
+  const out: DocText = { folderId, docId, blocks: [], links: [], mentions: [] };
   let heading: string | undefined;
   for (const block of blocks) {
     const text = block.spans.map((s) => s.text).join('');
@@ -140,6 +160,21 @@ export function docTextFromBlocks(
       ...(heading === undefined ? {} : { heading }),
     });
     out.links.push(...linksIn(block, heading, text, origin));
+    out.mentions.push(...mentionsIn(block, text, origin));
+  }
+  return out;
+}
+
+/** The first mention of `member` in each doc, keyed by rowKey; mentions made in another workspace are not theirs here. */
+export function mentionsOf(
+  texts: Map<string, DocText>,
+  ws: string,
+  member: string,
+): Map<string, Mention> {
+  const out = new Map<string, Mention>();
+  for (const [key, t] of texts) {
+    const m = t.mentions.find((x) => x.ws === ws && x.member === member);
+    if (m) out.set(key, m);
   }
   return out;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyHomeQuery,
   isHomeQueryFiltered,
+  isMentionsPage,
   parseHomeQuery,
   serializeHomeQuery,
   tagPageKey,
@@ -39,13 +40,14 @@ describe('parseHomeQuery', () => {
   it('reads every filter', () => {
     expect(
       parse(
-        'folder=a,b&tag=launch&updated=7d&by=bob&archived=true&sort=name&view=v1',
+        'folder=a,b&tag=launch&updated=7d&by=bob&mentions=me&archived=true&sort=name&view=v1',
       ),
     ).toEqual({
       folders: ['a', 'b'],
       tags: ['launch'],
       updated: '7d',
       by: 'bob',
+      mentions: 'me',
       archived: true,
       sort: 'name',
       view: 'v1',
@@ -63,7 +65,9 @@ describe('parseHomeQuery', () => {
 
   it('drops bad values and unknown params (R-18)', () => {
     expect(
-      parse('updated=2d&sort=size&archived=yes&by=&view=&color=red&folder='),
+      parse(
+        'updated=2d&sort=size&archived=yes&by=&view=&color=red&folder=&mentions=bob',
+      ),
     ).toEqual(EMPTY);
   });
 
@@ -86,13 +90,14 @@ describe('serializeHomeQuery', () => {
       view: 'v1',
       sort: 'created',
       archived: true,
+      mentions: 'me',
       by: 'bob',
       updated: '1d',
       tags: ['t1', 't2'],
       folders: ['a', 'b'],
     };
     expect(serializeHomeQuery(q)).toBe(
-      'folder=a,b&tag=t1,t2&updated=1d&by=bob&archived=true&sort=created&view=v1',
+      'folder=a,b&tag=t1,t2&updated=1d&by=bob&mentions=me&archived=true&sort=created&view=v1',
     );
   });
 
@@ -108,6 +113,7 @@ describe('serializeHomeQuery', () => {
       tags: ['launch'],
       updated: '30d',
       by: 'k=1',
+      mentions: 'me',
       archived: false,
       sort: 'name',
       view: 'v?1',
@@ -177,6 +183,21 @@ describe('applyHomeQuery', () => {
     ];
     const q = { ...EMPTY, tags: ['x', 'z'], sort: 'name' as const };
     expect(ids(applyHomeQuery(rows, q, NOW, folders))).toEqual(['a', 'b']);
+  });
+
+  it('keeps only the docs that mention you when Mentioned me is on', () => {
+    const rows = [
+      row({ docId: 'a', folderId: 'root' }),
+      row({ docId: 'b', folderId: 'root' }),
+    ];
+    const q: HomeQuery = { ...EMPTY, mentions: 'me' };
+    expect(
+      ids(applyHomeQuery(rows, q, NOW, folders, new Set(['root/b']))),
+    ).toEqual(['b']);
+    expect(ids(applyHomeQuery(rows, q, NOW, folders))).toEqual([]);
+    expect(
+      ids(applyHomeQuery(rows, EMPTY, NOW, folders, new Set())),
+    ).toHaveLength(2);
   });
 
   it('filters by creator', () => {
@@ -292,6 +313,26 @@ describe('isHomeQueryFiltered', () => {
     expect(isHomeQueryFiltered({ ...EMPTY, updated: '7d' })).toBe(true);
     expect(isHomeQueryFiltered({ ...EMPTY, by: 'bob' })).toBe(true);
     expect(isHomeQueryFiltered({ ...EMPTY, archived: true })).toBe(true);
+    expect(isHomeQueryFiltered({ ...EMPTY, mentions: 'me' })).toBe(true);
+  });
+});
+
+describe('isMentionsPage', () => {
+  it('is the Mentions page when Mentioned me is the only filter, any sort', () => {
+    expect(isMentionsPage(parse('mentions=me'))).toBe(true);
+    expect(isMentionsPage(parse('mentions=me&sort=name'))).toBe(true);
+    expect(isMentionsPage(parse('mentions=me&view=v1'))).toBe(true);
+  });
+
+  it('is not for no mentions filter or any other filter beside it', () => {
+    for (const search of [
+      '',
+      'tag=q3',
+      'mentions=me&tag=q3',
+      'mentions=me&archived=true',
+    ]) {
+      expect(isMentionsPage(parse(search))).toBe(false);
+    }
   });
 });
 
@@ -318,6 +359,16 @@ describe('viewRowCount', () => {
     expect(viewRowCount(rows, folders, NOW, 'tag=design')).toBe(1);
   });
 
+  it('counts a Mentioned me view over the docs that mention you', () => {
+    const rows = [
+      row({ docId: 'a', folderId: 'f1' }),
+      row({ docId: 'b', folderId: 'f1' }),
+    ];
+    const mentioned = new Set(['f1/b', 'gone/x']);
+    expect(viewRowCount(rows, folders, NOW, 'mentions=me', mentioned)).toBe(1);
+    expect(viewRowCount(rows, folders, NOW, 'mentions=me')).toBe(0);
+  });
+
   it('is zero, not a crash, for a tag or folder no row carries any more (R-23)', () => {
     const rows = [row({ docId: 'a', folderId: 'f1', tags: ['design'] })];
     expect(viewRowCount(rows, folders, NOW, 'tag=deleted-tag')).toBe(0);
@@ -339,6 +390,7 @@ describe('tagPageKey', () => {
       'tag=q3&updated=7d',
       'tag=q3&by=bob',
       'tag=q3&archived=true',
+      'tag=q3&mentions=me',
     ]) {
       expect(tagPageKey(parse(search))).toBeNull();
     }
