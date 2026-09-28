@@ -36,6 +36,7 @@ import {
   type IntentResult,
 } from '@calimero-network/mero-js';
 
+import { sealedRelayFetch } from './sealing.js';
 import {
   chooseAdmitter,
   chooseExecutor,
@@ -166,15 +167,28 @@ export async function writeContext<T = unknown>(
   contextId: string,
   method: string,
   argsJson: unknown,
+  { seal }: RelayTransport,
 ): Promise<IntentResult<T>> {
+  const relayUrl = normaliseUrl(nodeUrl);
   const relay = new RelayClient({
-    relayUrl: normaliseUrl(nodeUrl),
+    relayUrl,
     authorAccount: identity.accountId,
     authorProof: identity.credential,
     deviceSecret: identity.deviceSecret,
     nonces: createLocalStorageNonceSource(nonceStorageKey(identity.devicePublicKey)),
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
   });
   return relay.execute<T>(contextId, method, argsJson);
+}
+
+/**
+ * How relay calls travel. `seal` encrypts them to the relay's attested TEE
+ * (see `lib/sealing.ts`): the relay's TLS terminator, and whoever runs it, sees
+ * neither the warrant nor the arguments. A relay that cannot attest is refused
+ * before anything is sent, rather than written to in the clear.
+ */
+export interface RelayTransport {
+  seal: boolean;
 }
 
 /**
@@ -185,9 +199,13 @@ export async function writeContext<T = unknown>(
  * most common reason a first write fails. The node's own account needs
  * `CAN_AUTHOR_ON_BEHALF` on the owning group — a governance op its admin signs.
  */
-export async function describeRelay(nodeUrl: string, contextId: string) {
+export async function describeRelay(nodeUrl: string, contextId: string, { seal }: RelayTransport) {
+  const relayUrl = normaliseUrl(nodeUrl);
   const relay = new RelayClient({
-    relayUrl: normaliseUrl(nodeUrl),
+    relayUrl,
+    // Sealed like the write, so a check reaches the same attested TD the write
+    // will, and fails the same way if the relay cannot attest.
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
     // `describe` signs nothing and spends nothing, so the author fields are
     // placeholders it never reads. Passing the real ones would suggest this
     // call is about a particular author, and it is not.
