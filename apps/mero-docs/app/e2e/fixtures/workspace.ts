@@ -291,6 +291,8 @@ export class WorkspaceDriver {
 
   async openDoc(title: string): Promise<void> {
     await this.docs.clickDoc(title);
+    // The doc open before stays mounted until the route moves, so wait for the move.
+    await expect(this.docs.docRow(title).first()).toHaveAttribute('aria-current', 'page');
     await this.editor.expectMounted();
   }
 

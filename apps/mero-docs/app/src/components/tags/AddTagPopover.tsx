@@ -115,8 +115,14 @@ export function AddTagPopover({
   const listId = React.useId();
   const colourLabelId = React.useId();
   const [index, setIndex] = React.useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
   const rowCount = suggestions.length + (canCreate ? 1 : 0);
   const active = Math.min(index, rowCount - 1);
+
+  // Radix focuses the input only when the content mounts; a reopen during the close animation reuses it.
+  React.useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   const choose = (row: number) => {
     const suggestion = suggestions[row];
@@ -162,6 +168,7 @@ export function AddTagPopover({
       >
         <div className="px-2 pb-1.5 pt-2">
           <input
+            ref={inputRef}
             role="combobox"
             aria-label="Tag name"
             aria-expanded={rowCount > 0}

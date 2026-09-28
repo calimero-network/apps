@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AddTagPopover } from '../AddTagPopover';
@@ -52,6 +52,24 @@ function Harness({
   );
 }
 
+// jsdom runs no CSS animations, so Radix unmounts closed content at once; a
+// browser keeps it for the exit animation, and a reopen then reuses it.
+function keepClosingContentMounted() {
+  const real = window.getComputedStyle.bind(window);
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+    const style = real(el, pseudo);
+    if (!(el instanceof HTMLElement) || !el.dataset.state) return style;
+    return new Proxy(style, {
+      get(target, key) {
+        if (key === 'animationName')
+          return el.dataset.state === 'closed' ? 'exit' : 'enter';
+        const value = Reflect.get(target, key);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+}
+
 function activeOption(): string | null {
   const input = screen.getByRole('combobox');
   const id = input.getAttribute('aria-activedescendant');
@@ -60,6 +78,8 @@ function activeOption(): string | null {
 }
 
 describe('AddTagPopover', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('opens from the Add tag button', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
@@ -72,6 +92,17 @@ describe('AddTagPopover', () => {
   it('focuses the input on open', async () => {
     render(<Harness />);
     const input = await screen.findByRole('combobox');
+    expect(input.matches(':focus')).toBe(true);
+  });
+
+  it('focuses the input when reopened while its close animation still runs', async () => {
+    keepClosingContentMounted();
+    const user = userEvent.setup();
+    render(<Harness />);
+    const input = await screen.findByRole('combobox');
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Add tag' }));
+    expect(screen.getByRole('combobox')).toBe(input);
     expect(input.matches(':focus')).toBe(true);
   });
 
