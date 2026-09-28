@@ -38,6 +38,12 @@ vi.mock('@/hooks/useAppRoute', () => ({
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({ namespaceId: 'w1' }),
 }));
+vi.mock('@calimero-network/mero-react', () => ({
+  useGroupMembers: () => ({ members: [] }),
+}));
+vi.mock('@/hooks/useFolderReach', () => ({
+  useFolderReach: () => () => true,
+}));
 
 const ROWS: IndexRow[] = [
   {
