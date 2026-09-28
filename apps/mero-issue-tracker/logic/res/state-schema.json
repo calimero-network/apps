@@ -3,19 +3,21 @@
   "types": {
     "Comment": {
       "kind": "record",
-      "doc": "A discussion entry on an issue. `id`, `issue_id`, `created_at` are\nimmutable; `body` and `edited_at` are LWW registers. The author is the\nentry's owner stamp, and only they may edit or delete it — on every node.\n`thread` is one issue's comments, oldest first.",
+      "doc": "A discussion entry on an issue. `id`, `issue_id`, `created_at` are\nimmutable; `body` and `edited_at` are LWW registers. The author is the\nentry's owner stamp, and only they may edit or delete it - on every node.\n`thread` is one issue's comments, oldest first.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`comment-<ms>-<8 hex>`."
         },
         {
           "name": "issue_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The issue this comment is on."
         },
         {
           "name": "body",
@@ -26,13 +28,15 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The comment text; never empty."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "edited_at",
@@ -43,7 +47,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "Unix milliseconds of the last edit, or None."
         }
       ]
     },
@@ -60,7 +65,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "What is wrong, in a sentence or two."
         },
         {
           "name": "impact",
@@ -71,7 +77,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Who or what it affects and how badly."
         },
         {
           "name": "repro",
@@ -82,7 +89,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Steps, logs or conditions that trigger it."
         },
         {
           "name": "resolution_criteria",
@@ -93,7 +101,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "What \"fixed\" must satisfy."
         },
         {
           "name": "status",
@@ -104,7 +113,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "One of Open, In progress, Blocked, Done."
         },
         {
           "name": "priority",
@@ -115,7 +125,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "One of low, medium, high, urgent."
         },
         {
           "name": "assignee",
@@ -126,7 +137,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Free text; None when unassigned."
         }
       ]
     },
@@ -138,18 +150,21 @@
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "1 to 64 characters."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         }
       ]
     },
     "IssueTracker": {
       "kind": "record",
+      "doc": "One repository's issue board: its issues, comments, labels and URL.",
       "fields": [
         {
           "name": "headers",
@@ -177,7 +192,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "Issue id → triage state. Shared — any teammate may triage."
+          "doc": "Issue id → triage state. Shared - any teammate may triage."
         },
         {
           "name": "comments",
@@ -234,7 +249,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The labelled issue."
         },
         {
           "name": "label",
@@ -245,7 +261,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "1 to 64 characters."
         },
         {
           "name": "added_at",
@@ -256,7 +273,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "Unix milliseconds of the latest add."
         }
       ]
     }
