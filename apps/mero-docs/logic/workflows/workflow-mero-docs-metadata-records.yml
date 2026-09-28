@@ -278,11 +278,8 @@ steps:
       - "equal({{alice_name_bob}}, 'Alice Anderson')"
 
   # =================================================================
-  # D2. Registry permissions: add_manager / remove_manager /
-  # list_managers / clear_folder_role / set_folder_alias. Alice is the
-  # registry owner; Bob is promoted to manager, exercises the
-  # manager-gated clear_folder_role on himself, then loses the grant
-  # and is rejected doing it again.
+  # D2. Registry permissions: add_manager/remove_manager/list_managers,
+  # clear_folder_role (manager-gated), set_folder_alias.
   # =================================================================
   - name: Alice claims registry ownership
     type: call
@@ -419,10 +416,8 @@ steps:
     statements:
       - 'json_equal({{managers_after_remove}}, [])'
 
-  # Back the revoked-manager status with a real write attempt, not just
-  # the list read above — a manager check that only inspects
-  # list_managers would miss a require_admin regression that still let
-  # a former manager's write through.
+  # Back the revoked-manager status with a real write attempt - a
+  # require_admin regression could still let a former manager through.
   - name: Alice gives Bob a Viewer role again, to have something to protect
     type: call
     node: calimero-node-1
@@ -451,7 +446,7 @@ steps:
       member: '{{bob_account}}'
     expected_failure: true
 
-  - name: Bob's Shared-folder role is still Viewer — the rejected write did not land
+  - name: Bob's Shared-folder role is still Viewer - the rejected write did not land
     type: call
     node: calimero-node-1
     context_id: '{{reg_ctx}}'
