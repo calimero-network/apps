@@ -111,21 +111,13 @@
         {
           "name": "tags",
           "type": {
-            "kind": "map",
-            "key": {
+            "kind": "list",
+            "items": {
               "kind": "string"
             },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bool"
-              }
-            },
-            "crdt_type": "unordered_map"
+            "crdt_type": "unordered_set"
           },
-          "doc": "tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold."
+          "doc": "A set, so two members tagging the same doc at once both keep their tag."
         },
         {
           "name": "archived",

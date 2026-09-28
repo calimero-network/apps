@@ -13,8 +13,7 @@
 //! - `title` - `FugueText`, plain text that merges character by character
 //! - `body` - `RichDocument<DriveMarks>`, an ordered list of blocks each with
 //!   its own text, formatting and structure
-//! - `tags` - `UnorderedMap<String, LwwRegister<bool>>`, tag key to present,
-//!   merged per key, so concurrent tag edits all survive
+//! - `tags` - `UnorderedSet<String>`, so concurrent tag edits all survive
 //! - `archived` / `updated_at` - `LwwRegister<_>`
 //! - `updated_by` - `LwwRegister<String>`, hex account of the last editor
 //!
@@ -44,7 +43,7 @@ use calimero_storage::collections::fugue_text::{Anchor, Bias, TextOp, Undo};
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
     BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
-    Mergeable, Moderated, RichDocument, Span, UnorderedMap, ValueRef, WriteOnce,
+    Mergeable, Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef, WriteOnce,
 };
 use calimero_storage::env as storage_env;
 use mero_docs_types::{is_valid_tag_key, DriveError};
@@ -260,8 +259,8 @@ fn digest_block(view: &BlockView, out: &mut String) {
 pub struct DocRecord {
     pub title: FugueText,
     pub body: Body,
-    /// tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
-    pub tags: UnorderedMap<String, LwwRegister<bool>>,
+    /// A set, so two members tagging the same doc at once both keep their tag.
+    pub tags: UnorderedSet<String>,
     pub archived: LwwRegister<bool>,
     pub updated_at: LwwRegister<u64>,
     pub updated_by: LwwRegister<String>, // hex account id, advanced with updated_at
@@ -287,17 +286,10 @@ pub struct DocDto {
     pub can_delete: bool,
 }
 
-/// The keys whose register holds `true`, sorted.
-fn present_tags(rec: &DocRecord) -> Result<Vec<String>, DriveError> {
-    let mut tags: Vec<String> = rec
-        .tags
-        .entries()
-        .map_err(|e| DriveError::Invalid(format!("tags.entries: {e}")))?
-        .filter(|(_, present)| *present.get())
-        .map(|(key, _)| key)
-        .collect();
-    tags.sort();
-    Ok(tags)
+fn has_tag(rec: &DocRecord, tag: &str) -> Result<bool, DriveError> {
+    rec.tags
+        .contains(tag)
+        .map_err(|e| DriveError::Invalid(format!("tags.contains: {e}")))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -441,7 +433,7 @@ impl DocsState {
         let rec = DocRecord {
             title: title_text,
             body: Body::new(),
-            tags: UnorderedMap::new(),
+            tags: UnorderedSet::new(),
             archived: LwwRegister::new(false),
             updated_at: LwwRegister::new(now),
             updated_by: LwwRegister::new(caller_account_hex()),
@@ -995,17 +987,13 @@ impl DocsState {
             .get_mut(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        // A fresh register would restamp the key and sync a delta that changes nothing.
-        let present = rec
-            .tags
-            .get(&tag)
-            .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?;
-        if present.is_some_and(|r| *r.get()) {
+        // Opening the record for a write re-saves it, so a no-op would still sync a delta.
+        if has_tag(&rec, &tag)? {
             return Ok(());
         }
-        let _previous = rec
+        let _added = rec
             .tags
-            .insert(tag, LwwRegister::new(true))
+            .insert(tag)
             .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
         Ok(())
     }
@@ -1024,13 +1012,13 @@ impl DocsState {
             .get_mut(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        if let Some(mut present) = rec
-            .tags
-            .get_mut(&tag)
-            .map_err(|e| DriveError::Invalid(format!("tags.get_mut: {e}")))?
-        {
-            present.set(false);
+        if !has_tag(&rec, &tag)? {
+            return Ok(());
         }
+        let _was = rec
+            .tags
+            .remove(&tag)
+            .map_err(|e| DriveError::Invalid(format!("tags.remove: {e}")))?;
         Ok(())
     }
 
@@ -1237,13 +1225,19 @@ impl DocsState {
     fn project(&self, id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
         let key = id.to_string();
         let origin = self.origin_of(&key)?;
+        let mut tags: Vec<String> = rec
+            .tags
+            .iter()
+            .map_err(|e| DriveError::Invalid(format!("tags.iter: {e}")))?
+            .collect();
+        tags.sort();
         Ok(DocDto {
             id: key.clone(),
             title: rec
                 .title
                 .get_text()
                 .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
-            tags: present_tags(rec)?,
+            tags,
             archived: *rec.archived.get(),
             created_at: origin.map(|(_, at)| at).unwrap_or_default(),
             updated_at: *rec.updated_at.get(),
@@ -2141,22 +2135,32 @@ mod tests {
         assert_eq!(d.tags, vec!["todo".to_string()]);
     }
 
+    /// The storage actions `f` queues for sync.
+    fn actions_of(f: impl FnOnce()) -> Vec<calimero_storage::action::Action> {
+        calimero_storage::delta::clear_pending_delta();
+        f();
+        calimero_storage::delta::commit_causal_delta(&[0; 32])
+            .unwrap()
+            .map(|delta| delta.actions)
+            .unwrap_or_default()
+    }
+
     #[test]
     fn add_tag_on_a_set_key_writes_nothing() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
-        let stamp = |app: &DocsState| {
-            let rec = app.docs.get(&id).unwrap().unwrap();
-            let reg = rec.tags.get("todo").unwrap().unwrap();
-            (*reg.get(), reg.timestamp())
-        };
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        let first = stamp(&app);
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        assert_eq!(stamp(&app), first);
-        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
-        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
-        assert!(stamp(&app).0 && stamp(&app).1 > first.1);
+        let first = actions_of(|| app.add_tag_inner(id.clone(), "todo".into()).unwrap());
+        assert!(!first.is_empty());
+        let actions = actions_of(|| app.add_tag_inner(id.clone(), "todo".into()).unwrap());
+        assert!(actions.is_empty(), "{actions:?}");
+    }
+
+    #[test]
+    fn remove_tag_of_an_absent_key_writes_nothing() {
+        let mut app = DocsState::init();
+        let id = app.create_doc_inner("t".into()).unwrap();
+        let actions = actions_of(|| app.remove_tag_inner(id.clone(), "never".into()).unwrap());
+        assert!(actions.is_empty(), "{actions:?}");
     }
 
     #[test]
@@ -2176,7 +2180,7 @@ mod tests {
     }
 
     #[test]
-    fn list_docs_returns_present_tags_sorted() {
+    fn list_docs_returns_tags_sorted() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
         for tag in ["zeta", "alpha", "mid", "beta"] {
@@ -2194,8 +2198,7 @@ mod tests {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
         app.remove_tag_inner(id.clone(), "never".into()).unwrap();
-        let rec = app.docs.get(&id).unwrap().unwrap();
-        assert!(rec.tags.get("never").unwrap().is_none());
+        assert!(app.get_doc(id.clone()).unwrap().tags.is_empty());
         app.add_tag_inner(id.clone(), "todo".into()).unwrap();
         app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
         app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
@@ -2461,7 +2464,7 @@ mod tests {
         DocRecord {
             title: FugueText::new(),
             body: Body::new(),
-            tags: UnorderedMap::new(),
+            tags: UnorderedSet::new(),
             archived: zero_lww(false),
             updated_at: zero_lww(0),
             updated_by: zero_lww(String::new()),
@@ -2481,76 +2484,15 @@ mod tests {
         assert_eq!(a.updated_by.get(), "b0");
     }
 
-    /// Two replicas of one base record carrying `base`, each making one tag
-    /// edit, then `receiver` merges the other's state. Returns the receiver's tags.
-    fn merged_tags(
-        base: &[&str],
-        a_edit: (&str, bool),
-        b_edit: (&str, bool),
-        receiver_is_a: bool,
-    ) -> Vec<String> {
-        let (mut a, mut b) = (stub_record(), stub_record());
-        for rec in [&mut a, &mut b] {
-            for key in base {
-                let _new = rec.tags.insert((*key).to_owned(), zero_lww(true)).unwrap();
-            }
-        }
-        // The shipped paths: add inserts a fresh register, remove sets the existing one false.
-        for (rec, (key, present)) in [(&mut a, a_edit), (&mut b, b_edit)] {
-            if present {
-                let _previous = rec
-                    .tags
-                    .insert(key.to_owned(), LwwRegister::new(true))
-                    .unwrap();
-            } else {
-                rec.tags.get_mut(key).unwrap().unwrap().set(false);
-            }
-        }
-        let (mut receiver, sender) = if receiver_is_a { (a, b) } else { (b, a) };
-        <DocRecord as Mergeable>::merge(&mut receiver, &sender).unwrap();
-        present_tags(&receiver).unwrap()
-    }
-
-    #[test]
-    fn concurrent_tags_on_different_keys_both_hold() {
-        for receiver_is_a in [true, false] {
-            assert_eq!(
-                merged_tags(&[], ("x", true), ("y", true), receiver_is_a),
-                vec!["x".to_owned(), "y".to_owned()],
-                "receiver_is_a={receiver_is_a}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_concurrent_untag_and_tag_on_different_keys_both_hold() {
-        for receiver_is_a in [true, false] {
-            assert_eq!(
-                merged_tags(&["x"], ("x", false), ("y", true), receiver_is_a),
-                vec!["y".to_owned()],
-                "receiver_is_a={receiver_is_a}"
-            );
-        }
-    }
-
     #[test]
     fn doc_record_merge_is_idempotent() {
         let mut working = stub_record();
         working.updated_at = LwwRegister::new(3);
-        let _new = working
-            .tags
-            .insert("t".to_owned(), LwwRegister::new(true))
-            .unwrap();
         let mut snapshot = stub_record();
         snapshot.updated_at = LwwRegister::new(3);
-        let _new = snapshot
-            .tags
-            .insert("t".to_owned(), LwwRegister::new(true))
-            .unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         assert_eq!(*working.updated_at.get(), 3);
-        assert_eq!(present_tags(&working).unwrap(), vec!["t".to_owned()]);
         assert!(!*working.archived.get());
     }
 }

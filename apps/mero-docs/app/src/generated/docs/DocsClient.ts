@@ -141,9 +141,9 @@ export interface DocRecord {
   title: {  };
   body: Record<string, BlockView>;
   /**
-   * tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
+   * A set, so two members tagging the same doc at once both keep their tag.
    */
-  tags: Record<string, boolean>;
+  tags: string[];
   archived: boolean;
   updated_at: number;
   updated_by: string;
