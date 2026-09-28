@@ -12,7 +12,7 @@ import {
 interface Props {
   open: boolean;
   title?: string;
-  maxLength?: number; // shown under the field as the limit
+  maxLength?: number; // caps the field and shows a keep-it-short hint
   validate?: (name: string) => string | undefined; // a message blocks the save
   name: string;
   error?: string;
@@ -93,7 +93,7 @@ function RenameForm({
       )}
       {maxLength && !error && (
         <p id={helpId} className="mt-1.5 text-xs text-muted-foreground">
-          Up to {maxLength} characters.
+          Keep it short.
         </p>
       )}
       <DialogFooter>

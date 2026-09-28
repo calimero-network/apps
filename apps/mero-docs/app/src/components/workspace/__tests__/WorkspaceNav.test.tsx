@@ -348,7 +348,7 @@ describe('WorkspaceNav', () => {
       await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
       const input = await screen.findByRole('textbox', {
         name: 'Name',
-        description: 'Up to 60 characters.',
+        description: 'Keep it short.',
       });
       expect((input as HTMLInputElement).maxLength).toBe(60);
       await user.clear(input);
