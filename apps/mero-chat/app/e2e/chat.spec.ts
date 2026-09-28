@@ -653,15 +653,18 @@ test.describe("Chat UI — attachment-only messages", () => {
   });
 
   test("an empty composer with no attachment still sends nothing", async ({ page }) => {
-    // Count only once the channel has finished loading: send a marker and wait
-    // for it, or the history arriving mid-test reads as a phantom send.
     const marker = `ui-empty-${Date.now()}`;
     await sendMessage(page, marker);
     await waitForMessage(page, marker);
-    const rows = page.locator('[id^="actions-container-"]');
-    const before = await rows.count();
+
     await page.getByRole("button", { name: "Send message" }).first().click();
-    await page.waitForTimeout(1_000);
-    expect(await rows.count()).toBe(before);
+    await page.waitForTimeout(1_500);
+
+    // Every message renders a `.msg-content`, even one with no text, so a
+    // phantom empty send would become the last one. Counting rows instead is
+    // unreliable: the optimistic row and the node's copy collapse into one,
+    // and the virtualized list shifts.
+    await expect(page.locator(".msg-content").last()).toContainText(marker);
   });
+
 });
