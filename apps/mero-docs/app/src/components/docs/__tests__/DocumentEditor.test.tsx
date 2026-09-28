@@ -267,7 +267,20 @@ describe('DocumentEditor', () => {
     getDoc.mockRejectedValue(new Error('context unreachable'));
     render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText("Couldn't load document");
-    expect(screen.getByText('context unreachable')).toBeTruthy();
+    // The raw error is for the console; the person reads what to do.
+    expect(screen.queryByText('context unreachable')).toBeNull();
+    expect(screen.getByText("Couldn't open this document. Try refreshing the page.")).toBeTruthy();
+  });
+
+  // The contract answers an id it no longer holds with a FunctionCallError whose
+  // words are in `data`; showing "FunctionCallError" told nobody anything.
+  it('says a deleted document is gone', async () => {
+    getDoc.mockRejectedValue(
+      Object.assign(new Error('FunctionCallError'), { data: 'not found: doc-1' }),
+    );
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
+    await screen.findByText(/doesn't exist anymore/);
+    expect(screen.queryByText('FunctionCallError')).toBeNull();
   });
 
   it('toasts when the delete call fails, instead of failing silently', async () => {

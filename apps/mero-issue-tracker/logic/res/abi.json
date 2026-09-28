@@ -868,6 +868,7 @@
         "kind": "unit"
       },
       "intent": "mutating",
+      "destructive": true,
       "idempotent": true
     },
     {

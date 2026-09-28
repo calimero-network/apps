@@ -41,6 +41,10 @@ import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
 import { parseMetaChanges } from '@/lib/rich/events';
 import { docUrl, parseAppPath } from '@/lib/routes';
+import {
+  documentLoadErrorMessage,
+  documentSaveErrorMessage,
+} from '@/lib/documentError';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 const TAG_ADD_FAILED = "Couldn't add the tag. Try again.";
@@ -144,8 +148,7 @@ export function DocumentEditor({
     [],
   );
   const peerList = useMemo(
-    () =>
-      [...peers].map(([id, p]) => ({ id, name: p.name, colour: p.colour })),
+    () => [...peers].map(([id, p]) => ({ id, name: p.name, colour: p.colour })),
     [peers],
   );
   const titleCarets = useTitleCursors(client, openDocId, peers, title.title);
@@ -169,6 +172,7 @@ export function DocumentEditor({
       .then((loaded) => alive && setDoc(loaded))
       .catch((cause: unknown) => {
         if (!alive) return;
+        console.error('document load failed', cause);
         setLoadError(cause instanceof Error ? cause : new Error(String(cause)));
       });
     return () => {
@@ -237,6 +241,16 @@ export function DocumentEditor({
   }, [isDesktop]);
   const detailsOpen = isDesktop ? panelOpen : sheetOpen;
   const setDetailsOpen = isDesktop ? setPanelOpen : setSheetOpen;
+  // The status bar only says "Save failed"; this says why. Only a failed save
+  // sets 'error' (a failed re-read sets `error` alone), and one toast id means a
+  // save that keeps failing replaces its message instead of stacking copies.
+  useEffect(() => {
+    if (body.status !== 'error' || !body.error) return;
+    console.error('document save failed', body.error);
+    toast.error(documentSaveErrorMessage(body.error), {
+      id: `doc-save-${docId}`,
+    });
+  }, [body.status, body.error, docId]);
 
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
@@ -251,8 +265,9 @@ export function DocumentEditor({
       title: 'Delete document?',
       body: (
         <>
-          Delete <span className="font-medium">{title.title || 'Untitled'}</span>?
-          This can't be undone.
+          Delete{' '}
+          <span className="font-medium">{title.title || 'Untitled'}</span>? This
+          can't be undone.
         </>
       ),
       confirmLabel: 'Delete',
@@ -276,7 +291,7 @@ export function DocumentEditor({
             Couldn't load document
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {loadError.message}
+            {documentLoadErrorMessage(loadError)}
           </p>
         </div>
       </div>

@@ -568,7 +568,7 @@ export class IssueTrackerClient {
    * {"issue_id":"<issue id>","label":"ci"}
    * ```
    *
-   * @remarks idempotent
+   * @remarks destructive, idempotent
    *
    * @intent mutating
    */
