@@ -6,6 +6,6 @@
     "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
     "types": ["vite/client"]
   },
-  "include": ["src"],
+  "include": ["src", "src/trusted/*.json"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
 }
