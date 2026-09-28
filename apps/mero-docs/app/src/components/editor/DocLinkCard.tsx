@@ -30,9 +30,10 @@ export type DocLinkCardProps =
   | { state: 'other-workspace' };
 
 const UNAVAILABLE: Record<
-  'deleted' | 'no-access' | 'other-workspace',
+  'unavailable' | 'deleted' | 'no-access' | 'other-workspace',
   [LucideIcon, string]
 > = {
+  unavailable: [CircleAlert, "Couldn't load this document"],
   deleted: [FileX2, 'This document was deleted'],
   'no-access': [Lock, 'This is in a folder you cannot open'],
   'other-workspace': [ExternalLink, 'This links to another workspace'],
@@ -58,14 +59,15 @@ export function DocLinkCard(props: DocLinkCardProps) {
     );
   }
 
-  if (props.state === 'unavailable') {
+  if (props.state !== 'ok') {
+    const [Icon, text] = UNAVAILABLE[props.state];
     return (
       <div
         className={`${cardClass} flex items-center gap-2 text-[13px] text-muted-foreground`}
       >
-        <CircleAlert aria-hidden className="h-[15px] w-[15px] shrink-0" />
-        <span className="flex-1">Couldn't load this document</span>
-        {props.onRetry && (
+        <Icon aria-hidden className="h-[15px] w-[15px] shrink-0" />
+        <span className="flex-1">{text}</span>
+        {props.state === 'unavailable' && props.onRetry && (
           <Button
             variant="outline"
             size="sm"
@@ -75,18 +77,6 @@ export function DocLinkCard(props: DocLinkCardProps) {
             Try again
           </Button>
         )}
-      </div>
-    );
-  }
-
-  if (props.state !== 'ok') {
-    const [Icon, text] = UNAVAILABLE[props.state];
-    return (
-      <div
-        className={`${cardClass} flex items-center gap-2 text-[13px] text-muted-foreground`}
-      >
-        <Icon aria-hidden className="h-[15px] w-[15px] shrink-0" />
-        {text}
       </div>
     );
   }
