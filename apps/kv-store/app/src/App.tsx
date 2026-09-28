@@ -6,7 +6,8 @@ import { KvPanel } from "./KvPanel";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 
 export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  const { isAuthenticated, isLoading, isDelegated, applicationId, contextId, nodeUrl, logout } =
+    useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
@@ -52,7 +53,12 @@ export function App() {
         </div>
       ) : !contextId ? (
         <>
-          <ContextPicker applicationId={applicationId} />
+          {/*
+            Not for an account on a relay: listing and creating contexts are
+            admin calls, and a hosted relay serves a keyholder `/admit` and
+            `/intents` only. Joining from an invitation is how it gets a context.
+          */}
+          {!isDelegated && <ContextPicker applicationId={applicationId} />}
           <JoinCard
             state={joinState}
             onSubmit={redeemPasted}
@@ -94,7 +100,8 @@ export function App() {
             </div>
           </div>
           <KvPanel contextId={contextId} />
-          <InviteCard contextId={contextId} />
+          {/* Minting an invitation is a node's admin call; an account cannot. */}
+          {!isDelegated && <InviteCard contextId={contextId} />}
         </>
       )}
 
