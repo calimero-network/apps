@@ -156,27 +156,31 @@ export class WorkspaceDriver {
   async joinNamespaceKeepGate(inviteUrl: string): Promise<void> {
     const parsed = new URL(inviteUrl, 'http://placeholder');
     await this.page.goto(`/${parsed.search}`);
-    await this.page
-      .getByRole('button', { name: /Accept & join/i })
-      .click();
+    await this.page.getByRole('button', { name: /Accept & join/i }).click();
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
   }
 
   // Opens the namespace settings pane.
   async openSettings(): Promise<void> {
-    await this.page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(
-      this.page.getByText(/Your display name/i).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await this.page
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    await expect(this.page.getByText(/Your display name/i).first()).toBeVisible(
+      { timeout: 10_000 },
+    );
   }
 
   async closeSettings(): Promise<void> {
     // Settings button is a toggle; clicking again collapses.
-    await this.page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await this.page
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
   }
 
   async logout(): Promise<void> {
-    await this.page.getByRole('button', { name: 'Log out', exact: true }).click();
+    await this.page
+      .getByRole('button', { name: 'Log out', exact: true })
+      .click();
   }
 
   // ─── folder creation ───────────────────────────────────────────
@@ -187,9 +191,7 @@ export class WorkspaceDriver {
       // "New subfolder". Dialog shape is identical to the
       // tree-level create.
       await this.tree.openContextMenu(opts.parent);
-      await this.page
-        .getByRole('menuitem', { name: /New subfolder/i })
-        .click();
+      await this.page.getByRole('menuitem', { name: /New subfolder/i }).click();
     } else {
       // Scoped to the FolderTree's <aside>: its header "New", or
       // "New folder" while the workspace has no folders yet.
@@ -294,7 +296,10 @@ export class WorkspaceDriver {
   async openDoc(title: string): Promise<void> {
     await this.docs.clickDoc(title);
     // The doc open before stays mounted until the route moves, so wait for the move.
-    await expect(this.docs.docRow(title).first()).toHaveAttribute('aria-current', 'page');
+    await expect(this.docs.docRow(title).first()).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     await this.editor.expectMounted();
   }
 
@@ -356,7 +361,7 @@ export class FolderTreeDriver {
   // Select a folder AND ensure it is expanded so its doc leaves render.
   async openFolder(name: string): Promise<void> {
     await this.folderRow(name).first().click(); // select → the folder's list in <main>
-    await this.expandFolder(name);              // expand → doc leaves in sidebar
+    await this.expandFolder(name); // expand → doc leaves in sidebar
   }
 
   async openContextMenu(name: string): Promise<void> {
@@ -422,7 +427,10 @@ export class RestrictedCardDriver {
   ): Promise<void> {
     const main = this.page.getByRole('main');
     // The folder's own list is headed by its name; the card and waits never use h1.
-    const folderView = main.getByRole('heading', { level: 1, name: folderName });
+    const folderView = main.getByRole('heading', {
+      level: 1,
+      name: folderName,
+    });
     const join = main.getByRole('button', {
       name: /^(Join folder|Try joining)$/,
     });
@@ -438,9 +446,7 @@ export class SharingDriver {
 
   // Picks a namespace member by display name in the folder's member picker.
   async addMember(name: string): Promise<void> {
-    await this.page
-      .getByRole('combobox', { name: /member ID/i })
-      .fill(name);
+    await this.page.getByRole('combobox', { name: /member ID/i }).fill(name);
     // Scoped to the picker's listbox so no other option on the page can match.
     await this.page
       .getByRole('listbox')
@@ -454,7 +460,9 @@ export class SharingDriver {
 
   async removeMember(label: string): Promise<void> {
     await this.page
-      .getByRole('button', { name: new RegExp(`Remove\\s+${escapeRegex(label)}`, 'i') })
+      .getByRole('button', {
+        name: new RegExp(`Remove\\s+${escapeRegex(label)}`, 'i'),
+      })
       .click();
   }
 
@@ -513,13 +521,17 @@ export class HomeDriver {
 
   // The sidebar's Home row is named "Home, <count>".
   navRow(): Locator {
-    return this.page.locator('aside').getByRole('button', { name: /^Home, \d+$/ });
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: /^Home, \d+$/ });
   }
 
   async open(): Promise<void> {
     await this.navRow().click();
     await expect(
-      this.page.getByRole('main').getByRole('heading', { level: 1, name: 'Home' }),
+      this.page
+        .getByRole('main')
+        .getByRole('heading', { level: 1, name: 'Home' }),
     ).toBeVisible({ timeout: 15_000 });
   }
 
@@ -539,7 +551,9 @@ export class HomeDriver {
   tagRow(name: string): Locator {
     return this.page
       .locator('aside')
-      .getByRole('button', { name: new RegExp(`^${escapeRegex(name)}, \\d+$`) });
+      .getByRole('button', {
+        name: new RegExp(`^${escapeRegex(name)}, \\d+$`),
+      });
   }
 
   heading(): Locator {
@@ -567,7 +581,9 @@ export class HomeDriver {
   }
 
   saveViewButton(): Locator {
-    return this.page.getByRole('main').getByRole('button', { name: 'Save view' });
+    return this.page
+      .getByRole('main')
+      .getByRole('button', { name: 'Save view' });
   }
 }
 
@@ -621,12 +637,8 @@ export class EditorDriver {
   // aria-label="Document actions"; that's the only consumer of
   // the dropdown so the literal match is safe.
   async openDeleteConfirm(): Promise<Locator> {
-    await this.page
-      .getByRole('button', { name: /Document actions/i })
-      .click();
-    await this.page
-      .getByRole('menuitem', { name: /Delete Document/i })
-      .click();
+    await this.page.getByRole('button', { name: /Document actions/i }).click();
+    await this.page.getByRole('menuitem', { name: /Delete Document/i }).click();
     return this.page.getByRole('dialog', { name: 'Delete document?' });
   }
 
@@ -655,7 +667,10 @@ export class EditorDriver {
       '# Milestones',
       'Folder sharing and roles',
       SECTION_PARAGRAPH,
-      ...Array.from({ length: FILLER_LINES }, (_, i) => `Closing line ${i + 1}`),
+      ...Array.from(
+        { length: FILLER_LINES },
+        (_, i) => `Closing line ${i + 1}`,
+      ),
     ];
     for (const text of lines) {
       await this.page.keyboard.press('Enter');
@@ -698,13 +713,17 @@ export class EditorDriver {
         },
         [href, text],
       );
-    await expect(this.page.locator('.ProseMirror a', { hasText: text })).toBeVisible();
+    await expect(
+      this.page.locator('.ProseMirror a', { hasText: text }),
+    ).toBeVisible();
   }
 
   // The item stays disabled ("Saving…") until the node has the block's id.
   async copySectionLink(text: string): Promise<string> {
     await this.openBlockMenu(text);
-    const item = this.page.getByRole('menuitem', { name: /Copy link to section/ });
+    const item = this.page.getByRole('menuitem', {
+      name: /Copy link to section/,
+    });
     await expect(item).toBeEnabled({ timeout: 15_000 });
     await item.click();
     return this.page.evaluate(() => navigator.clipboard.readText());
@@ -741,7 +760,9 @@ export class DetailsDriver {
   panel(): Locator {
     return this.page
       .getByRole('complementary')
-      .filter({ has: this.page.getByRole('heading', { name: 'Details', exact: true }) })
+      .filter({
+        has: this.page.getByRole('heading', { name: 'Details', exact: true }),
+      })
       .or(this.page.getByRole('dialog', { name: 'Details' }));
   }
 
@@ -790,7 +811,9 @@ export class DocTagsDriver {
     await this.openAdd();
     await this.input().fill(query);
     await this.page
-      .getByRole('option', { name: new RegExp(`^${escapeRegex(name)}\\s*\\d+ docs?$`) })
+      .getByRole('option', {
+        name: new RegExp(`^${escapeRegex(name)}\\s*\\d+ docs?$`),
+      })
       .click();
     await expect(this.chip(name)).toBeVisible({ timeout: 15_000 });
   }
@@ -861,9 +884,7 @@ export class SettingsDriver {
       name: /Invite to workspace/i,
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await dialog
-      .getByRole('button', { name: /Generate invite link/i })
-      .click();
+    await dialog.getByRole('button', { name: /Generate invite link/i }).click();
     const urlInput = dialog.locator('#invite-url-text');
     await expect(urlInput).toBeVisible({ timeout: 30_000 });
     const url = (await urlInput.inputValue()).trim();
