@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
 import { PRESENCE_BEAT_MS, PRESENCE_STALE_MS } from '@/lib/presenceTiming';
+import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
 import {
   peersOnDoc,
   presenceColour,
@@ -52,6 +53,7 @@ export function useDocPresence(
     (caret: CaretSlice) => {
       const who = identityRef.current;
       if (!docId || !who) return;
+      if (contextId) cancelLeave(contextId);
       lastCaretRef.current = { docId, caret };
       publishRef.current({
         docId,
@@ -61,7 +63,7 @@ export function useDocPresence(
         n: beatRef.current,
       });
     },
-    [docId],
+    [contextId, docId],
   );
 
   const announce = useCallback(() => {
@@ -78,7 +80,7 @@ export function useDocPresence(
   // context, so an open doc re-announces every beat and a hidden or closed one leaves.
   useEffect(() => {
     if (!ephemeral || !contextId || !docId) return;
-    const leave = () => void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+    const leave = () => leaveContext(ephemeral, contextId, LEAVE_SLICE);
     let timer: ReturnType<typeof setInterval> | undefined;
     const beat = () => {
       beatRef.current += 1;
@@ -100,10 +102,7 @@ export function useDocPresence(
   }, [ephemeral, contextId, docId, announce]);
 
   const fresh = useFreshPeers(peers, ageOf);
-  const onDoc = useMemo(
-    () => peersOnDoc(fresh, docId ?? ''),
-    [fresh, docId],
-  );
+  const onDoc = useMemo(() => peersOnDoc(fresh, docId ?? ''), [fresh, docId]);
 
   return { peers: onDoc, publish };
 }
@@ -122,7 +121,8 @@ export function useFreshPeers<T>(
     const fresh = new Map<string, T>();
     for (const [author, slice] of peers) {
       const age = ageOf(author);
-      if (age !== undefined && age < PRESENCE_STALE_MS) fresh.set(author, slice);
+      if (age !== undefined && age < PRESENCE_STALE_MS)
+        fresh.set(author, slice);
     }
     return fresh;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` re-reads ageOf

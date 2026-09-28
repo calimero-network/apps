@@ -146,7 +146,7 @@ describe('usePublishWorkspacePresence', () => {
     expect(set).not.toHaveBeenCalled();
   });
 
-  it('leaves on unmount and stops beating', () => {
+  it('leaves on unmount, repeats the leave once, and stops beating', () => {
     const { unmount } = renderHook(() =>
       usePublishWorkspacePresence(CTX, ALICE),
     );
@@ -156,7 +156,8 @@ describe('usePublishWorkspacePresence', () => {
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(set).not.toHaveBeenCalled();
+    // A beat still in flight can land after the first leave; the repeat wins.
+    expect(set.mock.calls).toEqual([[CTX, {}]]);
   });
 
   it('leaves while the tab is hidden, since a throttled timer would flap', () => {
@@ -167,7 +168,8 @@ describe('usePublishWorkspacePresence', () => {
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(set).not.toHaveBeenCalled();
+    // Only the leave's one repeat: no beat while hidden.
+    expect(set.mock.calls).toEqual([[CTX, {}]]);
   });
 
   it('beats at once when the tab is shown again, then resumes the interval', () => {

@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useDocPresence } from '../useDocPresence';
+import { PRESENCE_LEAVE_REPEAT_MS } from '@/lib/presenceTiming';
 
 const CTX = 'docs-ctx';
 const DOC = 'doc-1';
@@ -99,6 +100,26 @@ describe('useDocPresence', () => {
     expect(set).not.toHaveBeenCalled();
     unmount();
     expect(set).toHaveBeenCalledWith(CTX, {});
+  });
+
+  it('leaves again a moment later, in case a caret update lands after the first leave', () => {
+    vi.useFakeTimers();
+    const { unmount } = render('bob');
+    unmount();
+    expect(set).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(PRESENCE_LEAVE_REPEAT_MS);
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(set).toHaveBeenLastCalledWith(CTX, {});
+    vi.useRealTimers();
+  });
+
+  it('never repeats a leave once the next doc has announced', () => {
+    vi.useFakeTimers();
+    const { rerender } = render('bob');
+    rerender({ who: 'bob', id: 'doc-2' });
+    vi.advanceTimersByTime(PRESENCE_LEAVE_REPEAT_MS);
+    expect(set).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it('leaves the old doc before announcing the next one', () => {

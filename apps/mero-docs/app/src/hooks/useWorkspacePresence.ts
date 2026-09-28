@@ -7,6 +7,7 @@ import {
   PRESENCE_BEAT_MS as BEAT_MS,
   PRESENCE_STALE_MS as STALE_MS,
 } from '@/lib/presenceTiming';
+import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
 import { useWarnOnError } from './useWarnOnError';
 
 const LEAVE_SLICE = {}; // carries no account, so every reader drops the author
@@ -30,15 +31,16 @@ export function usePublishWorkspacePresence(
     if (!ephemeral || !contextId || !selfAccount) return;
     let n = 0;
     let timer: ReturnType<typeof setInterval> | undefined;
-    const beat = () =>
-      ephemeral
+    const beat = () => {
+      cancelLeave(contextId);
+      return ephemeral
         .set(contextId, { a: selfAccount, n: n++ })
         .catch((err: unknown) =>
           console.warn('[useWorkspacePresence] presence off', err),
         );
+    };
     // The node heartbeats the last slice until it leaves the context, so say so.
-    const leave = () =>
-      void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+    const leave = () => leaveContext(ephemeral, contextId, LEAVE_SLICE);
     // A hidden tab's timers can be throttled past STALE_MS, so it leaves instead.
     const onVisibility = () => {
       clearInterval(timer);
