@@ -186,7 +186,8 @@ test.describe('Search (single-node)', () => {
     await expect(hit).toHaveCount(1, { timeout: 30_000 });
     await expect(hit).toContainText('Roadmap 2026');
     await expect(hit).toContainText('in “Versioning”');
-    await expect(hit.locator('mark')).toHaveText('breaking change');
+    // Each query word is marked on its own.
+    await expect(hit.locator('mark')).toHaveText(['breaking', 'change']);
     await hit.click();
     await expect(page).toHaveURL(/\/d\/[^/?#]+.*#b=/);
     await alice.editor.expectMounted();
@@ -269,8 +270,8 @@ test.describe('Search (single-node)', () => {
       .getByRole('option', { name: /Roadmap 2026/ })
       .getByText('Product', { exact: true });
     await expect(folder).toBeVisible();
-    expect(
-      await folder.evaluate((el) => el.scrollWidth - el.clientWidth),
-    ).toBe(0);
+    expect(await folder.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(
+      0,
+    );
   });
 });

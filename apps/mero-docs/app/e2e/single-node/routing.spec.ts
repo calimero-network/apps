@@ -6,7 +6,7 @@ import { test, expect } from '../fixtures/single-user';
 import { injectMeroAuth } from '../fixtures/auth';
 import { getEnv } from '../fixtures/env';
 
-const DOC_PATH = /^\/app\/[^/]+\/f\/[^/]+\/d\/doc-\d+$/; // /app/<ws>/f/<folder>/d/<doc>
+const DOC_PATH = /^\/app\/[^/]+\/f\/[^/]+\/d\/doc-\d+-[0-9a-f]{8}$/; // /app/<ws>/f/<folder>/d/doc-<n>-<account tag>
 
 function pathOf(page: Page): string {
   return new URL(page.url()).pathname;
@@ -44,19 +44,27 @@ test.describe('URL routing (single-node)', () => {
     await alice.page.reload();
 
     await alice.editor.expectMounted();
-    await expect(alice.page.getByTestId('doc-title-input')).toHaveValue('Linked', {
-      timeout: 15_000,
-    });
+    await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+      'Linked',
+      {
+        timeout: 15_000,
+      },
+    );
     expect(pathOf(alice.page)).toBe(docPath);
   });
 
-  test('back and forward walk Home, folder, doc and settings', async ({ alice }) => {
+  test('back and forward walk Home, folder, doc and settings', async ({
+    alice,
+  }) => {
     const page = alice.page;
     const home = homePathOf(page);
     await page.goto(home);
-    await expect(page.getByTestId('workspace-switcher')).toContainText('Route WS', {
-      timeout: 30_000,
-    });
+    await expect(page.getByTestId('workspace-switcher')).toContainText(
+      'Route WS',
+      {
+        timeout: 30_000,
+      },
+    );
 
     await alice.tree.openFolder('Drafts');
     const folder = pathOf(page);
@@ -72,11 +80,15 @@ test.describe('URL routing (single-node)', () => {
     expect(pathOf(page)).toBe(doc);
 
     await page.goBack();
-    await expect(page.getByRole('heading', { level: 1, name: 'Drafts' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Drafts' }),
+    ).toBeVisible();
     expect(pathOf(page)).toBe(folder);
 
     await page.goBack();
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeVisible();
     expect(pathOf(page)).toBe(home);
 
     await page.goForward();
@@ -119,13 +131,18 @@ test.describe('URL routing (single-node)', () => {
       });
       await visitor.goto('/');
 
-      await expect.poll(() => pathOf(visitor), { timeout: 30_000 }).toBe(docPath);
+      await expect
+        .poll(() => pathOf(visitor), { timeout: 30_000 })
+        .toBe(docPath);
       await expect(visitor.locator('.ProseMirror').first()).toBeVisible({
         timeout: 30_000,
       });
-      await expect(visitor.getByTestId('doc-title-input')).toHaveValue('Linked', {
-        timeout: 15_000,
-      });
+      await expect(visitor.getByTestId('doc-title-input')).toHaveValue(
+        'Linked',
+        {
+          timeout: 15_000,
+        },
+      );
     } finally {
       await ctx.close();
     }
@@ -133,7 +150,9 @@ test.describe('URL routing (single-node)', () => {
 
   test('Copy link puts the doc URL on the clipboard', async ({ alice }) => {
     const page = alice.page;
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
     await alice.openDoc('Linked');
     await expect.poll(() => pathOf(page)).toMatch(DOC_PATH);
 
