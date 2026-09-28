@@ -68,4 +68,38 @@ describe('DocLinkPickerMenu', () => {
     expect(screen.getByText('No documents match')).toBeTruthy();
     expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
+
+  it('names the section picker by what it links', () => {
+    render(
+      <DocLinkPickerMenu
+        mode="section"
+        items={[
+          {
+            id: 'section:f1/d1:h1',
+            kind: 'section',
+            title: 'Goals',
+            folderLabel: 'Q3 launch plan',
+          },
+        ]}
+        activeIndex={0}
+        onPick={() => {}}
+      />,
+    );
+    expect(
+      screen.getByRole('listbox', { name: 'Link to a section' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('option').textContent).toBe('GoalsQ3 launch plan');
+  });
+
+  it('says when no section matches', () => {
+    render(
+      <DocLinkPickerMenu
+        mode="section"
+        items={[]}
+        activeIndex={0}
+        onPick={() => {}}
+      />,
+    );
+    expect(screen.getByText('No sections match')).toBeTruthy();
+  });
 });
