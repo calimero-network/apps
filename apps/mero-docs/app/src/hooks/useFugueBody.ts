@@ -108,6 +108,13 @@ interface Outcome {
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
+/** BlockNote always holds a block, so it shows an empty document as one empty paragraph. */
+const isEditorStandIn = (blocks: EditorBlock[]): boolean =>
+  blocks.length === 1 &&
+  blocks[0].kind === 'paragraph' &&
+  blocks[0].depth === 0 &&
+  blocks[0].inline.length === 0;
+
 const structureOf = (blocks: EditorBlock[]): string =>
   JSON.stringify(blocks.map((b) => [b.id, b.kind, b.depth, b.attrs]));
 
@@ -189,10 +196,12 @@ export function useFugueBody({
   const localBlocks = useCallback((): EditorBlock[] => {
     const live = editorRef.current;
     if (!live) return [];
-    return fromBlockNote(live.document).map((block) => ({
+    const blocks = fromBlockNote(live.document).map((block) => ({
       ...block,
       id: backendIdOf(block.id),
     }));
+    // Opening a document must not write to it, so this stays unsent until typed into.
+    return serverRef.current.length === 0 && isEditorStandIn(blocks) ? [] : blocks;
   }, [backendIdOf]);
 
   // Until the editor holds the loaded document, a diff against it would
@@ -391,7 +400,10 @@ export function useFugueBody({
         setContent(JSON.stringify(toBlockNote(remote)));
         return;
       }
-      if (!applyRemoteStructure(remote)) {
+      // A peer's first blocks take the empty paragraph's place rather than land beside it.
+      const replacesStandIn =
+        remote.length > 0 && serverRef.current.length === 0 && localBlocks().length === 0;
+      if (replacesStandIn || !applyRemoteStructure(remote)) {
         if (diffBlocks(serverRef.current, localBlocks()).length > 0) {
           // Our own block change is unsent; send it, then read again.
           dirtyRef.current = true;

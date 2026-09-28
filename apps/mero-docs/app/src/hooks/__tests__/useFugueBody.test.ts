@@ -16,6 +16,7 @@ vi.mock('@calimero-network/mero-react', () => ({
 
 const DOC = 'doc-1';
 const CTX = 'ctx-1';
+const BLOCKNOTE_DEFAULTS = { textAlignment: 'left', textColor: 'default', backgroundColor: 'default' }; // a fresh paragraph's props
 
 interface BnBlock {
   id: string;
@@ -477,6 +478,42 @@ describe('useFugueBody', () => {
     expect(editor.document.map((b) => b.id)).toEqual(['blk-1']);
     expect(editor.textOf('blk-1')).toBe('The fox.');
     expect(client.insertBlock).not.toHaveBeenCalled();
+    expect(client.splitBlock).not.toHaveBeenCalled();
+  });
+
+  it('never writes the empty block the editor shows for an empty document', async () => {
+    const client = fakeClient([]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle(5_000);
+
+    expect(client.insertBlock).not.toHaveBeenCalled();
+    expect(client.setAttr).not.toHaveBeenCalled();
+  });
+
+  it('writes the empty document\'s block once the user types into it', async () => {
+    const client = fakeClient([]);
+    client.applyDeltaOn.mockResolvedValue(applied('hi'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle();
+
+    client.getDocument.mockResolvedValue([row('blk-new', 'hi', 'paragraph', { textAlignment: 'left' })]);
+    editor.type('placeholder', 'hi');
+    await settle();
+
+    expect(client.insertBlock).toHaveBeenCalledWith({ doc: DOC, after: null, kind: 'paragraph', depth: 0 });
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-new',
+      base: '',
+      ops: [{ insert: 'hi', attributes: {} }],
+      anchor: null,
+    });
   });
 
   it('keeps a peer\'s text that lands while this window changes that block\'s kind', async () => {
