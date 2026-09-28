@@ -45,7 +45,6 @@ vi.mock('@/hooks/namespaceNames', () => ({
 const join = vi.fn(() => new Promise(() => {}));
 
 vi.mock('@/hooks/useNamespaceInvitation', () => ({
-  classifyJoinError: () => 'other',
   isInviteExpired: () => false,
   useJoinNamespaceByInvite: () => ({ join }),
   useJoinFolderByInvite: () => ({ join }),
