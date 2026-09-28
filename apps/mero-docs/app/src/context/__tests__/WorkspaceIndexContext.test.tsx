@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render } from '@testing-library/react';
-import { WorkspaceIndexProvider } from '../WorkspaceIndexContext';
+import {
+  WorkspaceIndexProvider,
+  useTextIndexValue,
+} from '../WorkspaceIndexContext';
 import { usePresenceByDoc, type PresenceByDoc } from '@/hooks/usePresenceByDoc';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 
@@ -16,9 +19,18 @@ const index = {
   refetchFolder: () => {},
 };
 const watched: string[] = [];
+const textIndex = {
+  texts: new Map(),
+  foldersDone: 1,
+  foldersTotal: 2,
+  pending: ['f2'],
+};
 
 vi.mock('@/hooks/useWorkspaceIndex', () => ({
   useWorkspaceIndex: () => index,
+}));
+vi.mock('@/hooks/useTextIndex', () => ({
+  useTextIndex: () => textIndex,
 }));
 vi.mock('@/hooks/useTags', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/useTags')>()),
@@ -41,8 +53,10 @@ vi.mock('@/hooks/usePresenceByDoc', async (importOriginal) => {
 });
 
 let seen: PresenceByDoc = new Map();
+let seenText: unknown = null;
 function Probe() {
   seen = usePresenceByDoc();
+  seenText = useTextIndexValue();
   return null;
 }
 
@@ -79,5 +93,13 @@ describe('WorkspaceIndexProvider presence', () => {
       </WorkspaceIndexProvider>,
     );
     expect(seen.size).toBe(0);
+  });
+});
+
+describe('WorkspaceIndexProvider text index', () => {
+  it('hands search the text index it builds', () => {
+    index.folderStatus = { f1: 'ready', f2: 'loading' };
+    mount();
+    expect(seenText).toBe(textIndex);
   });
 });
