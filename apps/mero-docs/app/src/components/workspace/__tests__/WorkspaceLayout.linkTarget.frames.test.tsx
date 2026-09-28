@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
 
@@ -85,6 +86,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
         resolvedFolderIds: s.resolvedFolderIds,
         hiddenFolderIds: h.fixed.hiddenFolderIds,
         selfIdentity: 'me',
+        namespaceMemberNames: {},
         stage: 'ready',
         syncStatus: null,
         refetch: h.fixed.refetch,
@@ -142,10 +144,6 @@ vi.mock('@/components/docs/DocumentEditor', () => ({
     <div data-testid="editor">{docId}</div>
   ),
 }));
-vi.mock('@/hooks/useSavedViews', () => ({
-  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
-}));
-vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 
 window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -179,6 +177,7 @@ function renderAt(entry: string) {
         />
       </Routes>
     </MemoryRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 

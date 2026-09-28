@@ -5,6 +5,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const workspace = vi.hoisted(() => ({
   namespaces: [{ namespaceId: 'ns' }],
@@ -45,6 +46,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       resolvedFolderIds: workspace.resolvedFolderIds,
       hiddenFolderIds: workspace.hiddenFolderIds,
       selfIdentity: 'me',
+      namespaceMemberNames: {},
       stage: 'ready',
       syncStatus: null,
       refetch: workspaceRefetch,
@@ -103,10 +105,6 @@ vi.mock('../NamespaceSettingsPanel', () => ({
 vi.mock('@/components/docs/DocumentEditor', () => ({
   DocumentEditor: () => <div data-testid="editor" />,
 }));
-vi.mock('@/hooks/useSavedViews', () => ({
-  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
-}));
-vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 
 window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -136,6 +134,7 @@ function renderAt(entry: string) {
         />
       </Routes>
     </MemoryRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 
@@ -249,7 +248,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
         </Routes>
       </MemoryRouter>
     );
-    const { rerender } = render(tree());
+    const { rerender } = render(tree(), { wrapper: ConfirmProvider });
     expect(await screen.findByTestId('editor')).toBeTruthy();
     // e.g. registryClient briefly churns identity mid-session.
     docs.listed = false;
@@ -279,7 +278,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
         </Routes>
       </MemoryRouter>
     );
-    const { rerender } = render(tree());
+    const { rerender } = render(tree(), { wrapper: ConfirmProvider });
     expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
     workspace.registryFolders = [
       { id: 'late', parent_id: null, color: null, alias: 'Late' },

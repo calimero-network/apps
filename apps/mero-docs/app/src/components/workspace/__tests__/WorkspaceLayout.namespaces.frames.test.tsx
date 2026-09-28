@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { MeroContextValue } from '@calimero-network/mero-react';
 import { DriveWorkspaceProvider, useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const h = vi.hoisted(() => {
   const listeners = new Set<() => void>();
@@ -90,10 +91,6 @@ vi.mock('../DisplayNameGate', () => ({
   DisplayNameGate: () => <div data-testid="name-gate" />,
 }));
 vi.mock('../NamespaceSettingsPanel', () => ({ NamespaceSettingsPanel: () => null }));
-vi.mock('@/hooks/useSavedViews', () => ({
-  useSavedViews: () => ({ views: [], save: () => {}, rename: () => {}, remove: () => {} }),
-}));
-vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => () => {} }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
 vi.mock('@/components/home/HomePage', () => ({
   HomePage: () => <div data-testid="home" />,
@@ -137,6 +134,7 @@ async function reloadWorkspace() {
         </DriveWorkspaceProvider>
       </MemoryRouter>
     </MeroContext.Provider>,
+    { wrapper: ConfirmProvider },
   );
   await tick();
   h.setAppId({ appId: 'app', resolving: false });

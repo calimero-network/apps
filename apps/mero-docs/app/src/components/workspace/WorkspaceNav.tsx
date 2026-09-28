@@ -66,11 +66,8 @@ export function WorkspaceNav({
     useWorkspaceIndexValue();
   const { tags, byKey: tagsByKey, createTag } = useTags();
   const canManageTags = useCanManageTags();
-  const {
-    namespaces = [],
-    selfIdentity = null,
-    namespaceMemberNames = {},
-  } = useDriveWorkspace();
+  const { namespaces, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
   const {
     views: savedViews,
     save: saveView,
