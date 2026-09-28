@@ -308,6 +308,9 @@ describe('making a folder restricted', () => {
     fireEvent.click(screen.getByRole('button', { name: /Make restricted/ }));
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(confirm.mock.calls[0][0].destructive).toBe(true);
+    expect(confirm.mock.calls[0][0].body).toBe(
+      'Workspace members you have not added will lose access to this folder and its subfolders.',
+    );
     expect(setSubgroupVisibility).not.toHaveBeenCalled();
   });
 
