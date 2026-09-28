@@ -277,11 +277,17 @@ or retrying after a failure with its reason (`spreadsheet/sync.ts`).
 
 A workbook is only reachable while some member's node is online. To keep it
 available when everyone's laptop is closed, an owner can admit **always-on
-replicas** from People: the workspace's TEE admission policy names the
-attested build (MRTD) and TCB status a node must present; such a node joins
-as a read-only replica, holds the state, and serves it to members who come
-online later. It cannot write, so it adds availability without adding an
-editor.
+replicas** from People: the workspace's TEE admission policy names the image
+profiles (`locked-read-only`, and optionally `debug-read-only`) and the oldest
+mero-tee release a node may run. A node is admitted when its quote matches that
+profile in the `published-mrtds.json` of the signed release it runs, so the
+policy needs no edit when a new release ships (`spreadsheet/replicas.ts`).
+Nobody types a measurement: an MRTD alone names only the TD firmware, which
+every image shares, and nodes refuse a policy that pins nothing else. Such a
+node joins as a read-only replica, holds the state, and serves it to members
+who come online later. It cannot write, so it adds availability without adding
+an editor. Admission cannot be switched off again, since nodes have no route
+for it, so the panel offers no "stop".
 
 ## Derive-on-read
 

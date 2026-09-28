@@ -70,6 +70,7 @@ import {
   writeContext,
 } from './lib/flow.js';
 import { errorText, hostOf, parseJson, pretty, short } from './lib/format.js';
+import { TRUSTED_PROFILE, TRUSTED_RELEASE_NAMES, sealingErrorText } from './lib/sealing.js';
 import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
 import {
   DEFAULT_CLOUD_URL,
@@ -1471,6 +1472,19 @@ function WriteStep({
 }) {
   const { outcome, busy, run } = useOutcome();
   const [args, setArgs] = useState('{"key": "delegated", "value": "written-from-a-browser"}');
+  // On by default, so a relay that cannot prove what it runs is refused rather
+  // than written to in the clear. Turning it off is a choice the page shows.
+  const [seal, setSeal] = useState(true);
+  /** Run a relay call, naming a sealing failure in terms of what to do. */
+  const relayCall = (fn: () => Promise<string>) =>
+    run(async () => {
+      try {
+        return await fn();
+      } catch (error) {
+        const hint = seal ? sealingErrorText(error) : null;
+        throw hint ? new Error(hint) : error;
+      }
+    });
 
   // The relay the cloud resolved, falling back to the admitter. The fallback is
   // for the manual path — settings typed by hand, or restored from a blob
@@ -1510,6 +1524,21 @@ function WriteStep({
           )}
         </dd>
       </dl>
+      <label className="check">
+        <input type="checkbox" checked={seal} onChange={(e) => setSeal(e.target.checked)} />
+        <span>
+          <strong>Seal to the relay&rsquo;s TEE.</strong> The page verifies the relay&rsquo;s
+          quote here, against Intel&rsquo;s root and the {TRUSTED_PROFILE} image of mero-tee{' '}
+          {TRUSTED_RELEASE_NAMES}, and encrypts the warrant and arguments to the key it binds.
+          The relay&rsquo;s TLS terminator, and whoever runs it, reads neither.
+        </span>
+      </label>
+      {!seal && (
+        <div className="note">
+          <strong>Unsealed.</strong> The warrant and arguments reach the relay over plain TLS,
+          readable wherever that TLS ends. Use this for a relay that is not a TEE.
+        </div>
+      )}
       <label>
         Arguments to <code>set</code> — the exact bytes the warrant will commit to
         <textarea value={args} onChange={(e) => setArgs(e.target.value)} />
@@ -1520,10 +1549,11 @@ function WriteStep({
           className="secondary"
           disabled={!enabled || busy}
           onClick={() =>
-            void run(async () => {
-              const described = await describeRelay(writeUrl, settings.contextId);
+            void relayCall(async () => {
+              const described = await describeRelay(writeUrl, settings.contextId, { seal });
+              const via = seal ? `sealed to the attested TEE (${TRUSTED_PROFILE}, mero-tee ${TRUSTED_RELEASE_NAMES})` : 'unsealed';
               return described.canAuthorOnBehalf
-                ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}`
+                ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\nvia:      ${via}`
                 : `this node may NOT author on your behalf yet.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\n\n` +
                     'An admin of that group has to grant it CAN_AUTHOR_ON_BEHALF (bit 9, 512) —\n' +
                     'meroctl group members set-capabilities, or the default mask at namespace creation.';
@@ -1535,7 +1565,7 @@ function WriteStep({
         <button
           disabled={!enabled || busy}
           onClick={() =>
-            void run(async () => {
+            void relayCall(async () => {
               if (!identity) throw new Error('no device identity');
               const parsed = parseJson(args, 'arguments');
               if (parsed.error !== null) throw new Error(parsed.error);
@@ -1545,8 +1575,12 @@ function WriteStep({
                 settings.contextId,
                 'set',
                 parsed.value,
+                { seal },
               );
-              return `accepted.\nrootHash: ${result.rootHash}\nreturns:  ${pretty(result.returns)}`;
+              return (
+                `accepted.\nrootHash: ${result.rootHash}\nreturns:  ${pretty(result.returns)}` +
+                `\nvia:      ${seal ? 'sealed to the attested TEE' : 'unsealed'}`
+              );
             })
           }
         >
