@@ -117,6 +117,8 @@ export function useContextEvents(
   const idsKey = ids.join(',');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   // Clear any pending debounced fire on unmount so a settled timer can't
   // call onChange after the consumer is gone.
   useEffect(
@@ -144,9 +146,10 @@ export function useContextEvents(
         return;
       }
       if (timerRef.current) clearTimeout(timerRef.current);
+      // The latest onChange: one captured at the event may belong to a workspace since left.
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-        onChange();
+        onChangeRef.current();
       }, debounceMs);
     },
     [onChange, strict, idsKey, debounceMs],
@@ -156,8 +159,6 @@ export function useContextEvents(
 
   // Every consumer here refetches on `onChange`, so a reconnect is one more
   // reason to: nothing replays what changed while the stream was down.
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   useStreamReconnect(() => {
     if (idsKey.length > 0) onChangeRef.current();
   });

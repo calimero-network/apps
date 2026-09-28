@@ -172,6 +172,28 @@ describe('useContextEvents', () => {
     }
   });
 
+  // A workspace switch inside the window swaps onChange; the old one would
+  // refetch the previous workspace and write its folders under the new one.
+  it('debounceMs: the trailing fire calls the latest onChange', () => {
+    vi.useFakeTimers();
+    try {
+      const before = vi.fn();
+      const after = vi.fn();
+      const { rerender } = renderHook(
+        ({ onChange }) =>
+          useContextEvents(['ctx-a'], onChange, { debounceMs: 300 }),
+        { initialProps: { onChange: before } },
+      );
+      fire('ctx-a');
+      rerender({ onChange: after });
+      vi.advanceTimersByTime(300);
+      expect(before).not.toHaveBeenCalled();
+      expect(after).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('debounceMs with strict: filters first, then debounces allowed events', () => {
     vi.useFakeTimers();
     try {
