@@ -17,8 +17,9 @@
  *   • the rail's sections each have a header row in small caps.
  *
  * The rest is component by component:
- *   • `workspace/SidebarNav.tsx`: Home with its count (selected), then Views
- *     and Tags, each row with a count on the right; a tag row leads with its dot.
+ *   • `workspace/SidebarNav.tsx`: Home with its count (selected), Mentions,
+ *     then Views and Tags, each row with a count on the right; a tag row leads
+ *     with its dot.
  *   • `folders/FolderTree.tsx`: FOLDERS with a New button, colour swatches,
  *     and a LOCK on a restricted folder.
  *   • `home/HomeHeader.tsx`, `home/FilterBar.tsx`, `home/DocTable.tsx`: the
@@ -118,6 +119,12 @@ const House = () => (
   <svg viewBox="0 0 24 24" width="10" height="10" {...S}>
     <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
     <path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+  </svg>
+);
+const AtSign = () => (
+  <svg viewBox="0 0 24 24" width="10" height="10" {...S}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
   </svg>
 );
 const Bookmark = () => (
@@ -333,7 +340,7 @@ const Dot = ({ color }: { color: string }) => (
 
 export default function DriveAnimation() {
   const mainW = R - MAIN_X;
-  const viewsTop = BODY_TOP + 6 + NAV_ROW_H + 8;
+  const viewsTop = BODY_TOP + 6 + 2 * NAV_ROW_H + 8;
   const tagsTop = viewsTop + 14 + NAV_ROW_H + 8;
   const foldersTop = tagsTop + 14 + TAGS.length * NAV_ROW_H + 8;
 
@@ -512,6 +519,12 @@ export default function DriveAnimation() {
         name="Home"
         count={12}
         selected
+      />
+      <RailRow
+        top={BODY_TOP + 6 + NAV_ROW_H}
+        lead={<AtSign />}
+        name="Mentions"
+        count={2}
       />
 
       <RailHead label="Views" top={viewsTop} />

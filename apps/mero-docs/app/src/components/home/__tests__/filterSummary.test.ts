@@ -70,6 +70,15 @@ describe('summarizeHomeQuery', () => {
     ]);
   });
 
+  it('labels Mentioned me, and names a view saved from it', () => {
+    const q: HomeQuery = { ...EMPTY, mentions: 'me' };
+    expect(summarizeHomeQuery(args({ q }))).toEqual([
+      { icon: 'mention', label: 'Mentioned me' },
+      { icon: 'sort', label: 'Last updated' },
+    ]);
+    expect(defaultViewName(args({ q }))).toBe('Mentioned me');
+  });
+
   it('names another member the way the Created by chip does', () => {
     expect(
       summarizeHomeQuery(args({ q: { ...EMPTY, by: 'bob' } })),

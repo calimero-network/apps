@@ -5,7 +5,11 @@ import type { HomeQuery } from '@/lib/homeQuery';
 import { cutViewName } from '@/lib/viewName';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
-import { UNKNOWN_TAG_LABEL, type FolderPaths } from './useHomeChips';
+import {
+  MENTIONED_ME_LABEL,
+  UNKNOWN_TAG_LABEL,
+  type FolderPaths,
+} from './useHomeChips';
 import { UPDATED_OPTIONS } from './UpdatedMenu';
 import type { FilterIcon } from './types';
 
@@ -64,6 +68,7 @@ export function summarizeHomeQuery({
   if (q.by) {
     items.push({ icon: 'user', label: personName(q.by) });
   }
+  if (q.mentions) items.push({ icon: 'mention', label: MENTIONED_ME_LABEL });
   if (q.archived) items.push({ icon: 'archive', label: 'Archived' });
   items.push({ icon: 'sort', label: sortLabel });
   return items;

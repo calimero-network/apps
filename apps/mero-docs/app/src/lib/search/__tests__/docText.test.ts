@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BackendBlock } from '@/lib/rich/blocknote';
-import { docTextFromBlocks, searchText } from '../docText';
+import { docTextFromBlocks, mentionsOf, searchText } from '../docText';
 import { rowKey, type DocText } from '../../workspaceIndex/types';
 
 const ORIGIN = 'http://localhost:5173';
@@ -140,6 +140,61 @@ describe('docTextFromBlocks', () => {
     ]);
     expect(t.links[0].section).toBeUndefined();
     expect(t.links[0].sentence).toBe('Target');
+  });
+});
+
+const ME = 'a1'.repeat(32);
+const BOB = 'b2'.repeat(32);
+const mention = (member: string, ws = 'w1') => `/app/${ws}/m/${member}`;
+
+describe('mentions', () => {
+  it('extracts member mentions with their block and sentence, apart from doc links', () => {
+    const t = text('f1', 'd1', [
+      block('h', 'heading', 'Plan'),
+      block(
+        'p',
+        'paragraph',
+        'Intro. Ask ',
+        ['@Ada', { link: mention(ME) }],
+        ' about ',
+        ['Roadmap', { link: LINK }],
+        '. Later.',
+      ),
+    ]);
+    expect(t.mentions).toEqual([
+      {
+        ws: 'w1',
+        member: ME,
+        blockId: 'p',
+        sentence: 'Ask @Ada about Roadmap.',
+      },
+    ]);
+    expect(t.links.map((l) => l.target.doc)).toEqual(['target']);
+  });
+
+  it('skips member links that are junk', () => {
+    const t = text('f1', 'd1', [
+      block('p', 'paragraph', ['@x', { link: '/app/w1/m/not-an-account' }]),
+    ]);
+    expect(t.mentions).toEqual([]);
+  });
+
+  it('lists each doc mentioning a member in this workspace once, at its first mention', () => {
+    const texts = index(
+      text('f1', 'd1', [
+        block('p1', 'paragraph', ['@Ada', { link: mention(ME) }]),
+        block('p2', 'paragraph', 'Again ', ['@Ada', { link: mention(ME) }]),
+      ]),
+      text('f1', 'd2', [
+        block('p', 'paragraph', ['@Bob', { link: mention(BOB) }]),
+      ]),
+      text('f2', 'd3', [
+        block('p', 'paragraph', ['@Ada', { link: mention(ME, 'other') }]),
+      ]),
+    );
+    const found = mentionsOf(texts, 'w1', ME);
+    expect([...found.keys()]).toEqual([rowKey('f1', 'd1')]);
+    expect(found.get(rowKey('f1', 'd1'))?.blockId).toBe('p1');
   });
 });
 

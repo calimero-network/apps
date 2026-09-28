@@ -32,7 +32,7 @@ interface SearchPalettePanelProps {
   scopeLabel: string;
   groups: PaletteGroupView[];
   warning?: React.ReactNode;
-  emptyText: string;
+  emptyText: string; // '' while nothing can be claimed yet, e.g. a search still reading
   onOpen: (item: PaletteItemView, options: OpenOptions) => void;
   onClose: () => void;
   inputRef?: React.Ref<HTMLInputElement>;
@@ -138,7 +138,7 @@ export function SearchPalettePanel({
   };
 
   const visibleGroups = groups.filter((g) => g.items.length > 0 || g.aside);
-  const showEmpty = query.trim() !== '' && openable.length === 0 && groups.every((g) => g.items.length === 0);
+  const showEmpty = !!emptyText && query.trim() !== '' && openable.length === 0 && groups.every((g) => g.items.length === 0);
   let flat = 0;
 
   return (
@@ -264,7 +264,7 @@ interface PaletteRowProps {
 }
 
 function PaletteRow({ item, active, id, onHover, onPick }: PaletteRowProps) {
-  const Icon = item.kind === 'tag' ? null : KIND_ICON[item.kind];
+  const Icon = item.icon ?? (item.kind === 'tag' ? null : KIND_ICON[item.kind]);
   return (
     <div
       id={id}

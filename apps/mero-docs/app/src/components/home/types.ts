@@ -14,7 +14,13 @@ export type DocRowView = {
   archived?: boolean; // muted row + small "Archived" label
 };
 
-export type FilterIcon = 'folder' | 'tag' | 'calendar' | 'user' | 'archive';
+export type FilterIcon =
+  | 'folder'
+  | 'tag'
+  | 'calendar'
+  | 'user'
+  | 'mention'
+  | 'archive';
 export type FilterChipView = {
   id: string;
   icon: FilterIcon;

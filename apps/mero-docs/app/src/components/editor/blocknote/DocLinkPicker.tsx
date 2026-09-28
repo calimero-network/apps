@@ -1,11 +1,13 @@
-// The @ picker: typing @ at a word start links a document. The / menu opens
-// it too, or its section mode, which links a heading instead.
+// The @ picker: typing @ at a word start mentions a member or links a document.
+// The / menu opens it too, or its section mode, which links a heading instead.
 
 import { useCallback, useRef } from 'react';
+import { useGroupMembers } from '@calimero-network/mero-react';
 import {
   SuggestionMenuController,
   type SuggestionMenuProps,
 } from '@blocknote/react';
+import { toast } from 'sonner';
 
 import { DocLinkPickerMenu } from '@/components/editor/DocLinkPickerMenu';
 import { useFolderPaths } from '@/components/home/useHomeChips';
@@ -15,16 +17,18 @@ import {
 } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useFolderReach } from '@/hooks/useFolderReach';
+import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { recentDocs } from '@/hooks/useRecentDocs';
 import { normalizeQuery } from '@/lib/search/match';
+import { rowKey } from '@/lib/workspaceIndex/types';
 import {
   DOC_LINK_TRIGGER,
-  docLinkItems,
-  insertDocLink,
   opensDocPicker,
   sectionLinkItems,
   type DocLinkItem,
 } from './docLinks';
+import { mentionPickerItems, pickLinkItem, recentPeople } from './mentions';
 import { SECTION_LINK_TRIGGER, typedNever } from './slashMenu';
 import type { DriveEditor } from './schema';
 
@@ -60,14 +64,37 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { rows, folders } = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const { route } = useAppRoute();
-  const { namespaceId } = useDriveWorkspace();
+  const { namespaceId, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
+  const group = useGroupMembers(namespaceId);
+  // A reload or a failed read keeps the last people read for this workspace; none yet leaves People out.
+  const lastMembers = useRef<{ ws: string | null; ids: string[] }>({
+    ws: null,
+    ids: [],
+  });
+  if (!group.loading && !group.error)
+    lastMembers.current = {
+      ws: namespaceId,
+      ids: group.members.map((m) => m.identity),
+    };
+  const presence = usePresenceByDoc();
+  const canOpen = useFolderReach(route?.folder);
   const paths = useFolderPaths(folders);
+  const openKey =
+    route?.folder && route.doc ? rowKey(route.folder, route.doc) : undefined;
   const source = {
     ws: namespaceId ?? '',
     current: route ?? undefined,
     rows,
     texts,
     paths,
+    self: selfIdentity,
+    members:
+      lastMembers.current.ws === namespaceId ? lastMembers.current.ids : [],
+    names: namespaceMemberNames,
+    canOpen,
+    present: (openKey ? presence.get(openKey) : undefined) ?? [],
+    openKey,
   };
   // Read at query time, so a stable getItems never reloads the open menu under the caret.
   const sourceRef = useRef(source);
@@ -75,21 +102,26 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const latest = useRef(0);
 
   const itemsAfterPause = useCallback(
-    async (query: string, list: typeof docLinkItems) => {
+    async (query: string, list: typeof mentionPickerItems) => {
       const mine = ++latest.current;
       if (normalizeQuery(query).text) {
         await new Promise((resolve) => setTimeout(resolve, TEXT_PAUSE_MS));
       }
       const src = sourceRef.current;
       // A newer query is loading, and the menu drops this answer anyway.
-      return mine === latest.current
-        ? list(query, { ...src, recent: recentDocs(src.ws) })
-        : [];
+      if (mine !== latest.current) return [];
+      const workedWith = recentPeople(
+        src.openKey,
+        src.texts,
+        src.present.map((p) => p.id),
+        src.rows,
+      );
+      return list(query, { ...src, recent: recentDocs(src.ws), workedWith });
     },
     [],
   );
   const getDocs = useCallback(
-    (query: string) => itemsAfterPause(query, docLinkItems),
+    (query: string) => itemsAfterPause(query, mentionPickerItems),
     [itemsAfterPause],
   );
   // A new text index gives a new getItems, so an open section menu reloads its headings.
@@ -99,7 +131,7 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     [itemsAfterPause, texts],
   );
   const pick = useCallback(
-    (item: DocLinkItem) => insertDocLink(editor, item),
+    (item: DocLinkItem) => pickLinkItem(editor, item, toast),
     [editor],
   );
 

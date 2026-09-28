@@ -539,6 +539,13 @@ export class HomeDriver {
       .getByRole('button', { name: /^Home, \d+$/ });
   }
 
+  // The sidebar's Mentions row is named "Mentions", then ", <count>" once every doc is read.
+  mentionsRow(): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: /^Mentions(, \d+)?$/ });
+  }
+
   async open(): Promise<void> {
     await this.navRow().click();
     await expect(
@@ -754,7 +761,7 @@ export class EditorDriver {
   }
 
   linkPicker(): Locator {
-    return this.page.getByRole('listbox', { name: 'Link to a document' });
+    return this.page.getByRole('listbox', { name: 'Mention or link' });
   }
 
   sectionPicker(): Locator {
@@ -772,6 +779,32 @@ export class EditorDriver {
 
   linkCard(): Locator {
     return this.page.getByTestId('doc-link-card');
+  }
+
+  // Types @ and a query at the caret, then picks a person from the picker's People group.
+  async mention(query: string, name: string | RegExp): Promise<void> {
+    await this.page.keyboard.type(`@${query}`);
+    await this.personOption(name).click();
+  }
+
+  personOption(name: string | RegExp): Locator {
+    return this.linkPicker()
+      .getByRole('group', { name: 'People' })
+      .getByRole('option', { name });
+  }
+
+  // A mention renders as a person chip: an ordinary link to the member's in-app path.
+  mentionChip(text: string): Locator {
+    return this.page.locator(".bn-editor a[href*='/m/']", { hasText: text });
+  }
+
+  memberCard(): Locator {
+    return this.page.getByTestId('member-card');
+  }
+
+  // BlockNote's own toolbar for the link under the caret.
+  linkToolbar(): Locator {
+    return this.page.locator('.bn-link-toolbar');
   }
 }
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  AtSign,
   Bookmark,
   ChevronDown,
   Ellipsis,
@@ -40,6 +41,7 @@ interface ViewItem {
 
 interface Props {
   home: { count?: number; selected: boolean; onSelect: () => void }; // no count until it is known
+  mentions?: { count?: number; selected: boolean; onSelect: () => void }; // docs that mention you
   views: ViewItem[];
   tags: {
     key: string;
@@ -60,6 +62,7 @@ interface Props {
 // Home, Views and Tags, above the folder tree; rows share FolderTreeItem's size and states.
 export function SidebarNav({
   home,
+  mentions,
   views,
   tags,
   onAddView,
@@ -77,7 +80,7 @@ export function SidebarNav({
 
   return (
     <div>
-      <div className="px-2 pb-[5px] pt-2">
+      <div className="space-y-px px-2 pb-[5px] pt-2">
         <NavRow
           lead={<House className="h-[15px] w-[15px]" aria-hidden />}
           name="Home"
@@ -85,6 +88,15 @@ export function SidebarNav({
           selected={home.selected}
           onSelect={home.onSelect}
         />
+        {mentions && (
+          <NavRow
+            lead={<AtSign className="h-[15px] w-[15px]" aria-hidden />}
+            name="Mentions"
+            count={mentions.count}
+            selected={mentions.selected}
+            onSelect={mentions.onSelect}
+          />
+        )}
       </div>
 
       <Section

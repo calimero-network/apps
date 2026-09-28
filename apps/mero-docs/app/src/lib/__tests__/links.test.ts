@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { docHref, KNOWN_APP_ORIGINS, parseDocHref } from '../links';
+import {
+  docHref,
+  KNOWN_APP_ORIGINS,
+  memberHref,
+  parseDocHref,
+  parseMemberHref,
+} from '../links';
 
 const ORIGIN = 'http://localhost:5173';
 // eslint-disable-next-line no-script-url -- a hostile href the parser must reject
@@ -97,5 +103,54 @@ describe('docHref', () => {
     expect(docHref(t).startsWith('/app/')).toBe(true);
     expect(parseDocHref(docHref(t), ORIGIN)).toEqual(t);
     expect(docHref({ ws: 'w', folder: 'f', doc: 'd' })).toBe('/app/w/f/f/d/d');
+  });
+});
+
+const MEMBER = 'ab'.repeat(32);
+
+describe('memberHref and parseMemberHref', () => {
+  it('writes a relative member path that parses back', () => {
+    const t = { ws: 'w1', member: MEMBER };
+    expect(memberHref(t)).toBe(`/app/w1/m/${MEMBER}`);
+    expect(parseMemberHref(memberHref(t), ORIGIN)).toEqual(t);
+    expect(parseMemberHref(`${ORIGIN}/app/w1/m/${MEMBER}`, ORIGIN)).toEqual(t);
+    expect(
+      parseMemberHref(`${KNOWN_APP_ORIGINS[0]}/app/a%2Fb/m/${MEMBER}`, ORIGIN),
+    ).toEqual({ ws: 'a/b', member: MEMBER });
+  });
+
+  it('reads the account in lower case, as members are keyed', () => {
+    expect(
+      parseMemberHref(`/app/w1/m/${MEMBER.toUpperCase()}`, ORIGIN)?.member,
+    ).toBe(MEMBER);
+  });
+
+  it('keeps the workspace, so a caller can refuse another one', () => {
+    expect(parseMemberHref(`/app/other/m/${MEMBER}`, ORIGIN)?.ws).toBe('other');
+  });
+
+  it('rejects junk, doc links and other origins', () => {
+    for (const href of [
+      `/app/w1/m/${MEMBER.slice(1)}`,
+      `/app/w1/m/${'z'.repeat(64)}`,
+      `/app/w1/m/${MEMBER}/extra`,
+      `/app/w1/m/`,
+      `/app//m/${MEMBER}`,
+      `/app/w1/f/f1/d/d1`,
+      `/app/w1/x/${MEMBER}`,
+      `https://evil.example/app/w1/m/${MEMBER}`,
+      SCRIPT_HREF,
+      'http://[::1',
+      '',
+    ]) {
+      expect({ href, target: parseMemberHref(href, ORIGIN) }).toEqual({
+        href,
+        target: null,
+      });
+    }
+  });
+
+  it('is not a doc link', () => {
+    expect(parseDocHref(`/app/w1/m/${MEMBER}`, ORIGIN)).toBeNull();
   });
 });

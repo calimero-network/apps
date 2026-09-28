@@ -6,7 +6,12 @@ import type { DocLinkPickerItem } from '@/components/editor/DocLinkPickerMenu';
 import type { FolderPaths } from '@/components/home/useHomeChips';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
 import { docLabel } from '@/lib/docLabel';
-import { docHref, parseDocHref } from '@/lib/links';
+import {
+  docHref,
+  parseDocHref,
+  parseMemberHref,
+  type MemberHrefTarget,
+} from '@/lib/links';
 import type { AppRoute } from '@/lib/routes';
 import {
   foldForSearch,
@@ -26,13 +31,17 @@ import type { DriveEditor } from './schema';
 
 export const DOC_LINK_TRIGGER = '@'; // opens the picker at a word start
 const WORD_START = /^\s?$/; // what may precede the trigger: nothing, or whitespace
-const PICK_LIMIT = 5; // rows per picker group, so the menu fits under the caret
-const START_LIMIT = 8; // rows before anything is typed
+export const PICK_LIMIT = 5; // rows per picker group, so the menu fits under the caret
+export const DOCS_GROUP = 'Documents';
+const START_LIMIT = 8; // section rows before anything is typed
 const TITLE_ONLY_RANK = 3; // past any heading match score, so those rank first
 const NEW_TAB = '_blank'; // window.open target for a new tab
 const MIDDLE_BUTTON = 1; // MouseEvent.button; 2 is the context-menu button
 
-export type DocLinkItem = DocLinkPickerItem & { href: string };
+export type DocLinkItem = DocLinkPickerItem & {
+  href: string;
+  mention?: { name: string; cantOpen: boolean }; // a member row: the name inserted after @
+};
 export type DocLink = { href: string; title: string };
 
 type Textish = {
@@ -76,6 +85,7 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
   ): DocLinkItem => ({
     id: `${kind}:${rowKey(r.folderId, r.docId)}`,
     kind,
+    group: DOCS_GROUP,
     title: docLabel(r.title),
     folderLabel: src.paths.get(r.folderId)?.names.join(' / ') ?? '',
     href: docHref({ ws: src.ws, folder: r.folderId, doc: r.docId, block }),
@@ -91,7 +101,7 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
     );
     return [...new Set([...opened, ...updated])]
       .filter((r) => r.title.trim())
-      .slice(0, START_LIMIT)
+      .slice(0, PICK_LIMIT)
       .map((r) => item(r, 'doc'));
   }
   const titles = searchV1(query, [...live.values()], [], [], {
@@ -216,10 +226,26 @@ export function docLinkAt(
   return anchor && target ? { anchor, target } : null;
 }
 
-/** Opens a clicked doc link inside the app, or in a new tab on a modified or middle click; false for any other link or button. */
+/** The member mention an element is part of; null inside any other link or none. */
+export function mentionAt(
+  el: EventTarget | null,
+  origin: string,
+): { anchor: HTMLAnchorElement; target: MemberHrefTarget } | null {
+  const anchor = anchorAt(el);
+  const href = anchor?.getAttribute('href');
+  const target = href ? parseMemberHref(href, origin) : null;
+  return anchor && target ? { anchor, target } : null;
+}
+
+/** Opens a clicked doc link inside the app, or in a new tab on a modified or middle click; a mention stays put for its card; false for any other link or button. */
 export function followDocLink(event: MouseEvent, nav: LinkNav): boolean {
+  if (event.button > MIDDLE_BUTTON) return false;
+  if (mentionAt(event.target, nav.origin)) {
+    event.preventDefault();
+    return true;
+  }
   const target = docLinkAt(event.target, nav.origin)?.target;
-  if (!target || event.button > MIDDLE_BUTTON) return false;
+  if (!target) return false;
   event.preventDefault();
   if (
     event.metaKey ||
