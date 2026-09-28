@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  describeInviteFailure,
   InviteStatusBanner,
   redeemInvitation,
   useInviteRedemption,
@@ -208,7 +209,11 @@ export default function TeamsPage() {
       if (!parsed) throw new Error("no namespace id in invitation");
 
       const outcome = await redeemInvitation(parsed, redeemer);
-      if (outcome.status === "failed") throw new Error(outcome.message);
+      if (outcome.status === "failed") {
+        throw new Error(
+          describeInviteFailure(outcome.reason, "team") ?? outcome.message,
+        );
+      }
 
       markNamespaceJustJoined(outcome.namespaceId);
       await refreshTeams();
