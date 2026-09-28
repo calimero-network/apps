@@ -139,6 +139,19 @@ describe("isTerminalInvitationError", () => {
     }
   });
 
+  it("forgets it for the node's typed refusals (core rc.56+)", () => {
+    // The id is core's derived Debug rendering, spaces and all.
+    const GROUP = "ContextGroupId(Identity([12, 34, 56, 78]))";
+    for (const m of [
+      `invitation for group ${GROUP} expired at 1759000000 (unix seconds)`,
+      `invitation for group ${GROUP} is invalid: it carries no application_id`,
+    ]) {
+      expect(isTerminalInvitationError(m)).toBe(true);
+    }
+    // An invitation that has NOT expired yet names no verdict.
+    expect(isTerminalInvitationError(`invitation for group ${GROUP} was relayed`)).toBe(false);
+  });
+
   it("does NOT treat a generic 'invalid'/'malformed' as terminal", () => {
     // The reason the list holds PHRASES rather than bare words. A proxy or
     // gateway saying "invalid response" is transient, and matching the bare word
