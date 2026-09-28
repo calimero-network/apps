@@ -4,7 +4,6 @@ import {
   useGroupContexts,
   useGroupMembers,
   useCreateNamespaceInvitation,
-  useJoinNamespace,
   useMero,
   useNodeIdentity,
 } from '@calimero-network/mero-react';
@@ -13,6 +12,8 @@ import { useNamespaceBootstrap } from './useNamespaceBootstrap';
 import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
 import { addKnownPlayer, embeddedInviterKey, getKnownPlayers } from '../utils/knownPlayers';
 import { LobbyClient } from '../generated/lobby/LobbyClient';
+import { redeemLobbyInvitation } from '../utils/redeemLobby';
+import type { RedeemOutcome } from '@calimero-apps/invite';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -80,7 +81,12 @@ export interface UseBattleshipsLobbyReturn {
   invitePlayer: (validForSeconds?: number) => Promise<unknown>;
   inviteLoading: boolean;
 
-  joinLobby: (invitationJson: string) => Promise<boolean>;
+  /**
+   * Join the namespace a pasted invitation names. `null` when there is no node
+   * to join with; a failed join is in the outcome, not thrown. Throws only for
+   * an invitation that cannot be read.
+   */
+  joinLobby: (invitationJson: string) => Promise<RedeemOutcome | null>;
   joinLoading: boolean;
 
   refetchContexts: () => Promise<void>;
@@ -230,7 +236,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   // --- Mutations ---
   const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
-  const { joinNamespace, loading: joinNamespaceLoading } = useJoinNamespace();
+  const [joinLoading, setJoinLoading] = useState(false);
   const {
     createNamespaceWithLobby,
     loading: createLobbyLoading,
@@ -335,8 +341,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     return createNamespaceInvitation(namespaceId, { recursive: true });
   }, [namespaceId, createNamespaceInvitation]);
 
-  const joinLobbyViaInvitation = useCallback(async (invitationJson: string): Promise<boolean> => {
-    if (!mero) return false;
+  const joinLobbyViaInvitation = useCallback(async (invitationJson: string): Promise<RedeemOutcome | null> => {
+    if (!mero) return null;
+    setJoinLoading(true);
     try {
       const parsed = JSON.parse(invitationJson);
 
@@ -374,19 +381,22 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       const inviter = embeddedInviterKey(parsed);
       if (inviter) addKnownPlayer(nsId, inviter);
 
-      const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
+      const outcome = await redeemLobbyInvitation(mero.admin, nsId, invitation, groupAlias);
 
-      if (result) {
-        await refetchNamespaces();
-        return true;
+      if (outcome.status !== 'failed') {
+        // Outside the join's verdict: a refresh that throws must not turn a
+        // join that landed into a reported failure.
+        try {
+          await refetchNamespaces();
+        } catch {
+          // the next poll picks the lobby up
+        }
       }
-      return false;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '';
-      if (message.includes('already')) return true;
-      throw err;
+      return outcome;
+    } finally {
+      setJoinLoading(false);
     }
-  }, [mero, joinNamespace, refetchNamespaces]);
+  }, [mero, refetchNamespaces]);
 
   /**
    * The lobby context's identities, which is what "who can I play?" means here.
@@ -504,7 +514,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     inviteLoading,
 
     joinLobby: joinLobbyViaInvitation,
-    joinLoading: joinNamespaceLoading,
+    joinLoading,
 
     refetchContexts,
   };
