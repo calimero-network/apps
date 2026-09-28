@@ -744,6 +744,14 @@ export class EditorDriver {
     return this.page.getByRole('listbox', { name: 'Link to a document' });
   }
 
+  sectionPicker(): Locator {
+    return this.page.getByRole('listbox', { name: 'Link to a section' });
+  }
+
+  slashMenu(): Locator {
+    return this.page.getByRole('listbox', { name: 'Insert' });
+  }
+
   // A doc link renders as a chip: an ordinary link to an in-app path.
   docLink(text: string): Locator {
     return this.page.locator(".bn-editor a[href^='/app/']", { hasText: text });

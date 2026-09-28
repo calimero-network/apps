@@ -25,6 +25,9 @@ vi.mock('@blocknote/react', async (importOriginal) => ({
   LinkToolbarController: () => null,
 }));
 vi.mock('../blocknote/DocLinkPicker', () => ({ DocLinkPicker: () => null }));
+vi.mock('../blocknote/EditorSlashMenu', () => ({
+  EditorSlashMenu: () => null,
+}));
 vi.mock('../EditorHeader', () => ({ EditorHeader: () => null }));
 vi.mock('../EditorStatusBar', () => ({
   EditorStatusBar: () => {

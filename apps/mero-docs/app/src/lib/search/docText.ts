@@ -8,7 +8,7 @@ import {
   normalizeQuery,
 } from './match';
 
-const HEADING_KIND = 'heading';
+export const HEADING_KIND = 'heading'; // DocText block kind of a section heading
 const SENTENCE_MAX = 160; // characters of context kept around a link
 const SNIPPET_MAX = 90; // characters of context shown around a text match
 const TEXT_LIMIT = 20; // docs listed in the "In document text" group

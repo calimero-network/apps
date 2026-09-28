@@ -1,11 +1,8 @@
 // Doc links against a live headless editor where the editor matters (the @
 // trigger and the inserted link), and as plain data everywhere else.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
-import { useCreateBlockNote } from '@blocknote/react';
-import { SuggestionMenu } from '@blocknote/core/extensions';
-import { schema, type DriveEditor } from '../schema';
 import { inlineToText } from '../content';
+import { editorWith, typingEditor } from './editorTyping';
 import {
   DOC_LINK_TRIGGER,
   docLinkItems,
@@ -14,6 +11,7 @@ import {
   openClickedLink,
   opensDocPicker,
   pastedDocLink,
+  sectionLinkItems,
   type LinkNav,
 } from '../docLinks';
 import {
@@ -27,6 +25,10 @@ const ORIGIN = 'http://localhost:5173';
 const SCRIPT_URL = 'javascript:alert(1)//app/w1/f/f1/d/d2';
 
 afterEach(() => vi.restoreAllMocks());
+
+const DOC_MENU = [
+  { triggerCharacter: DOC_LINK_TRIGGER, shouldOpen: opensDocPicker },
+];
 
 function row(
   folderId: string,
@@ -51,48 +53,18 @@ function row(
 function text(
   folderId: string,
   docId: string,
-  blocks: [string, string][],
+  blocks: [string, string, string?][],
 ): DocText {
   return {
     folderId,
     docId,
-    blocks: blocks.map(([id, t]) => ({ id, kind: 'paragraph', text: t })),
+    blocks: blocks.map(([id, t, kind = 'paragraph']) => ({
+      id,
+      kind,
+      text: t,
+    })),
     links: [],
   };
-}
-
-function editorWith(content: string): DriveEditor {
-  const { result } = renderHook(() => useCreateBlockNote({ schema }));
-  const editor = result.current as DriveEditor;
-  editor.replaceBlocks(editor.document, [{ type: 'paragraph', content }]);
-  editor.setTextCursorPosition(editor.document[0].id, 'end');
-  return editor;
-}
-
-/** A mounted editor whose typing goes through BlockNote's text input handling. */
-function typingEditor(content: string) {
-  // The menu measures its anchor, which jsdom leaves unimplemented.
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-    toJSON: () => ({}),
-  } as DOMRect);
-  const editor = editorWith(content);
-  editor.mount(document.body.appendChild(document.createElement('div')));
-  const menus = editor.getExtension(SuggestionMenu)!;
-  menus.addSuggestionMenu({
-    triggerCharacter: DOC_LINK_TRIGGER,
-    shouldOpen: opensDocPicker,
-  });
-  const view = editor.prosemirrorView!;
-  const type = (chars: string) => {
-    for (const ch of chars) {
-      const at = view.state.selection.from;
-      const handled = view.someProp('handleTextInput', (f) =>
-        f(view, at, at, ch, () => view.state.tr),
-      );
-      if (!handled) view.dispatch(view.state.tr.insertText(ch));
-    }
-  };
-  return { editor, menus, type };
 }
 
 describe('opensDocPicker (L-11)', () => {
@@ -112,7 +84,7 @@ describe('opensDocPicker (L-11)', () => {
   });
 
   it('opens on @ as BlockNote handles typing, mid-line', () => {
-    const { editor, menus, type } = typingEditor('see ');
+    const { editor, menus, type } = typingEditor('see ', DOC_MENU);
     type('@p');
     expect(menus.store.state).toMatchObject({
       show: true,
@@ -123,7 +95,7 @@ describe('opensDocPicker (L-11)', () => {
   });
 
   it('leaves an email address as text', () => {
-    const { editor, menus, type } = typingEditor('mail ');
+    const { editor, menus, type } = typingEditor('mail ', DOC_MENU);
     type('ada@example.com');
     expect(menus.store.state?.show).toBeFalsy();
     expect(inlineToText(editor.document[0].content)).toBe(
@@ -133,18 +105,16 @@ describe('opensDocPicker (L-11)', () => {
   });
 
   it('leaves [[ as text', () => {
-    const { editor, menus, type } = typingEditor('see ');
+    const { editor, menus, type } = typingEditor('see ', DOC_MENU);
     type('[[p');
     expect(menus.store.state?.show).toBeFalsy();
     editor.unmount();
   });
 
   it('takes the typed @query when a pick inserts the link', () => {
-    const { editor, menus, type } = typingEditor('see ');
+    const { editor, type, pick } = typingEditor('see ', DOC_MENU);
     type('@pla');
-    // What the menu does on a pick: close, clear the query, then insert.
-    menus.closeMenu();
-    menus.clearQuery();
+    pick();
     insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },
@@ -282,6 +252,60 @@ describe('docLinkItems (L-11, L-13)', () => {
 
   it('is empty when nothing matches', () => {
     expect(docLinkItems('zzz', src)).toEqual([]);
+  });
+});
+
+describe('sectionLinkItems', () => {
+  const rows = [
+    row('f1', 'd1', 'Q3 launch plan', { updatedAt: 5 }),
+    row('f1', 'd2', 'Pricing notes', { updatedAt: 10 }),
+    row('f2', 'd3', 'Design review', { updatedAt: 20 }),
+    row('f2', 'd4', 'Old pricing', { archived: true }),
+  ];
+  const texts = new Map(
+    [
+      text('f1', 'd1', [
+        ['h1', 'Goals', 'heading'],
+        ['p1', 'Ship it'],
+        ['h2', ' ', 'heading'],
+      ]),
+      text('f1', 'd2', [['h3', 'Tiers', 'heading']]),
+      text('f2', 'd3', [
+        ['h4', 'Open questions', 'heading'],
+        ['h5', 'Pricing page', 'heading'],
+      ]),
+      text('f2', 'd4', [['h6', 'Legacy', 'heading']]),
+    ].map((t) => [rowKey(t.folderId, t.docId), t]),
+  );
+  const src = {
+    ws: 'w1',
+    current: { folder: 'f1', doc: 'd1' },
+    rows,
+    texts,
+    paths: new Map(),
+  };
+
+  it('lists the open doc headings first, then other docs by last update', () => {
+    expect(
+      sectionLinkItems('', src).map((i) => [
+        i.kind,
+        i.title,
+        i.folderLabel,
+        i.href,
+      ]),
+    ).toEqual([
+      ['section', 'Goals', 'Q3 launch plan', '/app/w1/f/f1/d/d1#b=h1'],
+      ['section', 'Open questions', 'Design review', '/app/w1/f/f2/d/d3#b=h4'],
+      ['section', 'Pricing page', 'Design review', '/app/w1/f/f2/d/d3#b=h5'],
+      ['section', 'Tiers', 'Pricing notes', '/app/w1/f/f1/d/d2#b=h3'],
+    ]);
+  });
+
+  it('matches a heading or its doc title, best match first', () => {
+    const items = sectionLinkItems('pric', src);
+    expect(items.map((i) => i.title)).toEqual(['Pricing page', 'Tiers']);
+    expect(items[0].titleRanges).toEqual([{ start: 0, end: 4 }]);
+    expect(items[1].titleRanges).toEqual([]);
   });
 });
 

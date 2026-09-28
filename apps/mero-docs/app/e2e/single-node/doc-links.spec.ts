@@ -86,6 +86,66 @@ test.describe('Doc links (single-node)', () => {
     await editor.expectContent('ada@example.com or [[pr');
   });
 
+  test('the / menu keeps its blocks and links a document', async ({
+    alice,
+  }) => {
+    const { page, editor } = alice;
+    await page.keyboard.type('/');
+    const menu = editor.slashMenu();
+    await expect(
+      menu.getByRole('option', { name: /Bullet list/ }),
+    ).toBeVisible();
+    await expect(
+      menu.getByRole('option', { name: /Heading 1/ }).locator('kbd'),
+    ).toHaveText(/^(⌘⌥1|Ctrl Alt 1)$/);
+
+    await page.keyboard.type('mention');
+    await expect(menu.getByRole('option')).toHaveText(['Link to a document']);
+    await page.keyboard.press('Enter');
+    await expect(menu).toBeHidden();
+    await expect(editor.linkPicker()).toBeVisible();
+    await expect(editor.block('Pricing follows')).toHaveText(
+      /^Pricing follows the model in\s*$/,
+    );
+
+    await page.keyboard.type('pric');
+    await expect(editor.linkPicker().getByRole('option').first()).toContainText(
+      'Pricing notes',
+    );
+    await page.keyboard.press('Enter');
+    await expect(editor.docLink('Pricing notes')).toHaveAttribute(
+      'href',
+      pricingPath,
+    );
+    await expect(editor.block('Pricing follows')).toHaveText(
+      'Pricing follows the model in Pricing notes',
+    );
+  });
+
+  test('the / menu links a section of a document', async ({ alice }) => {
+    const { page, editor } = alice;
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('# Rollout');
+    await page.keyboard.press('Enter');
+    await saved(page);
+
+    // The heading reaches the text index a moment after the save.
+    await expect(async () => {
+      await page.keyboard.type('/section');
+      await page.keyboard.press('Enter');
+      await expect(
+        editor.sectionPicker().getByRole('option', { name: /Rollout/ }),
+      ).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    await page.keyboard.press('Enter');
+
+    const link = page.locator(".bn-editor a[href*='#b=']", {
+      hasText: 'Rollout',
+    });
+    await expect(link).toHaveAttribute('href', new RegExp(`^${planPath}#b=.+`));
+    await expect(page.locator('.bn-editor')).not.toContainText('/section');
+  });
+
   test('a pasted doc URL becomes a chip with the doc title (L-15)', async ({
     alice,
   }) => {

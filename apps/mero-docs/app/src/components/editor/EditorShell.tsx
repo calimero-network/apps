@@ -50,6 +50,7 @@ import { SectionBanner } from './SectionBanner';
 import { DocAwareLinkToolbar, DocLinkHover } from './DocLinkHover';
 import { DocLinkNav } from './blocknote/DocLinkNav';
 import { DocLinkPicker } from './blocknote/DocLinkPicker';
+import { EditorSlashMenu } from './blocknote/EditorSlashMenu';
 import {
   followDocLink,
   insertDocLink,
@@ -413,6 +414,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                       theme={theme}
                       sideMenu={false}
                       linkToolbar={false}
+                      slashMenu={false}
                     >
                       <SideMenuController sideMenu={BlockSideMenu} />
                       <LinkToolbarController
@@ -420,6 +422,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                       />
                       <DocLinkNav navRef={linkNavRef} />
                       <DocLinkPicker editor={editor} />
+                      <EditorSlashMenu editor={editor} />
                     </BlockNoteView>
                   </div>
                 </DocLinkHover>
