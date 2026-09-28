@@ -25,7 +25,8 @@ assert the keys that SHOULD be present and never that nothing else is.
 
 WHAT IT CHECKS
 
-For each app, the set of public methods in the committed `res/abi.json`, minus
+For each app, the set of public methods in the committed `res/abi.json` and any
+`crates/*/res/abi.json` (service contracts such as mero-docs' registry), minus
 `init` (which every scenario exercises implicitly by creating a context), minus
 anything listed in EXEMPT below with a reason. Every remaining method must
 appear by name somewhere under `logic/workflows/`.
@@ -52,6 +53,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASELINE = pathlib.Path(__file__).resolve().parent / "merobox-coverage-baseline.json"
+ABI_GLOBS = ("apps/*/logic/res/abi.json", "apps/*/logic/crates/*/res/abi.json")
 
 # Methods that are deliberately not merobox-testable, with the reason. Keep this
 # SHORT: an entry here is a permanent exemption, not a to-do.
@@ -71,13 +73,21 @@ def methods_of(abi_path: pathlib.Path) -> list[str]:
     return [m["name"] for m in (abi.get("methods") or []) if m.get("name")]
 
 
+def abis_by_app() -> dict[str, list[pathlib.Path]]:
+    apps: dict[str, list[pathlib.Path]] = {}
+    for pattern in ABI_GLOBS:
+        for abi_path in ROOT.glob(pattern):
+            apps.setdefault(abi_path.relative_to(ROOT).parts[1], []).append(abi_path)
+    return apps
+
+
 def main() -> int:
     baseline = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
     failed = False
     shrunk: list[str] = []
 
-    for abi_path in sorted(ROOT.glob("apps/*/logic/res/abi.json")):
-        app = abi_path.parts[-4]
+    abis = abis_by_app()
+    for app in sorted(abis):
         workflows = ROOT / "apps" / app / "logic" / "workflows"
         if not workflows.is_dir():
             # An app with no scenarios at all is a separate problem, and one the
@@ -92,7 +102,7 @@ def main() -> int:
 
         missing = [
             m
-            for m in methods_of(abi_path)
+            for m in sorted({m for p in abis[app] for m in methods_of(p)})
             if m not in exempt and m not in blob
         ]
         new = sorted(set(missing) - allowed)
