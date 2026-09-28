@@ -408,7 +408,8 @@ export class ForumClient {
   /**
    * moderate_comment
    *
-   * Remove someone's comment as a moderator.
+   * Remove someone's comment as a moderator: every account's comment at
+   * the id, as `moderate_post` does.
    *
    * @intent mutating
    */
@@ -420,8 +421,11 @@ export class ForumClient {
   /**
    * moderate_post
    *
-   * Remove someone's post as a moderator. The author's own delete is
-   * `delete_post`.
+   * Remove someone's post as a moderator: every account's post at the id,
+   * since ids are per owner. The author's own delete is `delete_post`.
+   *
+   * `remove_by`, not `remove`: a key-only `remove` removes only the CALLER's
+   * own entry.
    *
    * @intent mutating
    */
