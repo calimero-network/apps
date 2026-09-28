@@ -47,6 +47,21 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
 }));
 let location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
 vi.mock('react-router-dom', () => ({ useLocation: () => location }));
+// Blocks made this session: the node's id -> the editor's id, as useFugueBody maps them.
+let madeThisSession: Record<string, string> = {};
+vi.mock('@/hooks/useFugueBody', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useFugueBody')>();
+  return {
+    ...actual,
+    useFugueBody: (options: Parameters<typeof actual.useFugueBody>[0]) => {
+      const body = actual.useFugueBody(options);
+      return {
+        ...body,
+        editorIdOf: (id: string) => madeThisSession[id] ?? body.editorIdOf(id),
+      };
+    },
+  };
+});
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs: true }),
@@ -128,6 +143,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   deliver = undefined;
   location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
+  madeThisSession = {};
   contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
   getDoc.mockResolvedValue(DOC);
   getTitle.mockResolvedValue('Notes');
@@ -246,6 +262,14 @@ describe('DocumentEditor', () => {
     const shell = screen.getByTestId('shell');
     expect(shell.dataset.focusBlock).toBe('blk-7');
     expect(shell.dataset.focusKey).toBe('nav-2');
+  });
+
+  it('hands the shell the editor id of a linked block made this session', async () => {
+    madeThisSession = { 'blk-new': 'local-2' };
+    location = { pathname: '/app/ns/f/f/d/doc-1', hash: '#b=blk-new', key: 'nav-3' };
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
+    await screen.findByText('Notes');
+    expect(screen.getByTestId('shell').dataset.focusBlock).toBe('local-2');
   });
 
   it('focuses no block without a #b= link', async () => {

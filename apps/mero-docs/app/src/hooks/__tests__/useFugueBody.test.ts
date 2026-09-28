@@ -417,6 +417,8 @@ describe('useFugueBody', () => {
     await settle();
     expect(result.current.isConfirmed('local-2')).toBe(true);
     expect(result.current.backendIdOf('local-2')).toBe('blk-new');
+    // A link to it opened in this session finds the block by the id the DOM still has.
+    expect(result.current.editorIdOf('blk-new')).toBe('local-2');
   });
 
   it('turns Enter mid-block into one split and never resends it', async () => {

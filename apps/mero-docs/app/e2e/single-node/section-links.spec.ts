@@ -43,6 +43,9 @@ test.describe('Section links (single-node)', () => {
     expect(url.pathname).toBe(docPath);
     // The link carries the node's id for the block; a block typed this session keeps
     // its editor id in the DOM until the document is loaded from the node again.
+    await expect(alice.page.getByText('Saved', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     await alice.page.reload();
     await alice.editor.expectMounted();
     const blockId = await alice.editor
