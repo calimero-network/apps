@@ -32,8 +32,14 @@ catalog:
   # ⚠️ The grant set is baked into a client key when it is MINTED, so an app
   # already holding a token has to log in again to pick #73 up. 9.1.3 is what
   # makes that happen by itself instead of stranding the session offline.
-  "@calimero-network/mero-js": ^19.26.0
-  "@calimero-network/mero-react": ^9.1.3
+  # mero-js 21.3.0 (#207) carries the invitation redeem that
+  # @calimero-apps/invite used to keep its own copy of, and `classifyError`.
+  # The two majors in between removed `getCertificate` and changed TEE image
+  # trust; no app on the catalog used either (delegated-execution pins its own).
+  "@calimero-network/mero-js": ^21.4.0
+  # mero-react 9.2.0 (#77): the join hooks report why a join failed, and
+  # useRedeemInvitation. It depends on mero-js ^21.3.0, so it moves with it.
+  "@calimero-network/mero-react": ^9.2.0
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
