@@ -953,6 +953,14 @@ impl DocsState {
             .get_mut(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
+        // A fresh register would restamp the key and sync a delta that changes nothing.
+        let present = rec
+            .tags
+            .get(&tag)
+            .map_err(|e| DriveError::Invalid(format!("tags.get: {e}")))?;
+        if present.is_some_and(|r| *r.get()) {
+            return Ok(());
+        }
         let _previous = rec
             .tags
             .insert(tag, LwwRegister::new(true))
@@ -1965,6 +1973,24 @@ mod tests {
     }
 
     #[test]
+    fn add_tag_on_a_set_key_writes_nothing() {
+        let mut app = DocsState::init();
+        let id = app.create_doc_inner("t".into()).unwrap();
+        let stamp = |app: &DocsState| {
+            let rec = app.docs.get(&id).unwrap().unwrap();
+            let reg = rec.tags.get("todo").unwrap().unwrap();
+            (*reg.get(), reg.timestamp())
+        };
+        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
+        let first = stamp(&app);
+        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
+        assert_eq!(stamp(&app), first);
+        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
+        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
+        assert!(stamp(&app).0 && stamp(&app).1 > first.1);
+    }
+
+    #[test]
     fn add_tag_accepts_only_a_tag_key() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
@@ -1999,6 +2025,8 @@ mod tests {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
         app.remove_tag_inner(id.clone(), "never".into()).unwrap();
+        let rec = app.docs.get(&id).unwrap().unwrap();
+        assert!(rec.tags.get("never").unwrap().is_none());
         app.add_tag_inner(id.clone(), "todo".into()).unwrap();
         app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
         app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
@@ -2156,11 +2184,16 @@ mod tests {
                 let _new = rec.tags.insert((*key).to_owned(), zero_lww(true)).unwrap();
             }
         }
+        // The shipped paths: add inserts a fresh register, remove sets the existing one false.
         for (rec, (key, present)) in [(&mut a, a_edit), (&mut b, b_edit)] {
-            let _previous = rec
-                .tags
-                .insert(key.to_owned(), LwwRegister::new(present))
-                .unwrap();
+            if present {
+                let _previous = rec
+                    .tags
+                    .insert(key.to_owned(), LwwRegister::new(true))
+                    .unwrap();
+            } else {
+                rec.tags.get_mut(key).unwrap().unwrap().set(false);
+            }
         }
         let (mut receiver, sender) = if receiver_is_a { (a, b) } else { (b, a) };
         <DocRecord as Mergeable>::merge(&mut receiver, &sender).unwrap();
