@@ -134,7 +134,8 @@ test.describe('Mero Docs landing page', () => {
     // renamed section is worse than no TOC.
     const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
     for (const href of hrefs) {
-      await expect(page.locator(href)).toHaveCount(1);
+      expect(href).toMatch(/^#./);
+      await expect(page.locator(href!)).toHaveCount(1);
     }
   });
 
