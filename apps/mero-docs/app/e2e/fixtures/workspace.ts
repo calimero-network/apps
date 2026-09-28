@@ -734,14 +734,22 @@ export class EditorDriver {
     return this.page.evaluate(() => navigator.clipboard.readText());
   }
 
-  // Types [[ and a query at the caret, then picks a row of the doc link picker.
+  // Types @ and a query at the caret, then picks a row of the doc link picker.
   async linkDoc(query: string, option: string | RegExp): Promise<void> {
-    await this.page.keyboard.type(`[[${query}`);
+    await this.page.keyboard.type(`@${query}`);
     await this.linkPicker().getByRole('option', { name: option }).click();
   }
 
   linkPicker(): Locator {
     return this.page.getByRole('listbox', { name: 'Link to a document' });
+  }
+
+  sectionPicker(): Locator {
+    return this.page.getByRole('listbox', { name: 'Link to a section' });
+  }
+
+  slashMenu(): Locator {
+    return this.page.getByRole('listbox', { name: 'Insert' });
   }
 
   // A doc link renders as a chip: an ordinary link to an in-app path.

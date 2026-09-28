@@ -2,9 +2,15 @@ import * as React from 'react';
 import {
   ChevronLeft,
   FileText,
+  Hash,
+  Heading1,
+  Heading2,
+  Heading3,
   Link,
+  List,
   MoreHorizontal,
   PanelRight,
+  Pilcrow,
   Redo2,
   Undo2,
 } from 'lucide-react';
@@ -21,6 +27,7 @@ import {
   DocLinkPickerMenu,
   type DocLinkPickerItem,
 } from '@/components/editor/DocLinkPickerMenu';
+import { SlashMenu, type SlashMenuItem } from '@/components/editor/SlashMenu';
 import {
   DetailsPanel,
   DetailsSheet,
@@ -366,6 +373,35 @@ const PICKER_ITEMS: DocLinkPickerItem[] = [
   },
 ];
 
+const SECTION_ITEMS: DocLinkPickerItem[] = [
+  { id: 'h-1', kind: 'section', title: 'Goals', folderLabel: 'Q3 launch plan' },
+  {
+    id: 'h-2',
+    kind: 'section',
+    title: 'Rollout',
+    folderLabel: 'Q3 launch plan',
+  },
+  { id: 'h-3', kind: 'section', title: 'Tiers', folderLabel: 'Pricing notes' },
+];
+
+const slash = (
+  key: string,
+  title: string,
+  group: string,
+  icon: SlashMenuItem['icon'],
+  shortcut?: string,
+): SlashMenuItem => ({ key, title, group, icon, shortcut });
+
+const SLASH_ITEMS: SlashMenuItem[] = [
+  slash('heading', 'Heading 1', 'Headings', Heading1, 'Mod-Alt-1'),
+  slash('heading_2', 'Heading 2', 'Headings', Heading2, 'Mod-Alt-2'),
+  slash('heading_3', 'Heading 3', 'Headings', Heading3, 'Mod-Alt-3'),
+  slash('bullet_list', 'Bullet list', 'Basic blocks', List, 'Mod-Shift-8'),
+  slash('paragraph', 'Paragraph', 'Basic blocks', Pilcrow, 'Mod-Alt-0'),
+  slash('doc_link', 'Link to a document', 'Links', FileText),
+  slash('section_link', 'Link to a section', 'Links', Hash),
+];
+
 const DETAILS: Omit<DetailsPanelProps, 'onClose'> = {
   folder: { name: 'Product', color: folderColor('Product') },
   created: { dateLabel: 'Sep 3', by: 'You' },
@@ -503,7 +539,7 @@ export function Gallery(): React.JSX.Element {
       </div>
 
       <div>
-        <Caption>Link picker under “[[pric”</Caption>
+        <Caption>Link picker under “@pric”</Caption>
         <EditorFrame height="h-[520px]">
           <HeaderMock />
           <div className="flex-1 overflow-y-auto bg-card">
@@ -512,7 +548,7 @@ export function Gallery(): React.JSX.Element {
                 <>
                   Pricing follows the model in{' '}
                   <span className="rounded-[3px] bg-secondary px-0.5 text-foreground">
-                    [[pric
+                    @pric
                   </span>
                 </>
               }
@@ -528,12 +564,31 @@ export function Gallery(): React.JSX.Element {
                     activeIndex={0}
                     onPick={() => {}}
                   />
+                  <DocLinkPickerMenu
+                    mode="section"
+                    items={SECTION_ITEMS}
+                    activeIndex={1}
+                    onPick={() => {}}
+                  />
                 </div>
               }
             />
           </div>
           <StatusBar />
         </EditorFrame>
+      </div>
+
+      <div>
+        <Caption>Slash menu under “/”</Caption>
+        <div className="flex flex-wrap items-start gap-4">
+          <SlashMenu items={SLASH_ITEMS} activeIndex={0} onPick={() => {}} />
+          <SlashMenu
+            items={SLASH_ITEMS.slice(-2)}
+            activeIndex={1}
+            onPick={() => {}}
+          />
+          <SlashMenu items={[]} activeIndex={0} onPick={() => {}} />
+        </div>
       </div>
 
       <div>
