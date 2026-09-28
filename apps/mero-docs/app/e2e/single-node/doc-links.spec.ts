@@ -174,6 +174,17 @@ test.describe('Doc links (single-node)', () => {
     await editor.linkDoc('pric', /Pricing notes/);
     await saved(page);
 
+    // The plain click goes first: ProseMirror reads a click within 500 ms and
+    // 10 px of the last one as a double click, which selects instead.
+    await editor.docLink('Pricing notes').click();
+    await expect.poll(() => pathOf(page)).toBe(pricingPath);
+    await expect(page.getByTestId('doc-title-input')).toHaveValue(
+      'Pricing notes',
+    );
+    expect(page.context().pages()).toHaveLength(1);
+
+    await page.goBack();
+    await expect(page.getByTestId('doc-title-input')).toHaveValue('Launch plan');
     const [tab] = await Promise.all([
       page.context().waitForEvent('page'),
       editor.docLink('Pricing notes').click({ modifiers: ['ControlOrMeta'] }),
@@ -181,13 +192,6 @@ test.describe('Doc links (single-node)', () => {
     await expect(tab).toHaveURL(new RegExp(`${pricingPath}(\\?|$)`));
     await tab.close();
     expect(pathOf(page)).toBe(planPath);
-
-    await editor.docLink('Pricing notes').click();
-    await expect.poll(() => pathOf(page)).toBe(pricingPath);
-    await expect(page.getByTestId('doc-title-input')).toHaveValue(
-      'Pricing notes',
-    );
-    expect(page.context().pages()).toHaveLength(1);
   });
 
   test('an external link still opens in a new tab (L-17)', async ({
