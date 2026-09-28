@@ -5,7 +5,11 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { FolderTree } from '@/components/folders/FolderTree';
-import { defaultViewName, SORT_LABELS, summarizeHomeQuery } from '@/components/home/filterSummary';
+import {
+  defaultViewName,
+  SORT_LABELS,
+  summarizeHomeQuery,
+} from '@/components/home/filterSummary';
 import { useFolderPaths } from '@/components/home/useHomeChips';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
@@ -206,7 +210,8 @@ export function WorkspaceNav({
     if (!ok) return;
     try {
       await removeView(view.id);
-      if (selectedViewId === view.id) go(serializeHomeQuery({ ...q, view: undefined }));
+      if (selectedViewId === view.id)
+        go(serializeHomeQuery({ ...q, view: undefined }));
     } catch {
       // Reported by the saved views hook's own toast.
     }
@@ -292,7 +297,9 @@ export function WorkspaceNav({
           open
           title="Rename view"
           maxLength={VIEW_NAME_MAX}
-          validate={(name) => (viewNameFits(name) ? undefined : VIEW_NAME_TOO_LONG)}
+          validate={(name) =>
+            viewNameFits(name) ? undefined : VIEW_NAME_TOO_LONG
+          }
           name={renamingView.name}
           onSubmit={(name) => {
             const view = renamingView;

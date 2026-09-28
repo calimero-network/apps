@@ -69,7 +69,10 @@ export interface UseDocsState {
 // the explicit notification trigger a refetch - refetch itself is
 // guarded by inFlightRef so duplicate triggers collapse to one fetch.
 const docsRefetchersByContext = new Map<string, Set<() => void>>();
-export function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
+export function subscribeDocsRefetch(
+  contextId: string,
+  fn: () => void,
+): () => void {
   let bucket = docsRefetchersByContext.get(contextId);
   if (!bucket) {
     bucket = new Set();
@@ -145,7 +148,10 @@ export async function listDocsJoining(
     if (!contextId || joined.has(contextId) || !isMissingOwnedIdentityError(e))
       throw e;
     joined.add(contextId);
-    console.warn('[listDocsJoining] no owned identity in docs context; joining', contextId);
+    console.warn(
+      '[listDocsJoining] no owned identity in docs context; joining',
+      contextId,
+    );
     await healContext(contextId, join);
     return client.listDocs({ include_archived: includeArchived });
   }
@@ -322,7 +328,6 @@ export function useDocs(
     resolvedFolder,
     includeArchived,
   ]);
-
 
   // A failed context read has nothing to list against, so a retry re-reads it.
   const retry = useCallback(async () => {

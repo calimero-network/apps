@@ -77,9 +77,7 @@ function RenameForm({
         }}
         maxLength={maxLength}
         aria-invalid={error ? true : undefined}
-        aria-describedby={
-          error ? errorId : maxLength ? helpId : undefined
-        }
+        aria-describedby={error ? errorId : maxLength ? helpId : undefined}
         className={
           error
             ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'

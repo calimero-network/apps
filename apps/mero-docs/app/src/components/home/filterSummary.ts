@@ -61,8 +61,7 @@ export function summarizeHomeQuery({
     items.push({
       icon: 'calendar',
       label:
-        UPDATED_OPTIONS.find((o) => o.value === q.updated)?.label ??
-        q.updated,
+        UPDATED_OPTIONS.find((o) => o.value === q.updated)?.label ?? q.updated,
     });
   }
   if (q.by) {
