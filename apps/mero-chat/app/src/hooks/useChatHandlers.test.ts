@@ -252,6 +252,42 @@ describe("useChatHandlers — channel events", () => {
     expect(mocks.notifyChannel).toHaveBeenCalledTimes(1);
   });
 
+  it("toasts an image sent with no text as \"<sender> sent an image\"", async () => {
+    const { refs, mocks } = makeRefs();
+    const chat = makeActiveChat("ctx-active");
+    activeChatRef.current = chat;
+
+    refs.contextIdentityMap.current.set("ctx-active", "ctx-active-identity");
+    chat.contextIdentity = "ctx-active-identity";
+
+    // Attachments and no text. The notification guard used to be the text
+    // itself, so this message notified nobody.
+    refs.mainMessages.current.checkForNewMessages.mockResolvedValue([
+      {
+        id: "m-img",
+        sender: "someone-else",
+        text: "",
+        images: [{ name: "a.png" }],
+        files: [],
+        group: "general",
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatHandlers(activeChatRef as RefObject<ActiveChat | null>, chat, refs),
+    );
+
+    await act(async () => {
+      result.current.handleExecutionEvents("ctx-active", [
+        ev("MessageSent", {}),
+      ]);
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(mocks.notifyChannel).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyChannel.mock.calls[0][3]).toMatch(/ sent an image$/);
+  });
+
   it("MessageSent on a background context with no identity map entry: no crash", async () => {
     const { refs } = makeRefs();
     const { result } = renderHook(() =>
