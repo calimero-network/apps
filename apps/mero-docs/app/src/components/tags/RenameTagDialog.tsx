@@ -11,6 +11,9 @@ import {
 
 interface Props {
   open: boolean;
+  title?: string;
+  maxLength?: number; // shown under the field as the limit
+  validate?: (name: string) => string | undefined; // a message blocks the save
   name: string;
   error?: string;
   onSubmit: (name: string) => void;
@@ -29,6 +32,9 @@ export function RenameTagDialog({ open, onOpenChange, ...form }: Props) {
 
 // Mounted per open, so the field starts from the current name every time.
 function RenameForm({
+  title = 'Rename tag',
+  maxLength,
+  validate,
   name,
   error: givenError,
   onSubmit,
@@ -37,21 +43,23 @@ function RenameForm({
   const [value, setValue] = React.useState(name);
   const inputId = React.useId();
   const errorId = React.useId();
+  const helpId = React.useId();
   // An error is about the name that was saved, so editing it clears the error.
   const [edited, setEdited] = React.useState(false);
-  const error = edited ? undefined : givenError;
   const next = value.trim();
+  const invalid = validate?.(next);
+  const error = invalid ?? (edited ? undefined : givenError);
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         setEdited(false);
-        if (next) onSubmit(next);
+        if (next && !invalid) onSubmit(next);
       }}
     >
       <DialogTitle className="mb-4 text-[15px] tracking-[-0.01em]">
-        Rename tag
+        {title}
       </DialogTitle>
       <label
         htmlFor={inputId}
@@ -67,8 +75,11 @@ function RenameForm({
           setValue(e.target.value);
           setEdited(true);
         }}
+        maxLength={maxLength}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={
+          error ? errorId : maxLength ? helpId : undefined
+        }
         className={
           error
             ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30'
@@ -80,11 +91,16 @@ function RenameForm({
           {error}
         </p>
       )}
+      {maxLength && !error && (
+        <p id={helpId} className="mt-1.5 text-xs text-muted-foreground">
+          Up to {maxLength} characters.
+        </p>
+      )}
       <DialogFooter>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={!next}>
+        <Button type="submit" size="sm" disabled={!next || !!invalid}>
           Save
         </Button>
       </DialogFooter>

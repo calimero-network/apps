@@ -49,7 +49,8 @@ interface Props {
     selected: boolean;
     onSelect: () => void;
   }[];
-  onAddView?: () => void; // no New view until views can be saved
+  onAddView?: () => void; // omitted, no New view is offered
+  addViewRef?: React.Ref<HTMLButtonElement>; // anchors what New view opens
   onAddTag: () => void;
   canManage: boolean;
   collapsed: Record<SectionKey, boolean>;
@@ -62,6 +63,7 @@ export function SidebarNav({
   views,
   tags,
   onAddView,
+  addViewRef,
   onAddTag,
   canManage,
   collapsed,
@@ -91,7 +93,13 @@ export function SidebarNav({
         onToggle={() => onToggleSection('views')}
         action={
           canManage &&
-          onAddView && <AddButton label="New view" onClick={onAddView} />
+          onAddView && (
+            <AddButton
+              ref={addViewRef}
+              label="New view"
+              onClick={onAddView}
+            />
+          )
         }
       >
         {views.length === 0 ? (
@@ -218,9 +226,18 @@ function Section({
   );
 }
 
-function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+function AddButton({
+  label,
+  onClick,
+  ref,
+}: {
+  label: string;
+  onClick: () => void;
+  ref?: React.Ref<HTMLButtonElement>;
+}) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label}
       onClick={onClick}

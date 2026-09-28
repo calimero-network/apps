@@ -6,6 +6,7 @@ import {
   useTextIndexValue,
 } from '../WorkspaceIndexContext';
 import { usePresenceByDoc, type PresenceByDoc } from '@/hooks/usePresenceByDoc';
+import { useSavedViews } from '@/hooks/useSavedViews';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 
 const index = {
@@ -37,6 +38,16 @@ vi.mock('@/hooks/useTags', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/hooks/useTags')>()),
   useTagsSource: () => ({ tags: [], byKey: new Map() }),
 }));
+const savedViews = {
+  views: [{ id: 'v1', name: 'Mine', query: 'tag=x', scope: 'me' as const }],
+  save: vi.fn(),
+  rename: vi.fn(),
+  remove: vi.fn(),
+};
+vi.mock('@/hooks/useSavedViews', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/useSavedViews')>()),
+  useSavedViewsSource: () => savedViews,
+}));
 vi.mock('@/hooks/usePresenceByDoc', async (importOriginal) => {
   const real =
     await importOriginal<typeof import('@/hooks/usePresenceByDoc')>();
@@ -55,9 +66,11 @@ vi.mock('@/hooks/usePresenceByDoc', async (importOriginal) => {
 
 let seen: PresenceByDoc = new Map();
 let seenText: unknown = null;
+let seenViews: unknown = null;
 function Probe() {
   seen = usePresenceByDoc();
   seenText = useTextIndexValue();
+  seenViews = useSavedViews();
   return null;
 }
 
@@ -102,5 +115,12 @@ describe('WorkspaceIndexProvider text index', () => {
     index.folderStatus = { f1: 'ready', f2: 'loading' };
     mount();
     expect(seenText).toBe(textIndex);
+  });
+});
+
+describe('WorkspaceIndexProvider saved views', () => {
+  it('hands Home and the sidebar the one saved views source it holds', () => {
+    mount();
+    expect(seenViews).toBe(savedViews);
   });
 });

@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
 
@@ -85,6 +86,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
         resolvedFolderIds: s.resolvedFolderIds,
         hiddenFolderIds: h.fixed.hiddenFolderIds,
         selfIdentity: 'me',
+        namespaceMemberNames: {},
         stage: 'ready',
         syncStatus: null,
         refetch: h.fixed.refetch,
@@ -175,6 +177,7 @@ function renderAt(entry: string) {
         />
       </Routes>
     </MemoryRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 

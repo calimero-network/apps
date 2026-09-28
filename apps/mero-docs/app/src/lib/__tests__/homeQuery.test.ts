@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyHomeQuery,
+  isHomeQueryFiltered,
   parseHomeQuery,
   serializeHomeQuery,
   tagPageKey,
+  viewRowCount,
+  withView,
   type HomeQuery,
 } from '../homeQuery';
 import type { FolderInfo } from '../workspaceIndex/types';
@@ -273,6 +276,52 @@ describe('applyHomeQuery', () => {
     ];
     applyHomeQuery(rows, EMPTY, NOW, folders);
     expect(ids(rows)).toEqual(['a', 'b']);
+  });
+});
+
+describe('isHomeQueryFiltered', () => {
+  it('is false for the defaults, a bare sort change or a bare view', () => {
+    expect(isHomeQueryFiltered(EMPTY)).toBe(false);
+    expect(isHomeQueryFiltered({ ...EMPTY, sort: 'name' })).toBe(false);
+    expect(isHomeQueryFiltered({ ...EMPTY, view: 'v1' })).toBe(false);
+  });
+
+  it('is true for any real filter', () => {
+    expect(isHomeQueryFiltered({ ...EMPTY, folders: ['a'] })).toBe(true);
+    expect(isHomeQueryFiltered({ ...EMPTY, tags: ['a'] })).toBe(true);
+    expect(isHomeQueryFiltered({ ...EMPTY, updated: '7d' })).toBe(true);
+    expect(isHomeQueryFiltered({ ...EMPTY, by: 'bob' })).toBe(true);
+    expect(isHomeQueryFiltered({ ...EMPTY, archived: true })).toBe(true);
+  });
+});
+
+describe('withView', () => {
+  it('adds the view id to a stored query, in canonical order', () => {
+    expect(withView('tag=design&updated=7d', 'v1')).toBe(
+      'tag=design&updated=7d&view=v1',
+    );
+  });
+
+  it('replaces a view id already on the query', () => {
+    expect(withView('tag=design&view=old', 'v1')).toBe('tag=design&view=v1');
+  });
+});
+
+describe('viewRowCount', () => {
+  const folders: FolderInfo[] = [{ id: 'f1', name: 'One' }];
+
+  it('counts the rows a stored query matches', () => {
+    const rows = [
+      row({ docId: 'a', folderId: 'f1', tags: ['design'] }),
+      row({ docId: 'b', folderId: 'f1', tags: ['other'] }),
+    ];
+    expect(viewRowCount(rows, folders, NOW, 'tag=design')).toBe(1);
+  });
+
+  it('is zero, not a crash, for a tag or folder no row carries any more (R-23)', () => {
+    const rows = [row({ docId: 'a', folderId: 'f1', tags: ['design'] })];
+    expect(viewRowCount(rows, folders, NOW, 'tag=deleted-tag')).toBe(0);
+    expect(viewRowCount(rows, folders, NOW, 'folder=deleted-folder')).toBe(0);
   });
 });
 

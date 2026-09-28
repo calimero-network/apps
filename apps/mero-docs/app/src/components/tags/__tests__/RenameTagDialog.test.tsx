@@ -59,6 +59,28 @@ describe('RenameTagDialog', () => {
     );
   });
 
+  it('titles itself Rename tag by default, or a caller-given title', () => {
+    const { rerender } = render(
+      <RenameTagDialog
+        open
+        name="design"
+        onSubmit={() => {}}
+        onOpenChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Rename tag')).toBeTruthy();
+    rerender(
+      <RenameTagDialog
+        open
+        title="Rename view"
+        name="design"
+        onSubmit={() => {}}
+        onOpenChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Rename view')).toBeTruthy();
+  });
+
   it('closes from Cancel', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();

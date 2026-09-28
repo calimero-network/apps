@@ -73,6 +73,40 @@ export function serializeHomeQuery(q: HomeQuery): string {
     .join('&');
 }
 
+/** Whether any real filter is on; a bare sort or a selected view is not one. */
+export function isHomeQueryFiltered(q: HomeQuery): boolean {
+  return (
+    q.folders.length > 0 ||
+    q.tags.length > 0 ||
+    !!q.updated ||
+    !!q.by ||
+    q.archived
+  );
+}
+
+/** A stored view's query with its id set as the selected view, in canonical order. */
+export function withView(query: string, id: string): string {
+  return serializeHomeQuery({
+    ...parseHomeQuery(new URLSearchParams(query)),
+    view: id,
+  });
+}
+
+/** How many rows a saved view's stored query matches; 0, never a crash, for a stale filter (R-23). */
+export function viewRowCount(
+  rows: IndexRow[],
+  folders: FolderInfo[],
+  nowMs: number,
+  query: string,
+): number {
+  return applyHomeQuery(
+    rows,
+    parseHomeQuery(new URLSearchParams(query)),
+    nowMs,
+    folders,
+  ).length;
+}
+
 /** The tag whose page this query is: that one tag, no other filter, any sort. */
 export function tagPageKey(q: HomeQuery): string | null {
   const onlyTag =

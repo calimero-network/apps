@@ -1,4 +1,4 @@
-// One index, one tag list, one presence map and one text index per workspace,
+// One index, tag list, saved views list, presence map and text index per workspace,
 // shared by Home, the sidebar and search. Remount it per workspace so nothing carries over.
 
 import React, {
@@ -18,6 +18,7 @@ import {
   useFolderPresence,
   type PresenceByDoc,
 } from '@/hooks/usePresenceByDoc';
+import { SavedViewsContext, useSavedViewsSource } from '@/hooks/useSavedViews';
 import { TagsContext, useTagsSource } from '@/hooks/useTags';
 import { useTextIndex, type TextIndex } from '@/hooks/useTextIndex';
 
@@ -72,6 +73,7 @@ export function WorkspaceIndexProvider({
 }) {
   const index = useWorkspaceIndex();
   const tags = useTagsSource(index);
+  const savedViews = useSavedViewsSource();
   const texts = useTextIndex(index);
   const [byFolder, setByFolder] = useState<Record<string, PresenceByDoc>>({});
   const report = useCallback<ReportPresence>((folderId, byDoc) => {
@@ -93,19 +95,21 @@ export function WorkspaceIndexProvider({
   return (
     <WorkspaceIndexContext.Provider value={index}>
       <TagsContext.Provider value={tags}>
-        <PresenceByDocContext.Provider value={presence}>
-          {joined.map((f) => (
-            <FolderPresence
-              key={f.id}
-              folderId={f.id}
-              contextId={index.contextOf(f.id)!}
-              report={report}
-            />
-          ))}
-          <TextIndexContext.Provider value={texts}>
-            {children}
-          </TextIndexContext.Provider>
-        </PresenceByDocContext.Provider>
+        <SavedViewsContext.Provider value={savedViews}>
+          <PresenceByDocContext.Provider value={presence}>
+            {joined.map((f) => (
+              <FolderPresence
+                key={f.id}
+                folderId={f.id}
+                contextId={index.contextOf(f.id)!}
+                report={report}
+              />
+            ))}
+            <TextIndexContext.Provider value={texts}>
+              {children}
+            </TextIndexContext.Provider>
+          </PresenceByDocContext.Provider>
+        </SavedViewsContext.Provider>
       </TagsContext.Provider>
     </WorkspaceIndexContext.Provider>
   );

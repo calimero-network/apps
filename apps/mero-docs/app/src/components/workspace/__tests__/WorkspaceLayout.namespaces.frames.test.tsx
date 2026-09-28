@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { MeroContextValue } from '@calimero-network/mero-react';
 import { DriveWorkspaceProvider, useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const h = vi.hoisted(() => {
   const listeners = new Set<() => void>();
@@ -133,6 +134,7 @@ async function reloadWorkspace() {
         </DriveWorkspaceProvider>
       </MemoryRouter>
     </MeroContext.Provider>,
+    { wrapper: ConfirmProvider },
   );
   await tick();
   h.setAppId({ appId: 'app', resolving: false });

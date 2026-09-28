@@ -17,6 +17,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const setSelectedFolder = vi.fn();
 // The real hook reads the selected folder from the URL too.
@@ -36,6 +37,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       resolvedFolderIds: new Set(['f1']),
       hiddenFolderIds: new Set<string>(),
       selfIdentity: 'me',
+      namespaceMemberNames: {},
       stage: 'ready',
       syncStatus: null,
       refetch: vi.fn(),
@@ -146,6 +148,7 @@ function renderAt(...entries: string[]) {
         />
       </Routes>
     </MemoryRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 
@@ -161,6 +164,7 @@ function renderInBrowser(path: string, state: unknown = {}) {
         <Route path="/app/*" element={<WorkspaceLayout />} />
       </Routes>
     </BrowserRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 

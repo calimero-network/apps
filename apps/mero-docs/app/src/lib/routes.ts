@@ -53,6 +53,10 @@ export function docUrl(ws: string, folder: string, doc: string, block?: string):
   return `${window.location.origin}${appPath({ ws, folder, doc, block })}`;
 }
 
+export function homeUrl(ws: string, search: string): string {
+  return `${window.location.origin}${appPath({ ws })}${search ? `?${search}` : ''}`;
+}
+
 export function saveReturnTo(path: string): void {
   sessionStorage.setItem(RETURN_TO_KEY, path);
 }

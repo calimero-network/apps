@@ -47,6 +47,27 @@ describe('SaveViewPopover', () => {
     ).toBeTruthy();
   });
 
+  it('refuses a name over the byte limit, with a note under the field', async () => {
+    const { user, onSave } = setup({ open: true });
+    const input = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(input);
+    await user.type(input, '名'.repeat(21)); // 21 characters, 63 bytes
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Name',
+        description: 'That name is too long.',
+      }),
+    ).toBeTruthy();
+    const save = screen.getByRole('button', { name: 'Save view' });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    await user.type(input, '{Enter}');
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.type(input, '{Backspace}');
+    expect(screen.queryByText('That name is too long.')).toBeNull();
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('saves with the chosen scope', async () => {
     const { user, onSave } = setup({ open: true });
     await user.click(

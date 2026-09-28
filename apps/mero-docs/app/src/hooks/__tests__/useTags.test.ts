@@ -139,9 +139,12 @@ describe('useTagsSource', () => {
 async function loaded(tags: ReturnType<typeof tag>[]) {
   listTags.mockResolvedValue(tags);
   const view = renderHook(() => useTagsSource(index));
-  await waitFor(() =>
-    expect(view.result.current.tags).toHaveLength(tags.length),
-  );
+  // An empty list looks read before the read lands, so wait for the read itself.
+  await waitFor(() => expect(listTags).toHaveBeenCalled());
+  await act(async () => {
+    await listTags.mock.results[0].value;
+  });
+  expect(view.result.current.tags).toHaveLength(tags.length);
   listTags.mockReturnValue(new Promise(() => {})); // the re-read after a write stays out of the way
   return view;
 }

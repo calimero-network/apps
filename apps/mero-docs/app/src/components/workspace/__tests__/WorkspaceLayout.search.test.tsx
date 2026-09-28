@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { WorkspaceLayout } from '../WorkspaceLayout';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 
 const setSelectedFolder = vi.fn();
 // The real hook reads the selected folder from the URL too.
@@ -24,6 +25,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       resolvedFolderIds: new Set(['f1']),
       hiddenFolderIds: new Set<string>(),
       selfIdentity: 'me',
+      namespaceMemberNames: {},
       stage: 'ready',
       syncStatus: null,
       refetch: vi.fn(),
@@ -92,6 +94,7 @@ function renderAt(path: string) {
         <Route path="/app/*" element={<WorkspaceLayout />} />
       </Routes>
     </MemoryRouter>,
+    { wrapper: ConfirmProvider },
   );
 }
 
