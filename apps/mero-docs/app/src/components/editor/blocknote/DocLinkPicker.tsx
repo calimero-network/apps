@@ -66,7 +66,11 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { route } = useAppRoute();
   const { namespaceId, selfIdentity, namespaceMemberNames } =
     useDriveWorkspace();
-  const { members } = useGroupMembers(namespaceId);
+  const group = useGroupMembers(namespaceId);
+  // A reload or a failed read keeps the last people read; none yet leaves People out.
+  const lastMembers = useRef<string[]>([]);
+  if (!group.loading && !group.error)
+    lastMembers.current = group.members.map((m) => m.identity);
   const presence = usePresenceByDoc();
   const canOpen = useFolderReach(route?.folder);
   const paths = useFolderPaths(folders);
@@ -79,7 +83,7 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     texts,
     paths,
     self: selfIdentity,
-    members: members.map((m) => m.identity),
+    members: lastMembers.current,
     names: namespaceMemberNames,
     canOpen,
     present: (openKey ? presence.get(openKey) : undefined) ?? [],
