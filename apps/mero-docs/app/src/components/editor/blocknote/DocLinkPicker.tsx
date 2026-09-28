@@ -122,9 +122,14 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     },
     [],
   );
+  // Changes only when the people offered change, so a join or a name arriving reloads an open menu.
+  const peopleKey = source.members
+    .map((id) => `${id}=${namespaceMemberNames[id] ?? ''}`)
+    .join(',');
   const getDocs = useCallback(
     (query: string) => itemsAfterPause(query, mentionPickerItems),
-    [itemsAfterPause],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- people are read through sourceRef; peopleKey is the reload trigger
+    [itemsAfterPause, peopleKey],
   );
   // A new text index gives a new getItems, so an open section menu reloads its headings.
   const getSections = useCallback(
