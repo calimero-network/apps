@@ -77,7 +77,7 @@
     },
     "DeviceKey": {
       "kind": "record",
-      "doc": "A device public key the vault key may be wrapped to.\n\nStored in an [`AuthoredMap`], so only the account that registered it can\nremove it. Its account is the entry's owner stamp (`devices.owner_of`),\nwhich every node verifies — never a field in the value, which a modified\nnode could fill with anyone's account to be handed the vault key in their\nname.",
+      "doc": "A device public key the vault key may be wrapped to.\n\nStored in an [`AuthoredMap`], so only the account that registered it can\nremove it. Its account is the entry's owner stamp, which every node\nverifies — never a field in the value, which a modified node could fill\nwith anyone's account to be handed the vault key in their name.\n\nKeys are per owner (core rc.57): two accounts registering one fingerprint\nhold two entries, each read with its own account (`entries_with_owners`).\nA key-only `owner_of` would only ever name the caller.",
       "fields": [
         {
           "name": "public_key",
