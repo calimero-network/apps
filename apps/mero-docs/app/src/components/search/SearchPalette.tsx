@@ -14,13 +14,12 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Highlight, type HighlightRange } from '@/components/common/Highlight';
 import { Kbd } from '@/components/common/Kbd';
+import { KEY_LABELS } from '@/lib/platform';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import { cn } from '@/lib/utils';
 
 import type { PaletteGroupView, PaletteItemView } from './types';
 
-const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent); // key hints name ⌘ only on Apple
-const NEW_TAB_KEYS = IS_MAC ? '⌘↵' : 'Ctrl ↵'; // footer hint for opening in a new tab
 const PLACEHOLDER = 'Search docs, folders and #tags'; // same wording as the top-bar field
 const KIND_ICON = { doc: FileText, recent: FileText, text: TextAlignStart, folder: Folder, tip: Hash }; // tag rows show a dot instead
 const FAINT = 'text-muted-foreground/80'; // the mockup's faint ink for labels, context and hints
@@ -229,7 +228,7 @@ export function SearchPalettePanel({
         <div className="hidden items-center gap-3.5 md:flex">
           <KeyHint keys={['↑', '↓']} label="move" />
           <KeyHint keys={['↵']} label="open" />
-          <KeyHint keys={[NEW_TAB_KEYS]} label="open in new tab" />
+          <KeyHint keys={[KEY_LABELS.newTab]} label="open in new tab" />
           <KeyHint keys={['#']} label="tags only" />
         </div>
         <span className="flex items-center gap-1.5">
