@@ -16,11 +16,15 @@
     "landing:check": "node scripts/landing/generate.mjs --check"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "typescript": "catalog:"
   },
   "pnpm": {
     "overrides": {
-      "base-x@2.0.6": "3.0.11"
+      "base-x@2.0.6": "3.0.11",
+      "@calimero-network/mero-js": "link:../mero-js-signer",
+      "@calimero-network/mero-react": "link:../mero-react",
+      "@calimero-network/abi-codegen": "link:../mero-devtools-js/abi-codegen"
     }
   }
 }
