@@ -2,8 +2,8 @@
 // starting name built from them, so a save has something better than "Untitled".
 
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
-import { VIEW_NAME_MAX } from '@/hooks/useSavedViews';
 import type { HomeQuery } from '@/lib/homeQuery';
+import { cutViewName } from '@/lib/viewName';
 import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
 import { SELF_LABEL, UNKNOWN_TAG_LABEL, type FolderPaths } from './useHomeChips';
@@ -82,6 +82,6 @@ export function summarizeHomeQuery({
 export function defaultViewName(args: Args): string {
   const parts = summarizeHomeQuery(args).filter((s) => s.icon !== 'sort');
   return parts.length
-    ? parts.map((p) => p.label).join(', ').slice(0, VIEW_NAME_MAX)
+    ? cutViewName(parts.map((p) => p.label).join(', '))
     : 'New view';
 }

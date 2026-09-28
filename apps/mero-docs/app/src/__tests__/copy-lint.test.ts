@@ -11,11 +11,11 @@ const tsxFiles = import.meta.glob('../**/*.tsx', {
 
 // Most .ts strings are internal keys or diagnostics, so only the copy tables that reach the screen are scanned.
 const tsFiles = import.meta.glob(
-  '../{pages/landing/landing.config,lib/roles,lib/folderLoadError,lib/copyLink,lib/docLabel,lib/relativeTime,hooks/useTags,hooks/useSavedViews,components/home/filterSummary}.ts',
+  '../{pages/landing/landing.config,lib/roles,lib/folderLoadError,lib/copyLink,lib/docLabel,lib/viewName,lib/relativeTime,hooks/useTags,hooks/useSavedViews,components/home/filterSummary}.ts',
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>;
 
-const TS_COPY_FILE_COUNT = 9; // entries in the tsFiles glob; a rename must not drop one silently
+const TS_COPY_FILE_COUNT = 10; // entries in the tsFiles glob; a rename must not drop one silently
 const TEMPLATE_PART_KINDS: ts.SyntaxKind[] = [
   // template literal chunks around ${} holes
   ts.SyntaxKind.TemplateHead,

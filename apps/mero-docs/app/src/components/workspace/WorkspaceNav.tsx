@@ -15,11 +15,7 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useNow } from '@/hooks/useNow';
-import {
-  useSavedViews,
-  VIEW_NAME_MAX,
-  type SavedView,
-} from '@/hooks/useSavedViews';
+import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
 import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
 import { copyLink } from '@/lib/copyLink';
@@ -33,6 +29,11 @@ import {
 } from '@/lib/homeQuery';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { homeUrl } from '@/lib/routes';
+import {
+  VIEW_NAME_MAX,
+  VIEW_NAME_TOO_LONG,
+  viewNameFits,
+} from '@/lib/viewName';
 import {
   findTagByName,
   firstUnusedColor,
@@ -155,7 +156,7 @@ export function WorkspaceNav({
       toast.message(NO_FILTER_HINT);
       return;
     }
-    setSaveViewOpen(true);
+    setSaveViewOpen((open) => !open);
   };
   const saveFromSidebar = async ({
     name,
@@ -265,6 +266,7 @@ export function WorkspaceNav({
           open
           title="Rename view"
           maxLength={VIEW_NAME_MAX}
+          validate={(name) => (viewNameFits(name) ? undefined : VIEW_NAME_TOO_LONG)}
           name={renamingView.name}
           onSubmit={(name) => {
             const view = renamingView;

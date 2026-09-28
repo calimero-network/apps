@@ -55,8 +55,7 @@ let savedViews: SavedView[] = [];
 const saveView = vi.fn();
 const renameView = vi.fn();
 const removeView = vi.fn();
-vi.mock('@/hooks/useSavedViews', async (importActual) => ({
-  ...(await importActual<typeof import('@/hooks/useSavedViews')>()),
+vi.mock('@/hooks/useSavedViews', () => ({
   useSavedViews: () => ({
     views: savedViews,
     save: saveView,
@@ -355,6 +354,44 @@ describe('WorkspaceNav', () => {
       await user.clear(input);
       await user.type(input, 'Design this week{Enter}');
       expect(renameView).toHaveBeenCalledWith('v1', 'Design this week');
+    });
+
+    it('refuses a rename over the byte limit, however few the characters', async () => {
+      const user = userEvent.setup();
+      savedViews = [
+        { id: 'v1', name: 'Design week', query: 'tag=design', scope: 'me' },
+      ];
+      mount('/app/ws1');
+      await user.click(
+        screen.getByRole('button', { name: 'Actions for Design week' }),
+      );
+      await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+      const input = await screen.findByRole('textbox', { name: 'Name' });
+      await user.clear(input);
+      await user.type(input, '🚀'.repeat(16)); // 32 UTF-16 units, 64 bytes
+      expect(
+        screen.getByRole('textbox', {
+          name: 'Name',
+          description: 'That name is too long.',
+        }),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      await user.type(input, '{Enter}');
+      expect(renameView).not.toHaveBeenCalled();
+    });
+
+    it('closes the save popover when its "+" is clicked again', async () => {
+      mount('/app/ws1?tag=q3');
+      const add = screen.getByRole('button', { name: 'New view' });
+      fireEvent.click(add);
+      await screen.findByRole('textbox', { name: 'Name' });
+      fireEvent.click(add);
+      await waitFor(() =>
+        expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull(),
+      );
     });
 
     it('copies an absolute link to a view', async () => {

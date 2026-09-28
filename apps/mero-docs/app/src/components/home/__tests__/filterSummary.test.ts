@@ -104,8 +104,17 @@ describe('defaultViewName', () => {
     const keys = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel'];
     const tagsByKey = new Map(keys.map((k) => [k, tag(k, `${k} team`)]));
     const name = defaultViewName(args({ q: { ...EMPTY, tags: keys }, tagsByKey }));
-    expect(name).toHaveLength(60);
-    expect(name.startsWith('alpha team, bravo team')).toBe(true);
+    expect(name).toBe('alpha team, bravo team, charlie team, delta team, echo team');
+  });
+
+  it('fits the byte limit with wide characters, cutting on a whole character', () => {
+    const tagsByKey = new Map([
+      ['a', tag('a', '设计评审'.repeat(4))],
+      ['b', tag('b', '🚀'.repeat(10))],
+    ]);
+    const name = defaultViewName(args({ q: { ...EMPTY, tags: ['a', 'b'] }, tagsByKey }));
+    expect(new TextEncoder().encode(name).length).toBeLessThanOrEqual(60);
+    expect(name).toMatch(/^(设计评审){4}, (🚀)+$/u);
   });
 
   it('falls back to New view with nothing on', () => {

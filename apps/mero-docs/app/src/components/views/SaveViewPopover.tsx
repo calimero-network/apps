@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import {
+  VIEW_NAME_MAX,
+  VIEW_NAME_TOO_LONG,
+  viewNameFits,
+} from '@/lib/viewName';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,7 +24,6 @@ import {
 import { TagChip } from '@/components/tags/TagChip';
 import { FILTER_ICONS } from '@/components/home/FilterBar';
 import { moveFocus } from '@/components/home/moveFocus';
-import { VIEW_NAME_MAX } from '@/hooks/useSavedViews';
 import type { FilterIcon } from '@/components/home/types';
 
 type Scope = 'me' | 'everyone';
@@ -91,7 +95,9 @@ function SaveViewForm({
   const [name, setName] = React.useState(defaultName);
   const [scope, setScope] = React.useState<Scope>('me');
   const nameId = React.useId();
-  const canSave = name.trim() !== '' && !saving;
+  const tooLongId = React.useId();
+  const tooLong = !viewNameFits(name);
+  const canSave = name.trim() !== '' && !tooLong && !saving;
 
   return (
     <form
@@ -117,7 +123,14 @@ function SaveViewForm({
             maxLength={VIEW_NAME_MAX}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            aria-invalid={tooLong || undefined}
+            aria-describedby={tooLong ? tooLongId : undefined}
           />
+          {tooLong && (
+            <p id={tooLongId} className="mt-1.5 text-xs text-destructive">
+              {VIEW_NAME_TOO_LONG}
+            </p>
+          )}
         </div>
         <div>
           <div className="mb-1.5 text-xs font-medium text-muted-foreground">
