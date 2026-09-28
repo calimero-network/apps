@@ -16,6 +16,24 @@ import {
   type KvInvitationPayload,
 } from "./utils/invitation";
 
+/**
+ * An admitter URL given out of band, for testing.
+ *
+ * The invitation names its admitters by account only — it carries no HTTPS URL
+ * — so the join normally asks the cloud where they are. When the relay's URL is
+ * handed over separately, `?relay=<url>` or `localStorage["kv.relayUrl"]` pins
+ * it and skips that lookup. Unset, nothing changes.
+ */
+function pinnedAdmitterUrl(): string | undefined {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get("relay");
+    const url = (fromQuery ?? localStorage.getItem("kv.relayUrl") ?? "").trim();
+    return url || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type JoinState =
   /** Nothing pending. */
   | { status: "idle" }
@@ -152,7 +170,9 @@ export function useJoinFromInvitation(): {
          */
         const outcome = await bootstrap({
           namespaceId: held.payload.namespaceId,
-          invitation: held.payload.invitation,        });
+          invitation: held.payload.invitation,
+          nodeUrl: pinnedAdmitterUrl(),
+        });
         if (!outcome.ok) {
           const terminal = bootstrapIsTerminal(outcome);
           if (terminal) {
