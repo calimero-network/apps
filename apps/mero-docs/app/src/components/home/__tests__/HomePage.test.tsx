@@ -67,8 +67,23 @@ const ws = {
   namespaces: [{ namespaceId: 'ws1', name: 'Acme Product' }],
 };
 
+const mentionOf = (folderId: string, docId: string, member = 'me') => ({
+  folderId,
+  docId,
+  blocks: [],
+  links: [],
+  mentions: [{ ws: 'ws1', member, blockId: 'b1', sentence: '' }],
+});
+const textIndex = {
+  texts: new Map<string, ReturnType<typeof mentionOf>>(),
+  foldersDone: 3,
+  foldersTotal: 3,
+  pending: [] as string[],
+  failed: [] as string[],
+};
 vi.mock('@/context/WorkspaceIndexContext', () => ({
   useWorkspaceIndexValue: () => index,
+  useTextIndexValue: () => textIndex,
 }));
 const renameTag = vi.fn();
 const recolorTag = vi.fn();
@@ -207,6 +222,13 @@ beforeEach(() => {
   permError = null;
   index.folders = FOLDERS;
   settle(ROWS);
+  textIndex.texts = new Map(
+    [mentionOf('design', 'd2'), mentionOf('specs', 'd1', 'bob')].map((t) => [
+      `${t.folderId}/${t.docId}`,
+      t,
+    ]),
+  );
+  textIndex.foldersDone = 3;
 });
 
 afterEach(() => vi.useRealTimers());
@@ -319,6 +341,32 @@ describe('HomePage', () => {
       fireEvent.click(chip(/^Folder$/));
       expect(
         screen.getByRole('checkbox', { name: /^Engineering\s*1$/ }),
+      ).toBeTruthy();
+    });
+
+    it('turns Mentioned me on and off in the URL, listing the docs that mention you', () => {
+      mount();
+      fireEvent.click(chip(/^Mentioned me$/));
+      expect(location.search).toBe('?mentions=me');
+      expect(titles()).toEqual(['Brand']);
+      fireEvent.click(chip(/^Mentioned me$/));
+      expect(location.search).toBe('');
+      expect(titles()).toHaveLength(3);
+    });
+
+    it('waits for the documents to be read before saying nothing mentions you', () => {
+      textIndex.texts = new Map();
+      textIndex.foldersDone = 1;
+      const { unmount } = mount('/app/ws1?mentions=me');
+      expect(
+        screen.queryByText('No documents match these filters'),
+      ).toBeNull();
+      unmount();
+
+      textIndex.foldersDone = 3;
+      mount('/app/ws1?mentions=me');
+      expect(
+        screen.getByText('No documents match these filters'),
       ).toBeTruthy();
     });
 

@@ -18,6 +18,7 @@ import {
 import { SearchContainer } from '../SearchContainer';
 
 const NOW = new Date(2026, 8, 28, 15, 30).getTime();
+const ME = 'a1'.repeat(32);
 const MIN = 60_000;
 
 const index = {
@@ -51,6 +52,7 @@ vi.mock('@/hooks/usePresenceByDoc', () => ({
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'w',
+    selfIdentity: ME,
     namespaces: [{ namespaceId: 'w', name: 'Acme Product' }],
   }),
 }));
@@ -186,9 +188,12 @@ describe('SearchContainer before anything is typed', () => {
       ),
       expect.stringMatching(/^API spec v2Product \/ Specs · opened 1 h ago/),
     ]);
-    const tip = within(group('Tips')).getByRole('option');
+    const [tip] = within(group('Tips')).getAllByRole('option');
     expect(tip.getAttribute('aria-disabled')).toBe('true');
     expect(tip.textContent).toContain('Type # to search tags only');
+    expect(group('Tips').textContent).toContain(
+      'Type @me for documents that mention you',
+    );
     expect(group('Tips').textContent).toContain('roadmapq3');
     expect(screen.getByText('Acme Product')).not.toBeNull();
   });
@@ -397,6 +402,44 @@ describe('SearchContainer opening', () => {
     await screen.findByRole('group', { name: 'In document text' });
     await userEvent.keyboard('{Enter}');
     expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=p1');
+  });
+
+  it('lists the docs that mention you for @me, with the sentence, opening at the mention', async () => {
+    const mention = (folderId: string, docId: string, member: string) =>
+      docTextFromBlocks(
+        folderId,
+        docId,
+        [
+          {
+            id: `m-${docId}`,
+            kind: 'paragraph',
+            depth: 0,
+            attrs: {},
+            spans: [
+              { text: 'Ask ' },
+              { text: '@Ann', attributes: { link: `/app/w/m/${member}` } },
+              { text: ' first.' },
+            ],
+          },
+        ],
+        window.location.origin,
+      );
+    textIndex = {
+      ...textIndex,
+      texts: texts(
+        mention('f2', 'd3', ME),
+        mention('f1', 'd1', 'b2'.repeat(32)),
+        mention('f1', 'old', ME),
+      ),
+    };
+    mount();
+    await type('@me');
+    expect(optionTexts('Mentions of you')).toEqual([
+      expect.stringMatching(/^API spec v2Product \/ SpecsAsk @Ann first\.$/),
+    ]);
+    expect(screen.queryByRole('group', { name: 'Documents' })).toBeNull();
+    await userEvent.keyboard('{Enter}');
+    expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=m-d3');
   });
 
   it('opens a folder, and a tag as Home filtered to it', async () => {

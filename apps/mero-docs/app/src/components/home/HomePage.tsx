@@ -20,6 +20,7 @@ import { useCreateDocument } from '@/hooks/useCreateDocument';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
@@ -174,7 +175,14 @@ export function HomePage({ folderId }: Props) {
   );
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;
   const personName = usePersonName(q.by);
-  const shown = applyHomeQuery(liveRows, effective, now, folders);
+  const mentioned = useMentionedMe();
+  const shown = applyHomeQuery(
+    liveRows,
+    effective,
+    now,
+    folders,
+    mentioned.keys,
+  );
   // What the chip counts are taken over: the scope and the Archived switch, no other filter.
   const base = liveRows.filter(
     (r) => scopeIds.has(r.folderId) && r.archived === q.archived,
@@ -183,7 +191,9 @@ export function HomePage({ folderId }: Props) {
   const statusOf = (id: string): FolderIndexStatus =>
     folderStatus[id] ?? 'loading';
   const loading =
-    !foldersKnown || scope.some((f) => statusOf(f.id) === 'loading');
+    !foldersKnown ||
+    scope.some((f) => statusOf(f.id) === 'loading') ||
+    (!!q.mentions && !mentioned.known);
   const syncing = scope.filter((f) => statusOf(f.id) === 'syncing');
   const failed = scope.filter((f) => statusOf(f.id) === 'error');
 

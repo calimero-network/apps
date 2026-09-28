@@ -2,7 +2,7 @@
 // titles, folders and tags from the workspace index and matches inside docs.
 
 import * as React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AtSign } from 'lucide-react';
 
 import { hereLabel, LivePill } from '@/components/common/LivePill';
 import { FolderPath } from '@/components/home/DocTable';
@@ -17,6 +17,7 @@ import {
 } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { usePresenceByDoc, type PresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { liveRecent, type RecentDoc } from '@/hooks/useRecentDocs';
 import { useTags } from '@/hooks/useTags';
@@ -42,6 +43,9 @@ const TEXT_DEBOUNCE_MS = 80; // body text waits for a typing pause; titles never
 const TIP_TAGS = 3; // tag chips shown under the "#" tip
 const EMPTY_TEXT = 'No documents, folders or tags match';
 const TAGS_TIP = 'Type # to search tags only';
+const MENTIONS_QUERY = '@me'; // lists the docs that mention you, instead of a search
+const MENTIONS_TIP = `Type ${MENTIONS_QUERY} for documents that mention you`;
+const NO_MENTIONS = 'No documents mention you yet';
 
 type Target =
   | { kind: 'doc'; folderId: string; docId: string; block?: string }
@@ -163,6 +167,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     failed: partlyRead,
   } = useTextIndexValue();
   const { tags, byKey: tagsByKey } = useTags();
+  const { mentions } = useMentionedMe();
   const presence = usePresenceByDoc();
   const { namespaceId, namespaces } = useDriveWorkspace();
   const { href, goDoc, goFolder, goHome } = useAppRoute();
@@ -189,8 +194,31 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     const groups: PaletteGroupView[] = [];
     const { text, tagsOnly } = normalizeQuery(query);
     const empty = !text && !tagsOnly;
-    if (!open) return { ...ctx, groups, tagsOnly, empty, warning: undefined };
+    const mentionsOnly = text.toLowerCase() === MENTIONS_QUERY;
+    const base = { ...ctx, groups, tagsOnly, empty, mentionsOnly };
+    if (!open) return { ...base, warning: undefined };
     const now = Date.now();
+
+    if (mentionsOnly) {
+      const items = [...mentions]
+        .flatMap(([key, m]) => {
+          const r = live.get(key);
+          return r ? [{ r, m }] : [];
+        })
+        .sort((a, b) => b.r.updatedAt - a.r.updatedAt)
+        .map(({ r, m }) =>
+          docItem(
+            ctx,
+            `mention:${rowKey(r.folderId, r.docId)}`,
+            'text',
+            r,
+            { context: folderPathOf(paths, r.folderId), snippet: m.sentence },
+            m.blockId,
+          ),
+        );
+      groups.push({ id: 'mentions', label: 'Mentions of you', items });
+      return { ...base, warning: undefined };
+    }
 
     if (empty) {
       const recentItems = liveRecent(recent, rows).map(({ entry, row: r }) =>
@@ -226,10 +254,16 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
                   )
                 : undefined,
             },
+            {
+              id: 'tip:mentions',
+              kind: 'tip',
+              title: MENTIONS_TIP,
+              icon: AtSign,
+            },
           ],
         },
       );
-      return { ...ctx, groups, tagsOnly, empty, warning: undefined };
+      return { ...base, warning: undefined };
     }
 
     const docs: PaletteItemView[] = [];
@@ -300,8 +334,10 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       named(withStatus('error')),
       named(partlyRead),
     );
-    return { ...ctx, groups, tagsOnly, empty, warning };
+    return { ...base, warning };
   }, [
+    live,
+    mentions,
     open,
     query,
     rows,
@@ -346,7 +382,8 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   // Still reading a folder, not merely missing one that failed.
   const reading = foldersDone + partlyRead.length < foldersTotal;
   const groups = React.useMemo(() => {
-    if (titles.empty || titles.tagsOnly) return titles.groups;
+    if (titles.empty || titles.tagsOnly || titles.mentionsOnly)
+      return titles.groups;
     const textGroup: PaletteGroupView = {
       id: 'text',
       label: 'In document text',
@@ -401,7 +438,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       scopeLabel={scopeLabel}
       groups={groups}
       warning={titles.warning}
-      emptyText={EMPTY_TEXT}
+      emptyText={titles.mentionsOnly ? NO_MENTIONS : EMPTY_TEXT}
       onOpen={onOpen}
     />
   );

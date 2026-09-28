@@ -264,7 +264,7 @@ interface PaletteRowProps {
 }
 
 function PaletteRow({ item, active, id, onHover, onPick }: PaletteRowProps) {
-  const Icon = item.kind === 'tag' ? null : KIND_ICON[item.kind];
+  const Icon = item.icon ?? (item.kind === 'tag' ? null : KIND_ICON[item.kind]);
   return (
     <div
       id={id}
