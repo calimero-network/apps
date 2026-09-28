@@ -662,6 +662,25 @@ export class EditorDriver {
     await item.click();
     return this.page.evaluate(() => navigator.clipboard.readText());
   }
+
+  // Types [[ and a query at the caret, then picks a row of the doc link picker.
+  async linkDoc(query: string, option: string | RegExp): Promise<void> {
+    await this.page.keyboard.type(`[[${query}`);
+    await this.linkPicker().getByRole('option', { name: option }).click();
+  }
+
+  linkPicker(): Locator {
+    return this.page.getByRole('listbox', { name: 'Link to a document' });
+  }
+
+  // A doc link renders as a chip: an ordinary link to an in-app path.
+  docLink(text: string): Locator {
+    return this.page.locator(".bn-editor a[href^='/app/']", { hasText: text });
+  }
+
+  linkCard(): Locator {
+    return this.page.getByTestId('doc-link-card');
+  }
 }
 
 // The open document's tag row and its Add tag popover.

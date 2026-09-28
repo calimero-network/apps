@@ -11,7 +11,7 @@ const DAY_YEAR_FORMAT = new Intl.DateTimeFormat(undefined, {
 }); // "Dec 31, 2025"
 
 /** When something happened, mid-sentence: "just now", "2 min ago", "3 h ago", "yesterday", then a date. */
-function whenLabel(ms: number, nowMs: number): string {
+export function whenLabel(ms: number, nowMs: number): string {
   const ago = nowMs - ms;
   if (ago < MINUTE_MS) return 'just now'; // a peer's clock may run ahead
   if (ago < HOUR_MS) return `${Math.floor(ago / MINUTE_MS)} min ago`;

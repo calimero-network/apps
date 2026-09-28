@@ -15,7 +15,7 @@ import { FilterChecklist } from './FilterChecklist';
 import { UPDATED_OPTIONS, UpdatedMenu } from './UpdatedMenu';
 import type { FilterChipView } from './types';
 
-const SELF_LABEL = 'You';
+export const SELF_LABEL = 'You';
 const UNKNOWN_TAG_LABEL = 'Unknown tag';
 export const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
 

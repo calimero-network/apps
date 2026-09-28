@@ -25,7 +25,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { createExtension } from '@blocknote/core';
-import { SideMenuController, useCreateBlockNote } from '@blocknote/react';
+import {
+  LinkToolbarController,
+  SideMenuController,
+  useCreateBlockNote,
+} from '@blocknote/react';
+import { useNavigate } from 'react-router-dom';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -43,7 +48,20 @@ import {
   type SectionLinks,
 } from './blocknote/BlockMenu';
 import { SectionBanner } from './SectionBanner';
+import { DocAwareLinkToolbar, DocLinkHover } from './DocLinkHover';
+import { DocLinkPicker } from './blocknote/DocLinkPicker';
+import {
+  followDocLink,
+  insertDocLink,
+  openClickedLink,
+  pastedDocLink,
+  type LinkNav,
+} from './blocknote/docLinks';
+import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
+import { useAppRoute } from '@/hooks/useAppRoute';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useSectionFocus } from '@/hooks/useSectionFocus';
+import { rowKey } from '@/lib/workspaceIndex/types';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -149,10 +167,37 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     [],
   );
 
+  const { namespaceId } = useDriveWorkspace();
+  const { goDoc, href } = useAppRoute();
+  const navigate = useNavigate();
+  const { rows } = useWorkspaceIndexValue();
+  const rowsByKey = useMemo(
+    () => new Map(rows.map((r) => [rowKey(r.folderId, r.docId), r])),
+    [rows],
+  );
+  // The editor's link and paste handlers are fixed at creation, so they read the latest here.
+  const linkNavRef = useRef<LinkNav & { rows: typeof rowsByKey }>(null!);
+  linkNavRef.current = {
+    origin: window.location.origin,
+    ws: namespaceId ?? undefined,
+    goDoc,
+    navigate,
+    href,
+    rows: rowsByKey,
+  };
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialBlocks,
     extensions: [presence, blockAttrs],
+    links: { onClick: (event) => openClickedLink(event, linkNavRef.current) },
+    pasteHandler: ({ event, editor: target, defaultPasteHandler }) => {
+      const text = event.clipboardData?.getData('text/plain') ?? '';
+      const link = pastedDocLink(text, linkNavRef.current);
+      if (!link) return defaultPasteHandler();
+      insertDocLink(target as DriveEditor, link);
+      return true;
+    },
   });
 
   useEffect(() => {
@@ -355,14 +400,31 @@ export const EditorShell: React.FC<EditorShellProps> = ({
             >
               {tags}
               <SectionLinksContext.Provider value={sectionLinks ?? null}>
-                <BlockNoteView
-                  editor={editor}
-                  editable={!readOnly}
-                  theme={theme}
-                  sideMenu={false}
-                >
-                  <SideMenuController sideMenu={BlockSideMenu} />
-                </BlockNoteView>
+                <DocLinkHover>
+                  {/* BlockNote handles primary clicks only while editable; the rest land here. */}
+                  <div
+                    onClick={(e) =>
+                      readOnly && followDocLink(e.nativeEvent, linkNavRef.current)
+                    }
+                    onAuxClick={(e) =>
+                      followDocLink(e.nativeEvent, linkNavRef.current)
+                    }
+                  >
+                    <BlockNoteView
+                      editor={editor}
+                      editable={!readOnly}
+                      theme={theme}
+                      sideMenu={false}
+                      linkToolbar={false}
+                    >
+                      <SideMenuController sideMenu={BlockSideMenu} />
+                      <LinkToolbarController
+                        linkToolbar={DocAwareLinkToolbar}
+                      />
+                      <DocLinkPicker editor={editor} />
+                    </BlockNoteView>
+                  </div>
+                </DocLinkHover>
               </SectionLinksContext.Provider>
             </div>
           </div>
