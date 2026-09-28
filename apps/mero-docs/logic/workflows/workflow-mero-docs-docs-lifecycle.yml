@@ -1,6 +1,6 @@
 name: Mero Docs E2E - Docs Service Full Lifecycle
 description: >
-  End-to-end coverage for the DocsClient WASM surface — the editor loop
+  End-to-end coverage for the DocsClient WASM surface - the editor loop
   that Phase 8-D shipped. The main workflow-mero-docs-e2e.yml exercises
   the registry service thoroughly but skips the docs service; this
   workflow closes that gap.
@@ -30,7 +30,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -67,7 +67,7 @@ nodes:
 
 steps:
   # =================================================================
-  # Phase A: Bootstrap — install, namespace, folder + docs context
+  # Phase A: Bootstrap - install, namespace, folder + docs context
   # =================================================================
 
   - name: Install bundle on Node 1
@@ -241,7 +241,7 @@ steps:
     context_id: '{{docs_ctx}}'
     timeout: 30
 
-  - name: Bob lists docs — sees all three
+  - name: Bob lists docs - sees all three
     type: call
     node: docs-node-2
     context_id: '{{docs_ctx}}'
@@ -251,7 +251,7 @@ steps:
       include_archived: false
 
   # =================================================================
-  # Phase E: get_doc — detailed reads, cross-node
+  # Phase E: get_doc - detailed reads, cross-node
   # =================================================================
 
   - name: Alice reads doc_a
@@ -354,7 +354,7 @@ steps:
     expected_failure: true
 
   # =================================================================
-  # Phase G: Tags — add_tag / remove_tag
+  # Phase G: Tags - add_tag / remove_tag
   # =================================================================
 
   - name: Alice adds "important" tag to doc_a
@@ -492,7 +492,7 @@ steps:
     context_id: '{{docs_ctx}}'
     timeout: 30
 
-  - name: list_docs without include_archived — archived doc_c hidden
+  - name: list_docs without include_archived - archived doc_c hidden
     type: call
     node: docs-node-2
     context_id: '{{docs_ctx}}'
@@ -501,7 +501,7 @@ steps:
     args:
       include_archived: false
 
-  - name: list_docs with include_archived — archived doc_c visible
+  - name: list_docs with include_archived - archived doc_c visible
     type: call
     node: docs-node-2
     context_id: '{{docs_ctx}}'
@@ -525,7 +525,7 @@ steps:
     context_id: '{{docs_ctx}}'
     timeout: 30
 
-  - name: list_docs without include_archived — doc_c visible again
+  - name: list_docs without include_archived - doc_c visible again
     type: call
     node: docs-node-2
     context_id: '{{docs_ctx}}'
@@ -583,7 +583,7 @@ steps:
       id: '{{doc_b}}'
     expected_failure: true
 
-  - name: Final list_docs — only doc_a + doc_c remain
+  - name: Final list_docs - only doc_a + doc_c remain
     type: call
     node: docs-node-2
     context_id: '{{docs_ctx}}'
@@ -593,7 +593,7 @@ steps:
       include_archived: false
 
   # =================================================================
-  # Phase J: Cross-node write — Bob edits, Alice sees
+  # Phase J: Cross-node write - Bob edits, Alice sees
   # =================================================================
 
   - name: Bob renames doc_a

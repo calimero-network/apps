@@ -1,4 +1,4 @@
-// Folder CRUD — tests 10-17 from the design catalog.
+// Folder CRUD - tests 10-17 from the design catalog.
 
 import { test, expect } from '../fixtures/single-user';
 
@@ -35,7 +35,7 @@ test.describe('Folder CRUD (single-node)', () => {
   });
 
   test.skip('reparent folder shifts ancestry', async ({ alice }) => {
-    // Drag-reparent UI not yet covered by the driver — needs an
+    // Drag-reparent UI not yet covered by the driver - needs an
     // explicit menuitem or drag-handle locator. Tracked separately.
   });
 
@@ -71,7 +71,7 @@ test.describe('Folder CRUD (single-node)', () => {
   test.skip('delete folder with children cascades leaf-first', async ({
     alice,
   }) => {
-    // Needs nested-folder creation in driver — skipped until
+    // Needs nested-folder creation in driver - skipped until
     // createFolder supports parent option.
   });
 

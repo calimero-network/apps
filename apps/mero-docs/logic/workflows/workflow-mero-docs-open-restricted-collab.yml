@@ -4,33 +4,33 @@ description: >
   feature set (the Phase C-Rust `permissions` module + core's Open subgroup
   inheritance + per-member default capabilities).
 
-  Two nodes — Alice (calimero-node-1, the namespace creator / registry owner)
+  Two nodes - Alice (calimero-node-1, the namespace creator / registry owner)
   and Bob (calimero-node-2). The scenario:
 
     A. Alice creates a namespace, sets the default member capabilities new
        members inherit (CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS |
        CAN_CREATE_SUBGROUP = 1|4|32 = 37), creates the per-namespace Registry
        context, and `claim_owner`s it.
-    B. Alice creates an Open folder + Docs context + a doc — all before Bob
+    B. Alice creates an Open folder + Docs context + a doc - all before Bob
        joins.
     C. Bob joins ONLY the namespace (one invitation; no folder add_group_members).
     D. Bob joins the Registry context via namespace-root membership and sees
        Alice's folder registrations sync over.
     E. Bob joins the Open folder's Docs context purely via core's parent-walk
-       inheritance — NO add_group_members — reads Alice's doc, and his
+       inheritance - NO add_group_members - reads Alice's doc, and his
        `get_folder_role` on the Open folder is the implicit default `Editor`.
     F. Cross-node edit/verify rounds on the shared doc (Bob→Alice ×2, Alice→Bob ×2).
-    G. Bob creates HIS OWN Open folder + Docs context + doc (allowed — he has
+    G. Bob creates HIS OWN Open folder + Docs context + doc (allowed - he has
        CAN_CREATE_SUBGROUP by default); Alice joins it via inheritance, reads,
        and edits.
     H. Restricted folder: Bob's inherited join_context FAILS (Restricted wall);
        Alice add_group_members him; the join now succeeds; cross edits both ways;
        then Alice `set_folder_role`s Bob to `Viewer` and Bob reads back `Viewer`
-       (advisory — the WASM still permits his writes; the frontend is what hides
+       (advisory - the WASM still permits his writes; the frontend is what hides
        the edit UI).
     J. Alice tears the namespace down.
 
-  Sequential per merobox semantics — `wait_for_sync` hands writes off between
+  Sequential per merobox semantics - `wait_for_sync` hands writes off between
   writer and reader; `wait` blocks before joins are sized for governance gossip
   + group-store accept on slow docker networking, matching the sibling
   workflow-mero-docs-open-subgroup.yml.
@@ -40,7 +40,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -71,7 +71,7 @@ nodes:
 
 steps:
   # =================================================================
-  # Phase A: Bootstrap — bundle on both nodes, namespace + default
+  # Phase A: Bootstrap - bundle on both nodes, namespace + default
   # capabilities + Registry context + claim_owner.
   # =================================================================
 
@@ -116,7 +116,7 @@ steps:
     group_id: '{{namespace_id}}'
     capabilities: 37
 
-  - name: get_group_info on the namespace (smoke — default caps now set)
+  - name: get_group_info on the namespace (smoke - default caps now set)
     type: get_group_info
     node: calimero-node-1
     group_id: '{{namespace_id}}'
@@ -147,13 +147,13 @@ steps:
   # what `claim_owner` stored, which the contract derives itself from
   # `env::account_id()`. Three different 32-byte ids are in play across this
   # file (account, device, executor key) and they all print as 64 hex, so do
-  # NOT "tighten" this into `registry_owner == alice_key` — that assertion is
+  # NOT "tighten" this into `registry_owner == alice_key` - that assertion is
   # false and would red the run.
   #
   # Note what this step therefore does and does not prove. It proves the
   # registry is claimable and that the owner-gated writes below work, because
   # `require_admin` compares the caller against the stored value using the SAME
-  # derivation on both sides — which held even when that derivation was
+  # derivation on both sides - which held even when that derivation was
   # `device_id`. What it does not prove is the property the account switch
   # exists for: that the stored id equals the ACCOUNT a CLIENT can name, which
   # is the only id `listGroupMembers` hands out. Proving that needs a step that
@@ -217,7 +217,7 @@ steps:
       open_docs_ctx: contextId
       alice_docs_key: memberPublicKey
 
-  - name: bind_folder_context — Shared → Docs context
+  - name: bind_folder_context - Shared → Docs context
     type: call
     node: calimero-node-1
     context_id: '{{reg_ctx}}'
@@ -311,17 +311,17 @@ steps:
       id: '{{open_folder}}'
 
   # =================================================================
-  # Phase E: Bob inherits the Open folder's Docs context — NO
+  # Phase E: Bob inherits the Open folder's Docs context - NO
   # add_group_members. Reads Alice's doc; default folder role is Editor.
   #
   # Two-step join, mirroring core's scaffolding-e2e
   # group-join-via-inheritance acceptance test:
-  #   1. `join_subgroup_inheritance` on the FOLDER subgroup id —
+  #   1. `join_subgroup_inheritance` on the FOLDER subgroup id -
   #      materialises inherited membership + receives the subgroup
   #      key via the OpenSubgroupJoinRequest direct-stream protocol.
   #      Replaces the pre-#2360 workaround of enumerating
   #      listGroupContexts + joining a child.
-  #   2. `join_context` on the docs context — cheap now that the
+  #   2. `join_context` on the docs context - cheap now that the
   #      group key is already local; just produces the per-context
   #      executor key.
   # =================================================================
@@ -396,7 +396,7 @@ steps:
     type: assert
     statements:
       # merobox auto-quotes string variables during {{...}} substitution, so
-      # `{{bob_open_role}}` already expands to `'Editor'` — don't wrap it again.
+      # `{{bob_open_role}}` already expands to `'Editor'` - don't wrap it again.
       - "equal({{bob_open_role}}, 'Editor')"
 
   # =================================================================
@@ -405,7 +405,7 @@ steps:
   # released merobox, so the rounds are unrolled.)
   # =================================================================
 
-  - name: Round 1 — Bob edits the shared doc
+  - name: Round 1 - Bob edits the shared doc
     type: call
     node: calimero-node-2
     context_id: '{{open_docs_ctx}}'
@@ -415,13 +415,13 @@ steps:
       id: '{{doc_id}}'
       title: 'v1 by bob'
 
-  - name: Round 1 — sync Bob's edit to Alice
+  - name: Round 1 - sync Bob's edit to Alice
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{open_docs_ctx}}'
     timeout: 30
 
-  - name: Round 1 — Alice sees Bob's edit
+  - name: Round 1 - Alice sees Bob's edit
     type: call
     node: calimero-node-1
     context_id: '{{open_docs_ctx}}'
@@ -430,7 +430,7 @@ steps:
     args:
       id: '{{doc_id}}'
 
-  - name: Round 2 — Bob edits again
+  - name: Round 2 - Bob edits again
     type: call
     node: calimero-node-2
     context_id: '{{open_docs_ctx}}'
@@ -440,13 +440,13 @@ steps:
       id: '{{doc_id}}'
       title: 'v2 by bob'
 
-  - name: Round 2 — sync Bob's edit to Alice
+  - name: Round 2 - sync Bob's edit to Alice
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{open_docs_ctx}}'
     timeout: 30
 
-  - name: Round 2 — Alice sees Bob's edit
+  - name: Round 2 - Alice sees Bob's edit
     type: call
     node: calimero-node-1
     context_id: '{{open_docs_ctx}}'
@@ -455,7 +455,7 @@ steps:
     args:
       id: '{{doc_id}}'
 
-  - name: Round 3 — Alice edits the shared doc
+  - name: Round 3 - Alice edits the shared doc
     type: call
     node: calimero-node-1
     context_id: '{{open_docs_ctx}}'
@@ -465,13 +465,13 @@ steps:
       id: '{{doc_id}}'
       title: 'Shared plan (rev 3)'
 
-  - name: Round 3 — sync Alice's edit to Bob
+  - name: Round 3 - sync Alice's edit to Bob
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{open_docs_ctx}}'
     timeout: 30
 
-  - name: Round 3 — Bob sees Alice's edit
+  - name: Round 3 - Bob sees Alice's edit
     type: call
     node: calimero-node-2
     context_id: '{{open_docs_ctx}}'
@@ -480,7 +480,7 @@ steps:
     args:
       id: '{{doc_id}}'
 
-  - name: Round 4 — Alice edits again
+  - name: Round 4 - Alice edits again
     type: call
     node: calimero-node-1
     context_id: '{{open_docs_ctx}}'
@@ -490,13 +490,13 @@ steps:
       id: '{{doc_id}}'
       title: 'v4 by alice'
 
-  - name: Round 4 — sync Alice's edit to Bob
+  - name: Round 4 - sync Alice's edit to Bob
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{open_docs_ctx}}'
     timeout: 30
 
-  - name: Round 4 — Bob sees Alice's edit
+  - name: Round 4 - Bob sees Alice's edit
     type: call
     node: calimero-node-2
     context_id: '{{open_docs_ctx}}'
@@ -547,7 +547,7 @@ steps:
       bob_docs_own_ctx: contextId
       bob_own_docs_key: memberPublicKey
 
-  - name: bind_folder_context — Bobs → Bob's Docs context
+  - name: bind_folder_context - Bobs → Bob's Docs context
     type: call
     node: calimero-node-2
     context_id: '{{reg_ctx}}'
@@ -638,7 +638,7 @@ steps:
       id: '{{bob_doc_id}}'
 
   # =================================================================
-  # Phase H: Restricted folder — Bob's inherited join FAILS until
+  # Phase H: Restricted folder - Bob's inherited join FAILS until
   # Alice explicitly add_group_members him; then cross edits; then
   # Alice demotes Bob's folder role to Viewer (advisory).
   # =================================================================
@@ -679,7 +679,7 @@ steps:
       priv_docs_ctx: contextId
       alice_priv_key: memberPublicKey
 
-  - name: bind_folder_context — Private → Docs context
+  - name: bind_folder_context - Private → Docs context
     type: call
     node: calimero-node-1
     context_id: '{{reg_ctx}}'
@@ -824,7 +824,7 @@ steps:
       id: '{{priv_doc_id}}'
 
   # Owner demotes Bob's folder role to Viewer. This is advisory at the
-  # WASM layer (the docs service does not gate on the registry Role —
+  # WASM layer (the docs service does not gate on the registry Role -
   # the frontend does, by hiding the edit UI), so we only assert the
   # role round-trips; Bob's edit ability above is unchanged.
   - name: Alice sets Bob's Private-folder role to Viewer
@@ -878,7 +878,7 @@ steps:
       - 'is_set({{priv_role_rows}})'
 
   # =================================================================
-  # Phase J: Teardown — owner deletes the namespace (cascades to its
+  # Phase J: Teardown - owner deletes the namespace (cascades to its
   # subgroups + contexts).
   # =================================================================
 
@@ -887,7 +887,7 @@ steps:
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
 
-# Leave containers up for the CI log-watcher / retry loop — the outer
+# Leave containers up for the CI log-watcher / retry loop - the outer
 # shell in .github/workflows/ci.yml calls `merobox nuke --force` on
 # attempt boundaries; merobox shouldn't stop nodes on workflow success.
 stop_all_nodes: false

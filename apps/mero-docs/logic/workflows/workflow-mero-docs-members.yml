@@ -23,7 +23,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -107,10 +107,10 @@ steps:
       bob_account: memberAccount
 
   # =================================================================
-  # Phase B: List members — baseline shape
+  # Phase B: List members - baseline shape
   #
   # The namespace root itself is a group (namespaceId IS rootGroupId
-  # at the admin-API layer — see NamespaceSwitcher's file header).
+  # at the admin-API layer - see NamespaceSwitcher's file header).
   # Listing members on the namespace id gets us the namespace-wide
   # member roster the NamespaceMembersPanel renders.
   # =================================================================
@@ -143,28 +143,28 @@ steps:
       - identity: '{{bob_account}}'
         role: Member
 
-  - name: list_group_members on the subgroup — Bob is in
+  - name: list_group_members on the subgroup - Bob is in
     type: list_group_members
     node: calimero-node-1
     group_id: '{{folder_group}}'
 
   # =================================================================
-  # Phase D: get_member_capabilities — read the bitmask
+  # Phase D: get_member_capabilities - read the bitmask
   #
   # This is the path useMemberCaps hits on every permission hook
   # render. The MemberRoleSelect PRESETS (Viewer / Editor / Manager)
-  # all match specific bit combinations — tested below.
+  # all match specific bit combinations - tested below.
   # =================================================================
 
   # Baseline: capture Bob's per-member capability bitmask as soon as
   # he joins with role=Member. core/admin/handlers/groups/
   # get_member_capabilities.rs returns `response.capabilities`, which
   # is the EXPLICIT per-member override (a separate field from
-  # `role`). A newly-added member with no override returns 0 — that's
+  # `role`). A newly-added member with no override returns 0 - that's
   # correct, and the effective permissions come from the role. We
   # capture this baseline so the role-transition steps below can
   # assert update_member_role doesn't mutate the override.
-  - name: get_member_capabilities for Bob (initial role=Member) — capture
+  - name: get_member_capabilities for Bob (initial role=Member) - capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
@@ -173,13 +173,13 @@ steps:
       initial_member_caps: capabilities
 
   # =================================================================
-  # Phase E: update_member_role — string role transitions
+  # Phase E: update_member_role - string role transitions
   #
   # Covers the API mero-react exposes via useUpdateMemberRole. Role
   # and the per-member capability override are SEPARATE fields on the
   # admin-API side: `update_member_role` only touches `role`, and
   # `get_member_capabilities` returns the untouched per-member
-  # override bitmask — not a role-derived effective mask.
+  # override bitmask - not a role-derived effective mask.
   #
   # So the assertion here is the invariant: the override bitmask is
   # unchanged after promote-then-demote. A backend bug where
@@ -231,10 +231,10 @@ steps:
       - '{{demoted_override_caps}} == {{initial_member_caps}}'
 
   # =================================================================
-  # Phase F: set_member_capabilities — precise bitmask writes
+  # Phase F: set_member_capabilities - precise bitmask writes
   #
   # Matches MemberRoleSelect + NamespaceMemberRow's preset
-  # application. Capability bit layout — core's `MemberCapabilities`,
+  # application. Capability bit layout - core's `MemberCapabilities`,
   # re-exported as CAPABILITIES from constants/config.ts:
   #   CAN_CREATE_CONTEXT=1, CAN_INVITE_MEMBERS=2,
   #   CAN_JOIN_OPEN_SUBGROUPS=4, MANAGE_MEMBERS=8,
@@ -247,7 +247,7 @@ steps:
   #   Manager = 495  (Editor + CAN_INVITE_MEMBERS|MANAGE_MEMBERS|
   #                   CAN_MANAGE_VISIBILITY|CAN_DELETE_SUBGROUP|CAN_MANAGE_METADATA)
   # ("Admin" = the core group-admin *role*, which bypasses the
-  # bitmask entirely — covered by the update_member_role steps above.)
+  # bitmask entirely - covered by the update_member_role steps above.)
   # =================================================================
 
   # Each verify step captures the returned bitmask into a uniquely-
@@ -261,7 +261,7 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 4
 
-  - name: Verify Viewer bitmask — capture
+  - name: Verify Viewer bitmask - capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
@@ -269,7 +269,7 @@ steps:
     outputs:
       viewer_caps: capabilities
 
-  # NB. Use the `A == B` operator form, not `equal(A, B)` — the
+  # NB. Use the `A == B` operator form, not `equal(A, B)` - the
   # operator path in merobox's assert DSL coerces to float for numeric
   # comparison, whereas `equal()` does strict Python `==` and fails
   # when the captured value is int but the literal is parsed as str.
@@ -285,7 +285,7 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 37
 
-  - name: Verify Editor bitmask — capture
+  - name: Verify Editor bitmask - capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
@@ -305,7 +305,7 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 495
 
-  - name: Verify Manager bitmask — capture
+  - name: Verify Manager bitmask - capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
@@ -319,7 +319,7 @@ steps:
       - '{{manager_caps}} == 495'
 
   # Also test a non-preset "Custom" mask so the MemberRoleSelect
-  # "Custom" branch has backend coverage (CAN_MANAGE_METADATA alone —
+  # "Custom" branch has backend coverage (CAN_MANAGE_METADATA alone -
   # not a preset). Store-verbatim is the key guarantee here: the
   # backend must not coerce unusual bitmasks.
   - name: Set Bob to a non-preset bitmask (CAN_MANAGE_METADATA = 256 only)
@@ -329,7 +329,7 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 256
 
-  - name: Verify the non-preset bitmask — capture
+  - name: Verify the non-preset bitmask - capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
@@ -347,7 +347,7 @@ steps:
   #
   # KNOWN-FAILING (core/merod:edge regression, NOT a timing flake): since
   # ~2026-06-25 this assert fails with bob_view_caps=0. Bob's node logs
-  # show his namespace governance DAG WEDGED — it rejects an earlier op
+  # show his namespace governance DAG WEDGED - it rejects an earlier op
   # with "cannot demote the last admin of the group" and retries it forever
   # via backfill, so the later set_member_capabilities delta never applies
   # and Bob reads 0. The unpinned merod:edge image (force_pull_image:true)
@@ -355,13 +355,13 @@ steps:
   # passed on master before and fails on master after, with no mero-docs
   # governance changes between. A fixed wait cannot help (the delta will
   # NEVER apply). Real fix is core-side, or pin merod:edge to a known-good
-  # rev — tracked separately, out of scope for this PR. Wait kept at the
+  # rev - tracked separately, out of scope for this PR. Wait kept at the
   # 10s norm; bumping it does nothing for a deterministic rejection.
   - name: Wait for cap change to propagate to Bob's node
     type: wait
     seconds: 10
 
-  - name: Bob reads his own caps from node 2 — capture
+  - name: Bob reads his own caps from node 2 - capture
     type: get_member_capabilities
     node: calimero-node-2
     group_id: '{{folder_group}}'
@@ -395,7 +395,7 @@ steps:
     group_id: '{{folder_group}}'
     visibility: Restricted
 
-  # set_default_visibility only accepts Open / Restricted — there's
+  # set_default_visibility only accepts Open / Restricted - there's
   # no Inherit literal at the admin-API layer. Flip back to Open to
   # exercise the second branch of the enum.
   - name: Revert default visibility to Open
@@ -415,19 +415,19 @@ steps:
     members:
       - '{{bob_account}}'
 
-  - name: list_group_members — Bob no longer in the subgroup
+  - name: list_group_members - Bob no longer in the subgroup
     type: list_group_members
     node: calimero-node-1
     group_id: '{{folder_group}}'
 
   # =================================================================
-  # Phase I: Negative paths — BLOCKED ON MEROBOX
+  # Phase I: Negative paths - BLOCKED ON MEROBOX
   #
   # We'd ideally cover: get_member_capabilities, set_member_capabilities,
-  # remove_group_members, update_member_role — all invoked on a
+  # remove_group_members, update_member_role - all invoked on a
   # non-member identity and asserted to fail. All four step types live
   # in merobox/commands/bootstrap/steps/group_management.py, which does
-  # not call `self._is_expected_failure()` — the base-class helper is
+  # not call `self._is_expected_failure()` - the base-class helper is
   # available but those step classes don't opt in, so
   # `expected_failure: true` is silently ignored and any exception
   # stops the workflow.
@@ -440,7 +440,7 @@ steps:
   # Phase J: Cleanup
   # =================================================================
 
-  - name: delete_group — tear down the subgroup
+  - name: delete_group - tear down the subgroup
     type: delete_group
     node: calimero-node-1
     group_id: '{{folder_group}}'

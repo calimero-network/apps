@@ -77,7 +77,7 @@ export class WorkspaceDriver {
     await this.page.getByRole('menuitem', { name: /New workspace/i }).click();
     // Scope to the creation dialog specifically (the one holding the
     // "Workspace name" input). The instant Create succeeds, the
-    // DisplayNameGate — also role="dialog" — appears, so an unscoped
+    // DisplayNameGate - also role="dialog" - appears, so an unscoped
     // getByRole('dialog') matches TWO elements and the toBeHidden below
     // hits a strict-mode violation. Filtering by the input it contains
     // pins this to the creation dialog, which has no name input once it
@@ -124,13 +124,13 @@ export class WorkspaceDriver {
     await this.dismissNameGate();
   }
 
-  // Like createNamespace but does NOT dismiss the gate — used by the
+  // Like createNamespace but does NOT dismiss the gate - used by the
   // gate spec to assert the gate is blocking.
   async createNamespaceKeepGate(name: string): Promise<void> {
     await this.createNamespaceRaw(name);
   }
 
-  // Selects a namespace from the top-bar switcher by its visible name —
+  // Selects a namespace from the top-bar switcher by its visible name -
   // switching by id is brittle since ids are minted at runtime.
   async switchNamespace(name: string): Promise<void> {
     await this.page.getByTestId('workspace-switcher').click();
@@ -276,7 +276,7 @@ export class WorkspaceDriver {
 
   async createDoc(title: string): Promise<void> {
     // The list's "New document" button creates a doc named "Untitled" and
-    // opens the editor immediately — there's no create-dialog with a
+    // opens the editor immediately - there's no create-dialog with a
     // title input. To get a named doc we click New document, wait for the
     // editor to mount, rename via the EditorHeader's editable title,
     // close the editor, and assert the row.
@@ -320,7 +320,7 @@ export class FolderTreeDriver {
   folderRow(name: string): Locator {
     // Target the row <div> (direct child of <li>), not the <li> itself.
     // When a folder is expanded, the <li>'s textContent accumulates all
-    // descendant doc/subfolder names — the anchored regex would no longer
+    // descendant doc/subfolder names - the anchored regex would no longer
     // match. The row <div> holds only the chevron, icon, name button, and
     // actions button, so its textContent stays stable regardless of
     // expansion state.
@@ -349,7 +349,7 @@ export class FolderTreeDriver {
   }
 
   // Expand a folder so its document leaves render. Selecting (clicking the
-  // row) does NOT expand — expansion is the chevron. No-op if already expanded.
+  // row) does NOT expand - expansion is the chevron. No-op if already expanded.
   async expandFolder(name: string): Promise<void> {
     const row = this.folderRow(name).first();
     const expandBtn = row.getByRole('button', { name: 'Expand' });
@@ -367,7 +367,7 @@ export class FolderTreeDriver {
   async openContextMenu(name: string): Promise<void> {
     // FolderTreeItem renders a 3-dot "Folder actions" button on the
     // row; clicking it opens the radix DropdownMenu. (Right-click is
-    // NOT bound — the row uses the dropdown trigger pattern, not a
+    // NOT bound - the row uses the dropdown trigger pattern, not a
     // native context menu.)
     //
     // FolderVisibilityToggle gates its menuitem on `current !==
@@ -376,7 +376,7 @@ export class FolderTreeDriver {
     // before that resolves the menuitem just isn't rendered (the
     // menu is a snapshot at open time). So wait for the trigger
     // button to be ready AND give the menu a brief settle window
-    // — `openFolder` having been called should already have queued
+    // - `openFolder` having been called should already have queued
     // the visibility fetch, this is the courtesy poll.
     const trigger = this.folderRow(name)
       .first()
@@ -603,7 +603,7 @@ export class EditorDriver {
     const editor = this.page.locator('.ProseMirror').first();
     await editor.click();
     // pressSequentially sends real keystrokes through ProseMirror's input
-    // pipeline so BlockNote's onChange (and therefore autosave) fires —
+    // pipeline so BlockNote's onChange (and therefore autosave) fires -
     // fill() sets the DOM directly and the editor may not observe it.
     await editor.pressSequentially(content);
   }

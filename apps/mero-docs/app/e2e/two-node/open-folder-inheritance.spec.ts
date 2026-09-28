@@ -26,7 +26,7 @@ test.describe('Open folder inheritance (two-node)', () => {
   //     already joined the docs context)
   //   node-2 sees Alice's doc in the DocumentList
   //
-  // No editor mount, no bidirectional write-back, no concurrency —
+  // No editor mount, no bidirectional write-back, no concurrency -
   // those are covered by the next test in this file and by
   // doc-collab.spec.ts. First in file so it runs first; a failure
   // here means everything downstream is moot.
@@ -38,7 +38,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     await alice.createNamespace('Smoke WS');
     await alice.createFolder({ name: 'OpenSpace', visibility: 'Open' });
     // Create the doc BEFORE inviting so when Bob lands in the
-    // folder view he can see it immediately — keeps the smoke
+    // folder view he can see it immediately - keeps the smoke
     // strictly forward-only (no cross-node write).
     await alice.tree.openFolder('OpenSpace');
     await alice.createDoc('Smoke Doc');
@@ -67,7 +67,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     alice,
     bob,
   }) => {
-    // Alice — namespace, folder, doc, invite link.
+    // Alice - namespace, folder, doc, invite link.
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix Pre');
     await alice.createFolder({ name: 'Specs', visibility: 'Open' });
@@ -77,7 +77,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     const inviteUrl = await alice.settings.copyNamespaceInvite();
     await alice.closeSettings();
 
-    // Bob — accept invite, see the folder, click Join, read Alice's
+    // Bob - accept invite, see the folder, click Join, read Alice's
     // doc, write his own.
     await bob.joinNamespace(inviteUrl);
     await bob.tree.expectFolderVisible('Specs', { timeout: 60_000 });

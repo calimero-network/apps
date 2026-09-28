@@ -38,7 +38,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -69,7 +69,7 @@ nodes:
 
 steps:
   # =================================================================
-  # A. Bootstrap — bundle on both nodes, namespace with default caps,
+  # A. Bootstrap - bundle on both nodes, namespace with default caps,
   # Alice names the workspace.
   # =================================================================
   - name: Install bundle on Alice
@@ -520,7 +520,7 @@ steps:
   # F. Negative cap path: Bob can't rename Alice without
   # CAN_MANAGE_METADATA. Grant → retry → succeed.
   # =================================================================
-  - name: Bob tries to rename Alice — must fail (lacks CAN_MANAGE_METADATA)
+  - name: Bob tries to rename Alice - must fail (lacks CAN_MANAGE_METADATA)
     type: set_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
@@ -566,14 +566,14 @@ steps:
       - "equal({{alice_renamed}}, 'Alice (renamed by admin)')"
 
   # =================================================================
-  # G. Rename round trip — namespace + folder + Alice's name, all by
+  # G. Rename round trip - namespace + folder + Alice's name, all by
   # Alice from node-1; Bob sees each on node-2 after sync.
   # =================================================================
   - name: Alice renames the workspace
     type: set_group_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    record_name: Acme — Renamed
+    record_name: Acme - Renamed
     data:
       color: '#cc0033'
 
@@ -621,7 +621,7 @@ steps:
   - name: Assert all renames visible to Bob
     type: assert
     statements:
-      - "equal({{ws_renamed_bob}}, 'Acme — Renamed')"
+      - "equal({{ws_renamed_bob}}, 'Acme - Renamed')"
       - "equal({{folder_renamed_bob}}, 'Shared (Q4 plan)')"
       - "equal({{alice_renamed_bob}}, 'Alice (back to default)')"
 

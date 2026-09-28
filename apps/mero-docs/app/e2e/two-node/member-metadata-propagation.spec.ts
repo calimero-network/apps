@@ -1,8 +1,8 @@
-// Member display name propagation — tests 40-42 from the catalog.
+// Member display name propagation - tests 40-42 from the catalog.
 //
 // Namespace member metadata propagates via the namespace root group's
 // own metadata records. All namespace members have the
-// namespace key, so this is straightforward propagation — not subject
+// namespace key, so this is straightforward propagation - not subject
 // to the subgroup-encryption ordering trap that folder names are.
 
 import { test, expect } from '../fixtures/two-user';

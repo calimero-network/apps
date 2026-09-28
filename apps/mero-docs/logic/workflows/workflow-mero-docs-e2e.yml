@@ -8,7 +8,7 @@ description: >
   (duplicate registration, rebinding, missing ids, empty tag, etc.), and
   asserts cross-node replication at key sync points.
 
-  Merobox workflows execute sequentially — concurrent-write CRDT merges
+  Merobox workflows execute sequentially - concurrent-write CRDT merges
   (two nodes writing the same key simultaneously then converging) are
   covered by the Rust unit tests, not here. Everything here is single-
   writer-at-a-time with `wait_for_sync` to hand the write off to the
@@ -19,7 +19,7 @@ force_pull_image: true
 # ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
 # `KeyDelivery timed out`.
 #
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# Without it, `merod init`'s default `bootstrap.nodes` survives - the PUBLIC
 # calimero devnet boot-node. Every container then spends its startup dialing
 # unreachable public addresses, and the node log fills with
 #
@@ -50,7 +50,7 @@ nodes:
 
 steps:
   # =================================================================
-  # Phase A: Bootstrap — install, namespace, registry context join
+  # Phase A: Bootstrap - install, namespace, registry context join
   # =================================================================
 
   - name: Install Mero Docs bundle on Node 1
@@ -141,11 +141,11 @@ steps:
     timeout: 30
 
   # =================================================================
-  # Phase B: Registry — empty state, register top-level folder,
+  # Phase B: Registry - empty state, register top-level folder,
   #                     read-back shape, color + visibility mutations.
   # =================================================================
 
-  # The call succeeding (no `expected_failure`) is the assertion — an
+  # The call succeeding (no `expected_failure`) is the assertion - an
   # `is_set` on an intentionally empty list would fail because merobox's
   # `is_set` treats `[]` as unset.
   - name: get_folders on empty registry returns empty list
@@ -175,7 +175,7 @@ steps:
   # `useFolderOperations.create()` handles inherit-mode cascade: after the
   # subgroup is created, it iterates parent members and calls
   # `addGroupMember(newGroup, identity, caps & DEFAULT_CHILD_CAP_MASK)`
-  # for each. Neither the registry nor docs WASM does this — by design,
+  # for each. Neither the registry nor docs WASM does this - by design,
   # both services are admin-API-adjacent and know nothing about
   # membership policy (see design spec → Cascade Rules).
   #
@@ -184,7 +184,7 @@ steps:
   # ABI surface for every registry/docs method; the cascade *boundary*
   # (restricted folders correctly wall off members) is covered by
   # the frontend Vitest suite + the restricted-visibility e2e workflow.
-  - name: Simulate app-cascade — add Bob to Engineering subgroup
+  - name: Simulate app-cascade - add Bob to Engineering subgroup
     type: add_group_members
     node: calimero-node-1
     group_id: '{{eng_group}}'
@@ -265,7 +265,7 @@ steps:
       id: 'ghost-folder-id'
     expected_failure: true
 
-  - name: set_color overwrites (LWW) — red → green
+  - name: set_color overwrites (LWW) - red → green
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
@@ -391,7 +391,7 @@ steps:
     expected_failure: true
 
   # =================================================================
-  # Phase C: Registry — bind a Docs context to the folder
+  # Phase C: Registry - bind a Docs context to the folder
   # =================================================================
 
   - name: Create Docs context bound to Engineering group
@@ -453,7 +453,7 @@ steps:
       - 'is_set({{eng_binding}})'
 
   # =================================================================
-  # Phase D: Registry — nested folders, reorder, move, sort order
+  # Phase D: Registry - nested folders, reorder, move, sort order
   # =================================================================
 
   - name: Create nested folder group (Engineering/Backend)
@@ -494,7 +494,7 @@ steps:
       parent_id: '{{eng_group}}'
       color: '#0000ff'
 
-  - name: reorder Engineering children — Frontend first, Backend second
+  - name: reorder Engineering children - Frontend first, Backend second
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
@@ -522,7 +522,7 @@ steps:
     statements:
       - 'is_set({{eng_sort}})'
 
-  - name: reorder is LWW — swap the two children back
+  - name: reorder is LWW - swap the two children back
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
@@ -559,7 +559,7 @@ steps:
         - 'ghost-folder-id'
     expected_failure: true
 
-  # Same rationale as the "empty registry" read above — call-succeeds IS
+  # Same rationale as the "empty registry" read above - call-succeeds IS
   # the assertion; an unset parent's sort_order is `[]` and `is_set([])` fails.
   - name: get_sort_order on unset parent returns empty list
     type: call
@@ -570,7 +570,7 @@ steps:
     args:
       parent_id: '{{frontend_group}}'
 
-  # Move Backend to a new parent — for this we spin up a second top-level
+  # Move Backend to a new parent - for this we spin up a second top-level
   # folder and reparent Backend under it, then back to Engineering.
   - name: Create second top-level folder group (Design)
     type: create_group_in_namespace
@@ -646,7 +646,7 @@ steps:
   # unregister_folder.
   #
   # The earlier `unnest_group` + `nest_group` pair was dropped upstream
-  # (core#2200 — strict group-tree invariant + cascade delete) in
+  # (core#2200 - strict group-tree invariant + cascade delete) in
   # favour of a single atomic `reparent_group` edge-swap. Removing the
   # transient-orphan state also removed the delete-on-orphaned-group
   # usability gap that required re-nesting before delete_group.
@@ -662,15 +662,15 @@ steps:
 
   # `create_group_in_namespace` places the new group as a direct child
   # of the namespace root. Re-parent it under eng_group in one atomic
-  # step (pre-#2200 this was two steps — unnest + nest — with a
+  # step (pre-#2200 this was two steps - unnest + nest - with a
   # transient orphan state in between).
-  - name: reparent_group — move subteam from namespace root under eng_group
+  - name: reparent_group - move subteam from namespace root under eng_group
     type: reparent_group
     node: calimero-node-1
     child_group_id: '{{subteam_group}}'
     new_parent_id: '{{eng_group}}'
 
-  - name: list_subgroups on eng_group — admin-API now shows subteam as child
+  - name: list_subgroups on eng_group - admin-API now shows subteam as child
     type: list_subgroups
     node: calimero-node-1
     group_id: '{{eng_group}}'
@@ -697,7 +697,7 @@ steps:
   # parent's members get added to the child with DEFAULT_CHILD_CAP_MASK.
   # Bob is already in eng_group, so cascade would add him to subteam
   # with READ | WRITE | CREATE_GROUP (= 7).
-  - name: Simulate inherit cascade — add Bob to the new nested subteam
+  - name: Simulate inherit cascade - add Bob to the new nested subteam
     type: add_group_members
     node: calimero-node-1
     group_id: '{{subteam_group}}'
@@ -735,16 +735,16 @@ steps:
   # Pre-#2200 this was two steps (unnest from eng_group → re-nest
   # under namespace) with the re-nest required to restore
   # namespace-identity resolution before delete_group. With strict
-  # group-tree invariant, the group always has a parent — the edge
+  # group-tree invariant, the group always has a parent - the edge
   # swap is atomic and delete_group can resolve the namespace chain
   # unconditionally.
-  - name: reparent_group — move subteam from eng_group back to namespace root
+  - name: reparent_group - move subteam from eng_group back to namespace root
     type: reparent_group
     node: calimero-node-1
     child_group_id: '{{subteam_group}}'
     new_parent_id: '{{namespace_id}}'
 
-  # After the reparent, eng_group has no remaining children — the
+  # After the reparent, eng_group has no remaining children - the
   # list is `[]`. merobox's `is_set` macro treats empty collections
   # as "not set" and would fail an `is_set` assertion, even though
   # an empty list IS the correct post-reparent state. The step call
@@ -754,7 +754,7 @@ steps:
   # would then fail on the subsequent delete. So the reparent is
   # indirectly validated. Same pattern used for the empty-registry
   # read in Phase B.
-  - name: list_subgroups on eng_group — subteam should no longer appear
+  - name: list_subgroups on eng_group - subteam should no longer appear
     type: list_subgroups
     node: calimero-node-1
     group_id: '{{eng_group}}'
@@ -779,13 +779,13 @@ steps:
     args:
       id: '{{subteam_group}}'
 
-  - name: delete_group subteam (admin-API cleanup — full lifecycle)
+  - name: delete_group subteam (admin-API cleanup - full lifecycle)
     type: delete_group
     node: calimero-node-1
     group_id: '{{subteam_group}}'
 
   # =================================================================
-  # Phase E: Registry — cross-node replication sanity
+  # Phase E: Registry - cross-node replication sanity
   # =================================================================
 
   - name: Sync Registry after all mutations
@@ -841,7 +841,7 @@ steps:
       - 'is_set({{eng_binding_bob}})'
 
   # =================================================================
-  # Phase F: Docs service — CRUD on the Engineering docs context
+  # Phase F: Docs service - CRUD on the Engineering docs context
   # =================================================================
 
   - name: Wait for docs context gossip to reach Bob
@@ -863,7 +863,7 @@ steps:
     context_id: '{{eng_docs_ctx}}'
     timeout: 30
 
-  # Empty list_docs — no `is_set` because `is_set([])` fails.
+  # Empty list_docs - no `is_set` because `is_set([])` fails.
   - name: list_docs on empty docs context returns []
     type: call
     node: calimero-node-1
@@ -977,7 +977,7 @@ steps:
       title: x
     expected_failure: true
 
-  - name: add_tag — "planning"
+  - name: add_tag - "planning"
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -987,7 +987,7 @@ steps:
       id: '{{roadmap_id}}'
       tag: planning
 
-  - name: add_tag — duplicate is idempotent (no-op on a set)
+  - name: add_tag - duplicate is idempotent (no-op on a set)
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -997,7 +997,7 @@ steps:
       id: '{{roadmap_id}}'
       tag: planning
 
-  - name: add_tag — second tag "urgent"
+  - name: add_tag - second tag "urgent"
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -1029,7 +1029,7 @@ steps:
       tag: planning
     expected_failure: true
 
-  - name: remove_tag — drop "urgent"
+  - name: remove_tag - drop "urgent"
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -1121,7 +1121,7 @@ steps:
     expected_failure: true
 
   # =================================================================
-  # Phase G: Docs — cross-node convergence + Bob writes
+  # Phase G: Docs - cross-node convergence + Bob writes
   # =================================================================
 
   - name: Sync docs ctx before Bob reads Alice's state
@@ -1195,7 +1195,7 @@ steps:
     statements:
       - 'is_set({{bob_doc_from_alice}})'
 
-  - name: delete_doc — remove Scratchpad
+  - name: delete_doc - remove Scratchpad
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -1300,13 +1300,13 @@ steps:
   #
   # Merobox workflows are sequential, so we can't *literally* write
   # simultaneously. But we can write on Alice and immediately on Bob
-  # without an intervening sync — both writes will land in each node's
+  # without an intervening sync - both writes will land in each node's
   # local state at different HLC timestamps. After forcing sync, both
   # sides must agree on a single deterministic winner (HLC + node-id
   # tie-break). This catches the "both nodes diverge and never
   # reconcile" failure mode that bit the old whole-snapshot body field earlier.
   #
-  # Absolute value of the winner doesn't matter — convergence does.
+  # Absolute value of the winner doesn't matter - convergence does.
   # =================================================================
 
   - name: Alice sets Engineering color red
@@ -1319,7 +1319,7 @@ steps:
       id: '{{eng_group}}'
       color: '#ff0000'
 
-  # No sync between the two writes — each node observes its own write
+  # No sync between the two writes - each node observes its own write
   # and will learn about the other's only after the wait_for_sync below.
   - name: Bob sets Engineering color green (no intervening sync)
     type: call
@@ -1359,8 +1359,8 @@ steps:
     outputs:
       eng_color_bob_after: result.output
 
-  # Both DTOs must be present (sync completed) and — per `wait_for_sync`
-  # having returned OK — the root hashes already match, which implies
+  # Both DTOs must be present (sync completed) and - per `wait_for_sync`
+  # having returned OK - the root hashes already match, which implies
   # the underlying LwwRegister states agree. The DTO assertions here
   # are belt-and-braces: prove the read path still works on both sides
   # post-convergence. Equality of the two `color` fields is proven by
@@ -1392,7 +1392,7 @@ steps:
   #   1. Bob sees the folder in `get_folders` after sync (metadata
   #      does replicate).
   #   2. Bob's `join_context` on the restricted docs context is
-  #      rejected (admin-API refuses — he's not in the subgroup).
+  #      rejected (admin-API refuses - he's not in the subgroup).
   # =================================================================
 
   - name: Create restricted subgroup (no Bob cascade)
@@ -1424,7 +1424,7 @@ steps:
       id: '{{private_group}}'
       visibility: Restricted
 
-  # NOT calling add_group_members — this is the whole point of the
+  # NOT calling add_group_members - this is the whole point of the
   # restricted-wall test. Bob is deliberately NOT in `private_group`.
 
   - name: Create docs context inside restricted subgroup
@@ -1500,7 +1500,7 @@ steps:
       id: '{{private_group}}'
 
   # =================================================================
-  # Phase H: Registry — unregister folder cascade and final cleanup
+  # Phase H: Registry - unregister folder cascade and final cleanup
   # =================================================================
 
   - name: unregister_folder Frontend (leaf first)
@@ -1531,7 +1531,7 @@ steps:
     args:
       id: '{{backend_group}}'
 
-  - name: unregister_folder Engineering (parent — also clears its binding)
+  - name: unregister_folder Engineering (parent - also clears its binding)
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
@@ -1541,7 +1541,7 @@ steps:
       id: '{{eng_group}}'
 
   # After the unregister, `get_folder_context` returns Ok(None) which
-  # serializes to `null`. `is_set` on a null output would fail — so we skip
+  # serializes to `null`. `is_set` on a null output would fail - so we skip
   # the assertion and just confirm the call itself doesn't panic. The fact
   # that `get_folders` below returns without the folder proves the cascade.
   - name: After unregister, get_folder_context no longer finds the binding
@@ -1573,7 +1573,7 @@ steps:
     statements:
       - 'is_set({{folders_after_cascade_bob}})'
 
-  # Design was never bound to a docs context — confirm this is OK and
+  # Design was never bound to a docs context - confirm this is OK and
   # unregistering it still succeeds (idempotent cleanup of unbound folder).
   - name: unregister_folder Design (unbound top-level, clean path)
     type: call
@@ -1584,7 +1584,7 @@ steps:
     args:
       id: '{{design_group}}'
 
-  # Final state — everything unregistered, list is `[]`. Skip `is_set`.
+  # Final state - everything unregistered, list is `[]`. Skip `is_set`.
   - name: Final get_folders is empty again
     type: call
     node: calimero-node-1

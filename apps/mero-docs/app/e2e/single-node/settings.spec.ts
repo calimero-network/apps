@@ -1,4 +1,4 @@
-// Settings and sharing surface — tests 24-26.
+// Settings and sharing surface - tests 24-26.
 
 import { test, expect } from '../fixtures/single-user';
 

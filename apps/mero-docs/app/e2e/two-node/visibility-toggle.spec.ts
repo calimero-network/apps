@@ -1,4 +1,4 @@
-// Visibility toggle propagation — tests 33-36 from the design
+// Visibility toggle propagation - tests 33-36 from the design
 // catalog. Test 36 (wire-shape lowercase guard) is single-node and
 // already active; tests 33-35 need a two-node setup to verify Bob's
 // view reacts when Alice flips the bit.
@@ -64,7 +64,7 @@ test.describe('Visibility toggle (two-node)', () => {
   test('set_subgroup_visibility wire payload is lowercase', async ({
     alice,
   }) => {
-    // Wire-shape regression guard — single-node, intercepts the
+    // Wire-shape regression guard - single-node, intercepts the
     // admin-api request and asserts the payload's
     // `subgroupVisibility` is lowercase. Core's handler returns 400
     // on capitalized values (set_subgroup_visibility.rs:31).
@@ -81,7 +81,7 @@ test.describe('Visibility toggle (two-node)', () => {
           try {
             payload = JSON.parse(body);
           } catch {
-            /* fall through — assertion below catches it */
+            /* fall through - assertion below catches it */
           }
         }
         await route.continue();

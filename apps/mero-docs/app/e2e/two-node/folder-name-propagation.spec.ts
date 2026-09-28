@@ -1,7 +1,7 @@
-// Folder name propagation — tests 37-39 from the catalog.
+// Folder name propagation - tests 37-39 from the catalog.
 //
 // Verifies the publisher-ordering fix in useFolderOperations.create
-// (setSubgroupVisibility before setGroupMetadata for Open chains —
+// (setSubgroupVisibility before setGroupMetadata for Open chains -
 // the bug first filed against core that turned out to be
 // app-side). The regression these tests protect against: a future
 // re-ordering would land metadata ops encrypted with the subgroup

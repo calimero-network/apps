@@ -1,4 +1,4 @@
-// Namespace surface — Alice-only flows on node-1.
+// Namespace surface - Alice-only flows on node-1.
 
 import { test, expect } from '../fixtures/single-user';
 

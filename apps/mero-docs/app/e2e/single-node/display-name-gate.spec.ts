@@ -1,10 +1,10 @@
-// Display-name gate — new coverage for the PR1 blocking overlay.
+// Display-name gate - new coverage for the PR1 blocking overlay.
 //
 // After creating OR joining a namespace, a blocking overlay appears
 // whenever the member has no display name. It is role="dialog"
 // aria-labelledby="name-gate-title", heading "Set your name", an
 // input placeholder="Your display name", and a "Continue" button.
-// It overlays the sidebar + main (z-40) but NOT the top bar —
+// It overlays the sidebar + main (z-40) but NOT the top bar -
 // the workspace switcher, Settings, and Log out stay accessible.
 
 import { test, expect } from '../fixtures/single-user';
@@ -13,7 +13,7 @@ test.describe('Display-name gate (single-node)', () => {
   test('gate blocks until a name is set', async ({ alice }) => {
     await alice.goToWorkspace();
     // createNamespaceKeepGate performs the create steps but does NOT
-    // dismiss the gate — leaves it visible for assertion.
+    // dismiss the gate - leaves it visible for assertion.
     await alice.createNamespaceKeepGate(`Gate WS ${Date.now()}`);
 
     // Gate is present.
