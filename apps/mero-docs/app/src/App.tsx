@@ -179,70 +179,71 @@ export default function App() {
       >
         <AppToaster />
         <TooltipProvider>
-          <ConfirmProvider>
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <InviteRedirect />
-              <Routes>
-                {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-                    real URLs so they can be shared and opened cold, which needs a route
-                    here - otherwise this app's catch-all swallows the deep link before
-                    the page ever renders. */}
-                {LANDING_PATHS.map((landingPath) => (
-                  <Route
-                    key={landingPath}
-                    path={landingPath}
-                    // Only `/` bounces a signed-in visitor into the app; `/docs` and
-                    // `/preview` are reference pages someone signed in may still want.
-                    element={
-                      landingPath === '/' ? (
-                        <RedirectIfAuthed>
-                          <LandingPage />
-                        </RedirectIfAuthed>
-                      ) : (
-                        <LandingPage />
-                      )
-                    }
-                  />
-                ))}
-                {/* The /login PAGE is gone - every app had one, every one looked
-                    different, and its whole content was a button the visitor had
-                    already pressed to get there. The path stays as a redirect so a
-                    bookmark lands on the front door instead of a blank route. */}
-                <Route path="/login" element={<Navigate to="/" replace />} />
-                <Route path="/join" element={<JoinPage />} />
-                {LayoutGallery && (
-                  <Route
-                    path="/dev/layouts"
-                    element={
-                      <React.Suspense fallback={null}>
-                        <LayoutGallery />
-                      </React.Suspense>
-                    }
-                  />
-                )}
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <InviteRedirect />
+            <Routes>
+              {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                  real URLs so they can be shared and opened cold, which needs a route
+                  here - otherwise this app's catch-all swallows the deep link before
+                  the page ever renders. */}
+              {LANDING_PATHS.map((landingPath) => (
                 <Route
-                  path="/app/*"
+                  key={landingPath}
+                  path={landingPath}
+                  // Only `/` bounces a signed-in visitor into the app; `/docs` and
+                  // `/preview` are reference pages someone signed in may still want.
                   element={
-                    <DriveWorkspaceProvider>
-                      <WorkspacePage />
-                    </DriveWorkspaceProvider>
+                    landingPath === '/' ? (
+                      <RedirectIfAuthed>
+                        <LandingPage />
+                      </RedirectIfAuthed>
+                    ) : (
+                      <LandingPage />
+                    )
                   }
                 />
-                {/* The catch-all drops the query string, which for an invite
-                    deep link IS the invitation. InviteRedirect has already
-                    run by the time this renders, but its navigation is
-                    applied in an effect - so preserve the search here rather
-                    than racing it. */}
-                <Route path="*" element={<CatchAllRedirect />} />
-              </Routes>
-            </BrowserRouter>
-            {import.meta.env.DEV && <DevPanel />}
-          </ConfirmProvider>
+              ))}
+              {/* The /login PAGE is gone - every app had one, every one looked
+                  different, and its whole content was a button the visitor had
+                  already pressed to get there. The path stays as a redirect so a
+                  bookmark lands on the front door instead of a blank route. */}
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/join" element={<JoinPage />} />
+              {LayoutGallery && (
+                <Route
+                  path="/dev/layouts"
+                  element={
+                    <React.Suspense fallback={null}>
+                      <LayoutGallery />
+                    </React.Suspense>
+                  }
+                />
+              )}
+              <Route
+                path="/app/*"
+                element={
+                  <DriveWorkspaceProvider>
+                    {/* Inside the workspace: a confirmation's body may name members. */}
+                    <ConfirmProvider>
+                      <WorkspacePage />
+                    </ConfirmProvider>
+                  </DriveWorkspaceProvider>
+                }
+              />
+              {/* The catch-all drops the query string, which for an invite
+                  deep link IS the invitation. InviteRedirect has already
+                  run by the time this renders, but its navigation is
+                  applied in an effect - so preserve the search here rather
+                  than racing it. */}
+              <Route path="*" element={<CatchAllRedirect />} />
+            </Routes>
+          </BrowserRouter>
+          {import.meta.env.DEV && <DevPanel />}
         </TooltipProvider>
       </MeroProvider>
     </ThemeProvider>
