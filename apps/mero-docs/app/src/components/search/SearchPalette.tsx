@@ -111,9 +111,11 @@ export function SearchPalettePanel({
   const listId = `${baseId}-list`;
   const resultsRef = React.useRef<HTMLDivElement>(null);
   const openable = React.useMemo(() => groups.flatMap((g) => g.items).filter((i) => i.kind !== 'tip'), [groups]);
-  // Keyed by the groups it was set against, so new results fall back to the first row without an effect.
-  const [cursor, setCursor] = React.useState({ groups, index: 0 });
-  const index = cursor.groups === groups && cursor.index < openable.length ? cursor.index : 0;
+  // The active row is remembered by id for the query it was picked under, so results that
+  // refresh under the same query keep it; a new query, or a row that left, starts at the top.
+  const [cursor, setCursor] = React.useState<{ query: string; id?: string }>({ query });
+  const found = cursor.query === query ? openable.findIndex((i) => i.id === cursor.id) : -1;
+  const index = Math.max(found, 0);
   const optionId = (i: number) => `${baseId}-opt-${i}`;
   const activeId = openable.length > 0 ? optionId(index) : undefined;
 
@@ -121,7 +123,7 @@ export function SearchPalettePanel({
     if (activeId) keepInView(resultsRef.current, document.getElementById(activeId), index === 0);
   }, [activeId, index]);
 
-  const move = (next: number) => setCursor({ groups, index: next });
+  const move = (next: number) => setCursor({ query, id: openable[next]?.id });
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const n = openable.length;

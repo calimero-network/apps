@@ -118,7 +118,33 @@ describe('SearchPalette keyboard', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('resets to the first item when the groups change', async () => {
+  it('keeps the active item when the same query gets new groups', async () => {
+    const user = userEvent.setup();
+    const { rerender, onOpen, onOpenChange } = renderPalette();
+    await user.keyboard('{ArrowDown}');
+    const again = (groups: PaletteGroupView[]) =>
+      rerender(
+        <SearchPalette
+          open
+          onOpenChange={onOpenChange}
+          query="road"
+          onQueryChange={vi.fn()}
+          scopeLabel="Acme Product"
+          groups={groups}
+          emptyText="No documents, folders or tags match"
+          onOpen={onOpen}
+        />
+      );
+    again([{ ...GROUPS[0], items: [{ id: 'd0', kind: 'doc', title: 'New first' }, ...GROUPS[0].items] }, GROUPS[2]]);
+    expect(activeName()).toContain('Q3 launch plan');
+    await user.keyboard('{Enter}');
+    expect(onOpen).toHaveBeenCalledWith(GROUPS[0].items[1], { newTab: false });
+
+    again([GROUPS[2]]);
+    expect(activeName()).toContain('#roadmap');
+  });
+
+  it('resets to the first item when the query changes', async () => {
     const user = userEvent.setup();
     const { rerender, onOpen, onOpenChange } = renderPalette();
     await user.keyboard('{ArrowDown}');
