@@ -14,6 +14,8 @@ const docsRemove = vi.fn();
 const toastError = vi.hoisted(() => vi.fn());
 const addTag = vi.fn();
 const removeTag = vi.fn();
+const archive = vi.fn();
+const unarchive = vi.fn();
 let canEditDocs = true;
 let canManageTags = true;
 let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
@@ -87,6 +89,8 @@ vi.mock('@/hooks/useDocs', () => ({
     remove: docsRemove,
     addTag,
     removeTag,
+    archive,
+    unarchive,
     refetch: vi.fn(),
     ...contextState,
     client,
@@ -107,8 +111,14 @@ vi.mock('@/components/editor/EditorShell', () => ({
     focusBlock,
     focusKey,
     tags,
+    onArchive,
+    onUnarchive,
+    notice,
   }: {
     tags?: React.ReactNode;
+    onArchive?: () => void;
+    onUnarchive?: () => void;
+    notice?: React.ReactNode;
     isLoading: boolean;
     documentName: string;
     onDelete?: () => void;
@@ -127,7 +137,10 @@ vi.mock('@/components/editor/EditorShell', () => ({
         {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
       </span>
       {isLoading ? 'Loading document...' : documentName}
+      {notice}
       {tags}
+      {onArchive && <button onClick={onArchive}>Archive</button>}
+      {onUnarchive && <button onClick={onUnarchive}>Unarchive</button>}
       {onDelete && <button onClick={onDelete}>Delete</button>}
       {onCopyLink && <button onClick={onCopyLink}>Copy link</button>}
       {sectionLinks && (
@@ -164,6 +177,8 @@ beforeEach(() => {
   deliver = undefined;
   canEditDocs = true;
   canManageTags = true;
+  archive.mockResolvedValue(undefined);
+  unarchive.mockResolvedValue(undefined);
   addTag.mockResolvedValue(undefined);
   removeTag.mockResolvedValue(undefined);
   location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
@@ -430,6 +445,72 @@ describe('DocumentEditor', () => {
       await waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
       expect(screen.getByTestId('doc-tags').textContent).toContain('q3');
       expect(screen.queryByText("Couldn't load document")).toBeNull();
+    });
+  });
+
+  describe('archive (R-25)', () => {
+    const mount = () =>
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+    const banner = () => screen.queryByText('This document is archived');
+
+    it('archives the doc and keeps it open under a banner, then unarchives it', async () => {
+      mount();
+      await screen.findByText('Notes');
+      expect(banner()).toBeNull();
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(archive).toHaveBeenCalledWith('doc-1');
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+
+      getDoc.mockResolvedValue(DOC);
+      const inBanner = screen.getAllByRole('button', { name: 'Unarchive' });
+      expect(inBanner).toHaveLength(2); // the menu item and the banner's button
+      fireEvent.click(inBanner[1]);
+      await waitFor(() => expect(banner()).toBeNull());
+      expect(unarchive).toHaveBeenCalledWith('doc-1');
+    });
+
+    it('offers archiving only to an editor of this folder who is not a guest', async () => {
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      canManageTags = false;
+      const { unmount } = mount();
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
+      unmount();
+
+      canManageTags = true;
+      canEditDocs = false;
+      mount();
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    });
+
+    it('says a failed archive plainly and shows no banner', async () => {
+      archive.mockRejectedValue(new Error('rpc: storage'));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mount();
+      await screen.findByText('Notes');
+      fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          "Couldn't archive the document. Try again.",
+        ),
+      );
+      expect(banner()).toBeNull();
+    });
+
+    it('shows the banner when a peer archives the open doc', async () => {
+      mount();
+      await screen.findByText('Notes');
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      act(() =>
+        deliver?.({ contextId: 'docs-ctx', data: { DocArchived: { id: 'doc-1' } } }),
+      );
+      await waitFor(() => expect(banner()).toBeTruthy());
     });
   });
 });

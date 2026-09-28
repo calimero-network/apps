@@ -5,6 +5,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import {
+  Archive,
+  ArchiveRestore,
   ChevronLeft,
   MoreHorizontal,
   FileText,
@@ -46,6 +48,8 @@ interface EditorHeaderProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onCopyLink?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
   peers?: Peer[];
 }
 
@@ -58,6 +62,8 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onUndo,
   onRedo,
   onCopyLink,
+  onArchive,
+  onUnarchive,
   peers = [],
 }) => (
   <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
@@ -145,7 +151,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           <Redo2 className="w-4 h-4" />
         </Button>
       )}
-      {onDelete && (
+      {(onDelete || onArchive || onUnarchive) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -158,10 +164,24 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete document
-            </DropdownMenuItem>
+            {onArchive && (
+              <DropdownMenuItem onClick={onArchive}>
+                <Archive className="w-4 h-4 mr-2" />
+                Archive
+              </DropdownMenuItem>
+            )}
+            {onUnarchive && (
+              <DropdownMenuItem onClick={onUnarchive}>
+                <ArchiveRestore className="w-4 h-4 mr-2" />
+                Unarchive
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete document
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}

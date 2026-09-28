@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { EditorHeader } from '../EditorHeader';
 
 describe('EditorHeader back button', () => {
@@ -34,5 +35,38 @@ describe('EditorHeader copy link', () => {
   it('is absent without a link to copy', () => {
     render(<EditorHeader documentName="Plan" />);
     expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull();
+  });
+});
+
+describe('EditorHeader archive', () => {
+  it('offers Archive to an editor of a live document', async () => {
+    const user = userEvent.setup();
+    const onArchive = vi.fn();
+    render(
+      <EditorHeader documentName="Plan" onDelete={vi.fn()} onArchive={onArchive} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Unarchive' })).toBeNull();
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    expect(onArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Unarchive on an archived document', async () => {
+    const user = userEvent.setup();
+    const onUnarchive = vi.fn();
+    render(<EditorHeader documentName="Plan" onUnarchive={onUnarchive} />);
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
+    await user.click(await screen.findByRole('menuitem', { name: 'Unarchive' }));
+    expect(onUnarchive).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers neither without the right to change the document', async () => {
+    const user = userEvent.setup();
+    render(<EditorHeader documentName="Plan" onDelete={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Document actions' }));
+    await screen.findByRole('menuitem', { name: 'Delete document' });
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Unarchive' })).toBeNull();
   });
 });

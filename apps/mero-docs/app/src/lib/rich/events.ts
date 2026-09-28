@@ -12,6 +12,8 @@ const RICH_KINDS = [
   'MarkApplied',
 ] as const;
 
+const META_KINDS = ['DocTagsChanged', 'DocArchived', 'DocUnarchived']; // change what get_doc returns
+
 type RichKind = (typeof RICH_KINDS)[number];
 
 export type RichEvent = { kind: RichKind; doc: string };
@@ -24,11 +26,11 @@ export function parseRichEvents(data: unknown): RichEvent[] {
   });
 }
 
-/** The ids of the docs whose tags changed, from one delivered SSE payload. */
-export function parseTagChanges(data: unknown): string[] {
+/** The ids of the docs whose tags or archive state changed, from one delivered SSE payload. */
+export function parseMetaChanges(data: unknown): string[] {
   return variants(data).flatMap(([kind, value]) => {
     const id = asRecord(value)?.id;
-    return kind === 'DocTagsChanged' && typeof id === 'string' ? [id] : [];
+    return META_KINDS.includes(kind) && typeof id === 'string' ? [id] : [];
   });
 }
 

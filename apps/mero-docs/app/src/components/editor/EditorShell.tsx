@@ -94,6 +94,10 @@ export interface EditorShellProps {
   focusKey?: string;
   /** The document's tag row, above the first line and outside the body. */
   tags?: React.ReactNode;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
+  /** A status bar under the header, such as the archived banner. */
+  notice?: React.ReactNode;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -119,6 +123,9 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   focusBlock,
   focusKey,
   tags,
+  onArchive,
+  onUnarchive,
+  notice,
 }) => {
   const { theme } = useTheme();
 
@@ -335,8 +342,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
           onCopyLink={onCopyLink}
+          onArchive={onArchive}
+          onUnarchive={onUnarchive}
           peers={peers}
         />
+
+        {notice}
 
         {section.banner && (
           <SectionBanner
