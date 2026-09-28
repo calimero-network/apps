@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { liveRecent, useRecentDocs } from '../useRecentDocs';
+import { liveRecent, recentDocs, useRecentDocs } from '../useRecentDocs';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
 
 const KEY = 'mero-drive:recent:ws1';
@@ -116,5 +116,16 @@ describe('liveRecent', () => {
       'kept',
       'also',
     ]);
+  });
+});
+
+describe('recentDocs', () => {
+  it('reads what another instance touched since, and nothing without a workspace', () => {
+    const { result } = renderHook(() => useRecentDocs('ws1'));
+    act(() => result.current.touch('f1', 'd1'));
+    expect(recentDocs('ws1')).toEqual([
+      { folderId: 'f1', docId: 'd1', openedAt: 1_000 },
+    ]);
+    expect(recentDocs('')).toEqual([]);
   });
 });

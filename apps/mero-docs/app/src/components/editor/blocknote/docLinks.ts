@@ -4,6 +4,7 @@
 import type { HighlightRange } from '@/components/common/Highlight';
 import type { DocLinkPickerItem } from '@/components/editor/DocLinkPickerMenu';
 import type { FolderPaths } from '@/components/home/useHomeChips';
+import type { RecentDoc } from '@/hooks/useRecentDocs';
 import { docLabel } from '@/lib/docLabel';
 import { docHref, parseDocHref } from '@/lib/links';
 import type { AppRoute } from '@/lib/routes';
@@ -21,6 +22,7 @@ import type { DriveEditor } from './schema';
 export const DOC_LINK_TRIGGER = '@'; // opens the picker at a word start
 const WORD_START = /^\s?$/; // what may precede the trigger: nothing, or whitespace
 const PICK_LIMIT = 5; // rows per picker group, so the menu fits under the caret
+const START_LIMIT = 8; // rows before anything is typed
 const NEW_TAB = '_blank'; // window.open target for a new tab
 const MIDDLE_BUTTON = 1; // MouseEvent.button; 2 is the context-menu button
 
@@ -47,9 +49,10 @@ type PickerSource = {
   rows: IndexRow[];
   texts: Map<string, DocText>;
   paths: FolderPaths;
+  recent?: RecentDoc[];
 };
 
-/** Docs whose title matches, then docs whose text matches (linked to that block); recent docs for an empty query. */
+/** Docs whose title matches, then docs whose text matches (linked to that block); for an empty query, titled docs opened lately, then by last update. */
 export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
   const live = new Map(
     src.rows
@@ -73,9 +76,16 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
   });
 
   if (!normalizeQuery(query).text) {
-    return [...live.values()]
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, PICK_LIMIT)
+    const opened = (src.recent ?? []).flatMap((e) => {
+      const r = live.get(rowKey(e.folderId, e.docId));
+      return r ? [r] : [];
+    });
+    const updated = [...live.values()].sort(
+      (a, b) => b.updatedAt - a.updatedAt,
+    );
+    return [...new Set([...opened, ...updated])]
+      .filter((r) => r.title.trim())
+      .slice(0, START_LIMIT)
       .map((r) => item(r, 'doc'));
   }
   const titles = searchV1(query, [...live.values()], [], [], {

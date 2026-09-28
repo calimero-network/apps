@@ -14,6 +14,7 @@ import {
 } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { recentDocs } from '@/hooks/useRecentDocs';
 import { normalizeQuery } from '@/lib/search/match';
 import {
   DOC_LINK_TRIGGER,
@@ -66,8 +67,9 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
       await new Promise((resolve) => setTimeout(resolve, TEXT_PAUSE_MS));
     }
     // A newer query is loading, and the menu drops this answer anyway.
+    const src = sourceRef.current;
     return mine === latest.current
-      ? docLinkItems(query, sourceRef.current)
+      ? docLinkItems(query, { ...src, recent: recentDocs(src.ws) })
       : [];
   }, []);
 

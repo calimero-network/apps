@@ -30,6 +30,11 @@ function readRecent(key: string): RecentDoc[] {
   }
 }
 
+/** The stored list as it is now, for readers outside the layout that owns the hook. */
+export function recentDocs(ws: string): RecentDoc[] {
+  return ws ? readRecent(RECENT_KEY_PREFIX + ws) : [];
+}
+
 export function useRecentDocs(ws: string): {
   recent: RecentDoc[];
   touch(folderId: string, docId: string): void;

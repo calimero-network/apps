@@ -246,6 +246,40 @@ describe('docLinkItems (L-11, L-13)', () => {
     ]);
   });
 
+  it('puts docs opened lately first, then the rest by last update', () => {
+    const recent = [
+      { folderId: 'f1', docId: 'd1', openedAt: 9 },
+      { folderId: 'f1', docId: 'd2', openedAt: 8 },
+    ];
+    const withMore = {
+      ...src,
+      recent,
+      rows: [...rows, row('f2', 'd5', 'Roadmap', { updatedAt: 40 })],
+    };
+    expect(docLinkItems('', withMore).map((i) => i.title)).toEqual([
+      'Pricing notes',
+      'Roadmap',
+      'Design review notes',
+    ]);
+  });
+
+  it('hides untitled docs until a query finds them', () => {
+    const blank = {
+      ...src,
+      rows: [...rows, row('f2', 'd6', ' ', { updatedAt: 50 })],
+      texts: new Map([
+        ...texts,
+        [rowKey('f2', 'd6'), text('f2', 'd6', [['b5', 'Pricing draft']])],
+      ]),
+    };
+    expect(docLinkItems('', blank).map((i) => i.title)).not.toContain(
+      'Untitled',
+    );
+    expect(docLinkItems('draft', blank).map((i) => i.title)).toEqual([
+      'Untitled',
+    ]);
+  });
+
   it('is empty when nothing matches', () => {
     expect(docLinkItems('zzz', src)).toEqual([]);
   });
