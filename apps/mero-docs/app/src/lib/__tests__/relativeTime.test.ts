@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { updatedLabel } from '../relativeTime';
+import { openedLabel, updatedLabel } from '../relativeTime';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -44,5 +44,18 @@ describe('updatedLabel', () => {
     });
     expect(updatedLabel(sep22, NOW)).toBe(day.format(sep22));
     expect(updatedLabel(lastYear, NOW)).toBe(dayYear.format(lastYear));
+  });
+});
+
+describe('openedLabel', () => {
+  it('reads as part of a sentence', () => {
+    expect(openedLabel(NOW - 30_000, NOW)).toBe('opened just now');
+    expect(openedLabel(NOW - 4 * MIN, NOW)).toBe('opened 4 min ago');
+    expect(openedLabel(NOW - HOUR, NOW)).toBe('opened 1 h ago');
+    expect(openedLabel(new Date(2026, 8, 27, 9).getTime(), NOW)).toBe(
+      'opened yesterday',
+    );
+    const sep22 = new Date(2026, 8, 22, 9).getTime();
+    expect(openedLabel(sep22, NOW)).toBe(`opened ${updatedLabel(sep22, NOW)}`);
   });
 });
