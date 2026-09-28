@@ -43,7 +43,7 @@ They run `join_namespace` on their node, then `join_context` with each repo's co
 ### Add a repo
 
 1. Make sure no context of the workspace already has that `name` (Getting started step 3).
-2. `create_context` with `application`, `namespace` set to the workspace namespace id, `service` `issue-tracker` and `name` set to the repo name, e.g. `apps`.
+2. `create_context` with `application`, `group` set to the workspace namespace id, `service` `issue-tracker` and `name` set to the repo name, e.g. `apps`.
 3. `select_app` with `app` set to the package and `context` set to the new context id.
 4. Call `set_repo_url`:
 
