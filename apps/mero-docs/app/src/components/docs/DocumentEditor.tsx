@@ -3,7 +3,13 @@
 // bound to their own CRDT hook, which turns an edit into a delta and a peer's
 // event into a re-read. EditorShell owns every piece of visual chrome.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   useSubscription,
@@ -160,10 +166,14 @@ export function DocumentEditor({
     };
   }, [docId, docsContextId, docsGet]);
 
-  // A failed re-read keeps the tags already shown.
+  // Only the newest re-read lands; a failed one keeps the tags already shown.
+  const rereadSeqRef = useRef(0);
   const rereadDoc = useCallback(() => {
-    docsGet(docId).then(setDoc, (cause: unknown) =>
-      console.warn('[DocumentEditor] doc re-read failed', cause),
+    const seq = ++rereadSeqRef.current;
+    docsGet(docId).then(
+      (loaded) => seq === rereadSeqRef.current && setDoc(loaded),
+      (cause: unknown) =>
+        console.warn('[DocumentEditor] doc re-read failed', cause),
     );
   }, [docId, docsGet]);
   const tagEventContexts = useMemo(

@@ -46,4 +46,25 @@ describe('NewTagDialog', () => {
       screen.getByText('A tag with this name already exists').id,
     );
   });
+
+  it('drops a name-taken error once the name changes, and shows it again on the next save', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <NewTagDialog
+        open
+        color="#10b981"
+        error="A tag with this name already exists"
+        onSubmit={onSubmit}
+        onOpenChange={() => {}}
+      />,
+    );
+    const field = screen.getByRole('textbox', { name: 'Name' });
+    await user.type(field, 'x');
+    expect(screen.queryByText('A tag with this name already exists')).toBeNull();
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onSubmit).toHaveBeenCalled();
+    expect(screen.getByText('A tag with this name already exists')).toBeTruthy();
+  });
 });

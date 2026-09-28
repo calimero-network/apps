@@ -18,6 +18,17 @@ describe('HomeEmpty', () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
+  it('says a tag has no documents yet, with nothing to click', () => {
+    render(<HomeEmpty kind="no-tagged" onAction={vi.fn()} />);
+    expect(
+      screen.getByRole('heading', { name: 'No documents have this tag yet' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Add it from the Tags row at the top of a document.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('hides the action when the caller cannot take it', () => {
     render(<HomeEmpty kind="no-folders" />);
     expect(screen.queryByRole('button')).toBeNull();

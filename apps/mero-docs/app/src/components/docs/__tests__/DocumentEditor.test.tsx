@@ -403,6 +403,23 @@ describe('DocumentEditor', () => {
       expect(getDoc).toHaveBeenCalledTimes(1);
     });
 
+    it('lets only the newest re-read land, so a slow older one cannot bring a chip back', async () => {
+      mount();
+      await screen.findByTestId('doc-tags');
+      const older = deferred<DocDto>();
+      const newer = deferred<DocDto>();
+      getDoc
+        .mockReturnValueOnce(older.promise)
+        .mockReturnValueOnce(newer.promise);
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      await act(async () => newer.resolve({ ...DOC, tags: [] }));
+      await act(async () => older.resolve({ ...DOC, tags: ['removed'] }));
+      expect(screen.getByTestId('doc-tags').textContent).not.toContain(
+        'removed',
+      );
+    });
+
     it('keeps the tags it has when a re-read fails', async () => {
       getDoc.mockResolvedValue({ ...DOC, tags: ['q3'] });
       vi.spyOn(console, 'warn').mockImplementation(() => {});

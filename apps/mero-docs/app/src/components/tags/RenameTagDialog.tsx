@@ -30,19 +30,23 @@ export function RenameTagDialog({ open, onOpenChange, ...form }: Props) {
 // Mounted per open, so the field starts from the current name every time.
 function RenameForm({
   name,
-  error,
+  error: givenError,
   onSubmit,
   onCancel,
 }: Omit<Props, 'open' | 'onOpenChange'> & { onCancel: () => void }) {
   const [value, setValue] = React.useState(name);
   const inputId = React.useId();
   const errorId = React.useId();
+  // An error is about the name that was saved, so editing it clears the error.
+  const [edited, setEdited] = React.useState(false);
+  const error = edited ? undefined : givenError;
   const next = value.trim();
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        setEdited(false);
         if (next) onSubmit(next);
       }}
     >
@@ -59,7 +63,10 @@ function RenameForm({
         id={inputId}
         autoFocus
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setEdited(true);
+        }}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         className={

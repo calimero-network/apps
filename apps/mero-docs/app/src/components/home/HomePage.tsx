@@ -20,7 +20,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { usePresenceByDoc, type DocPeer } from '@/hooks/usePresenceByDoc';
-import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
+import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
 import {
@@ -143,7 +143,6 @@ export function HomePage({ folderId }: Props) {
   const { rows, folders, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
-  const canManageTags = useCanManageTags();
   const confirm = useConfirm();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();
@@ -306,37 +305,49 @@ export function HomePage({ folderId }: Props) {
   const [renaming, setRenaming] = React.useState<{ error?: string } | null>(
     null,
   );
-  // Any other failure has been reported by a toast; the dialog stays for another try.
+  React.useEffect(() => setRenaming(null), [pageKey]);
+  const [deleting, setDeleting] = React.useState(false);
+  const deletingRef = React.useRef(false);
+  // Any other failure has been reported by a toast, so only a taken name stays under the field.
   const renameTagTo = async (key: string, name: string) => {
     try {
       await renameTag(key, name);
       setRenaming(null);
     } catch (e: unknown) {
-      if (e instanceof TagNameTakenError) setRenaming({ error: e.message });
+      setRenaming({
+        error: e instanceof TagNameTakenError ? e.message : undefined,
+      });
     }
   };
+  // One run at a time; a failure has been reported by a toast and frees the header again.
   const deleteTagAfterConfirm = async (key: string, name: string) => {
-    const ok = await confirm({
-      title: 'Delete tag?',
-      body: (
-        <>
-          Delete <span className="font-medium">{name}</span>? It comes off every
-          document you can edit and disappears everywhere else.
-        </>
-      ),
-      confirmLabel: 'Delete tag',
-      destructive: true,
-    });
-    if (!ok) return;
-    const editable = new Set(
-      Object.keys(creatable).filter((id) => creatable[id]),
-    );
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     try {
+      const ok = await confirm({
+        title: 'Delete tag?',
+        body: (
+          <>
+            Delete <span className="font-medium">{name}</span>? It comes off
+            every document you can edit and disappears everywhere else.
+          </>
+        ),
+        confirmLabel: 'Delete tag',
+        destructive: true,
+      });
+      if (!ok) return;
+      setDeleting(true);
+      const editable = new Set(
+        Object.keys(creatable).filter((id) => creatable[id]),
+      );
       await deleteTag(key, editable);
+      goHome(undefined, { replace: true });
     } catch {
-      return;
+      // Reported by the tags hook.
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
-    goHome(undefined, { replace: true });
   };
 
   const pickerFolders = writable.map((f) => {
@@ -360,11 +371,13 @@ export function HomePage({ folderId }: Props) {
         ? 'no-folders'
         : loading
           ? null
-          : isFiltered(q)
-            ? 'no-matches'
-            : syncing.length === 0 && failed.length === 0
-              ? 'no-docs'
-              : null;
+          : tagPage && syncing.length === 0 && failed.length === 0
+            ? 'no-tagged'
+            : isFiltered(q)
+              ? 'no-matches'
+              : syncing.length === 0 && failed.length === 0
+                ? 'no-docs'
+                : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
   const emptyBody = {
     'no-folders': nsPerms.loading
@@ -373,6 +386,7 @@ export function HomePage({ folderId }: Props) {
         ? undefined
         : NO_FOLDERS_READ_ONLY,
     'no-matches': undefined,
+    'no-tagged': undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -386,6 +400,7 @@ export function HomePage({ folderId }: Props) {
       ? () => setNewFolderOpen(true)
       : undefined,
     'no-matches': clearFilters,
+    'no-tagged': undefined,
     'no-docs': writable.length ? newDocument : undefined,
   } as const;
   const body =
@@ -412,11 +427,17 @@ export function HomePage({ folderId }: Props) {
           name={tagPage.name}
           color={tagPage.color}
           subtitle={
-            countKnown
-              ? `${plural(shown.length, 'document')} in ${plural(folderCount, 'folder')}`
-              : ''
+            deleting
+              ? 'Deleting tag…'
+              : !countKnown
+                ? ''
+                : shown.length === 0
+                  ? 'No documents yet'
+                  : `${plural(shown.length, 'document')} in ${plural(folderCount, 'folder')}`
           }
-          canManage={canManageTags}
+          // The workspace caps an Editor has and a Guest lacks, as useCanManageTags reads them.
+          canManage={nsPerms.canCreateFolder}
+          busy={deleting}
           onRename={() => setRenaming({})}
           onRecolor={(color) =>
             void recolorTag(tagPage.key, color).catch(() => {})

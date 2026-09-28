@@ -91,7 +91,7 @@ export function WorkspaceNav({
       setNewTag(null);
       go(tagPageSearch(key));
     } catch {
-      // Reported by a toast; the dialog stays for another try.
+      setNewTag({}); // reported by a toast; the dialog stays for another try
     }
   };
 

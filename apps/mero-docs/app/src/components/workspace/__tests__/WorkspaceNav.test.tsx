@@ -182,9 +182,19 @@ describe('WorkspaceNav', () => {
     mount('/app/ws1');
     await user.click(screen.getByRole('button', { name: 'New tag' }));
     const dialog = await screen.findByRole('dialog', { name: 'New tag' });
-    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'x');
+    const field = within(dialog).getByRole('textbox', { name: 'Name' });
+    await user.type(field, 'q3');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await within(dialog).findByText('A tag with this name already exists');
+    await user.clear(field);
+    await user.type(field, 'x');
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(createTag).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByText('A tag with this name already exists'),
+      ).toBeNull(),
+    );
     expect(screen.getByRole('dialog', { name: 'New tag' })).toBeTruthy();
     expect(search).toBe('');
   });

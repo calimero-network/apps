@@ -13,6 +13,8 @@ import {
 import { AddTagPopover } from './AddTagPopover';
 import { DocTagRow } from './DocTagRow';
 
+const ALREADY_ON_DOC = 'Already on this document';
+
 interface Props {
   tagKeys: string[];
   canEdit: boolean;
@@ -38,6 +40,7 @@ export function DocTags({ tagKeys, canEdit, onAdd, onRemove }: Props) {
     return [{ key, name: tag?.name ?? key, color: tag?.color }];
   });
   const name = normalizeTagName(query);
+  const named = name ? findTagByName(tags, name) : undefined;
   const counts = open ? tagCounts(rows) : new Map<string, number>();
   const suggestions = open
     ? tagSuggestions(tags, name, tagKeys, counts).map((t) => ({
@@ -76,8 +79,11 @@ export function DocTags({ tagKeys, canEdit, onAdd, onRemove }: Props) {
           query={query}
           onQueryChange={setQuery}
           suggestions={suggestions}
-          canCreate={!!name && !findTagByName(tags, name)}
+          canCreate={!!name && !named}
           createLabel={name}
+          note={
+            named && tagKeys.includes(named.key) ? ALREADY_ON_DOC : undefined
+          }
           color={color}
           onColorChange={setColor}
           onPick={pick}

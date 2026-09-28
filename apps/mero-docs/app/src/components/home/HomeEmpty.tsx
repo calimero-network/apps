@@ -1,10 +1,17 @@
 import * as React from 'react';
-import { FileText, Folder, Plus, SearchX, type LucideIcon } from 'lucide-react';
+import {
+  FileText,
+  Folder,
+  Plus,
+  SearchX,
+  Tag,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 
-type Kind = 'no-folders' | 'no-docs' | 'no-matches';
+type Kind = 'no-folders' | 'no-docs' | 'no-matches' | 'no-tagged';
 
 const COPY: Record<
   Kind,
@@ -12,8 +19,8 @@ const COPY: Record<
     icon: LucideIcon;
     title: string;
     body: string;
-    action: string;
-    primary: boolean;
+    action?: string; // none: nothing on this screen fixes it
+    primary?: boolean;
   }
 > = {
   'no-folders': {
@@ -37,6 +44,11 @@ const COPY: Record<
     action: 'Clear filters',
     primary: false,
   },
+  'no-tagged': {
+    icon: Tag,
+    title: 'No documents have this tag yet',
+    body: 'Add it from the Tags row at the top of a document.',
+  },
 };
 
 interface Props {
@@ -55,7 +67,7 @@ export function HomeEmpty({ kind, onAction, body }: Props) {
       title={title}
       body={body === undefined ? copy.body : body ?? undefined}
     >
-      {onAction && (
+      {onAction && action && (
         <Button
           variant={primary ? 'default' : 'outline'}
           size="sm"

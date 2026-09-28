@@ -27,6 +27,7 @@ interface AddTagPopoverProps {
   suggestions: TagSuggestion[];
   canCreate: boolean;
   createLabel: string;
+  note?: string; // said in place of an empty list, e.g. why nothing is offered
   color: string;
   onColorChange: (color: string) => void;
   onPick: (key: string) => void;
@@ -105,6 +106,7 @@ export function AddTagPopover({
   suggestions,
   canCreate,
   createLabel,
+  note,
   color,
   onColorChange,
   onPick,
@@ -215,6 +217,9 @@ export function AddTagPopover({
                 </>,
               )}
           </div>
+        )}
+        {rowCount === 0 && note && (
+          <p className="px-3 pb-2 text-[13px] text-muted-foreground">{note}</p>
         )}
         <div
           id={colourLabelId}

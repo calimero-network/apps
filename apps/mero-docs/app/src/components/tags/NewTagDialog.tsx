@@ -32,7 +32,7 @@ export function NewTagDialog({ open, onOpenChange, ...form }: Props) {
 // Mounted per open, so every new tag starts from an empty name.
 function NewTagForm({
   color: initialColor,
-  error,
+  error: givenError,
   onSubmit,
   onCancel,
 }: Omit<Props, 'open' | 'onOpenChange'> & { onCancel: () => void }) {
@@ -40,6 +40,9 @@ function NewTagForm({
   const [color, setColor] = React.useState(initialColor);
   const inputId = React.useId();
   const errorId = React.useId();
+  // An error is about the name that was saved, so editing it clears the error.
+  const [edited, setEdited] = React.useState(false);
+  const error = edited ? undefined : givenError;
   const colourLabelId = React.useId();
   const next = name.trim();
 
@@ -47,6 +50,7 @@ function NewTagForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        setEdited(false);
         if (next) onSubmit(next, color);
       }}
     >
@@ -63,7 +67,10 @@ function NewTagForm({
         id={inputId}
         autoFocus
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => {
+          setName(e.target.value);
+          setEdited(true);
+        }}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         className={

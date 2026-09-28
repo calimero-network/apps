@@ -4,6 +4,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useNavigationType,
 } from 'react-router-dom';
 import { HomePage } from '../HomePage';
@@ -48,6 +50,7 @@ const index = {
 const tags = [
   { key: 'q3', name: 'Q3', color: '#3b82f6', deleted: false },
   { key: 'gone', name: 'Gone', color: '#ef4444', deleted: true },
+  { key: 'fresh', name: 'Fresh', color: '#10b981', deleted: false },
 ];
 let presence = new Map<
   string,
@@ -69,7 +72,6 @@ vi.mock('@/context/WorkspaceIndexContext', () => ({
 const renameTag = vi.fn();
 const recolorTag = vi.fn();
 const deleteTag = vi.fn();
-let canManageTags = true;
 vi.mock('@/hooks/useTags', async (importActual) => ({
   ...(await importActual<typeof import('@/hooks/useTags')>()),
   useTags: () => ({
@@ -79,7 +81,6 @@ vi.mock('@/hooks/useTags', async (importActual) => ({
     recolorTag,
     deleteTag,
   }),
-  useCanManageTags: () => canManageTags,
 }));
 const confirm = vi.fn();
 vi.mock('@/components/ui/confirm-dialog', () => ({
@@ -113,8 +114,10 @@ vi.mock('@/components/folders/NewFolderDialog', () => ({
 
 let location = { pathname: '', search: '' };
 let navType = '';
+let navigate: (to: string) => void = () => {};
 function LocationProbe() {
   const l = useLocation();
+  navigate = useNavigate();
   location = { pathname: l.pathname, search: l.search };
   navType = useNavigationType();
   return null;
@@ -175,7 +178,6 @@ beforeEach(() => {
   create.mockClear();
   presence = new Map();
   canEdit = {};
-  canManageTags = true;
   renameTag.mockReset().mockResolvedValue(undefined);
   recolorTag.mockReset().mockResolvedValue(undefined);
   deleteTag.mockReset().mockResolvedValue(undefined);
@@ -519,7 +521,7 @@ describe('HomePage', () => {
     });
 
     it('hides tag management from a guest (T-18)', () => {
-      canManageTags = false;
+      nsPerms = { canCreateFolder: false, loading: false };
       mount('/app/ws1?tag=q3');
       expect(heading().textContent).toBe('Q3');
       expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
@@ -547,13 +549,23 @@ describe('HomePage', () => {
 
     it('keeps the rename dialog open when the save fails', async () => {
       vi.useRealTimers();
-      renameTag.mockRejectedValue(new Error('down'));
+      renameTag
+        .mockRejectedValueOnce(new TagNameTakenError())
+        .mockRejectedValue(new Error('down'));
       mount('/app/ws1?tag=q3');
       fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
       const field = await screen.findByRole('textbox', { name: 'Name' });
+      fireEvent.change(field, { target: { value: 'Plan' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('A tag with this name already exists');
       fireEvent.change(field, { target: { value: 'Q4' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-      await waitFor(() => expect(renameTag).toHaveBeenCalled());
+      await waitFor(() => expect(renameTag).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(
+          screen.queryByText('A tag with this name already exists'),
+        ).toBeNull(),
+      );
       expect(screen.getByRole('dialog')).toBeTruthy();
     });
 
@@ -562,7 +574,9 @@ describe('HomePage', () => {
       settle(TAGGED);
       mount('/app/ws1?tag=q3');
       await openMore();
-      fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete tag' }));
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Delete tag' }),
+      );
       await waitFor(() => expect(deleteTag).toHaveBeenCalled());
       expect(confirm).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -582,15 +596,84 @@ describe('HomePage', () => {
       confirm.mockResolvedValueOnce(false);
       mount('/app/ws1?tag=q3');
       await openMore();
-      fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete tag' }));
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Delete tag' }),
+      );
       await waitFor(() => expect(confirm).toHaveBeenCalled());
       expect(deleteTag).not.toHaveBeenCalled();
 
       deleteTag.mockRejectedValue(new Error('down'));
       await openMore();
-      fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete tag' }));
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Delete tag' }),
+      );
       await waitFor(() => expect(deleteTag).toHaveBeenCalled());
       expect(location.search).toBe('?tag=q3');
+    });
+
+    it('says a tag with no documents has none yet, with no action', () => {
+      mount('/app/ws1?tag=fresh');
+      expect(heading().textContent).toBe('Fresh');
+      expect(screen.getByText('No documents yet')).toBeTruthy();
+      expect(
+        screen.getByRole('heading', { name: 'No documents have this tag yet' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText('Add it from the Tags row at the top of a document.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Clear filters' }),
+      ).toBeNull();
+    });
+
+    it('holds the header while a delete runs, so it cannot start twice', async () => {
+      let finish!: () => void;
+      deleteTag.mockReturnValue(new Promise<void>((r) => (finish = r)));
+      mount('/app/ws1?tag=q3');
+      await openMore();
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Delete tag' }),
+      );
+      await waitFor(() => expect(deleteTag).toHaveBeenCalledTimes(1));
+      expect(screen.getByText('Deleting tag…')).toBeTruthy();
+      const rename = screen.getByRole('button', { name: 'Rename' });
+      const more = screen.getByRole('button', { name: 'More' });
+      expect((rename as HTMLButtonElement).disabled).toBe(true);
+      expect((more as HTMLButtonElement).disabled).toBe(true);
+      await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+      fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
+      expect(screen.queryByRole('menu')).toBeNull();
+
+      finish();
+      await waitFor(() => expect(location.search).toBe(''));
+      expect(deleteTag).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the header go again when the delete fails', async () => {
+      deleteTag.mockRejectedValue(new Error('down'));
+      mount('/app/ws1?tag=q3');
+      await openMore();
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Delete tag' }),
+      );
+      await waitFor(() => expect(deleteTag).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(
+          (screen.getByRole('button', { name: 'Rename' }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(false),
+      );
+      expect(screen.queryByText('Deleting tag…')).toBeNull();
+    });
+
+    it('drops an open rename when another tag page opens', async () => {
+      vi.useRealTimers();
+      mount('/app/ws1?tag=q3');
+      fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+      await screen.findByRole('dialog');
+      act(() => navigate('/app/ws1?tag=fresh'));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(heading().textContent).toBe('Fresh');
     });
   });
 });

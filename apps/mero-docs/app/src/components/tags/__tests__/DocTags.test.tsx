@@ -124,6 +124,17 @@ describe('DocTags', () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
+  it('says a typed tag is already on the doc instead of showing nothing', async () => {
+    mount(['roadmap']);
+    const user = await openPopover();
+    await user.type(screen.getByRole('combobox'), 'ROADMAP');
+    expect(screen.getByText('Already on this document')).toBeTruthy();
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    await user.clear(screen.getByRole('combobox'));
+    await user.type(screen.getByRole('combobox'), 'road');
+    expect(screen.queryByText('Already on this document')).toBeNull();
+  });
+
   it('starts empty each time it opens', async () => {
     mount([]);
     const user = await openPopover();
