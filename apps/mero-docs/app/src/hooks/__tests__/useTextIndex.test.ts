@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import type { Block } from '@/generated/docs/DocsClient';
+import type { BackendBlock } from '@/lib/rich/blocknote';
 import type { FolderIndexStatus } from '../useWorkspaceIndex';
 import type { FolderInfo, IndexRow } from '@/lib/workspaceIndex/types';
 import { TEXT_INDEX_CONCURRENCY, useTextIndex } from '../useTextIndex';
@@ -11,7 +11,7 @@ import { TEXT_INDEX_CONCURRENCY, useTextIndex } from '../useTextIndex';
 type Event = { contextId: string; type: string; data: unknown };
 
 const getDocument =
-  vi.fn<(contextId: string, doc: string) => Promise<Block[]>>();
+  vi.fn<(contextId: string, doc: string) => Promise<BackendBlock[]>>();
 let subscribed: { ids: string[]; handler: (e: Event) => void } | null = null;
 const mero = {};
 
@@ -52,14 +52,14 @@ function row(
   };
 }
 
-function blocks(text: string): Block[] {
+function blocks(text: string): BackendBlock[] {
   return [
     {
       id: 'b1',
       kind: 'paragraph',
       depth: 0,
       attrs: {},
-      spans: [{ text, attributes: {} }],
+      spans: [{ text }], // the node leaves `attributes` out of a plain span
     },
   ];
 }
@@ -125,7 +125,7 @@ describe('useTextIndex', () => {
     getDocument.mockImplementation((_ctx, doc) => {
       inFlight++;
       most = Math.max(most, inFlight);
-      const d = deferred<Block[]>();
+      const d = deferred<BackendBlock[]>();
       open.push({
         doc,
         done: () => {
@@ -165,7 +165,7 @@ describe('useTextIndex', () => {
   });
 
   it('counts a folder done only once its list is read and every doc tried', async () => {
-    const hold = deferred<Block[]>();
+    const hold = deferred<BackendBlock[]>();
     getDocument.mockImplementation((_ctx, doc) =>
       doc === 'slow' ? hold.promise : Promise.resolve(blocks(doc)),
     );
@@ -230,7 +230,7 @@ describe('useTextIndex', () => {
   });
 
   it('reads a doc again when an event lands while it is being read', async () => {
-    const first = deferred<Block[]>();
+    const first = deferred<BackendBlock[]>();
     getDocument.mockImplementationOnce(() => first.promise);
     getDocument.mockImplementation(() => Promise.resolve(blocks('fresh')));
     const { result } = renderHook(() =>
@@ -252,7 +252,7 @@ describe('useTextIndex', () => {
   });
 
   it('keeps a read that a list refresh lands on top of', async () => {
-    const held = deferred<Block[]>();
+    const held = deferred<BackendBlock[]>();
     getDocument.mockImplementationOnce(() => held.promise);
     const { result, rerender } = renderHook(
       ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
@@ -343,7 +343,7 @@ describe('useTextIndex', () => {
   });
 
   it('reads again when the list moves on while a read is in flight', async () => {
-    const held = deferred<Block[]>();
+    const held = deferred<BackendBlock[]>();
     getDocument.mockImplementationOnce(() => held.promise);
     getDocument.mockImplementation(() => Promise.resolve(blocks('newer')));
     const { result, rerender } = renderHook(
@@ -359,7 +359,7 @@ describe('useTextIndex', () => {
   });
 
   it('drops the old workspace work: a late read never lands after a switch', async () => {
-    const late = deferred<Block[]>();
+    const late = deferred<BackendBlock[]>();
     getDocument.mockImplementationOnce(() => late.promise);
     getDocument.mockImplementation((_ctx, doc) => Promise.resolve(blocks(doc)));
     const { result, rerender } = renderHook(({ i }) => useTextIndex(i), {

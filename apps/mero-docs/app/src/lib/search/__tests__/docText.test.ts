@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Block } from '@/generated/docs/DocsClient';
+import type { BackendBlock } from '@/lib/rich/blocknote';
 import { docTextFromBlocks, searchText } from '../docText';
 import { rowKey, type DocText } from '../../workspaceIndex/types';
 
@@ -12,21 +12,24 @@ function block(
   id: string,
   kind: string,
   ...spans: (string | [string, Record<string, string>])[]
-): Block {
+): BackendBlock {
   return {
     id,
     kind,
     depth: 0,
     attrs: {},
+    // As the node sends them: a plain span has no `attributes` key at all.
     spans: spans.map((s) =>
-      typeof s === 'string'
-        ? { text: s, attributes: {} }
-        : { text: s[0], attributes: s[1] },
+      typeof s === 'string' ? { text: s } : { text: s[0], attributes: s[1] },
     ),
   };
 }
 
-function text(folderId: string, docId: string, blocks: Block[]): DocText {
+function text(
+  folderId: string,
+  docId: string,
+  blocks: BackendBlock[],
+): DocText {
   return docTextFromBlocks(folderId, docId, blocks, ORIGIN);
 }
 

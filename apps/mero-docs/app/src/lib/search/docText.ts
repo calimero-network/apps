@@ -1,5 +1,5 @@
-import type { Block } from '@/generated/docs/DocsClient';
 import { parseDocHref } from '../links';
+import type { BackendBlock } from '../rich/blocknote';
 import { rowKey, type DocText } from '../workspaceIndex/types';
 import {
   foldForSearch,
@@ -79,11 +79,13 @@ function sentenceAround(
 }
 
 /** Runs of neighbouring spans that share one link href, as offsets in the block text. */
-function linkRuns(block: Block): { href: string; from: number; to: number }[] {
+function linkRuns(
+  block: BackendBlock,
+): { href: string; from: number; to: number }[] {
   const runs: { href: string; from: number; to: number }[] = [];
   let at = 0;
   for (const span of block.spans) {
-    const href = span.attributes.link;
+    const href = span.attributes?.link;
     const last = runs[runs.length - 1];
     if (href && last?.href === href && last.to === at)
       last.to += span.text.length;
@@ -94,7 +96,7 @@ function linkRuns(block: Block): { href: string; from: number; to: number }[] {
 }
 
 function linksIn(
-  block: Block,
+  block: BackendBlock,
   section: string | undefined,
   text: string,
   origin: string,
@@ -123,7 +125,7 @@ function linksIn(
 export function docTextFromBlocks(
   folderId: string,
   docId: string,
-  blocks: Block[],
+  blocks: BackendBlock[],
   origin: string,
 ): DocText {
   const out: DocText = { folderId, docId, blocks: [], links: [] };
