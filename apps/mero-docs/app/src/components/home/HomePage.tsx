@@ -383,13 +383,15 @@ export function HomePage({ folderId }: Props) {
         ? 'no-folders'
         : loading
           ? null
-          : tagPage && syncing.length === 0 && failed.length === 0
-            ? 'no-tagged'
-            : isHomeQueryFiltered(q) && partlyRead.length === 0
-              ? 'no-matches'
-              : syncing.length === 0 && failed.length === 0
-                ? 'no-docs'
-                : null;
+          : partlyRead.length > 0
+            ? 'partial'
+            : tagPage && syncing.length === 0 && failed.length === 0
+              ? 'no-tagged'
+              : isHomeQueryFiltered(q)
+                ? 'no-matches'
+                : syncing.length === 0 && failed.length === 0
+                  ? 'no-docs'
+                  : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
   const emptyBody = {
     'no-folders':
@@ -400,6 +402,7 @@ export function HomePage({ folderId }: Props) {
           : NO_FOLDERS_READ_ONLY,
     'no-matches': undefined,
     'no-tagged': undefined,
+    partial: undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -414,6 +417,7 @@ export function HomePage({ folderId }: Props) {
       : undefined,
     'no-matches': clearFilters,
     'no-tagged': undefined,
+    partial: undefined,
     'no-docs': writable.length ? newDocument : undefined,
   } as const;
   const saveViewButton = isHomeQueryFiltered(q) && (

@@ -376,10 +376,22 @@ describe('HomePage', () => {
       textIndex.foldersDone = 2;
       textIndex.failed = ['design'];
       mount('/app/ws1?mentions=me');
-      expect(screen.queryByText('No documents match these filters')).toBeNull();
+      expect(
+        screen.getByRole('heading', {
+          name: 'No matches in the documents read so far',
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Some documents could not be read, so this list may be incomplete.',
+        ),
+      ).toBeTruthy();
       expect(
         screen.getByRole('status').textContent,
       ).toContain("Couldn't read every document in Design.");
+      expect(screen.queryByText('No documents match these filters')).toBeNull();
+      // The no-docs state, whose New document is the empty state's own action.
+      expect(screen.queryByText('No documents yet')).toBeNull();
     });
 
     it('cycles the sort and keeps it in the URL', () => {
