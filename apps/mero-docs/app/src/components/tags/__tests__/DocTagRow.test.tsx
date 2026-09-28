@@ -18,7 +18,7 @@ describe('DocTagRow', () => {
     render(
       <DocTagRow tags={TAGS} canEdit onRemove={onRemove} addTrigger={ADD} />,
     );
-    expect(screen.getByText('Tags')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Tags' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Remove tag q3' }));
     expect(onRemove).toHaveBeenCalledWith('q3');
     expect(screen.getByRole('button', { name: 'Add tag' })).toBeTruthy();

@@ -24,6 +24,7 @@ interface Props {
   color?: string;
   subtitle: string;
   canManage: boolean;
+  busy?: boolean; // a change is in flight, so no other can start
   onRename: () => void;
   onRecolor: (color: string) => void;
   onDelete: () => void;
@@ -34,6 +35,7 @@ export function TagPageHeader({
   color,
   subtitle,
   canManage,
+  busy = false,
   onRename,
   onRecolor,
   onDelete,
@@ -42,6 +44,7 @@ export function TagPageHeader({
     <>
       <Button
         variant="outline"
+        disabled={busy}
         onClick={onRename}
         className={cn(headerActionClass, 'bg-card [&_svg]:size-[13px]')}
       >
@@ -49,7 +52,8 @@ export function TagPageHeader({
         Rename
       </Button>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        {/* The trigger checks disabled itself before opening; a disabled child alone does not stop it. */}
+        <DropdownMenuTrigger asChild disabled={busy}>
           <Button
             variant="ghost"
             size="icon"

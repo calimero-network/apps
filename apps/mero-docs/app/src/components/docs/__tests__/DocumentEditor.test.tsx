@@ -1,6 +1,7 @@
 // The editor's data-layer bridge, driven with a fake docs client. The trap
 // this file guards is the loading screen: the shell must leave it once the
 // document read resolves, whichever read wins the race.
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
@@ -11,6 +12,11 @@ const getDocument = vi.fn();
 const getTitle = vi.fn();
 const docsRemove = vi.fn();
 const toastError = vi.hoisted(() => vi.fn());
+const addTag = vi.fn();
+const removeTag = vi.fn();
+let canEditDocs = true;
+let canManageTags = true;
+let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
 let deliver: ((event: unknown) => void) | undefined;
 // Stable identity: useDocs memoizes its client, and a fresh one per render
 // would re-run every hook effect that keys on it.
@@ -28,7 +34,8 @@ vi.mock('sonner', () => ({
 }));
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
-    deliver = handler;
+    handlers.add(handler);
+    deliver = (event) => handlers.forEach((h) => h(event));
   },
   useEphemeral: () => ({
     peers: new Map(),
@@ -49,13 +56,37 @@ let location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
 vi.mock('react-router-dom', () => ({ useLocation: () => location }));
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
-  useFolderPermissions: () => ({ canEditDocs: true }),
+  useFolderPermissions: () => ({ canEditDocs }),
+}));
+vi.mock('@/hooks/useTags', () => ({
+  useCanManageTags: () => canManageTags,
+}));
+vi.mock('@/components/tags/DocTags', () => ({
+  DocTags: ({
+    tagKeys,
+    canEdit,
+    onAdd,
+    onRemove,
+  }: {
+    tagKeys: string[];
+    canEdit: boolean;
+    onAdd: (key: string) => void;
+    onRemove: (key: string) => void;
+  }) => (
+    <div data-testid="doc-tags" data-can-edit={String(canEdit)}>
+      {tagKeys.join(',')}
+      <button onClick={() => onAdd('q3')}>Add q3</button>
+      <button onClick={() => onRemove('plan')}>Remove plan</button>
+    </div>
+  ),
 }));
 vi.mock('@/hooks/useDocs', () => ({
   useDocs: () => ({
     get: getDoc,
     edit: vi.fn(),
     remove: docsRemove,
+    addTag,
+    removeTag,
     refetch: vi.fn(),
     ...contextState,
     client,
@@ -75,7 +106,9 @@ vi.mock('@/components/editor/EditorShell', () => ({
     sectionLinks,
     focusBlock,
     focusKey,
+    tags,
   }: {
+    tags?: React.ReactNode;
     isLoading: boolean;
     documentName: string;
     onDelete?: () => void;
@@ -94,6 +127,7 @@ vi.mock('@/components/editor/EditorShell', () => ({
         {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
       </span>
       {isLoading ? 'Loading document...' : documentName}
+      {tags}
       {onDelete && <button onClick={onDelete}>Delete</button>}
       {onCopyLink && <button onClick={onCopyLink}>Copy link</button>}
       {sectionLinks && (
@@ -126,7 +160,12 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  handlers = new Set();
   deliver = undefined;
+  canEditDocs = true;
+  canManageTags = true;
+  addTag.mockResolvedValue(undefined);
+  removeTag.mockResolvedValue(undefined);
   location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
   contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
   getDoc.mockResolvedValue(DOC);
@@ -280,6 +319,117 @@ describe('DocumentEditor', () => {
       rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
       expect(connection()).toBe('ready');
       await screen.findByText('Notes');
+    });
+  });
+
+  describe('tags', () => {
+    const mount = () =>
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+    const tagEvent = (contextId: string, id: string) => ({
+      contextId,
+      data: { DocTagsChanged: { id } },
+    });
+
+    it('shows the doc tags, editable only for an editor of this folder who is not a guest', async () => {
+      getDoc.mockResolvedValue({ ...DOC, tags: ['q3', 'plan'] });
+      const { unmount } = mount();
+      const row = await screen.findByTestId('doc-tags');
+      expect(row.textContent).toContain('q3,plan');
+      expect(row.getAttribute('data-can-edit')).toBe('true');
+      unmount();
+
+      canManageTags = false;
+      const view = mount();
+      expect(
+        (await screen.findByTestId('doc-tags')).getAttribute('data-can-edit'),
+      ).toBe('false');
+      view.unmount();
+
+      canManageTags = true;
+      canEditDocs = false;
+      mount();
+      expect(
+        (await screen.findByTestId('doc-tags')).getAttribute('data-can-edit'),
+      ).toBe('false');
+    });
+
+    it('adds and removes a tag, then shows the doc as the node has it', async () => {
+      mount();
+      await screen.findByTestId('doc-tags');
+      getDoc.mockResolvedValue({ ...DOC, tags: ['q3'] });
+      fireEvent.click(screen.getByText('Add q3'));
+      await waitFor(() =>
+        expect(screen.getByTestId('doc-tags').textContent).toContain('q3'),
+      );
+      expect(addTag).toHaveBeenCalledWith('doc-1', 'q3');
+      fireEvent.click(screen.getByText('Remove plan'));
+      await waitFor(() =>
+        expect(removeTag).toHaveBeenCalledWith('doc-1', 'plan'),
+      );
+    });
+
+    it('says a failed tag write plainly', async () => {
+      addTag.mockRejectedValue(new Error('rpc: invalid tag key'));
+      removeTag.mockRejectedValue(new Error('rpc: storage'));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mount();
+      await screen.findByTestId('doc-tags');
+      fireEvent.click(screen.getByText('Add q3'));
+      fireEvent.click(screen.getByText('Remove plan'));
+      await waitFor(() =>
+        expect(toastError.mock.calls).toEqual([
+          ["Couldn't add the tag. Try again."],
+          ["Couldn't remove the tag. Try again."],
+        ]),
+      );
+    });
+
+    it('re-reads the doc when a peer changes its tags, and only this doc (T-23)', async () => {
+      mount();
+      await screen.findByTestId('doc-tags');
+      getDoc.mockClear();
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-2')));
+      act(() => deliver?.(tagEvent('other-ctx', 'doc-1')));
+      act(() => deliver?.({ contextId: 'docs-ctx', data: { DocEdited: { id: 'doc-1' } } }));
+      expect(getDoc).not.toHaveBeenCalled();
+
+      getDoc.mockResolvedValue({ ...DOC, tags: ['launch'] });
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      await waitFor(() =>
+        expect(screen.getByTestId('doc-tags').textContent).toContain('launch'),
+      );
+      expect(getDoc).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets only the newest re-read land, so a slow older one cannot bring a chip back', async () => {
+      mount();
+      await screen.findByTestId('doc-tags');
+      const older = deferred<DocDto>();
+      const newer = deferred<DocDto>();
+      getDoc
+        .mockReturnValueOnce(older.promise)
+        .mockReturnValueOnce(newer.promise);
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      await act(async () => newer.resolve({ ...DOC, tags: [] }));
+      await act(async () => older.resolve({ ...DOC, tags: ['removed'] }));
+      expect(screen.getByTestId('doc-tags').textContent).not.toContain(
+        'removed',
+      );
+    });
+
+    it('keeps the tags it has when a re-read fails', async () => {
+      getDoc.mockResolvedValue({ ...DOC, tags: ['q3'] });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mount();
+      await screen.findByTestId('doc-tags');
+      getDoc.mockRejectedValue(new Error('down'));
+      act(() => deliver?.(tagEvent('docs-ctx', 'doc-1')));
+      await waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
+      expect(screen.getByTestId('doc-tags').textContent).toContain('q3');
+      expect(screen.queryByText("Couldn't load document")).toBeNull();
     });
   });
 });

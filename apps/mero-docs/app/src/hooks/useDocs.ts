@@ -51,6 +51,8 @@ export interface UseDocsState {
   edit: (id: string, patch: { title: string }) => Promise<void>;
   get: (id: string) => Promise<DocDto>;
   remove: (id: string) => Promise<void>;
+  addTag: (id: string, tag: string) => Promise<void>;
+  removeTag: (id: string, tag: string) => Promise<void>;
   /** The client bound to this folder's docs context, for the CRDT hooks. */
   client: DocsClient | null;
 }
@@ -414,6 +416,24 @@ export function useDocs(
     [docsClient, refetch, contextId],
   );
 
+  const addTag = useCallback(
+    async (id: string, tag: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.addTag({ id, tag });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
+  const removeTag = useCallback(
+    async (id: string, tag: string): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      await docsClient.removeTag({ id, tag });
+      notifyDocsRefetch(contextId);
+    },
+    [docsClient, contextId],
+  );
+
   const listed =
     !!folderId &&
     resolvedFolder === folderId &&
@@ -432,6 +452,8 @@ export function useDocs(
     edit,
     get,
     remove,
+    addTag,
+    removeTag,
     client: docsClient,
   };
 }

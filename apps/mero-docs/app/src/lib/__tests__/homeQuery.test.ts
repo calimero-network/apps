@@ -3,6 +3,7 @@ import {
   applyHomeQuery,
   parseHomeQuery,
   serializeHomeQuery,
+  tagPageKey,
   type HomeQuery,
 } from '../homeQuery';
 import type { FolderInfo } from '../workspaceIndex/types';
@@ -272,5 +273,25 @@ describe('applyHomeQuery', () => {
     ];
     applyHomeQuery(rows, EMPTY, NOW, folders);
     expect(ids(rows)).toEqual(['a', 'b']);
+  });
+});
+
+describe('tagPageKey', () => {
+  it('is the tag when the query is that one tag and nothing else (T-20)', () => {
+    expect(tagPageKey(parse('tag=q3'))).toBe('q3');
+    expect(tagPageKey(parse('tag=q3&sort=name'))).toBe('q3');
+  });
+
+  it('is nothing for no tag, two tags or any other filter', () => {
+    for (const search of [
+      '',
+      'tag=q3,plan',
+      'tag=q3&folder=f1',
+      'tag=q3&updated=7d',
+      'tag=q3&by=bob',
+      'tag=q3&archived=true',
+    ]) {
+      expect(tagPageKey(parse(search))).toBeNull();
+    }
   });
 });

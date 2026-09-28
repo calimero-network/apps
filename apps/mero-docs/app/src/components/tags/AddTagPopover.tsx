@@ -27,6 +27,7 @@ interface AddTagPopoverProps {
   suggestions: TagSuggestion[];
   canCreate: boolean;
   createLabel: string;
+  note?: string; // said in place of an empty list, e.g. why nothing is offered
   color: string;
   onColorChange: (color: string) => void;
   onPick: (key: string) => void;
@@ -54,6 +55,48 @@ export const AddTagButton = React.forwardRef<
 ));
 AddTagButton.displayName = 'AddTagButton';
 
+interface TagColorSwatchesProps {
+  value: string;
+  onChange: (color: string) => void;
+  labelledBy: string;
+  className?: string;
+}
+
+// Radios, so Tab reaches the group, arrows move between colours and each one is named.
+export function TagColorSwatches({
+  value,
+  onChange,
+  labelledBy,
+  className,
+}: TagColorSwatchesProps) {
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+      className={cn('flex items-center gap-1.5', className)}
+    >
+      {TAG_COLORS.map((swatch, i) => (
+        <label key={swatch} className="cursor-pointer">
+          <input
+            type="radio"
+            name={labelledBy}
+            value={swatch}
+            aria-label={TAG_COLOR_NAMES[i]}
+            checked={value === swatch}
+            onChange={() => onChange(swatch)}
+            className="peer sr-only"
+          />
+          <span
+            aria-hidden
+            className="block h-[18px] w-[18px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)] peer-checked:ring-2 peer-checked:ring-ring peer-checked:ring-offset-2 peer-checked:ring-offset-popover peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring/50"
+            style={{ backgroundColor: swatch }}
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
 // Suggestions first so an existing tag wins over a near-duplicate; the create row comes last.
 export function AddTagPopover({
   open,
@@ -63,6 +106,7 @@ export function AddTagPopover({
   suggestions,
   canCreate,
   createLabel,
+  note,
   color,
   onColorChange,
   onPick,
@@ -174,36 +218,21 @@ export function AddTagPopover({
               )}
           </div>
         )}
+        {rowCount === 0 && note && (
+          <p className="px-3 pb-2 text-[13px] text-muted-foreground">{note}</p>
+        )}
         <div
           id={colourLabelId}
           className="px-3 pb-1 text-xs text-muted-foreground"
         >
           Colour for a new tag
         </div>
-        <div
-          role="radiogroup"
-          aria-labelledby={colourLabelId}
-          className="flex items-center gap-1.5 px-3 pb-2.5 pt-1"
-        >
-          {TAG_COLORS.map((swatch, i) => (
-            <label key={swatch} className="cursor-pointer">
-              <input
-                type="radio"
-                name={colourLabelId}
-                value={swatch}
-                aria-label={TAG_COLOR_NAMES[i]}
-                checked={color === swatch}
-                onChange={() => onColorChange(swatch)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden
-                className="block h-[18px] w-[18px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)] peer-checked:ring-2 peer-checked:ring-ring peer-checked:ring-offset-2 peer-checked:ring-offset-popover peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring/50"
-                style={{ backgroundColor: swatch }}
-              />
-            </label>
-          ))}
-        </div>
+        <TagColorSwatches
+          value={color}
+          onChange={onColorChange}
+          labelledBy={colourLabelId}
+          className="px-3 pb-2.5 pt-1"
+        />
       </PopoverContent>
     </Popover>
   );

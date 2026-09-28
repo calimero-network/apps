@@ -73,6 +73,17 @@ export function serializeHomeQuery(q: HomeQuery): string {
     .join('&');
 }
 
+/** The tag whose page this query is: that one tag, no other filter, any sort. */
+export function tagPageKey(q: HomeQuery): string | null {
+  const onlyTag =
+    q.tags.length === 1 &&
+    q.folders.length === 0 &&
+    !q.updated &&
+    !q.by &&
+    !q.archived;
+  return onlyTag ? q.tags[0] : null;
+}
+
 function withDescendants(
   selected: string[],
   folders: FolderInfo[],

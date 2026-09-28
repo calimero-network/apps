@@ -67,4 +67,13 @@ describe('TagPageHeader', () => {
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
   });
+
+  it('disables its actions while busy', () => {
+    setup({ busy: true });
+    for (const name of ['Rename', 'More']) {
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    }
+  });
 });

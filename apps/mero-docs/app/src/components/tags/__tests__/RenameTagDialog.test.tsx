@@ -73,4 +73,25 @@ describe('RenameTagDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('drops a name-taken error once the name changes, and shows it again on the next save', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <RenameTagDialog
+        open
+        name="design"
+        error="A tag with this name already exists"
+        onSubmit={onSubmit}
+        onOpenChange={() => {}}
+      />,
+    );
+    const field = screen.getByRole('textbox', { name: 'Name' });
+    await user.type(field, 'x');
+    expect(screen.queryByText('A tag with this name already exists')).toBeNull();
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onSubmit).toHaveBeenCalled();
+    expect(screen.getByText('A tag with this name already exists')).toBeTruthy();
+  });
 });

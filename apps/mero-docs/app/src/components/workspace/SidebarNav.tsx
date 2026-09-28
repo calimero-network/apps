@@ -49,7 +49,7 @@ interface Props {
     selected: boolean;
     onSelect: () => void;
   }[];
-  onAddView: () => void;
+  onAddView?: () => void; // no New view until views can be saved
   onAddTag: () => void;
   canManage: boolean;
   collapsed: Record<SectionKey, boolean>;
@@ -89,7 +89,10 @@ export function SidebarNav({
         title="Views"
         collapsed={collapsed.views}
         onToggle={() => onToggleSection('views')}
-        action={canManage && <AddButton label="New view" onClick={onAddView} />}
+        action={
+          canManage &&
+          onAddView && <AddButton label="New view" onClick={onAddView} />
+        }
       >
         {views.length === 0 ? (
           <Hint>Save a filtered list to pin it here</Hint>
