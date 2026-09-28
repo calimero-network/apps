@@ -548,6 +548,23 @@ export class HomeDriver {
       .getByRole('main')
       .getByRole('button', { name, exact: true });
   }
+
+  // A sidebar view row is named "<name>, <count>" or "<name>, shared with everyone, <count>".
+  viewRow(name: string): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: new RegExp(`^${escapeRegex(name)},`) });
+  }
+
+  viewMenuButton(name: string): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: `Actions for ${name}` });
+  }
+
+  saveViewButton(): Locator {
+    return this.page.getByRole('main').getByRole('button', { name: 'Save view' });
+  }
 }
 
 export class EditorDriver {
