@@ -41,6 +41,7 @@ export class WorkspaceDriver {
   readonly docs: DocListDriver;
   readonly home: HomeDriver;
   readonly editor: EditorDriver;
+  readonly tags: DocTagsDriver;
   readonly settings: SettingsDriver;
 
   constructor(page: Page, opts: DriverOptions = {}) {
@@ -52,6 +53,7 @@ export class WorkspaceDriver {
     this.docs = new DocListDriver(page);
     this.home = new HomeDriver(page);
     this.editor = new EditorDriver(page);
+    this.tags = new DocTagsDriver(page);
     this.settings = new SettingsDriver(page);
   }
 
@@ -528,6 +530,17 @@ export class HomeDriver {
     ).toHaveText(titles, { timeout: opts.timeout ?? 30_000 });
   }
 
+  // A sidebar tag row is named "<tag>, <count>".
+  tagRow(name: string): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: new RegExp(`^${escapeRegex(name)}, \\d+$`) });
+  }
+
+  heading(): Locator {
+    return this.page.getByRole('main').getByRole('heading', { level: 1 });
+  }
+
   // Exact, since each active chip also has a "Clear <label>" button.
   chip(name: string): Locator {
     return this.page
@@ -642,6 +655,66 @@ export class EditorDriver {
     await expect(item).toBeEnabled({ timeout: 15_000 });
     await item.click();
     return this.page.evaluate(() => navigator.clipboard.readText());
+  }
+}
+
+// The open document's tag row and its Add tag popover.
+export class DocTagsDriver {
+  constructor(private page: Page) {}
+
+  row(): Locator {
+    return this.page.getByRole('group', { name: 'Tags' });
+  }
+
+  chip(name: string): Locator {
+    return this.row().getByText(name, { exact: true });
+  }
+
+  input(): Locator {
+    return this.page.getByRole('combobox', { name: 'Tag name' });
+  }
+
+  async openAdd(): Promise<void> {
+    await this.row().getByRole('button', { name: 'Add tag' }).click();
+    await expect(this.input()).toBeFocused();
+  }
+
+  // Picks the existing tag the popover suggests for `query`; its option reads "<name> <n> docs".
+  async add(query: string, name = query): Promise<void> {
+    await this.openAdd();
+    await this.input().fill(query);
+    await this.page
+      .getByRole('option', { name: new RegExp(`^${escapeRegex(name)}\\s*\\d+ docs?$`) })
+      .click();
+    await expect(this.chip(name)).toBeVisible({ timeout: 15_000 });
+  }
+
+  // Creates a new tag, in `colour` when given (a swatch's accessible name).
+  async create(name: string, colour?: string): Promise<void> {
+    await this.openAdd();
+    await this.input().fill(name);
+    if (colour) {
+      await this.page.getByRole('radio', { name: colour }).focus();
+      await this.page.keyboard.press('Space');
+    }
+    await this.page
+      .getByRole('option', { name: `Create tag “${name}”` })
+      .click();
+    await expect(this.chip(name)).toBeVisible({ timeout: 15_000 });
+  }
+
+  async remove(name: string): Promise<void> {
+    await this.row()
+      .getByRole('button', { name: `Remove tag ${name}` })
+      .click();
+    await expect(this.chip(name)).toBeHidden({ timeout: 15_000 });
+  }
+
+  // The colour a chip's dot is painted, as the browser reports it.
+  async dotColour(name: string): Promise<string> {
+    return this.chip(name)
+      .getByTestId('tag-dot')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
   }
 }
 
