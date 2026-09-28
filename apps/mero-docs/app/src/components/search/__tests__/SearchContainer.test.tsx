@@ -434,12 +434,34 @@ describe('SearchContainer opening', () => {
     };
     mount();
     await type('@me');
-    expect(optionTexts('Mentions of you')).toEqual([
+    expect(optionTexts('Mentions')).toEqual([
       expect.stringMatching(/^API spec v2Product \/ SpecsAsk @Ann first\.$/),
     ]);
     expect(screen.queryByRole('group', { name: 'Documents' })).toBeNull();
     await userEvent.keyboard('{Enter}');
     expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=m-d3');
+  });
+
+  it('shows progress, never "no mentions", for @me while docs are still being read', async () => {
+    textIndex = { ...textIndex, foldersDone: 1, pending: ['f2', 'f3'] };
+    mount();
+    await type('@me');
+    expect(group('Mentions').textContent).toContain('1 of 3 folders searched');
+    expect(screen.queryByText('No documents mention you yet')).toBeNull();
+  });
+
+  it('names a folder it could not fully read for @me', async () => {
+    textIndex = {
+      ...textIndex,
+      foldersDone: 2,
+      pending: ['f3'],
+      failed: ['f3'],
+    };
+    mount();
+    await type('@me');
+    expect(screen.getByText(/could not be fully searched/).textContent).toBe(
+      'Roads could not be fully searched.',
+    );
   });
 
   it('opens a folder, and a tag as Home filtered to it', async () => {

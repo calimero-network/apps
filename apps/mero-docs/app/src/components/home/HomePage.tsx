@@ -193,9 +193,13 @@ export function HomePage({ folderId }: Props) {
   const loading =
     !foldersKnown ||
     scope.some((f) => statusOf(f.id) === 'loading') ||
-    (!!q.mentions && !mentioned.known);
+    (!!q.mentions && mentioned.reading);
   const syncing = scope.filter((f) => statusOf(f.id) === 'syncing');
   const failed = scope.filter((f) => statusOf(f.id) === 'error');
+  // Mentions come from doc text, so a folder with an unread doc may hide some.
+  const partlyRead = q.mentions
+    ? scope.filter((f) => mentioned.failed.includes(f.id))
+    : [];
 
   // --- New document ---
   // Undefined while a folder's write access is still being checked.
@@ -370,7 +374,8 @@ export function HomePage({ folderId }: Props) {
   // A number is a claim about every folder in scope, so none is made until they are all read.
   const countKnown =
     !loading &&
-    (view.length > 0 || (syncing.length === 0 && failed.length === 0));
+    (view.length > 0 ||
+      (syncing.length === 0 && failed.length === 0 && partlyRead.length === 0));
   const emptyKind =
     !foldersKnown || view.length > 0
       ? null
@@ -380,7 +385,7 @@ export function HomePage({ folderId }: Props) {
           ? null
           : tagPage && syncing.length === 0 && failed.length === 0
             ? 'no-tagged'
-            : isHomeQueryFiltered(q)
+            : isHomeQueryFiltered(q) && partlyRead.length === 0
               ? 'no-matches'
               : syncing.length === 0 && failed.length === 0
                 ? 'no-docs'
@@ -505,7 +510,7 @@ export function HomePage({ folderId }: Props) {
           onClear={clearFilters}
         />
       )}
-      {(syncing.length > 0 || failed.length > 0) && (
+      {(syncing.length > 0 || failed.length > 0 || partlyRead.length > 0) && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground md:px-7"
@@ -527,6 +532,12 @@ export function HomePage({ folderId }: Props) {
               >
                 Try again
               </Button>
+            </span>
+          )}
+          {partlyRead.length > 0 && (
+            <span>
+              Couldn't read every document in{' '}
+              {partlyRead.map((f) => folderLabel(f.name)).join(', ')}.
             </span>
           )}
         </div>

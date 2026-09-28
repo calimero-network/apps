@@ -5,7 +5,7 @@ import { useTextIndexValue } from '@/context/WorkspaceIndexContext';
 import { mentionsOf } from '@/lib/search/docText';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
-/** Each doc's first mention of you by rowKey, and whether every readable folder has been read for them. */
+/** Each doc's first mention of you by rowKey; `known` once every readable folder was read in full, `failed` names the rest. */
 export function useMentionedMe() {
   const { texts, foldersDone, foldersTotal, failed } = useTextIndexValue();
   const { namespaceId, selfIdentity } = useDriveWorkspace();
@@ -17,6 +17,11 @@ export function useMentionedMe() {
     [texts, namespaceId, selfIdentity],
   );
   const keys = useMemo(() => new Set(mentions.keys()), [mentions]);
-  // A failed folder is not waited on; the palette and Home name it instead.
-  return { mentions, keys, known: foldersDone + failed.length >= foldersTotal };
+  return {
+    mentions,
+    keys,
+    known: foldersDone >= foldersTotal,
+    reading: foldersDone + failed.length < foldersTotal,
+    failed,
+  };
 }

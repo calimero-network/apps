@@ -229,6 +229,7 @@ beforeEach(() => {
     ]),
   );
   textIndex.foldersDone = 3;
+  textIndex.failed = [];
 });
 
 afterEach(() => vi.useRealTimers());
@@ -368,6 +369,17 @@ describe('HomePage', () => {
       expect(
         screen.getByText('No documents match these filters'),
       ).toBeTruthy();
+    });
+
+    it('says which folders it could not fully read instead of claiming nothing mentions you', () => {
+      textIndex.texts = new Map();
+      textIndex.foldersDone = 2;
+      textIndex.failed = ['design'];
+      mount('/app/ws1?mentions=me');
+      expect(screen.queryByText('No documents match these filters')).toBeNull();
+      expect(
+        screen.getByRole('status').textContent,
+      ).toContain("Couldn't read every document in Design.");
     });
 
     it('cycles the sort and keeps it in the URL', () => {

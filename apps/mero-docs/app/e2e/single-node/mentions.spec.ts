@@ -96,7 +96,7 @@ test.describe('Mentions (single-node)', () => {
       palette.getByText('Type @me for documents that mention you'),
     ).toBeVisible();
     await palette.getByRole('textbox', { name: 'Search' }).fill('@me');
-    const mentions = palette.getByRole('group', { name: 'Mentions of you' });
+    const mentions = palette.getByRole('group', { name: 'Mentions' });
     await expect(mentions.getByRole('option')).toHaveCount(1);
     await expect(mentions.getByRole('option')).toContainText('Ask @alice');
     await page.keyboard.press('Enter');

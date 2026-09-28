@@ -167,7 +167,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     failed: partlyRead,
   } = useTextIndexValue();
   const { tags, byKey: tagsByKey } = useTags();
-  const { mentions } = useMentionedMe();
+  const { mentions, reading: mentionsReading } = useMentionedMe();
   const presence = usePresenceByDoc();
   const { namespaceId, namespaces } = useDriveWorkspace();
   const { href, goDoc, goFolder, goHome } = useAppRoute();
@@ -198,6 +198,9 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     const base = { ...ctx, groups, tagsOnly, empty, mentionsOnly };
     if (!open) return { ...base, warning: undefined };
     const now = Date.now();
+    // Only member folders are in the index, so a restricted folder is never named.
+    const named = (ids: string[]) =>
+      folders.filter((f) => ids.includes(f.id)).map((f) => folderLabel(f.name));
 
     if (mentionsOnly) {
       const items = [...mentions]
@@ -216,8 +219,8 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
             m.blockId,
           ),
         );
-      groups.push({ id: 'mentions', label: 'Mentions of you', items });
-      return { ...base, warning: undefined };
+      groups.push({ id: 'mentions', label: 'Mentions', items });
+      return { ...base, warning: coverageWarning([], [], named(partlyRead)) };
     }
 
     if (empty) {
@@ -324,9 +327,6 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       { id: 'tags', label: 'Tags', items: tagItems },
     );
 
-    // Only member folders are in the index, so a restricted folder is never named.
-    const named = (ids: string[]) =>
-      folders.filter((f) => ids.includes(f.id)).map((f) => folderLabel(f.name));
     const withStatus = (status: string) =>
       folders.filter((f) => folderStatus[f.id] === status).map((f) => f.id);
     const warning = coverageWarning(
@@ -382,8 +382,16 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   // Still reading a folder, not merely missing one that failed.
   const reading = foldersDone + partlyRead.length < foldersTotal;
   const groups = React.useMemo(() => {
-    if (titles.empty || titles.tagsOnly || titles.mentionsOnly)
-      return titles.groups;
+    if (titles.mentionsOnly)
+      return titles.groups.map((g) => ({
+        ...g,
+        aside: mentionsReading ? (
+          <SearchProgress
+            label={`${foldersDone} of ${foldersTotal} folders searched`}
+          />
+        ) : undefined,
+      }));
+    if (titles.empty || titles.tagsOnly) return titles.groups;
     const textGroup: PaletteGroupView = {
       id: 'text',
       label: 'In document text',
@@ -396,7 +404,16 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       ) : undefined,
     };
     return [...titles.groups, textGroup];
-  }, [titles, textHits, textQuery, query, reading, foldersDone, foldersTotal]);
+  }, [
+    titles,
+    textHits,
+    textQuery,
+    query,
+    reading,
+    mentionsReading,
+    foldersDone,
+    foldersTotal,
+  ]);
 
   const routeOf = (t: Target): { route: AppRoute; search?: string } => {
     const ws = namespaceId ?? '';
@@ -438,7 +455,10 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       scopeLabel={scopeLabel}
       groups={groups}
       warning={titles.warning}
-      emptyText={titles.mentionsOnly ? NO_MENTIONS : EMPTY_TEXT}
+      // Nothing is claimed about mentions until every folder is read.
+      emptyText={
+        !titles.mentionsOnly ? EMPTY_TEXT : mentionsReading ? '' : NO_MENTIONS
+      }
       onOpen={onOpen}
     />
   );

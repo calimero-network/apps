@@ -163,6 +163,7 @@ beforeEach(() => {
   index.foldersKnown = true;
   textIndex.texts = new Map();
   textIndex.foldersDone = 1;
+  textIndex.failed = [];
 });
 
 describe('WorkspaceNav', () => {
@@ -211,6 +212,13 @@ describe('WorkspaceNav', () => {
 
   it('shows no Mentions count while documents are still being read', () => {
     textIndex.foldersDone = 0;
+    mount('/app/ws1');
+    expect(screen.getByRole('button', { name: 'Mentions' })).toBeTruthy();
+  });
+
+  it('shows no Mentions count when a folder could not be fully read', () => {
+    textIndex.foldersDone = 0;
+    textIndex.failed = ['f1'];
     mount('/app/ws1');
     expect(screen.getByRole('button', { name: 'Mentions' })).toBeTruthy();
   });
