@@ -75,12 +75,29 @@ default, which is the trap: a state struct written without thinking about this
 is a state struct where every field is forgeable.
 
 **The `AuthoredMap` API guards are local; the merge guard is not.**
-`AuthoredMap::insert` refusing an occupied key, and `update`/`remove` refusing a
-non-owner, run inside your contract on the writing node — a patched node simply
-does not call them. What a patched node cannot do is produce a valid signature
-for an account it does not hold a key for. So the owner stamp is the real
-boundary, and your reader has to actually check it (`owner_of`) rather than
-assume the collection did.
+`AuthoredMap::insert` refusing a key the caller already holds, and
+`update`/`remove` acting only on the caller's own entry, run inside your
+contract on the writing node — a patched node simply does not call them. What a
+patched node cannot do is produce a valid signature for an account it does not
+hold a key for. So the owner stamp is the real boundary, and your reader has to
+actually read the entry of the account it is about rather than assume the
+collection did.
+
+**Keys are per owner (core 0.11.0-rc.57).** Every owned collection — `Authored`,
+`AuthoredMap`, `AuthoredSortedMap`, `WriteOnce`, `Moderated`, `ModeratedOnce` —
+is one namespace per account: two accounts writing one key hold two independent
+entries, on every node, in any order. Every key-only method (`insert`, `get`,
+`contains`, `update`, `modify`, `remove`, `owner_of`, `owned_by_me`) acts on the
+CALLER's entry, so `owner_of(key)` is `Some(me)` or `None` and never names
+anyone else. Reading someone else's entry means naming them: `get_by(&owner,
+&key)`, `contains_by`, `entries_at(&key)` (every holder of one key),
+`entries_by(&owner)`, `entries_with_owners()`. `entries()` and `len()` span every
+owner, one row per holder. A moderator removes someone else's entry with
+`remove_by(&owner, &key)`; a key-only `remove` removes the moderator's own. And
+a name unique across the whole collection is no longer something an owned
+collection gives you: "someone already holds this key" has to be asked with
+`entries_at(&key)` across owners, and even then two nodes writing at once both
+keep theirs.
 
 **The owner is an *account*, not a device key.** Someone on their laptop can
 update what they wrote from their phone. Device identity lives on
@@ -135,17 +152,21 @@ needs a forged signature, because `Public` entries carry no authorship to forge
 caller. It is easy to read the check as "only Alice can write Alice's row" when
 what it says is "only Alice can write Alice's row *through this function*".
 
-**Now:** every map is an `AuthoredMap`, and the reader re-checks the stamp:
+**Now:** every map is owned (`WriteOnce`), and the reader reads the entry of the
+author the key names, by name:
 
 ```rust
-fn valid_rows<V>(map: &AuthoredMap<String, V>, prefix: &str) -> app::Result<Vec<(String, V)>> {
+fn owned_rows<V>(map: &WriteOnce<SortedMap<String, V>>, prefix: &str, author: &str)
+    -> app::Result<Vec<(String, V)>>
+{
     let mut rows = Vec::new();
-    for (key, value) in map.entries()? {
-        if !key.starts_with(prefix) { continue; }
-        // The key NAMES an author; core's owner stamp has to AGREE with it.
-        let Some(author) = key_author(&key).map(ToOwned::to_owned) else { continue };
-        if !Self::owned_by(Self::owner_of(map, &key)?, &author) { continue; }
-        rows.push((key, value));
+    for (key, _) in map.prefix(prefix.as_bytes())? {
+        // The key NAMES an author; only that author's OWN entry at it counts.
+        // Keys are per owner (rc.57), so anyone else's row at the key is a
+        // separate entry and `get_by` never returns it.
+        if let Some(value) = Self::authored(map, &key, author)? {   // get_by(author, key)
+            rows.push((key, value));
+        }
     }
     Ok(rows)
 }
@@ -259,8 +280,8 @@ by reading a maximum or a "current" pointer out of a writable entity.
 **Was:** the move key was `"<game>/<ply>"`. One key per ply, shared.
 
 **Exploit:** this one is worse than it looks, and it is a **denial of service
-against every table in the context**. `AuthoredMap::insert` refuses an occupied
-key and only the owner may `update` it. So any member — a spectator, not even a
+against every table in the context**. Before core rc.57, `AuthoredMap::insert`
+refused a key anyone held and only the owner could `update` it. So any member — a spectator, not even a
 player — writes a junk row at the key White's next move needs, and the table is
 wedged **permanently**. White can never move again. Not "White's move is
 ignored": White's move has nowhere to go.
@@ -287,6 +308,13 @@ any other.
 **The general rule:** *a key shared between writers is a lock.* In a system where
 you cannot prevent writes, any key two people might write is a key one of them
 can hold hostage. Put the author in the key. Put a nonce after it.
+
+Core rc.57 took the lock away at the storage level — keys are per owner, so a
+squatter's row at White's key is the squatter's own entry and White's insert
+lands beside it. The author segment still matters: it is how a reader knows
+whose entry to ask for (`get_by`), and a key with no author in it now means
+"one entry per account", which a reader has to pick between deterministically
+(this repo's convention: the lowest `AccountId` in `entries_at`).
 
 **Pinned by:** `a_squatted_key_costs_a_nonce_and_not_a_turn`.
 
@@ -710,8 +738,12 @@ Before your contract ships, for each field in your `#[app::state]`:
       current", and totals must be the reader's arithmetic (findings 2, 6, 10).
 - [ ] **Do two writers share its key?** Put the author in the key and a nonce
       after it, or you have shipped a permanent lock (finding 7).
-- [ ] **Is it a claim someone makes?** `AuthoredMap`, and re-check `owner_of`
-      against the author named in the key — both halves.
+- [ ] **Is it a claim someone makes?** `AuthoredMap`, and read the entry of the
+      author named in the key with `get_by` — both halves. A key-only `get` or
+      `owner_of` answers for the caller only (core rc.57).
+- [ ] **Does "someone already holds this key" mean anything to you?** Keys are
+      per owner, so it is asked across owners (`entries_at(&key).is_empty()`),
+      and a reader of a key several accounts hold picks one deterministically.
 - [ ] **Do you filter before you choose?** An invalid row must not be able to
       suppress a valid one (finding 9).
 - [ ] **Can you re-derive every claim you accept?** A resignation must lose, an

@@ -100,10 +100,11 @@ immutable rule — nobody edits or removes the row, its owner included. Core
 verifies a per-action signature against that owner inside
 `Interface::apply_action` on every receive path — an unsigned remote `User`
 action is refused outright — so a member cannot author a row as someone else.
-Keys name their author, the reader re-checks the stamp, and a key carries a
-per-write nonce so a row can never be *occupied* against its rightful author
-(without it, any member — a spectator, not even a player — could park a row on
-the key the next move needs and wedge the table permanently).
+Keys name their author, and the reader reads that author's own entry by name
+(`get_by`): since core 0.11.0-rc.57 keys are per owner, so a row anyone else
+files under an author's key is a separate entry of theirs and is never read,
+and a key-only `get`/`owner_of` would only ever answer for the caller. A key
+also carries a per-write nonce, so a player's own rows never collide.
 
 | attempt | what stops it |
 |---|---|
