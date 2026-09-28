@@ -1,7 +1,7 @@
 import { nameCollator } from '../collate';
 import { docLabel } from '../docLabel';
 import { folderLabel } from '../folderLabel';
-import { tagCounts } from '../tags';
+import { sidebarTags, tagCounts } from '../tags';
 import type { IndexRow, Tag } from '../workspaceIndex/types';
 import {
   foldForSearch,
@@ -50,7 +50,8 @@ export function searchV1(
   const count = (t: Tag) => counts.get(t.key) ?? 0;
   const byCount = (a: Tag, b: Tag) =>
     count(b) - count(a) || nameCollator.compare(a.name, b.name);
-  const liveTags = tags.filter((t) => !t.deleted);
+  // A tag only on docs this member cannot read stays hidden, as in the sidebar.
+  const liveTags = sidebarTags(tags, counts);
   const tagResult = (tag: Tag, ranges: [number, number][]): PaletteResult => ({
     kind: 'tag',
     tag,
@@ -59,7 +60,7 @@ export function searchV1(
   });
 
   if (tagsOnly && !text) {
-    return [...liveTags].sort(byCount).map((t) => tagResult(t, []));
+    return liveTags.map((t) => tagResult(t, []));
   }
   const tagHits = (limit: number) =>
     ranked(liveTags, (t) => t.name, text, byCount, limit).map((m) =>

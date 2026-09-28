@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import { defaultProps } from '@blocknote/core';
 import {
   useSubscription,
   type SubscriptionEventData,
@@ -50,6 +51,14 @@ import { useRetry } from './useRetry';
 const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+const FRESH_PARAGRAPH_ATTRS = fromBlockNote([
+  {
+    id: '',
+    type: 'paragraph',
+    props: Object.fromEntries(Object.entries(defaultProps).map(([key, prop]) => [key, prop.default])),
+    children: [],
+  },
+])[0].attrs; // what BlockNote's empty paragraph carries before anyone formats it
 
 /** The slice of the BlockNote editor the binding drives. */
 export interface BodyEditor {
@@ -108,12 +117,13 @@ interface Outcome {
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
-/** BlockNote always holds a block, so it shows an empty document as one empty paragraph. */
+/** BlockNote always holds a block, so it shows an empty document as one empty, unformatted paragraph. */
 const isEditorStandIn = (blocks: EditorBlock[]): boolean =>
   blocks.length === 1 &&
   blocks[0].kind === 'paragraph' &&
   blocks[0].depth === 0 &&
-  blocks[0].inline.length === 0;
+  blocks[0].inline.length === 0 &&
+  Object.entries(blocks[0].attrs).every(([key, value]) => FRESH_PARAGRAPH_ATTRS[key] === value);
 
 const structureOf = (blocks: EditorBlock[]): string =>
   JSON.stringify(blocks.map((b) => [b.id, b.kind, b.depth, b.attrs]));
@@ -367,6 +377,10 @@ export function useFugueBody({
           const at = caretIn(view, block.id);
           if (at) caret = { block: backendIdOf(block.id), at };
         }
+      }
+      // A caret in the empty paragraph a peer's first blocks replace stays at the top.
+      if (caret && serverRef.current.length === 0 && remote.length > 0) {
+        caret = { block: remote[0].id, at: { anchor: 0, head: 0 } };
       }
       const target = toBlockNote(remote.map((block) => ({ ...block, id: editorIdOf(block.id) })));
       asPeer((peer) => {

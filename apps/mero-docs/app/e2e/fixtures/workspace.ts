@@ -20,6 +20,7 @@ const FILLER_LINES = 30; // enough text around "Milestones" that it needs a scro
 export const SECTION_PARAGRAPH =
   'Pricing follows the model in Pricing notes, and the story lives in the blog'; // longer than a section name
 export const SECTIONS_LAST_LINE = `Closing line ${FILLER_LINES}`; // writeSections' final line, a peer's sync barrier
+const SEARCH_FIELD = 'Search docs, folders and tags'; // the top-bar field's accessible name
 
 export type Visibility = 'Open' | 'Restricted';
 
@@ -45,6 +46,7 @@ export class WorkspaceDriver {
   readonly tags: DocTagsDriver;
   readonly details: DetailsDriver;
   readonly settings: SettingsDriver;
+  readonly palette: SearchPaletteDriver;
 
   constructor(page: Page, opts: DriverOptions = {}) {
     this.page = page;
@@ -58,6 +60,7 @@ export class WorkspaceDriver {
     this.tags = new DocTagsDriver(page);
     this.details = new DetailsDriver(page);
     this.settings = new SettingsDriver(page);
+    this.palette = new SearchPaletteDriver(page);
   }
 
   async goToWorkspace(): Promise<void> {
@@ -317,6 +320,13 @@ export class WorkspaceDriver {
 export class FolderTreeDriver {
   constructor(private page: Page) {}
 
+  // Every folder row; a Views or Tags row has no Folder actions button.
+  folderRows(): Locator {
+    return this.page.locator('aside li > div').filter({
+      has: this.page.getByRole('button', { name: 'Folder actions' }),
+    });
+  }
+
   folderRow(name: string): Locator {
     // Target the row <div> (direct child of <li>), not the <li> itself.
     // When a folder is expanded, the <li>'s textContent accumulates all
@@ -343,7 +353,7 @@ export class FolderTreeDriver {
 
   // Asserts the exact folder rows the rail renders, in order.
   async expectFolderList(names: string[], opts: { timeout?: number } = {}) {
-    await expect(this.page.locator('aside li > div')).toHaveText(names, {
+    await expect(this.folderRows()).toHaveText(names, {
       timeout: opts.timeout ?? 15_000,
     });
   }
@@ -459,11 +469,14 @@ export class SharingDriver {
   }
 
   async removeMember(label: string): Promise<void> {
-    await this.page
-      .getByRole('button', {
-        name: new RegExp(`Remove\\s+${escapeRegex(label)}`, 'i'),
-      })
-      .click();
+    const remove = this.page.getByRole('button', {
+      name: new RegExp(`Remove\\s+${escapeRegex(label)}`, 'i'),
+    });
+    await remove.click();
+    const confirm = this.page.getByRole('dialog', { name: 'Remove member?' });
+    await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(confirm).toBeHidden({ timeout: 15_000 });
+    await expect(remove).toHaveCount(0, { timeout: 30_000 });
   }
 
   async expectMemberVisible(label: string, opts: { timeout?: number } = {}) {
@@ -923,6 +936,41 @@ export class SettingsDriver {
   }
 }
 
-function escapeRegex(s: string): string {
+// The top-bar search field and the palette it opens.
+export class SearchPaletteDriver {
+  constructor(private page: Page) {}
+
+  field(): Locator {
+    return this.page.getByRole('button', { name: SEARCH_FIELD });
+  }
+
+  dialog(): Locator {
+    return this.page.getByRole('dialog', { name: 'Search' });
+  }
+
+  input(): Locator {
+    return this.dialog().getByRole('textbox', { name: 'Search' });
+  }
+
+  group(name: string): Locator {
+    return this.dialog().getByRole('group', { name });
+  }
+
+  // Opens the palette when it is closed, then replaces the query.
+  async search(text: string): Promise<void> {
+    if (!(await this.dialog().isVisible())) await this.field().click();
+    await this.input().fill(text);
+  }
+}
+
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Radix arms a sheet's outside-click listener a task after opening and drops
+// an earlier click, so a backdrop click waits until the sheet has slid in.
+export async function settled(sheet: Locator): Promise<void> {
+  await sheet.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished)),
+  );
 }

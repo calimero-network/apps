@@ -53,8 +53,13 @@ interface Props {
 // (64-hex, client-only UX check).
 
 export function FolderSharingPanel({ folderId }: Props) {
-  const { namespaceId, folders, selfIdentity, registryContextId } =
-    useDriveWorkspace();
+  const {
+    namespaceId,
+    folders,
+    selfIdentity,
+    registryContextId,
+    namespaceMemberNames,
+  } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
@@ -228,7 +233,9 @@ export function FolderSharingPanel({ folderId }: Props) {
           </li>
         )}
         {members.map((m) => {
-          const label = m.name ?? UNNAMED_MEMBER_LABEL;
+          // A folder's member rows carry no names; the workspace's rows do.
+          const label =
+            m.name ?? namespaceMemberNames[m.identity] ?? UNNAMED_MEMBER_LABEL;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;

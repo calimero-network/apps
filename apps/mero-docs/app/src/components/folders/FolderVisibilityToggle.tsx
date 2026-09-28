@@ -44,7 +44,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       next === 'Restricted' &&
       !(await confirm({
         title: 'Make this folder restricted?',
-        body: 'Workspace members you have not added to this folder will lose access to it.',
+        body: 'Workspace members you have not added will lose access to this folder and its subfolders.',
         confirmLabel: 'Make restricted',
         destructive: true,
       }))
