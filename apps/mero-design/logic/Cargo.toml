@@ -41,6 +41,7 @@ github = "https://github.com/calimero-network/mero-design"
 # on a node where it cannot even instantiate.
 min-runtime-version = "0.11.0-rc.54"
 frontend = "https://mero-design.vercel.app/"
+guide = "GUIDE.md"
 
 [dependencies]
 # No direct `borsh`: lib.rs reaches it through `calimero_sdk::borsh`, and the
