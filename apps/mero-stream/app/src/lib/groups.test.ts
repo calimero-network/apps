@@ -9,9 +9,14 @@ import {
   enterRoomContext,
   listRooms,
   mintRoomInvite,
+  redeemFailureMessage,
+  redeemInvite,
   unwrapInvitation,
   type AdminLike,
 } from "./groups";
+import { shouldRetain } from "@calimero-apps/invite";
+
+const noop = () => {};
 
 // These are the sequences a second person's whole experience depends on, and every
 // one of them is several calls deep with a fallback in it. Driving them against a
@@ -325,6 +330,101 @@ describe("acceptInvite", () => {
     expect(methodsOf(admin)).toContain("joinGroup");
     expect(out.roomId).toBe("room1");
     expect(out.namespaceId).toBe("nsX");
+  });
+});
+
+describe("redeemInvite", () => {
+  const httpError = (status: number, message: string) =>
+    Object.assign(new Error(message), { status });
+  const count = (a: { calls: { method: string }[] }, method: string) =>
+    methodsOf(a).filter((m) => m === method).length;
+
+  it("reports a clean join as joined and lands in the stream", async () => {
+    const admin = fakeAdmin();
+    const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
+    expect(out.outcome.status).toBe("joined");
+    expect(out.landed).toEqual({ kind: "namespace", namespaceId: "ns1" });
+    expect(count(admin, "joinNamespace")).toBe(1);
+  });
+
+  it("still treats an 'already a member' answer as a join", async () => {
+    const admin = fakeAdmin({
+      joinNamespace: () =>
+        Promise.reject(new Error("Already a member of group")),
+    });
+    const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
+    expect(out.outcome.status).toBe("joined");
+    expect(out.landed).toEqual({ kind: "namespace", namespaceId: "ns1" });
+  });
+
+  it("is already-member when the request failed but the node lists the stream", async () => {
+    // The desktop proxy aborts at 30s; the join lands anyway. Sent once, and
+    // the room hints from the code still route the user in.
+    const admin = fakeAdmin({
+      joinNamespace: () => Promise.reject(new Error("The request was aborted")),
+      listNamespaces: () => Promise.resolve([{ namespaceId: "ns1" }]),
+      getContextIdentitiesOwned: () =>
+        Promise.resolve({ identities: ["pk-mine"] }),
+    });
+    const out = await redeemInvite(
+      admin,
+      {
+        invitation: signed("ns1"),
+        kind: "room",
+        roomId: "room1",
+        contextId: "ctx1",
+        roomName: "Lobby",
+      },
+      noop,
+    );
+    expect(out.outcome.status).toBe("already-member");
+    expect(out.landed).toEqual({
+      kind: "room",
+      contextId: "ctx1",
+      identity: "pk-mine",
+      roomName: "Lobby",
+      namespaceId: "ns1",
+    });
+    expect(count(admin, "joinNamespace")).toBe(1);
+  });
+
+  it("returns a refused join as a final failure with the stream's copy", async () => {
+    const admin = fakeAdmin({
+      joinNamespace: () =>
+        Promise.reject(httpError(409, "member was removed from the group")),
+    });
+    const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
+    expect(out.landed).toBeUndefined();
+    if (out.outcome.status !== "failed") throw new Error("expected a failure");
+    expect(out.outcome.reason).toBe("refused");
+    expect(shouldRetain(out.outcome)).toBe(false);
+    expect(redeemFailureMessage(out.outcome)).toBe(
+      "You can't join this stream with this invitation. Ask an admin to invite you again.",
+    );
+  });
+
+  it("returns a 503 as a failure worth keeping the invitation for", async () => {
+    const admin = fakeAdmin({
+      joinNamespace: () =>
+        Promise.reject(httpError(503, "no peer available for key delivery")),
+    });
+    const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
+    expect(out.landed).toBeUndefined();
+    if (out.outcome.status !== "failed") throw new Error("expected a failure");
+    expect(out.outcome.reason).toBe("no-one-online");
+    expect(shouldRetain(out.outcome)).toBe(true);
+    expect(redeemFailureMessage(out.outcome)).toMatch(
+      /No one in this stream is online/,
+    );
+  });
+
+  it("shows the node's own message when the reason is unknown", async () => {
+    const admin = fakeAdmin({
+      joinNamespace: () => Promise.reject(new Error("something odd")),
+    });
+    const out = await redeemInvite(admin, { invitation: signed("ns1") }, noop);
+    if (out.outcome.status !== "failed") throw new Error("expected a failure");
+    expect(redeemFailureMessage(out.outcome)).toBe("something odd");
   });
 });
 
