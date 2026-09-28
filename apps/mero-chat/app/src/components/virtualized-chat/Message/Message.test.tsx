@@ -72,3 +72,43 @@ describe("Message delivery tick", () => {
     expect(screen.queryByRole("img", { name: "Sending" })).toBeNull();
   });
 });
+
+// An attachment-only message is sent with `text: ""`. The text row rendered
+// anyway, leaving an empty line between the sender and the attachment.
+describe("Message without text", () => {
+  const file = {
+    ipfs_cid: "c".repeat(64),
+    name: "notes.pdf",
+    size: 1024,
+    mime_type: "application/pdf",
+    uploaded_at: 1_700_000_000_000,
+  };
+
+  it("renders no text row for a file-only message", () => {
+    const { container } = renderMessage(
+      message({ text: "", files: [file] } as Partial<CurbMessage>),
+      true,
+    );
+    expect(container.querySelector(".msg-content")).toBeNull();
+    expect(screen.getByText("notes.pdf")).toBeTruthy();
+    // The receipt moves beside the attachment rather than disappearing.
+    expect(screen.getByRole("img", { name: "Sent" })).toBeTruthy();
+  });
+
+  it("treats markup-only text as empty", () => {
+    const { container } = renderMessage(
+      message({ text: "<p><br></p>", files: [file] } as Partial<CurbMessage>),
+      true,
+    );
+    expect(container.querySelector(".msg-content")).toBeNull();
+  });
+
+  it("keeps the text row when there is text beside the file", () => {
+    const { container } = renderMessage(
+      message({ text: "see attached", files: [file] } as Partial<CurbMessage>),
+      true,
+    );
+    expect(container.querySelector(".msg-content")).not.toBeNull();
+    expect(screen.getAllByRole("img", { name: "Sent" })).toHaveLength(1);
+  });
+});
