@@ -950,6 +950,9 @@ importers:
       '@blocknote/react':
         specifier: ^0.51.4
         version: 0.51.4(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-apps/invite':
+        specifier: workspace:*
+        version: link:../../../packages/invite
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
