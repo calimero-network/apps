@@ -26,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BlockNoteView } from '@blocknote/mantine';
 import { createExtension } from '@blocknote/core';
 import {
+  FormattingToolbarController,
   LinkToolbarController,
   SideMenuController,
   useCreateBlockNote,
@@ -51,6 +52,7 @@ import { DocAwareLinkToolbar, DocLinkHover } from './DocLinkHover';
 import { DocLinkNav } from './blocknote/DocLinkNav';
 import { DocLinkPicker } from './blocknote/DocLinkPicker';
 import { EditorSlashMenu } from './blocknote/EditorSlashMenu';
+import { BlockFormattingToolbar } from './blocknote/BlockFormattingToolbar';
 import {
   followDocLink,
   insertDocLink,
@@ -415,8 +417,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                       sideMenu={false}
                       linkToolbar={false}
                       slashMenu={false}
+                      formattingToolbar={false}
                     >
                       <SideMenuController sideMenu={BlockSideMenu} />
+                      <FormattingToolbarController
+                        formattingToolbar={BlockFormattingToolbar}
+                      />
                       <LinkToolbarController
                         linkToolbar={DocAwareLinkToolbar}
                       />

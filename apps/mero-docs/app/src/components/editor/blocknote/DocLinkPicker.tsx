@@ -113,9 +113,11 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     (query: string) => itemsAfterPause(query, mentionPickerItems),
     [itemsAfterPause],
   );
+  // A new text index gives a new getItems, so an open section menu reloads its headings.
   const getSections = useCallback(
     (query: string) => itemsAfterPause(query, sectionLinkItems),
-    [itemsAfterPause],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- texts is read through sourceRef; listing it is the reload trigger
+    [itemsAfterPause, texts],
   );
   const pick = useCallback(
     (item: DocLinkItem) => pickLinkItem(editor, item, toast),

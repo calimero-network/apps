@@ -79,6 +79,12 @@ describe('opensDocPicker (L-11)', () => {
     expect(editor.transact((tr) => opensDocPicker(tr))).toBe(true);
   });
 
+  it('stays shut after opening punctuation, by design', () => {
+    expect(editorWith('see (').transact((tr) => opensDocPicker(tr))).toBe(
+      false,
+    );
+  });
+
   it('stays shut inside a word, as in an email address', () => {
     const editor = editorWith('ada');
     expect(editor.transact((tr) => opensDocPicker(tr))).toBe(false);
