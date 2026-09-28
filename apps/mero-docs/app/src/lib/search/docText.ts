@@ -6,6 +6,7 @@ import {
   matchRanges,
   matchScore,
   normalizeQuery,
+  queryWords,
 } from './match';
 
 export const HEADING_KIND = 'heading'; // DocText block kind of a section heading
@@ -195,7 +196,7 @@ export function searchText(
 ): TextHit[] {
   const { text: query, tagsOnly } = normalizeQuery(q);
   if (!query || tagsOnly) return [];
-  const folded = foldForSearch(query);
+  const words = queryWords(query);
   const best: {
     score: number;
     text: DocText;
@@ -204,7 +205,8 @@ export function searchText(
   for (const text of texts.values()) {
     let top: (typeof best)[number] | null = null;
     for (const block of text.blocks) {
-      const score = matchScore(foldForSearch(block.text), folded);
+      // Typos stay off: long text is slow to scan and turns up near misses.
+      const score = matchScore(foldForSearch(block.text), words, false);
       if (score !== null && (!top || score < top.score)) {
         top = { score, text, block };
         if (score === 0) break;
@@ -216,7 +218,7 @@ export function searchText(
     .sort((a, b) => a.score - b.score)
     .slice(0, limit)
     .map(({ text, block }) => {
-      const ranges = matchRanges(block.text, query);
+      const ranges = matchRanges(block.text, query, false);
       const [first] = ranges.length ? ranges : [[0, 0] as [number, number]];
       const win = windowAround(block.text, first[0], first[1], SNIPPET_MAX);
       return {

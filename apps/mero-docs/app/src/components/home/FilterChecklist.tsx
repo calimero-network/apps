@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Check } from 'lucide-react';
 
+import { filterByLabel } from '@/lib/search/match';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,10 +32,7 @@ export function FilterChecklist({
   footerHint,
 }: Props) {
   const [query, setQuery] = React.useState('');
-  const needle = query.trim().toLowerCase();
-  const shown = needle
-    ? items.filter((i) => i.label.toLowerCase().includes(needle))
-    : items;
+  const shown = filterByLabel(items, (i) => i.label, query);
 
   return (
     <div

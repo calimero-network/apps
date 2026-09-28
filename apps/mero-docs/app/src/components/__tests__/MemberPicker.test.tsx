@@ -81,6 +81,28 @@ describe('MemberPicker', () => {
     expect(screen.getAllByRole('option')).toHaveLength(1);
   });
 
+  it('matches name words in any order, and typos only when nothing matches exactly', () => {
+    useGroupMembersMock.mockReturnValue({
+      members: [
+        { ...members[0], name: 'Alice Liddell' },
+        { ...members[1], name: 'Alex' },
+      ],
+      selfIdentity: 'self',
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'liddell alice' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.change(input, { target: { value: 'alcie' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.change(input, { target: { value: 'alex' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+  });
+
   it('excludes identities passed in `exclude`', () => {
     render(
       <MemberPicker

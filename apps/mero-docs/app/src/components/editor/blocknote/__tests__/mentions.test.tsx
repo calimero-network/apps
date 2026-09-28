@@ -95,6 +95,19 @@ describe('peopleItems', () => {
     expect(lo[0].titleRanges).toEqual([{ start: 4, end: 6 }]);
   });
 
+  it('forgives a typo in a name', () => {
+    const ALICE = 'a2'.repeat(32);
+    const items = peopleItems(
+      'alce',
+      people({
+        members: [ME, ADA, ALICE],
+        names: { ...NAMES, [ALICE]: 'Alice' },
+      }),
+    );
+    expect(items.map((i) => i.title)).toEqual(['Alice']);
+    expect(items[0].titleRanges).toEqual([{ start: 0, end: 5 }]);
+  });
+
   it('finds you by your own name or by You', () => {
     expect(peopleItems('mi', people()).map((i) => i.title)).toEqual(['You']);
     expect(peopleItems('you', people()).map((i) => i.title)).toEqual(['You']);
@@ -148,6 +161,25 @@ describe('mentionPickerItems', () => {
       ...Array(5).fill('People'),
       ...Array(5).fill('Documents'),
     ]);
+  });
+
+  it('offers typos only when nothing in the menu matches exactly', () => {
+    const DANA = 'a3'.repeat(32);
+    const src = (rows: IndexRow[]) => ({
+      ...people({ members: [ME, DANA], names: { ...NAMES, [DANA]: 'Dana' } }),
+      rows,
+      texts: new Map<string, DocText>(),
+      paths: new Map(),
+    });
+    const titles = (rows: IndexRow[]) =>
+      mentionPickerItems('data', src(rows)).map((i) => i.title);
+    expect(titles([row('d1', { title: 'Data plan' })])).toEqual(['Data plan']);
+    expect(titles([row('d1', { title: 'Budget' })])).toEqual(['Dana']);
+    const dana = mentionPickerItems(
+      'dana',
+      src([row('d1', { title: 'Data plan' })]),
+    );
+    expect(dana.map((i) => i.title)).toEqual(['Dana']);
   });
 });
 

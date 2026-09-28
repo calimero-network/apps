@@ -87,6 +87,29 @@ test.describe('Search (single-node)', () => {
     ).toBeVisible();
   });
 
+  test('matches words in any order, and forgives a typo only when nothing matches exactly', async ({
+    alice,
+  }) => {
+    const { palette } = alice;
+    await alice.tree.openFolder('Product');
+    await alice.createDoc('Q3 Roadmap');
+    await alice.createDoc('Lunch menu');
+
+    await palette.search('roadmap q3');
+    const docs = palette.group('Documents').getByRole('option');
+    await expect(docs).toHaveText([/^Q3 Roadmap/]);
+    await expect(docs.first().locator('mark')).toHaveText(['Q3', 'Roadmap']);
+
+    // Nothing is called "roadmpa", so the typo matches are offered.
+    await palette.search('roadmpa');
+    await expect(docs).toHaveText([/^Q3 Roadmap/, /^Roadmap 2026/]);
+    await expect(docs.first().locator('mark')).toHaveText('Roadmap');
+
+    // "Lunch menu" is one typo from "launch", but an exact match is there.
+    await palette.search('launch');
+    await expect(docs).toHaveText([/^Q3 launch plan/]);
+  });
+
   test('# searches tags only, and a tag opens Home filtered to it (S-09, S-11)', async ({
     alice,
   }) => {

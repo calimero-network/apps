@@ -18,6 +18,9 @@ import {
   matchRanges,
   matchScore,
   normalizeQuery,
+  queryWords,
+  TYPO_TIER,
+  typoFallback,
 } from '@/lib/search/match';
 import { searchV1 } from '@/lib/search/rank';
 import { HEADING_KIND, searchText } from '@/lib/search/docText';
@@ -34,13 +37,14 @@ const WORD_START = /^\s?$/; // what may precede the trigger: nothing, or whitesp
 export const PICK_LIMIT = 5; // rows per picker group, so the menu fits under the caret
 export const DOCS_GROUP = 'Documents';
 const START_LIMIT = 8; // section rows before anything is typed
-const TITLE_ONLY_RANK = 3; // past any heading match score, so those rank first
+const TITLE_ONLY_RANK = TYPO_TIER + 1; // past any heading match score, so those rank first
 const NEW_TAB = '_blank'; // window.open target for a new tab
 const MIDDLE_BUTTON = 1; // MouseEvent.button; 2 is the context-menu button
 
 export type DocLinkItem = DocLinkPickerItem & {
   href: string;
   mention?: { name: string; cantOpen: boolean }; // a member row: the name inserted after @
+  typo?: boolean; // matched only by forgiving a typo
 };
 export type DocLink = { href: string; title: string };
 
@@ -110,7 +114,13 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
     tags: 0,
   }).flatMap((hit) =>
     hit.kind === 'doc'
-      ? [{ ...item(hit.row, 'doc'), titleRanges: toRanges(hit.ranges) }]
+      ? [
+          {
+            ...item(hit.row, 'doc'),
+            titleRanges: toRanges(hit.ranges),
+            typo: hit.typo,
+          },
+        ]
       : [],
   );
   const texts = searchText(query, src.texts).flatMap((hit) => {
@@ -133,7 +143,7 @@ export function sectionLinkItems(
   src: PickerSource,
 ): DocLinkItem[] {
   const { text } = normalizeQuery(query);
-  const q = foldForSearch(text);
+  const words = queryWords(text);
   const isOpen = (r: IndexRow) =>
     r.folderId === src.current?.folder && r.docId === src.current?.doc;
   const docs = src.rows
@@ -144,12 +154,12 @@ export function sectionLinkItems(
     );
   const ranked = docs.flatMap((r) => {
     const title = docLabel(r.title);
-    const titleScore = q ? matchScore(foldForSearch(title), q) : 0;
+    const titleScore = matchScore(foldForSearch(title), words);
     const blocks = src.texts.get(rowKey(r.folderId, r.docId))?.blocks ?? [];
     return blocks.flatMap((b) => {
       const heading = b.text.trim();
       if (b.kind !== HEADING_KIND || !heading) return [];
-      const score = q ? matchScore(foldForSearch(heading), q) : 0;
+      const score = matchScore(foldForSearch(heading), words);
       const rank =
         score ?? (titleScore === null ? null : titleScore + TITLE_ONLY_RANK);
       if (rank === null) return [];
@@ -166,10 +176,10 @@ export function sectionLinkItems(
           block: b.id,
         }),
       };
-      return [{ rank, item }];
+      return [{ rank, item, typo: (score ?? titleScore ?? 0) >= TYPO_TIER }];
     });
   });
-  return ranked
+  return typoFallback(ranked)
     .sort((a, b) => a.rank - b.rank)
     .slice(0, START_LIMIT)
     .map(({ item }) => item);

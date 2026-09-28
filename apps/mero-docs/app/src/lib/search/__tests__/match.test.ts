@@ -4,8 +4,12 @@ import {
   matchRanges,
   matchScore,
   normalizeQuery,
+  queryWords,
   QUERY_MAX,
 } from '../match';
+
+const score = (label: string, query: string, typos = true) =>
+  matchScore(foldForSearch(label), queryWords(query), typos);
 
 function marked(text: string, ranges: [number, number][]): string[] {
   return ranges.map(([a, b]) => text.slice(a, b));
@@ -107,16 +111,125 @@ describe('matchRanges', () => {
   });
 });
 
+describe('queryWords', () => {
+  it('splits the folded query on any whitespace', () => {
+    expect(queryWords(' Roadmap\u00a0 Q3 ')).toEqual(['roadmap', 'q3']);
+    expect(queryWords('')).toEqual([]);
+  });
+});
+
 describe('matchScore', () => {
   it('ranks prefix, then word start, then substring', () => {
-    expect(matchScore('roadmap', 'road')).toBe(0);
-    expect(matchScore('the road', 'road')).toBe(1);
-    expect(matchScore('old-road', 'road')).toBe(1);
-    expect(matchScore('railroad', 'road')).toBe(2);
-    expect(matchScore('rail', 'road')).toBeNull();
+    expect(score('roadmap', 'road')).toBe(0);
+    expect(score('the road', 'road')).toBe(1);
+    expect(score('old-road', 'road')).toBe(1);
+    expect(score('railroad', 'road')).toBe(2);
+    expect(score('rail', 'road')).toBeNull();
   });
 
   it('prefers a later word start over an earlier substring', () => {
-    expect(matchScore('railroad road', 'road')).toBe(1);
+    expect(score('railroad road', 'road')).toBe(1);
+  });
+
+  it('matches words in any order', () => {
+    expect(score('Q3 Roadmap', 'roadmap q3')).not.toBeNull();
+    expect(score('Q3 Roadmap', 'q3 roadmap')).not.toBeNull();
+  });
+
+  it('needs every word to match', () => {
+    expect(score('Q3 Roadmap', 'roadmap q4')).toBeNull();
+    expect(score('Q3 Roadmap', 'roadmap budget')).toBeNull();
+  });
+
+  it('matches everything for no words', () => {
+    expect(matchScore('roadmap', [])).toBe(0);
+  });
+
+  it('ranks by the worst word first, then by the sum of the words', () => {
+    const bothPrefix = score('road map', 'road map'); // 0 and 1
+    const wordStarts = score('the road map', 'road map'); // 1 and 1
+    const substring = score('roadmap', 'road map'); // 0 and 2
+    expect(bothPrefix!).toBeLessThan(wordStarts!);
+    expect(wordStarts!).toBeLessThan(substring!);
+  });
+
+  it('forgives one typo in a word of four or more characters', () => {
+    expect(score('Roadmap', 'roadmpa')).not.toBeNull(); // transposition
+    expect(score('Roadmap', 'raodmap')).not.toBeNull();
+    expect(score('Roadmap', 'roadnap')).not.toBeNull(); // substitution
+    expect(score('Roadmap', 'rodmap')).not.toBeNull(); // missing letter
+    expect(score('Roadmap', 'roaddmap')).not.toBeNull(); // extra letter
+    expect(score('Alice', 'alce')).not.toBeNull();
+    expect(score('Q3 Roadmap', 'q3 roadmpa')).not.toBeNull();
+    expect(score('The quarterly plan', 'quartrely')).not.toBeNull();
+  });
+
+  it('matches a typo against the start of a label word only', () => {
+    expect(score('Roadmaps for 2026', 'roadmpa')).not.toBeNull();
+    expect(score('Railroad', 'raod')).toBeNull();
+    expect(score('Roadmap', 'rdmp')).toBeNull(); // two edits
+  });
+
+  it('forgives no typo in a word shorter than four characters', () => {
+    expect(score('Plan', 'pln')).toBeNull();
+    expect(score('Q3 Roadmap', 'q4')).toBeNull();
+    expect(score('Road', 'raod')).not.toBeNull();
+  });
+
+  it('ranks a typo below every exact match', () => {
+    expect(score('xroadmpa', 'roadmpa')!).toBeLessThan(
+      score('Roadmap', 'roadmpa')!,
+    );
+    const words = 'alpha beta gamma delta epsilon';
+    const substrings = score('xalpha xbeta xgamma xdelta xepsilon', words)!;
+    const oneTypo = score('alpha beta gamma delta epsilno', words)!;
+    expect(substrings).toBeLessThan(oneTypo);
+  });
+
+  it('can skip typos, for long text', () => {
+    expect(score('Roadmap', 'roadmpa', false)).toBeNull();
+    expect(score('Q3 Roadmap', 'roadmap q3', false)).not.toBeNull();
+  });
+
+  it('matches non-latin words and emoji in any order', () => {
+    expect(score('日本 資料', '資料 日本')).not.toBeNull();
+    expect(score('🚀 Launch plan', 'plan 🚀')).not.toBeNull();
+    expect(score('Mon Résumé', 'reusme')).not.toBeNull();
+    expect(score('Спецификация', 'спецификацая')).not.toBeNull();
+  });
+});
+
+describe('matchRanges for several words', () => {
+  it('marks each matched word on its own', () => {
+    const text = 'Q3 Roadmap';
+    expect(matchRanges(text, 'roadmap q3')).toEqual([
+      [0, 2],
+      [3, 10],
+    ]);
+  });
+
+  it('marks the whole label word a typo matched', () => {
+    const text = 'Q3 Roadmap draft';
+    expect(marked(text, matchRanges(text, 'roadmpa'))).toEqual(['Roadmap']);
+    expect(marked(text, matchRanges(text, 'draft roadmpa'))).toEqual([
+      'Roadmap',
+      'draft',
+    ]);
+    expect(marked('Mon Résumé', matchRanges('Mon Résumé', 'reusme'))).toEqual([
+      'Résumé',
+    ]);
+  });
+
+  it('marks no typo when typos are off', () => {
+    expect(matchRanges('Roadmap', 'roadmpa', false)).toEqual([]);
+  });
+
+  it('keeps whole code points with emoji and non-latin words', () => {
+    const text = 'Go 🚀 launch 日本';
+    expect(marked(text, matchRanges(text, '日本 🚀 launhc'))).toEqual([
+      '🚀',
+      'launch',
+      '日本',
+    ]);
   });
 });

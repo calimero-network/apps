@@ -286,6 +286,23 @@ describe('SearchContainer results', () => {
     expect(searchText).toHaveBeenCalledTimes(2);
   });
 
+  it('offers a typo title until an exact text match loads, then drops it', async () => {
+    textIndex = {
+      ...textIndex,
+      texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'the roadmpa typo'])),
+    };
+    mount();
+    await type('roadmpa');
+    expect(optionTexts('Documents')).toEqual([
+      expect.stringMatching(/^Roadmap 2026/),
+    ]);
+    await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    expect(screen.queryByRole('group', { name: 'Documents' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Tags' })).toBeNull();
+  });
+
   it('hides text matches for an older query until the new one is scanned', async () => {
     textIndex = {
       ...textIndex,
@@ -303,7 +320,7 @@ describe('SearchContainer results', () => {
     const hit = await within(
       await screen.findByRole('group', { name: 'In document text' }),
     ).findByRole('option');
-    expect(marks(hit)).toEqual(['zebra c']);
+    expect(marks(hit)).toEqual(['zebra', 'c']);
   });
 
   it('names a folder with a doc it could not read, and stops the progress for it', async () => {

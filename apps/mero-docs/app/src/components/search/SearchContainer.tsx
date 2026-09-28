@@ -293,6 +293,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         docs.push(
           docItem(ctx, `doc:${rowKey(r.folderId, r.docId)}`, 'doc', r, {
             titleRanges: result.ranges,
+            typo: result.typo,
             context: dotted(
               folderPathOf(paths, r.folderId),
               chips.length ? chips : null,
@@ -312,6 +313,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
             folders.find((f) => f.id === result.folderId)?.name,
           ),
           titleRanges: result.ranges,
+          typo: result.typo,
           context: parents.length ? (
             <FolderPath path={parents} color={path?.color} />
           ) : undefined,
@@ -324,6 +326,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
           kind: 'tag',
           title: `#${result.tag.name}`,
           titleRanges: result.ranges.map(([a, b]) => [a + 1, b + 1]),
+          typo: result.typo,
           tagColor: result.tag.color,
           context: `${plural(result.count, 'document')} · show them all on Home`,
           right: <ArrowRight className="h-3.5 w-3.5" aria-hidden />,
@@ -401,18 +404,26 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         ) : undefined,
       }));
     if (titles.empty || titles.tagsOnly) return titles.groups;
+    // Hits for an older query would highlight words no longer typed.
+    const textItems = textQuery === query ? textHits.items : [];
+    // Text hits are exact, and typo titles are only a fallback for no exact match.
+    const titleGroups = textItems.length
+      ? titles.groups.map((g) => ({
+          ...g,
+          items: g.items.filter((i) => !i.typo),
+        }))
+      : titles.groups;
     const textGroup: PaletteGroupView = {
       id: 'text',
       label: 'In document text',
-      // Hits for an older query would highlight words no longer typed.
-      items: textQuery === query ? textHits.items : [],
+      items: textItems,
       aside: reading ? (
         <SearchProgress
           label={`${foldersDone} of ${foldersTotal} folders searched`}
         />
       ) : undefined,
     };
-    return [...titles.groups, textGroup];
+    return [...titleGroups, textGroup];
   }, [
     titles,
     textHits,
