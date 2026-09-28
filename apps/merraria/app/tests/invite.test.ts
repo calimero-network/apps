@@ -5,7 +5,8 @@ import {
   namespaceIdOfInvite,
   WorldInvitePayload,
 } from "../src/net/inviteCodec";
-import { acceptWorldInvite, createWorldInvite } from "../src/net/admin";
+import { shouldRetain } from "@calimero-apps/invite";
+import { acceptWorldInvite, createWorldInvite, WorldInviteError } from "../src/net/admin";
 import { getSession, resetSession, updateSession } from "../src/net/session";
 
 const okJson = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
@@ -67,8 +68,8 @@ describe("invite codec", () => {
   });
 });
 
-/** fail with a node-style {"error": …} body, like the real admin API */
-function mockRoutes(routes: [string, unknown][], failing: [string, string][] = []) {
+/** fail with a node-style {"error": …} body (HTTP 403 unless given), like the real admin API */
+function mockRoutes(routes: [string, unknown][], failing: [string, string, number?][] = []) {
   const calls: { url: string; method: string; body: unknown }[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
@@ -77,9 +78,9 @@ function mockRoutes(routes: [string, unknown][], failing: [string, string][] = [
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(init.body as string) : undefined,
     });
-    for (const [suffix, error] of failing) {
+    for (const [suffix, error, status = 403] of failing) {
       if (url.endsWith(suffix))
-        return { ok: false, status: 403, json: async () => ({ error }) } as Response;
+        return { ok: false, status, json: async () => ({ error }) } as Response;
     }
     for (const [suffix, data] of routes) {
       if (url.endsWith(suffix)) return okJson({ data });
@@ -93,6 +94,7 @@ describe("acceptWorldInvite", () => {
   it("joins namespace → subgroup (inheritance) → context, verifies the identity, stores the session", async () => {
     const calls = mockRoutes([
       ["/admin-api/namespaces/abcd01/join", { groupId: "abcd01", memberIdentity: "me" }],
+      ["/admin-api/namespaces", [{ namespaceId: "abcd01" }]],
       ["/admin-api/groups/grp-77/join-via-inheritance", {}],
       ["/admin-api/contexts/ctx-77/join", {}],
       ["/admin-api/contexts/ctx-77/identities-owned", ["pk-me"]],
@@ -101,6 +103,7 @@ describe("acceptWorldInvite", () => {
     expect(contextId).toBe("ctx-77");
     expect(calls.map((c) => c.url.replace("http://node:2428", ""))).toEqual([
       "/admin-api/namespaces/abcd01/join",
+      "/admin-api/namespaces",
       "/admin-api/groups/grp-77/join-via-inheritance",
       "/admin-api/contexts/ctx-77/join",
       "/admin-api/contexts/ctx-77/identities-owned",
@@ -113,16 +116,50 @@ describe("acceptWorldInvite", () => {
     expect(getSession().executorPublicKey).toBe("pk-me"); // rpc executor for the world
   });
 
-  it("tolerates already-a-member on the namespace join", async () => {
-    mockRoutes(
+  it("treats a failed namespace join as already-a-member when the node lists the namespace", async () => {
+    // the desktop proxy aborts at 30s while the join lands anyway
+    const calls = mockRoutes(
       [
+        ["/admin-api/namespaces", [{ namespaceId: "other" }, { namespaceId: "abcd01" }]],
         ["/admin-api/groups/grp-77/join-via-inheritance", {}],
         ["/admin-api/contexts/ctx-77/join", {}],
         ["/admin-api/contexts/ctx-77/identities-owned", ["pk-me"]],
       ],
-      [["/admin-api/namespaces/abcd01/join", "already a member"]],
+      [["/admin-api/namespaces/abcd01/join", "gateway timeout", 504]],
     );
     expect(await acceptWorldInvite(encodeInvite(PAYLOAD))).toBe("ctx-77");
+    // sent exactly once — membership, not a retry, settles it
+    expect(calls.filter((c) => c.url.endsWith("/namespaces/abcd01/join"))).toHaveLength(1);
+    expect(getSession().namespaceId).toBe("abcd01");
+  });
+
+  it("gives up on an invitation the node refused for good (409), with friendly copy", async () => {
+    const calls = mockRoutes(
+      [["/admin-api/namespaces", []]],
+      [["/admin-api/namespaces/abcd01/join", "invitation for group abcd01 expired at 999", 409]],
+    );
+    const err = await acceptWorldInvite(encodeInvite(PAYLOAD)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WorldInviteError);
+    const { outcome, message } = err as WorldInviteError;
+    expect(outcome.reason).toBe("expired");
+    expect(shouldRetain(outcome)).toBe(false); // the modal acks the captured link
+    expect(message).toBe("This invitation has expired. Ask for a new link.");
+    expect(calls.some((c) => c.url.includes("join-via-inheritance"))).toBe(false);
+    expect(getSession().contextId).toBeNull();
+  });
+
+  it("keeps an invitation that failed for the moment (503) for the next load", async () => {
+    mockRoutes(
+      [["/admin-api/namespaces", []]],
+      [["/admin-api/namespaces/abcd01/join", "no peers available to admit you", 503]],
+    );
+    const err = await acceptWorldInvite(encodeInvite(PAYLOAD)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WorldInviteError);
+    const { outcome, message } = err as WorldInviteError;
+    expect(outcome.reason).toBe("no-one-online");
+    expect(shouldRetain(outcome)).toBe(true); // the modal leaves the link captured
+    expect(message).toMatch(/No one in this world is online/);
+    expect(getSession().contextId).toBeNull();
   });
 
   it("retries the subgroup join once after syncing the namespace", async () => {
