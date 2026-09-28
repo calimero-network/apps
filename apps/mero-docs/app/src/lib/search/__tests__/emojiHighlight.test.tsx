@@ -14,11 +14,16 @@ const TEXT = '🚀 launch plan';
 
 function marks(text: string, ranges: [number, number][]): string[] {
   const { container } = render(
-    <Highlight text={text} ranges={ranges.map(([start, end]) => ({ start, end }))} />,
+    <Highlight
+      text={text}
+      ranges={ranges.map(([start, end]) => ({ start, end }))}
+    />,
   );
   // <mark> has no implicit ARIA role, so only a DOM query finds it.
   // eslint-disable-next-line testing-library/no-container
-  return [...container.querySelectorAll('mark')].map((m) => m.textContent ?? '');
+  return [...container.querySelectorAll('mark')].map(
+    (m) => m.textContent ?? '',
+  );
 }
 
 describe('emoji search highlight', () => {
@@ -34,6 +39,7 @@ describe('emoji search highlight', () => {
       docId: 'd',
       blocks: [{ id: 'p', kind: 'paragraph', text: TEXT }],
       links: [],
+      mentions: [],
     };
     const [hit] = searchText('🚀', new Map([[rowKey('f1', 'd'), doc]]));
     expect(hit.ranges).toEqual([[0, 2]]);
