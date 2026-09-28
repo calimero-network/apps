@@ -49,7 +49,6 @@ vi.mock('@calimero-network/mero-react', async (importOriginal) => {
   return {
     MeroContext: actual.MeroContext,
     useMero: actual.useMero,
-    useNamespacesForApplication: actual.useNamespacesForApplication,
     useGroupContexts: () => ({ contexts: h.none, loading: false, refetch: h.refetch }),
     useGroupInfo: () => ({ groupInfo: null, loading: false }),
     useGroupMembers: () => ({ members: h.none, loading: false, refetch: h.refetch }),
