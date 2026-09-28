@@ -2,6 +2,7 @@
 // remembered open state, and the sheet it becomes on a phone.
 
 import { test, expect } from '../fixtures/single-user';
+import { settled } from '../fixtures/workspace';
 
 const PHONE = { width: 375, height: 667 };
 
@@ -100,6 +101,7 @@ test.describe('Details panel (single-node)', () => {
 
     await details.toggle().click();
     await expect(sheet).toBeVisible();
+    await settled(sheet);
     await page.mouse.click(10, PHONE.height / 2);
     await expect(sheet).toBeHidden();
   });

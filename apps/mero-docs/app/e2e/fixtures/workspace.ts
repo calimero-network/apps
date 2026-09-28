@@ -966,3 +966,11 @@ export class SearchPaletteDriver {
 export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// Radix arms a sheet's outside-click listener a task after opening and drops
+// an earlier click, so a backdrop click waits until the sheet has slid in.
+export async function settled(sheet: Locator): Promise<void> {
+  await sheet.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished)),
+  );
+}
