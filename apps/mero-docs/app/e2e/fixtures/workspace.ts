@@ -741,7 +741,7 @@ export class EditorDriver {
   }
 
   linkPicker(): Locator {
-    return this.page.getByRole('listbox', { name: 'Link to a document' });
+    return this.page.getByRole('listbox', { name: 'Mention or link' });
   }
 
   sectionPicker(): Locator {

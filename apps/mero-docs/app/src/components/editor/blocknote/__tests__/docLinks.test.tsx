@@ -435,6 +435,21 @@ describe('followDocLink (L-16, L-17)', () => {
     );
   });
 
+  it.each([
+    ['plain', {}],
+    ['Cmd', { metaKey: true }],
+    ['middle', { button: 1 }],
+  ])('keeps a %s click on a member mention on the doc', (_name, over) => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const n = nav();
+    const event = click(`/app/w1/m/${'ab'.repeat(32)}`, over);
+    expect(openClickedLink(event, n)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(n.goDoc).not.toHaveBeenCalled();
+    expect(n.navigate).not.toHaveBeenCalled();
+  });
+
   it('opens a doc link from the editor inside the app, not in a tab', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     const n = nav();

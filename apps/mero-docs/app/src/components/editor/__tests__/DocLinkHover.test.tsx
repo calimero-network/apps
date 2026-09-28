@@ -15,11 +15,26 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'w1',
     selfIdentity: 'me',
-    namespaceMemberNames: {},
+    namespaceMemberNames: { [BOB]: 'Robert' },
   }),
 }));
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: () => ({ name: null }),
+}));
+const BOB = 'b0'.repeat(32);
+const canOpen = vi.fn<(member: string) => boolean | undefined>(() => true);
+vi.mock('@/hooks/useAppRoute', () => ({
+  useAppRoute: () => ({ route: { ws: 'w1', folder: 'f1', doc: 'd1' } }),
+}));
+vi.mock('@/hooks/useFolderReach', () => ({
+  useFolderReach: () => canOpen,
+}));
+vi.mock('@calimero-network/mero-react', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useGroupMembers: () => ({
+    members: [{ identity: 'me' }, { identity: BOB, role: 'Admin' }],
+  }),
+  useGroupCapabilities: () => ({ capabilities: null }),
 }));
 
 const NOW = new Date(2026, 8, 28, 12, 0).getTime();
@@ -167,7 +182,10 @@ describe('docLinkCardProps (L-18 to L-22)', () => {
 });
 
 describe('DocLinkHover', () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    canOpen.mockReturnValue(true);
+  });
   afterEach(() => vi.useRealTimers());
 
   function setup() {
@@ -181,13 +199,22 @@ describe('DocLinkHover', () => {
           and{' '}
           <a href="https://example.com" data-testid="web">
             web
+          </a>{' '}
+          and{' '}
+          <a href={`/app/w1/m/${BOB}`} data-testid="mention">
+            @Bob
           </a>
         </p>
       </DocLinkHover>,
     );
-    return { doc: screen.getByTestId('doc'), web: screen.getByTestId('web') };
+    return {
+      doc: screen.getByTestId('doc'),
+      web: screen.getByTestId('web'),
+      mention: screen.getByTestId('mention'),
+    };
   }
   const card = () => screen.queryByTestId('doc-link-card');
+  const memberCard = () => screen.queryByTestId('member-card');
   const advance = (ms: number) => act(() => vi.advanceTimersByTime(ms));
 
   it('opens after the pointer rests on a doc link for 300 ms', () => {
@@ -279,6 +306,21 @@ describe('DocLinkHover', () => {
     advance(300);
     fireEvent.click(doc);
     expect(card()).toBeNull();
+  });
+
+  it('opens a mention card with the member name today and their role', () => {
+    const { mention } = setup();
+    fireEvent.pointerOver(mention, { pointerType: 'mouse' });
+    advance(300);
+    expect(memberCard()?.textContent).toBe('RORobertAdminCan open this folder');
+    expect(card()).toBeNull();
+  });
+
+  it('opens a mention card at once on click, and says when they cannot open the folder', () => {
+    canOpen.mockReturnValue(false);
+    const { mention } = setup();
+    fireEvent.click(mention);
+    expect(memberCard()?.textContent).toContain("Can't open this folder");
   });
 
   it('stays open when the card itself is clicked', () => {

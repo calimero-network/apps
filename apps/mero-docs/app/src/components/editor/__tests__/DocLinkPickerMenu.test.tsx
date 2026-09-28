@@ -31,7 +31,7 @@ describe('DocLinkPickerMenu', () => {
       <DocLinkPickerMenu items={ITEMS} activeIndex={1} onPick={() => {}} />,
     );
     expect(
-      screen.getByRole('listbox', { name: 'Link to a document' }),
+      screen.getByRole('listbox', { name: 'Mention or link' }),
     ).toBeTruthy();
     const options = screen.getAllByRole('option');
     expect(options.map((o) => o.getAttribute('aria-selected'))).toEqual([
@@ -65,8 +65,47 @@ describe('DocLinkPickerMenu', () => {
 
   it('says when nothing matches', () => {
     render(<DocLinkPickerMenu items={[]} activeIndex={0} onPick={() => {}} />);
-    expect(screen.getByText('No documents match')).toBeTruthy();
+    expect(screen.getByText('No people or documents match')).toBeTruthy();
     expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('groups people before documents, keeping one row order for the keyboard', () => {
+    const grouped: DocLinkPickerItem[] = [
+      {
+        id: 'person:b',
+        kind: 'person',
+        group: 'People',
+        title: 'Bob',
+        folderLabel: "Can't open this folder",
+      },
+      {
+        id: 'person:me',
+        kind: 'person',
+        group: 'People',
+        title: 'You',
+        folderLabel: '',
+      },
+      { ...ITEMS[0], group: 'Documents' },
+    ];
+    render(
+      <DocLinkPickerMenu items={grouped} activeIndex={2} onPick={() => {}} />,
+    );
+    const groups = screen.getAllByRole('group');
+    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
+      'People',
+      'Documents',
+    ]);
+    expect(groups.map((g) => g.textContent)).toEqual([
+      "PeopleBobCan't open this folderYou",
+      'DocumentsPricing notesProduct',
+    ]);
+    const options = screen.getAllByRole('option');
+    expect(options.map((o) => o.id)).toEqual([
+      'bn-suggestion-menu-item-0',
+      'bn-suggestion-menu-item-1',
+      'bn-suggestion-menu-item-2',
+    ]);
+    expect(options[2].getAttribute('aria-selected')).toBe('true');
   });
 
   it('names the section picker by what it links', () => {
