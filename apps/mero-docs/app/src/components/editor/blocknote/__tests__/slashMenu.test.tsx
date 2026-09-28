@@ -3,6 +3,7 @@ import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { inlineToText } from '../content';
 import { DOC_LINK_TRIGGER, insertDocLink, opensDocPicker } from '../docLinks';
 import {
+  blockTypeSelectItems,
   SECTION_LINK_TRIGGER,
   SLASH_TRIGGER,
   slashMenuItems,
@@ -22,16 +23,17 @@ const titled = (editor: ReturnType<typeof editorWith>, title: string) =>
   slashMenuItems(editor).find((item) => item.title === title)!;
 
 describe('slashMenuItems', () => {
-  it('keeps the default blocks, titled in sentence case', () => {
+  it('offers only the blocks the app supports, titled in sentence case', () => {
     const items = slashMenuItems(editorWith(''));
-    const titles = items.map((item) => item.title);
-    expect(titles).toEqual(
-      expect.arrayContaining(['Heading 1', 'Bullet list', 'Paragraph']),
-    );
-    for (const item of items) {
-      expect(item.title.slice(1)).toBe(item.title.slice(1).toLowerCase());
-      expect(item.group.slice(1)).toBe(item.group.slice(1).toLowerCase());
-    }
+    expect(items.map((item) => [item.group, item.title])).toEqual([
+      ['Headings', 'Heading 1'],
+      ['Headings', 'Heading 2'],
+      ['Headings', 'Heading 3'],
+      ['Links', 'Link to a document'],
+      ['Links', 'Link to a section'],
+      ['Basic blocks', 'Bullet list'],
+      ['Basic blocks', 'Paragraph'],
+    ]);
   });
 
   it('names shortcuts by modifier, not by platform', () => {
@@ -40,12 +42,8 @@ describe('slashMenuItems', () => {
     expect(titled(editor, 'Bullet list').shortcut).toBe('Mod-Shift-8');
   });
 
-  it('ends with a Links group found by its aliases', () => {
+  it('finds the links by their aliases', () => {
     const items = slashMenuItems(editorWith(''));
-    expect(items.slice(-2).map((i) => [i.group, i.title])).toEqual([
-      ['Links', 'Link to a document'],
-      ['Links', 'Link to a section'],
-    ]);
     const found = (query: string) =>
       filterSuggestionItems(items, query).map((i) => i.title);
     for (const query of ['link', 'doc', 'page', 'mention']) {
@@ -104,5 +102,24 @@ describe('slashMenuItems', () => {
     type('#');
     expect(menus.store.state?.show).toBeFalsy();
     editor.unmount();
+  });
+});
+
+describe('blockTypeSelectItems', () => {
+  it('offers the same blocks as the / menu in the toolbar, in sentence case', () => {
+    const editor = editorWith('');
+    expect(
+      blockTypeSelectItems(editor.dictionary).map((item) => [
+        item.name,
+        item.type,
+        item.props,
+      ]),
+    ).toEqual([
+      ['Paragraph', 'paragraph', undefined],
+      ['Heading 1', 'heading', { level: 1, isToggleable: false }],
+      ['Heading 2', 'heading', { level: 2, isToggleable: false }],
+      ['Heading 3', 'heading', { level: 3, isToggleable: false }],
+      ['Bullet list', 'bulletListItem', undefined],
+    ]);
   });
 });

@@ -23,6 +23,7 @@ vi.mock('@blocknote/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@blocknote/react')>()),
   SideMenuController: () => null,
   LinkToolbarController: () => null,
+  FormattingToolbarController: () => null,
 }));
 vi.mock('../blocknote/DocLinkPicker', () => ({ DocLinkPicker: () => null }));
 vi.mock('../blocknote/EditorSlashMenu', () => ({
