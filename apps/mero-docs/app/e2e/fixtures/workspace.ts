@@ -16,9 +16,10 @@
 import type { Page, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-const FILLER_LINES = 30; // enough text above "Milestones" that landing on it needs a scroll
+const FILLER_LINES = 30; // enough text around "Milestones" that it needs a scroll and can reach the top
 export const SECTION_PARAGRAPH =
   'Pricing follows the model in Pricing notes, and the story lives in the blog'; // longer than a section name
+export const SECTIONS_LAST_LINE = `Closing line ${FILLER_LINES}`; // writeSections' final line, a peer's sync barrier
 
 export type Visibility = 'Open' | 'Restricted';
 
@@ -611,18 +612,23 @@ export class EditorDriver {
     await this.page.getByRole('button', { name: 'Open block menu' }).click();
   }
 
-  // A long intro, then a "Milestones" heading, a line under it and SECTION_PARAGRAPH.
+  // A long intro, a "Milestones" heading, a line under it, SECTION_PARAGRAPH, then
+  // closing lines: a block can only scroll to the top with a screen of text below it.
   async writeSections(): Promise<void> {
     await this.type('Intro');
-    for (let line = 1; line <= FILLER_LINES; line++) {
-      await this.page.keyboard.press('Enter');
-      await this.page.keyboard.type(`Filler line ${line}`);
-    }
-    for (const text of ['# Milestones', 'Folder sharing and roles', SECTION_PARAGRAPH]) {
+    const lines = [
+      ...Array.from({ length: FILLER_LINES }, (_, i) => `Filler line ${i + 1}`),
+      '# Milestones',
+      'Folder sharing and roles',
+      SECTION_PARAGRAPH,
+      ...Array.from({ length: FILLER_LINES }, (_, i) => `Closing line ${i + 1}`),
+    ];
+    for (const text of lines) {
       await this.page.keyboard.press('Enter');
       await this.page.keyboard.type(text);
     }
     await expect(this.block('Milestones').locator('h1')).toBeVisible();
+    await expect(this.block(SECTIONS_LAST_LINE)).toBeVisible();
   }
 
   /** A block's top edge relative to the editor's scroll area. */

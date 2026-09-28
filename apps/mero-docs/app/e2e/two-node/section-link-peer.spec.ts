@@ -2,7 +2,10 @@
 // section on another member's node.
 
 import { expect, test } from '../fixtures/two-user';
-import type { WorkspaceDriver } from '../fixtures/workspace';
+import {
+  SECTIONS_LAST_LINE,
+  type WorkspaceDriver,
+} from '../fixtures/workspace';
 
 async function expectLandedOn(
   driver: WorkspaceDriver,
@@ -49,7 +52,7 @@ test.describe('Section links across nodes (two-node)', () => {
     const link = await alice.editor.copySectionLink('Milestones');
 
     await bob.openDoc('Roadmap');
-    await bob.editor.expectContent('Folder sharing and roles', {
+    await bob.editor.expectContent(SECTIONS_LAST_LINE, {
       timeout: 60_000,
     });
     await bob.editor.block('Intro').click();
@@ -74,7 +77,7 @@ test.describe('Section links across nodes (two-node)', () => {
     expect(link.pathname).toBe(new URL(alice.page.url()).pathname);
     // Bob's node must hold the section before the link can land on it.
     await bob.openDoc('Roadmap');
-    await bob.editor.expectContent('Folder sharing and roles', {
+    await bob.editor.expectContent(SECTIONS_LAST_LINE, {
       timeout: 60_000,
     });
     await bob.page.goto('/app');

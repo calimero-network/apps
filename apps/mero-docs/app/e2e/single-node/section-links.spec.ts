@@ -38,12 +38,16 @@ test.describe('Section links (single-node)', () => {
     await expect(
       alice.page.getByText('Link to "Milestones" copied'),
     ).toBeVisible();
-    const blockId = await alice.editor
-      .block('Milestones')
-      .getAttribute('data-block-id');
     const url = new URL(copied);
     expect(url.origin).toBe(new URL(alice.page.url()).origin);
     expect(url.pathname).toBe(docPath);
+    // The link carries the node's id for the block; a block typed this session keeps
+    // its editor id in the DOM until the document is loaded from the node again.
+    await alice.page.reload();
+    await alice.editor.expectMounted();
+    const blockId = await alice.editor
+      .block('Milestones')
+      .getAttribute('data-block-id');
     expect(url.hash).toBe(`#${new URLSearchParams({ b: blockId ?? '' })}`);
   });
 
