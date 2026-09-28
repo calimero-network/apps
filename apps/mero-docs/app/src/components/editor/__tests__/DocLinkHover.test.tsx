@@ -3,7 +3,11 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { DocLinkHover, docLinkCardProps } from '../DocLinkHover';
+import {
+  DocAwareLinkToolbar,
+  DocLinkHover,
+  docLinkCardProps,
+} from '../DocLinkHover';
 import {
   rowKey,
   type DocText,
@@ -25,6 +29,13 @@ const BOB = 'b0'.repeat(32);
 const canOpen = vi.fn<(member: string) => boolean | undefined>(() => true);
 vi.mock('@/hooks/useAppRoute', () => ({
   useAppRoute: () => ({ route: { ws: 'w1', folder: 'f1', doc: 'd1' } }),
+}));
+vi.mock('@blocknote/react', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useBlockNoteEditor: () => ({
+    prosemirrorState: { selection: { from: 12, to: 12 } },
+  }),
+  LinkToolbar: () => <div data-testid="bn-link-toolbar" />,
 }));
 vi.mock('@/hooks/useFolderReach', () => ({
   useFolderReach: () => canOpen,
@@ -329,5 +340,29 @@ describe('DocLinkHover', () => {
     advance(300);
     fireEvent.click(card()!);
     expect(card()).not.toBeNull();
+  });
+});
+
+describe('DocAwareLinkToolbar', () => {
+  // The caret sits inside the link, as after a click on it.
+  const props = (url: string) =>
+    ({ url, text: 'x', range: { from: 10, to: 20 } }) as unknown as Parameters<
+      typeof DocAwareLinkToolbar
+    >[0];
+  const toolbar = () => screen.queryByTestId('bn-link-toolbar');
+
+  it('never offers the link toolbar on a mention, whose Open would leave the doc', () => {
+    render(<DocAwareLinkToolbar {...props(`/app/w1/m/${BOB}`)} />);
+    expect(toolbar()).toBeNull();
+  });
+
+  it('keeps it for a doc link or a web link with the caret inside', () => {
+    const { unmount } = render(
+      <DocAwareLinkToolbar {...props('/app/w1/f/f1/d/d2')} />,
+    );
+    expect(toolbar()).not.toBeNull();
+    unmount();
+    render(<DocAwareLinkToolbar {...props('https://example.com')} />);
+    expect(toolbar()).not.toBeNull();
   });
 });

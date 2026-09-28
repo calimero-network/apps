@@ -251,14 +251,14 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** BlockNote's link toolbar, except on a doc link or mention merely hovered: the card above stands in for it there. */
+/** BlockNote's link toolbar, except on a doc link merely hovered and on any mention: the card above stands in for it there. */
 export function DocAwareLinkToolbar(props: LinkToolbarProps) {
   const editor = useBlockNoteEditor();
   const { from, to } = editor.prosemirrorState.selection;
   const caretInLink = from >= props.range.from && to <= props.range.to;
   const origin = window.location.origin;
-  const inApp =
-    parseDocHref(props.url, origin) || parseMemberHref(props.url, origin);
-  if (!caretInLink && inApp) return null;
+  // A mention's Open would leave the doc for a member URL no page shows.
+  if (parseMemberHref(props.url, origin)) return null;
+  if (!caretInLink && parseDocHref(props.url, origin)) return null;
   return <LinkToolbar {...props} />;
 }

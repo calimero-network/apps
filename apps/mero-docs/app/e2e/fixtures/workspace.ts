@@ -788,6 +788,11 @@ export class EditorDriver {
   memberCard(): Locator {
     return this.page.getByTestId('member-card');
   }
+
+  // BlockNote's own toolbar for the link under the caret.
+  linkToolbar(): Locator {
+    return this.page.locator('.bn-link-toolbar');
+  }
 }
 
 // The open document's Details panel (a sheet below md) and its header toggle.

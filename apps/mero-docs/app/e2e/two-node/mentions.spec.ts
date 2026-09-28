@@ -42,6 +42,10 @@ test.describe('Mentions (two-node)', () => {
     await option.click();
     await expect(alice.editor.mentionChip('@bob')).toBeVisible();
     await saved(alice.page);
+    // A click puts the caret in the link; the card stands in for BlockNote's toolbar.
+    await alice.editor.mentionChip('@bob').click();
+    await expect(alice.editor.memberCard()).toBeVisible();
+    await expect(alice.editor.linkToolbar()).toHaveCount(0);
 
     await bob.home.open();
     await expect(bob.home.mentionsRow()).toHaveAccessibleName('Mentions, 1', {
