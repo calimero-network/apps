@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useTags } from '@/hooks/useTags';
 import {
+  docTagChips,
   findTagByName,
   firstUnusedColor,
   normalizeTagName,
@@ -34,11 +35,7 @@ export function DocTags({ tagKeys, canEdit, onAdd, onRemove }: Props) {
   const [query, setQuery] = React.useState('');
   const [color, setColor] = React.useState<string>(TAG_COLORS[0]);
 
-  const chips = tagKeys.flatMap((key) => {
-    const tag = byKey.get(key);
-    if (tag?.deleted) return [];
-    return [{ key, name: tag?.name ?? key, color: tag?.color }];
-  });
+  const chips = docTagChips(tagKeys, byKey);
   const name = normalizeTagName(query);
   const named = name ? findTagByName(tags, name) : undefined;
   const counts = open ? tagCounts(rows) : new Map<string, number>();

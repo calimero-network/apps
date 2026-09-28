@@ -43,6 +43,7 @@ export class WorkspaceDriver {
   readonly home: HomeDriver;
   readonly editor: EditorDriver;
   readonly tags: DocTagsDriver;
+  readonly details: DetailsDriver;
   readonly settings: SettingsDriver;
 
   constructor(page: Page, opts: DriverOptions = {}) {
@@ -55,6 +56,7 @@ export class WorkspaceDriver {
     this.home = new HomeDriver(page);
     this.editor = new EditorDriver(page);
     this.tags = new DocTagsDriver(page);
+    this.details = new DetailsDriver(page);
     this.settings = new SettingsDriver(page);
   }
 
@@ -656,6 +658,32 @@ export class EditorDriver {
     return block && area ? block.y - area.y : null;
   }
 
+  // A pasted anchor becomes a link mark, as when a user pastes a link copied from a page.
+  async pasteLink(href: string, text: string): Promise<void> {
+    await this.page
+      .locator('.ProseMirror')
+      .first()
+      .evaluate(
+        (el, [url, label]) => {
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.textContent = label;
+          const data = new DataTransfer();
+          data.setData('text/html', anchor.outerHTML);
+          data.setData('text/plain', label);
+          el.dispatchEvent(
+            new ClipboardEvent('paste', {
+              clipboardData: data,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        },
+        [href, text],
+      );
+    await expect(this.page.locator('.ProseMirror a', { hasText: text })).toBeVisible();
+  }
+
   // The item stays disabled ("Saving…") until the node has the block's id.
   async copySectionLink(text: string): Promise<string> {
     await this.openBlockMenu(text);
@@ -682,6 +710,40 @@ export class EditorDriver {
 
   linkCard(): Locator {
     return this.page.getByTestId('doc-link-card');
+  }
+}
+
+// The open document's Details panel (a sheet below md) and its header toggle.
+export class DetailsDriver {
+  constructor(private page: Page) {}
+
+  toggle(): Locator {
+    return this.page.getByRole('button', { name: 'Details', exact: true });
+  }
+
+  panel(): Locator {
+    return this.page
+      .getByRole('complementary')
+      .filter({ has: this.page.getByRole('heading', { name: 'Details', exact: true }) })
+      .or(this.page.getByRole('dialog', { name: 'Details' }));
+  }
+
+  async open(): Promise<void> {
+    if ((await this.toggle().getAttribute('aria-pressed')) !== 'true') {
+      await this.toggle().click();
+    }
+    await expect(this.panel()).toBeVisible();
+  }
+
+  // The value beside a label such as "Folder" or "Updated".
+  fact(term: string): Locator {
+    return this.panel()
+      .locator('dt', { hasText: term })
+      .locator('xpath=following-sibling::dd[1]');
+  }
+
+  section(name: 'Linked from' | 'Links to'): Locator {
+    return this.panel().getByRole('region', { name });
   }
 }
 

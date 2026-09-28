@@ -108,6 +108,12 @@ export interface EditorShellProps {
   focusKey?: string;
   /** The document's tag row, above the first line and outside the body. */
   tags?: React.ReactNode;
+  detailsOpen?: boolean;
+  onToggleDetails?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
+  /** A status bar under the header, such as the archived banner. */
+  notice?: React.ReactNode;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -133,6 +139,11 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   focusBlock,
   focusKey,
   tags,
+  detailsOpen,
+  onToggleDetails,
+  onArchive,
+  onUnarchive,
+  notice,
 }) => {
   const { theme } = useTheme();
 
@@ -339,7 +350,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-background">
+      <div className="flex min-w-0 flex-1 items-center justify-center h-full bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-ink mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading document…</p>
@@ -350,7 +361,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex min-w-0 flex-1 flex-col h-full bg-background">
         <EditorHeader
           documentName={documentName}
           title={readOnly ? undefined : title}
@@ -360,8 +371,14 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
           onCopyLink={onCopyLink}
+          detailsOpen={detailsOpen}
+          onToggleDetails={onToggleDetails}
+          onArchive={onArchive}
+          onUnarchive={onUnarchive}
           peers={peers}
         />
+
+        {notice}
 
         {section.banner && (
           <SectionBanner

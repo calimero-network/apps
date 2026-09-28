@@ -3,7 +3,7 @@
 // document read resolves, whichever read wins the race.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { DocumentEditor } from '../DocumentEditor';
 
@@ -14,6 +14,9 @@ const docsRemove = vi.fn();
 const toastError = vi.hoisted(() => vi.fn());
 const addTag = vi.fn();
 const removeTag = vi.fn();
+const archive = vi.fn();
+const unarchive = vi.fn();
+let lgUp = true; // Details docks from Tailwind lg; every smaller query matches
 let canEditDocs = true;
 let canManageTags = true;
 let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
@@ -69,6 +72,20 @@ vi.mock('@/hooks/useFugueBody', async (importOriginal) => {
     },
   };
 });
+vi.mock('@/hooks/useMediaQuery', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useMediaQuery')>();
+  return {
+    ...actual,
+    useMediaQuery: (query: string) => query !== actual.LG_QUERY || lgUp,
+  };
+});
+vi.mock('../DocDetails', () => ({
+  DocDetails: ({ sheet, onClose }: { sheet: boolean; onClose: () => void }) => (
+    <div data-testid="details" data-sheet={String(sheet)}>
+      <button onClick={onClose}>Close details</button>
+    </div>
+  ),
+}));
 vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs }),
@@ -102,6 +119,8 @@ vi.mock('@/hooks/useDocs', () => ({
     remove: docsRemove,
     addTag,
     removeTag,
+    archive,
+    unarchive,
     refetch: vi.fn(),
     ...contextState,
     client,
@@ -122,8 +141,18 @@ vi.mock('@/components/editor/EditorShell', () => ({
     focusBlock,
     focusKey,
     tags,
+    detailsOpen,
+    onToggleDetails,
+    onArchive,
+    onUnarchive,
+    notice,
   }: {
     tags?: React.ReactNode;
+    detailsOpen?: boolean;
+    onToggleDetails?: () => void;
+    onArchive?: () => void;
+    onUnarchive?: () => void;
+    notice?: React.ReactNode;
     isLoading: boolean;
     documentName: string;
     onDelete?: () => void;
@@ -142,7 +171,15 @@ vi.mock('@/components/editor/EditorShell', () => ({
         {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
       </span>
       {isLoading ? 'Loading document...' : documentName}
+      {notice}
       {tags}
+      {onToggleDetails && (
+        <button aria-pressed={!!detailsOpen} onClick={onToggleDetails}>
+          Details
+        </button>
+      )}
+      {onArchive && <button onClick={onArchive}>Archive</button>}
+      {onUnarchive && <button onClick={onUnarchive}>Unarchive</button>}
       {onDelete && <button onClick={onDelete}>Delete</button>}
       {onCopyLink && <button onClick={onCopyLink}>Copy link</button>}
       {sectionLinks && (
@@ -179,6 +216,10 @@ beforeEach(() => {
   deliver = undefined;
   canEditDocs = true;
   canManageTags = true;
+  lgUp = true;
+  localStorage.clear();
+  archive.mockResolvedValue(undefined);
+  unarchive.mockResolvedValue(undefined);
   addTag.mockResolvedValue(undefined);
   removeTag.mockResolvedValue(undefined);
   location = { pathname: '/app/ns/f/f/d/doc-1', hash: '', key: 'nav-1' };
@@ -454,6 +495,109 @@ describe('DocumentEditor', () => {
       await waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
       expect(screen.getByTestId('doc-tags').textContent).toContain('q3');
       expect(screen.queryByText("Couldn't load document")).toBeNull();
+    });
+  });
+
+  describe('details', () => {
+    const mount = () =>
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+    const toggle = () => screen.getByRole('button', { name: 'Details' });
+
+    it('docks Details beside the document from lg up, and remembers it on this device', async () => {
+      const { unmount } = mount();
+      await screen.findByText('Notes');
+      expect(screen.queryByTestId('details')).toBeNull();
+      expect(toggle().getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(toggle());
+      expect(screen.getByTestId('details').getAttribute('data-sheet')).toBe('false');
+      expect(toggle().getAttribute('aria-pressed')).toBe('true');
+      expect(localStorage.getItem('mero-drive:details-open')).toBe('true');
+      unmount();
+
+      mount();
+      await screen.findByText('Notes');
+      expect(screen.getByTestId('details')).toBeTruthy();
+      fireEvent.click(screen.getByText('Close details'));
+      expect(screen.queryByTestId('details')).toBeNull();
+      expect(localStorage.getItem('mero-drive:details-open')).toBe('false');
+    });
+
+    it('opens Details as a sheet below lg, without changing the remembered panel (L-27)', async () => {
+      lgUp = false;
+      mount();
+      await screen.findByText('Notes');
+      fireEvent.click(toggle());
+      expect(screen.getByTestId('details').getAttribute('data-sheet')).toBe('true');
+      expect(localStorage.getItem('mero-drive:details-open')).toBeNull();
+      fireEvent.click(screen.getByText('Close details'));
+      expect(screen.queryByTestId('details')).toBeNull();
+    });
+  });
+
+  describe('archive (R-25)', () => {
+    const mount = () =>
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+    const banner = () => screen.queryByText('This document is archived');
+
+    it('archives the doc and keeps it open under a banner, then unarchives it', async () => {
+      mount();
+      await screen.findByText('Notes');
+      expect(banner()).toBeNull();
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(archive).toHaveBeenCalledWith('doc-1');
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+
+      getDoc.mockResolvedValue(DOC);
+      const bar = screen.getByRole('group', { name: 'This document is archived' });
+      fireEvent.click(within(bar).getByRole('button', { name: 'Unarchive' }));
+      await waitFor(() => expect(banner()).toBeNull());
+      expect(unarchive).toHaveBeenCalledWith('doc-1');
+    });
+
+    it('offers archiving only to an editor of this folder who is not a guest', async () => {
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      canManageTags = false;
+      const { unmount } = mount();
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
+      unmount();
+
+      canManageTags = true;
+      canEditDocs = false;
+      mount();
+      await waitFor(() => expect(banner()).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    });
+
+    it('says a failed archive plainly and shows no banner', async () => {
+      archive.mockRejectedValue(new Error('rpc: storage'));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mount();
+      await screen.findByText('Notes');
+      fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          "Couldn't archive the document. Try again.",
+        ),
+      );
+      expect(banner()).toBeNull();
+    });
+
+    it('shows the banner when a peer archives the open doc', async () => {
+      mount();
+      await screen.findByText('Notes');
+      getDoc.mockResolvedValue({ ...DOC, archived: true });
+      act(() =>
+        deliver?.({ contextId: 'docs-ctx', data: { DocArchived: { id: 'doc-1' } } }),
+      );
+      await waitFor(() => expect(banner()).toBeTruthy());
     });
   });
 });

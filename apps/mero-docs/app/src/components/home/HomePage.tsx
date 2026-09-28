@@ -20,6 +20,7 @@ import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
+import { useNow } from '@/hooks/useNow';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
@@ -47,7 +48,6 @@ import {
   useHomeChips,
 } from './useHomeChips';
 
-const CLOCK_TICK_MS = 60_000; // "2 min ago" labels and the Updated window move on
 const SORT_CYCLE: HomeQuery['sort'][] = ['updated', 'name', 'created'];
 const SORT_LABELS: Record<HomeQuery['sort'], string> = {
   updated: 'Last updated',
@@ -76,15 +76,6 @@ function isFiltered(q: HomeQuery): boolean {
     !!q.by ||
     q.archived
   );
-}
-
-function useNow(): number {
-  const [now, setNow] = React.useState(Date.now);
-  React.useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
 }
 
 // Probes one folder's write access; a hook per folder, so each gets a component.

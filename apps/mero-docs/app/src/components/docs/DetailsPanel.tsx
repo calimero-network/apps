@@ -241,7 +241,7 @@ function DetailsBody({
   );
 }
 
-// The document's details beside the editor, from md up.
+// The document's details beside the editor, from lg up.
 export function DetailsPanel(props: DetailsPanelProps) {
   return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col overflow-y-auto border-l bg-background">
@@ -250,7 +250,7 @@ export function DetailsPanel(props: DetailsPanelProps) {
   );
 }
 
-// The same details as a right-hand sheet below md; Escape and the backdrop close it.
+// The same details as a right-hand sheet below lg; Escape and the backdrop close it.
 export function DetailsSheet({
   open,
   ...props

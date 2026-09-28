@@ -23,6 +23,8 @@ import { DocTags } from '@/components/tags/DocTags';
 import { isContextEvent } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { LG_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
@@ -32,15 +34,20 @@ import { useDocPresence } from '@/hooks/useDocPresence';
 import { useTitleCursors } from '@/hooks/useTitleCursors';
 import { useCanManageTags } from '@/hooks/useTags';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
+import { ArchivedBanner } from '@/components/editor/ArchivedBanner';
+import { DocDetails } from './DocDetails';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { copyLink } from '@/lib/copyLink';
-import { parseTagChanges } from '@/lib/rich/events';
+import { parseMetaChanges } from '@/lib/rich/events';
 import { docUrl, parseAppPath } from '@/lib/routes';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 const TAG_ADD_FAILED = "Couldn't add the tag. Try again.";
 const TAG_REMOVE_FAILED = "Couldn't remove the tag. Try again.";
+const ARCHIVE_FAILED = "Couldn't archive the document. Try again.";
+const UNARCHIVE_FAILED = "Couldn't unarchive the document. Try again.";
+const DETAILS_OPEN_KEY = 'mero-drive:details-open'; // this device's Details panel, from lg up
 
 interface Props {
   folderId: string;
@@ -68,11 +75,14 @@ export function DocumentEditor({
   // rather than writable on error.
   const canEditDocs = perms.canEditDocs;
   const canManageTags = useCanManageTags();
-  const canTag = canEditDocs && canManageTags;
+  // Tags and archive are for editors of this folder, never guests.
+  const canOrganize = canEditDocs && canManageTags;
   const docs = useDocs(folderId);
   const {
     addTag: docsAddTag,
     removeTag: docsRemoveTag,
+    archive: docsArchive,
+    unarchive: docsUnarchive,
     remove: docsRemove,
     get: docsGet,
     contextId: docsContextId,
@@ -166,7 +176,7 @@ export function DocumentEditor({
     };
   }, [docId, docsContextId, docsGet]);
 
-  // Only the newest re-read lands; a failed one keeps the tags already shown.
+  // Only the newest re-read lands; a failed one keeps the tags and archive state already shown.
   const rereadSeqRef = useRef(0);
   const rereadDoc = useCallback(() => {
     const seq = ++rereadSeqRef.current;
@@ -176,19 +186,19 @@ export function DocumentEditor({
         console.warn('[DocumentEditor] doc re-read failed', cause),
     );
   }, [docId, docsGet]);
-  const tagEventContexts = useMemo(
+  const metaEventContexts = useMemo(
     () => (docsContextId ? [docsContextId] : []),
     [docsContextId],
   );
   // Doc ids repeat across folders, so the event must come from this doc's context.
-  const onTagEvent = useCallback(
+  const onMetaEvent = useCallback(
     (event: SubscriptionEventData) => {
       if (!isContextEvent(event) || event.contextId !== docsContextId) return;
-      if (parseTagChanges(event.data).includes(docId)) rereadDoc();
+      if (parseMetaChanges(event.data).includes(docId)) rereadDoc();
     },
     [docsContextId, docId, rereadDoc],
   );
-  useSubscription(tagEventContexts, onTagEvent);
+  useSubscription(metaEventContexts, onMetaEvent);
   const onAddTag = useCallback(
     (key: string) =>
       void docsAddTag(docId, key).then(rereadDoc, (cause: unknown) => {
@@ -205,6 +215,28 @@ export function DocumentEditor({
       }),
     [docsRemoveTag, docId, rereadDoc],
   );
+
+  const setArchived = useCallback(
+    (archived: boolean) =>
+      void (archived ? docsArchive : docsUnarchive)(docId).then(
+        rereadDoc,
+        (cause: unknown) => {
+          console.warn('[DocumentEditor] archive change failed', cause);
+          toast.error(archived ? ARCHIVE_FAILED : UNARCHIVE_FAILED);
+        },
+      ),
+    [docsArchive, docsUnarchive, docId, rereadDoc],
+  );
+
+  // The panel beside the document is remembered; the sheet below lg opens only when asked.
+  const isDesktop = useMediaQuery(LG_QUERY);
+  const [panelOpen, setPanelOpen] = useLocalStorage(DETAILS_OPEN_KEY, false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (isDesktop) setSheetOpen(false);
+  }, [isDesktop]);
+  const detailsOpen = isDesktop ? panelOpen : sheetOpen;
+  const setDetailsOpen = isDesktop ? setPanelOpen : setSheetOpen;
 
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
@@ -252,7 +284,7 @@ export function DocumentEditor({
   }
 
   return (
-    <>
+    <div className="flex h-full">
       <EditorShell
         documentName={title.title || 'Untitled'}
         // Every mutation handler gates on canEditDocs so a read-only viewer
@@ -297,14 +329,40 @@ export function DocumentEditor({
           doc && (
             <DocTags
               tagKeys={doc.tags}
-              canEdit={canTag}
+              canEdit={canOrganize}
               onAdd={onAddTag}
               onRemove={onRemoveTag}
             />
           )
         }
+        detailsOpen={detailsOpen}
+        onToggleDetails={() => setDetailsOpen(!detailsOpen)}
+        onArchive={
+          canOrganize && doc && !doc.archived
+            ? () => setArchived(true)
+            : undefined
+        }
+        onUnarchive={
+          canOrganize && doc?.archived ? () => setArchived(false) : undefined
+        }
+        notice={
+          doc?.archived && (
+            <ArchivedBanner
+              onUnarchive={canOrganize ? () => setArchived(false) : undefined}
+            />
+          )
+        }
       />
+      {detailsOpen && (
+        <DocDetails
+          folderId={folderId}
+          docId={docId}
+          folderName={folderName}
+          sheet={!isDesktop}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
       <DocumentInspector client={client} docId={docId} />
-    </>
+    </div>
   );
 }

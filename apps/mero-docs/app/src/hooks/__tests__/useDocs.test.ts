@@ -20,6 +20,8 @@ const docsClientStub = {
   deleteDoc: vi.fn(),
   addTag: vi.fn(),
   removeTag: vi.fn(),
+  archiveDoc: vi.fn(),
+  unarchiveDoc: vi.fn(),
 };
 // Per-context clients for tests that switch folders; others share the stub.
 const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
@@ -276,6 +278,19 @@ describe('useDocs', () => {
       id: 'd1',
       tag: 'plan',
     });
+    expect(reread).toHaveBeenCalledTimes(2);
+  });
+
+  it('archives and unarchives a doc, then has every list of the folder re-read', async () => {
+    const { result } = renderHook(() => useDocs('folder-1'));
+    await waitFor(() => expect(result.current.contextId).toBe('docs-ctx-1'));
+    const reread = vi.fn();
+    const off = subscribeDocsRefetch('docs-ctx-1', reread);
+    await act(() => result.current.archive('d1'));
+    await act(() => result.current.unarchive('d1'));
+    off();
+    expect(docsClientStub.archiveDoc).toHaveBeenCalledWith({ id: 'd1' });
+    expect(docsClientStub.unarchiveDoc).toHaveBeenCalledWith({ id: 'd1' });
     expect(reread).toHaveBeenCalledTimes(2);
   });
 });

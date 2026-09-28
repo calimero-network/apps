@@ -38,7 +38,7 @@ import { WorkspaceNav } from './WorkspaceNav';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDocs } from '@/hooks/useDocs';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { MD_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
@@ -53,7 +53,6 @@ import { SearchContainer } from '@/components/search/SearchContainer';
 import { useRecentDocs } from '@/hooks/useRecentDocs';
 import { KEY_LABELS } from '@/lib/platform';
 
-const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
 const EDITOR_SELECTOR = '.bn-editor'; // Cmd/Ctrl+K there is the editor's own link shortcut
 const SEARCH_KEY_CODE = 'KeyK'; // the physical key, so the shortcut works on any layout
 

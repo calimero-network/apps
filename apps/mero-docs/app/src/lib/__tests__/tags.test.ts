@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  docTagChips,
   findTagByName,
   firstUnusedColor,
   isValidTagKey,
@@ -269,5 +270,18 @@ describe('firstUnusedColor', () => {
     expect(
       firstUnusedColor(TAG_COLORS.map((c, i) => coloured(`k${i}`, c))),
     ).toBe(TAG_COLORS[0]);
+  });
+});
+
+describe('docTagChips', () => {
+  it('names each key from the workspace tags, in the doc order, leaving deleted tags out', () => {
+    const byKey = new Map([
+      ['q3', tag('q3', 'Q3')],
+      ['old', tag('old', 'Old', true)],
+    ]);
+    expect(docTagChips(['new', 'q3', 'old'], byKey)).toEqual([
+      { key: 'new', name: 'new', color: undefined },
+      { key: 'q3', name: 'Q3', color: TAG_COLORS[0] },
+    ]);
   });
 });

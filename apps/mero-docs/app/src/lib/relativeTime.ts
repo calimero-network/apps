@@ -21,7 +21,13 @@ export function whenLabel(ms: number, nowMs: number): string {
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   if (ms >= yesterday.getTime()) return 'yesterday';
-  const sameYear = new Date(ms).getFullYear() === today.getFullYear();
+  return dateLabel(ms, nowMs);
+}
+
+/** A day as a date: "Sep 22", or "Dec 31, 2025" outside this year. */
+export function dateLabel(ms: number, nowMs: number): string {
+  const sameYear =
+    new Date(ms).getFullYear() === new Date(nowMs).getFullYear();
   return (sameYear ? DAY_FORMAT : DAY_YEAR_FORMAT).format(ms);
 }
 
