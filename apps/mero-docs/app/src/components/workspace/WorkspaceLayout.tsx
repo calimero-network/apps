@@ -55,6 +55,7 @@ import { KEY_LABELS } from '@/lib/platform';
 
 const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
 const EDITOR_SELECTOR = '.bn-editor'; // Cmd/Ctrl+K there is the editor's own link shortcut
+const SEARCH_KEY_CODE = 'KeyK'; // the physical key, so the shortcut works on any layout
 
 // Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
 // only needed once a document is opened, so they must not weigh down the
@@ -217,7 +218,7 @@ export function WorkspaceLayout() {
     if (!hasWorkspace) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
-      if (e.key.toLowerCase() !== 'k') return;
+      if (e.code !== SEARCH_KEY_CODE) return;
       if (e.target instanceof Element && e.target.closest(EDITOR_SELECTOR)) return;
       e.preventDefault();
       setSearchOpen((open) => !open);

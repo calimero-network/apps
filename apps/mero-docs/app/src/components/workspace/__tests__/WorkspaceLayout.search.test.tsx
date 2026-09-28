@@ -118,21 +118,32 @@ describe('WorkspaceLayout search', () => {
 
   it('toggles the palette on Cmd+K or Ctrl+K anywhere outside the editor', () => {
     renderAt('/app/ns');
-    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
     expect(palette()).not.toBeNull();
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search' }), {
       key: 'k',
+      code: 'KeyK',
       metaKey: true,
     });
     expect(palette()).toBeNull();
-    fireEvent.keyDown(document.body, { key: 'K', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'K', code: 'KeyK', ctrlKey: true });
+    expect(palette()).not.toBeNull();
+  });
+
+  it('reads the K key by its place, so any keyboard layout opens it', () => {
+    renderAt('/app/ns');
+    fireEvent.keyDown(document.body, { key: 'л', code: 'KeyK', ctrlKey: true });
     expect(palette()).not.toBeNull();
   });
 
   it('leaves Cmd+K to the editor, where it adds a link', async () => {
     renderAt('/app/ns/f/f1/d/d1');
     const editor = await screen.findByTestId('editor');
-    const event = fireEvent.keyDown(editor, { key: 'k', metaKey: true });
+    const event = fireEvent.keyDown(editor, {
+      key: 'k',
+      code: 'KeyK',
+      metaKey: true,
+    });
     expect(event).toBe(true);
     expect(palette()).toBeNull();
   });
