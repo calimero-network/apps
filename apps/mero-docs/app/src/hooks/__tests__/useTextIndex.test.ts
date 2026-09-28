@@ -118,7 +118,7 @@ afterEach(() => {
 });
 
 describe('useTextIndex', () => {
-  it('reads every listed doc with at most 3 in flight, skipping archived ones', async () => {
+  it('reads every listed doc with at most 3 in flight, archived ones too', async () => {
     let inFlight = 0;
     let most = 0;
     const open: { doc: string; done: () => void }[] = [];
@@ -153,9 +153,9 @@ describe('useTextIndex', () => {
     }
 
     expect(most).toBe(TEXT_INDEX_CONCURRENCY);
-    expect(getDocument).toHaveBeenCalledTimes(7);
-    expect(getDocument).not.toHaveBeenCalledWith('c-f2', 'old');
-    expect(result.current.texts.size).toBe(7);
+    expect(getDocument).toHaveBeenCalledTimes(8);
+    expect(textOf(result, 'f2/old')).toBe('text of old');
+    expect(result.current.texts.size).toBe(8);
     expect(textOf(result, 'f2/g')).toBe('text of g');
     expect(result.current).toMatchObject({
       foldersDone: 2,
@@ -266,7 +266,7 @@ describe('useTextIndex', () => {
     expect(getDocument).toHaveBeenCalledTimes(1);
   });
 
-  it('drops a doc that leaves the list or is archived', async () => {
+  it('drops a doc that leaves the list, and keeps one that is archived', async () => {
     getDocument.mockImplementation((_ctx, doc) => Promise.resolve(blocks(doc)));
     const { result, rerender } = renderHook(
       ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
@@ -281,7 +281,7 @@ describe('useTextIndex', () => {
 
     rerender({ rows: [row('f1', 'a'), row('f1', 'c', true)] });
     await settle();
-    expect([...result.current.texts.keys()]).toEqual(['f1/a']);
+    expect([...result.current.texts.keys()]).toEqual(['f1/a', 'f1/c']);
     expect(getDocument).toHaveBeenCalledTimes(3);
   });
 

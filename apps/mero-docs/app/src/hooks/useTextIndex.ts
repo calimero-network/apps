@@ -1,5 +1,5 @@
 // The text of every listed doc, read once per doc with `get_document` and kept
-// in memory only, so the palette can search inside documents on this device.
+// in memory only, so search and Details can read inside documents on this device.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -52,12 +52,11 @@ export function useTextIndex({
 >): TextIndex {
   const { mero } = useMero();
 
-  // Archived docs never show in the palette, so they are not read at all.
   const wanted = useMemo(() => {
     const out = new Map<string, Job>();
     for (const r of rows) {
       const contextId = contextOf(r.folderId);
-      if (r.archived || !contextId) continue;
+      if (!contextId) continue;
       const key = rowKey(r.folderId, r.docId);
       out.set(key, {
         key,

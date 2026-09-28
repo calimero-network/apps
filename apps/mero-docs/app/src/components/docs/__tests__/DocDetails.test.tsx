@@ -163,6 +163,19 @@ describe('DocDetails (L-23)', () => {
     expect(goDoc).toHaveBeenCalledWith('f1', 'pricing', { block: 'b7' });
   });
 
+  it('lists the links of an archived doc, and backlinks from archived docs', () => {
+    rows = rows.map((r) =>
+      r.docId === 'plan' || r.docId === 'blog' ? { ...r, archived: true } : r,
+    );
+    texts = new Map([
+      text('f1', 'plan', [link('f1', 'pricing', 'see pricing')]),
+      text('f2', 'blog', [link('f1', 'plan', 'Plan is ready')]),
+    ]);
+    renderDetails();
+    expect(within(section('Links to')).getByText('Pricing notes')).toBeTruthy();
+    expect(within(section('Linked from')).getByText('Launch blog')).toBeTruthy();
+  });
+
   it('follows the index as it changes (L-24)', () => {
     const view = renderDetails();
     expect(
