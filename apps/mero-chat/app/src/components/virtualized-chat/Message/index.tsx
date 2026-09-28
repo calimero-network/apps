@@ -245,12 +245,21 @@ const Tick = styled.div`
   line-height: 150%;
 `;
 
-const AttachmentsContainer = styled.div`
+const AttachmentsContainer = styled.div<{ $hasText: boolean }>`
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   padding: 0 2rem;
-  margin-top: 8px;
+  /* Below text, a gap separates the two. With no text the attachment IS the
+     message, and sits directly under the sender line like text would. */
+  margin-top: ${({ $hasText }) => ($hasText ? "8px" : "4px")};
+  align-items: flex-end;
+`;
+
+const AttachmentsRow = styled.div`
+  display: flex;
+  justify-content: space-between;
   align-items: flex-end;
 `;
 
@@ -476,6 +485,15 @@ const Message = (props: MessageProps) => {
   const hasAttachments =
     imageAttachments.length > 0 || fileAttachments.length > 0;
 
+  // An attachment-only message is sent with `text: ""`. Rendering the text row
+  // anyway left an empty line (plus the tick's line-height) between the sender
+  // and the attachment, so the text row is skipped and the tick moves beside
+  // the attachments. Markup-only text counts as empty too, as the input does.
+  const hasText = useMemo(
+    () => !!text && text.replace(/<br\s*\/?>|<\/?p>|&nbsp;|\s/g, "") !== "",
+    [text],
+  );
+
   const handleFileDownload = useCallback(
     async (attachment: CurbFile) => {
       if (!props.contextId || props.contextId.length === 0) {
@@ -626,7 +644,7 @@ const Message = (props: MessageProps) => {
             fetchAccounts={props.fetchAccounts}
             autocompleteAccounts={props.autocompleteAccounts}
           />
-        ) : (
+        ) : hasText || !hasAttachments ? (
           <MessageContentContainer>
             <MessageText
               $globalMention={hasGlobalMention}
@@ -640,28 +658,36 @@ const Message = (props: MessageProps) => {
               {statusIcon}
             </Tick>
           </MessageContentContainer>
-        )}
+        ) : null}
         {hasAttachments && (
-          <AttachmentsContainer>
-            {imageAttachments.map(({ key, file, previewUrl }) => (
-              <MessageImageField
-                key={key}
-                file={file}
-                previewUrl={previewUrl}
-                contextId={props.contextId}
-                containerSize={80}
-                isInput={false}
-              />
-            ))}
-            {fileAttachments.map(({ key, file, attachment }) => (
-              <MessageFileField
-                key={key}
-                file={file}
-                truncate={false}
-                onDownload={() => handleFileDownload(attachment)}
-              />
-            ))}
-          </AttachmentsContainer>
+          <AttachmentsRow>
+            <AttachmentsContainer $hasText={hasText}>
+              {imageAttachments.map(({ key, file, previewUrl }) => (
+                <MessageImageField
+                  key={key}
+                  file={file}
+                  previewUrl={previewUrl}
+                  contextId={props.contextId}
+                  containerSize={80}
+                  isInput={false}
+                />
+              ))}
+              {fileAttachments.map(({ key, file, attachment }) => (
+                <MessageFileField
+                  key={key}
+                  file={file}
+                  truncate={false}
+                  onDownload={() => handleFileDownload(attachment)}
+                />
+              ))}
+            </AttachmentsContainer>
+            {!hasText && !props.message?.editMode && (
+              <Tick>
+                {props.message.editedOn && "(edited) "}
+                {statusIcon}
+              </Tick>
+            )}
+          </AttachmentsRow>
         )}
         {props.message.reactions && (
           <MessageReactionsField
