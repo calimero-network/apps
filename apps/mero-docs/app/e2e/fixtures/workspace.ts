@@ -535,10 +535,14 @@ export class HomeDriver {
     ).toHaveText(titles, { timeout: opts.timeout ?? 30_000 });
   }
 
+  // A view and a tag can share a name, so rows are found within their sidebar section.
+  private section(name: 'Views' | 'Tags'): Locator {
+    return this.page.locator('aside').getByRole('region', { name, exact: true });
+  }
+
   // A sidebar tag row is named "<tag>, <count>".
   tagRow(name: string): Locator {
-    return this.page
-      .locator('aside')
+    return this.section('Tags')
       .getByRole('button', { name: new RegExp(`^${escapeRegex(name)}, \\d+$`) });
   }
 
@@ -555,14 +559,12 @@ export class HomeDriver {
 
   // A sidebar view row is named "<name>, <count>" or "<name>, shared with everyone, <count>".
   viewRow(name: string): Locator {
-    return this.page
-      .locator('aside')
+    return this.section('Views')
       .getByRole('button', { name: new RegExp(`^${escapeRegex(name)},`) });
   }
 
   viewMenuButton(name: string): Locator {
-    return this.page
-      .locator('aside')
+    return this.section('Views')
       .getByRole('button', { name: `Actions for ${name}` });
   }
 
