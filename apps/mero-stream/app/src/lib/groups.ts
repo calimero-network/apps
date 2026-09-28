@@ -33,6 +33,11 @@ import {
   type StreamInvitePayload,
 } from "./inviteCodec";
 import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
+import {
+  describeInviteFailure,
+  redeemInvitation,
+  type RedeemOutcome,
+} from "@calimero-apps/invite";
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs["admin"];
@@ -249,6 +254,35 @@ export type Redeemed =
   | { kind: "joined" };
 
 /**
+ * What redeeming an invitation came to: the join's outcome and, when the join
+ * held, where it landed. A failed join is returned rather than thrown, because
+ * the caller acks or keeps the invitation by it (`shouldRetain`).
+ */
+export type RedeemResult =
+  | {
+      outcome: Extract<RedeemOutcome, { status: "failed" }>;
+      landed?: undefined;
+    }
+  | {
+      outcome: Exclude<RedeemOutcome, { status: "failed" }>;
+      landed: Redeemed;
+    };
+
+/** What to tell the user about a failed join, in this app's noun. */
+export function redeemFailureMessage(
+  outcome: Extract<RedeemOutcome, { status: "failed" }>,
+): string {
+  return describeInviteFailure(outcome.reason, "stream") ?? outcome.message;
+}
+
+/** The namespace an invitation grants: the same signed id `acceptInvite` joins. */
+function invitedNamespaceOf(payload: StreamInvitePayload): string {
+  const step = payload.chain?.find((s) => s.kind === "namespace");
+  if (step) return groupIdOfInvite(step.invitation) || step.groupId;
+  return groupIdOfInvite(payload);
+}
+
+/**
  * Accept an invitation and enter whatever it granted.
  *
  * Extracted so the paste path and the link path cannot drift: they used to be one
@@ -256,13 +290,43 @@ export type Redeemed =
  * either had to duplicate it or could not exist. A room invitation needs BOTH
  * joins — the namespace grant and then the room's context — and forgetting the
  * second leaves someone a member of a stream staring at a call they cannot enter.
+ *
+ * The join goes through `redeemInvitation`, which sends it once and settles a
+ * failed request against the node's namespace list: the desktop proxy aborts at
+ * 30s while a join can take far longer and land anyway, and that is a member,
+ * not a failure.
  */
 export async function redeemInvite(
   admin: AdminLike,
   payload: StreamInvitePayload,
   onStatus: (message: string) => void,
-): Promise<Redeemed> {
-  const accepted = await acceptInvite(admin, payload, onStatus);
+): Promise<RedeemResult> {
+  // Written from inside `join`; the cast keeps TS from narrowing it to `null`.
+  let joined = null as AcceptedInvite | null;
+  const outcome = await redeemInvitation(
+    {
+      namespaceId: invitedNamespaceOf(payload),
+      invitation: payload.invitation,
+    },
+    {
+      join: async () => {
+        joined = await acceptInvite(admin, payload, onStatus);
+      },
+      memberships: async () =>
+        ((await admin.listNamespaces()) ?? []).map((n) => n.namespaceId),
+    },
+  );
+  if (outcome.status === "failed") return { outcome };
+
+  // `already-member` after a request that failed: the node lists the namespace,
+  // so route by the code's hints exactly as a clean join of it would.
+  const accepted: AcceptedInvite = joined ?? {
+    namespaceId: outcome.namespaceId,
+    roomId: payload.roomId ?? null,
+    contextId: payload.contextId ?? null,
+    roomName: payload.roomName,
+    namespaceName: payload.groupAlias,
+  };
 
   // The grant has landed; the namespace's own state has not. Flag it so the
   // list this joiner is about to see says "syncing" rather than rendering an
@@ -276,17 +340,23 @@ export async function redeemInvite(
       onStatus,
     );
     return {
-      kind: "room",
-      contextId: accepted.contextId,
-      identity,
-      roomName: accepted.roomName,
-      namespaceId: accepted.namespaceId ?? undefined,
+      outcome,
+      landed: {
+        kind: "room",
+        contextId: accepted.contextId,
+        identity,
+        roomName: accepted.roomName,
+        namespaceId: accepted.namespaceId ?? undefined,
+      },
     };
   }
   if (accepted.namespaceId) {
-    return { kind: "namespace", namespaceId: accepted.namespaceId };
+    return {
+      outcome,
+      landed: { kind: "namespace", namespaceId: accepted.namespaceId },
+    };
   }
-  return { kind: "joined" };
+  return { outcome, landed: { kind: "joined" } };
 }
 
 export interface RoomRow {

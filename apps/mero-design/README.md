@@ -119,6 +119,17 @@ being shown.
 
 Each **Project** is a Calimero context inside a **Team** (namespace/group). Members are invited the same way as in other Calimero apps. The canvas state (elements, layers, blobs) is stored in the WASM logic and synced across all member nodes via the Calimero p2p layer.
 
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+`get_cursors` labels each pointer with its entry's own owner (`entries_with_owners`); a
+key-only `owner_of` would only ever name the caller, so every other member's pointer
+would have been dropped.
+
 ## License
 
 MIT OR Apache-2.0

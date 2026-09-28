@@ -906,8 +906,16 @@ fn a_question_belongs_to_its_asker_and_the_team_moderates_it() {
             .questions
             .modify(&q, |p| p.content.title = "spam".to_owned()))
         .is_err());
+    // Keys are per owner: a key-only remove names the caller's own entry at
+    // the id, of which there is none.
     assert!(app
         .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s.questions.remove(&q))
+        .unwrap()
+        .is_none());
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s
+            .questions
+            .remove_by(&AccountId::from(INVESTOR), &q))
         .is_err());
     // The asker cannot mark it answered: the triage is the team's writer set.
     assert!(!app
@@ -1010,6 +1018,12 @@ fn a_comment_is_its_authors_and_only_moderators_remove_others() {
         .is_err());
     assert!(app
         .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s.comments.remove(&c))
+        .unwrap()
+        .is_none());
+    assert!(app
+        .call_as_account(COFOUNDER, COFOUNDER_DEVICE, |s| s
+            .comments
+            .remove_by(&AccountId::from(INVESTOR), &c))
         .is_err());
     let thread = app.view(|s| s.list_comments(id.clone())).unwrap();
     assert_eq!(thread[0].author, account_hex(INVESTOR));

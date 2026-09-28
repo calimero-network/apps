@@ -194,3 +194,18 @@ pnpm -F mero-updates run test:e2e:node
 # The two-node scenario:
 cd apps/mero-updates/logic && merobox bootstrap run workflows/e2e.yml
 ```
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- Read receipts, offers and reactions are keyed by the account they belong to; each
+  distinct key is read once as the entry of the account it names (`get_by`), so a row
+  filed under someone else's key never counts.
+- A question's author is its entry's owner; a question or comment read by id takes the
+  lowest holder's; a comment's author is matched among its id's holders.
+- A moderator deleting a question or comment removes every holder's entry with
+  `remove_by`.

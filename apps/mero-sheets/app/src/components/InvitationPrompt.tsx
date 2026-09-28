@@ -4,7 +4,7 @@ import { useMero } from '@calimero-network/mero-react';
 import { C } from '../theme';
 import { decodeInvite, type SheetsInvitePayload } from '../lib/inviteCodec';
 import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
-import { acceptInvite } from '../lib/workspaces';
+import { acceptInvite, keepsInvitation } from '../lib/workspaces';
 
 /**
  * "You have been invited to X" — for an invitation that arrived as a link.
@@ -79,10 +79,16 @@ export default function InvitationPrompt({
       setPending(null);
       onJoined({ namespaceId: landed.namespaceId, contextId: landed.contextId });
     } catch (e) {
-      // NOT acked: a failure here is usually transient (no online member yet, a
-      // flaky node), and the store exists precisely so the invitation survives
-      // to be retried on the next load.
+      // NOT acked when a later try could work (no online member yet, a flaky
+      // node): the store exists precisely so the invitation survives to be
+      // retried on the next load, and the Join button stays up for it. A join
+      // the node refused for good IS acked, or the dead link replays every
+      // load; its reason stays on screen.
       setError(e instanceof Error ? e.message : 'Could not accept the invitation.');
+      if (!keepsInvitation(e)) {
+        captured.resolve();
+        setPending(null);
+      }
     } finally {
       setBusy(false);
       setStatus(null);

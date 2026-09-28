@@ -5,6 +5,7 @@ import { onInvitation, type CapturedInvitation } from "./capture";
 import {
   redeemInvitation,
   shouldRetain,
+  type InviteFailureReason,
   type InviteRedeemer,
   type RedeemOutcome,
 } from "./redeem";
@@ -31,7 +32,14 @@ export type InviteState =
   | { stage: "joining"; teamName?: string }
   | { stage: "joined"; namespaceId: string; teamName?: string }
   | { stage: "already-member"; namespaceId: string; teamName?: string }
-  | { stage: "failed"; message: string; retryable: boolean };
+  | {
+      stage: "failed";
+      /** The node's own words, or this package's for an unreadable link. */
+      message: string;
+      /** Why; `describeInviteFailure` turns it into something to show. */
+      reason: InviteFailureReason;
+      retryable: boolean;
+    };
 
 export interface UseInviteRedemptionOptions {
   /**
@@ -153,6 +161,7 @@ export function useInviteRedemption({
           ? {
               stage: "failed",
               message: outcome.message,
+              reason: outcome.reason,
               retryable: outcome.retryable,
             }
           : {
@@ -182,6 +191,7 @@ export function useInviteRedemption({
           setState({
             stage: "failed",
             message: "That invitation could not be read.",
+            reason: "invalid",
             retryable: false,
           });
         }

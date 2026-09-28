@@ -55,11 +55,12 @@ icon        = "../app/public/icon-512.png"
 category = "productivity"
 tags        = ["productivity", "issues", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.56"
+min-runtime-version = "0.11.0-rc.57"
 # A BARE https origin — it doubles as the login callback's registered redirect
 # URI and is compared by EXACT ORIGIN, so a trailing path breaks hosted login
 # after credentials are accepted while desktop login keeps working.
 frontend    = "https://mero-issue-tracker-app.vercel.app"
+guide       = "GUIDE.md"
 
 # One service, named `issue-tracker`. Kept even though it is a single wasm: the
 # bundle layout differs (`services/issue-tracker.wasm` vs a bare `app.wasm`) and

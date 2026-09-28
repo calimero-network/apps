@@ -71,7 +71,7 @@ use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    AccessControl, Authored, IndexedMap, LwwRegister, Mergeable, Moderated, SharedStorage,
+    AccessControl, Authored, Indexed, IndexedMap, LwwRegister, Mergeable, Moderated, SharedStorage,
     UnorderedMap, UserStorage,
 };
 
@@ -832,14 +832,34 @@ pub enum Event<'a> {
     Read { post_id: &'a str },
 }
 
-/// Whether a stamp names `account`. A row keyed by an account is only that
-/// account's if the storage layer stamped it so.
-fn stamped_by(owner: Option<AccountId>, account: &str) -> bool {
-    owner.is_some_and(|o| o.to_string() == account)
-}
-
 fn owner_hex(owner: Option<AccountId>) -> String {
     owner.map(|o| o.to_string()).unwrap_or_default()
+}
+
+/// The account, among `holders` of one key, whose entry is `row`.
+///
+/// Keys of an owned collection are per owner (core rc.57): one key appears
+/// once per account holding it, a row read by index does not say whose it is,
+/// and a key-only `owner_of` names only the CALLER. The owner is recovered by
+/// matching the row's bytes against every holder's entry at the key.
+fn owner_among<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
+    let row = borsh::to_vec(row).ok()?;
+    holders
+        .into_iter()
+        .filter(|(_, held)| borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
+        .map(|(owner, _)| owner)
+        .min()
+}
+
+/// The entry at `key` of the account `account` (hex) names, read by name: the
+/// only entry at an account-keyed row that counts, since keys are per owner
+/// and anyone can file a row of their own under someone else's key.
+fn named_entry<V>(map: &Authored<IndexedMap<String, V>>, account: &str, key: &String) -> Option<V>
+where
+    V: BorshSerialize + BorshDeserialize + Indexed + 'static,
+{
+    let account = AccountId::from_str(account).ok()?;
+    map.get_by(&account, key).ok().flatten()
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1070,24 +1090,29 @@ impl MeroUpdates {
 
     /// Every read receipt, genuine ones only: a row keyed `"<post>|<account>"`
     /// counts only if that account wrote it.
-    fn genuine_reads(&self, rows: Vec<(String, Read)>) -> Vec<Read> {
-        rows.into_iter()
-            .filter(|(key, r)| {
-                *key == format!("{}|{}", r.post_id, r.account)
-                    && stamped_by(self.reads.owner_of(key).ok().flatten(), &r.account)
+    ///
+    /// Keys are per owner, so each distinct key is read once, as the entry of
+    /// the account the key names.
+    fn genuine_reads(&self, keys: Vec<String>) -> Vec<Read> {
+        let keys: BTreeSet<String> = keys.into_iter().collect();
+        keys.into_iter()
+            .filter_map(|key| {
+                let (_, account) = key.rsplit_once('|')?;
+                let r = named_entry(&self.reads, account, &key)?;
+                (key == format!("{}|{}", r.post_id, r.account)).then_some(r)
             })
-            .map(|(_, r)| r)
             .collect()
     }
 
     /// The same for offers, keyed `"<ask>|<account>"`.
-    fn genuine_offers(&self, rows: Vec<(String, Offer)>) -> Vec<Offer> {
-        rows.into_iter()
-            .filter(|(key, o)| {
-                *key == format!("{}|{}", o.ask_id, o.account)
-                    && stamped_by(self.offers.owner_of(key).ok().flatten(), &o.account)
+    fn genuine_offers(&self, keys: Vec<String>) -> Vec<Offer> {
+        let keys: BTreeSet<String> = keys.into_iter().collect();
+        keys.into_iter()
+            .filter_map(|key| {
+                let (_, account) = key.rsplit_once('|')?;
+                let o = named_entry(&self.offers, account, &key)?;
+                (key == format!("{}|{}", o.ask_id, o.account)).then_some(o)
             })
-            .map(|(_, o)| o)
             .collect()
     }
 
@@ -1119,23 +1144,21 @@ impl MeroUpdates {
         // One pass over comments, by owner stamp — a comment has no author field.
         let mut comments_by: std::collections::BTreeMap<String, u64> =
             std::collections::BTreeMap::new();
-        for (id, _) in self.comments.entries()? {
-            *comments_by
-                .entry(owner_hex(self.comments.owner_of(&id)?))
-                .or_default() += 1;
+        for (owner, _, _) in self.comments.entries_with_owners()? {
+            *comments_by.entry(owner.to_string()).or_default() += 1;
         }
 
         let mut out = Vec::with_capacity(accounts.len());
         for account in accounts {
             let profile = self.profile_of(&account);
-            let reads = self.genuine_reads(self.reads.query("account").eq(&account).entries()?);
+            let reads = self.genuine_reads(self.reads.query("account").eq(&account).keys()?);
             let (mut read, mut last) = (0u64, 0u64);
             for r in reads.iter().filter(|r| update_ids.contains(&r.post_id)) {
                 read += 1;
                 last = last.max(r.last_at);
             }
             let offers: Vec<Offer> = self
-                .genuine_offers(self.offers.query("account").eq(&account).entries()?)
+                .genuine_offers(self.offers.query("account").eq(&account).keys()?)
                 .into_iter()
                 .filter(|o| !o.helper.withdrawn)
                 .collect();
@@ -1377,9 +1400,9 @@ impl MeroUpdates {
     /// A question as the rest of the contract sees it: its author is the
     /// owner stamp and its status the team's triage record, whatever the
     /// author's own row says.
-    fn question_of(&self, mut q: Post) -> Post {
+    fn question_of(&self, author: AccountId, mut q: Post) -> Post {
         q.kind = KIND_QUESTION.to_owned();
-        q.author = owner_hex(self.questions.owner_of(&q.id).ok().flatten());
+        q.author = author.to_string();
         match self
             .question_status
             .get()
@@ -1411,8 +1434,15 @@ impl MeroUpdates {
             }
             return Ok(post);
         }
-        match self.questions.get(&post_id.to_owned())? {
-            Some(q) => Ok(self.question_of(q)),
+        // Whoever asked it: keys are per owner, so a key-only `get` reads the
+        // caller's own question only. The lowest account's, if several did.
+        let asked = self
+            .questions
+            .entries_at(&post_id.to_owned())?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner);
+        match asked {
+            Some((author, q)) => Ok(self.question_of(author, q)),
             None => Err(AppError::msg(format!("no such post: {post_id}"))),
         }
     }
@@ -1430,8 +1460,8 @@ impl MeroUpdates {
             );
         }
         if kind.is_none_or(|k| k == KIND_QUESTION) {
-            for (_, q) in self.questions.entries()? {
-                out.push(self.question_of(q));
+            for (author, _, q) in self.questions.entries_with_owners()? {
+                out.push(self.question_of(author, q));
             }
         }
         Ok(out)
@@ -1701,12 +1731,17 @@ impl MeroUpdates {
             self.put_update(post)?;
         } else {
             let key = post_id.clone();
-            if !self.questions.owned_by_me(&key)?
-                && !self.questions.is_moderator(&Self::caller_account())
-            {
+            if self.questions.owned_by_me(&key)? {
+                let _ = self.questions.remove(&key)?;
+            } else if self.questions.is_moderator(&Self::caller_account()) {
+                // Every holder's question at the id, by name: a key-only
+                // `remove` removes only the caller's own entry.
+                for (owner, _) in self.questions.entries_at(&key)? {
+                    let _ = self.questions.remove_by(&owner, &key)?;
+                }
+            } else {
                 return Err(AppError::msg("you cannot delete this post"));
             }
-            let _ = self.questions.remove(&key)?;
         }
         app::emit!(Event::PostDeleted { id: &post_id });
         Ok(())
@@ -1714,8 +1749,7 @@ impl MeroUpdates {
 
     fn has_read(&self, post_id: &str, account: &str) -> bool {
         let key = format!("{post_id}|{account}");
-        matches!(self.reads.get(&key), Ok(Some(_)))
-            && stamped_by(self.reads.owner_of(&key).ok().flatten(), account)
+        named_entry(&self.reads, account, &key).is_some()
     }
 
     fn reactions_for(&self, post_id: &str, me: &str) -> app::Result<Vec<ReactionCount>> {
@@ -1727,12 +1761,25 @@ impl MeroUpdates {
                 mine: false,
             })
             .collect();
-        for (key, r) in self.reactions.query("post_id").eq(post_id).entries()? {
+        // Keys are per owner: each distinct key is read once, as the entry of
+        // the account it names (`"<post>|<account>|<emoji>"`).
+        let keys: BTreeSet<String> = self
+            .reactions
+            .query("post_id")
+            .eq(post_id)
+            .keys()?
+            .into_iter()
+            .collect();
+        for key in keys {
+            let mut parts = key.rsplitn(3, '|');
+            let (_, Some(account)) = (parts.next(), parts.next()) else {
+                continue;
+            };
+            let Some(r) = named_entry(&self.reactions, account, &key) else {
+                continue;
+            };
             // One row per account per emoji, and only that account's own.
-            if !r.on
-                || key != format!("{}|{}|{}", r.post_id, r.account, r.emoji)
-                || !stamped_by(self.reactions.owner_of(&key)?, &r.account)
-            {
+            if !r.on || key != format!("{}|{}|{}", r.post_id, r.account, r.emoji) {
                 continue;
             }
             if let Some(slot) = counts.iter_mut().find(|c| c.emoji == r.emoji) {
@@ -1747,7 +1794,7 @@ impl MeroUpdates {
         let comment_count = self.comments.query("post_thread").eq(&post.id).count()? as u64;
         let asks: Vec<Ask> = self.asks_of(&post.id)?;
         let read_count = self
-            .genuine_reads(self.reads.query("post_id").eq(&post.id).entries()?)
+            .genuine_reads(self.reads.query("post_id").eq(&post.id).keys()?)
             .len() as u64;
         let (author_name, _) = self.name_of(&post.author);
         Ok(PostCard {
@@ -1803,7 +1850,7 @@ impl MeroUpdates {
 
     fn ask_view(&self, ask: &Ask, post_title: &str, me: &str, team: bool) -> app::Result<AskView> {
         let mut offers: Vec<Offer> = self
-            .genuine_offers(self.offers.query("ask_id").eq(&ask.id).entries()?)
+            .genuine_offers(self.offers.query("ask_id").eq(&ask.id).keys()?)
             .into_iter()
             .filter(|o| !o.helper.withdrawn)
             .collect();
@@ -1893,12 +1940,9 @@ impl MeroUpdates {
     fn record_read(&mut self, post_id: &str, now: u64) -> app::Result<()> {
         let account = Self::caller();
         let key = format!("{post_id}|{account}");
+        // The caller's own row: keys are per owner, so nobody else's row at
+        // the key can be in the way.
         if self.reads.contains(&key)? {
-            if !self.reads.owned_by_me(&key)? {
-                return Err(AppError::msg(
-                    "this read receipt belongs to another account",
-                ));
-            }
             self.reads.modify(&key, |r| r.last_at = now)?;
             return Ok(());
         }
@@ -1932,10 +1976,8 @@ impl MeroUpdates {
         self.touch_profile()?;
         let key = format!("{post_id}|{me}|{emoji}");
         let now = now_ms();
+        // The caller's own row, as in `record_read`.
         if self.reactions.contains(&key)? {
-            if !self.reactions.owned_by_me(&key)? {
-                return Err(AppError::msg("this reaction belongs to another account"));
-            }
             self.reactions.modify(&key, |r| {
                 r.on = on;
                 r.updated_at = now;
@@ -1958,9 +2000,14 @@ impl MeroUpdates {
 
     // ── comments ─────────────────────────────────────────────────────────────
 
+    /// The comment at `comment_id`, whoever wrote it (the lowest account's,
+    /// if several did): a key-only `get` reads the caller's own only.
     fn load_comment(&self, comment_id: &str) -> app::Result<Comment> {
         self.comments
-            .get(&comment_id.to_owned())?
+            .entries_at(&comment_id.to_owned())?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner)
+            .map(|(_, c)| c)
             .ok_or_else(|| AppError::msg(format!("no such comment: {comment_id}")))
     }
 
@@ -2031,12 +2078,17 @@ impl MeroUpdates {
     /// remove any.
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
         let c = self.load_comment(&comment_id)?;
-        if !self.comments.owned_by_me(&comment_id)?
-            && !self.comments.is_moderator(&Self::caller_account())
-        {
+        if self.comments.owned_by_me(&comment_id)? {
+            let _ = self.comments.remove(&comment_id)?;
+        } else if self.comments.is_moderator(&Self::caller_account()) {
+            // Every holder's comment at the id, by name: a key-only `remove`
+            // removes only the caller's own entry.
+            for (owner, _) in self.comments.entries_at(&comment_id)? {
+                let _ = self.comments.remove_by(&owner, &comment_id)?;
+            }
+        } else {
             return Err(AppError::msg("you cannot delete this comment"));
         }
-        let _ = self.comments.remove(&comment_id)?;
         app::emit!(Event::Commented {
             post_id: &c.post_id,
             id: &comment_id
@@ -2052,7 +2104,7 @@ impl MeroUpdates {
         rows.sort_by(|(_, a), (_, b)| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
         let mut out = Vec::with_capacity(rows.len());
         for (key, c) in rows {
-            let author = owner_hex(self.comments.owner_of(&key)?);
+            let author = owner_hex(owner_among(self.comments.entries_at(&key)?, &c));
             let (author_name, _) = self.name_of(&author);
             out.push(CommentView {
                 author_is_team: self.is_team_str(&author),
@@ -2125,14 +2177,11 @@ impl MeroUpdates {
         Ok(())
     }
 
-    /// The caller's own offer on an ask, if they have one. `Err` if a row sits
-    /// under the caller's key that another account wrote.
+    /// The caller's own offer on an ask, if they have one. Keys are per
+    /// owner, so a row another account files under the caller's key is its
+    /// own entry and never this one.
     fn own_offer(&self, key: &String) -> app::Result<Option<Offer>> {
-        match self.offers.get(key)? {
-            Some(o) if self.offers.owned_by_me(key)? => Ok(Some(o)),
-            Some(_) => Err(AppError::msg("this offer belongs to another account")),
-            None => Ok(None),
-        }
+        Ok(self.offers.get(key)?)
     }
 
     /// "I can help." One click, optional note. Offering again edits the note;
@@ -2207,11 +2256,9 @@ impl MeroUpdates {
         let ask = self.load_ask(&ask_id)?;
         let account = Self::parse_account(&account)?.to_string();
         let key = format!("{ask_id}|{account}");
-        let offer = self
-            .offers
-            .get(&key)?
-            .ok_or_else(|| AppError::msg("no such offer"))?;
-        if self.genuine_offers(vec![(key.clone(), offer)]).is_empty() {
+        // The offerer's own row, by name: a key-only `get` would read the
+        // team member's.
+        if self.genuine_offers(vec![key.clone()]).is_empty() {
             return Err(AppError::msg("no such offer"));
         }
         self.offer_status
@@ -2244,10 +2291,7 @@ impl MeroUpdates {
             if t.status != "accepted" || t.status_at < since {
                 continue;
             }
-            let Some(o) = self.offers.get(&key)? else {
-                continue;
-            };
-            let Some(o) = self.genuine_offers(vec![(key, o)]).pop() else {
+            let Some(o) = self.genuine_offers(vec![key]).pop() else {
                 continue;
             };
             if o.helper.withdrawn {
@@ -2375,7 +2419,7 @@ impl MeroUpdates {
         let mut out = Vec::with_capacity(updates.len());
         for p in updates {
             let mut readers: Vec<ReaderView> = self
-                .genuine_reads(self.reads.query("post_id").eq(&p.id).entries()?)
+                .genuine_reads(self.reads.query("post_id").eq(&p.id).keys()?)
                 .into_iter()
                 .filter(|r| !self.is_team_str(&r.account))
                 .map(|r| {
@@ -2403,7 +2447,7 @@ impl MeroUpdates {
             let mut offers = 0u64;
             for a in self.asks_of(&p.id)? {
                 offers += self
-                    .genuine_offers(self.offers.query("ask_id").eq(&a.id).entries()?)
+                    .genuine_offers(self.offers.query("ask_id").eq(&a.id).keys()?)
                     .iter()
                     .filter(|o| !o.helper.withdrawn)
                     .count() as u64;

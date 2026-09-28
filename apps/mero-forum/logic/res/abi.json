@@ -754,7 +754,7 @@
     },
     {
       "name": "moderate_comment",
-      "doc": "Remove someone's comment as a moderator.",
+      "doc": "Remove someone's comment as a moderator: every account's comment at\nthe id, as `moderate_post` does.",
       "params": [
         {
           "name": "comment_id",
@@ -770,7 +770,7 @@
     },
     {
       "name": "moderate_post",
-      "doc": "Remove someone's post as a moderator. The author's own delete is\n`delete_post`.",
+      "doc": "Remove someone's post as a moderator: every account's post at the id,\nsince ids are per owner. The author's own delete is `delete_post`.\n\n`remove_by`, not `remove`: a key-only `remove` removes only the CALLER's\nown entry.",
       "params": [
         {
           "name": "post_id",

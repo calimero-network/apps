@@ -22,6 +22,7 @@ import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitat
 import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import { INVITER_KEY } from '../../utils/knownPlayers';
+import { lobbyJoinFailureMessage } from '../../utils/redeemLobby';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -861,8 +862,13 @@ export default function MatchPage() {
     const payloadJson = parseInvitationInput(joinInvitationInput);
     if (!payloadJson) { show({ title: 'That does not look like an invitation link', variant: 'error' }); return; }
     try {
-      const success = await lobby.joinLobby(payloadJson);
-      if (success) { show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput(''); }
+      const outcome = await lobby.joinLobby(payloadJson);
+      if (!outcome) return;
+      // A failed join keeps the pasted code in the field, to retry or correct.
+      if (outcome.status === 'failed') { show({ title: lobbyJoinFailureMessage(outcome), variant: 'error' }); return; }
+      // `already-member` is a join that landed despite a failed request (or a
+      // code pasted twice): the same success.
+      show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput('');
     } catch (e) { show({ title: friendlyContractMessage(e, 'Failed to join'), variant: 'error' }); }
   }, [joinInvitationInput, lobby, show]);
 

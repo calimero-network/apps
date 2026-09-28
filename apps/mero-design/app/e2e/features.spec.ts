@@ -98,13 +98,21 @@ async function mockSse(page: import("@playwright/test").Page) {
   await page.route("**/sse**", (route) => route.abort());
 }
 
-// Mock identities-owned so myIdentity = "test-identity" (matches TEST_MEMBER in mockRpc)
+// Mock identities-owned and the node's account so both resolve to "test-identity"
+// (matches TEST_MEMBER in mockRpc; the board keys members by account).
 async function mockIdentities(page: import("@playwright/test").Page) {
   await page.route("**/admin-api/contexts/**/identities-owned", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ data: ["test-identity"] }),
+    }),
+  );
+  await page.route("**/admin-api/identity", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { accountId: "test-identity" } }),
     }),
   );
 }

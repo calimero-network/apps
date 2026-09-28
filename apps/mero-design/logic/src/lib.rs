@@ -1301,8 +1301,8 @@ impl MeroDesign {
             y,
             updated_at,
         };
-        // First move inserts, later ones update. A key someone else already
-        // holds is refused by storage; that pointer just does not show.
+        // First move inserts, later ones update. Keys are per owner, so this
+        // asks about the caller's own entry, and nobody else's is in the way.
         let _ = if self.cursors.contains(&identity).unwrap_or(false) {
             self.cursors.update(&identity, cs)
         } else {
@@ -1312,14 +1312,18 @@ impl MeroDesign {
     }
 
     /// Every pointer, labelled with the account on its owner stamp.
+    ///
+    /// `entries_with_owners`, not a key-only `owner_of`: keys are per owner,
+    /// so `owner_of` would only ever name the caller.
     pub fn get_cursors(&self) -> Vec<CursorState> {
-        let Ok(entries) = self.cursors.entries() else {
+        let Ok(entries) = self.cursors.entries_with_owners() else {
             return Vec::new();
         };
         entries
-            .filter_map(|(key, mut cs)| {
-                cs.account = self.cursors.owner_of(&key).ok().flatten()?.to_string();
-                Some(cs)
+            .into_iter()
+            .map(|(owner, _, mut cs)| {
+                cs.account = owner.to_string();
+                cs
             })
             .collect()
     }
@@ -2235,7 +2239,11 @@ mod tests {
         });
         assert!(moved.is_err(), "another account cannot move my pointer");
         let cursors = app.view(|s| s.get_cursors());
-        assert_eq!((cursors[0].x, cursors[0].account.clone()), (1, me));
+        assert_eq!((cursors[0].x, cursors[0].account.clone()), (1, me.clone()));
+        // Another account reads the same owner: keys are per owner, so the
+        // label comes from the entry's own stamp, not a key-only lookup.
+        let seen = app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.get_cursors());
+        assert_eq!((seen[0].x, seen[0].account.clone()), (1, me));
     }
 
     #[test]

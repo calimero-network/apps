@@ -260,10 +260,13 @@ impl RegistryState {
         role: Role,
     ) -> Result<(), DriveError> {
         self.require_admin(caller)?;
-        let known = self
+        // Any account's folder: keys are per owner, so a key-only `contains`
+        // would ask about the admin's own entry only.
+        let known = !self
             .folders
-            .contains(&folder_id.to_string())
-            .map_err(storage_err("folders.contains"))?;
+            .entries_at(&folder_id.to_string())
+            .map_err(storage_err("folders.entries_at"))?
+            .is_empty();
         if !known {
             return Err(DriveError::NotFound(folder_id.to_string()));
         }

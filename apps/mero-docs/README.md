@@ -196,6 +196,23 @@ scripts/local-rig.sh down && scripts/local-rig.sh up
 - [Calimero on GitHub](https://github.com/calimero-network)
 - [Merobox workflow reference](https://calimero-network.github.io/merobox)
 
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- **Registry.** Every read of a folder by id goes through the entry of the **lowest
+  account** holding it, and its context binding is that account's own (`get_by`).
+  `register_folder` refuses an id **any** account holds (it used to rely on the key being
+  taken). A moderator's `unregister_folder` removes every holder's entry with `remove_by`.
+- **Docs.** A doc's creator is the one origin entry whose owner carries the doc id's
+  account tag; with none or several the doc has no known creator. Comments are read by id
+  through the lowest holder, a listed comment's author is matched among its id's holders,
+  `comment_schema_version` reads the holder's entry by name, and a moderator's
+  `delete_comment` removes every holder's comment with `remove_by`.
+
 ## License
 
 MIT

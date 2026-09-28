@@ -86,3 +86,18 @@ merobox bootstrap workflows/bootstrap.yml
 > ...
 > 🎉 Workflow completed successfully!
 ```
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- A message id's pointer (`message_ids`) is read across holders: each pointer is checked
+  against its own recorder, and the lowest account whose pointer holds wins.
+- A thread reply's sender is recovered among the holders of its key by the entry's bytes.
+- Staff deleting someone's reply remove every holder's entry with `remove_by`; a key-only
+  `remove` would remove only their own.
+- Reactions are counted once per key, as the entry of the account the key names; a copy
+  another account files under that key is ignored.

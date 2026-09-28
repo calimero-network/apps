@@ -382,6 +382,9 @@ export class MeroSignClient {
    * Delete a document by ID. Admins only: they are the documents'
    * moderators, and every node refuses anyone else's removal.
    *
+   * Every account's document at the id, each by name (`remove_by`): keys
+   * are per owner, and a key-only `remove` removes only the caller's own.
+   *
    * @intent mutating
    */
   public async deleteDocument(params: { document_id: string }): Promise<void> {

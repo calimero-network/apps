@@ -22,67 +22,75 @@
     },
     "BlockEntry": {
       "kind": "record",
+      "doc": "One edited coordinate.",
       "fields": [
         {
           "name": "k",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The coordinate as \"x,y,z\"."
         },
         {
           "name": "b",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Block id; 0 is air."
         }
       ]
     },
     "BlockOverride": {
       "kind": "record",
-      "doc": "One block override: `b` is the block id (0 = air / broken).",
+      "doc": "A stored block edit: block id `b` and the stamp that orders concurrent edits.",
       "fields": [
         {
           "name": "b",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Block id, 0 to 15; 0 is air (a broken block)."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
           },
-          "doc": "room-time stamp for LWW convergence when two peers edit the same block"
+          "doc": "Room-clock unix seconds; the larger stamp wins when two players edit one block."
         }
       ]
     },
     "Edit": {
       "kind": "record",
-      "doc": "One edit in a `set_blocks` batch.",
+      "doc": "One block change at a world coordinate.",
       "fields": [
         {
           "name": "x",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "World x, in [0, 128)."
         },
         {
           "name": "y",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "World y, in [0, 64); y is up."
         },
         {
           "name": "z",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "World z, in [0, 128)."
         },
         {
           "name": "b",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Block id: 0 air, 1 grass, 2 dirt, 3 stone, 4 sand, 5 water, 6 wood, 7 leaves, 8 plank, 9 glass, 10 brick, 11 torch, 12 glowstone, 13 bedrock, 14 cobble, 15 snow."
         }
       ]
     },
@@ -131,7 +139,7 @@
     },
     "Player": {
       "kind": "record",
-      "doc": "A player row: identity-keyed presence + last known transform.",
+      "doc": "A player row: presence and last known transform, keyed by the player's identity.",
       "fields": [
         {
           "name": "name",
@@ -161,50 +169,56 @@
           "name": "yaw",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "pitch",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "sel",
           "type": {
             "kind": "u32"
           },
-          "doc": "selected hotbar slot (cosmetic — lets peers render what you hold)"
+          "doc": "Selected hotbar slot, 0 to 8; peers render what the player holds."
         },
         {
           "name": "left",
           "type": {
             "kind": "bool"
           },
-          "doc": "explicitly left; row is kept, never removed"
+          "doc": "Explicitly left; row is kept, never removed."
         },
         {
           "name": "joinedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Room-clock unix seconds."
         },
         {
           "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Room-clock unix seconds."
         }
       ]
     },
     "PlayerView": {
       "kind": "record",
+      "doc": "A player as other players see them.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The player's context identity (device key, 64 hex)."
         },
         {
           "name": "name",
@@ -234,37 +248,42 @@
           "name": "yaw",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "pitch",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "sel",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Selected hotbar slot, 0 to 8; peers render what the player holds."
         },
         {
           "name": "online",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Not left, and heard from within the last 10 s."
         }
       ]
     },
     "Transform": {
       "kind": "record",
-      "doc": "Incoming transform for `heartbeat`.",
+      "doc": "A player's reported transform for `heartbeat`.",
       "fields": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Display name."
         },
         {
           "name": "x",
@@ -288,24 +307,28 @@
           "name": "yaw",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "pitch",
           "type": {
             "kind": "f64"
-          }
+          },
+          "doc": "Radians."
         },
         {
           "name": "sel",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Hotbar slot, 0 to 8."
         }
       ]
     },
     "WorldMeta": {
       "kind": "record",
+      "doc": "The world's identity: name, terrain seed and creation time.",
       "fields": [
         {
           "name": "name",
@@ -317,13 +340,15 @@
           "name": "seed",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Terrain seed; clients generate identical terrain from it."
         },
         {
           "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix seconds; the 600 s day/night cycle is counted from here."
         }
       ]
     }
@@ -331,7 +356,7 @@
   "methods": [
     {
       "name": "get_overrides",
-      "doc": "Full override map — join/reconcile pull. O(edits), not O(world).",
+      "doc": "Every edited coordinate as `{\"k\": \"x,y,z\", \"b\": <block id>}`.\n\nA key never disappears: a broken block stays listed with `b: 0`. Any\ncoordinate not listed holds generated terrain.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -339,17 +364,19 @@
           "$ref": "BlockEntry"
         }
       },
+      "returns_doc": "Every edited coordinate as `{\"k\": \"x,y,z\", \"b\": <block id>}`, breaks included.",
       "intent": "read_only"
     },
     {
       "name": "get_players",
-      "doc": "Roster with liveness — peers render everyone `online`. A player who\nvanished without `leave` simply ages out of the TTL here; nobody\nwrites to another account's row to mark it.",
+      "doc": "Every player row with an `online` flag.\n\nA player is online when they have not left and wrote within the last 10 s,\nmeasured against the newest clock any player has reported. A player who\nvanished without calling `leave` simply ages out here; nobody writes to\nanother account's row to mark it left.\n\n# Examples\n```json\n{\"now\":1727000000}\n```",
       "params": [
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's unix seconds."
         }
       ],
       "returns": {
@@ -358,51 +385,58 @@
           "$ref": "PlayerView"
         }
       },
+      "returns_doc": "Every player row with its `online` flag.",
       "intent": "read_only"
     },
     {
       "name": "heartbeat",
-      "doc": "Liveness + transform ping. SILENT (no event): peers poll `get_players`\nevery ~1.5s; emitting per-heartbeat would spam SSE for every member\n(mero-meet's silent-heartbeat pattern).",
+      "doc": "Report the caller's position and keep them online.\n\nSend every 0.5 s while moving and every 2 s while idle; a player silent\nfor more than 10 s shows as offline. Creates the player row if needed.\nEmits `PlayerJoined` only when this creates the row or brings a left\nplayer back; otherwise no event (peers poll `get_players`, so a\nroutine heartbeat must not spam an event on every call).\n\n# Examples\n```json\n{\"t\":{\"name\":\"bot\",\"x\":64.5,\"y\":44.0,\"z\":64.5,\"yaw\":0.0,\"pitch\":0.0,\"sel\":0},\"now\":1727000000}\n```",
       "params": [
         {
           "name": "t",
           "type": {
             "$ref": "Transform"
-          }
+          },
+          "doc": "position in blocks, `yaw` and `pitch` in radians, `sel` the hotbar slot (0 to 8)."
         },
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's unix seconds."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "init",
-      "doc": "`now` is the creator's unix-seconds clock — it anchors the shared\nday/night cycle (WASM has no wall clock; mero-meet convention).",
+      "doc": "Create the world. Runs once, when the context is created, with the\ncontext's init arguments.\n\n# Examples\n```json\n{\"name\":\"ci\",\"seed\":42,\"now\":1727000000}\n```",
       "params": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the world's display name."
         },
         {
           "name": "seed",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "terrain seed; clients read it as an unsigned 32-bit integer, so use a value in [0, 4294967296)."
         },
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the creator's unix seconds; anchors the shared 600 s day/night cycle."
         }
       ],
       "returns": {
@@ -411,52 +445,61 @@
     },
     {
       "name": "join",
-      "doc": "Join (or rejoin) the world. Idempotent upsert of my player row.",
+      "doc": "Join or rejoin the world as the calling identity and return the player row.\n\nA rejoin keeps the player's position and join time and updates the name.\nEmits `PlayerJoined`.\n\n# Examples\n```json\n{\"name\":\"bot\",\"now\":1727000000}\n```",
       "params": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "display name shown to other players."
         },
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's unix seconds."
         }
       ],
       "returns": {
         "$ref": "PlayerView"
       },
-      "intent": "mutating"
+      "returns_doc": "The caller's player row, online.",
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "leave",
+      "doc": "Mark the caller as having left. The row is kept, and a later `join` or\n`heartbeat` brings the player back. A caller who never joined is a no-op.\n\n# Examples\n```json\n{\"now\":1727000000}\n```",
       "params": [
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's unix seconds."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "override_count",
+      "doc": "How many distinct coordinates have ever been edited, breaks included.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "u32"
       },
+      "returns_doc": "The number of distinct coordinates ever edited.",
       "intent": "read_only"
     },
     {
       "name": "set_blocks",
-      "doc": "Apply a batch of block edits. Out-of-bounds edits are skipped (not an\nerror: a stale client must not poison a whole batch). Returns the\nnumber of edits applied.",
+      "doc": "Apply a batch of block edits and return how many were applied.\n\nOut-of-bounds edits are skipped, not rejected, so one stale edit cannot\npoison a batch. Each applied edit overwrites the block at its coordinate.\n\n# Errors\nFails, applying nothing, if more than 512 edits are sent in one call.\n\n# Examples\n```json\n{\"edits\":[{\"x\":5,\"y\":20,\"z\":5,\"b\":3}],\"now\":1727000000}\n```",
       "params": [
         {
           "name": "edits",
@@ -465,26 +508,32 @@
             "items": {
               "$ref": "Edit"
             }
-          }
+          },
+          "doc": "at most 512 per call; `b` is a block id, 0 to 15 for ids the client defines (`b: 0` breaks the block); the contract stores any 0-255 value without checking it, so never send an id outside 0 to 15."
         },
         {
           "name": "now",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's unix seconds; orders concurrent edits of one block (last writer wins)."
         }
       ],
       "returns": {
         "kind": "u32"
       },
-      "intent": "mutating"
+      "returns_doc": "How many edits were applied; skipped out-of-bounds edits are not counted.",
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "world_meta",
+      "doc": "The world's name, terrain seed and creation time (`createdAt`, unix seconds).\n\nTerrain is not stored: regenerate it from `seed`, then apply `get_overrides`.\n\n# Errors\nFails if reading the world's metadata from storage fails.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "$ref": "WorldMeta"
       },
+      "returns_doc": "The world's `name`, `seed` and `createdAt` (unix seconds).",
       "intent": "read_only"
     }
   ],
@@ -494,22 +543,25 @@
       "payload": {
         "kind": "string"
       },
-      "doc": "Blocks changed by this member (payload = editor id). Clients re-pull\n`get_overrides` on receipt — event is a nudge, the state is the truth."
+      "doc": "Blocks were edited; the payload is the editor's identity. Re-read `get_overrides`."
     },
     {
-      "name": "Initialized"
+      "name": "Initialized",
+      "doc": "The world was created."
     },
     {
       "name": "PlayerJoined",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A player joined or came back online; the payload is their identity."
     },
     {
       "name": "PlayerLeft",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A player left or was set to left for silence; the payload is their identity."
     }
   ],
   "state_root": "MeroBlocks",

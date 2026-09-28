@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom';
 import styled from 'styled-components';
 import { useToast } from '@calimero-network/mero-ui';
+import { shouldRetain } from '@calimero-apps/invite';
 import { tokens as t } from '../../theme';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useCrm } from '../../hooks/useCrm';
@@ -62,8 +63,9 @@ export default function AppPage(): React.ReactElement | null {
   //
   // The capture is sticky until acked, so this sees it whenever AppPage mounts,
   // including long after the link was opened. `resolve()` is the ack, called on
-  // a successful join or an explicit cancel and never on a failure — so a
-  // transient error stays retryable across a reload.
+  // a join (or finding we are already a member), a failure no retry can fix, or
+  // an explicit cancel — never on a transient failure, so that one stays
+  // retryable across a reload.
   const pendingInvitation = usePendingInvitation();
   const pendingInvite = pendingInvitation?.token ?? null;
   const forgetPendingInvite = useCallback(() => {
@@ -216,9 +218,17 @@ export default function AppPage(): React.ReactElement | null {
           initialCode={pendingInvite ?? ''}
           autoSubmit={!!pendingInvite}
           onJoin={async (code) => {
-            await ws.join(code);
-            forgetPendingInvite();
-            setShowJoin(false);
+            const outcome = await ws.join(code);
+            // Joined, already in it, or a failure no retry can fix: the invitation
+            // is finished with. A transient failure keeps it for the next load.
+            if (!shouldRetain(outcome)) {
+              // The ack clears the captured link this dialog was open for; keep
+              // it open to say why a final failure failed.
+              if (outcome.status === 'failed') setShowJoin(true);
+              forgetPendingInvite();
+            }
+            if (outcome.status !== 'failed') setShowJoin(false);
+            return outcome;
           }}
           onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
         />

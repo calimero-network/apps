@@ -67,12 +67,14 @@ export default function InvitationPrompt() {
   const accept = useCallback(async () => {
     if (!pending) return;
     const { captured, payload } = pending;
-    // ⚠️ Acked only once the redeem actually SUCCEEDED. Acking first would drop
-    // the invitation on a transient failure (no online member yet, a flaky
-    // node), and the platform store exists precisely so it survives to be
-    // retried on the next load. `redeem` reports false rather than throwing
-    // for exactly this decision.
-    if (await redeem(payload)) {
+    // ⚠️ Acked only once the invitation is SETTLED: joined, or refused for
+    // good. Acking first would drop it on a transient failure (no online
+    // member yet, a flaky node), and the platform store exists precisely so it
+    // survives to be retried on the next load — the Join button stays up for
+    // that retry. A final refusal is acked, and its reason stays on screen.
+    // `redeem` reports rather than throws for exactly this decision.
+    const { retain } = await redeem(payload);
+    if (!retain) {
       captured.resolve();
       setPending(null);
     }

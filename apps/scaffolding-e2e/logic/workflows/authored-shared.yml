@@ -30,7 +30,7 @@ e2e_mode: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.56
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.57
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -203,13 +203,16 @@ steps:
     check_interval: 2
     trigger_sync: true
 
-  - name: node-2 reads authored entry
+  # Keys are per owner since core rc.57: a key-only read answers for the
+  # CALLER's own entry only, so node-2 names the owner it is asking about.
+  - name: node-2 reads node-1's authored entry by owner
     type: call
     node: e2e-node-2
     context_id: "{{context_id}}"
     executor_public_key: "{{public_key_e2e-node-2}}"
-    method: authored_get
+    method: authored_get_by
     args:
+      owner: "{{n1_account}}"
       key: "alice_key"
     outputs:
       n2_authored_get: result
@@ -219,7 +222,24 @@ steps:
     statements:
       - 'json_equal({{n2_authored_get}}, {"output": "owned_by_node1"})'
 
-  - name: node-3 reads owner of authored entry
+  - name: node-3 lists the owners of the authored key
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_owners
+    args:
+      key: "alice_key"
+    outputs:
+      n3_owner: result
+
+  - name: Assert node-1 is the key's only owner
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_owner}}, {"output": ["{{n1_account}}"]})'
+
+  # authored_get_owner answers with the key's lowest holder; node-1 is the only one.
+  - name: node-3 reads the authored key's holder
     type: call
     node: e2e-node-3
     context_id: "{{context_id}}"
@@ -228,12 +248,12 @@ steps:
     args:
       key: "alice_key"
     outputs:
-      n3_owner: result
+      n3_holder: result
 
-  - name: Assert authored owner is node-1
+  - name: Assert the key's holder is node-1
     type: json_assert
     statements:
-      - 'json_equal({{n3_owner}}, {"output": "{{n1_account}}"})'
+      - 'json_equal({{n3_holder}}, {"output": "{{n1_account}}"})'
 
   # node-1 (owner) updates the entry — should succeed
   - name: node-1 updates its own authored entry

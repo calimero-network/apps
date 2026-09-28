@@ -70,6 +70,24 @@ fn user_of(account: AccountId) -> UserId {
     UserId::new(*account.as_bytes())
 }
 
+/// The account, among `holders` of one key, whose entry is `row`.
+///
+/// Keys of an owned collection are per owner (core rc.57): one key appears
+/// once per account holding it, and an ordered read hands back rows without
+/// saying whose each is. The owner is recovered by matching the row's bytes
+/// against every holder's entry at the key. A `Message` is built from
+/// `LwwRegister`s, which carry the write's timestamp and writer, so two
+/// accounts' entries are never byte-identical; the lowest matching account
+/// answers if they ever were.
+fn holder_of<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
+    let row = calimero_sdk::borsh::to_vec(row).ok()?;
+    holders
+        .into_iter()
+        .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
+        .map(|(owner, _)| owner)
+        .min()
+}
+
 /// Refuses a client timestamp too far ahead of this node's clock.
 fn check_timestamp(timestamp: u64) -> app::Result<()> {
     let now_secs = env::time_now() / 1_000_000_000;
@@ -1286,7 +1304,7 @@ impl MeroChat {
             if !Self::message_matches_search(&message, Some(term)) {
                 continue;
             }
-            let sender = self.thread_sender(&key);
+            let sender = self.thread_sender(&key, &message);
             let mut public = self.message_to_public(&message, sender, false, index);
             public.parent_message_id = Some(parent_id.to_owned());
             all.push(public);
@@ -1346,10 +1364,12 @@ impl MeroChat {
 
         let updated = if let Some(parent_message_id) = parent_id {
             let key = thread_key(&parent_message_id, &message_id)?;
-            if !self.threads.contains(&key)? {
-                app::bail!("Message not found");
-            }
+            // Keys are per owner: `owned_by_me` asks about the caller's own
+            // reply, `entries_at` about anyone's.
             if !self.threads.owned_by_me(&key)? {
+                if self.threads.entries_at(&key)?.is_empty() {
+                    app::bail!("Message not found");
+                }
                 app::bail!("You can only edit your own messages");
             }
             self.threads.modify(&key, |message| {
@@ -1398,7 +1418,8 @@ impl MeroChat {
 
         if let Some(parent_message_id) = parent_id {
             let key = thread_key(&parent_message_id, &message_id)?;
-            if !self.threads.contains(&key)? {
+            let holders = self.threads.entries_at(&key)?;
+            if holders.is_empty() {
                 app::bail!("Message not found");
             }
             if self.threads.owned_by_me(&key)? {
@@ -1407,7 +1428,11 @@ impl MeroChat {
                     message.deleted = Some(LwwRegister::new(true));
                 })?;
             } else if is_staff {
-                let _ = self.threads.remove(&key)?;
+                // `remove_by`, naming each holder: a key-only `remove` removes
+                // only the caller's own entry, and the staff member holds none.
+                for (owner, _) in holders {
+                    let _ = self.threads.remove_by(&owner, &key)?;
+                }
             } else {
                 app::bail!("You don't have permission to delete this message");
             }
@@ -1552,19 +1577,27 @@ impl MeroChat {
     /// Where `message_id` lives, if the account that recorded it also owns
     /// the entry it points at. A patched node could record an id against
     /// someone else's entry; such a pointer is ignored.
+    ///
+    /// Keys are per owner, so several accounts can each hold a pointer under
+    /// one id. Each is checked against its own recorder, and the lowest
+    /// account whose pointer holds wins: the same pick on every node.
     fn slot_of(&self, message_id: &str) -> app::Result<Option<Slot>> {
         let key = message_id.to_owned();
-        let Some(slot) = self.message_ids.get(&key)? else {
-            return Ok(None);
-        };
-        let target_owner = match &slot {
-            Slot::Channel(entry) => self.messages.owner_of_id(Id::from(*entry))?,
-            // A removed reply keeps its stamp in the tombstone; it is gone.
-            Slot::Thread(thread_key) if !self.threads.contains(thread_key)? => None,
-            Slot::Thread(thread_key) => self.threads.owner_of(thread_key)?,
-        };
-        let recorded_by = self.message_ids.owner_of(&key)?;
-        Ok((recorded_by.is_some() && recorded_by == target_owner).then_some(slot))
+        let mut pointers = self.message_ids.entries_at(&key)?;
+        pointers.sort_by_key(|(recorder, _)| *recorder);
+        for (recorder, slot) in pointers {
+            let genuine = match &slot {
+                Slot::Channel(entry) => {
+                    self.messages.owner_of_id(Id::from(*entry))? == Some(recorder)
+                }
+                // A removed reply is gone; the recorder must hold it.
+                Slot::Thread(thread_key) => self.threads.contains_by(&recorder, thread_key)?,
+            };
+            if genuine {
+                return Ok(Some(slot));
+            }
+        }
+        Ok(None)
     }
 
     /// The `messages` entry a top-level message id names.
@@ -1575,12 +1608,14 @@ impl MeroChat {
         })
     }
 
-    /// The owner stamp of a thread reply, as a `UserId`.
-    fn thread_sender(&self, key: &String) -> UserId {
+    /// The owner stamp of the thread reply `message` at `key`, as a `UserId`:
+    /// the holder of `key` whose entry it is (keys are per owner, so a
+    /// key-only `owner_of` would only ever name the caller).
+    fn thread_sender(&self, key: &String, message: &Message) -> UserId {
         self.threads
-            .owner_of(key)
+            .entries_at(key)
             .ok()
-            .flatten()
+            .and_then(|holders| holder_of(holders, message))
             .map_or(UserId::new([0; 32]), user_of)
     }
 
@@ -1589,7 +1624,7 @@ impl MeroChat {
         Ok(self
             .threads
             .prefix(thread_prefix(parent).as_bytes())?
-            .map(|(key, message)| (self.thread_sender(&key), message))
+            .map(|(key, message)| (self.thread_sender(&key, &message), message))
             .collect())
     }
 
@@ -1852,19 +1887,29 @@ impl MeroChat {
     ///
     /// Accounts, not names: the client resolves them, so a rename is reflected
     /// on reactions already given rather than only on new ones. A reaction
-    /// counts only when the account in its key is the entry's owner: a
-    /// patched node can write a key naming someone else, but not the stamp.
+    /// counts only when the account in its key holds it: a patched node can
+    /// write a key naming someone else, but that is its own entry at the key.
+    ///
+    /// Keys are per owner, so one key appears once per account holding it.
+    /// Each distinct key is read once, as the entry of the account it names.
     fn get_reactions_for_message(&self, message_id: &str) -> Option<HashMap<String, Vec<UserId>>> {
         let prefix = format!("{message_id}{KEY_SEP}");
         let mut hashmap: HashMap<String, Vec<UserId>> = HashMap::new();
+        let mut last: Option<String> = None;
         for (key, ()) in self.reactions.prefix(prefix.as_bytes()).ok()? {
+            if last.as_ref() == Some(&key) {
+                continue;
+            }
+            last = Some(key.clone());
             let Some((emoji, account_hex)) = key[prefix.len()..].rsplit_once(KEY_SEP) else {
                 continue;
             };
-            let Some(owner) = self.reactions.owner_of(&key).ok().flatten() else {
+            let Ok(owner) = account_hex.parse::<AccountId>() else {
                 continue;
             };
-            if hex(owner.as_bytes()) != account_hex {
+            if hex(owner.as_bytes()) != account_hex
+                || !self.reactions.contains_by(&owner, &key).unwrap_or(false)
+            {
                 continue;
             }
             hashmap
@@ -2782,8 +2827,14 @@ mod tests {
             .call_as_account(MODR, MODR, |s| s
                 .delete_message(reply.clone(), Some(parent.clone())))
             .is_err());
+        // Keys are per owner: MODR's key-only remove names MODR's own entry,
+        // and removing USER's by name needs a moderator.
         assert!(app
             .call_as_account(MODR, MODR, |s| s.threads.remove(&key))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(MODR, MODR, |s| s.threads.remove_by(&USER.into(), &key))
             .is_err());
         assert_eq!(thread_len(&app), 1);
 
@@ -2812,10 +2863,15 @@ mod tests {
         .unwrap();
         let modrs = reaction_key(&id, "+1", &UserId::new(MODR));
 
-        // Nobody else can take it away.
+        // Nobody else can take it away: keys are per owner, so USER's remove
+        // names USER's own entry at the key, of which there is none.
         assert!(app
             .call_as_account(USER, USER, |s| s.reactions.remove(&modrs))
-            .is_err());
+            .unwrap()
+            .is_none());
+        // Nor can USER file a copy under MODR's key and have it count twice.
+        app.call_as_account(USER, USER, |s| s.reactions.insert(modrs.clone(), ()))
+            .unwrap();
         // A key naming someone else is stored, but its owner stamp gives it away.
         app.call_as_account(USER, USER, |s| {
             s.reactions

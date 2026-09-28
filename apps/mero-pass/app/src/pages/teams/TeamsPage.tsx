@@ -117,7 +117,7 @@ export default function TeamsPage() {
       redeemer.setError(NOT_AN_INVITATION);
       return;
     }
-    const destination = await redeemer.redeem(payload);
+    const { destination } = await redeemer.redeem(payload);
     if (!destination) return;
     setJoinCode('');
     // ⚠️ A join that cannot be placed — the team is joined but its vaults

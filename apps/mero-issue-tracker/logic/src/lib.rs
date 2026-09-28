@@ -195,11 +195,17 @@ pub struct IssueView {
     pub impact: String,
     pub repro: String,
     pub resolution_criteria: String,
+    /// One of Open, In progress, Blocked, Done.
     pub status: String,
+    /// One of low, medium, high, urgent.
     pub priority: String,
+    /// Free text; null when unassigned.
     pub assignee: Option<String>,
+    /// Sorted.
     pub labels: Vec<String>,
+    /// The creator's account id (64 hex).
     pub created_by: String,
+    /// Unix milliseconds.
     pub created_at: u64,
 }
 
@@ -209,9 +215,12 @@ pub struct IssueView {
 pub struct CommentView {
     pub id: String,
     pub issue_id: String,
+    /// The writer's account id (64 hex); only this identity may edit or delete.
     pub author: String,
     pub body: String,
+    /// Unix milliseconds.
     pub created_at: u64,
+    /// Unix milliseconds of the last edit, or null.
     pub edited_at: Option<u64>,
 }
 
@@ -227,6 +236,7 @@ pub struct IssueDetail {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct StatusCount {
+    /// One of Open, In progress, Blocked, Done.
     pub status: String,
     pub count: u64,
 }
@@ -268,6 +278,13 @@ fn store_err(what: &'static str) -> impl FnOnce(StoreError) -> AppError {
 
 #[app::logic]
 impl IssueTracker {
+    /// Create an empty issue board for one repository. Runs once, when the repo's
+    /// context is created; takes no arguments.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     #[app::init]
     pub fn init() -> IssueTracker {
         IssueTracker {
@@ -279,8 +296,16 @@ impl IssueTracker {
         }
     }
 
-    /// Set (or change) the GitHub repository URL this context tracks. Rejects an
-    /// empty value or one that is not an `http(s)://` URL.
+    /// Set or change the repository URL this context tracks. Any member may call it.
+    ///
+    /// # Errors
+    /// Fails if `url` is empty or does not start with `http://` or `https://`.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"url":"https://github.com/calimero-network/apps"}
+    /// ```
+    #[app::idempotent]
     pub fn set_repo_url(&mut self, url: String) -> app::Result<()> {
         validate_repo_url(&url)?;
         self.repo_url.set(url.clone());
@@ -289,14 +314,43 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Read this context's repository metadata (empty `repo_url` until set).
+    /// This context's repository URL (`repo_url`), empty until `set_repo_url`.
+    ///
+    /// # Returns
+    /// `{"repo_url"}`, empty until set.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_repo_info(&self) -> app::Result<RepoInfo> {
         Ok(RepoInfo {
             repo_url: self.repo_url.get().clone(),
         })
     }
 
-    /// Create an issue. Returns its generated id. Starts in status `Open`.
+    /// File an issue and return its id (`issue-<ms>-<8 hex>`). New issues start in status `Open`.
+    ///
+    /// # Arguments
+    /// * `title` - 1 to 64 characters.
+    /// * `summary` - what is wrong, in a sentence or two; must not be empty.
+    /// * `impact` - who or what it affects and how badly; must not be empty.
+    /// * `repro` - steps, logs or conditions that trigger it; must not be empty.
+    /// * `resolution_criteria` - what "fixed" must satisfy; must not be empty.
+    /// * `priority` - `low`, `medium`, `high` or `urgent`.
+    /// * `labels` - optional; each 1 to 64 characters.
+    ///
+    /// # Returns
+    /// The new issue's id, `issue-<ms>-<8 hex>`.
+    ///
+    /// # Errors
+    /// Fails if a text field is empty, `title` or a label is longer than 64 characters,
+    /// or `priority` is not one of the four values.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"title":"Flaky CI","summary":"The e2e job fails intermittently.","impact":"Merges are blocked.","repro":"Re-run the e2e job on main.","resolution_criteria":"Ten consecutive green runs.","priority":"high","labels":["ci"]}
+    /// ```
     //
     // Scoped allow, not a refactor. The monorepo gates `clippy -D warnings`
     // where this app's own CI ran plain `clippy`, so 8/7 arguments became an
@@ -361,7 +415,19 @@ impl IssueTracker {
         Ok(id)
     }
 
-    /// Change an issue's status. Rejects any value outside the allowed set.
+    /// Move an issue to another status column.
+    ///
+    /// # Arguments
+    /// * `status` - exactly `Open`, `In progress`, `Blocked` or `Done`.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `status` is not one of the four values.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","status":"In progress"}
+    /// ```
+    #[app::idempotent]
     pub fn set_status(&mut self, issue_id: String, status: String) -> app::Result<()> {
         validate_status(&status)?;
         self.triage(&issue_id, |issue| issue.status.set(status.clone()))?;
@@ -373,7 +439,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Update an issue's summary. Rejects an empty value.
+    /// Replace an issue's summary.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `summary` is empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","summary":"Fails on every third run."}
+    /// ```
+    #[app::idempotent]
     pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
         validate_section("summary", &summary)?;
         self.triage(&issue_id, |issue| issue.summary.set(summary))?;
@@ -382,7 +457,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Update an issue's impact. Rejects an empty value.
+    /// Replace an issue's impact.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `impact` is empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","impact":"Every merge waits for a manual re-run."}
+    /// ```
+    #[app::idempotent]
     pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
         validate_section("impact", &impact)?;
         self.triage(&issue_id, |issue| issue.impact.set(impact))?;
@@ -391,7 +475,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Update an issue's reproduction steps. Rejects an empty value.
+    /// Replace an issue's reproduction steps.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `repro` is empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","repro":"Run the e2e job three times on main."}
+    /// ```
+    #[app::idempotent]
     pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
         validate_section("repro", &repro)?;
         self.triage(&issue_id, |issue| issue.repro.set(repro))?;
@@ -400,7 +493,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Update an issue's resolution criteria. Rejects an empty value.
+    /// Replace an issue's resolution criteria.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `resolution_criteria` is empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","resolution_criteria":"Twenty consecutive green runs."}
+    /// ```
+    #[app::idempotent]
     pub fn set_resolution_criteria(
         &mut self,
         issue_id: String,
@@ -415,7 +517,19 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Change an issue's priority. Rejects any value outside the allowed set.
+    /// Change an issue's priority.
+    ///
+    /// # Arguments
+    /// * `priority` - `low`, `medium`, `high` or `urgent`.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `priority` is not one of the four values.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","priority":"urgent"}
+    /// ```
+    #[app::idempotent]
     pub fn set_priority(&mut self, issue_id: String, priority: String) -> app::Result<()> {
         validate_priority(&priority)?;
         self.triage(&issue_id, |issue| issue.priority.set(priority.clone()))?;
@@ -428,6 +542,18 @@ impl IssueTracker {
     }
 
     /// Set or clear an issue's assignee.
+    ///
+    /// # Arguments
+    /// * `assignee` - free text, conventionally a workspace member's account id; `null` clears it.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","assignee":"<account id>"}
+    /// ```
+    #[app::idempotent]
     pub fn set_assignee(&mut self, issue_id: String, assignee: Option<String>) -> app::Result<()> {
         self.triage(&issue_id, |issue| issue.assignee.set(assignee))?;
 
@@ -435,8 +561,19 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Add a label to an issue. Idempotent — a duplicate (even concurrent) add
-    /// collapses to a single index entry.
+    /// Add a label to an issue. Adding it twice, even concurrently, keeps one.
+    ///
+    /// # Arguments
+    /// * `label` - 1 to 64 characters.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or the label is empty or too long.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","label":"ci"}
+    /// ```
+    #[app::idempotent]
     pub fn add_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         validate_user_label(&label)?;
         if !self.issue_exists(&issue_id)? {
@@ -449,7 +586,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Remove a label from an issue. No-op if the label was not present.
+    /// Remove a label from an issue; removing one it lacks succeeds.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","label":"ci"}
+    /// ```
+    #[app::idempotent]
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
             app::bail!(Error::NotFound(issue_id));
@@ -463,11 +609,20 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// List issues, optionally filtered by status, assignee, and/or label.
-    /// Results are ordered by creation time then id for stability.
+    /// List issues, oldest first, optionally filtered.
     ///
-    /// The first filter given is a seek on its index; the others are checked on
-    /// the rows it returns. With no filter every issue is read.
+    /// # Arguments
+    /// * `status` - keep only this exact status, or `null` for all.
+    /// * `assignee` - keep only this exact assignee, or `null` for all.
+    /// * `label` - keep only issues with this label, or `null` for all.
+    ///
+    /// # Returns
+    /// The matching issues, oldest first.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"status":"Open","assignee":null,"label":null}
+    /// ```
     pub fn list_issues(
         &self,
         status: Option<String>,
@@ -535,7 +690,18 @@ impl IssueTracker {
         Ok(out)
     }
 
-    /// Read a single issue plus its full comment thread (ordered by created_at).
+    /// One issue with its comment thread, oldest comment first.
+    ///
+    /// # Returns
+    /// The issue and its comments, oldest comment first.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>"}
+    /// ```
     pub fn get_issue(&self, issue_id: String) -> app::Result<IssueDetail> {
         let issue = self
             .issue_view(issue_id.clone())?
@@ -550,9 +716,7 @@ impl IssueTracker {
             .map_err(store_err("comments.query"))?
         {
             let author = self
-                .comments
-                .owner_of(&id)
-                .map_err(store_err("comments.owner_of"))?
+                .comment_author(&id, &c)?
                 .map(|a| a.to_string())
                 .unwrap_or_default();
             comments.push(CommentView {
@@ -569,9 +733,15 @@ impl IssueTracker {
         Ok(IssueDetail { issue, comments })
     }
 
-    /// Live count of issues per status column, in fixed column order. Each
-    /// column is a seek on the `status` index; a row counts only if its issue
-    /// still has a header.
+    /// Issue counts per status, in board column order: Open, In progress, Blocked, Done.
+    ///
+    /// # Returns
+    /// Four `{"status", "count"}` rows in column order.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_status_counts(&self) -> app::Result<Vec<StatusCount>> {
         let mut out = Vec::with_capacity(STATUSES.len());
         for status in STATUSES {
@@ -595,7 +765,18 @@ impl IssueTracker {
         Ok(out)
     }
 
-    /// Post a comment to an issue's thread. Returns the generated comment id.
+    /// Post a comment to an issue's thread and return its id (`comment-<ms>-<8 hex>`).
+    ///
+    /// # Returns
+    /// The new comment's id, `comment-<ms>-<8 hex>`.
+    ///
+    /// # Errors
+    /// Fails if the issue does not exist or `body` is empty.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>","body":"Seen again on main."}
+    /// ```
     pub fn add_comment(&mut self, issue_id: String, body: String) -> app::Result<String> {
         if body.trim().is_empty() {
             app::bail!(Error::Invalid("comment body must not be empty".into()));
@@ -627,7 +808,16 @@ impl IssueTracker {
         Ok(id)
     }
 
-    /// Edit a comment's body. Only the original author may edit.
+    /// Replace a comment's text. Only its author may edit it.
+    ///
+    /// # Errors
+    /// Fails if the comment does not exist, `new_body` is empty, or the caller is not the author.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"<comment id>","new_body":"Seen twice on main."}
+    /// ```
+    #[app::idempotent]
     pub fn edit_comment(&mut self, comment_id: String, new_body: String) -> app::Result<()> {
         if new_body.trim().is_empty() {
             app::bail!(Error::Invalid("comment body must not be empty".into()));
@@ -645,7 +835,16 @@ impl IssueTracker {
         Ok(())
     }
 
-    /// Delete a comment. Only the original author may delete.
+    /// Delete a comment. Only its author may delete it.
+    ///
+    /// # Errors
+    /// Fails if the comment does not exist or the caller is not the author.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"comment_id":"<comment id>"}
+    /// ```
+    #[app::destructive]
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
         self.require_comment_author(&comment_id, "delete")?;
         let _ = self
@@ -658,11 +857,18 @@ impl IssueTracker {
     }
 
     /// Delete an issue with its triage state, its labels and the caller's own
-    /// comments on it. Only the issue's creator may delete it.
+    /// comments on it. Only the issue's creator may delete it. Comments left by
+    /// other people are not removed, but become unreachable once the issue is
+    /// gone.
     ///
-    /// Other people's comments stay: each belongs to its author, and only they
-    /// may remove it. Every comment read goes through a live issue, so those
-    /// orphans are never shown.
+    /// # Errors
+    /// Fails if the issue does not exist or the caller is not its creator.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"issue_id":"<issue id>"}
+    /// ```
+    #[app::destructive]
     pub fn delete_issue(&mut self, issue_id: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
             app::bail!(Error::NotFound(issue_id));
@@ -739,10 +945,10 @@ fn caller() -> String {
 }
 
 impl IssueTracker {
+    /// Whether any account holds a header at `issue_id`: keys are per owner,
+    /// so a key-only `contains` would ask about the caller's own only.
     fn issue_exists(&self, issue_id: &str) -> app::Result<bool> {
-        self.headers
-            .contains(&issue_id.to_owned())
-            .map_err(store_err("headers.contains"))
+        Ok(self.header_holder(&issue_id.to_owned())?.is_some())
     }
 
     /// Apply a triage edit to an existing issue, re-creating its triage row
@@ -783,24 +989,58 @@ impl IssueTracker {
         Ok(())
     }
 
+    /// Keys are per owner: `owned_by_me` asks whether the CALLER holds a
+    /// comment at the id, `entries_at` whether anyone does.
     fn require_comment_author(&self, comment_id: &String, action: &str) -> app::Result<()> {
-        if !self
-            .comments
-            .contains(comment_id)
-            .map_err(store_err("comments.contains"))?
-        {
-            app::bail!(Error::NotFound(comment_id.clone()));
-        }
-        if !self
+        if self
             .comments
             .owned_by_me(comment_id)
             .map_err(store_err("comments.owned_by_me"))?
         {
-            app::bail!(Error::Forbidden(format!(
-                "only the author may {action} this comment"
-            )));
+            return Ok(());
         }
-        Ok(())
+        if self
+            .comments
+            .entries_at(comment_id)
+            .map_err(store_err("comments.entries_at"))?
+            .is_empty()
+        {
+            app::bail!(Error::NotFound(comment_id.clone()));
+        }
+        app::bail!(Error::Forbidden(format!(
+            "only the author may {action} this comment"
+        )))
+    }
+
+    /// The author of the comment row `c` at `id`: the holder of `id` whose
+    /// entry it is, matched by bytes. Keys are per owner, so a key-only
+    /// `owner_of` would only ever name the caller. A comment carries
+    /// `LwwRegister`s, stamped with their write, so two accounts' entries are
+    /// never byte-identical.
+    fn comment_author(&self, id: &String, c: &Comment) -> app::Result<Option<AccountId>> {
+        let Ok(row) = calimero_sdk::borsh::to_vec(c) else {
+            return Ok(None);
+        };
+        Ok(self
+            .comments
+            .entries_at(id)
+            .map_err(store_err("comments.entries_at"))?
+            .into_iter()
+            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
+            .map(|(owner, _)| owner)
+            .min())
+    }
+
+    /// The header at `id` of the lowest account holding one, with that
+    /// account: the same pick on every node. Keys are per owner, so a
+    /// key-only `get` would read the caller's own header only.
+    fn header_holder(&self, id: &String) -> app::Result<Option<(AccountId, IssueHeader)>> {
+        Ok(self
+            .headers
+            .entries_at(id)
+            .map_err(store_err("headers.entries_at"))?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner))
     }
 
     /// The labels attached to an issue, sorted for a stable order. Only rows
@@ -825,15 +1065,10 @@ impl IssueTracker {
 
     /// The issue `id` as a view, or `None` if it has no header.
     fn issue_view(&self, id: String) -> app::Result<Option<IssueView>> {
-        let Some(header) = self.headers.get(&id).map_err(store_err("headers.get"))? else {
+        let Some((creator, header)) = self.header_holder(&id)? else {
             return Ok(None);
         };
-        let created_by = self
-            .headers
-            .owner_of(&id)
-            .map_err(store_err("headers.owner_of"))?
-            .map(|a| a.to_string())
-            .unwrap_or_default();
+        let created_by = creator.to_string();
         let issue = match self.issues.get(&id).map_err(store_err("issues.get"))? {
             Some(issue) => issue.clone(),
             None => Issue::missing(),
@@ -1345,8 +1580,14 @@ mod tests {
                 s.comments.modify(&c, |c| c.body.set("hax".into()))
             })
             .is_err());
+        // Keys are per owner: OTHER's key-only remove names OTHER's own entry
+        // at the key, of which there is none.
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.comments.remove(&c))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_comment(c.clone()))
             .is_err());
         assert_eq!(
             app.view(|s| s.get_issue(id)).unwrap().comments[0].body,
@@ -1360,28 +1601,51 @@ mod tests {
         let id = new_issue(&mut app);
         let me = app.view(|_| caller());
 
+        // Keys are per owner: OTHER's key-only remove and modify name OTHER's
+        // own entry at the id, of which there is none.
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.remove(&id))
-            .is_err());
+            .unwrap()
+            .is_none());
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| {
                 s.headers.modify(&id, |h| h.title = "Renamed".into())
             })
             .is_err());
-        // Taking the key over by inserting is refused too: it is occupied.
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.headers.insert(
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_issue(id.clone()))
+            .is_err());
+
+        let issue = app.view(|s| s.get_issue(id.clone())).unwrap().issue;
+        assert_eq!(issue.title, "Login broken");
+        assert_eq!(issue.created_by, me, "created_by is the owner stamp");
+
+        // Inserting at the id files OTHER's own header beside mine. Reads by
+        // id take the lowest account's, and name whoever that is: the stamp
+        // is never reattributed, and my header is untouched.
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.headers.insert(
                 id.clone(),
                 IssueHeader {
                     title: "Mine now".into(),
                     created_at: 0,
-                }
-            ))
-            .is_err());
-
-        let issue = app.view(|s| s.get_issue(id)).unwrap().issue;
-        assert_eq!(issue.title, "Login broken");
-        assert_eq!(issue.created_by, me, "created_by is the owner stamp");
+                },
+            )
+        })
+        .unwrap();
+        let other = AccountId::from(OTHER_ACCOUNT).to_string();
+        let shown = app.view(|s| s.get_issue(id.clone())).unwrap().issue;
+        let expected = if other < me {
+            ("Mine now", other)
+        } else {
+            ("Login broken", me.clone())
+        };
+        assert_eq!((shown.title.as_str(), shown.created_by), expected);
+        let my_account = AccountId::from(app.account_id());
+        let mine = app.view(|s| s.headers.get_by(&my_account, &id).unwrap().unwrap());
+        assert_eq!(mine.title, "Login broken");
+        let listed = app.view(|s| s.list_issues(None, None, None)).unwrap();
+        assert_eq!(listed.len(), 1, "one issue however many hold its id");
     }
 
     /// Triage is public on purpose, so a peer CAN remove a triage row. The
@@ -1444,7 +1708,9 @@ mod tests {
         app.call(|s| s.delete_issue(id.clone())).unwrap();
         // Only its author may remove it, so it stays — unreachable, since
         // every read goes through the issue.
-        assert!(app.view(|s| s.comments.contains(&theirs).unwrap()));
+        // Keys are per owner, so asked across owners: a key-only `contains`
+        // would ask about the viewer's own comment.
+        assert!(!app.view(|s| s.comments.entries_at(&theirs).unwrap().is_empty()));
         assert!(app.view(|s| s.get_issue(id)).is_err());
     }
 }

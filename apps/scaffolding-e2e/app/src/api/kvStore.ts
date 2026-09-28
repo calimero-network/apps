@@ -424,6 +424,12 @@ export const authoredEntries = () =>
 export const authoredGetOwner = (key: string) =>
   call<{ key: string }, string | null>("authored_get_owner", { key });
 
+export const authoredGetBy = (owner: string, key: string) =>
+  call<{ owner: string; key: string }, string | null>("authored_get_by", { owner, key });
+
+export const authoredOwners = (key: string) =>
+  call<{ key: string }, string[]>("authored_owners", { key });
+
 export const authoredLen = () =>
   call<Record<string, never>, number>("authored_len", {});
 

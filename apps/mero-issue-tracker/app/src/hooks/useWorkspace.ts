@@ -26,7 +26,6 @@ import {
   useMero,
   useNamespacesForApplication,
   useCreateNamespaceInvitation,
-  useJoinNamespace,
   useGroupContexts,
   useGroupMembers,
   useNodeIdentity,
@@ -36,12 +35,8 @@ import {
 import { useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { PRIMARY_SERVICE } from '../config';
-import { decodeInvitation } from '../utils/invitation';
-import {
-  buildInvitePayload,
-  groupIdOfInvite,
-  parseInvitePayload,
-} from '../utils/invitePayload';
+import { buildInvitePayload } from '../utils/invitePayload';
+import { redeemInviteCode } from '../utils/redeemInvite';
 import { IssueTrackerClient } from '../generated/IssueTrackerClient';
 import { useApplicationId } from './useApplicationId';
 import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
@@ -56,6 +51,7 @@ import {
   clearPersistedWorkspace,
 } from './workspacePersistence';
 import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
+import type { RedeemOutcome } from '@calimero-apps/invite';
 
 export interface RepoEntry {
   contextId: string;
@@ -87,8 +83,8 @@ export interface UseWorkspaceReturn {
   createNamespace: (name: string) => Promise<string | null>;
   createNamespaceLoading: boolean;
   createNamespaceError: Error | null;
-  join: (code: string) => Promise<void>;
-  joinLoading: boolean;
+  /** Redeems an invite code; never throws for an ordinary failure. */
+  join: (code: string) => Promise<RedeemOutcome>;
   /** Mints an invitation and returns the JSON payload to wrap in a share link. */
   invite: () => Promise<string>;
   inviteLoading: boolean;
@@ -156,7 +152,6 @@ export function useWorkspace(): UseWorkspaceReturn {
   const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
     useNamespacesForApplication(applicationId);
   const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
-  const { joinNamespace, loading: joinLoading } = useJoinNamespace();
   const { setMemberMetadata } = useSetMemberMetadata();
 
   // Drop the pre-versioning key on load; it is never read for a value, only
@@ -583,31 +578,25 @@ export function useWorkspace(): UseWorkspaceReturn {
     return JSON.stringify(payload);
   }, [activeNs, namespaces, createNamespaceInvitation]);
 
-  const join = useCallback(async (code: string) => {
-    const payload = parseInvitePayload(decodeInvitation(code));
-    if (!payload) throw new Error('That invite link could not be read.');
-
-    // The id to act on comes from INSIDE the signed invitation, never from the
-    // wrapper around it, so a tampered link cannot redirect a join. The wrapper's
-    // `groupId` is only a fallback for a node that signs no group id.
-    const nsId = groupIdOfInvite(payload) || payload.groupId || null;
-    if (!nsId) throw new Error('Invalid invitation: cannot determine namespace.');
-
-    // `groupName` is the creator's workspace name, riding along in the payload.
-    // Passing it is what makes the joiner's sidebar say "Platform team" instead
-    // of `20150f8a`.
-    await joinNamespace(nsId, {
-      invitation: payload.invitation as never,
-      ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
-    });
-    // Joined; this workspace's repos have not replicated yet. Flagged so the
-    // sidebar says "syncing" rather than "No repos yet" — which is what a
-    // joiner currently reads about a workspace full of them.
+  const join = useCallback(async (code: string): Promise<RedeemOutcome> => {
+    const outcome = await redeemInviteCode(code, mero?.admin ?? null);
+    if (outcome.status === 'failed') return outcome;
+    const nsId = outcome.namespaceId;
+    // Joined (or already in it); this workspace's repos have not replicated yet.
+    // Flagged so the sidebar says "syncing" rather than "No repos yet" — which
+    // is what a joiner currently reads about a workspace full of them.
     markNamespaceJustJoined(nsId);
-    await refetchNamespaces();
-    selectNamespace(nsId);
-    await refetchContexts();
-  }, [joinNamespace, refetchNamespaces, refetchContexts, selectNamespace]);
+    // The refresh is not the join: a refresh that throws must not turn a real
+    // join into a reported failure.
+    try {
+      await refetchNamespaces();
+      selectNamespace(nsId);
+      await refetchContexts();
+    } catch {
+      selectNamespace(nsId);
+    }
+    return outcome;
+  }, [mero, refetchNamespaces, refetchContexts, selectNamespace]);
 
   // `reposLoading` going false is the signal the repo list answered — for the
   // namespace that was active when it did, which is why the id is recorded
@@ -638,7 +627,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     createNamespaceLoading,
     createNamespaceError,
     join,
-    joinLoading,
     invite,
     inviteLoading,
     repos,

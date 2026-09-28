@@ -1906,8 +1906,9 @@ impl Spreadsheet {
             .entries()
             .map_err(|e| AppError::msg(format!("activity.query: {e}")))?
         {
+            let holders = self.activity.entries_at(&id)?;
             out.push(ActivityEntry {
-                author: owner_hex(self.activity.owner_of(&id)?),
+                author: owner_hex(owner_among(holders, &d)),
                 id,
                 at: d.at,
                 sheet_id: d.sheet_id,
@@ -1938,7 +1939,9 @@ impl Spreadsheet {
         Spreadsheet::check_id(&row_id)?;
         Spreadsheet::check_id(&col_id)?;
         let text = Spreadsheet::check_comment(text)?;
-        if !parent.is_empty() && !self.comments.contains(&parent)? {
+        // Anyone's comment: keys are per owner, so a key-only `contains`
+        // would only find a parent the caller wrote.
+        if !parent.is_empty() && self.comments.entries_at(&parent)?.is_empty() {
             return Err(AppError::from(Error::NotFound(parent)));
         }
         let author = self.caller_hex();
@@ -2024,7 +2027,7 @@ impl Spreadsheet {
                 "only its author or an owner can delete a comment".into(),
             )));
         }
-        self.comments.remove(&id)?;
+        self.remove_every(Owned::Comments, &id)?;
         self.resolved
             .remove(&id)
             .map_err(|e| AppError::msg(format!("resolved.remove: {e}")))?;
@@ -2038,9 +2041,9 @@ impl Spreadsheet {
     /// Every comment, oldest first. The author is the entry's owner stamp.
     pub fn get_comments(&self) -> app::Result<Vec<Comment>> {
         let mut out = Vec::new();
-        for (id, c) in self
+        for (owner, id, c) in self
             .comments
-            .entries()
+            .entries_with_owners()
             .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
         {
             let resolved = self
@@ -2049,7 +2052,7 @@ impl Spreadsheet {
                 .map_err(|e| AppError::msg(format!("resolved.get: {e}")))?
                 .is_some_and(|r| *r.get());
             out.push(Comment {
-                author: owner_hex(self.comments.owner_of(&id)?),
+                author: owner_hex(Some(owner)),
                 id,
                 sheet_id: c.sheet_id,
                 row_id: c.row_id,
@@ -2077,12 +2080,46 @@ impl Spreadsheet {
     }
 
     /// The sheet a comment is on; `NotFound` for no such comment.
+    /// The sheet of the comment at `id`, whoever wrote it (the lowest
+    /// account's, if several did): a key-only `get` reads the caller's own.
     fn comment_sheet(&self, id: &str) -> app::Result<String> {
-        self.comments
-            .get(&id.to_string())
-            .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
-            .map(|c| c.sheet_id)
-            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+        lowest(
+            self.comments
+                .entries_at(&id.to_string())
+                .map_err(|e| AppError::msg(format!("comments.entries_at: {e}")))?,
+        )
+        .map(|(_, c)| c.sheet_id)
+        .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+    }
+
+    /// Remove the entry at `id` of a moderated collection: the caller's own
+    /// if they hold one, else every holder's, by name (`remove_by`), which
+    /// storage allows a moderator only. A key-only `remove` removes only the
+    /// caller's own entry.
+    fn remove_every(&mut self, which: Owned, id: &String) -> app::Result<()> {
+        let me = caller_account();
+        macro_rules! remove_in {
+            ($map:expr) => {{
+                let holders: Vec<AccountId> = $map
+                    .entries_at(id)?
+                    .into_iter()
+                    .map(|(owner, _)| owner)
+                    .collect();
+                if holders.contains(&me) {
+                    let _ = $map.remove(id)?;
+                } else {
+                    for owner in holders {
+                        let _ = $map.remove_by(&owner, id)?;
+                    }
+                }
+            }};
+        }
+        match which {
+            Owned::Comments => remove_in!(self.comments),
+            Owned::Attachments => remove_in!(self.attachments),
+            Owned::Publications => remove_in!(self.publications),
+        }
+        Ok(())
     }
 
     /// Members named in `text` as `@nickname` (longest nickname wins, case
@@ -2824,7 +2861,7 @@ impl Spreadsheet {
         })?;
         send_xcall(&parse_context(&p.target_context)?, "drop_link", params);
         let sheet_id = p.sheet_id.clone();
-        self.publications.remove(&id)?;
+        self.remove_every(Owned::Publications, &id)?;
         app::emit!(Event::PublicationsChanged {
             sheet_id: &sheet_id
         });
@@ -2834,12 +2871,14 @@ impl Spreadsheet {
     /// Every live link from this workbook: those an editor or owner made.
     pub fn get_publications(&self) -> app::Result<Vec<Publication>> {
         let mut out = Vec::new();
-        for (id, p) in self
+        let ids: BTreeSet<String> = self
             .publications
             .entries()
             .map_err(|e| AppError::msg(format!("publications.entries: {e}")))?
-        {
-            let Some(created_by) = self.publication_author(&id)? else {
+            .map(|(id, _)| id)
+            .collect();
+        for id in ids {
+            let Some((created_by, p)) = self.live_publication_entry(&id)? else {
                 continue;
             };
             out.push(Publication {
@@ -3002,11 +3041,11 @@ impl Spreadsheet {
     /// Remove an attachment. Whoever attached it, or an owner, may: storage
     /// refuses anyone else on every node.
     pub fn remove_attachment(&mut self, id: String) -> app::Result<()> {
-        let Some(a) = self
-            .attachments
-            .get(&id)
-            .map_err(|e| AppError::msg(format!("attachments.get: {e}")))?
-        else {
+        let Some((_, a)) = lowest(
+            self.attachments
+                .entries_at(&id)
+                .map_err(|e| AppError::msg(format!("attachments.entries_at: {e}")))?,
+        ) else {
             return Err(AppError::from(Error::NotFound(id)));
         };
         self.require_role(Role::Editor)?;
@@ -3016,7 +3055,7 @@ impl Spreadsheet {
                 "only whoever attached a file, or an owner, can remove it".into(),
             )));
         }
-        self.attachments.remove(&id)?;
+        self.remove_every(Owned::Attachments, &id)?;
         self.log(
             &a.sheet_id,
             "file",
@@ -3033,13 +3072,13 @@ impl Spreadsheet {
     /// Every attachment, oldest first. `created_by` is the owner stamp.
     pub fn get_attachments(&self) -> app::Result<Vec<Attachment>> {
         let mut out = Vec::new();
-        for (id, a) in self
+        for (owner, id, a) in self
             .attachments
-            .entries()
+            .entries_with_owners()
             .map_err(|e| AppError::msg(format!("attachments.entries: {e}")))?
         {
             out.push(Attachment {
-                created_by: owner_hex(self.attachments.owner_of(&id)?),
+                created_by: owner_hex(Some(owner)),
                 id,
                 sheet_id: a.sheet_id,
                 row_id: a.row_id,
@@ -3965,15 +4004,19 @@ impl Spreadsheet {
     /// nothing) when the sheet has neither.
     fn after_change(&mut self, sheet_id: &str) -> app::Result<()> {
         let mut pubs: Vec<(String, PublicationData)> = Vec::new();
-        for (id, p) in self
+        let ids: BTreeSet<String> = self
             .publications
             .query("sheet_id")
             .eq(sheet_id)
-            .entries()
+            .keys()
             .map_err(|e| AppError::msg(format!("publications.query: {e}")))?
-        {
-            if self.publication_author(&id)?.is_some() {
-                pubs.push((id, p));
+            .into_iter()
+            .collect();
+        for id in ids {
+            if let Some((_, p)) = self.live_publication_entry(&id)? {
+                if p.sheet_id == sheet_id {
+                    pubs.push((id, p));
+                }
             }
         }
         let alerts = self.rules_of(sheet_id, "alert")?;
@@ -4133,21 +4176,31 @@ impl Spreadsheet {
 
     /// A link an editor or owner made; `NotFound` otherwise.
     fn live_publication(&self, id: &str) -> app::Result<PublicationData> {
-        let p = self
-            .publications
-            .get(&id.to_string())
-            .map_err(|e| AppError::msg(format!("publications.get: {e}")))?;
-        match p {
-            Some(p) if self.publication_author(id)?.is_some() => Ok(p),
-            _ => Err(AppError::from(Error::NotFound(id.to_string()))),
+        match self.live_publication_entry(id)? {
+            Some((_, p)) => Ok(p),
+            None => Err(AppError::from(Error::NotFound(id.to_string()))),
         }
     }
 
-    /// Who made a link, if they may edit: a patched viewer's node can store a
-    /// link, but no honest node lists it or pushes cell values through it.
-    fn publication_author(&self, id: &str) -> app::Result<Option<String>> {
-        let author = owner_hex(self.publications.owner_of(&id.to_string())?);
-        Ok((self.role_of(&author)? >= Role::Editor).then_some(author))
+    /// The link at `id` and who made it, if they may edit: a patched viewer's
+    /// node can store a link, but no honest node lists it or pushes cell
+    /// values through it.
+    ///
+    /// Keys are per owner, so several accounts can hold a link at one id; the
+    /// lowest account among those who may edit is the one read, on every node.
+    fn live_publication_entry(&self, id: &str) -> app::Result<Option<(String, PublicationData)>> {
+        let mut holders = self
+            .publications
+            .entries_at(&id.to_string())
+            .map_err(|e| AppError::msg(format!("publications.entries_at: {e}")))?;
+        holders.sort_by_key(|(owner, _)| *owner);
+        for (owner, p) in holders {
+            let author = owner_hex(Some(owner));
+            if self.role_of(&author)? >= Role::Editor {
+                return Ok(Some((author, p)));
+            }
+        }
+        Ok(None)
     }
 
     /// A sheet's live rules of one kind: one seek on `by_sheet_kind`.
@@ -4485,6 +4538,36 @@ fn caller_account() -> AccountId {
 /// An owner stamp as a member id; empty for none.
 fn owner_hex(owner: Option<AccountId>) -> String {
     owner.map(|a| hex::encode(a.as_bytes())).unwrap_or_default()
+}
+
+/// The account, among `holders` of one key, whose entry is `row`.
+///
+/// Keys of an owned collection are per owner (core rc.57): one key appears
+/// once per account holding it, a row read by key or by index does not say
+/// whose it is, and a key-only `owner_of` names only the CALLER. The owner is
+/// recovered by matching the row's bytes against every holder's entry; the
+/// lowest matching account if two are byte-identical. Ids here are random, so
+/// a second holder of one only exists if a patched node copied it.
+fn owner_among<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
+    let row = calimero_sdk::borsh::to_vec(row).ok()?;
+    holders
+        .into_iter()
+        .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
+        .map(|(owner, _)| owner)
+        .min()
+}
+
+/// The moderated collections `Spreadsheet::remove_every` removes from.
+enum Owned {
+    Comments,
+    Attachments,
+    Publications,
+}
+
+/// The entry at one key of the lowest account holding it: the same pick on
+/// every node when several accounts hold one key.
+fn lowest<V>(holders: Vec<(AccountId, V)>) -> Option<(AccountId, V)> {
+    holders.into_iter().min_by_key(|(owner, _)| *owner)
 }
 
 /// A member id (64 hex characters) as an account.
@@ -6242,7 +6325,13 @@ mod tests {
         assert_eq!(log[0].author, hex::encode(ada));
         assert_eq!(log[0].summary, "edited a cell");
         let id = log[0].id.clone();
-        let entry = app.view(|s| s.activity.get(&id).unwrap().unwrap());
+        // Ada's own entry, by name: keys are per owner.
+        let entry = app.view(|s| {
+            s.activity
+                .get_by(&AccountId::from(ada), &id)
+                .unwrap()
+                .unwrap()
+        });
         assert!(
             app.call_as_account(ada, dev(ada), |s| s
                 .activity

@@ -9,6 +9,7 @@ import {
   createStreamNamespace,
   listStreamNamespaces,
   mintNamespaceInvite,
+  redeemFailureMessage,
   redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
@@ -176,7 +177,15 @@ export default function StreamsPage() {
         // Shared with the app-level link prompt, so the two cannot drift. A room
         // invitation needs BOTH joins — the namespace grant and the room's
         // context — and this sequence is where that lives.
-        const landed = await redeemInvite(mero.admin, payload, onStatus);
+        const { outcome, landed } = await redeemInvite(
+          mero.admin,
+          payload,
+          onStatus,
+        );
+        if (!landed) {
+          setError(redeemFailureMessage(outcome));
+          return;
+        }
         setJoinCode("");
         onStatus("Refreshing your streams…");
         await load(false);

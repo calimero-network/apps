@@ -387,7 +387,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "Shared keyspace map with per-entry ownership"
+          "doc": "Per-owner keyspace (core rc.57): each account holds its own entry at a\nkey, and only that account edits or removes it."
         },
         {
           "name": "authored_vec",

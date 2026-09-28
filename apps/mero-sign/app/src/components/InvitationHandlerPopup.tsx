@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { styled } from 'styled-components';
 import { useCalimero } from '../lib/useCalimero';
 import { Button, colors } from '@calimero-network/mero-ui';
+import { shouldRetain } from '@calimero-apps/invite';
 import {
+  InvitationRedeemError,
+  joinWorkspaceFromInvitation,
   parseInvitation,
-  redeemInvitation,
   type RedeemStage,
 } from '../api/invitationJoin';
 
@@ -108,17 +110,32 @@ interface InvitationHandlerPopupProps {
     namespaceId: string | null;
     name: string;
   }) => void;
-  onError: () => void;
+  /**
+   * The node refused the invitation for good (expired, invalid, refused): it is
+   * finished with, so the caller acks it now rather than on dismiss.
+   */
+  onFinalFailure: () => void;
+  /**
+   * Dismissed. `retain` is true after a failure worth another attempt on a
+   * later load (nobody online to let them in, node unreachable), so the caller
+   * keeps the invitation instead of acking it.
+   */
+  onError: (retain: boolean) => void;
 }
 
 export default function InvitationHandlerPopup({
   invitation,
   onSuccess,
+  onFinalFailure,
   onError,
 }: InvitationHandlerPopupProps) {
   const { app } = useCalimero();
   const [stage, setStage] = useState<RedeemStage>('joining');
   const [errorMessage, setErrorMessage] = useState('');
+  // Whether "Try again" can do anything. False once the node has refused the
+  // invitation itself — a new link is the only way forward then.
+  const [retryable, setRetryable] = useState(true);
+  const [retain, setRetain] = useState(false);
   const attempted = useRef(false);
 
   // The invitation's own name, shown while the join is in flight so the prompt
@@ -133,7 +150,11 @@ export default function InvitationHandlerPopup({
     setStage('joining');
 
     try {
-      const result = await redeemInvitation(invitation, app, setStage);
+      const result = await joinWorkspaceFromInvitation(
+        invitation,
+        app,
+        setStage,
+      );
       onSuccess({
         contextId: result.contextId,
         namespaceId: result.namespaceId,
@@ -141,13 +162,18 @@ export default function InvitationHandlerPopup({
       });
     } catch (error) {
       attempted.current = false;
+      const outcome =
+        error instanceof InvitationRedeemError ? error.outcome : null;
+      setRetryable(outcome ? outcome.retryable : true);
+      setRetain(outcome ? shouldRetain(outcome) : false);
+      if (outcome && !shouldRetain(outcome)) onFinalFailure();
       setErrorMessage(
         error instanceof Error
           ? error.message
           : 'An unexpected error occurred while joining.',
       );
     }
-  }, [app, invitation, onSuccess]);
+  }, [app, invitation, onSuccess, onFinalFailure]);
 
   useEffect(() => {
     // `app` is created asynchronously by the provider. Starting without it puts
@@ -165,14 +191,20 @@ export default function InvitationHandlerPopup({
           <Title>Could not join</Title>
           <Message type="error">{errorMessage}</Message>
           <ButtonGroup>
+            {retryable && (
+              <Button
+                onClick={() => void run()}
+                variant="primary"
+                style={{ flex: 1 }}
+              >
+                Try again
+              </Button>
+            )}
             <Button
-              onClick={() => void run()}
-              variant="primary"
+              onClick={() => onError(retain)}
+              variant="secondary"
               style={{ flex: 1 }}
             >
-              Try again
-            </Button>
-            <Button onClick={onError} variant="secondary" style={{ flex: 1 }}>
               Cancel
             </Button>
           </ButtonGroup>

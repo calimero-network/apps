@@ -387,7 +387,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "Shared keyspace map with per-entry ownership"
+          "doc": "Per-owner keyspace (core rc.57): each account holds its own entry at a\nkey, and only that account edits or removes it."
         },
         {
           "name": "authored_vec",
@@ -1785,6 +1785,7 @@
     },
     {
       "name": "authored_get",
+      "doc": "The value at `key` of whoever holds it: the lowest account's, if\nseveral do, the same pick on every node. Keys are per owner, so a\nkey-only `get` would read the CALLER's own entry only.",
       "params": [
         {
           "name": "key",
@@ -1799,7 +1800,30 @@
       "intent": "read_only"
     },
     {
+      "name": "authored_get_by",
+      "doc": "`owner`'s own value at `key` (`owner` is a 64-hex account id).",
+      "params": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "authored_get_owner",
+      "doc": "The account `authored_get` reads `key` from: the lowest holder.",
       "params": [
         {
           "name": "key",
@@ -1843,7 +1867,27 @@
       "intent": "read_only"
     },
     {
+      "name": "authored_owners",
+      "doc": "Every account holding an entry at `key`, ascending.",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "authored_remove",
+      "doc": "Removes the CALLER's own entry at `key`: keys are per owner, so\nanother account's entry at the same key is theirs and stays.",
       "params": [
         {
           "name": "key",

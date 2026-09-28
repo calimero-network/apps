@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   buildInviteUrl,
-  classifyJoinError,
   extractInviteParams,
   inviteExpiryMs,
   isInviteExpired,
@@ -207,31 +206,5 @@ describe('invite expiry', () => {
       invitation: { expirationTimestamp: past },
     } as unknown as SignedGroupOpenInvitation;
     expect(isInviteExpired(renamed)).toBe(true);
-  });
-});
-
-describe('classifyJoinError', () => {
-  // Every phrasing raised in review, including the ones that must NOT match:
-  // a confidently wrong card hides the real server error from the user.
-  const cases: Array<[string, 'already-member' | 'expired' | 'unknown']> = [
-    ['identity is already a member of this group', 'already-member'],
-    ['Already joined', 'already-member'],
-    ['caller already in the namespace', 'already-member'],
-    ['this item is already in the trash', 'unknown'],
-    ['request is already in the queue', 'unknown'],
-    ['this account was already removed from the member list', 'unknown'],
-    ['folder is already at member capacity', 'unknown'],
-    ['Invitation validation failed. Reason: expired.', 'expired'],
-    ['Invite rejected. It expired yesterday.', 'expired'],
-    ['this invite link has expired', 'expired'],
-    ['invitation expired', 'expired'],
-    ['The upload link for this document has expired', 'unknown'],
-    ['your session token expired', 'unknown'],
-    ['HTTP 500 Internal Server Error', 'unknown'],
-    ['', 'unknown'],
-  ];
-
-  it.each(cases)('classifies %j as %s', (message, expected) => {
-    expect(classifyJoinError(message)).toBe(expected);
   });
 });

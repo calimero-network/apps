@@ -11,13 +11,14 @@ import {
 } from '@calimero-network/mero-react';
 import { useApplicationId } from '@/hooks/useApplicationId';
 import { Button } from '@/components/ui/button';
+import { shouldRetain } from '@calimero-apps/invite';
 import {
   type ParsedInvite,
-  classifyJoinError,
   isInviteExpired,
   useJoinFolderByInvite,
   useJoinNamespaceByInvite,
 } from '@/hooks/useNamespaceInvitation';
+import { inviteFailureCopy, redeemInvite } from '@/lib/redeemInvite';
 import { markNamespaceJustJoined } from '@/hooks/useDriveWorkspace';
 import { rememberNamespaceName } from '@/hooks/namespaceNames';
 
@@ -40,7 +41,7 @@ export function JoinInviteCard({
   secondaryAction,
   onJoiningChange,
 }: Props) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { mero, isAuthenticated, isLoading } = useMero();
   // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
   // namespaces scoped by application id, and the provider's id belongs to
   // whichever app last logged in on this origin - so on a shared dev origin
@@ -51,9 +52,9 @@ export function JoinInviteCard({
   const { join: joinGroup } = useJoinFolderByInvite();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Server-detected duplicates land here too (the join call rejecting
-  // with an "already a member" message), not just the pre-check below.
-  const [alreadyMember, setAlreadyMember] = useState(false);
+  // Set by a failure no retry can fix (a refused or malformed invitation): the
+  // link is spent, so the accept button is retired rather than offered again.
+  const [spent, setSpent] = useState(false);
   const [expiredByServer, setExpiredByServer] = useState(false);
 
   const scopeLabel = parsed.kind === 'namespace' ? 'workspace' : 'folder';
@@ -67,24 +68,42 @@ export function JoinInviteCard({
     isAuthenticated && parsed.kind === 'namespace' && appId ? appId : null,
   );
   const isMember =
-    alreadyMember ||
-    (parsed.kind === 'namespace' &&
-      (namespaces ?? []).some((n) => n.namespaceId === parsed.targetId));
+    parsed.kind === 'namespace' &&
+    (namespaces ?? []).some((n) => n.namespaceId === parsed.targetId);
 
   const onJoinClick = async () => {
     setJoining(true);
     onJoiningChange?.(true);
     setError(null);
     try {
+      // The name goes to the NODE, not just to this browser: `groupName` on
+      // the join request is what files the creator's chosen workspace name
+      // against the joiner's own governance row, so it is there for every
+      // tab and every future session on this machine - and for the desktop
+      // app, which shares the node and not the localStorage.
+      const outcome = await redeemInvite(parsed, {
+        joinNamespace: joinNs,
+        joinFolder: joinGroup,
+        listNamespaces: async () => {
+          if (!mero) throw new Error('Mero client not ready');
+          return mero.admin.listNamespaces();
+        },
+      });
+      if (outcome.status === 'failed') {
+        if (outcome.reason === 'expired') {
+          setExpiredByServer(true);
+        } else {
+          setError(inviteFailureCopy(outcome, scopeLabel));
+          setSpent(!shouldRetain(outcome));
+        }
+        return;
+      }
+      // `joined` and `already-member` land the same way: an already-member is
+      // a join the request did not see finish (the desktop proxy aborts at
+      // 30s), or a link followed twice.
       if (parsed.kind === 'namespace') {
-        // The name goes to the NODE, not just to this browser: `groupName` on
-        // the join request is what files the creator's chosen workspace name
-        // against the joiner's own governance row, so it is there for every
-        // tab and every future session on this machine - and for the desktop
-        // app, which shares the node and not the localStorage.
-        await joinNs(parsed.targetId, parsed.invitation, parsed.targetName);
-        // Mirror it into the local snapshot as well. Belt and braces for the
-        // window between the join returning and the node's namespace list
+        // Mirror the name into the local snapshot as well. Belt and braces for
+        // the window between the join returning and the node's namespace list
         // reporting a name: `listNamespacesForApplication` omits `name` until
         // the root-group metadata has synced, which on a small cluster can lag
         // indefinitely. The snapshot is only ever read when the node has no
@@ -97,26 +116,13 @@ export function JoinInviteCard({
         // "Syncing from peers…" state while the governance op +
         // registry state propagate, rather than a raw empty view.
         markNamespaceJustJoined(parsed.targetId);
-      } else {
-        await joinGroup(parsed.invitation, parsed.targetName);
-        // For folder joins the namespace is already in place; no
-        // sync gate needed - the folder's docs context will sync
-        // in the background the usual way.
       }
+      // For folder joins the namespace is already in place; no sync gate
+      // needed - the folder's docs context will sync in the background the
+      // usual way.
       await onJoined();
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      switch (classifyJoinError(message)) {
-        case 'already-member':
-          setAlreadyMember(true);
-          break;
-        case 'expired':
-          setError(null);
-          setExpiredByServer(true);
-          break;
-        default:
-          setError(message);
-      }
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       // Also on success: onJoined usually navigates away, but a caller that
       // only closes a dialog would leave the button stuck on "Joining…".
@@ -180,8 +186,16 @@ export function JoinInviteCard({
           </Button>
         </div>
       ) : (
-        <Button className="w-full" disabled={joining} onClick={onJoinClick}>
-          {joining ? 'Joining…' : 'Accept & join'}
+        <Button
+          className="w-full"
+          disabled={joining || spent}
+          onClick={onJoinClick}
+        >
+          {joining
+            ? 'Joining…'
+            : error && !spent
+              ? 'Try again'
+              : 'Accept & join'}
         </Button>
       )}
 

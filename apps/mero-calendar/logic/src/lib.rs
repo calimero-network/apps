@@ -26,7 +26,7 @@ use std::cmp::Ordering;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env};
+use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use std::collections::BTreeMap;
 
@@ -42,6 +42,13 @@ mod types;
 // bound for 32 bytes; hex is exactly 2 per byte. `Id::SIZE_GUARD` fails the
 // build if these disagree, so this cannot drift silently.
 id::define!(pub UserId<32, 64>);
+
+/// The account a member id names.
+fn account_of(user: &UserId) -> AccountId {
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(user.as_ref());
+    AccountId::from(bytes)
+}
 
 /// An id is its bytes in an index, so `owner` and `peers` can be seeked.
 impl IndexValue for UserId {
@@ -370,22 +377,29 @@ impl CalendarState {
     pub fn get_events(&self) -> app::Result<Vec<CalendarEvent>> {
         let caller = Self::caller();
 
+        // Keyed by (id, claimed owner): keys are per owner, so two accounts'
+        // rows can share an id, and a map keyed by id alone would keep one.
         let mut found = BTreeMap::new();
         for (id, event) in self.events.query("owner").eq(&caller).entries()? {
-            let _ = found.insert(id, event);
+            let _ = found.insert((id, event.owner), ());
         }
         for (id, event) in self.events.query("peers").eq(&caller).entries()? {
-            let _ = found.insert(id, event);
+            let _ = found.insert((id, event.owner), ());
         }
 
         let mut events = Vec::with_capacity(found.len());
-        for (id, event) in found {
-            // The owner is the stamp. A row claiming an owner it was not
-            // written by is a forgery, and is not shown as anyone's.
-            let Some(owner) = self.owner_of(&id)? else {
+        for ((id, owner), ()) in found {
+            // The owner is the stamp. The row shown is the claimed owner's OWN
+            // entry at the id, read by name, and only if it names them: a row
+            // claiming an owner it was not written by is a forgery, and is not
+            // shown as anyone's.
+            let Some(event) = self.events.get_by(&account_of(&owner), &id)? else {
                 continue;
             };
             if owner != event.owner {
+                continue;
+            }
+            if owner != caller && !event.peers.contains(&caller) {
                 continue;
             }
             events.push(CalendarEvent {
@@ -700,22 +714,19 @@ impl CalendarState {
 
     // ── Internal ────────────────────────────────────────────────────────────────
 
-    /// The event's owner stamp — who really created it, whatever its value says.
-    fn owner_of(&self, event_id: &String) -> app::Result<Option<UserId>> {
-        Ok(self
-            .events
-            .owner_of(event_id)?
-            .map(|owner| UserId::new(*owner.as_bytes())))
-    }
-
     /// A readable error for what storage refuses anyway: only the owner may
     /// change or remove an event.
+    ///
+    /// Keys are per owner, so `owned_by_me` asks whether the CALLER holds an
+    /// event at the id; `entries_at` whether anyone does.
     fn require_owner(&self, event_id: &String) -> app::Result<()> {
-        match self.owner_of(event_id)? {
-            None => app::bail!(Error::NotFound(event_id.clone())),
-            Some(owner) if owner != Self::caller() => app::bail!(Error::Forbidden),
-            Some(_) => Ok(()),
+        if self.events.owned_by_me(event_id)? {
+            return Ok(());
         }
+        if self.events.entries_at(event_id)?.is_empty() {
+            app::bail!(Error::NotFound(event_id.clone()));
+        }
+        app::bail!(Error::Forbidden)
     }
 
     fn generate_id(&self) -> String {
@@ -1101,8 +1112,14 @@ mod tests {
                 s.events.modify(&id, |e| e.title = "Hijacked".to_owned())
             })
             .is_err());
+        // Keys are per owner: OTHER's key-only remove names OTHER's own entry
+        // at the id, and there is none.
         assert!(app
             .call_as_account(OTHER, OTHER_DEVICE, |s| s.events.remove(&id))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(OTHER, OTHER_DEVICE, |s| s.delete_event(id.clone()))
             .is_err());
         let events = app.view(|s| s.get_events()).unwrap();
         assert_eq!(events[0].title, "Standup");
@@ -1139,6 +1156,56 @@ mod tests {
             .is_empty());
         // Nor does the field make it mine to delete: the gate is the stamp.
         assert!(app.call(|s| s.delete_event("forged".to_owned())).is_err());
+    }
+
+    /// Keys are per owner: OTHER can file an event of their own under an id
+    /// I already hold. They are two events, each shown with its own owner,
+    /// and neither account can change the other's.
+    #[test]
+    fn one_event_id_two_owners_are_two_events() {
+        let mut app = new_app();
+        let me = UserId::new(app.account_id());
+        let id = app
+            .call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| {
+            s.events.insert(
+                id.clone(),
+                CalendarEventState {
+                    title: "Other's".to_owned(),
+                    description: String::new(),
+                    owner: UserId::new(OTHER),
+                    start: String::new(),
+                    end: String::new(),
+                    event_type: "event".to_owned(),
+                    color: String::new(),
+                    peers: vec![me],
+                    created_at: 1,
+                    updated_at: 1,
+                },
+            )
+        })
+        .unwrap();
+        let mut seen: Vec<(String, UserId)> = app
+            .view(|s| s.get_events())
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.title, e.owner))
+            .collect();
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec![
+                ("Other's".to_owned(), UserId::new(OTHER)),
+                ("Standup".to_owned(), me)
+            ]
+        );
+        // Each deletes only their own.
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| s.delete_event(id.clone()))
+            .unwrap();
+        let left = app.view(|s| s.get_events()).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].owner, me);
     }
 
     #[test]

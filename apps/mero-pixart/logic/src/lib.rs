@@ -1245,8 +1245,8 @@ impl MeroPixArt {
             y,
             updated_at,
         };
-        // First move inserts, later ones update. A key someone else already
-        // holds is refused by storage; that pointer just does not show.
+        // First move inserts, later ones update. Keys are per owner, so this
+        // asks about the caller's own entry, and nobody else's is in the way.
         let _ = if self.cursors.contains(&identity).unwrap_or(false) {
             self.cursors.update(&identity, cs)
         } else {
@@ -1256,14 +1256,18 @@ impl MeroPixArt {
     }
 
     /// Every pointer, labelled with the account on its owner stamp.
+    ///
+    /// `entries_with_owners`, not a key-only `owner_of`: keys are per owner,
+    /// so `owner_of` would only ever name the caller.
     pub fn get_cursors(&self) -> Vec<CursorState> {
-        let Ok(entries) = self.cursors.entries() else {
+        let Ok(entries) = self.cursors.entries_with_owners() else {
             return Vec::new();
         };
         entries
-            .filter_map(|(key, mut cs)| {
-                cs.account = self.cursors.owner_of(&key).ok().flatten()?.to_string();
-                Some(cs)
+            .into_iter()
+            .map(|(owner, _, mut cs)| {
+                cs.account = owner.to_string();
+                cs
             })
             .collect()
     }

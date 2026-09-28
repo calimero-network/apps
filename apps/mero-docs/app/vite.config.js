@@ -112,6 +112,15 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: { include: [/src\/index\.css\?raw$/] }, // a test reads index.css as text to check the section wash
     exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
+    server: {
+      deps: {
+        // `@calimero-network/mero-platform` (pulled in by @calimero-apps/invite)
+        // ships an ESM entry with an extensionless directory import that Node's
+        // ESM resolver refuses. Inlining routes it through Vite's transform,
+        // which is how the app itself loads it.
+        inline: [/@calimero-network\/mero-platform/],
+      },
+    },
   },
   // ⚠️ Pinned, and strict.
   //
@@ -194,5 +203,11 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, './src'),
     },
+    // nodePolyfills prepends `import … from 'vite-plugin-node-polyfills/shims/…'`
+    // to every module it transforms under serve (dev and vitest), including the
+    // linked workspace packages (@calimero-apps/invite). Resolved from
+    // packages/invite that import finds nothing, since only this app depends on
+    // the plugin; deduping resolves it from this app's root instead.
+    dedupe: ['vite-plugin-node-polyfills'],
   },
 });

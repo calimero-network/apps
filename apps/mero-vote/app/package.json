@@ -14,6 +14,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@calimero-apps/invite": "workspace:*",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-platform-react": "catalog:",
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@calimero-network/abi-codegen": "catalog:",
     "@playwright/test": "^1.62.1",
+    "@testing-library/react": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

@@ -60,7 +60,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, PublicKey};
+use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     Frozen, Guarded, GuardedEntries, Mergeable as MergeableTrait, Owning, Policy, SortedMap,
@@ -1213,13 +1213,17 @@ impl MeroChess {
     fn chairs(&self) -> app::Result<[Holder; 2]> {
         let mut claims: [BTreeMap<MemberId, Seat>; 2] = Default::default();
         for (slot, seat) in SEATS.into_iter().enumerate() {
-            for (key, claim) in self.seat_claims.prefix(seat_prefix(seat).as_bytes())? {
+            for (key, _) in self.seat_claims.prefix(seat_prefix(seat).as_bytes())? {
                 let Some(author) = key_segment(&key, 1) else {
                     continue;
                 };
-                if Self::owner(&self.seat_claims, &key)? != author
-                    || self.is_vacated(&key, author)?
-                {
+                // The claimant's own entry at the key, by name: keys are per
+                // owner, so a row someone else filed there is theirs, not a
+                // claim of the account the key names.
+                let Some(claim) = Self::authored(&self.seat_claims, &key, author)? else {
+                    continue;
+                };
+                if self.is_vacated(&key, author)? {
                     continue;
                 }
                 // A claimant's earliest row stands for their claim.
@@ -1317,19 +1321,36 @@ impl MeroChess {
             || !Self::owned_rows(&self.games, &prefix, member)?.is_empty())
     }
 
-    /// The account core recorded as the writer of `key`, or `""`.
+    /// The account a member id names, if it names one, and names it in the
+    /// spelling [`Self::owner_id`] writes.
+    fn account_named(member: &str) -> Option<AccountId> {
+        let key = member.parse::<PublicKey>().ok()?;
+        let bytes = *key.digest();
+        (Self::owner_id(&bytes) == member).then(|| AccountId::from(bytes))
+    }
+
+    /// `author`'s OWN entry at `key`, if they hold one.
     ///
     /// The stamp, not a field: core verifies a per-action signature against it
     /// inside `Interface::apply_action` on every receive path, so unlike
     /// anything inside the value, a member cannot set it to someone else.
-    fn owner<V, P>(map: &Guarded<SortedMap<String, V>, P>, key: &String) -> app::Result<MemberId>
+    ///
+    /// Keys are per owner (core rc.57): another member writing the same key
+    /// files a separate entry of their own, and a key-only `get` or
+    /// `owner_of` answers only for the caller. So the entry is read by name.
+    fn authored<V, P>(
+        map: &Guarded<SortedMap<String, V>, P>,
+        key: &String,
+        author: &str,
+    ) -> app::Result<Option<V>>
     where
         V: BorshSerialize + BorshDeserialize + 'static,
         P: Owning,
     {
-        Ok(map
-            .owner_of(key)?
-            .map_or_else(String::new, |owner| Self::owner_id(owner.as_bytes())))
+        match Self::account_named(author) {
+            Some(account) => Ok(map.get_by(&account, key)?),
+            None => Ok(None),
+        }
     }
 
     /// Every row under `prefix` that `author` really wrote — the one place a
@@ -1348,11 +1369,20 @@ impl MeroChess {
         V: BorshSerialize + BorshDeserialize + 'static,
         P: Owning,
     {
-        let mut rows = Vec::new();
-        for (key, value) in map.prefix(prefix.as_bytes())? {
-            if !author.is_empty() && Self::owner(map, &key)? == author {
-                rows.push((key, value));
+        let mut rows: Vec<(String, V)> = Vec::new();
+        if author.is_empty() {
+            return Ok(rows);
+        }
+        // One key appears once per account holding it; read each once.
+        let mut last: Option<String> = None;
+        for (key, _) in map.prefix(prefix.as_bytes())? {
+            if last.as_ref() == Some(&key) {
+                continue;
             }
+            if let Some(value) = Self::authored(map, &key, author)? {
+                rows.push((key.clone(), value));
+            }
+            last = Some(key);
         }
         Ok(rows)
     }

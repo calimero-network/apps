@@ -362,6 +362,12 @@ pub struct RegistryState {
     /// folder_id (string) → FolderRecord. Owned by whoever registered the
     /// folder, who alone edits it; the registry admins (owner and managers)
     /// are its moderators and may also remove it. Every node enforces both.
+    ///
+    /// Keys are per owner (core rc.57): two accounts registering one id hold
+    /// two entries, and a key-only `get`/`contains`/`owner_of` answers for the
+    /// CALLER only. Every read by id goes through `folder_holder`, which takes
+    /// the entry of the lowest account holding the id, the same pick on every
+    /// node; `register_folder` refuses an id any account is known to hold.
     folders: Moderated<UnorderedMap<String, FolderRecord>>,
     /// folder_id (string) → Docs context id bound to that folder. Written
     /// once, by the folder's registrant; nobody can rebind or remove it, so a
@@ -447,10 +453,9 @@ impl RegistryState {
         if id.0.is_empty() {
             return Err(DriveError::Invalid("empty folder id".into()));
         }
-        let already = self
-            .folders
-            .contains(&id.0)
-            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?;
+        // Any account's folder, not just the caller's: keys are per owner, so
+        // a key-only `contains` would let a second account register the id.
+        let already = self.folder_holder(&id.0)?.is_some();
         if already {
             return Err(DriveError::AlreadyExists(id.0));
         }
@@ -476,20 +481,32 @@ impl RegistryState {
     }
 
     /// The folder's registrant, or a registry admin, may unregister it.
+    ///
+    /// The registrant removes their own entry. Anyone else removes every
+    /// holder's entry at the id by name (`remove_by`), which storage allows a
+    /// moderator only: a key-only `remove` acts on the caller's own entry.
     pub(crate) fn unregister_folder_inner(&mut self, id: FolderId) -> Result<(), DriveError> {
-        if !self
+        let holders = self
             .folders
-            .contains(&id.0)
-            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?
-        {
+            .entries_at(&id.0)
+            .map_err(|e| DriveError::Invalid(format!("folders.entries_at: {e}")))?;
+        if holders.is_empty() {
             return Err(DriveError::NotFound(id.0));
         }
-        let _ = self.folders.remove(&id.0).map_err(|_| {
+        let forbidden = |_| {
             DriveError::Forbidden(format!(
                 "only the folder's creator or a registry admin may remove {}",
                 id.0
             ))
-        })?;
+        };
+        let me = calimero_sdk::AccountId::from(calimero_sdk::env::account_id());
+        if holders.iter().any(|(owner, _)| *owner == me) {
+            let _ = self.folders.remove(&id.0).map_err(forbidden)?;
+        } else {
+            for (owner, _) in holders {
+                let _ = self.folders.remove_by(&owner, &id.0).map_err(forbidden)?;
+            }
+        }
         // The context binding is written once and stays; it stops counting
         // with the folder (see `binding_of`). Drop any per-member role rows
         // for this folder when the caller may write them. These ARE
@@ -504,46 +521,73 @@ impl RegistryState {
         Ok(())
     }
 
+    /// The folder at `id` of the lowest account holding one, with that
+    /// account.
+    fn folder_holder(
+        &self,
+        id: &String,
+    ) -> Result<Option<(calimero_sdk::AccountId, FolderRecord)>, DriveError> {
+        Ok(self
+            .folders
+            .entries_at(id)
+            .map_err(|e| DriveError::Invalid(format!("folders.entries_at: {e}")))?
+            .into_iter()
+            .min_by_key(|(owner, _)| *owner))
+    }
+
     /// The context bound to `folder`, if its folder exists and the binding
     /// was written by the folder's registrant. A patched node could bind a
-    /// folder it does not own before its owner does; that binding is ignored.
+    /// folder it does not own; that binding is its own entry, never read.
     fn binding_of(&self, folder: &String) -> Result<Option<ContextId>, DriveError> {
-        let err = |e| DriveError::Invalid(format!("folder_contexts: {e}"));
-        if !self.folders.contains(folder).map_err(err)? {
-            return Ok(None);
-        }
-        let Some(owner) = self.folders.owner_of(folder).map_err(err)? else {
+        let Some((owner, _)) = self.folder_holder(folder)? else {
             return Ok(None);
         };
-        if self.folder_contexts.owner_of(folder).map_err(err)? != Some(owner) {
-            return Ok(None);
-        }
-        self.folder_contexts.get(folder).map_err(err)
+        self.binding_by(&owner, folder)
+    }
+
+    /// `owner`'s own binding of `folder`, read by name.
+    fn binding_by(
+        &self,
+        owner: &calimero_sdk::AccountId,
+        folder: &String,
+    ) -> Result<Option<ContextId>, DriveError> {
+        self.folder_contexts
+            .get_by(owner, folder)
+            .map_err(|e| DriveError::Invalid(format!("folder_contexts: {e}")))
     }
 
     #[app::view]
     pub fn get_folder(&self, id: FolderId) -> app::Result<FolderDto> {
-        let rec = self
-            .folders
-            .get(&id.0)
-            .map_err(|e| AppError::msg(format!("folders.get: {e}")))?
+        let (owner, rec) = self
+            .folder_holder(&id.0)
+            .map_err(|e| AppError::msg(e.to_string()))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id.0)))?;
         let ctx = self
-            .binding_of(&id.0)
+            .binding_by(&owner, &id.0)
             .map_err(|e| AppError::msg(e.to_string()))?;
         Ok(project(&id.0, &rec, ctx.as_ref()))
     }
 
     #[app::view]
     pub fn get_folders(&self) -> app::Result<Vec<FolderDto>> {
-        let entries = self
+        // One row per folder id: `entries()` lists an id once per account
+        // holding it, and every read by id takes the lowest holder's.
+        let ids: BTreeSet<String> = self
             .folders
             .entries()
-            .map_err(|e| AppError::msg(format!("folders.entries: {e}")))?;
+            .map_err(|e| AppError::msg(format!("folders.entries: {e}")))?
+            .map(|(id, _)| id)
+            .collect();
         let mut out = Vec::new();
-        for (id, rec) in entries {
+        for id in ids {
+            let Some((owner, rec)) = self
+                .folder_holder(&id)
+                .map_err(|e| AppError::msg(e.to_string()))?
+            else {
+                continue;
+            };
             let ctx = self
-                .binding_of(&id)
+                .binding_by(&owner, &id)
                 .map_err(|e| AppError::msg(e.to_string()))?;
             out.push(project(&id, &rec, ctx.as_ref()));
         }
@@ -573,10 +617,7 @@ impl RegistryState {
         folder_id: FolderId,
         context_id: ContextId,
     ) -> Result<(), DriveError> {
-        let known = self
-            .folders
-            .contains(&folder_id.0)
-            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?;
+        let known = self.folder_holder(&folder_id.0)?.is_some();
         if !known {
             return Err(DriveError::NotFound(folder_id.0));
         }
@@ -687,11 +728,7 @@ impl RegistryState {
         F: FnOnce(&mut FolderRecord),
     {
         let id = id.to_string();
-        if !self
-            .folders
-            .contains(&id)
-            .map_err(|e| DriveError::Invalid(format!("folders.contains: {e}")))?
-        {
+        if self.folder_holder(&id)?.is_none() {
             return Err(DriveError::NotFound(id));
         }
         self.folders.modify(&id, edit).map_err(|_| {
@@ -724,10 +761,8 @@ impl RegistryState {
         let parent_str = parent_id.as_ref().map(|p| p.0.clone());
         // Every id in the list must exist AND be parented under `parent_str`.
         for fid in &folder_ids {
-            let rec = self
-                .folders
-                .get(&fid.0)
-                .map_err(|e| DriveError::Invalid(format!("folders.get: {e}")))?
+            let (_, rec) = self
+                .folder_holder(&fid.0)?
                 .ok_or_else(|| DriveError::NotFound(fid.0.clone()))?;
             if rec.parent_id.get() != &parent_str {
                 return Err(DriveError::Invalid(format!(
@@ -959,9 +994,8 @@ impl RegistryState {
         let mut out = Vec::new();
         for (id, rec) in entries {
             let created_by = self
-                .view_origins
-                .owner_of(&id)
-                .map_err(|e| AppError::msg(format!("view_origins: {e}")))?
+                .view_creator(&id)
+                .map_err(|e| AppError::msg(e.to_string()))?
                 .map(|owner| hex::encode(owner.as_bytes()))
                 .unwrap_or_default();
             out.push(project_view(&id, &rec, created_by));
@@ -994,10 +1028,13 @@ impl RegistryState {
             .map_err(|e| DriveError::Invalid(format!("views.get: {e}")))?
             .map(|v| v.clone())
             .unwrap_or_else(ViewRecord::new);
-        let first_save = !self
+        // Any account's origin, not just the caller's: keys are per owner, so a
+        // key-only `contains` would let every later editor file one of their own.
+        let first_save = self
             .view_origins
-            .contains(&id.to_string())
-            .map_err(|e| DriveError::Invalid(format!("view_origins.contains: {e}")))?;
+            .entries_at(&id.to_string())
+            .map_err(|e| DriveError::Invalid(format!("view_origins.entries_at: {e}")))?
+            .is_empty();
         if first_save {
             self.view_origins
                 .insert(id.to_string(), calimero_storage::env::time_now())
@@ -1009,6 +1046,20 @@ impl RegistryState {
             .insert(id.to_string(), rec)
             .map_err(|e| DriveError::Invalid(format!("views.insert: {e}")))?;
         Ok(())
+    }
+
+    /// A view's creator: the one account holding an origin at `id`. Keys are
+    /// per owner, so a patched node can file its own; with several, the
+    /// creator is unknown rather than one a claimant chose.
+    fn view_creator(&self, id: &String) -> Result<Option<calimero_sdk::AccountId>, DriveError> {
+        let holders = self
+            .view_origins
+            .entries_at(id)
+            .map_err(|e| DriveError::Invalid(format!("view_origins.entries_at: {e}")))?;
+        Ok(match holders.as_slice() {
+            [(owner, _)] => Some(*owner),
+            _ => None,
+        })
     }
 
     pub(crate) fn delete_view_inner(&mut self, id: &str) -> Result<(), DriveError> {
@@ -1738,15 +1789,38 @@ mod tests {
         assert_eq!(view.created_by, hex::encode(ALICE));
         assert_eq!((view.name.as_str(), view.query.as_str()), ("Renamed", "q2"));
 
-        // Nobody can write the origin again: the key is taken, and a
-        // write-once entry has no update.
-        assert!(host
-            .call_as_account(BOB, BOB, |s| s.view_origins.insert("v1".into(), 1))
-            .is_err());
-        assert_eq!(
-            host.view(|s| s.list_views()).unwrap()[0].created_by,
-            hex::encode(ALICE)
-        );
+        // Keys are per owner: Bob's write lands as his own entry at the id.
+        // Two holders make the creator unknown, never the claimant.
+        host.call_as_account(BOB, BOB, |s| s.view_origins.insert("v1".into(), 1))
+            .unwrap();
+        for who in [ALICE, BOB] {
+            let seen = host.call_as_account(who, who, |s| s.list_views()).unwrap();
+            assert_eq!(seen[0].created_by, "", "as {}", hex::encode(who));
+        }
+    }
+
+    #[test]
+    fn a_views_creator_reads_the_same_for_every_caller() {
+        const ALICE: [u8; 32] = [0xA1; 32];
+        const BOB: [u8; 32] = [0xB0; 32];
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.call_as_account(ALICE, ALICE, |s| {
+            s.save_view("v1".into(), "Name".into(), "q1".into())
+        })
+        .unwrap();
+        host.call_as_account(BOB, BOB, |s| {
+            s.save_view("v1".into(), "Renamed".into(), "q2".into())
+        })
+        .unwrap();
+        for who in [ALICE, BOB, [0xC3; 32]] {
+            let seen = host.call_as_account(who, who, |s| s.list_views()).unwrap();
+            assert_eq!(
+                seen[0].created_by,
+                hex::encode(ALICE),
+                "as {}",
+                hex::encode(who)
+            );
+        }
     }
 
     #[test]

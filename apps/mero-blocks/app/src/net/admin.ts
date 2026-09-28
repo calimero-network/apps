@@ -3,6 +3,11 @@
 // vary across node versions, so every parser is shape-tolerant (the
 // mero-design `res.identities ?? res.items ?? res` school of parsing).
 
+import {
+  describeInviteFailure,
+  redeemInvitation,
+  type RedeemOutcome,
+} from "@calimero-apps/invite";
 import { getAccessToken, getSession, updateSession } from "./session";
 import { PACKAGE_NAME } from "./auth";
 import {
@@ -28,13 +33,27 @@ function headers(): Record<string, string> {
 }
 
 /**
+ * An admin request that failed, carrying the HTTP status (`0` when the node
+ * was never reached) so `@calimero-apps/invite` can tell a refused invitation
+ * from a node that is only busy.
+ */
+class AdminError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "AdminError";
+    this.status = status;
+  }
+}
+
+/**
  * The node's error responses carry the actual reason in the body —
  * `{"error": "identity not eligible for inheritance-based join"}` or
  * `{"message": …}` / `{"data": {"error": …}}` depending on the handler.
  * Surface that text; when the body carries nothing, translate the status
  * into something a player can act on — a bare "HTTP 403" is useless.
  */
-async function adminError(method: string, path: string, res: Response): Promise<Error> {
+async function adminError(method: string, path: string, res: Response): Promise<AdminError> {
   let detail = "";
   try {
     const body = (await res.json()) as Record<string, unknown>;
@@ -52,25 +71,28 @@ async function adminError(method: string, path: string, res: Response): Promise<
   } catch {
     /* non-JSON error body — fall back to the status text below */
   }
-  if (detail) return new Error(detail);
   const s = res.status;
+  if (detail) return new AdminError(detail, s);
   if (s === 401 || s === 403) {
-    return new Error(
+    return new AdminError(
       `the node rejected your session (HTTP ${s}) — disconnect and log in again`,
+      s,
     );
   }
   if (s === 404) {
-    return new Error(
+    return new AdminError(
       `the node doesn't know this resource (${method} ${path}: HTTP 404) — ` +
         "it may not have synced yet, or the app isn't installed on it",
+      s,
     );
   }
   if (s >= 500) {
-    return new Error(
+    return new AdminError(
       `the node hit an internal error (${method} ${path}: HTTP ${s}) — try again in a moment`,
+      s,
     );
   }
-  return new Error(`the node rejected the request (${method} ${path}: HTTP ${s})`);
+  return new AdminError(`the node rejected the request (${method} ${path}: HTTP ${s})`, s);
 }
 
 async function adminSend<T = unknown>(method: string, path: string, payload?: unknown): Promise<T> {
@@ -86,8 +108,9 @@ async function adminSend<T = unknown>(method: string, path: string, payload?: un
     // fetch itself failed (the "HTTP 0" case): the node is down, the URL is
     // wrong, or the browser blocked the request — say so instead of leaking
     // a bare TypeError at the player.
-    throw new Error(
+    throw new AdminError(
       `can't reach your node at ${nodeUrl} — check that it's running and the URL is right`,
+      0,
     );
   }
   if (!res.ok) throw await adminError(method, path, res);
@@ -449,15 +472,46 @@ export async function createWorldInvite(worldName?: string): Promise<string> {
 
 const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** namespace ids this node is a member of (GET /namespaces → `[{ namespaceId, … }]`) */
+async function listNamespaceIds(): Promise<string[]> {
+  const data = await adminGet<unknown>("/admin-api/namespaces");
+  const obj = (data ?? {}) as Record<string, unknown>;
+  const list = Array.isArray(data) ? data : Array.isArray(obj.namespaces) ? obj.namespaces : [];
+  return (list as Record<string, unknown>[])
+    .map((ns) => pick(ns, "namespaceId", "namespace_id", "id"))
+    .filter(Boolean);
+}
+
+type FailedRedeem = Extract<RedeemOutcome, { status: "failed" }>;
+
+/**
+ * The namespace join did not land. Carries the outcome so the invite modal can
+ * tell a link that is finished with (expired, invalid, refused — ack it) from
+ * one that failed for the moment (no one online, node unreachable — keep it
+ * for the next load); the message is the player-facing copy for it.
+ */
+export class WorldInviteError extends Error {
+  readonly outcome: FailedRedeem;
+  constructor(outcome: FailedRedeem) {
+    super(describeInviteFailure(outcome.reason, "world") ?? outcome.message);
+    this.name = "WorldInviteError";
+    this.outcome = outcome;
+  }
+}
+
 /**
  * Accept a pasted invite: join the namespace with the signed invitation,
  * self-join the world's subgroup via inheritance, then join the context and
- * verify we own an identity for it. Only the namespace join tolerates
- * failure (it fails when we are already a member — the idempotent subgroup
- * join right after is the real membership check); every other failure is
- * surfaced with the node's actual error text, because silently continuing
- * used to drop players into worlds they never joined ("No owned identity
- * found for this context" on every contract call, and no peers visible).
+ * verify we own an identity for it.
+ *
+ * The namespace join goes through `redeemInvitation`, which sends it once and
+ * decides membership by the namespace being listed as well as by the request
+ * resolving — a join the desktop proxy aborted at 30s, or a link followed
+ * twice, is "already a member", not a failure. A join that really failed
+ * throws `WorldInviteError`. Every later failure is surfaced with the node's
+ * actual error text, because silently continuing used to drop players into
+ * worlds they never joined ("No owned identity found for this context" on
+ * every contract call, and no peers visible).
  */
 export async function acceptWorldInvite(input: string): Promise<string> {
   const payload = decodeInvite(input);
@@ -465,15 +519,19 @@ export async function acceptWorldInvite(input: string): Promise<string> {
   const namespaceId = namespaceIdOfInvite(payload);
   if (!namespaceId) throw new Error("the invite carries no namespace");
 
-  let namespaceJoinError: unknown = null;
-  try {
-    await adminPost(`/admin-api/namespaces/${namespaceId}/join`, {
-      invitation: payload.invitation,
-      ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
-    });
-  } catch (e) {
-    namespaceJoinError = e; // maybe already a member — the subgroup join decides
-  }
+  const outcome = await redeemInvitation(
+    { namespaceId, invitation: payload.invitation },
+    {
+      join: async () => {
+        await adminPost(`/admin-api/namespaces/${namespaceId}/join`, {
+          invitation: payload.invitation,
+          ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
+        });
+      },
+      memberships: listNamespaceIds,
+    },
+  );
+  if (outcome.status === "failed") throw new WorldInviteError(outcome);
 
   if (payload.groupId && payload.groupId !== namespaceId) {
     try {
@@ -485,7 +543,7 @@ export async function acceptWorldInvite(input: string): Promise<string> {
         await adminPost(`/admin-api/groups/${namespaceId}/sync`, {});
         await adminPost(`/admin-api/groups/${payload.groupId}/join-via-inheritance`, {});
       } catch (second) {
-        throw new Error(inviteJoinFailure(second, namespaceJoinError));
+        throw new Error(inviteJoinFailure(second));
       }
     }
   }
@@ -522,8 +580,12 @@ export async function acceptWorldInvite(input: string): Promise<string> {
   return contextId;
 }
 
-/** turn the raw join errors into one actionable message */
-function inviteJoinFailure(subgroupError: unknown, namespaceError: unknown): string {
+/**
+ * Turn the subgroup join's raw error into an actionable message. The namespace
+ * join is already known to have landed by now (see `acceptWorldInvite`), so
+ * this error is the whole story.
+ */
+function inviteJoinFailure(subgroupError: unknown): string {
   const subgroupMsg = msgOf(subgroupError);
   if (subgroupMsg.includes("not eligible for inheritance")) {
     return (
@@ -532,7 +594,5 @@ function inviteJoinFailure(subgroupError: unknown, namespaceError: unknown): str
       "and send you a fresh invite"
     );
   }
-  // A failed namespace join is usually the root cause (e.g. the host node is
-  // offline and the join stream never opened) — prefer its message.
-  return namespaceError ? `${msgOf(namespaceError)} (then: ${subgroupMsg})` : subgroupMsg;
+  return subgroupMsg;
 }

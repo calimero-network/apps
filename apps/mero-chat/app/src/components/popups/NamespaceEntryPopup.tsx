@@ -3,6 +3,7 @@ import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { getMeroJs } from "../../api/meroJsClient";
 import { log } from "../../utils/logger";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
@@ -33,8 +34,12 @@ import {
   decodeInvitationPayload,
   parseGroupInvitationPayload,
   parseInvitationInput,
-  isTerminalInvitationError,
 } from "../../utils/invitation";
+import {
+  inviteFailureMessage,
+  redeemGroupInvitation,
+} from "../../utils/redeemInvitation";
+import { shouldRetain } from "@calimero-apps/invite";
 import { useDeepLink } from "@calimero-network/mero-platform-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -466,15 +471,33 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     try {
       setInviteStatus("Joining namespace…");
-      const joinRes = await api.current.joinGroup({
-        invitation: parsed.invitation,
-        groupAlias: parsed.groupAlias,
+      const redeemed = await redeemGroupInvitation(parsed, {
+        joinGroup: (request) => api.current.joinGroup(request),
+        listNamespaces: () => getMeroJs().admin.listNamespaces(),
       });
-      if (joinRes.error || !joinRes.data) {
-        throw new Error(joinRes.error?.message || "Failed to join namespace");
+      const { outcome } = redeemed;
+      if (outcome.status === "failed") {
+        // Acked only when no retry can help; a transient failure (no online
+        // member, a timeout) keeps the invitation for the next load.
+        if (!shouldRetain(outcome)) resolvePending();
+        setError(inviteFailureMessage(outcome));
+        setStep("error");
+        return;
       }
 
-      const { groupId, memberIdentity } = joinRes.data;
+      // `already-member` (the request failed but the node lists the namespace)
+      // goes in exactly like a join. Its join never answered, so ask for the
+      // member identity.
+      const groupId = outcome.namespaceId;
+      const memberIdentity =
+        redeemed.memberIdentity ||
+        (
+          await api.current.resolveCurrentMemberIdentity(
+            groupId,
+            getGroupMemberIdentity(groupId),
+          )
+        ).data?.memberIdentity ||
+        "";
       setGroupMemberIdentity(groupId, memberIdentity);
       if (parsed.groupAlias?.trim()) {
         const alias = parsed.groupAlias.trim();
@@ -515,12 +538,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       setStep("enter-name");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to process invitation";
-      // Keep the pending invitation on transient failures (node unreachable, no
-      // online member, timeout) so it retries next load; only forget it when the
-      // invitation itself is terminally bad.
-      if (isTerminalInvitationError(msg)) resolvePending();
-      setError(msg);
+      // `redeemGroupInvitation` reports a failed join in its outcome, never by
+      // throwing; this is anything else, so keep the invitation.
+      setError(err instanceof Error ? err.message : "Failed to process invitation");
       setStep("error");
     }
   }, [enterChat, resolvePending]);

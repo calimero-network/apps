@@ -119,3 +119,18 @@ Vercel project `mero-crm`, Root Directory `apps/mero-crm/app`, output `dist` —
 the convention in `docs/VERCEL.md`. The origin
 `https://mero-crm.vercel.app` is the bundle's `frontend` and the login
 callback's registered origin.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- A note's author is recovered among the holders of its id by the note's bytes, and
+  `delete_note` answers `Forbidden` (not "not found") for someone else's note.
+- **Semantic change — a record's creator.** `created_by` used to be first-writer-wins: the
+  creation entry's key was taken. Now a patched node can file a creation entry of its own
+  under any id. Ids are random, so an honest record has exactly one; with more than one
+  the record has **no creator** (`""`), so nobody — the claimant included — gets creator
+  rights by filing one. Test: `a_records_creator_cannot_be_rewritten`.

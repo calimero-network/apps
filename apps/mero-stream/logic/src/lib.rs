@@ -533,10 +533,15 @@ pub struct MeroStream {
     /// that rename: as a plain register any member's patched node could rewrite
     /// it, walking straight around the `Ownable` gate.
     initial_name: Frozen<String>,
-    /// Context members, keyed by DEVICE. `Authored`: the account that first
-    /// joins with a device owns its row, and `owner_of` is the account that
+    /// Context members, keyed by DEVICE. `Authored`: the account that joins
+    /// with a device owns its row, and that owner stamp is the account the
     /// device speaks for — the verified device→account pairing every node
     /// enforces, which a field or a side table could not be.
+    ///
+    /// Keys are per owner (core rc.57), so a second account can file a row of
+    /// its own under someone else's device. A device held by exactly one
+    /// account speaks for it; one claimed by several speaks for nobody (see
+    /// `account_of`), so a claimant never gets to post as someone else.
     members: Authored<UnorderedMap<String, Member>>,
     /// The approach-3 buffer. Keyed `frag-{from}-{seq:020}-{chunk:05}`; owned by
     /// the sender, so only they can overwrite or prune it, and `from` in the key
@@ -645,15 +650,47 @@ impl MeroStream {
 
     /// The account a member's device speaks for: the owner stamp on its member
     /// row, which every node verified when it applied the join.
+    ///
+    /// Keys are per owner, so a key-only `owner_of` names only the CALLER. The
+    /// row is read across owners: exactly one account holding it is the
+    /// device's account, and a device claimed by several has none.
     fn account_of(&self, member: &str) -> Option<AccountId> {
-        self.members.owner_of(&member.to_owned()).ok().flatten()
+        match self.members.entries_at(&member.to_owned()).ok()?.as_slice() {
+            [(owner, _)] => Some(*owner),
+            _ => None,
+        }
     }
 
-    /// Whether the entry at `key` was written by the account that owns
-    /// `from`'s member row. Anyone can insert a NEW key under someone else's
-    /// `from`, so every read of another sender's media checks this.
-    fn written_by(&self, owner: Option<AccountId>, from: &str) -> bool {
-        owner.is_some() && owner == self.account_of(from)
+    /// `from`'s account's OWN entry at every distinct key of `rows` (a range
+    /// read, which lists a key once per account holding it). Anyone can insert
+    /// a key under someone else's `from`; that entry is theirs and never read.
+    fn senders_own<V>(
+        map: &Moderated<SortedMap<String, V>>,
+        account: &AccountId,
+        rows: impl Iterator<Item = (String, V)>,
+    ) -> Vec<V>
+    where
+        V: BorshSerialize + BorshDeserialize + 'static,
+    {
+        let mut out = Vec::new();
+        let mut last: Option<String> = None;
+        for (key, _) in rows {
+            if last.as_ref() == Some(&key) {
+                continue;
+            }
+            if let Ok(Some(value)) = map.get_by(account, &key) {
+                out.push(value);
+            }
+            last = Some(key);
+        }
+        out
+    }
+
+    /// Whether `owner` is the account that owns `from`'s member row. Anyone
+    /// can insert a key under someone else's `from`, so every read of another
+    /// sender's media checks this.
+    fn written_by(&self, owner: &AccountId, from: &str) -> bool {
+        self.account_of(from).as_ref() == Some(owner)
     }
 
     fn caller_id() -> String {
@@ -695,9 +732,10 @@ impl MeroStream {
     /// through — nobody but its owner can change it anyway.
     fn own_cursor(&mut self, from: &str) -> app::Result<ChunkCursor> {
         let key = from.to_owned();
+        // Keys are per owner: `get` reads the caller's own row, and another
+        // account's row under this device is a different entry.
         match self.chunk_cursors.get(&key)? {
-            Some(cursor) if self.chunk_cursors.owned_by_me(&key)? => Ok(cursor),
-            Some(_) => app::bail!("this device's stream is claimed by another account"),
+            Some(cursor) => Ok(cursor),
             None => {
                 self.chunk_cursors.insert(key, ChunkCursor::default())?;
                 Ok(ChunkCursor::default())
@@ -710,11 +748,19 @@ impl MeroStream {
     /// Join the stream context. Idempotent (re-join updates the display name).
     pub fn join(&mut self, username: String, now: u64) -> app::Result<Member> {
         let id = Self::caller_id();
+        // Keys are per owner, so a second account could file a row of its own
+        // under this device; `account_of` would then read the device as
+        // nobody's. Refuse it here rather than write it.
+        if self
+            .members
+            .entries_at(&id)?
+            .iter()
+            .any(|(owner, _)| *owner != Self::caller_account())
+        {
+            app::bail!("this device is registered to another account");
+        }
         let member = match self.members.get(&id)? {
             Some(existing) => {
-                if !self.members.owned_by_me(&id)? {
-                    app::bail!("this device is registered to another account");
-                }
                 // `joined_at` is immutable after first join.
                 let member = Member {
                     member_id: id.clone(),
@@ -845,16 +891,16 @@ impl MeroStream {
     /// fragment its sender did not write.
     pub fn get_frame(&self, after_seq: u64) -> Vec<DecodedFrame> {
         // Collect live fragments above the cursor.
+        // With owners: keys are per owner, so a key-only `owner_of` would name
+        // only the caller.
         let mut frags: Vec<Fragment> = self
             .fragments
-            .entries()
+            .entries_with_owners()
             .map(|e| {
-                e.filter(|(key, f)| {
-                    f.seq > after_seq
-                        && self.written_by(self.fragments.owner_of(key).ok().flatten(), &f.from)
-                })
-                .map(|(_, f)| f)
-                .collect()
+                e.into_iter()
+                    .filter(|(owner, _, f)| f.seq > after_seq && self.written_by(owner, &f.from))
+                    .map(|(_, _, f)| f)
+                    .collect()
             })
             .unwrap_or_default();
         // Deterministic order: by seq, then sender, then chunk.
@@ -1024,25 +1070,24 @@ impl MeroStream {
     fn sender_chunks(&self, from: &str, from_seq: u64) -> Vec<MediaChunk> {
         // `:` sorts right after `9`, so this bounds every zero-padded seq.
         let end = format!("chunk-{from}-:");
+        let Some(account) = self.account_of(from) else {
+            return Vec::new();
+        };
         self.chunks
             .range(Self::chunk_key(from, from_seq)..end)
-            .map(|e| {
-                e.filter(|(key, _)| self.written_by(self.chunks.owner_of(key).ok().flatten(), from))
-                    .map(|(_, c)| c)
-                    .collect()
-            })
+            .map(|rows| Self::senders_own(&self.chunks, &account, rows))
             .unwrap_or_default()
     }
 
     /// Senders whose cursor row their own account wrote, with that cursor.
     fn genuine_cursors(&self) -> Vec<(String, ChunkCursor)> {
         self.chunk_cursors
-            .entries()
+            .entries_with_owners()
             .map(|e| {
-                e.filter(|(from, _)| {
-                    self.written_by(self.chunk_cursors.owner_of(from).ok().flatten(), from)
-                })
-                .collect()
+                e.into_iter()
+                    .filter(|(owner, from, _)| self.written_by(owner, from))
+                    .map(|(_, from, cursor)| (from, cursor))
+                    .collect()
             })
             .unwrap_or_default()
     }
@@ -1105,21 +1150,23 @@ impl MeroStream {
     /// That sender's newest keyframe seq if it is still live, else 0.
     fn live_keyframe_of(&self, from: &str) -> u64 {
         let key = from.to_owned();
-        let seq = match self.chunk_cursors.get(&key) {
+        let Some(account) = self.account_of(from) else {
+            return 0;
+        };
+        // The sender's own cursor and chunk, read by name.
+        let seq = match self.chunk_cursors.get_by(&account, &key) {
             Ok(Some(c)) => c.last_keyframe,
             _ => return 0,
         };
-        if seq == 0 || !self.written_by(self.chunk_cursors.owner_of(&key).ok().flatten(), from) {
+        if seq == 0 {
             return 0;
         }
         // Confirm it is still live, and the sender's own, rather than trusting
         // the cursor — the reaper protects it, but a peer that has not synced
         // yet may legitimately not hold it.
         let chunk = Self::chunk_key(from, seq);
-        match self.chunks.get(&chunk) {
-            Ok(Some(_)) if self.written_by(self.chunks.owner_of(&chunk).ok().flatten(), from) => {
-                seq
-            }
+        match self.chunks.contains_by(&account, &chunk) {
+            Ok(true) => seq,
             _ => 0,
         }
     }
@@ -1234,13 +1281,9 @@ impl MeroStream {
                 break;
             }
             let chunk_key = Self::chunk_key(from, seq);
+            // Our own chunk only: keys are per owner, so somebody else's key
+            // under our `from` is their entry, and reads as a hole here.
             let too_old = match self.chunks.get(&chunk_key)? {
-                // Somebody else's key under our `from` is not ours to remove:
-                // step over it like a hole.
-                Some(_) if !self.chunks.owned_by_me(&chunk_key)? => {
-                    seq += 1;
-                    continue;
-                }
                 Some(c) => c.created_at < cutoff,
                 // Already gone — advance over the hole.
                 None => {
@@ -1283,21 +1326,24 @@ impl MeroStream {
             return Ok(());
         }
         let cutoff = now.saturating_sub(STALE_SENDER_MS);
-        let stale: Vec<String> = self
+        let stale: Vec<(AccountId, String)> = self
             .chunk_cursors
-            .entries()
+            .entries_with_owners()
             .map(|e| {
                 // `next_seq != 0`: the sender has posted chunks. Not
                 // `oldest_live < next_seq`, which skipped a sender who left
                 // with exactly one live chunk.
-                e.filter(|(from, cur)| from != me && cur.newest_at < cutoff && cur.next_seq != 0)
-                    .map(|(from, _)| from)
+                e.into_iter()
+                    .filter(|(_, from, cur)| {
+                        from != me && cur.newest_at < cutoff && cur.next_seq != 0
+                    })
+                    .map(|(owner, from, _)| (owner, from))
                     .collect()
             })
             .unwrap_or_default();
 
         let mut budget = MAX_PRUNE_PER_CALL;
-        for from in stale {
+        for (owner, from) in stale {
             // No keyframe clamp: the sender is gone, so there is no stream left
             // to keep decodable.
             let end = format!("chunk-{from}-:");
@@ -1307,8 +1353,10 @@ impl MeroStream {
                 .map(|(key, _)| key)
                 .take(budget as usize)
                 .collect();
+            // The departed sender's own chunks, by name: keys are per owner,
+            // and a key-only `remove` removes only the caller's own entry.
             for key in keys {
-                if self.chunks.remove(&key)?.is_some() {
+                if self.chunks.remove_by(&owner, &key)?.is_some() {
                     budget -= 1;
                 }
             }
@@ -3170,9 +3218,19 @@ mod tests {
         let seq = post(&mut app, ALICE, b"alice", true, 1000).unwrap();
         let key = MeroStream::chunk_key(&id_of(ALICE), seq);
         let alice = id_of(ALICE);
+        let alice_account = super::AccountId::from(app.account_id());
 
+        // Keys are per owner: Mallory's key-only remove names her own entry
+        // at the key, of which there is none; removing Alice's by name needs
+        // a moderator.
         assert!(app
             .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| s.chunks.remove(&key))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| s
+                .chunks
+                .remove_by(&alice_account, &key))
             .is_err());
         assert!(app
             .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
@@ -3311,14 +3369,36 @@ mod tests {
             .call_as_account(MALLORY_ACCOUNT, ALICE, |s| s
                 .join("Alice?".to_owned(), 2000))
             .is_err());
+        // Keys are per owner: Mallory's key-only remove names her own row
+        // under Alice's device, of which there is none.
         assert!(app
             .call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
                 s.members.remove(&id_of(ALICE))
             })
-            .is_err());
-        // The admin check reads the owner stamp.
+            .unwrap()
+            .is_none());
+        // The admin check reads the owner stamp, from any account.
         assert!(app.view(|s| s.is_member_admin(id_of(ALICE))));
         assert!(!app.view(|s| s.is_member_admin(id_of(MALLORY))));
+        assert!(app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| s
+            .is_member_admin(id_of(ALICE))));
         assert_eq!(app.view(|s| s.get_stats()).name, "probe");
+
+        // A patched node writing a row of Mallory's own under Alice's device
+        // does not make the device Mallory's: a device two accounts claim
+        // speaks for nobody, so Mallory can never post as Alice.
+        app.call_as_account(MALLORY_ACCOUNT, MALLORY, |s| {
+            s.members.insert(
+                id_of(ALICE),
+                super::Member {
+                    member_id: id_of(ALICE),
+                    username: "Alice?".to_owned(),
+                    joined_at: 0,
+                    updated_at: 0,
+                },
+            )
+        })
+        .unwrap();
+        assert!(!app.view(|s| s.is_member_admin(id_of(ALICE))));
     }
 }

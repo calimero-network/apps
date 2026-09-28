@@ -1,19 +1,19 @@
-//! Mero Blocks — shared voxel-world state on Calimero.
+//! Mero Blocks - shared voxel-world state on Calimero.
 //!
 //! The world itself is NEVER stored here. Every client generates identical
 //! terrain from `seed`; this contract carries only:
-//!   - **block overrides** — the diff against generated terrain (place = block
+//!   - **block overrides** - the diff against generated terrain (place = block
 //!     id, break = 0/air). Set-only map: breaking writes a 0 value, we never
 //!     `remove` a key (the UnorderedSet/insert-after-remove tombstone class of
 //!     bugs is designed out).
-//!   - **player presence** — name + transform, heartbeat-refreshed, with the
+//!   - **player presence** - name + transform, heartbeat-refreshed, with the
 //!     mero-meet room-clock normalization so clock skew between laptops can
 //!     never mark live players offline.
 //!
 //! Who may write what is held by storage, on every node, not by the checks
 //! here: the world's name/seed/clock are `Frozen` at creation, and each
 //! account's avatars sit in that account's `UserStorage` slot. The overrides
-//! stay a public map on purpose — anyone may place or break any block.
+//! stay a public map on purpose - anyone may place or break any block.
 //!
 //! Lighting and chunk data are client-derived from (seed, overrides) and cost
 //! zero network traffic.
@@ -31,7 +31,7 @@ use calimero_storage::collections::{
 
 type MemberId = String;
 
-/// World bounds — must match `app/src/engine/world.ts`.
+/// World bounds - must match `app/src/engine/world.ts`.
 const WORLD_SX: i32 = 128;
 const WORLD_SY: i32 = 64;
 const WORLD_SZ: i32 = 128;
@@ -40,7 +40,7 @@ const WORLD_SZ: i32 = 128;
 const MAX_EDITS_PER_CALL: usize = 512;
 
 /// A player heard from within this window (room time) is online.
-/// Frontend heartbeats every 1s while moving / 3s idle.
+/// Frontend heartbeats every 0.5s while moving / 2s idle.
 const PRESENCE_TTL_SECS: u64 = 10;
 
 /// How far ahead of the caller's own clock a stored player stamp may be and
@@ -59,7 +59,7 @@ const MAX_CLOCK_SKEW_SECS: u64 = 900;
 /// differing content each replica keeps its own copy: `merge` changes nothing
 /// on either side, so re-merging never closes the gap and the two stay
 /// divergent permanently, with no error. Breaking the tie on the borsh
-/// encoding — a total order over values — makes both replicas elect the same
+/// encoding - a total order over values - makes both replicas elect the same
 /// winner independently, which is what convergence requires.
 ///
 /// Before [core#3807] a collection value's `merge` was never called (entries
@@ -75,9 +75,9 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
         // elect the same side.
         //
         // Infallible on purpose. Core's contract for a dispatched merge
-        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // requires a TOTAL rule - "`Err` is not validation, it is a refusal to
         // converge: the entity stays divergent and repair retries it
-        // indefinitely" — so this must not surface an encoding error. A value
+        // indefinitely" - so this must not surface an encoding error. A value
         // that came back out of storage was borsh-encoded to get there, which
         // is why the fallback is unreachable rather than merely unlikely.
         Ordering::Equal => {
@@ -89,15 +89,16 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
 
 // ── Stored records ───────────────────────────────────────────────────────────
 
-/// One block override: `b` is the block id (0 = air / broken).
+/// A stored block edit: block id `b` and the stamp that orders concurrent edits.
 #[app::mergeable(id = "mero_blocks::BlockOverride")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct BlockOverride {
+    /// Block id, 0 to 15; 0 is air (a broken block).
     pub b: u8,
-    /// room-time stamp for LWW convergence when two peers edit the same block
+    /// Room-clock unix seconds; the larger stamp wins when two players edit one block.
     pub updated_at: u64,
 }
 
@@ -110,7 +111,7 @@ impl MergeableTrait for BlockOverride {
     }
 }
 
-/// A player row: identity-keyed presence + last known transform.
+/// A player row: presence and last known transform, keyed by the player's identity.
 #[app::mergeable(id = "mero_blocks::Player")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -121,13 +122,17 @@ pub struct Player {
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// Radians.
     pub yaw: f64,
+    /// Radians.
     pub pitch: f64,
-    /// selected hotbar slot (cosmetic — lets peers render what you hold)
+    /// Selected hotbar slot, 0 to 8; peers render what the player holds.
     pub sel: u8,
-    /// explicitly left; row is kept, never removed
+    /// Explicitly left; row is kept, never removed.
     pub left: bool,
+    /// Room-clock unix seconds.
     pub joined_at: u64,
+    /// Room-clock unix seconds.
     pub updated_at: u64,
 }
 
@@ -153,6 +158,7 @@ pub struct Avatars {
 
 // ── Views / args ─────────────────────────────────────────────────────────────
 
+/// The world's identity: name, terrain seed and creation time.
 #[derive(
     BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug, Default,
 )]
@@ -161,57 +167,76 @@ pub struct Avatars {
 #[serde(rename_all = "camelCase")]
 pub struct WorldMeta {
     pub name: String,
+    /// Terrain seed; clients generate identical terrain from it.
     pub seed: u64,
+    /// Unix seconds; the 600 s day/night cycle is counted from here.
     pub created_at: u64,
 }
 
-/// One edit in a `set_blocks` batch.
+/// One block change at a world coordinate.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Edit {
+    /// World x, in [0, 128).
     pub x: i32,
+    /// World y, in [0, 64); y is up.
     pub y: i32,
+    /// World z, in [0, 128).
     pub z: i32,
+    /// Block id: 0 air, 1 grass, 2 dirt, 3 stone, 4 sand, 5 water, 6 wood, 7 leaves, 8 plank, 9 glass, 10 brick, 11 torch, 12 glowstone, 13 bedrock, 14 cobble, 15 snow.
     pub b: u8,
 }
 
-/// Incoming transform for `heartbeat`.
+/// A player's reported transform for `heartbeat`.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Transform {
+    /// Display name.
     pub name: String,
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// Radians.
     pub yaw: f64,
+    /// Radians.
     pub pitch: f64,
+    /// Hotbar slot, 0 to 8.
     pub sel: u8,
 }
 
+/// One edited coordinate.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct BlockEntry {
+    /// The coordinate as "x,y,z".
     pub k: String,
+    /// Block id; 0 is air.
     pub b: u8,
 }
 
+/// A player as other players see them.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
+    /// The player's context identity (device key, 64 hex).
     pub id: MemberId,
     pub name: String,
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// Radians.
     pub yaw: f64,
+    /// Radians.
     pub pitch: f64,
+    /// Selected hotbar slot, 0 to 8; peers render what the player holds.
     pub sel: u8,
+    /// Not left, and heard from within the last 10 s.
     pub online: bool,
 }
 
@@ -219,11 +244,13 @@ pub struct PlayerView {
 
 #[app::event]
 pub enum Event {
+    /// The world was created.
     Initialized(),
-    /// Blocks changed by this member (payload = editor id). Clients re-pull
-    /// `get_overrides` on receipt — event is a nudge, the state is the truth.
+    /// Blocks were edited; the payload is the editor's identity. Re-read `get_overrides`.
     BlocksChanged(MemberId),
+    /// A player joined or came back online; the payload is their identity.
     PlayerJoined(MemberId),
+    /// A player left or was set to left for silence; the payload is their identity.
     PlayerLeft(MemberId),
 }
 
@@ -243,8 +270,19 @@ pub struct MeroBlocks {
 
 #[app::logic]
 impl MeroBlocks {
-    /// `now` is the creator's unix-seconds clock — it anchors the shared
-    /// day/night cycle (WASM has no wall clock; mero-meet convention).
+    /// Create the world. Runs once, when the context is created, with the
+    /// context's init arguments.
+    ///
+    /// # Arguments
+    /// * `name` - the world's display name.
+    /// * `seed` - terrain seed; clients read it as an unsigned 32-bit integer, so use
+    ///   a value in [0, 4294967296).
+    /// * `now` - the creator's unix seconds; anchors the shared 600 s day/night cycle.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"name":"ci","seed":42,"now":1727000000}
+    /// ```
     #[app::init]
     pub fn init(name: String, seed: u64, now: u64) -> MeroBlocks {
         app::emit!(Event::Initialized());
@@ -264,13 +302,13 @@ impl MeroBlocks {
     /// **`device_id()` on purpose, and it stays that way at rc.23.** The rule
     /// core states for the account/device split is that an identity used for
     /// OWNERSHIP takes the account: writer sets, `Map<identity, Vote>`, "is the
-    /// caller the owner/a member". This contract has none of those — it stores
+    /// caller the owner/a member". This contract has none of those - it stores
     /// no owner, no roles, and never compares a caller against the group's
     /// member list (membership is enforced by the node before a call reaches us,
     /// and group members are accounts now anyway).
     ///
     /// What it keys by this value is a PLAYER ROW: a name, a transform and a
-    /// heartbeat — presence for one running instance of the game. That is the
+    /// heartbeat - presence for one running instance of the game. That is the
     /// "this installation" case the split keeps `device_id()` for. Two devices of
     /// one person are two avatars standing in two places, and they must be:
     /// `account_id()` would collapse them onto one row whose position is decided
@@ -332,6 +370,20 @@ impl MeroBlocks {
 
     // ── World ─────────────────────────────────────────────────────────────────
 
+    /// The world's name, terrain seed and creation time (`createdAt`, unix seconds).
+    ///
+    /// Terrain is not stored: regenerate it from `seed`, then apply `get_overrides`.
+    ///
+    /// # Returns
+    /// The world's `name`, `seed` and `createdAt` (unix seconds).
+    ///
+    /// # Errors
+    /// Fails if reading the world's metadata from storage fails.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn world_meta(&self) -> app::Result<WorldMeta> {
         Ok(self.meta.get()?.clone())
     }
@@ -340,9 +392,28 @@ impl MeroBlocks {
         x >= 0 && y >= 0 && z >= 0 && x < WORLD_SX && y < WORLD_SY && z < WORLD_SZ
     }
 
-    /// Apply a batch of block edits. Out-of-bounds edits are skipped (not an
-    /// error: a stale client must not poison a whole batch). Returns the
-    /// number of edits applied.
+    /// Apply a batch of block edits and return how many were applied.
+    ///
+    /// Out-of-bounds edits are skipped, not rejected, so one stale edit cannot
+    /// poison a batch. Each applied edit overwrites the block at its coordinate.
+    ///
+    /// # Arguments
+    /// * `edits` - at most 512 per call; `b` is a block id, 0 to 15 for ids the client
+    ///   defines (`b: 0` breaks the block); the contract stores any 0-255 value without
+    ///   checking it, so never send an id outside 0 to 15.
+    /// * `now` - the caller's unix seconds; orders concurrent edits of one block (last writer wins).
+    ///
+    /// # Returns
+    /// How many edits were applied; skipped out-of-bounds edits are not counted.
+    ///
+    /// # Errors
+    /// Fails, applying nothing, if more than 512 edits are sent in one call.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"edits":[{"x":5,"y":20,"z":5,"b":3}],"now":1727000000}
+    /// ```
+    #[app::idempotent]
     pub fn set_blocks(&mut self, edits: Vec<Edit>, now: u64) -> app::Result<u32> {
         if edits.len() > MAX_EDITS_PER_CALL {
             app::bail!("too many edits in one batch");
@@ -371,7 +442,18 @@ impl MeroBlocks {
         Ok(applied)
     }
 
-    /// Full override map — join/reconcile pull. O(edits), not O(world).
+    /// Every edited coordinate as `{"k": "x,y,z", "b": <block id>}`.
+    ///
+    /// A key never disappears: a broken block stays listed with `b: 0`. Any
+    /// coordinate not listed holds generated terrain.
+    ///
+    /// # Returns
+    /// Every edited coordinate as `{"k": "x,y,z", "b": <block id>}`, breaks included.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn get_overrides(&self) -> Vec<BlockEntry> {
         self.overrides
             .entries()
@@ -379,6 +461,15 @@ impl MeroBlocks {
             .unwrap_or_default()
     }
 
+    /// How many distinct coordinates have ever been edited, breaks included.
+    ///
+    /// # Returns
+    /// The number of distinct coordinates ever edited.
+    ///
+    /// # Examples
+    /// ```json
+    /// {}
+    /// ```
     pub fn override_count(&self) -> u32 {
         self.overrides.entries().map(|e| e.count()).unwrap_or(0) as u32
     }
@@ -405,7 +496,23 @@ impl MeroBlocks {
         Ok(())
     }
 
-    /// Join (or rejoin) the world. Idempotent upsert of my player row.
+    /// Join or rejoin the world as the calling identity and return the player row.
+    ///
+    /// A rejoin keeps the player's position and join time and updates the name.
+    /// Emits `PlayerJoined`.
+    ///
+    /// # Arguments
+    /// * `name` - display name shown to other players.
+    /// * `now` - the caller's unix seconds.
+    ///
+    /// # Returns
+    /// The caller's player row, online.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"name":"bot","now":1727000000}
+    /// ```
+    #[app::idempotent]
     pub fn join(&mut self, name: String, now: u64) -> app::Result<PlayerView> {
         let id = Self::caller_id();
         let existing = self.my_player(&id)?;
@@ -434,9 +541,23 @@ impl MeroBlocks {
         Ok(Self::view_of(id, &player, true))
     }
 
-    /// Liveness + transform ping. SILENT (no event): peers poll `get_players`
-    /// every ~1.5s; emitting per-heartbeat would spam SSE for every member
-    /// (mero-meet's silent-heartbeat pattern).
+    /// Report the caller's position and keep them online.
+    ///
+    /// Send every 0.5 s while moving and every 2 s while idle; a player silent
+    /// for more than 10 s shows as offline. Creates the player row if needed.
+    /// Emits `PlayerJoined` only when this creates the row or brings a left
+    /// player back; otherwise no event (peers poll `get_players`, so a
+    /// routine heartbeat must not spam an event on every call).
+    ///
+    /// # Arguments
+    /// * `t` - position in blocks, `yaw` and `pitch` in radians, `sel` the hotbar slot (0 to 8).
+    /// * `now` - the caller's unix seconds.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"t":{"name":"bot","x":64.5,"y":44.0,"z":64.5,"yaw":0.0,"pitch":0.0,"sel":0},"now":1727000000}
+    /// ```
+    #[app::idempotent]
     pub fn heartbeat(&mut self, t: Transform, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         let existing = self.my_player(&id)?;
@@ -465,6 +586,17 @@ impl MeroBlocks {
         Ok(())
     }
 
+    /// Mark the caller as having left. The row is kept, and a later `join` or
+    /// `heartbeat` brings the player back. A caller who never joined is a no-op.
+    ///
+    /// # Arguments
+    /// * `now` - the caller's unix seconds.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"now":1727000000}
+    /// ```
+    #[app::idempotent]
     pub fn leave(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         let Some(mut p) = self.my_player(&id)? else {
@@ -477,9 +609,23 @@ impl MeroBlocks {
         Ok(())
     }
 
-    /// Roster with liveness — peers render everyone `online`. A player who
-    /// vanished without `leave` simply ages out of the TTL here; nobody
-    /// writes to another account's row to mark it.
+    /// Every player row with an `online` flag.
+    ///
+    /// A player is online when they have not left and wrote within the last 10 s,
+    /// measured against the newest clock any player has reported. A player who
+    /// vanished without calling `leave` simply ages out here; nobody writes to
+    /// another account's row to mark it left.
+    ///
+    /// # Arguments
+    /// * `now` - the caller's unix seconds.
+    ///
+    /// # Returns
+    /// Every player row with its `online` flag.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"now":1727000000}
+    /// ```
     pub fn get_players(&self, now: u64) -> Vec<PlayerView> {
         let room_now = self.room_now(now);
         self.all_players()
@@ -767,7 +913,7 @@ mod tests {
         // Bob's clock runs 10 minutes ahead: room time jumps forward.
         app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600))
             .unwrap();
-        // Alice heartbeats on her own slow clock — room-time stamping keeps her live.
+        // Alice heartbeats on her own slow clock - room-time stamping keeps her live.
         app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002))
             .unwrap();
         let players = app.view(|s| s.get_players(1603));
@@ -983,7 +1129,7 @@ mod tests {
     /// Pins the account/device decision made at rc.23 (see `caller`): a player
     /// row is per-INSTALLATION, so one person on two devices is two avatars in
     /// two places. If someone "fixes" `caller()` to `account_id()`, the two
-    /// heartbeats below collapse onto one row and this fails — which is the
+    /// heartbeats below collapse onto one row and this fails - which is the
     /// point, because nothing else in the app would have complained.
     #[test]
     fn one_account_on_two_devices_is_two_players() {

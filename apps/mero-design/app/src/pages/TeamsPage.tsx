@@ -9,6 +9,7 @@ import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { decodeInvitationObject, invitationTokenFrom } from "../utils/invitation";
 import {
+  describeInviteFailure,
   InviteStatusBanner,
   redeemInvitation,
   useInviteRedemption,
@@ -218,7 +219,11 @@ export default function TeamsPage() {
       if (!parsed) throw new Error("no namespace id in invitation");
 
       const outcome = await redeemInvitation(parsed, redeemer);
-      if (outcome.status === "failed") throw new Error(outcome.message);
+      if (outcome.status === "failed") {
+        throw new Error(
+          describeInviteFailure(outcome.reason, "team") ?? outcome.message,
+        );
+      }
 
       markNamespaceJustJoined(outcome.namespaceId);
       await refreshTeams();

@@ -875,7 +875,7 @@ impl Crm {
         activities.sort_by(|a, b| (a.due_at, &a.id).cmp(&(b.due_at, &b.id)));
         let mut notes: Vec<NoteView> = notes
             .iter()
-            .map(|(key, n)| note_view(n, owner_hex(self.notes.owner_of(key).ok().flatten())))
+            .map(|(key, n)| note_view(n, owner_hex(self.note_author(key, n))))
             .collect();
         notes.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
         Ok(DealDetail {
@@ -1180,13 +1180,14 @@ impl Crm {
     /// Delete a note. Only its author may — the entry's owner, which every
     /// node checks when it applies the removal.
     pub fn delete_note(&mut self, note_id: String) -> app::Result<()> {
-        let note = self
-            .notes
-            .get(&note_id)?
-            .ok_or_else(|| not_found("note", &note_id))?;
-        if !self.notes.owned_by_me(&note_id)? {
+        // The caller's OWN note: keys are per owner, so another account's
+        // note at this id is a different entry, theirs to delete.
+        let Some(note) = self.notes.get(&note_id)? else {
+            if self.notes.entries_at(&note_id)?.is_empty() {
+                return Err(not_found("note", &note_id));
+            }
             return Err(forbidden("only the author may delete this note"));
-        }
+        };
         let _ = self.notes.remove(&note_id)?;
         app::emit!(Event::NoteChanged {
             id: &note_id,
@@ -1337,8 +1338,32 @@ impl Crm {
 
     /// Who created a record: the owner stamp of its write-once creation entry,
     /// or `""` for one that has none (the seeded default stages).
+    ///
+    /// Keys are per owner (core rc.57), so a patched node can file a creation
+    /// entry of its own under an id someone else created. Ids are random, so
+    /// an honest record has exactly one; with more than one nobody can tell
+    /// which came first, and the record has no creator (`""`) rather than
+    /// letting the claimant win a tie-break.
     fn creator_of(&self, id: &str) -> String {
-        owner_hex(self.created_by.owner_of(&id.to_owned()).ok().flatten())
+        match self.created_by.entries_at(&id.to_owned()).ok().as_deref() {
+            Some([(owner, _)]) => owner.to_string(),
+            _ => String::new(),
+        }
+    }
+
+    /// The author of the note `note` at `key`: the holder of `key` whose
+    /// entry it is. Keys are per owner, so a key-only `owner_of` would only
+    /// ever name the caller; the row is matched against every holder's entry
+    /// by its bytes.
+    fn note_author(&self, key: &String, note: &Note) -> Option<AccountId> {
+        let row = calimero_sdk::borsh::to_vec(note).ok()?;
+        self.notes
+            .entries_at(key)
+            .ok()?
+            .into_iter()
+            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
+            .map(|(owner, _)| owner)
+            .min()
     }
 
     fn record_creator(&mut self, id: &str, now: u64) -> app::Result<()> {
@@ -2212,8 +2237,14 @@ mod tests {
                 .notes
                 .modify(&n, |note| note.body = "Budget cut".into()))
             .is_err());
+        // Keys are per owner: OTHER's key-only remove names OTHER's own note
+        // at the id, of which there is none, and delete_note refuses.
         assert!(app
             .call_as_account(OTHER, OTHER, |s| s.notes.remove(&n))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(OTHER, OTHER, |s| s.delete_note(n.clone()))
             .is_err());
         let me = AccountId::from(app.account_id()).to_string();
         let notes = app.view(|s| s.get_deal(d)).unwrap().notes;
@@ -2225,15 +2256,22 @@ mod tests {
     fn a_records_creator_cannot_be_rewritten() {
         let mut app = TestHost::new(Crm::init);
         let d = deal(&mut app, "D", 1, "stage-lead");
-        // Another member's patched node tries to claim the deal: a second
-        // creation entry, or a rewrite of the first.
-        assert!(app
-            .call_as_account(OTHER, OTHER, |s| s.created_by.insert(d.clone(), 0))
-            .is_err());
         let me = AccountId::from(app.account_id()).to_string();
         assert_eq!(
             app.view(|s| s.get_deal(d.clone())).unwrap().deal.created_by,
             me
+        );
+        // The creator cannot rewrite their own creation entry.
+        assert!(app.call(|s| s.created_by.insert(d.clone(), 0)).is_err());
+        // Another member's patched node tries to claim the deal with a second
+        // creation entry. Keys are per owner, so it lands as OTHER's own
+        // entry; with two nobody can tell which came first, so the deal has no
+        // creator, and OTHER gains nothing by it.
+        app.call_as_account(OTHER, OTHER, |s| s.created_by.insert(d.clone(), 0))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_deal(d.clone())).unwrap().deal.created_by,
+            ""
         );
         assert!(app
             .call_as_account(OTHER, OTHER, |s| s.delete_deal(d.clone()))
