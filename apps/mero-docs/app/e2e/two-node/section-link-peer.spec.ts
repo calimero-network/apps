@@ -37,7 +37,7 @@ test.describe('Section links across nodes (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Shared');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Shared');
     await bob.docs.expectDocVisible('Roadmap');
 
     await alice.openDoc('Roadmap');
