@@ -4,9 +4,9 @@
 // FolderTreeItem. Selection is also owned by useDriveWorkspace so
 // the right-pane DocumentList reads the same value.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { buildTree } from '@/utils/ancestry';
+import { ancestorsOf, buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { folderLoadErrorMessage } from '@/lib/folderLoadError';
 import { Button } from '@/components/ui/button';
@@ -80,6 +80,21 @@ export function FolderTree({
     [folders],
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
+
+  // Reveal the routed folder (and an open doc's row) once per route, as soon as
+  // it has loaded; a later refetch must not reopen a folder the user closed.
+  const revealKey = selectedFolderId && `${selectedFolderId}:${selectedDocId ?? ''}`;
+  const revealedKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedFolderId || !byId.has(selectedFolderId)) return;
+    if (revealedKey.current === revealKey) return;
+    revealedKey.current = revealKey;
+    const ids = ancestorsOf(folders, selectedFolderId);
+    if (selectedDocId) ids.push(selectedFolderId);
+    setExpanded((prev) =>
+      ids.every((id) => prev.has(id)) ? prev : new Set([...prev, ...ids]),
+    );
+  }, [revealKey, selectedFolderId, selectedDocId, byId, folders]);
 
   // Loading flags pulse on every refetch. Once this workspace's tree has shown,
   // a later pulse or failed re-read keeps it, and any dialog opened from it, mounted.
