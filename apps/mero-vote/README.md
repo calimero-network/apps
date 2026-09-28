@@ -152,3 +152,25 @@ MEROD_BINARY=… pnpm -F mero-vote test:e2e
 - **Deadlines are informational.** Node clocks are not a consensus source.
 - **Coercion resistance is out of scope.** A voter can prove how they voted by revealing their
   encryption randomness.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. The contract now names the account it is asking about:
+
+- A poll is read from its **creator's own** control entry (`polls.get_by(creator, id)`),
+  so another member's entry filed at the same poll id is never read, and `list_polls`
+  lists each id once.
+- Elections, seals, transport keys, dealings and complaints are read as the entry of the
+  author the key prefix names (`get_by`), once per key.
+- A counted ballot's body is the voter's own entry at its hash (`get_by(voter, hash)`); a
+  body someone else filed there is still found (lowest holder) so the audit's
+  "ballot authorship" check reports it.
+
+No uniqueness semantics changed: every write-once key already carried its author and a
+content hash. A second member filing at another's key now succeeds as a separate entry
+of theirs instead of being refused; it is never read as the author's. Tests:
+`a_control_entry_filed_at_someone_elses_poll_id_is_never_read`, and
+`nobody_can_fail_a_sealed_audit_by_rewriting_their_own_entries` (Mallory at Bob's key).
