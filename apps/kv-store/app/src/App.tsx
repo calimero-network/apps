@@ -1,4 +1,4 @@
-import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import { ConnectButtonAccount, clearContextId, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
@@ -48,7 +48,7 @@ export function App() {
             The login modal discovers nodes on the usual local ports and accepts
             a URL directly.
           </p>
-          <ConnectButton />
+          <ConnectButtonAccount />
         </div>
       ) : !contextId ? (
         <>
