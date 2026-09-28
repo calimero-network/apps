@@ -1119,6 +1119,9 @@ impl MeroDesign {
     /// The top of the stack is one seek on the `layer_index` index.
     pub fn bring_to_front(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
+        if !self.elements.get()?.contains(&id)? {
+            return Ok(());
+        }
         let max_layer = self
             .element_map()
             .map(|m| m.query("layer_index").desc().first())
@@ -1137,6 +1140,9 @@ impl MeroDesign {
     /// already starting at 0 has to shift the others up.
     pub fn send_to_back(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
+        if !self.elements.get()?.contains(&id)? {
+            return Ok(());
+        }
         let lowest = self
             .element_map()
             .map(|m| m.query("layer_index").limit(2).entries())
@@ -2267,5 +2273,35 @@ mod tests {
                 .layer_index,
             7
         );
+    }
+
+    #[test]
+    fn send_to_back_with_an_unknown_id_writes_nothing_and_emits_nothing() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b"]);
+        let _ = app.take_events();
+        app.call(|s| s.send_to_back("gone".to_owned())).unwrap();
+        let got: Vec<(String, u32)> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| (e.id, e.layer_index))
+            .collect();
+        assert_eq!(got, [("a".to_owned(), 0), ("b".to_owned(), 1)]);
+        assert!(app.take_events().is_empty());
+    }
+
+    #[test]
+    fn bring_to_front_with_an_unknown_id_writes_nothing_and_emits_nothing() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b"]);
+        let _ = app.take_events();
+        app.call(|s| s.bring_to_front("gone".to_owned())).unwrap();
+        let got: Vec<(String, u32)> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| (e.id, e.layer_index))
+            .collect();
+        assert_eq!(got, [("a".to_owned(), 0), ("b".to_owned(), 1)]);
+        assert!(app.take_events().is_empty());
     }
 }
