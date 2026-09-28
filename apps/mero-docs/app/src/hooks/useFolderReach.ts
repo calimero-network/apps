@@ -1,57 +1,30 @@
-// Whether another member can open a folder: the nearest restricted folder at or
-// above it decides, since an open folder lets in whoever can open its parent.
+// Whether another member can open the open doc's folder. The node's member list
+// for a folder is its effective membership, so it already applies inheritance,
+// admin and capability rules; this only reads it.
 
 import { useCallback } from 'react';
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
-import { useFolderMembership } from './useFolderMembership';
+import {
+  useFolderMembership,
+  type FolderMembershipState,
+} from './useFolderMembership';
 
-type FolderShape = {
-  id: string;
-  parent_id: string | null;
-  visibility: 'Open' | 'Restricted' | undefined;
-};
-type MemberList = {
+type MemberList = Pick<FolderMembershipState, 'readFor'> & {
   members: Pick<GroupMember, 'identity'>[];
-  loading: boolean;
-  error: Error | null;
 };
 
-/** The restricted folder whose members may open `folderId`; null for the whole workspace, undefined while unknown. */
-export function gatingFolder(
-  folderId: string,
-  folders: FolderShape[],
-  rootId: string | null,
-): string | null | undefined {
-  const byId = new Map(folders.map((f) => [f.id, f]));
-  const seen = new Set<string>();
-  for (let id: string | null = folderId; ; ) {
-    if (id === null || id === rootId) return null;
-    const f = byId.get(id);
-    if (!f || !f.visibility || seen.has(id)) return undefined;
-    if (f.visibility === 'Restricted') return f.id;
-    seen.add(id);
-    id = f.parent_id;
-  }
-}
-
-/** Whether `member` can open a folder gated by `gate`; undefined while unknown. */
+/** Whether `member` can open `folderId`, from the last list read for that folder; undefined while unknown. */
 export function canOpenFolder(
-  gate: string | null | undefined,
   list: MemberList,
+  folderId: string | undefined,
   member: string,
   self: string | null,
 ): boolean | undefined {
-  if (gate === null) return true;
+  if (!folderId || list.readFor !== folderId) return undefined;
   const ids = list.members.map((m) => m.identity);
-  // You can open the doc, so a list without you has not been read yet.
-  if (
-    gate === undefined ||
-    list.loading ||
-    list.error ||
-    !ids.includes(self ?? '')
-  )
-    return undefined;
+  // You can open the doc, so a list without you is not this folder's yet.
+  if (!self || !ids.includes(self)) return undefined;
   return ids.includes(member);
 }
 
@@ -59,13 +32,11 @@ export function canOpenFolder(
 export function useFolderReach(
   folderId: string | undefined,
 ): (member: string) => boolean | undefined {
-  const { folders, rootGroupId, selfIdentity } = useDriveWorkspace();
-  const gate = folderId
-    ? gatingFolder(folderId, folders, rootGroupId)
-    : undefined;
-  const list = useFolderMembership(gate ?? null);
+  const { selfIdentity } = useDriveWorkspace();
+  const { members, readFor } = useFolderMembership(folderId ?? null);
   return useCallback(
-    (member: string) => canOpenFolder(gate, list, member, selfIdentity),
-    [gate, list, selfIdentity],
+    (member: string) =>
+      canOpenFolder({ members, readFor }, folderId, member, selfIdentity),
+    [members, readFor, folderId, selfIdentity],
   );
 }
