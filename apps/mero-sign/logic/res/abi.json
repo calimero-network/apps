@@ -903,7 +903,7 @@
     },
     {
       "name": "delete_document",
-      "doc": "Delete a document by ID. Admins only: they are the documents'\nmoderators, and every node refuses anyone else's removal.",
+      "doc": "Delete a document by ID. Admins only: they are the documents'\nmoderators, and every node refuses anyone else's removal.\n\nEvery account's document at the id, each by name (`remove_by`): keys\nare per owner, and a key-only `remove` removes only the caller's own.",
       "params": [
         {
           "name": "document_id",
