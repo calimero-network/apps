@@ -284,7 +284,8 @@ pub struct E2eKvStore {
     rga_metadata: UnorderedMap<String, LwwRegister<String>>,
 
     // --- Authored Map ---
-    /// Shared keyspace map with per-entry ownership
+    /// Per-owner keyspace (core rc.57): each account holds its own entry at a
+    /// key, and only that account edits or removes it.
     authored_items: AuthoredMap<String, LwwRegister<String>>,
 
     // --- Authored Vector ---
@@ -559,6 +560,38 @@ pub enum Error<'a> {
 /// longer distinguishes an account from a device key the way it used to.
 fn caller_account() -> String {
     AccountId::from(env::account_id()).to_string()
+}
+
+/// The entry at `key` of the lowest account holding one, with that account:
+/// the same pick on every node when several accounts hold one key.
+fn lowest_holder(
+    map: &AuthoredMap<String, LwwRegister<String>>,
+    key: &String,
+) -> app::Result<Option<(AccountId, String)>> {
+    Ok(map
+        .entries_at(key)?
+        .into_iter()
+        .min_by_key(|(owner, _)| *owner)
+        .map(|(owner, v)| (owner, v.get().clone())))
+}
+
+/// Remove the entry at `key` of a moderated directory: the caller's own if
+/// they hold one, else every holder's by name (`remove_by`), which storage
+/// allows a moderator (a workspace admin) only. A key-only `remove` removes
+/// only the caller's own entry. `false` if nobody held `key`.
+fn remove_every<V>(map: &mut Moderated<UnorderedMap<String, V>>, key: &String) -> app::Result<bool>
+where
+    V: BorshSerialize + BorshDeserialize + 'static,
+{
+    if map.remove(key)?.is_some() {
+        return Ok(true);
+    }
+    let holders = map.entries_at(key)?;
+    let found = !holders.is_empty();
+    for (owner, _) in holders {
+        let _ = map.remove_by(&owner, key)?;
+    }
+    Ok(found)
 }
 
 /// Parse a 64-hex account id, with a message that says which of the two id
@@ -1881,6 +1914,8 @@ impl E2eKvStore {
         Ok(())
     }
 
+    /// Removes the CALLER's own entry at `key`: keys are per owner, so
+    /// another account's entry at the same key is theirs and stays.
     pub fn authored_remove(&mut self, key: String) -> app::Result<Option<String>> {
         let result = self.authored_items.remove(&key)?.map(|v| v.get().clone());
         if result.is_some() {
@@ -1889,8 +1924,32 @@ impl E2eKvStore {
         Ok(result)
     }
 
+    /// The value at `key` of whoever holds it: the lowest account's, if
+    /// several do, the same pick on every node. Keys are per owner, so a
+    /// key-only `get` would read the CALLER's own entry only.
     pub fn authored_get(&self, key: String) -> app::Result<Option<String>> {
-        Ok(self.authored_items.get(&key)?.map(|v| v.get().clone()))
+        Ok(lowest_holder(&self.authored_items, &key)?.map(|(_, v)| v))
+    }
+
+    /// `owner`'s own value at `key` (`owner` is a 64-hex account id).
+    pub fn authored_get_by(&self, owner: String, key: String) -> app::Result<Option<String>> {
+        let owner = parse_account(&owner)?;
+        Ok(self
+            .authored_items
+            .get_by(&owner, &key)?
+            .map(|v| v.get().clone()))
+    }
+
+    /// Every account holding an entry at `key`, ascending.
+    pub fn authored_owners(&self, key: String) -> app::Result<Vec<String>> {
+        let mut owners: Vec<AccountId> = self
+            .authored_items
+            .entries_at(&key)?
+            .into_iter()
+            .map(|(owner, _)| owner)
+            .collect();
+        owners.sort();
+        Ok(owners.into_iter().map(|o| o.to_string()).collect())
     }
 
     pub fn authored_entries(&self) -> app::Result<BTreeMap<String, String>> {
@@ -1901,8 +1960,9 @@ impl E2eKvStore {
             .collect())
     }
 
+    /// The account `authored_get` reads `key` from: the lowest holder.
     pub fn authored_get_owner(&self, key: String) -> app::Result<Option<String>> {
-        Ok(self.authored_items.owner_of(&key)?.map(|pk| pk.to_string()))
+        Ok(lowest_holder(&self.authored_items, &key)?.map(|(owner, _)| owner.to_string()))
     }
 
     pub fn authored_len(&self) -> app::Result<usize> {
@@ -2141,8 +2201,13 @@ impl E2eKvStore {
             created_by: by.clone(),
             registered_at: env::time_now(),
         };
+        // Keys are per owner: `contains` asks about the caller's own entry.
+        // Another account's registration of this context is refused rather
+        // than duplicated alongside it.
         if self.ws_channels.contains(&context_id)? {
             self.ws_channels.update(&context_id, record)?;
+        } else if !self.ws_channels.entries_at(&context_id)?.is_empty() {
+            app::bail!("context {context_id} is registered by another account");
         } else {
             self.ws_channels.insert(context_id.clone(), record)?;
         }
@@ -2159,7 +2224,7 @@ impl E2eKvStore {
     /// the directory) may, and storage refuses anyone else.
     pub fn ws_unregister_channel(&mut self, context_id: String) -> app::Result<()> {
         let _by = self.require_writer()?;
-        if self.ws_channels.remove(&context_id)?.is_none() {
+        if !remove_every(&mut self.ws_channels, &context_id)? {
             app::bail!("no channel registered for context {context_id}");
         }
         app::emit!(Event::ChannelUnregistered {
@@ -2172,11 +2237,10 @@ impl E2eKvStore {
     /// a listing is how a new member finds out what to join.
     pub fn ws_list_channels(&self) -> app::Result<Vec<ChannelRecord>> {
         let mut channels = Vec::new();
-        for (key, mut record) in self.ws_channels.entries()? {
-            record.created_by = self
-                .ws_channels
-                .owner_of(&key)?
-                .map_or_else(String::new, |owner| owner.to_string());
+        // With owners: keys are per owner, so a key-only `owner_of` would
+        // name only the caller.
+        for (owner, _, mut record) in self.ws_channels.entries_with_owners()? {
+            record.created_by = owner.to_string();
             channels.push(record);
         }
         // `UnorderedMap` iteration order is not part of its contract, so sort
@@ -2204,8 +2268,11 @@ impl E2eKvStore {
             created_by: by.clone(),
             registered_at: env::time_now(),
         };
+        // As `ws_register_channel`: another account's registration is refused.
         if self.ws_groups.contains(&group_id)? {
             self.ws_groups.update(&group_id, record)?;
+        } else if !self.ws_groups.entries_at(&group_id)?.is_empty() {
+            app::bail!("group {group_id} is registered by another account");
         } else {
             self.ws_groups.insert(group_id.clone(), record)?;
         }
@@ -2220,7 +2287,7 @@ impl E2eKvStore {
 
     pub fn ws_unregister_group(&mut self, group_id: String) -> app::Result<()> {
         let _by = self.require_writer()?;
-        if self.ws_groups.remove(&group_id)?.is_none() {
+        if !remove_every(&mut self.ws_groups, &group_id)? {
             app::bail!("no group registered with id {group_id}");
         }
         app::emit!(Event::GroupUnregistered {
@@ -2231,11 +2298,8 @@ impl E2eKvStore {
 
     pub fn ws_list_groups(&self) -> app::Result<Vec<WsGroupRecord>> {
         let mut groups = Vec::new();
-        for (key, mut record) in self.ws_groups.entries()? {
-            record.created_by = self
-                .ws_groups
-                .owner_of(&key)?
-                .map_or_else(String::new, |owner| owner.to_string());
+        for (owner, _, mut record) in self.ws_groups.entries_with_owners()? {
+            record.created_by = owner.to_string();
             groups.push(record);
         }
         groups.sort_by(|a, b| a.group_id.cmp(&b.group_id));
@@ -2573,6 +2637,50 @@ mod tests {
         app.call_as_account(admin, admin, |s| s.ws_unregister_channel("ctx".to_owned()))
             .expect("an admin moderates");
         assert!(app.view(|s| s.ws_list_channels()).expect("list").is_empty());
+    }
+
+    /// Keys are per owner: two accounts inserting one key hold two entries,
+    /// each read by name, and each removes only its own.
+    #[test]
+    fn one_authored_key_two_owners_are_two_entries() {
+        let mut app = TestHost::new(E2eKvStore::init);
+        for (who, value) in [(ALICE, "alice's"), (BOB, "bob's")] {
+            app.call_as_account(who, who, |s| {
+                s.authored_insert("k".to_owned(), value.to_owned())
+            })
+            .expect("each inserts its own");
+        }
+        let mut both = vec![hex_of(ALICE), hex_of(BOB)];
+        both.sort();
+        assert_eq!(
+            app.view(|s| s.authored_owners("k".to_owned())).unwrap(),
+            both
+        );
+        assert_eq!(
+            app.call_as_account(BOB, BOB, |s| s
+                .authored_get_by(hex_of(ALICE), "k".to_owned()))
+                .unwrap(),
+            Some("alice's".to_owned())
+        );
+        // The deterministic pick is the lowest holder, from any caller.
+        let lowest = both[0].clone();
+        assert_eq!(
+            app.call_as_account(ALICE, ALICE, |s| s.authored_get_owner("k".to_owned()))
+                .unwrap(),
+            Some(lowest)
+        );
+        assert_eq!(app.view(|s| s.authored_len()).unwrap(), 2);
+
+        app.call_as_account(ALICE, ALICE, |s| s.authored_remove("k".to_owned()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.authored_owners("k".to_owned())).unwrap(),
+            vec![hex_of(BOB)]
+        );
+        assert_eq!(
+            app.view(|s| s.authored_get("k".to_owned())).unwrap(),
+            Some("bob's".to_owned())
+        );
     }
 
     /// `created_by` in a listing is the owner stamp, not the stored bytes.
