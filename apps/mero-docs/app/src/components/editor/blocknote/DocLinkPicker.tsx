@@ -67,10 +67,16 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { namespaceId, selfIdentity, namespaceMemberNames } =
     useDriveWorkspace();
   const group = useGroupMembers(namespaceId);
-  // A reload or a failed read keeps the last people read; none yet leaves People out.
-  const lastMembers = useRef<string[]>([]);
+  // A reload or a failed read keeps the last people read for this workspace; none yet leaves People out.
+  const lastMembers = useRef<{ ws: string | null; ids: string[] }>({
+    ws: null,
+    ids: [],
+  });
   if (!group.loading && !group.error)
-    lastMembers.current = group.members.map((m) => m.identity);
+    lastMembers.current = {
+      ws: namespaceId,
+      ids: group.members.map((m) => m.identity),
+    };
   const presence = usePresenceByDoc();
   const canOpen = useFolderReach(route?.folder);
   const paths = useFolderPaths(folders);
@@ -83,7 +89,8 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
     texts,
     paths,
     self: selfIdentity,
-    members: lastMembers.current,
+    members:
+      lastMembers.current.ws === namespaceId ? lastMembers.current.ids : [],
     names: namespaceMemberNames,
     canOpen,
     present: (openKey ? presence.get(openKey) : undefined) ?? [],
