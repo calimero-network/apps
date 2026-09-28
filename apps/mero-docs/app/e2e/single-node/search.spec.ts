@@ -224,6 +224,12 @@ test.describe('Search (single-node)', () => {
     alice,
   }) => {
     const { page, palette } = alice;
+    await alice.openDoc('Roadmap 2026');
+    await alice.tags.create('q3');
+    await alice.tags.create('roadmap-2026');
+    await alice.tags.create('launch');
+    await alice.editor.close();
+
     await page.setViewportSize({ width: 375, height: 740 });
     await expect(palette.field()).toBeHidden();
     await page.getByRole('button', { name: 'Search', exact: true }).click();
@@ -232,5 +238,16 @@ test.describe('Search (single-node)', () => {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(375);
+
+    // The folder keeps its whole name; the tags and time move down a line.
+    await palette.search('road');
+    const folder = palette
+      .group('Documents')
+      .getByRole('option', { name: /Roadmap 2026/ })
+      .getByText('Product', { exact: true });
+    await expect(folder).toBeVisible();
+    expect(
+      await folder.evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBe(0);
   });
 });

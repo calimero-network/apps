@@ -107,15 +107,20 @@ function coverageWarning(
 }
 
 // Parts of a row's second line, with the mockup's middle dots between them.
+// A narrow row wraps whole parts; the -ml-4 pushes a line-leading dot into the row's clipped edge.
 function dotted(...parts: React.ReactNode[]): React.ReactNode {
-  return parts
-    .filter((p) => p !== null && p !== undefined && p !== false)
-    .map((p, i) => (
-      <React.Fragment key={i}>
-        {i > 0 && ' · '}
-        {p}
-      </React.Fragment>
-    ));
+  return (
+    <span className="-ml-4 flex min-w-0 flex-1 flex-wrap items-center gap-y-0.5">
+      {parts
+        .filter((p) => p !== null && p !== undefined && p !== false)
+        .map((p, i) => (
+          <span key={i} className="flex min-w-0 items-center">
+            <span className="w-4 shrink-0 text-center">{i > 0 && ' · '}</span>
+            <span className="flex min-w-0 items-center gap-1.5">{p}</span>
+          </span>
+        ))}
+    </span>
+  );
 }
 
 type RowContext = {
