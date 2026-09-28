@@ -91,6 +91,9 @@ vi.mock('@/hooks/usePresenceByDoc', () => ({
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ws,
 }));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
+}));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: (_ns: string, folderId: string) => ({
     canEditDocs: !!canEdit[folderId],

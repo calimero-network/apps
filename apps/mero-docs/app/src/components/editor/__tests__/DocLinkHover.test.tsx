@@ -18,6 +18,9 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
   }),
 }));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({ name: null }),
+}));
 
 const NOW = new Date(2026, 8, 28, 12, 0).getTime();
 const MIN = 60_000;
@@ -51,18 +54,28 @@ const docText: DocText = {
   links: [],
 };
 
+const refetchFolder = vi.fn();
+
 function data(over: Partial<Parameters<typeof docLinkCardProps>[1]> = {}) {
   return {
     ws: 'w1',
+    registryFolders: ['f0', 'f1', 'f3', 'f4', 'secret'].map((id) => ({ id })),
     index: {
       rows: [row],
       folders: [
         { id: 'f0', name: 'Product', color: '#3b82f6' },
         { id: 'f1', name: 'Pricing', parentId: 'f0' },
         { id: 'f3', name: 'Still syncing' },
+        { id: 'f4', name: 'Unreadable' },
       ],
       foldersKnown: true,
-      folderStatus: { f0: 'ready', f1: 'ready', f3: 'syncing' } as const,
+      folderStatus: {
+        f0: 'ready',
+        f1: 'ready',
+        f3: 'syncing',
+        f4: 'error',
+      } as const,
+      refetchFolder,
     },
     paths: new Map([
       [
@@ -116,6 +129,28 @@ describe('docLinkCardProps (L-18 to L-22)', () => {
     expect(docLinkCardProps({ ...target, ws: 'w2' }, data(), NOW)).toEqual({
       state: 'other-workspace',
     });
+  });
+
+  it('says the doc was deleted when its folder is gone', () => {
+    expect(
+      docLinkCardProps({ ...target, folder: 'gone' }, data(), NOW),
+    ).toEqual({ state: 'deleted' });
+  });
+
+  it('says a folder that failed to load is unavailable, with a retry', () => {
+    const props = docLinkCardProps({ ...target, folder: 'f4' }, data(), NOW);
+    expect(props.state).toBe('unavailable');
+    if (props.state === 'unavailable') props.onRetry?.();
+    expect(refetchFolder).toHaveBeenCalledWith('f4');
+  });
+
+  it('keeps loading until the workspace and its folders are known', () => {
+    expect(docLinkCardProps(target, data({ ws: null }), NOW)).toEqual({
+      state: 'loading',
+    });
+    expect(
+      docLinkCardProps(target, data({ registryFolders: null }), NOW),
+    ).toEqual({ state: 'loading' });
   });
 
   it('keeps loading while the folder syncs or the folder list is unknown', () => {
@@ -243,5 +278,13 @@ describe('DocLinkHover', () => {
     advance(300);
     fireEvent.click(doc);
     expect(card()).toBeNull();
+  });
+
+  it('stays open when the card itself is clicked', () => {
+    const { doc } = setup();
+    fireEvent.pointerOver(doc, { pointerType: 'mouse' });
+    advance(300);
+    fireEvent.click(card()!);
+    expect(card()).not.toBeNull();
   });
 });

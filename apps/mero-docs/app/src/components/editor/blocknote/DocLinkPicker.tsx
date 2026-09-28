@@ -14,6 +14,7 @@ import {
   useWorkspaceIndexValue,
 } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { normalizeQuery } from '@/lib/search/match';
 import {
   DOC_LINK_TRIGGER,
@@ -46,9 +47,10 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
   const { rows, folders } = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const { route } = useAppRoute();
+  const { namespaceId } = useDriveWorkspace();
   const paths = useFolderPaths(folders);
   const source = {
-    ws: route?.ws ?? '',
+    ws: namespaceId ?? '',
     current: route ?? undefined,
     rows,
     texts,
@@ -76,7 +78,9 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
       shouldOpen={opensDocPicker}
       getItems={getItems}
       suggestionMenuComponent={PickerMenu}
-      onItemClick={(item: DocLinkItem) => insertDocLink(editor, item)}
+      onItemClick={(item: DocLinkItem) =>
+        insertDocLink(editor, item, { fromPicker: true })
+      }
     />
   );
 }

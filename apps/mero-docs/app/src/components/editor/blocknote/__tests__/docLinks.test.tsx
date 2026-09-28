@@ -22,6 +22,10 @@ import {
 } from '@/lib/workspaceIndex/types';
 
 const ORIGIN = 'http://localhost:5173';
+// eslint-disable-next-line no-script-url -- a hostile paste the parser must reject
+const SCRIPT_URL = 'javascript:alert(1)//app/w1/f/f1/d/d2';
+
+afterEach(() => vi.restoreAllMocks());
 
 function row(
   folderId: string,
@@ -101,7 +105,6 @@ describe('opensDocPicker (L-11)', () => {
     type('p');
     expect(menus.store.state).toMatchObject({ show: true, query: 'p' });
     editor.unmount();
-    vi.restoreAllMocks();
   });
 
   it('opens at the start of a block too', () => {
@@ -114,10 +117,11 @@ describe('insertDocLink (L-12, L-13)', () => {
   it('replaces the leftover [ with the title linked to the doc', () => {
     // The menu has already removed the trigger [ and the query; one [ is left.
     const editor = editorWith('see [');
-    insertDocLink(editor, {
-      href: '/app/w1/f/f1/d/d2',
-      title: 'Pricing notes',
-    });
+    insertDocLink(
+      editor,
+      { href: '/app/w1/f/f1/d/d2', title: 'Pricing notes' },
+      { fromPicker: true },
+    );
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },
       {
@@ -128,9 +132,26 @@ describe('insertDocLink (L-12, L-13)', () => {
     ]);
   });
 
+  it('keeps a [ typed by hand when the link does not come from the picker', () => {
+    const editor = editorWith('see [');
+    insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
+    expect(editor.document[0].content).toEqual([
+      { type: 'text', text: 'see [', styles: {} },
+      {
+        type: 'link',
+        href: '/app/w1/f/f1/d/d2',
+        content: [{ type: 'text', text: 'Plan', styles: {} }],
+      },
+    ]);
+  });
+
   it('keeps text before the caret that is not a [', () => {
     const editor = editorWith('see ');
-    insertDocLink(editor, { href: '/app/w1/f/f1/d/d2#b=b7', title: 'Plan' });
+    insertDocLink(
+      editor,
+      { href: '/app/w1/f/f1/d/d2#b=b7', title: 'Plan' },
+      { fromPicker: true },
+    );
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },
       {
@@ -143,7 +164,11 @@ describe('insertDocLink (L-12, L-13)', () => {
 
   it('leaves the caret after the link so typing continues as plain text', () => {
     const editor = editorWith('see [');
-    insertDocLink(editor, { href: '/app/w1/f/f1/d/d2', title: 'Plan' });
+    insertDocLink(
+      editor,
+      { href: '/app/w1/f/f1/d/d2', title: 'Plan' },
+      { fromPicker: true },
+    );
     editor.insertInlineContent([' next'], { updateSelection: true });
     expect(editor.document[0].content).toEqual([
       { type: 'text', text: 'see ', styles: {} },
@@ -254,6 +279,7 @@ describe('pastedDocLink (L-15)', () => {
     ).toBeNull();
     expect(pastedDocLink(`see ${ORIGIN}/app/w1/f/f1/d/d2`, ctx)).toBeNull();
     expect(pastedDocLink('', ctx)).toBeNull();
+    expect(pastedDocLink(SCRIPT_URL, ctx)).toBeNull();
     expect(
       pastedDocLink(`${ORIGIN}/app/w1/f/f1/d/d2`, { ...ctx, ws: undefined }),
     ).toBeNull();
@@ -261,8 +287,6 @@ describe('pastedDocLink (L-15)', () => {
 });
 
 describe('followDocLink (L-16, L-17)', () => {
-  afterEach(() => vi.restoreAllMocks());
-
   function nav() {
     return {
       origin: ORIGIN,

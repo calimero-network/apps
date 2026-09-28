@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  CircleAlert,
   ExternalLink,
   FileText,
   FileX2,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { FolderSwatch } from '@/components/folders/FolderSwatch';
+import { Button } from '@/components/ui/button';
 import { TagChip } from '@/components/tags/TagChip';
 import type { DocTag } from '@/components/tags/DocTagRow';
 
@@ -22,6 +24,7 @@ export type DocLinkCardProps =
       excerpt?: string;
       tags: DocTag[];
     }
+  | { state: 'unavailable'; onRetry?: () => void }
   | { state: 'deleted' }
   | { state: 'no-access' }
   | { state: 'other-workspace' };
@@ -51,6 +54,27 @@ export function DocLinkCard(props: DocLinkCardProps) {
           <div className="h-2.5 w-full rounded bg-secondary" />
           <div className="h-2.5 w-4/5 rounded bg-secondary" />
         </div>
+      </div>
+    );
+  }
+
+  if (props.state === 'unavailable') {
+    return (
+      <div
+        className={`${cardClass} flex items-center gap-2 text-[13px] text-muted-foreground`}
+      >
+        <CircleAlert aria-hidden className="h-[15px] w-[15px] shrink-0" />
+        <span className="flex-1">Couldn't load this document</span>
+        {props.onRetry && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={props.onRetry}
+          >
+            Try again
+          </Button>
+        )}
       </div>
     );
   }

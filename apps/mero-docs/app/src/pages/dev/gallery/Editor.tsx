@@ -337,6 +337,7 @@ const CARD_STATES: DocLinkCardProps[] = [
   { state: 'deleted' },
   { state: 'no-access' },
   { state: 'other-workspace' },
+  { state: 'unavailable', onRetry: () => {} },
 ];
 
 const PICKER_ITEMS: DocLinkPickerItem[] = [

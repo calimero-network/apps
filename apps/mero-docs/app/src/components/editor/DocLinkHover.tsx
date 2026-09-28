@@ -8,9 +8,7 @@ import {
   type LinkToolbarProps,
 } from '@blocknote/react';
 
-import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import {
-  SELF_LABEL,
   useFolderPaths,
   type FolderPaths,
 } from '@/components/home/useHomeChips';
@@ -24,6 +22,7 @@ import {
   useWorkspaceIndexValue,
 } from '@/context/WorkspaceIndexContext';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { usePersonName } from '@/hooks/usePersonName';
 import { useTags } from '@/hooks/useTags';
 import type { WorkspaceIndex } from '@/hooks/useWorkspaceIndex';
 import { docLabel } from '@/lib/docLabel';
@@ -44,9 +43,10 @@ const CLOSE_GRACE_MS = 150; // time to move the pointer from the link into the c
 
 type CardData = {
   ws: string | null | undefined;
+  registryFolders: { id: string }[] | null; // every folder in the workspace; null until read
   index: Pick<
     WorkspaceIndex,
-    'rows' | 'folders' | 'foldersKnown' | 'folderStatus'
+    'rows' | 'folders' | 'foldersKnown' | 'folderStatus' | 'refetchFolder'
   >;
   paths: FolderPaths;
   texts: Map<string, DocText>;
@@ -63,17 +63,30 @@ export function docLinkCardProps(
   now: number,
 ): DocLinkCardProps {
   const { index } = d;
-  if (!index.foldersKnown && target.ws === d.ws) return { state: 'loading' };
-  const view = docLinkCardState(target, {
-    ws: d.ws ?? '',
-    readableFolders: new Set(index.folders.map((f) => f.id)),
-    loadedFolders: new Set(
+  const withStatus = (status: string) =>
+    new Set(
       index.folders
-        .filter((f) => index.folderStatus[f.id] === 'ready')
+        .filter((f) => index.folderStatus[f.id] === status)
         .map((f) => f.id),
-    ),
+    );
+  const view = docLinkCardState(target, {
+    ws: d.ws ?? null,
+    existingFolders: d.registryFolders
+      ? new Set(d.registryFolders.map((f) => f.id))
+      : null,
+    readableFolders: index.foldersKnown
+      ? new Set(index.folders.map((f) => f.id))
+      : null,
+    failedFolders: withStatus('error'),
+    loadedFolders: withStatus('ready'),
     rows: new Map(index.rows.map((r) => [rowKey(r.folderId, r.docId), r])),
   });
+  if (view.state === 'unavailable') {
+    return {
+      state: 'unavailable',
+      onRetry: () => index.refetchFolder(target.folder),
+    };
+  }
   if (view.state !== 'ok') return { state: view.state };
   const r = view.row;
   const path = d.paths.get(r.folderId);
@@ -101,16 +114,23 @@ function LiveDocLinkCard({ target }: { target: DocHrefTarget }) {
   const index = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const { byKey } = useTags();
-  const { namespaceId, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
+  const { namespaceId, registryFolders } = useDriveWorkspace();
   const paths = useFolderPaths(index.folders);
-  const personName = (id: string) =>
-    id === selfIdentity
-      ? SELF_LABEL
-      : namespaceMemberNames[id] || UNNAMED_MEMBER_LABEL;
+  const updatedBy = index.rows.find(
+    (r) => r.folderId === target.folder && r.docId === target.doc,
+  )?.updatedBy;
+  const personName = usePersonName(updatedBy);
   const props = docLinkCardProps(
     target,
-    { ws: namespaceId, index, paths, texts, tagsByKey: byKey, personName },
+    {
+      ws: namespaceId,
+      registryFolders,
+      index,
+      paths,
+      texts,
+      tagsByKey: byKey,
+      personName,
+    },
     Date.now(),
   );
   return <DocLinkCard {...props} />;
@@ -150,7 +170,8 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
       onPointerOut={(e) => leave(e.target, e.relatedTarget)}
       onFocus={(e) => show(e.target)}
       onBlur={(e) => leave(e.target, e.relatedTarget)}
-      onClick={close}
+      // The card is portalled but its React events still bubble here.
+      onClick={(e) => e.currentTarget.contains(e.target as Node) && close()}
     >
       {children}
       <Popover open={!!open} onOpenChange={(next) => !next && close()}>

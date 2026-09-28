@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { DocLinkCard } from '../DocLinkCard';
 
 describe('DocLinkCard', () => {
@@ -54,5 +54,18 @@ describe('DocLinkCard', () => {
   ] as const)('explains the %s state', (state, text) => {
     render(<DocLinkCard state={state} />);
     expect(screen.getByText(text)).toBeTruthy();
+  });
+
+  it('says the document could not be loaded, with a retry when offered', () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <DocLinkCard state="unavailable" onRetry={onRetry} />,
+    );
+    expect(screen.getByText("Couldn't load this document")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    rerender(<DocLinkCard state="unavailable" />);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 });

@@ -30,7 +30,6 @@ import {
   SideMenuController,
   useCreateBlockNote,
 } from '@blocknote/react';
-import { useNavigate } from 'react-router-dom';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -49,19 +48,16 @@ import {
 } from './blocknote/BlockMenu';
 import { SectionBanner } from './SectionBanner';
 import { DocAwareLinkToolbar, DocLinkHover } from './DocLinkHover';
+import { DocLinkNav } from './blocknote/DocLinkNav';
 import { DocLinkPicker } from './blocknote/DocLinkPicker';
 import {
   followDocLink,
   insertDocLink,
   openClickedLink,
   pastedDocLink,
-  type LinkNav,
+  type EditorLinkNav,
 } from './blocknote/docLinks';
-import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
-import { useAppRoute } from '@/hooks/useAppRoute';
-import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useSectionFocus } from '@/hooks/useSectionFocus';
-import { rowKey } from '@/lib/workspaceIndex/types';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -167,24 +163,8 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     [],
   );
 
-  const { namespaceId } = useDriveWorkspace();
-  const { goDoc, href } = useAppRoute();
-  const navigate = useNavigate();
-  const { rows } = useWorkspaceIndexValue();
-  const rowsByKey = useMemo(
-    () => new Map(rows.map((r) => [rowKey(r.folderId, r.docId), r])),
-    [rows],
-  );
-  // The editor's link and paste handlers are fixed at creation, so they read the latest here.
-  const linkNavRef = useRef<LinkNav & { rows: typeof rowsByKey }>(null!);
-  linkNavRef.current = {
-    origin: window.location.origin,
-    ws: namespaceId ?? undefined,
-    goDoc,
-    navigate,
-    href,
-    rows: rowsByKey,
-  };
+  // The editor's link and paste handlers are fixed at creation; DocLinkNav keeps this current.
+  const linkNavRef = useRef<EditorLinkNav>(null!);
 
   const editor = useCreateBlockNote({
     schema,
@@ -421,6 +401,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                       <LinkToolbarController
                         linkToolbar={DocAwareLinkToolbar}
                       />
+                      <DocLinkNav navRef={linkNavRef} />
                       <DocLinkPicker editor={editor} />
                     </BlockNoteView>
                   </div>

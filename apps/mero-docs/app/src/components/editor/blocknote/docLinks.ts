@@ -100,10 +100,16 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
   return [...titles, ...texts.slice(0, PICK_LIMIT)];
 }
 
-/** Puts `title` linked to `href` at the caret, taking the [ the picker leaves behind. */
-export function insertDocLink(editor: DriveEditor, link: DocLink): void {
+/** Puts `title` linked to `href` at the caret; from the picker, also takes the [ it leaves behind. */
+export function insertDocLink(
+  editor: DriveEditor,
+  link: DocLink,
+  { fromPicker = false } = {},
+): void {
   editor.transact((tr) => {
-    if (opensDocPicker(tr)) tr.delete(tr.selection.from - 1, tr.selection.from);
+    if (fromPicker && opensDocPicker(tr)) {
+      tr.delete(tr.selection.from - 1, tr.selection.from);
+    }
     editor.insertInlineContent(
       [{ type: 'link', href: link.href, content: link.title }],
       { updateSelection: true },
@@ -133,6 +139,9 @@ export type LinkNav = {
   navigate: (path: string) => void;
   href: (route: AppRoute) => string;
 };
+
+/** What the editor's click and paste handlers read: navigation plus the index rows by rowKey. */
+export type EditorLinkNav = LinkNav & { rows: ReadonlyMap<string, IndexRow> };
 
 function anchorAt(el: EventTarget | null): HTMLAnchorElement | null {
   return el instanceof Element
