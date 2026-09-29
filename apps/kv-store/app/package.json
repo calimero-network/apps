@@ -25,6 +25,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@playwright/test": "^1.62.1",
     "@testing-library/react": "catalog:",

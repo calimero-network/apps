@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { stopNodes, removeDataDir } from "@calimero-apps/e2e-node";
 import { DATA_DIR, readState } from "./global-setup";
 
 export default async function globalTeardown() {
@@ -6,15 +6,9 @@ export default async function globalTeardown() {
   try {
     pids = readState().pids;
   } catch {
-    /* no state file — nothing this run spawned */
+    /* no state file - nothing this run spawned */
   }
-  for (const pid of pids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      /* already gone */
-    }
-  }
+  await stopNodes(pids);
   // Keep the node log on failure in CI (it is uploaded); locally, clean up.
-  if (pids.length && !process.env["CI"]) rmSync(DATA_DIR, { recursive: true, force: true });
+  if (pids.length && !process.env["CI"]) removeDataDir(DATA_DIR);
 }
