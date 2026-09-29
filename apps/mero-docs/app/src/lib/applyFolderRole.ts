@@ -11,6 +11,7 @@ import {
   type FolderAccessRole,
   type GroupRole,
 } from './roles';
+import { listMembers } from './groupMembers';
 
 export interface FolderRoleWriter {
   admin: {
@@ -31,25 +32,13 @@ export interface FolderRoleWriter {
   };
 }
 
-// Some node versions wrap the list in `data`, as useFolderMembership notes.
-async function membersOf(
-  writer: FolderRoleWriter,
-  group: string,
-): Promise<{ identity: string; role?: string }[]> {
-  const raw = (await writer.admin.listGroupMembers(group)) as {
-    members?: { identity: string; role?: string }[];
-    data?: { identity: string; role?: string }[];
-  };
-  return raw.members ?? raw.data ?? [];
-}
-
 /** `account`'s role in the folder's effective member list, or null if absent. */
 export async function coreRoleIn(
   writer: FolderRoleWriter,
   folder: string,
   account: string,
 ): Promise<GroupRole | null> {
-  const row = (await membersOf(writer, folder)).find((m) => m.identity === account);
+  const row = (await listMembers(writer.admin, folder)).find((m) => m.identity === account);
   return row ? parseGroupRole(row.role) : null;
 }
 
@@ -116,7 +105,7 @@ export async function inheritReadOnly(
   parent: string,
   folder: string,
 ): Promise<string[]> {
-  const readOnly = (await membersOf(writer, parent))
+  const readOnly = (await listMembers(writer.admin, parent))
     .filter((m) => parseGroupRole(m.role) === 'ReadOnly')
     .map((m) => m.identity);
   const failed: string[] = [];
