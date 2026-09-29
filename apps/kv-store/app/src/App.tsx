@@ -54,11 +54,11 @@ export function App() {
       ) : !contextId ? (
         <>
           {/*
-            Not for an account on a relay: listing and creating contexts are
-            admin calls, and a hosted relay serves a keyholder `/admit` and
-            `/intents` only. Joining from an invitation is how it gets a context.
+            For an account, the picker lists the contexts it belongs to (through
+            its device-certificate session) and hides creation; joining a new one
+            is the invitation box below.
           */}
-          {!isDelegated && <ContextPicker applicationId={applicationId} />}
+          <ContextPicker applicationId={applicationId} />
           <JoinCard
             state={joinState}
             onSubmit={redeemPasted}

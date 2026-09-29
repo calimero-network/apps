@@ -4,6 +4,7 @@ import {
   useApplicationContexts,
   useCreateContext,
   useCreateNamespace,
+  useMero,
   useNamespacesForApplication,
 } from "@calimero-network/mero-react";
 
@@ -34,6 +35,10 @@ function shortId(id: string) {
 }
 
 export function ContextPicker({ applicationId }: { applicationId: string | null }) {
+  // An account on a relay lists the contexts it belongs to and opens one; it
+  // cannot create namespaces or contexts (a relay serves a keyholder no admin
+  // writes), so those controls are for a node login only.
+  const { isDelegated } = useMero();
   const {
     contexts: reportedContexts,
     loading,
@@ -65,7 +70,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     loading: nsLoading,
     error: nsError,
     refetch: refetchNamespaces,
-  } = useNamespacesForApplication(applicationId);
+  } = useNamespacesForApplication(isDelegated ? null : applicationId);
   const { createNamespace } = useCreateNamespace();
   const { createContext } = useCreateContext();
 
@@ -171,7 +176,11 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
 
         {!loading && applicationId && contexts.length === 0 && (
-          <p className="empty">No contexts for this application on this node yet.</p>
+          <p className="empty">
+            {isDelegated
+              ? "Your account is in no context of this app yet. Join one with an invitation below."
+              : "No contexts for this application on this node yet."}
+          </p>
         )}
 
         {contexts.length > 0 && (
@@ -202,9 +211,11 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
             context to yet. The two-step controls below are for everything after
             that.
           */}
-          <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
-            {busy === "both" ? "Creating…" : "Create namespace + context"}
-          </button>
+          {!isDelegated && (
+            <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
+              {busy === "both" ? "Creating…" : "Create namespace + context"}
+            </button>
+          )}
           <button
             className="ghost"
             onClick={() => {
@@ -226,6 +237,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         {failed && <pre className="err">{failed}</pre>}
       </div>
 
+      {!isDelegated && (
       <div className="card">
         <h2>Namespaces</h2>
         <p className="empty" style={{ marginBottom: 14 }}>
@@ -282,6 +294,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
           </button>
         </div>
       </div>
+      )}
     </>
   );
 }
