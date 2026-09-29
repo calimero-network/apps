@@ -2673,8 +2673,8 @@ mod tests {
         }
     }
 
-    /// An account whose first four bytes match the creator's, as a brute-forced
-    /// key gives, files its own header at the creator's doc id.
+    /// A planted header at the creator's id, from an account sharing the
+    /// creator's first bytes.
     #[test]
     fn a_prefix_matching_account_cannot_strip_a_docs_creator() {
         const MALLORY: [u8; 32] = {
@@ -2700,8 +2700,8 @@ mod tests {
             .unwrap();
     }
 
-    /// An account that sorts below the author files its own comment at the
-    /// author's comment id.
+    /// A planted comment at the author's id, from an account that sorts
+    /// below the author.
     #[test]
     fn a_comment_planted_at_anothers_id_is_not_theirs() {
         const MALLORY: [u8; 32] = [0x01; 32];
