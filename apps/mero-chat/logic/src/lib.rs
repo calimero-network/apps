@@ -10,27 +10,41 @@ use calimero_storage::collections::{
     UnorderedSet, UserStorage, Vector, WriteOnce,
 };
 use types::id;
+mod search;
 mod types;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
+use std::ops::{Bound, Range};
 
 id::define!(pub UserId<32, 44>);
 type MessageId = String;
 
-/// Build the storage key for a user's per-channel draft.
-/// Format: "<base58_user_id>:<channel_name>"
 /// Longest accepted search term.
 ///
-/// A search walks every message and every thread, lowercasing the term once and
-/// running a substring match per message — so the work is (messages x term
-/// length) and the caller chooses the second factor. Without a bound, one
-/// request with a multi-megabyte term is a cheap way to make a node chew
-/// through the whole channel, and the runtime charges per wasm operator with no
-/// read limit to stop it.
+/// A search folds the term once and runs a substring match per message, so the
+/// work is (messages x term length) and the caller chooses the second factor.
+/// Without a bound, one request with a multi-megabyte term is a cheap way to
+/// make a node chew through a channel; the runtime charges per wasm operator.
 ///
 /// 256 is well past any real query; the point is that the ceiling exists, not
 /// where exactly it sits.
 const MAX_SEARCH_TERM_LEN: usize = 256;
+
+/// Hits `search_messages` returns when the caller names no limit, and the most
+/// it returns at all.
+const DEFAULT_SEARCH_LIMIT: usize = 20;
+const MAX_SEARCH_LIMIT: usize = 50;
+
+/// What one `search_messages` call may read before it stops and hands back a
+/// cursor: stored messages (top-level and replies), and bytes of their text.
+///
+/// This is what keeps a search inside the gas budget however big the channel
+/// is and however common the term: a call does at most this much and the next
+/// page continues from its cursor. The byte cap is the one that bites on a
+/// channel of long messages; both are far under the gas limit (see the README
+/// for the measurement).
+const MAX_SEARCH_ROWS: usize = 2_000;
+const MAX_SEARCH_BYTES: usize = 1 << 20;
 
 /// Ceilings on what one write may add. Every member's node stores and replays
 /// whatever another member writes, so an unbounded field is a way to make every
@@ -124,6 +138,47 @@ fn reaction_key(message_id: &str, emoji: &str, account: &UserId) -> String {
     )
 }
 
+/// The slice of `total` items a `(limit, offset)` page covers, counted back
+/// from the END (offset 0 is the newest page), and the `start_position` it
+/// reports: the offset, except 0 for an empty collection.
+fn page_window(total: usize, limit: Option<usize>, offset: Option<usize>) -> (Range<usize>, u32) {
+    if total == 0 {
+        return (0..0, 0);
+    }
+    let offset = offset.unwrap_or(0);
+    if offset >= total {
+        return (0..0, offset as u32);
+    }
+    let end = total - offset;
+    (
+        end.saturating_sub(limit.unwrap_or(total))..end,
+        offset as u32,
+    )
+}
+
+fn search_hit(
+    message: &Message,
+    parent: Option<&str>,
+    index: usize,
+    anchor_timestamp: u64,
+    sender: UserId,
+    found: search::Snippet,
+) -> SearchHit {
+    SearchHit {
+        id: message.id.get().clone(),
+        parent_message_id: parent.map(str::to_owned),
+        index: index as u64,
+        timestamp: *message.timestamp,
+        anchor_timestamp,
+        sender,
+        snippet: found.text,
+        match_start: found.match_start,
+        match_end: found.match_end,
+    }
+}
+
+/// Build the storage key for a user's per-channel draft.
+/// Format: "<base58_user_id>:<channel_name>"
 fn draft_key(user_base58: &str, channel: &str) -> String {
     format!("{user_base58}:{channel}")
 }
@@ -551,6 +606,51 @@ pub struct FullMessageResponse {
     pub total_count: u32,
     pub messages: Vec<MessageWithReactions>,
     pub start_position: u32,
+}
+
+/// One message a search found: enough to list and open it, not the message.
+///
+/// Deliberately slim. Rendering a full message walks its mentions, files,
+/// images, reactions and thread; a search used to do that for every hit and
+/// then throw away all but one page. A client wanting the whole message reads
+/// it by `index` (`get_messages_from`), or opens the thread by
+/// `parent_message_id`.
+#[derive(Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct SearchHit {
+    pub id: MessageId,
+    /// Set for a thread reply: the top-level message it replies to.
+    pub parent_message_id: Option<MessageId>,
+    /// Position of the top-level message: the hit itself, or a reply's
+    /// parent. What a permalink to the conversation is made of.
+    pub index: u64,
+    pub timestamp: u64,
+    /// The timestamp the hit is ranked by: its own for a top-level message,
+    /// its parent's for a reply, which is listed with its thread.
+    pub anchor_timestamp: u64,
+    /// From the entry's owner stamp, never the message's own field.
+    pub sender: UserId,
+    /// Plain text around the first match, not markup.
+    pub snippet: String,
+    /// The match inside `snippet`, in UTF-16 code units (a JS string index).
+    pub match_start: u32,
+    pub match_end: u32,
+}
+
+/// A page of `search_messages`.
+#[derive(Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct SearchPage {
+    pub hits: Vec<SearchHit>,
+    /// Opaque; pass it back for the next page. `None` once the walk reached the
+    /// oldest message.
+    pub next_cursor: Option<String>,
+    /// The oldest timestamp among the top-level messages this call read, or
+    /// `None` if it read none. The walk goes newest first by position, so later
+    /// pages rank at or below it (up to clock skew between senders): a client
+    /// merging several channels can show every hit above it without waiting
+    /// for more pages.
+    pub frontier_timestamp: Option<u64>,
 }
 
 /// Per-context metadata returned by `get_info` / `get_channel_info`.
@@ -1177,6 +1277,15 @@ impl MeroChat {
         Ok(msg)
     }
 
+    /// A page of the channel, or of one thread, counted back from the END:
+    /// offset 0 is the newest page. `search_term` keeps only the messages whose
+    /// text contains it (see `search_messages` for how text is compared), and
+    /// `total_count` is then the number of matches.
+    ///
+    /// A search here still reads the whole channel, because `total_count`
+    /// promises every match; it builds only the page it returns, though.
+    /// Anything that searches a channel which can grow should use
+    /// `search_messages`, whose cost per call is bounded.
     #[app::view]
     pub fn get_messages(
         &self,
@@ -1193,33 +1302,58 @@ impl MeroChat {
                 );
             }
         }
-        let normalized_search = search_term.map(|term| term.to_lowercase());
+        let needle = search_term.as_deref().map(search::fold_query);
+        let wanted = |message: &Message| {
+            needle
+                .as_deref()
+                .is_none_or(|needle| self.text_matches(message, needle))
+        };
 
         if let Some(parent_id) = parent_message {
-            let replies: Vec<MessageWithReactions> = self
-                .thread_replies(&parent_id)?
-                .into_iter()
+            // A reply's index is its place in the whole thread, match or not.
+            let replies: Vec<(usize, String, Message)> = self
+                .threads
+                .prefix(thread_prefix(&parent_id).as_bytes())?
                 .enumerate()
-                .filter(|(_, (_, message))| {
-                    Self::message_matches_search(message, normalized_search.as_deref())
-                })
-                .map(|(index, (sender, message))| {
-                    self.message_to_public(&message, sender, false, index as u64)
+                .filter(|(_, (_, message))| wanted(message))
+                .map(|(index, (key, message))| (index, key, message))
+                .collect();
+            let (window, start_position) = page_window(replies.len(), limit, offset);
+            let messages = replies[window]
+                .iter()
+                .map(|(index, key, message)| {
+                    let sender = self.thread_sender(key, message);
+                    self.message_to_public(message, sender, false, *index as u64)
                 })
                 .collect();
-            return Ok(Self::paginate(replies, limit, offset));
+            return Ok(FullMessageResponse {
+                total_count: replies.len() as u32,
+                messages,
+                start_position,
+            });
         }
 
-        if normalized_search.is_none() {
+        if needle.is_none() {
             return Ok(self.page_unfiltered(&self.messages, limit, offset, true));
         }
 
-        let filtered = self.collect_messages_with_reactions(
-            &self.messages,
-            normalized_search.as_deref(),
-            true,
-        );
-        Ok(Self::paginate(filtered, limit, offset))
+        // Matched on the cheap fields first; only the page is rendered.
+        let matches: Vec<usize> = self
+            .messages
+            .iter()?
+            .enumerate()
+            .filter(|(_, message)| wanted(message))
+            .map(|(index, _)| index)
+            .collect();
+        let (window, start_position) = page_window(matches.len(), limit, offset);
+        Ok(FullMessageResponse {
+            total_count: matches.len() as u32,
+            messages: matches[window]
+                .iter()
+                .filter_map(|&index| self.public_at(&self.messages, index, true))
+                .collect(),
+            start_position,
+        })
     }
 
     /// Messages by ABSOLUTE position, ascending — the resumable read.
@@ -1286,45 +1420,118 @@ impl MeroChat {
         Ok(self.messages.len().unwrap_or(0) as u64)
     }
 
+    /// Messages whose text contains `query`, newest first, a bounded amount of
+    /// work per call.
+    ///
+    /// Text is compared as a reader sees it (markup dropped, entities decoded)
+    /// and folded for case, accents and width as mero-docs folds it, so "cafe"
+    /// finds "Café". Deleted and staff-removed messages are never returned.
+    ///
+    /// The channel is walked by position from the newest message down, each
+    /// top-level message followed by the replies in its thread, so a reply is
+    /// listed with its thread and ranked by `anchor_timestamp`. A call stops at
+    /// `limit` hits (default 20, at most 50) or once it has read
+    /// `MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever
+    /// comes first, and returns a `next_cursor` to continue from; a page can
+    /// therefore hold fewer hits than `limit`, even none, and still not be the
+    /// last. A common term in a huge channel costs a page, never the channel.
     #[app::view]
-    pub fn search_all_messages(
+    pub fn search_messages(
         &self,
-        search_term: String,
+        query: String,
+        cursor: Option<String>,
         limit: Option<usize>,
-        offset: Option<usize>,
-    ) -> app::Result<FullMessageResponse> {
-        if search_term.len() > MAX_SEARCH_TERM_LEN {
+    ) -> app::Result<SearchPage> {
+        if query.len() > MAX_SEARCH_TERM_LEN {
             app::bail!(
                 "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
-                search_term.len()
+                query.len()
             );
         }
-        let normalized = search_term.to_lowercase();
-        let term = normalized.as_str();
-
-        let mut all = self.collect_messages_with_reactions(&self.messages, Some(term), false);
-
-        // Every reply, in one walk of the thread map; the parent is the key's
-        // first part.
-        let mut position: HashMap<String, u64> = HashMap::new();
-        for (key, message) in self.threads.entries()? {
-            let Some((parent_id, _)) = key.split_once(KEY_SEP) else {
-                continue;
-            };
-            let slot = position.entry(parent_id.to_owned()).or_default();
-            let index = *slot;
-            *slot += 1;
-            if !Self::message_matches_search(&message, Some(term)) {
-                continue;
-            }
-            let sender = self.thread_sender(&key, &message);
-            let mut public = self.message_to_public(&message, sender, false, index);
-            public.parent_message_id = Some(parent_id.to_owned());
-            all.push(public);
+        let needle = search::fold_query(&query);
+        let limit = limit
+            .unwrap_or(DEFAULT_SEARCH_LIMIT)
+            .clamp(1, MAX_SEARCH_LIMIT);
+        let total = self.messages.len()?;
+        let mut page = SearchPage {
+            hits: Vec::new(),
+            next_cursor: None,
+            frontier_timestamp: None,
+        };
+        if needle.is_empty() || total == 0 {
+            return Ok(page);
         }
+        let mut at = match cursor {
+            None => search::Cursor {
+                index: total - 1,
+                step: search::Step::Message,
+            },
+            Some(raw) => search::Cursor::decode(&raw)
+                .filter(|c| c.index < total)
+                .ok_or_else(|| app::err!("Invalid search cursor"))?,
+        };
 
-        all.sort_by_key(|m| std::cmp::Reverse(m.timestamp));
-        Ok(Self::paginate(all, limit, offset))
+        let mut rows = 0usize;
+        let mut bytes = 0usize;
+        let spent =
+            |rows: usize, bytes: usize| rows >= MAX_SEARCH_ROWS || bytes >= MAX_SEARCH_BYTES;
+        'walk: loop {
+            if page.hits.len() >= limit || spent(rows, bytes) {
+                page.next_cursor = Some(at.encode());
+                break;
+            }
+            if let Some(message) = self.messages.get(at.index)? {
+                rows += 1;
+                let anchor = *message.timestamp;
+                page.frontier_timestamp =
+                    Some(page.frontier_timestamp.map_or(anchor, |f| f.min(anchor)));
+                let mut last = match at.step {
+                    search::Step::Message => {
+                        bytes += message.text.get().len();
+                        if let Some(found) = self.hit_snippet(&message, &needle) {
+                            let sender = self
+                                .messages
+                                .owner_of(at.index)?
+                                .map_or(UserId::new([0; 32]), user_of);
+                            page.hits
+                                .push(search_hit(&message, None, at.index, anchor, sender, found));
+                        }
+                        None
+                    }
+                    search::Step::Replies(after) => after,
+                };
+                let parent = message.id.get();
+                for (key, reply) in self.replies_after(parent, last.as_deref())? {
+                    if page.hits.len() >= limit || spent(rows, bytes) {
+                        at.step = search::Step::Replies(last);
+                        page.next_cursor = Some(at.encode());
+                        break 'walk;
+                    }
+                    rows += 1;
+                    bytes += reply.text.get().len();
+                    if let Some(found) = self.hit_snippet(&reply, &needle) {
+                        let sender = self.thread_sender(&key, &reply);
+                        page.hits.push(search_hit(
+                            &reply,
+                            Some(parent),
+                            at.index,
+                            anchor,
+                            sender,
+                            found,
+                        ));
+                    }
+                    last = Some(reply.id.get().clone());
+                }
+            }
+            let Some(next) = at.index.checked_sub(1) else {
+                break;
+            };
+            at = search::Cursor {
+                index: next,
+                step: search::Step::Message,
+            };
+        }
+        Ok(page)
     }
 
     /// Add or remove the CALLER's reaction to a message.
@@ -1632,15 +1839,6 @@ impl MeroChat {
             .map_or(UserId::new([0; 32]), user_of)
     }
 
-    /// One thread, oldest first, with each reply's sender from its owner stamp.
-    fn thread_replies(&self, parent: &str) -> app::Result<Vec<(UserId, Message)>> {
-        Ok(self
-            .threads
-            .prefix(thread_prefix(parent).as_bytes())?
-            .map(|(key, message)| (self.thread_sender(&key, &message), message))
-            .collect())
-    }
-
     /// Unread top-level messages matching `wanted`, newest first, over the
     /// newest `MAX_UNREAD_SCAN` messages.
     fn unread(&self, wanted: impl Fn(&Message) -> bool, caller: &UserId) -> u32 {
@@ -1718,47 +1916,42 @@ impl MeroChat {
         format!("{}_{}", hex(&digest), timestamp)
     }
 
-    fn message_matches_search(message: &Message, search_term: Option<&str>) -> bool {
-        match search_term {
-            Some(term) => {
-                // Text only. Sender names are namespace member metadata now,
-                // not message state, so the contract has nothing to match a
-                // name against. Searching by sender belongs on the client,
-                // which can resolve accounts to their CURRENT names — and get
-                // the right answer after a rename, which matching a stamped
-                // string never could.
-                message.text.get().to_lowercase().contains(term)
-            }
-            None => true,
-        }
+    /// Whether the text a reader sees in `message` contains `needle` (folded,
+    /// see `search_messages`), and the message is still there to be found.
+    /// The visibility check runs only on a text match: it is the dearer read.
+    fn text_matches(&self, message: &Message, needle: &str) -> bool {
+        search::folded_text(message.text.get()).contains(needle) && !self.is_deleted(message)
     }
 
-    fn collect_messages_with_reactions(
+    /// The snippet for `message` if it is a hit for `needle`: the one place a
+    /// search pays for more than a fold.
+    fn hit_snippet(&self, message: &Message, needle: &str) -> Option<search::Snippet> {
+        self.text_matches(message, needle)
+            .then(|| search::snippet(&search::plain_text(message.text.get()), needle))
+    }
+
+    /// `parent`'s replies in thread order, after the reply `after` if given.
+    fn replies_after(
         &self,
-        messages: &AuthoredVector<Message>,
-        search_term: Option<&str>,
-        include_threads: bool,
-    ) -> Vec<MessageWithReactions> {
-        let mut result = Vec::new();
-        if let Ok(iter) = messages.iter() {
-            for (index, message) in iter.enumerate() {
-                if !Self::message_matches_search(&message, search_term) {
-                    continue;
-                }
-                let sender = messages
-                    .owner_of(index)
-                    .ok()
-                    .flatten()
-                    .map_or(UserId::new([0; 32]), user_of);
-                result.push(self.message_to_public(
-                    &message,
-                    sender,
-                    include_threads,
-                    index as u64,
-                ));
+        parent: &str,
+        after: Option<&str>,
+    ) -> app::Result<Vec<(String, Message)>> {
+        Ok(match after {
+            None => self
+                .threads
+                .prefix(thread_prefix(parent).as_bytes())?
+                .collect(),
+            Some(reply) => {
+                // One past the separator: the first key after this thread's.
+                let end = format!("{parent}{}", char::from(KEY_SEP as u8 + 1));
+                self.threads
+                    .range((
+                        Bound::Excluded(thread_key(parent, reply)?),
+                        Bound::Excluded(end),
+                    ))?
+                    .collect()
             }
-        }
-        result
+        })
     }
 
     /// The message at `index`, rendered, with its sender from the slot's
@@ -1777,8 +1970,8 @@ impl MeroChat {
     /// One stored message rendered for the API. `sender` is the entry's owner
     /// stamp, never the message's own `sender` field.
     ///
-    /// Split out of the scan above so the scanning path and the windowed path
-    /// below cannot drift in what they return.
+    /// Shared by every read that renders messages, so they cannot drift in
+    /// what they return.
     fn message_to_public(
         &self,
         message: &Message,
@@ -1838,13 +2031,12 @@ impl MeroChat {
         }
     }
 
-    /// The page `paginate` would return, without materialising everything
-    /// before it.
+    /// One page of the unfiltered channel, rendering only that page.
     ///
     /// Only correct when nothing is filtered out, which is exactly the
     /// no-search case: every stored message occupies a slot in the response
     /// (a deleted one keeps its place with blanked text), so `total` is the
-    /// collection's length and the window is the same slice `paginate` takes.
+    /// collection's length and the window is read by position.
     ///
     /// Worth stating why this matters, because the old path looked harmless:
     /// it decoded every message, then did a nested reactions lookup and a
@@ -1860,39 +2052,13 @@ impl MeroChat {
         include_threads: bool,
     ) -> FullMessageResponse {
         let total = messages.len().unwrap_or(0);
-        if total == 0 {
-            return FullMessageResponse {
-                total_count: 0,
-                messages: Vec::new(),
-                start_position: 0,
-            };
-        }
-
-        let limit_value = limit.unwrap_or(total);
-        let offset_value = offset.unwrap_or(0);
-
-        if offset_value >= total {
-            return FullMessageResponse {
-                total_count: total as u32,
-                messages: Vec::new(),
-                start_position: offset_value as u32,
-            };
-        }
-
-        let end_idx = total - offset_value;
-        let start_idx = end_idx.saturating_sub(limit_value);
-
-        let mut page = Vec::with_capacity(end_idx - start_idx);
-        for idx in start_idx..end_idx {
-            if let Some(public) = self.public_at(messages, idx, include_threads) {
-                page.push(public);
-            }
-        }
-
+        let (window, start_position) = page_window(total, limit, offset);
         FullMessageResponse {
             total_count: total as u32,
-            messages: page,
-            start_position: offset_value as u32,
+            messages: window
+                .filter_map(|idx| self.public_at(messages, idx, include_threads))
+                .collect(),
+            start_position,
         }
     }
 
@@ -1945,42 +2111,6 @@ impl MeroChat {
         }
         (count, last_ts)
     }
-
-    fn paginate(
-        filtered: Vec<MessageWithReactions>,
-        limit: Option<usize>,
-        offset: Option<usize>,
-    ) -> FullMessageResponse {
-        let total = filtered.len();
-        if total == 0 {
-            return FullMessageResponse {
-                total_count: 0,
-                messages: Vec::new(),
-                start_position: 0,
-            };
-        }
-
-        let limit_value = limit.unwrap_or(total);
-        let offset_value = offset.unwrap_or(0);
-
-        if offset_value >= total {
-            return FullMessageResponse {
-                total_count: total as u32,
-                messages: Vec::new(),
-                start_position: offset_value as u32,
-            };
-        }
-
-        let end_idx = total - offset_value;
-        let start_idx = end_idx.saturating_sub(limit_value);
-        let paginated = filtered[start_idx..end_idx].to_vec();
-
-        FullMessageResponse {
-            total_count: total as u32,
-            messages: paginated,
-            start_position: offset_value as u32,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1990,7 +2120,8 @@ mod tests {
 
     use super::{
         draft_key, hex, reaction_key, thread_key, ContextType, LwwRegister, MeroChat, Message, Op,
-        Role, UnorderedSet, UserId, Vector, MAX_MESSAGE_LEN, MAX_SEARCH_TERM_LEN,
+        Role, SearchHit, UnorderedSet, UserId, Vector, MAX_MESSAGE_LEN, MAX_SEARCH_BYTES,
+        MAX_SEARCH_LIMIT, MAX_SEARCH_TERM_LEN,
     };
 
     // ── AccessControl-backed roles (TestHost) ──────────────────────────────────
@@ -2228,9 +2359,8 @@ mod tests {
 
     /// D7: a search term has a ceiling.
     ///
-    /// Search walks every message in the channel and every thread, matching the
-    /// term against each — so the cost is (messages x term length) and the
-    /// caller picks the second factor. The runtime meters wasm operators and
+    /// Search matches the term against every message it reads, so the cost is
+    /// (messages x term length) and the caller picks the second factor. The runtime meters wasm operators and
     /// has no read limit, so an unbounded term is a cheap way to make a node
     /// grind through the whole channel on request.
     #[test]
@@ -2252,9 +2382,9 @@ mod tests {
         let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
 
         assert!(
-            app.view(|s| s.search_all_messages(huge.clone(), None, None))
+            app.view(|s| s.search_messages(huge.clone(), None, None))
                 .is_err(),
-            "search_all_messages accepted an oversized term",
+            "search_messages accepted an oversized term",
         );
         assert!(
             app.view(|s| s.get_messages(None, None, None, Some(huge)))
@@ -2281,14 +2411,14 @@ mod tests {
         .unwrap();
 
         let found = app
-            .view(|s| s.search_all_messages("merger".to_owned(), None, None))
+            .view(|s| s.search_messages("merger".to_owned(), None, None))
             .expect("search");
-        assert_eq!(found.messages.len(), 1);
+        assert_eq!(found.hits.len(), 1);
 
         // Exactly at the limit is accepted; the ceiling is inclusive.
         let at_limit = "y".repeat(MAX_SEARCH_TERM_LEN);
         assert!(app
-            .view(|s| s.search_all_messages(at_limit, None, None))
+            .view(|s| s.search_messages(at_limit, None, None))
             .is_ok());
     }
 
@@ -2531,15 +2661,12 @@ mod tests {
         assert_eq!(resp.start_position, 99);
     }
 
-    /// The windowed read must be a pure optimisation: same page, same
-    /// total_count, same start_position as the scan it replaces.
-    ///
-    /// Worth pinning every combination rather than one happy path, because
-    /// `paginate` counts its window from the END of the collection — offset 0
-    /// is the NEWEST page, not the oldest — and an off-by-one in that
-    /// arithmetic returns plausible-looking messages from the wrong place.
+    /// The page arithmetic, pinned: offset 0 is the NEWEST page, not the
+    /// oldest, and an off-by-one returns plausible-looking messages from the
+    /// wrong place. A search matching every message must page the same way as
+    /// no search at all, since both go through `page_window`.
     #[test]
-    fn the_windowed_page_matches_the_scan_it_replaces() {
+    fn a_page_counts_back_from_the_newest_message() {
         let mut app = new_chat();
 
         for i in 0..25 {
@@ -2557,67 +2684,47 @@ mod tests {
             .unwrap();
         }
 
-        for (limit, offset) in [
-            (None, None),
-            (Some(1), None),
-            (Some(5), None),
-            (Some(5), Some(0)),
-            (Some(5), Some(5)),
-            (Some(5), Some(23)),
-            (Some(5), Some(25)),
-            (Some(5), Some(100)),
-            (Some(100), Some(0)),
-            (Some(0), Some(0)),
+        let range =
+            |from: usize, to: usize| (from..to).map(|i| format!("m{i}")).collect::<Vec<_>>();
+        for (limit, offset, want, start_position) in [
+            (None, None, range(0, 25), 0),
+            (Some(1), None, range(24, 25), 0),
+            (Some(5), None, range(20, 25), 0),
+            (Some(5), Some(0), range(20, 25), 0),
+            (Some(5), Some(5), range(15, 20), 5),
+            (Some(5), Some(23), range(0, 2), 23),
+            (Some(5), Some(25), vec![], 25),
+            (Some(5), Some(100), vec![], 100),
+            (Some(100), Some(0), range(0, 25), 0),
+            (Some(0), Some(0), vec![], 0),
         ] {
-            let (windowed, scanned) = app.view(|s| {
-                let windowed = s.page_unfiltered(&s.messages, limit, offset, true);
-                let scanned = MeroChat::paginate(
-                    s.collect_messages_with_reactions(&s.messages, None, true),
-                    limit,
-                    offset,
+            for term in [None, Some("M".to_owned())] {
+                let page = app
+                    .view(|s| s.get_messages(None, limit, offset, term.clone()))
+                    .unwrap();
+                let got: Vec<String> = page.messages.iter().map(|m| m.text.clone()).collect();
+                let at = format!("limit={limit:?} offset={offset:?} term={term:?}");
+                assert_eq!(got, want, "page at {at}");
+                assert_eq!(page.total_count, 25, "total_count at {at}");
+                assert_eq!(
+                    page.start_position, start_position,
+                    "start_position at {at}"
                 );
-                (windowed, scanned)
-            });
-
-            assert_eq!(
-                windowed.total_count, scanned.total_count,
-                "total_count differs at limit={limit:?} offset={offset:?}"
-            );
-            assert_eq!(
-                windowed.start_position, scanned.start_position,
-                "start_position differs at limit={limit:?} offset={offset:?}"
-            );
-
-            let got: Vec<&str> = windowed.messages.iter().map(|m| m.text.as_str()).collect();
-            let want: Vec<&str> = scanned.messages.iter().map(|m| m.text.as_str()).collect();
-            assert_eq!(
-                got, want,
-                "page differs at limit={limit:?} offset={offset:?}"
-            );
+            }
         }
     }
 
-    /// An empty collection took a separate early-return in `paginate`
-    /// (start_position 0, not the requested offset); the windowed path must
-    /// keep that, not "improve" it.
+    /// An empty channel reports start_position 0, not the requested offset;
+    /// clients have always seen that shape.
     #[test]
-    fn the_windowed_page_matches_the_scan_when_there_are_no_messages() {
+    fn an_empty_channel_pages_from_position_zero() {
         let app = new_chat();
-
-        let (windowed, scanned) = app.view(|s| {
-            let windowed = s.page_unfiltered(&s.messages, Some(10), Some(7), true);
-            let scanned = MeroChat::paginate(
-                s.collect_messages_with_reactions(&s.messages, None, true),
-                Some(10),
-                Some(7),
-            );
-            (windowed, scanned)
-        });
-
-        assert_eq!(windowed.total_count, scanned.total_count);
-        assert_eq!(windowed.start_position, scanned.start_position);
-        assert!(windowed.messages.is_empty());
-        assert!(scanned.messages.is_empty());
+        let page = app
+            .view(|s| s.get_messages(None, Some(10), Some(7), None))
+            .unwrap();
+        assert_eq!(page.total_count, 0);
+        assert_eq!(page.start_position, 0);
+        assert!(page.messages.is_empty());
     }
 
     #[test]
@@ -3120,5 +3227,304 @@ mod tests {
     fn draft_key_is_deterministic() {
         let user = BlobId::from([0x55u8; 32]).to_string();
         assert_eq!(draft_key(&user, "stable"), draft_key(&user, "stable"));
+    }
+
+    // ── search_messages ────────────────────────────────────────────────────
+
+    fn send_at(app: &mut TestHost<MeroChat>, who: [u8; 32], text: &str, ts: u64) -> String {
+        app.call_as_account(who, who, |s| {
+            s.send_message(text.to_owned(), vec![], vec![], None, ts, None, None)
+        })
+        .expect("send")
+        .id
+        .get()
+        .clone()
+    }
+
+    fn reply_at(
+        app: &mut TestHost<MeroChat>,
+        who: [u8; 32],
+        parent: &str,
+        text: &str,
+        ts: u64,
+    ) -> String {
+        app.call_as_account(who, who, |s| {
+            s.send_message(
+                text.to_owned(),
+                vec![],
+                vec![],
+                Some(parent.to_owned()),
+                ts,
+                None,
+                None,
+            )
+        })
+        .expect("reply")
+        .id
+        .get()
+        .clone()
+    }
+
+    /// Every hit for `query`, page by page, and how many pages it took.
+    fn search_all(app: &TestHost<MeroChat>, query: &str, limit: usize) -> (Vec<SearchHit>, usize) {
+        let mut hits = Vec::new();
+        let mut cursor = None;
+        let mut pages = 0;
+        loop {
+            let page = app
+                .view(|s| s.search_messages(query.to_owned(), cursor.clone(), Some(limit)))
+                .expect("search");
+            pages += 1;
+            assert!(
+                page.hits.len() <= limit,
+                "a page holds at most `limit` hits"
+            );
+            hits.extend(page.hits);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                return (hits, pages);
+            }
+            assert!(pages < 10_000, "the walk must end");
+        }
+    }
+
+    #[test]
+    fn search_is_newest_first_and_lists_a_reply_with_its_thread() {
+        let mut app = new_chat();
+        let first = send_at(&mut app, USER, "needle one", 1);
+        let quiet = send_at(&mut app, USER, "nothing here", 2);
+        let last = send_at(&mut app, MODR, "needle three", 3);
+        let late = reply_at(&mut app, MODR, &quiet, "a needle in the thread", 4);
+        let own = reply_at(&mut app, USER, &last, "needle again", 5);
+
+        let page = app
+            .view(|s| s.search_messages("NEEDLE".to_owned(), None, None))
+            .unwrap();
+        let ids: Vec<&str> = page.hits.iter().map(|h| h.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [last.as_str(), own.as_str(), late.as_str(), first.as_str()]
+        );
+        assert!(
+            page.next_cursor.is_none(),
+            "the whole channel fits one page"
+        );
+        assert_eq!(page.frontier_timestamp, Some(1));
+
+        let reply = &page.hits[2];
+        assert_eq!(reply.parent_message_id.as_deref(), Some(quiet.as_str()));
+        assert_eq!(reply.index, 1, "a reply carries its parent's position");
+        assert_eq!((reply.timestamp, reply.anchor_timestamp), (4, 2));
+        assert_eq!(reply.sender, UserId::new(MODR), "from the owner stamp");
+        assert_eq!(page.hits[0].sender, UserId::new(MODR));
+        assert_eq!(page.hits[3].sender, UserId::new(USER));
+        assert_eq!(page.hits[3].parent_message_id, None);
+    }
+
+    #[test]
+    fn search_pages_by_cursor_without_gaps_or_repeats() {
+        let mut app = new_chat();
+        for i in 0..12u64 {
+            let id = send_at(&mut app, USER, &format!("needle {i}"), 10 + i);
+            if i % 4 == 0 {
+                // Enough replies that some pages end inside a thread.
+                for r in 0..5u64 {
+                    reply_at(
+                        &mut app,
+                        MODR,
+                        &id,
+                        &format!("needle reply {i}.{r}"),
+                        100 + i * 10 + r,
+                    );
+                }
+            }
+        }
+
+        let whole = app
+            .view(|s| s.search_messages("needle".to_owned(), None, Some(MAX_SEARCH_LIMIT)))
+            .unwrap();
+        assert_eq!(whole.hits.len(), 12 + 3 * 5);
+        assert!(whole.next_cursor.is_none());
+
+        for limit in [1, 2, 3, 7] {
+            let (paged, pages) = search_all(&app, "needle", limit);
+            let got: Vec<&str> = paged.iter().map(|h| h.id.as_str()).collect();
+            let want: Vec<&str> = whole.hits.iter().map(|h| h.id.as_str()).collect();
+            assert_eq!(
+                got, want,
+                "paging by {limit} must walk the same hits in the same order"
+            );
+            assert!(pages >= whole.hits.len().div_ceil(limit));
+        }
+
+        // A message sent after the first page is newer than the walk: the
+        // cursor goes on from where it was, and the new message is not in it.
+        let first = app
+            .view(|s| s.search_messages("needle".to_owned(), None, Some(3)))
+            .unwrap();
+        send_at(&mut app, USER, "needle late", 999);
+        let next = app
+            .view(|s| s.search_messages("needle".to_owned(), first.next_cursor.clone(), Some(3)))
+            .unwrap();
+        assert_eq!(next.hits[0].id, whole.hits[3].id);
+    }
+
+    #[test]
+    fn deleted_and_removed_messages_are_not_found() {
+        let mut app = new_chat();
+        let modr = UserId::new(MOD2);
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+
+        let own = send_at(&mut app, USER, "needle mine", 1);
+        let spam = send_at(&mut app, MODR, "needle spam", 2);
+        let parent = send_at(&mut app, USER, "parent", 3);
+        let removed = reply_at(&mut app, MODR, &parent, "needle removed reply", 4);
+        let withdrawn = reply_at(&mut app, USER, &parent, "needle withdrawn reply", 5);
+        let kept = send_at(&mut app, USER, "needle kept", 6);
+
+        app.call_as_account(USER, USER, |s| s.delete_message(own.clone(), None))
+            .unwrap();
+        // Staff: a top-level message is hidden, a reply removed outright.
+        app.call(|s| s.delete_message(spam.clone(), None)).unwrap();
+        app.call_as_account(MOD2, MOD2, |s| {
+            s.delete_message(removed.clone(), Some(parent.clone()))
+        })
+        .unwrap();
+        app.call_as_account(USER, USER, |s| {
+            s.delete_message(withdrawn.clone(), Some(parent.clone()))
+        })
+        .unwrap();
+
+        let (hits, _) = search_all(&app, "needle", 50);
+        let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+        assert_eq!(ids, [kept.as_str()]);
+
+        // `get_messages` must not say a hidden message matched either: its
+        // text is blanked, but it used to be counted and returned.
+        let page = app
+            .view(|s| s.get_messages(None, None, None, Some("spam".to_owned())))
+            .unwrap();
+        assert_eq!(page.total_count, 0);
+    }
+
+    #[test]
+    fn search_reads_text_as_it_is_shown() {
+        let mut app = new_chat();
+        send_at(
+            &mut app,
+            USER,
+            "<p>Meet at the <strong>Caf\u{e9}</strong> &amp; bring the \u{fb01}les</p>",
+            1,
+        );
+
+        let found = app
+            .view(|s| s.search_messages("cafe".to_owned(), None, None))
+            .unwrap();
+        assert_eq!(found.hits.len(), 1);
+        let hit = &found.hits[0];
+        assert_eq!(hit.snippet, "Meet at the Caf\u{e9} & bring the \u{fb01}les");
+        let units: Vec<u16> = hit.snippet.encode_utf16().collect();
+        let marked = String::from_utf16(&units[hit.match_start as usize..hit.match_end as usize]);
+        assert_eq!(marked.unwrap(), "Caf\u{e9}");
+
+        for query in ["files", "  CAFÉ  ", "the caf"] {
+            assert_eq!(
+                app.view(|s| s.search_messages(query.to_owned(), None, None))
+                    .unwrap()
+                    .hits
+                    .len(),
+                1,
+                "{query:?}"
+            );
+        }
+        // Markup is not text.
+        for query in ["strong", "<p>", "amp"] {
+            assert!(
+                app.view(|s| s.search_messages(query.to_owned(), None, None))
+                    .unwrap()
+                    .hits
+                    .is_empty(),
+                "{query:?} matched markup"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_query_finds_nothing_and_a_bad_cursor_is_refused() {
+        let mut app = new_chat();
+        send_at(&mut app, USER, "hello", 1);
+
+        let empty = app
+            .view(|s| s.search_messages("   ".to_owned(), None, None))
+            .unwrap();
+        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
+
+        for cursor in ["nope", "5", "-1", "0:bad"] {
+            assert!(
+                app.view(|s| s.search_messages("hello".to_owned(), Some(cursor.to_owned()), None))
+                    .is_err(),
+                "cursor {cursor:?} was accepted"
+            );
+        }
+        // A limit of 0 still makes progress; one past the ceiling is clamped.
+        let one = app
+            .view(|s| s.search_messages("hello".to_owned(), None, Some(0)))
+            .unwrap();
+        assert_eq!(one.hits.len(), 1);
+    }
+
+    /// The gas guarantee: however long the channel and however rare the term,
+    /// one call reads at most `MAX_SEARCH_BYTES` of text (and `MAX_SEARCH_ROWS`
+    /// messages), then hands back a cursor. Long messages make the byte cap the
+    /// one that bites, which keeps this test small.
+    #[test]
+    fn one_call_reads_a_bounded_slice_of_a_big_channel() {
+        let mut app = new_chat();
+        send_at(&mut app, USER, "the needle is in the oldest message", 1);
+        let filler = "x".repeat(MAX_MESSAGE_LEN);
+        let n = 3 * MAX_SEARCH_BYTES / MAX_MESSAGE_LEN;
+        for i in 0..n {
+            send_at(&mut app, USER, &filler, 2 + i as u64);
+        }
+        let per_call = MAX_SEARCH_BYTES.div_ceil(MAX_MESSAGE_LEN);
+
+        let first = app
+            .view(|s| s.search_messages("needle".to_owned(), None, None))
+            .unwrap();
+        assert!(first.hits.is_empty());
+        let cursor = super::search::Cursor::decode(first.next_cursor.as_deref().unwrap()).unwrap();
+        let read = n - cursor.index;
+        assert!(
+            read <= per_call + 1,
+            "one call read {read} messages of {MAX_MESSAGE_LEN} bytes, the cap allows {per_call}"
+        );
+
+        let (hits, pages) = search_all(&app, "needle", 20);
+        assert_eq!(hits.len(), 1);
+        assert!(pages >= 3, "the walk took {pages} pages");
+    }
+
+    /// Every read is a view: callable on a shared borrow, which is what lets
+    /// a node serve them under its read lock.
+    #[test]
+    fn every_read_is_callable_as_a_view() {
+        let mut app = new_chat();
+        let id = send(&mut app, "hello");
+        let user = UserId::new(USER);
+        app.view(|s| {
+            s.get_info().unwrap();
+            s.get_channel_info(None).unwrap();
+            s.mark_messages_as_read(None, None).unwrap();
+            s.get_unread_count();
+            s.get_unread_mentions();
+            s.get_profiles();
+            s.get_draft("general".to_owned());
+            s.get_member_role(user);
+            s.list_roles();
+            s.get_messages(Some(id.clone()), None, None, None).unwrap();
+            s.get_messages_from(0, None).unwrap();
+            s.get_message_count().unwrap();
+            s.search_messages("hello".to_owned(), None, None).unwrap();
+        });
     }
 }
