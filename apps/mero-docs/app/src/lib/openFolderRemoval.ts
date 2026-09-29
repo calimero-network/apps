@@ -99,19 +99,21 @@ export async function removedFrom(
   return removed;
 }
 
-/** Lifts this folder's ban on `account` (each sub-folder keeps its own), with
- *  Read only again when the parent holds them Read only. */
+/** Lifts this folder's ban on `account` (each sub-folder keeps its own). A
+ *  person the parent holds Read only is added as ReadOnly, so they are never
+ *  writable here, and then gets the rest of the grant; a shortfall throws. */
 export async function restoreTo(
   writer: FolderRoleWriter,
   parent: string,
   folder: string,
   account: string,
 ): Promise<void> {
+  const readOnly = (await coreRoleIn(writer, parent, account)) === 'ReadOnly';
   // An admin add is what clears the ban; one another admin sets meanwhile is lifted with it.
   await writer.admin.addGroupMembers(folder, {
-    members: [{ identity: account, role: 'Member' }],
+    members: [{ identity: account, role: readOnly ? 'ReadOnly' : 'Member' }],
   });
-  if ((await coreRoleIn(writer, parent, account)) === 'ReadOnly') {
-    await applyAcross(writer, [folder], account, true);
+  if (readOnly && (await applyAcross(writer, [folder], account, true)).length > 0) {
+    throw new Error('restored, but Read only could not be finished here');
   }
 }

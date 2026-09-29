@@ -82,12 +82,22 @@ describe('restoreTo', () => {
     ]);
   });
 
-  // A Read only member restored here stays Read only, as the parent says.
-  it('keeps a person Read only when the parent holds them Read only', async () => {
-    lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'Member' }] };
+  // Added as ReadOnly first, so there is no moment they could write.
+  it('adds a person the parent holds Read only as ReadOnly, then writes the rest of the grant', async () => {
+    lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
     await restoreTo(writer, 'root', 'g', BOB);
-    expect(admin.addGroupMembers).toHaveBeenLastCalledWith('g', {
-      members: [{ identity: BOB, role: 'ReadOnly' }],
-    });
+    expect(admin.addGroupMembers.mock.calls[0]).toEqual([
+      'g',
+      { members: [{ identity: BOB, role: 'ReadOnly' }] },
+    ]);
+    expect(registry.setFolderRole).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_id: 'g', member: BOB, role: 'Viewer' }),
+    );
+  });
+
+  it('fails when the Read only grant could not be finished', async () => {
+    lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
+    registry.setFolderRole.mockRejectedValueOnce(new Error('registry refused'));
+    await expect(restoreTo(writer, 'root', 'g', BOB)).rejects.toThrow();
   });
 });
