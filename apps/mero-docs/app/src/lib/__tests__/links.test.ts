@@ -21,7 +21,7 @@ describe('parseDocHref (L-15)', () => {
   });
 
   it('reads a doc id as the docs contract mints it', () => {
-    const doc = `doc-12-${'a1'.repeat(32)}-edededed`;
+    const doc = `doc-f465b9a16a9e786e-${'a1'.repeat(32)}-edededed`;
     expect(
       parseDocHref(`${ORIGIN}/app/w1/f/f1/d/${doc}#b=blk-9`, ORIGIN),
     ).toEqual({

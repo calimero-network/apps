@@ -163,7 +163,7 @@ export interface DocRecord {
 export interface DocsState {
   /**
    * doc_id → record. Public: collaborative editing. The id is
-   * `doc-<counter>-<account>-<device tag>` and assigned by `create_doc`.
+   * `doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`.
    */
   docs: Record<string, DocRecord>;
   /**
@@ -173,20 +173,11 @@ export interface DocsState {
    */
   headers: Record<string, number>;
   /**
-   * Id allocator. Every create increments; the account and device in the
-   * id are what keep two concurrent creates apart (see `mint_id`).
-   */
-  next_id: {  };
-  /**
    * comment_id → comment. Each is owned by its author, who alone edits it;
    * the folder's moderators (its founder, who created this context) may
    * also remove any. Every node enforces both.
    */
   comments: Record<string, Comment>;
-  /**
-   * Comment-id allocator (`cmt-<n>-<account>-<device tag>`).
-   */
-  next_comment_id: {  };
 }
 
 export interface Event_BlockChanged {

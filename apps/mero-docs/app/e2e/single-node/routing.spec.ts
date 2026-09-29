@@ -7,7 +7,7 @@ import { injectMeroAuth } from '../fixtures/auth';
 import { getEnv } from '../fixtures/env';
 
 const DOC_PATH =
-  /^\/app\/[^/]+\/f\/[^/]+\/d\/doc-\d+-[0-9a-f]{64}-[0-9a-f]{8}$/; // /app/<ws>/f/<folder>/d/doc-<n>-<account>-<device tag>
+  /^\/app\/[^/]+\/f\/[^/]+\/d\/doc-[0-9a-f]{16}-[0-9a-f]{64}-[0-9a-f]{8}$/; // /app/<ws>/f/<folder>/d/doc-<nonce>-<account>-<device tag>
 
 function pathOf(page: Page): string {
   return new URL(page.url()).pathname;

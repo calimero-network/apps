@@ -170,7 +170,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account>-<device tag>` and assigned by `create_doc`."
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`."
         },
         {
           "name": "headers",
@@ -187,15 +187,6 @@
           "doc": "doc_id → created_at, filed by the doc's creator, whose owner stamp it\ncarries. A doc is listed while that entry lives; only its creator or a\nmoderator (the founder) may remove it, and every node enforces that."
         },
         {
-          "name": "next_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Id allocator. Every create increments; the account and device in the\nid are what keep two concurrent creates apart (see `mint_id`)."
-        },
-        {
           "name": "comments",
           "type": {
             "kind": "map",
@@ -208,15 +199,6 @@
             "crdt_type": "authored_map"
           },
           "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
-        },
-        {
-          "name": "next_comment_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Comment-id allocator (`cmt-<n>-<account>-<device tag>`)."
         }
       ]
     },

@@ -43,8 +43,8 @@ use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, TextOp, Undo};
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
-    BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
-    Mergeable, Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef,
+    BlockId, BlockView, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema, Mergeable,
+    Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef,
 };
 use calimero_storage::constants::DRIFT_TOLERANCE_NANOS;
 use calimero_storage::env as storage_env;
@@ -339,11 +339,18 @@ fn caller_account_hex() -> String {
     hex(&calimero_sdk::env::account_id())
 }
 
-/// `<kind>-<n>-<account hex>-<device tag>`. Every device reads the same counter, so the
-/// device tag keeps one account's concurrent creates apart; the full account is checked on read.
-fn mint_id(kind: &str, n: u64) -> String {
+/// `<kind>-<nonce>-<account hex>-<device tag>`, from nothing another member can write:
+/// the full account is checked on read, the random nonce and device keep one account's ids apart.
+fn mint_id(kind: &str) -> String {
+    let mut nonce = [0u8; 8];
+    calimero_sdk::env::random_bytes(&mut nonce);
     let (account, device) = (storage_env::account_id(), storage_env::device_id());
-    format!("{kind}-{n}-{}-{}", hex(&account), hex(&device[..4]))
+    format!(
+        "{kind}-{}-{}-{}",
+        hex(&nonce),
+        hex(&account),
+        hex(&device[..4])
+    )
 }
 
 /// The hex account a `mint_id` id names.
@@ -429,21 +436,16 @@ fn project_comment(id: &str, author: String, c: &Comment) -> CommentDto {
 #[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
     /// doc_id → record. Public: collaborative editing. The id is
-    /// `doc-<counter>-<account>-<device tag>` and assigned by `create_doc`.
+    /// `doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`.
     docs: UnorderedMap<String, DocRecord>,
     /// doc_id → created_at, filed by the doc's creator, whose owner stamp it
     /// carries. A doc is listed while that entry lives; only its creator or a
     /// moderator (the founder) may remove it, and every node enforces that.
     headers: Moderated<UnorderedMap<String, u64>>,
-    /// Id allocator. Every create increments; the account and device in the
-    /// id are what keep two concurrent creates apart (see `mint_id`).
-    next_id: Counter,
     /// comment_id → comment. Each is owned by its author, who alone edits it;
     /// the folder's moderators (its founder, who created this context) may
     /// also remove any. Every node enforces both.
     comments: Moderated<IndexedMap<String, Comment>>,
-    /// Comment-id allocator (`cmt-<n>-<account>-<device tag>`).
-    next_comment_id: Counter,
 }
 
 #[app::logic]
@@ -453,9 +455,7 @@ impl DocsState {
         DocsState {
             docs: UnorderedMap::new_with_field_name("docs:docs"),
             headers: Moderated::new_with_field_name("docs:headers"),
-            next_id: Counter::new_with_field_name("docs:next_id"),
             comments: Moderated::new_with_field_name("docs:comments"),
-            next_comment_id: Counter::new_with_field_name("docs:next_comment_id"),
         }
     }
 
@@ -472,14 +472,7 @@ impl DocsState {
     }
 
     pub(crate) fn create_doc_inner(&mut self, title: String) -> Result<String, DriveError> {
-        self.next_id
-            .increment()
-            .map_err(|e| DriveError::Invalid(format!("next_id.increment: {e}")))?;
-        let n = self
-            .next_id
-            .value()
-            .map_err(|e| DriveError::Invalid(format!("next_id.value: {e}")))?;
-        let id = mint_id("doc", n);
+        let id = mint_id("doc");
 
         let now = storage_env::time_now();
         let mut title_text = FugueText::new();
@@ -1107,14 +1100,7 @@ impl DocsState {
         doc_id: String,
         body: String,
     ) -> Result<String, DriveError> {
-        self.next_comment_id
-            .increment()
-            .map_err(|e| DriveError::Invalid(format!("next_comment_id.increment: {e}")))?;
-        let n = self
-            .next_comment_id
-            .value()
-            .map_err(|e| DriveError::Invalid(format!("next_comment_id.value: {e}")))?;
-        let id = mint_id("cmt", n);
+        let id = mint_id("cmt");
 
         let comment = Comment {
             doc_id,
@@ -1418,15 +1404,19 @@ mod tests {
 
     use super::*;
 
-    /// The first doc the test host's default account (`0xEE…`) creates on its
-    /// default device (`0xED…`).
-    const DOC: &str =
-        "doc-1-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-edededed";
+    std::thread_local! {
+        static DOC: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    }
+
+    /// The doc `host` created on this test's thread.
+    fn doc() -> String {
+        DOC.with_borrow(Clone::clone)
+    }
 
     fn host(title: &str) -> TestHost<DocsState> {
         let mut app = TestHost::new(DocsState::init);
         let id = app.call(|s| s.create_doc(title.to_owned())).unwrap();
-        assert_eq!(id, DOC);
+        DOC.set(id);
         app
     }
 
@@ -1445,20 +1435,20 @@ mod tests {
     }
 
     fn title(app: &TestHost<DocsState>) -> String {
-        app.view(|s| s.get_title(DOC.to_owned())).unwrap()
+        app.view(|s| s.get_title(doc())).unwrap()
     }
 
     fn digest(app: &TestHost<DocsState>) -> String {
-        app.view(|s| s.get_state_digest(DOC.to_owned())).unwrap()
+        app.view(|s| s.get_state_digest(doc())).unwrap()
     }
 
     fn add_block(app: &mut TestHost<DocsState>, kind: &str) -> String {
-        app.call(|s| s.insert_block(DOC.to_owned(), None, kind.to_owned(), 0))
+        app.call(|s| s.insert_block(doc(), None, kind.to_owned(), 0))
             .unwrap()
     }
 
     fn type_text(app: &mut TestHost<DocsState>, block: &str, text: &str) -> String {
-        app.call(|s| s.apply_delta(DOC.to_owned(), block.to_owned(), vec![insert(text)]))
+        app.call(|s| s.apply_delta(doc(), block.to_owned(), vec![insert(text)]))
             .unwrap()
     }
 
@@ -1494,7 +1484,7 @@ mod tests {
         let err = app
             .call(|s| {
                 s.mark(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     0,
                     5,
@@ -1518,7 +1508,7 @@ mod tests {
         let mark = app
             .call(|s| {
                 s.mark(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     0,
                     5,
@@ -1540,10 +1530,7 @@ mod tests {
     fn create_doc_seeds_the_title() {
         let app = host("Roadmap");
         assert_eq!(title(&app), "Roadmap");
-        assert_eq!(
-            app.view(|s| s.get_doc(DOC.to_owned())).unwrap().title,
-            "Roadmap"
-        );
+        assert_eq!(app.view(|s| s.get_doc(doc())).unwrap().title, "Roadmap");
         // The body starts empty; a client adds the first block itself.
         assert_eq!(digest(&app), "");
     }
@@ -1554,7 +1541,7 @@ mod tests {
     fn a_title_delta_indexes_unicode_scalar_values() {
         let mut app = host("a\u{1F600}b");
         let _undo = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(2), insert("X")]))
+            .call(|s| s.title_apply_delta(doc(), vec![retain(2), insert("X")]))
             .unwrap();
         assert_eq!(title(&app), "a\u{1F600}Xb");
     }
@@ -1566,16 +1553,13 @@ mod tests {
         const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
         let mut app = host(FAMILY);
         let _undo = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(1), insert("-")]))
+            .call(|s| s.title_apply_delta(doc(), vec![retain(1), insert("-")]))
             .unwrap();
         assert_eq!(title(&app), "\u{1F468}-\u{200D}\u{1F469}\u{200D}\u{1F467}");
 
-        let anchor = app
-            .view(|s| s.title_anchor_at(DOC.to_owned(), 6, true))
-            .unwrap();
+        let anchor = app.view(|s| s.title_anchor_at(doc(), 6, true)).unwrap();
         assert_eq!(
-            app.view(|s| s.title_resolve(DOC.to_owned(), vec![anchor]))
-                .unwrap(),
+            app.view(|s| s.title_resolve(doc(), vec![anchor])).unwrap(),
             vec![Some(6)]
         );
     }
@@ -1586,16 +1570,16 @@ mod tests {
         let undo = app
             .call(|s| {
                 s.title_apply_delta(
-                    DOC.to_owned(),
+                    doc(),
                     vec![retain(4), Change::Delete { delete: 3 }, insert("block")],
                 )
             })
             .unwrap();
         assert_eq!(title(&app), "Roadblock");
 
-        let redo = app.call(|s| s.title_undo(DOC.to_owned(), undo)).unwrap();
+        let redo = app.call(|s| s.title_undo(doc(), undo)).unwrap();
         assert_eq!(title(&app), "Roadmap");
-        let _again = app.call(|s| s.title_undo(DOC.to_owned(), redo)).unwrap();
+        let _again = app.call(|s| s.title_undo(doc(), redo)).unwrap();
         assert_eq!(title(&app), "Roadblock");
     }
 
@@ -1605,7 +1589,7 @@ mod tests {
         let err = app
             .call(|s| {
                 s.title_apply_delta(
-                    DOC.to_owned(),
+                    doc(),
                     vec![Change::Insert {
                         insert: "x".to_owned(),
                         attributes: Some(Attrs::from([(
@@ -1624,8 +1608,7 @@ mod tests {
     #[test]
     fn edit_doc_replaces_the_whole_title() {
         let mut app = host("old");
-        app.call(|s| s.edit_doc(DOC.to_owned(), "new".to_owned()))
-            .unwrap();
+        app.call(|s| s.edit_doc(doc(), "new".to_owned())).unwrap();
         assert_eq!(title(&app), "new");
     }
 
@@ -1638,14 +1621,10 @@ mod tests {
         let _typed = type_text(&mut app, &block, "hello world");
         assert_eq!(digest(&app), "paragraph/0{:hello world};");
         assert_eq!(
-            app.view(|s| s.get_text(DOC.to_owned(), block.clone()))
-                .unwrap(),
+            app.view(|s| s.get_text(doc(), block.clone())).unwrap(),
             "hello world"
         );
-        assert_eq!(
-            app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
-            vec![block]
-        );
+        assert_eq!(app.view(|s| s.list_blocks(doc())).unwrap(), vec![block]);
     }
 
     #[test]
@@ -1654,7 +1633,7 @@ mod tests {
         let applied = app
             .call(|s| {
                 s.title_apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     "core".to_owned(),
                     vec![retain(4), insert(" team")],
                     None,
@@ -1672,12 +1651,7 @@ mod tests {
         let mut app = host("core");
         let refused = app
             .call(|s| {
-                s.title_apply_delta_on(
-                    DOC.to_owned(),
-                    "cor".to_owned(),
-                    vec![retain(3), insert("X")],
-                    None,
-                )
+                s.title_apply_delta_on(doc(), "cor".to_owned(), vec![retain(3), insert("X")], None)
             })
             .unwrap();
         assert!(!refused.applied);
@@ -1691,10 +1665,8 @@ mod tests {
     fn guarded_title(app: &mut TestHost<DocsState>, text: &str) -> TitleApplied {
         let base = title(app);
         let end = base.chars().count();
-        app.call(|s| {
-            s.title_apply_delta_on(DOC.to_owned(), base, vec![retain(end), insert(text)], None)
-        })
-        .unwrap()
+        app.call(|s| s.title_apply_delta_on(doc(), base, vec![retain(end), insert(text)], None))
+            .unwrap()
     }
 
     #[test]
@@ -1704,8 +1676,7 @@ mod tests {
         assert_eq!(applied.anchor_pos, Some(8));
         let anchor = applied.anchor.unwrap();
         assert_eq!(
-            app.view(|s| s.title_resolve(DOC.to_owned(), vec![anchor]))
-                .unwrap(),
+            app.view(|s| s.title_resolve(doc(), vec![anchor])).unwrap(),
             vec![Some(8)]
         );
     }
@@ -1716,15 +1687,15 @@ mod tests {
         let anchor = guarded_title(&mut app, "a").anchor;
         // Peers typed on both sides of the writer's `a`, one right in its gap.
         let _left = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(7), insert("b3")]))
+            .call(|s| s.title_apply_delta(doc(), vec![retain(7), insert("b3")]))
             .unwrap();
         let _right = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(10), insert("3c3")]))
+            .call(|s| s.title_apply_delta(doc(), vec![retain(10), insert("3c3")]))
             .unwrap();
         let refused = app
             .call(|s| {
                 s.title_apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     "Shared:a".to_owned(),
                     vec![retain(8), insert("3")],
                     anchor.clone(),
@@ -1745,7 +1716,7 @@ mod tests {
         let applied = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     "The fox.".to_owned(),
                     vec![retain(3), insert(" red")],
@@ -1769,7 +1740,7 @@ mod tests {
         let refused = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     "The fox".to_owned(),
                     vec![retain(7), insert("es")],
@@ -1798,7 +1769,7 @@ mod tests {
         let mine = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     String::new(),
                     vec![insert("aa")],
@@ -1810,12 +1781,12 @@ mod tests {
         assert_eq!(before.len(), 2);
         // A peer types an identical `a` between ours; the guard refuses the stale write.
         let _peer = app
-            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(1), insert("a")]))
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(1), insert("a")]))
             .unwrap();
         let refused = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     "aa".to_owned(),
                     vec![insert("b")],
@@ -1829,31 +1800,29 @@ mod tests {
         assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
         assert!(!before.contains(&after[1]));
         let read = app
-            .view(|s| s.get_block(DOC.to_owned(), block.clone()))
+            .view(|s| s.get_block(doc(), block.clone()))
             .unwrap()
             .unwrap();
         assert_eq!(char_ids(&read.ids), after);
-        let whole = app.view(|s| s.get_document(DOC.to_owned())).unwrap();
+        let whole = app.view(|s| s.get_document(doc())).unwrap();
         assert_eq!(char_ids(&whole[0].ids), after);
     }
 
     #[test]
     fn a_title_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
         let mut app = host("aa");
-        let before = char_ids(&app.view(|s| s.get_title_state(DOC.to_owned())).unwrap().ids);
+        let before = char_ids(&app.view(|s| s.get_title_state(doc())).unwrap().ids);
         let _peer = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(1), insert("a")]))
+            .call(|s| s.title_apply_delta(doc(), vec![retain(1), insert("a")]))
             .unwrap();
         let refused = app
-            .call(|s| {
-                s.title_apply_delta_on(DOC.to_owned(), "aa".to_owned(), vec![insert("b")], None)
-            })
+            .call(|s| s.title_apply_delta_on(doc(), "aa".to_owned(), vec![insert("b")], None))
             .unwrap();
         let after = char_ids(&refused.ids);
         assert_eq!(refused.text, "aaa");
         assert_eq!(after.len(), 3);
         assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
-        let state = app.view(|s| s.get_title_state(DOC.to_owned())).unwrap();
+        let state = app.view(|s| s.get_title_state(doc())).unwrap();
         assert_eq!((state.text.as_str(), char_ids(&state.ids)), ("aaa", after));
     }
 
@@ -1864,7 +1833,7 @@ mod tests {
         let applied = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     String::new(),
                     vec![insert("b1")],
@@ -1875,13 +1844,13 @@ mod tests {
         let anchor = applied.anchor;
         // A peer's `1` beside ours: the client read the peer's as its own.
         let _peer = app
-            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(2), insert("a1")]))
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(2), insert("a1")]))
             .unwrap();
         let send = |at: usize| {
             let (block, anchor) = (block.clone(), anchor.clone());
             move |s: &mut DocsState| {
                 let ops = vec![retain(at), insert("X")];
-                s.apply_delta_on(DOC.to_owned(), block, "b1a1".to_owned(), ops, anchor)
+                s.apply_delta_on(doc(), block, "b1a1".to_owned(), ops, anchor)
             }
         };
         let drifted = app.call(send(4)).unwrap();
@@ -1899,7 +1868,7 @@ mod tests {
         let refused = app
             .call(|s| {
                 s.title_apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     "Shared:a".to_owned(),
                     vec![retain(7), Change::Delete { delete: 1 }],
                     anchor,
@@ -1918,7 +1887,7 @@ mod tests {
         let applied = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     String::new(),
                     vec![insert("Shared:a")],
@@ -1929,21 +1898,15 @@ mod tests {
         assert_eq!(applied.anchor_pos, Some(8));
         let anchor = applied.anchor;
         let _left = app
-            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(7), insert("b3")]))
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(7), insert("b3")]))
             .unwrap();
         let _right = app
-            .call(|s| {
-                s.apply_delta(
-                    DOC.to_owned(),
-                    block.clone(),
-                    vec![retain(10), insert("3c3")],
-                )
-            })
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(10), insert("3c3")]))
             .unwrap();
         let refused = app
             .call(|s| {
                 s.apply_delta_on(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     "Shared:a".to_owned(),
                     vec![retain(8), insert("3")],
@@ -1965,11 +1928,11 @@ mod tests {
         let before = digest(&app);
 
         let tail = app
-            .call(|s| s.split_block(DOC.to_owned(), block.clone(), 5))
+            .call(|s| s.split_block(doc(), block.clone(), 5))
             .unwrap();
         assert_eq!(digest(&app), "paragraph/0{:hello};paragraph/0{: world};");
 
-        app.call(|s| s.merge_blocks(DOC.to_owned(), block.clone(), tail))
+        app.call(|s| s.merge_blocks(doc(), block.clone(), tail))
             .unwrap();
         assert_eq!(digest(&app), before);
     }
@@ -1982,20 +1945,19 @@ mod tests {
         let heading = add_block(&mut app, "heading");
         let _typed = type_text(&mut app, &heading, "Goals for Q3");
         let tail = app
-            .call(|s| s.split_block(DOC.to_owned(), heading.clone(), 3))
+            .call(|s| s.split_block(doc(), heading.clone(), 3))
             .unwrap();
         let head = app
-            .view(|s| s.get_block(DOC.to_owned(), heading.clone()))
+            .view(|s| s.get_block(doc(), heading.clone()))
             .unwrap()
             .expect("the heading id still resolves");
         assert_eq!(head.kind, "heading");
         assert_eq!(
-            app.view(|s| s.get_text(DOC.to_owned(), heading.clone()))
-                .unwrap(),
+            app.view(|s| s.get_text(doc(), heading.clone())).unwrap(),
             "Goa"
         );
         assert_eq!(
-            app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
+            app.view(|s| s.list_blocks(doc())).unwrap(),
             vec![heading, tail]
         );
     }
@@ -2008,7 +1970,7 @@ mod tests {
         let mark = app
             .call(|s| {
                 s.mark(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     0,
                     5,
@@ -2020,7 +1982,7 @@ mod tests {
         assert!(mark.is_some(), "a first bold is not redundant");
 
         let spans = app
-            .view(|s| s.get_block_delta(DOC.to_owned(), block.clone()))
+            .view(|s| s.get_block_delta(doc(), block.clone()))
             .unwrap();
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].text, "hello");
@@ -2034,7 +1996,7 @@ mod tests {
 
         // Bold is `Expand::After`, so typing at the run's end joins it.
         let _typed = app
-            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(5), insert("X")]))
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![retain(5), insert("X")]))
             .unwrap();
         assert_eq!(digest(&app), "paragraph/0{bold=true:helloX}{: world};");
     }
@@ -2049,7 +2011,7 @@ mod tests {
         let undo = app
             .call(|s| {
                 s.apply_delta(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     vec![
                         Change::Retain {
@@ -2067,9 +2029,7 @@ mod tests {
             .unwrap();
         assert_eq!(digest(&app), "paragraph/0{bold=true:hello there};");
 
-        let _redo = app
-            .call(|s| s.undo(DOC.to_owned(), block.clone(), undo))
-            .unwrap();
+        let _redo = app.call(|s| s.undo(doc(), block.clone(), undo)).unwrap();
         assert_eq!(digest(&app), before);
     }
 
@@ -2078,13 +2038,12 @@ mod tests {
         let mut app = host("t");
         let block = add_block(&mut app, "paragraph");
         let _typed = type_text(&mut app, &block, "Alpha");
-        app.call(|s| s.set_kind(DOC.to_owned(), block.clone(), "heading".to_owned()))
+        app.call(|s| s.set_kind(doc(), block.clone(), "heading".to_owned()))
             .unwrap();
-        app.call(|s| s.set_depth(DOC.to_owned(), block.clone(), 2))
-            .unwrap();
+        app.call(|s| s.set_depth(doc(), block.clone(), 2)).unwrap();
         app.call(|s| {
             s.set_attr(
-                DOC.to_owned(),
+                doc(),
                 block.clone(),
                 "align".to_owned(),
                 Some("end".to_owned()),
@@ -2093,11 +2052,11 @@ mod tests {
         .unwrap();
         assert_eq!(digest(&app), "heading/2[align=end]{:Alpha};");
 
-        app.call(|s| s.set_attr(DOC.to_owned(), block.clone(), "align".to_owned(), None))
+        app.call(|s| s.set_attr(doc(), block.clone(), "align".to_owned(), None))
             .unwrap();
         assert_eq!(digest(&app), "heading/2{:Alpha};");
 
-        app.call(|s| s.delete_block(DOC.to_owned(), block)).unwrap();
+        app.call(|s| s.delete_block(doc(), block)).unwrap();
         assert_eq!(digest(&app), "");
     }
 
@@ -2107,23 +2066,16 @@ mod tests {
         let first = add_block(&mut app, "paragraph");
         let _typed = type_text(&mut app, &first, "Alpha");
         let second = app
-            .call(|s| {
-                s.insert_block(
-                    DOC.to_owned(),
-                    Some(first.clone()),
-                    "paragraph".to_owned(),
-                    0,
-                )
-            })
+            .call(|s| s.insert_block(doc(), Some(first.clone()), "paragraph".to_owned(), 0))
             .unwrap();
         let _typed = type_text(&mut app, &second, "Beta");
         assert_eq!(digest(&app), "paragraph/0{:Alpha};paragraph/0{:Beta};");
 
-        app.call(|s| s.move_block(DOC.to_owned(), second.clone(), None))
+        app.call(|s| s.move_block(doc(), second.clone(), None))
             .unwrap();
         assert_eq!(digest(&app), "paragraph/0{:Beta};paragraph/0{:Alpha};");
         assert_eq!(
-            app.view(|s| s.get_document(DOC.to_owned()))
+            app.view(|s| s.get_document(doc()))
                 .unwrap()
                 .iter()
                 .map(|b| b.id.clone())
@@ -2138,18 +2090,18 @@ mod tests {
         let block = add_block(&mut app, "paragraph");
         let _typed = type_text(&mut app, &block, "hello world");
         let anchor = app
-            .view(|s| s.anchor_at(DOC.to_owned(), block.clone(), 6, true))
+            .view(|s| s.anchor_at(doc(), block.clone(), 6, true))
             .unwrap();
         let _typed = app
-            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![insert("say ")]))
+            .call(|s| s.apply_delta(doc(), block.clone(), vec![insert("say ")]))
             .unwrap();
         assert_eq!(
-            app.view(|s| s.resolve_ids(DOC.to_owned(), block.clone(), vec![anchor]))
+            app.view(|s| s.resolve_ids(doc(), block.clone(), vec![anchor]))
                 .unwrap(),
             vec![Some(10)]
         );
         assert_eq!(
-            app.view(|s| s.passage_count(DOC.to_owned(), block, "hello world".to_owned()))
+            app.view(|s| s.passage_count(doc(), block, "hello world".to_owned()))
                 .unwrap(),
             1
         );
@@ -2168,7 +2120,7 @@ mod tests {
         let _mark = app
             .call(|s| {
                 s.mark(
-                    DOC.to_owned(),
+                    doc(),
                     block.clone(),
                     0,
                     5,
@@ -2177,10 +2129,9 @@ mod tests {
                 )
             })
             .unwrap();
-        app.call(|s| s.move_block(DOC.to_owned(), block.clone(), None))
+        app.call(|s| s.move_block(doc(), block.clone(), None))
             .unwrap();
-        app.call(|s| s.delete_block(DOC.to_owned(), block.clone()))
-            .unwrap();
+        app.call(|s| s.delete_block(doc(), block.clone())).unwrap();
 
         let seen: Vec<(String, Value)> = app
             .events()
@@ -2199,7 +2150,7 @@ mod tests {
             ]
         );
         for (kind, payload) in &seen {
-            assert_eq!(payload["doc"], json!(DOC), "{kind} lost the document");
+            assert_eq!(payload["doc"], json!(doc()), "{kind} lost the document");
             assert_eq!(payload["block"], json!(block), "{kind} lost the block");
             assert!(
                 payload.get("position").is_none() && payload.get("start").is_none(),
@@ -2211,12 +2162,20 @@ mod tests {
     // ---- documents -------------------------------------------------------
 
     #[test]
-    fn create_doc_assigns_an_incrementing_id() {
+    fn create_doc_assigns_a_fresh_id_each_time() {
         let mut app = DocsState::init();
         let a = app.create_doc_inner("a".into()).unwrap();
         let b = app.create_doc_inner("b".into()).unwrap();
-        assert!(a.starts_with("doc-1-"), "{a}");
-        assert_eq!(b, a.replacen("doc-1-", "doc-2-", 1));
+        assert_ne!(a, b);
+        let (a, b) = (
+            a.split('-').collect::<Vec<_>>(),
+            b.split('-').collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            (a[0], &a[2..]),
+            (b[0], &b[2..]),
+            "one kind, account and device"
+        );
     }
 
     #[test]
