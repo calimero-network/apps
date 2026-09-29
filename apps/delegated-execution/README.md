@@ -119,7 +119,7 @@ after that change already has it. Two limits apply and both bite here: the mask 
 at admission so it is *not retroactive*, and it is seeded for non-admin members only — so
 the node that *created* the namespace still needs the explicit grant above.
 
-The demo's **“Check first”** button in step 6 answers this without signing anything. Use it.
+The demo's **“Check first”** button in step 7 answers this without signing anything. Use it.
 
 ### 4. Become a member
 
@@ -148,7 +148,7 @@ not one.
 
 `published: true` means the op reached the namespace topic, not that you are a member.
 Membership lands when peers fold it, which the admitter neither performs nor waits for —
-so step 5 is the confirmation, and a 403 immediately after sending is usually that race
+so step 6 is the confirmation, and a 403 immediately after sending is usually that race
 rather than a refusal.
 
 ## Running it
@@ -170,9 +170,41 @@ are two different audiences.
 | 2. Find where you can go | Either the cloud names the relays that already hold something for this account, or an invitation names the namespace and who may admit you | Two sources, two questions: who is *reachable*, and who is *allowed*. Neither answers both |
 | 3. Pin | The node&rsquo;s signing key is entered, and nothing on the page can supply it | The one value that must not be told to you. The login statement binds to it, so whoever chooses it chooses what you signed about |
 | 4. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
-| 5. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
-| 6. Write | A warrant signed by the device, spent by the **cloud-resolved relay**, sealed to its attested TEE | The session plays **no part**. The delta is attributed to *your* account, not the node&rsquo;s — and the relay need not be the node that admitted you. Sealed, only the attested enclave reads the warrant and the arguments |
-| 7. Cloud (optional) | The **account root** signs a cloud challenge, once; the cloud records the ownership and opens a session over it | The only proof on the page a device credential cannot make. Certificates are public, so device proofs say *a device of X is asking*; only the root says *X is mine* |
+| 5. Create (optional) | The device signs a **creation warrant**; the relay creates the context in the group and runs `init` as the author | The relay needs **no create rights**. Peers check the *author's* `CAN_CREATE_CONTEXT` and the relay's standing to act for members, and the new context is yours |
+| 6. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
+| 7. Write | A warrant signed by the device, spent by the **cloud-resolved relay**, sealed to its attested TEE | The session plays **no part**. The delta is attributed to *your* account, not the node&rsquo;s — and the relay need not be the node that admitted you. Sealed, only the attested enclave reads the warrant and the arguments |
+| 8. Cloud (optional) | The **account root** signs a cloud challenge, once; the cloud records the ownership and opens a session over it | The only proof on the page a device credential cannot make. Certificates are public, so device proofs say *a device of X is asking*; only the root says *X is mine* |
+
+## Creating a context through the relay
+
+Step 5 is for an account nobody handed a context id. It holds no node, so it cannot run
+`context create`; instead its device signs a **creation warrant** (this group, this
+application, these exact `init` argument bytes, one nonce, an expiry) and the relay spends
+it at `POST /admin-api/groups/<group>/context-intents`. The relay publishes the creation
+carrying the warrant, and `init` runs as **your** account.
+
+Who is checked is the opposite of what "the relay creates it" suggests:
+
+- **Your account** needs `CAN_CREATE_CONTEXT` on the group, or to be an admin of it. An
+  admin grants it; nothing on this page can.
+- **The relay** needs **no create rights**. It needs standing to act for members: admitted
+  as a `RelayTee`, or holding `CAN_AUTHOR_ON_BEHALF` (bit 9, 512), the grant step 7's write
+  also needs.
+- **The application id** must be the one the group targets. Another one is a 409; re-sign
+  with the right id, because the old warrant names the wrong application.
+
+**“Check first (signs nothing)”** calls `GET /admin-api/groups/<group>/context-intents?author=<you>`
+and answers both standings. The group id defaults to the namespace id from step 2. The
+create button checks them again before it signs, so a missing grant costs no nonce. On
+success the panel offers to set the new context id for steps 6 and 7.
+
+**It needs a newer mero-js than this app pins.** `RelayClient.describeCreation` and
+`RelayClient.createContext` are not in `@calimero-network/mero-js` 21.2.0. Until the pin
+moves, both buttons say *"this build of mero-js predates delegated context creation"* and
+send nothing. `lib/flow.ts` looks the methods up structurally, so bumping the dependency is
+the whole upgrade. The relay has to be on a core release that serves the route, and a
+sealed relay also has to let it through sealed; one that does not answers
+`403 sealed_route_unguarded`, which the panel names.
 
 ## Two ways in, and only one of them needs an invitation
 
@@ -262,7 +294,7 @@ empty for the whole flow.
 
 ## Connecting: consent from the cloud, the key from here
 
-Step 7 is two actions, and they answer different questions.
+Step 8 is two actions, and they answer different questions.
 
 **Connect** opens the cloud portal in a tab. You sign in there, read what is being asked
 (the app's origin and the account id), and agree — and you come back holding a **grant**.
@@ -301,7 +333,7 @@ login statement, the warrant. All three rest on a certificate the root issued �
 certificate is *public*. It travels in the clear inside every device-link op, so the
 strongest statement any device proof can make is *"a device of account X is asking"*.
 
-It can never say *"X is mine"*. Only the root can, and step 7 is where it does: the cloud
+It can never say *"X is mine"*. Only the root can, and step 8 is where it does: the cloud
 mints a challenge, the account root signs
 `calimero.mdma.account-login.v1\0 ‖ nonce`, and `POST /api/auth/account` verifies it and
 **writes the ownership down**. Once. From then on the cloud knows the account behind those
@@ -327,7 +359,7 @@ failure, because it is one.
 
 Nothing else on the page needs the session. Routing reads prove themselves, the node
 session comes from the device key, and the write is authorised by a warrant — which is why
-step 7 is marked optional and every step before it works without it.
+step 8 is marked optional and every step before it works without it.
 
 ## The routing read proves an account, and only that
 
@@ -401,7 +433,7 @@ will use, and says when that differs from the admitter.
 
 Unsealed, the warrant and the method&rsquo;s arguments reach the relay over plain TLS,
 readable wherever that TLS ends: the load balancer, and whoever holds the relay&rsquo;s
-certificate. With **Seal to the relay&rsquo;s TEE** ticked (the default), step 6 first asks
+certificate. With **Seal to the relay&rsquo;s TEE** ticked (the default), step 7 first asks
 the relay for a TDX quote (`POST /admin-api/tee/attest`), verifies it **in the page**
 against Intel&rsquo;s root and the images below, and encrypts both relay calls to the key the
 quote binds (Noise NK over `/sealed/v2`). The proxy opens them inside the TD.
@@ -476,7 +508,7 @@ runs it.
   is `Principal`'s job and it is real, but it is not observable from the HTTP responses —
   the author rides on the delta, not on the reply. Read it back from a *second* node, or
   see `delegated-authorship.yml`'s DAG assertions in core.
-- **It keeps your account root in `localStorage`, and a product must not.** Step 7's
+- **It keeps your account root in `localStorage`, and a product must not.** Step 8's
   claim is a *root* signature, so a tab that dropped the root could make it exactly once
   and never again without re-entering 24 words — so this demo stores it. The trade is
   real: a stolen device key is revocable, which is what device certificates are for, and a
