@@ -88,6 +88,7 @@ function text(
     depth: 0,
     attrs: {},
     spans: [{ text: t, attributes: {} }],
+    ids: [],
   }));
   return docTextFromBlocks(folderId, docId, blocks, window.location.origin);
 }

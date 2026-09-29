@@ -42,6 +42,16 @@
           },
           "nullable": true,
           "doc": "Where `anchor` sits in `spans`."
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `spans`, so a refused write rebases by identity."
         }
       ]
     },
@@ -87,6 +97,16 @@
               "$ref": "Span"
             }
           }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `spans`, in order."
         }
       ]
     },
@@ -714,6 +734,30 @@
         }
       ]
     },
+    "Run": {
+      "kind": "record",
+      "doc": "A run of character ids, mirroring `IdRange`, which has no `AbiType`.\n`replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.",
+      "fields": [
+        {
+          "name": "replica",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "counter",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "len",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "Span": {
       "kind": "record",
       "fields": [
@@ -775,6 +819,37 @@
           },
           "nullable": true,
           "doc": "Where `anchor` sits in `text`."
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `text`."
+        }
+      ]
+    },
+    "TitleState": {
+      "kind": "record",
+      "doc": "The title with the id of each of its characters, in order.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          }
         }
       ]
     }
@@ -1223,6 +1298,22 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_title_state",
+      "doc": "The title and its character ids, read together so they line up.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TitleState"
       },
       "intent": "read_only"
     },

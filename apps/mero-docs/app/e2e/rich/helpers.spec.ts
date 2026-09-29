@@ -22,6 +22,7 @@ const FOX: Block = {
     { text: 'quick', attributes: { bold: 'true' } },
     { text: ' fox', attributes: {} },
   ],
+  ids: [],
 };
 
 test.describe('doc model helpers', () => {
