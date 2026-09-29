@@ -1,0 +1,173 @@
+# Long-running merobox soak scenarios, kept out of PR CI.
+#
+# scaffolding-e2e's fuzzy-test.yml is a 15-minute load loop. While it lived in
+# logic/workflows/ the PR e2e job's `workflows/*.yml` glob ran it on every
+# contract change, and it alone was 16.5 of that job's 30 minutes. It now lives
+# in logic/workflows/soak/, which the PR job does not glob (it still validates
+# the schema there), and runs here: nightly, and on demand.
+
+name: Soak
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # nightly, off the hour
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: How long each fuzzy_test step runs, in minutes (the scenario's own value is 15)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# One soak at a time; a manual run while the nightly is going queues.
+concurrency:
+  group: soak
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    name: Soak (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [scaffolding-e2e]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - name: Load per-app wasm RUSTFLAGS
+        run: |
+          f="apps/${{ matrix.app }}/logic/wasm-rustflags"
+          [ -f "$f" ] && echo "RUSTFLAGS=$(tr -d '\n' < "$f")" >> "$GITHUB_ENV" || true
+
+      # The same dev bundle ci.yml's wasm job builds, written straight to the
+      # name the scenarios install: `dist/<package id>.mpk`.
+      - name: Build the dev bundle
+        run: |
+          set -euo pipefail
+          cargo mero build -p "${{ matrix.app }}"
+          pkg=$(python3 -c "import tomllib;print(tomllib.load(open('apps/${{ matrix.app }}/logic/Cargo.toml','rb'))['package']['metadata']['calimero']['package'])")
+          cargo mero bundle \
+            --manifest-path "apps/${{ matrix.app }}/logic/Cargo.toml" \
+            --dev \
+            --app-version 0.0.0 \
+            --output "apps/${{ matrix.app }}/logic/dist/${pkg}.mpk"
+          ls -la "apps/${{ matrix.app }}/logic/dist"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
+
+      - run: pip install -r requirements-e2e.txt && merobox --version
+
+      # Through the environment, never inlined: a template expression is
+      # substituted before the shell sees it.
+      - name: Apply the duration override
+        if: inputs.duration_minutes != ''
+        working-directory: apps/${{ matrix.app }}/logic
+        env:
+          DURATION: ${{ inputs.duration_minutes }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DURATION" =~ ^[1-9][0-9]{0,2}$ ]]; then
+            echo "::error::duration_minutes must be a whole number of minutes (got '$DURATION')"
+            exit 1
+          fi
+          sed -i -E "s/^(\s*duration_minutes:\s*)[0-9]+/\1$DURATION/" workflows/soak/*.yml
+          grep -n 'duration_minutes' workflows/soak/*.yml
+
+      - name: Validate workflows
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+          for f in workflows/soak/*.yml; do merobox bootstrap validate "$f"; done
+
+      # The teardown and retry are ci.yml's e2e job's, trimmed. See the comments
+      # there for why each piece exists: merod writes ./data as root inside the
+      # container, and `merobox stop`/`nuke` both leave state behind. Three
+      # attempts rather than six, because a nightly can afford to report the
+      # cold-join race instead of burning ninety minutes on it.
+      - name: Run soak scenarios
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+
+          cold_host() {
+            sudo rm -rf ./data 2>/dev/null || rm -rf ./data 2>/dev/null || true
+            if [ -d ./data ] && [ -n "$(ls -A ./data 2>/dev/null)" ]; then
+              echo "::error::./data survived cleanup — a scenario starting here would inherit another node home"
+              ls -la ./data
+              return 1
+            fi
+          }
+
+          run_one() {
+            cold_host || return 1
+            merobox bootstrap run "$1" --log-level info
+            local s=$?
+            echo "--- teardown after attempt (exit $s) ---"
+            merobox stop --all 2>&1 | tail -3 || true
+            merobox nuke --force 2>&1 | tail -3 || true
+            leftover=$(docker ps -aq 2>/dev/null || true)
+            [ -n "$leftover" ] && docker rm -f $leftover >/dev/null 2>&1 || true
+            docker network prune -f >/dev/null 2>&1 || true
+            docker volume prune -f >/dev/null 2>&1 || true
+            cold_host || true
+            return $s
+          }
+
+          files=(workflows/soak/*.yml)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no soak scenarios under workflows/soak/ — this workflow would pass having run nothing"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "::group::$f"
+            ok=0
+            for attempt in 1 2 3; do
+              if run_one "$f"; then ok=1; break; fi
+              if [ "$attempt" -lt 3 ]; then
+                gap=$(( attempt * 30 ))
+                echo "::warning file=$f::attempt $attempt failed — retrying in ${gap}s"
+                sleep "$gap"
+              fi
+            done
+            echo "::endgroup::"
+            if [ "$ok" -ne 1 ]; then
+              echo "::error file=$f::soak scenario failed on all 3 attempts — check the node-logs artifact"
+              exit 1
+            fi
+          done
+
+      - name: Collect node logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-node-logs-${{ matrix.app }}-${{ github.run_attempt }}
+          path: apps/${{ matrix.app }}/logic/data/container-logs/
+          if-no-files-found: ignore
+          retention-days: 7
