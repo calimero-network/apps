@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { diffSpans, diffText, insertAt, insertTextAt, spansToInline, inlineToSpans } from '../delta';
+import {
+  diffSpans,
+  diffSpansByIds,
+  diffText,
+  diffTextByIds,
+  insertAt,
+  insertTextAt,
+  spansToInline,
+  inlineToSpans,
+} from '../delta';
 import type { AttrSpan } from '../delta';
 import { applyChanges } from '../ot';
 
@@ -343,5 +352,53 @@ describe('insertAt', () => {
 
   it('counts scalars, not UTF-16 units', () => {
     expect(insertTextAt('\u{1F600}b', '\u{1F600}Xb', 1)).toEqual([{ retain: 1 }, { insert: 'X' }]);
+  });
+});
+
+/** One run per writer, `len` characters from `counter`. */
+const run = (replica: string, counter: number, len = 1) => ({ replica, counter, len });
+
+describe('diffSpansByIds', () => {
+  // A peer typed an `a` before our two: the text alone reads it as appended.
+  it("places a peer's identical character where its id says, not where the text matches", () => {
+    const base = [run('1', 1, 2)];
+    const remote = [run('2', 1), run('1', 1, 2)];
+    expect(diffSpansByIds(plain('aa'), base, plain('aaa'), remote)).toEqual([
+      { insert: 'a', attributes: {} },
+    ]);
+    expect(diffSpans(plain('aa'), plain('aaa'), { keepShared: true })).toEqual([
+      { retain: 2 },
+      { insert: 'a', attributes: {} },
+    ]);
+  });
+
+  it("deletes the peer's removed character even when an identical one survives", () => {
+    const ops = diffSpansByIds(plain('aa'), [run('1', 1, 2)], plain('a'), [run('1', 2)]);
+    expect(ops).toEqual([{ delete: 1 }]);
+  });
+
+  it('carries a formatting change on the characters that kept their ids', () => {
+    const next: AttrSpan[] = [{ text: 'ab', attributes: { bold: 'true' } }];
+    expect(diffSpansByIds(plain('ab'), [run('1', 1, 2)], next, [run('1', 1, 2)])).toEqual([
+      { retain: 2, attributes: { bold: 'true' } },
+    ]);
+  });
+
+  it('is null when the ids do not name every character, so the caller diffs the text', () => {
+    expect(diffSpansByIds(plain('aa'), [run('1', 1)], plain('aaa'), [run('1', 1, 3)])).toBeNull();
+  });
+
+  it('is null when shared ids come back in another order', () => {
+    expect(
+      diffSpansByIds(plain('ab'), [run('1', 1), run('1', 2)], plain('ba'), [run('1', 2), run('1', 1)]),
+    ).toBeNull();
+  });
+});
+
+describe('diffTextByIds', () => {
+  it('diffs plain text by id, without attributes', () => {
+    expect(diffTextByIds('aa', [run('1', 1, 2)], 'aaa', [run('2', 1), run('1', 1, 2)])).toEqual([
+      { insert: 'a' },
+    ]);
   });
 });
