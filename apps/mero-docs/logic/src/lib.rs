@@ -1165,10 +1165,15 @@ impl DocsState {
             if !id_names(&id, &owner) {
                 continue;
             }
-            if !*live
-                .entry(c.doc_id.clone())
-                .or_insert(self.header_of(&c.doc_id)?.is_some())
-            {
+            let doc_live = match live.get(&c.doc_id) {
+                Some(known) => *known,
+                None => {
+                    let found = self.header_of(&c.doc_id)?.is_some();
+                    let _previous = live.insert(c.doc_id, found);
+                    found
+                }
+            };
+            if !doc_live {
                 continue;
             }
             count += 1;
