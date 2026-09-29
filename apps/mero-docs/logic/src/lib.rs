@@ -343,7 +343,7 @@ fn caller_account_hex() -> String {
 /// the full account is checked on read, the random nonce and device keep one account's ids apart.
 fn mint_id(kind: &str) -> String {
     let mut nonce = [0u8; 8];
-    calimero_sdk::env::random_bytes(&mut nonce);
+    storage_env::random_bytes(&mut nonce);
     let (account, device) = (storage_env::account_id(), storage_env::device_id());
     format!(
         "{kind}-{}-{}-{}",
