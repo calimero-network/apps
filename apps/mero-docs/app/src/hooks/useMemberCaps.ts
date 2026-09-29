@@ -9,17 +9,13 @@
 //     non-admin members.
 //
 // Why we DON'T use mero-react's useGroupCapabilities / useGroupMembers:
-//   1. `listGroupMembers` is wire-shaped `{members, selfIdentity}` but
-//      mero-js's typed client expects `{data}` - so the typed path
-//      returns an empty array. We bypass it by casting through unknown.
-//   2. Right after `create_group_in_namespace`, the creator's
-//      membership row is published as a governance op but materialised
-//      asynchronously. For a short window (~0-2s) both
-//      `listGroupMembers` shows no matching identity and
-//      `getMemberCapabilities` returns 500 "identity is not a member".
-//      mero-react's hooks fire once on mount and don't retry - we'd
-//      stay stuck on that transient 500 until the next rerender. So
-//      we own the fetch here and retry on propagation-lag errors.
+//   Right after `create_group_in_namespace`, the creator's membership row
+//   is published as a governance op but materialised asynchronously. For a
+//   short window (~0-2s) both `listGroupMembers` shows no matching identity
+//   and `getMemberCapabilities` returns 500 "identity is not a member".
+//   mero-react's hooks fire once on mount and don't retry - we'd stay
+//   stuck on that transient 500 until the next rerender. So we own the
+//   fetch here and retry on propagation-lag errors.
 //
 // Retry schedule: 4 attempts at 0 / 500ms / 1500ms / 3500ms - about
 // 5.5s end-to-end. Empirically the governance op lands in <1s; the
@@ -148,17 +144,10 @@ export function useMemberCaps(
         if (signal.aborted) return;
         try {
           // 1) Read the members list - used ONLY to detect the Admin
-          //    short-circuit. Cast through unknown because the DTS and
-          //    wire shape disagree: some backend versions return
-          //    `{ members, selfIdentity }`, others `{ data, selfIdentity }`.
-          const raw = (await mero.admin.listGroupMembers(
-            groupId,
-          )) as unknown as {
-            members?: Array<{ identity: string; role?: string }>;
-            data?: Array<{ identity: string; role?: string }>;
-          };
+          //    short-circuit.
+          const { members: membersList } =
+            await mero.admin.listGroupMembers(groupId);
           if (signal.aborted) return;
-          const membersList = raw.members ?? raw.data ?? [];
           const me = membersList.find(
             (m) => m.identity === memberId,
           );

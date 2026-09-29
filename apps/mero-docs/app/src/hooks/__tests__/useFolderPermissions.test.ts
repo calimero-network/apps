@@ -79,7 +79,6 @@ vi.mock('../useDriveWorkspace', () => ({
       error: null,
       addManager: vi.fn(),
       removeManager: vi.fn(),
-      claimOwner: vi.fn(),
       refetch: vi.fn(),
     },
   }),

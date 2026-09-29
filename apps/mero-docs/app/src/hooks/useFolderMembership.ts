@@ -1,13 +1,8 @@
 // Group membership read + mutation. Used by both the namespace-level
 // members panel (folderId = rootGroupId) and per-folder sharing UIs.
 //
-// Why we DON'T use mero-react's useGroupMembers here:
-//   `mero.admin.listGroupMembers` is wire-shaped `{members, selfIdentity}`
-//   but mero-js's typed client reads `.data` - returning `{data: undefined}`
-//   that mero-react propagates as an empty list. Every namespace shows
-//   "No members yet" even when the server response has entries. Same
-//   workaround as useMemberCaps: call the admin client directly and
-//   cast through unknown to read the true wire shape.
+// Reads through the admin client rather than mero-react's useGroupMembers
+// so a stale reply can be dropped and a membership event can re-read.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -64,17 +59,9 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     setLoading(true);
     setError(null);
     try {
-      // Cast through unknown because DTS and wire shape disagree:
-      // some backend versions return `{ members, selfIdentity }`,
-      // others return `{ data: [...], selfIdentity }`.
-      const raw = (await mero.admin.listGroupMembers(
-        folderId,
-      )) as unknown as {
-        members?: GroupMember[];
-        data?: GroupMember[];
-      };
+      const { members: rows } = await mero.admin.listGroupMembers(folderId);
       if (seq !== fetchSeqRef.current) return;
-      setMembers(raw.members ?? raw.data ?? []);
+      setMembers(rows);
       setReadFor(folderId);
     } catch (e: unknown) {
       if (seq !== fetchSeqRef.current) return;

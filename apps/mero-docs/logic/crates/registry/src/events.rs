@@ -31,9 +31,6 @@ pub enum Event<'a> {
     FolderVisibilityChanged {
         id: &'a str,
     },
-    OwnerClaimed {
-        owner: &'a str,
-    },
     ManagerAdded {
         member: &'a str,
     },

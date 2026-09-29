@@ -3,9 +3,7 @@
 //   1. Registry owner & managers - the fail-closed authorization roots
 //      for the per-folder Role API (set_folder_role / add_manager all
 //      require owner-or-manager). The owner can add/remove managers;
-//      managers (and non-owner admins) see the list read-only. If the
-//      registry is unclaimed (a namespace seeded before `claim_owner`
-//      was wired in), any namespace-admin can "Claim ownership".
+//      managers (and non-owner admins) see the list read-only.
 //
 // Admin-only - the panel returns null for non-admins so the settings
 // surface doesn't advertise actions the caller can't take.
@@ -67,7 +65,6 @@ export function WorkspaceSettingsPanel() {
   const {
     namespaceId,
     rootGroupId,
-    registryClient,
     registryContextId,
     registryDuplicates,
   } = useDriveWorkspace();
@@ -84,20 +81,7 @@ export function WorkspaceSettingsPanel() {
 
   if (!perms.canManageNamespace) return null;
 
-  const unclaimed = reg.owner === null;
   const canEditManagers = reg.isOwner;
-
-  const onClaim = async () => {
-    setAdminError(null);
-    setBusy(true);
-    try {
-      await reg.claimOwner();
-    } catch (e: unknown) {
-      setAdminError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const onAddManager = async () => {
     const m = managerInput.trim();
@@ -231,121 +215,101 @@ export function WorkspaceSettingsPanel() {
           </div>
         )}
 
-        {unclaimed ? (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
-            <span className="text-xs text-muted-foreground">
-              This workspace has no owner yet.
+        <div className="flex items-center gap-2 text-sm">
+          <Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+          <span className="text-muted-foreground">Owner:</span>
+          {reg.owner && (
+            <MemberLabel
+              namespaceId={namespaceId}
+              memberId={reg.owner}
+              className="text-xs text-foreground"
+            />
+          )}
+          {reg.isOwner && (
+            <span className="rounded-full bg-selected px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-selected-foreground">
+              You
             </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || reg.loading || !registryClient}
-              onClick={() => {
-                void onClaim();
-              }}
-            >
-              {busy ? 'Claiming…' : 'Claim ownership'}
-            </Button>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+            Added by the owner
+          </div>
+          {reg.managers.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nobody added yet. Only the owner can set folder roles.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {reg.managers.map((m) => (
+                <ManagerRow
+                  key={m}
+                  namespaceId={namespaceId}
+                  memberId={m}
+                  canRemove={canEditManagers}
+                  busy={busy}
+                  onRemove={(memberId) => {
+                    void onRemoveManager(memberId);
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {canEditManagers ? (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                {/* MemberPicker autocompletes against the namespace's
+                    existing members; excludes the current owner and
+                    anyone already a manager so they can't be re-added.
+                    Free-form Enter still commits a raw pubkey paste -
+                    the existing looksLikeMemberIdentity check in
+                    onAddManager runs unchanged. */}
+                <MemberPicker
+                  namespaceId={namespaceId}
+                  exclude={[reg.owner, ...reg.managers].filter(
+                    (s): s is string => !!s,
+                  )}
+                  placeholder="Search members or paste a member ID…"
+                  ariaLabel="member to add"
+                  disabled={busy}
+                  onSelect={(identity) => {
+                    setManagerInput(identity);
+                    setAdminError(null);
+                  }}
+                />
+                {managerInput && (
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                    Selected:{' '}
+                    <MemberLabel
+                      namespaceId={namespaceId}
+                      memberId={managerInput}
+                      className="text-foreground"
+                    />
+                  </p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                className="gap-1"
+                disabled={busy || !managerInput.trim()}
+                onClick={() => {
+                  void onAddManager();
+                }}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add
+              </Button>
+            </div>
           </div>
         ) : (
-          <>
-            <div className="flex items-center gap-2 text-sm">
-              <Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden />
-              <span className="text-muted-foreground">Owner:</span>
-              {reg.owner && (
-                <MemberLabel
-                  namespaceId={namespaceId}
-                  memberId={reg.owner}
-                  className="text-xs text-foreground"
-                />
-              )}
-              {reg.isOwner && (
-                <span className="rounded-full bg-selected px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-selected-foreground">
-                  You
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-                Added by the owner
-              </div>
-              {reg.managers.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nobody added yet. Only the owner can set folder roles.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {reg.managers.map((m) => (
-                    <ManagerRow
-                      key={m}
-                      namespaceId={namespaceId}
-                      memberId={m}
-                      canRemove={canEditManagers}
-                      busy={busy}
-                      onRemove={(memberId) => {
-                        void onRemoveManager(memberId);
-                      }}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {canEditManagers ? (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-start gap-2">
-                  <div className="flex-1">
-                    {/* MemberPicker autocompletes against the namespace's
-                        existing members; excludes the current owner and
-                        anyone already a manager so they can't be re-added.
-                        Free-form Enter still commits a raw pubkey paste -
-                        the existing looksLikeMemberIdentity check in
-                        onAddManager runs unchanged. */}
-                    <MemberPicker
-                      namespaceId={namespaceId}
-                      exclude={[reg.owner, ...reg.managers].filter(
-                        (s): s is string => !!s,
-                      )}
-                      placeholder="Search members or paste a member ID…"
-                      ariaLabel="member to add"
-                      disabled={busy}
-                      onSelect={(identity) => {
-                        setManagerInput(identity);
-                        setAdminError(null);
-                      }}
-                    />
-                    {managerInput && (
-                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                        Selected:{' '}
-                        <MemberLabel
-                          namespaceId={namespaceId}
-                          memberId={managerInput}
-                          className="text-foreground"
-                        />
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    className="gap-1"
-                    disabled={busy || !managerInput.trim()}
-                    onClick={() => {
-                      void onAddManager();
-                    }}
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Add
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <p className="pt-1 text-xs text-muted-foreground">
-                Only the workspace owner can change this list.
-              </p>
-            )}
-          </>
+          <p className="pt-1 text-xs text-muted-foreground">
+            Only the workspace owner can change this list.
+          </p>
         )}
 
         {adminError && (
