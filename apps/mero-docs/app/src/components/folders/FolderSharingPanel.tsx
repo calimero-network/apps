@@ -47,11 +47,7 @@ import {
 import { looksLikeMemberIdentity } from '@/utils/validation';
 import { folderLabel } from '@/lib/folderLabel';
 import { inheritReadOnly } from '@/lib/applyFolderRole';
-import {
-  banAcrossOpenSubtree,
-  removedFrom,
-  restoreAcrossOpenSubtree,
-} from '@/lib/openFolderRemoval';
+import { clearOpenSubtree, removedFrom, restoreTo } from '@/lib/openFolderRemoval';
 
 const OPEN_REMOVAL_NOTE =
   'They stay removed from it until you restore them here, even if they are invited to the workspace again.';
@@ -191,14 +187,10 @@ export function FolderSharingPanel({ folderId }: Props) {
   }, [refreshRemoved, memberKey]);
 
   const onRestore = async (id: string) => {
-    if (!mero) return;
+    if (!mero || !registryClient || !removedParent) return;
     setRestoringId(id);
     try {
-      const failed = await restoreAcrossOpenSubtree(mero.admin, folders, folderId, id);
-      if (failed.length > 0) {
-        const names = failed.map((f) => folderLabel(folders.find((x) => x.id === f)?.alias));
-        setRemoveError({ identity: id, message: `restored here, but not in ${names.join(', ')}` });
-      }
+      await restoreTo({ admin: mero.admin, registry: registryClient }, removedParent, folderId, id);
       await refetch();
     } catch (e: unknown) {
       setRemoveError({ identity: id, message: e instanceof Error ? e.message : String(e) });
@@ -240,8 +232,8 @@ export function FolderSharingPanel({ folderId }: Props) {
       // The admin client throws on a refusal, where the mero-react hook would not.
       await mero.admin.removeGroupMembers(folderId, { members: [id] });
       await refetch();
-      if (isOpenFolder && id !== selfIdentity) {
-        const failed = await banAcrossOpenSubtree(mero.admin, folders, folderId, id);
+      if (id !== selfIdentity) {
+        const failed = await clearOpenSubtree(mero.admin, folders, folderId, id);
         if (failed.length > 0) {
           const names = failed.map((f) => folderLabel(folders.find((x) => x.id === f)?.alias));
           setRemoveError({ identity: id, message: `still in ${names.join(', ')}` });

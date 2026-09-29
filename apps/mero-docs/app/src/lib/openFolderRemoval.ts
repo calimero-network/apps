@@ -1,11 +1,16 @@
-// Core records a removal from an Open folder as a ban on that folder alone:
-// its Open sub-folders still let the member inherit in, and only an admin add
-// on the folder lifts it. These keep a removal and its restore subtree-wide.
+// Core ends a removal at the group it names: an Open sub-folder that let the
+// person in through this folder keeps letting them in by inheritance, and a
+// direct row there (left by Read only) survives outright. From an Open
+// folder, core records the removal as a ban that only an admin add lifts.
 
 import { CAPABILITIES, hasCap } from '@/constants/config';
-import { descendantsOf } from '@/utils/ancestry';
+import {
+  applyAcross,
+  coreRoleIn,
+  type FolderRoleWriter,
+} from './applyFolderRole';
 import { listMembers } from './groupMembers';
-import { parseGroupRole } from './roles';
+import { isTeeRole, parseGroupRole } from './roles';
 
 interface OpenFolder {
   id: string;
@@ -19,38 +24,49 @@ interface Admin {
     groupId: string,
     request: { members: string[] },
   ): Promise<void>;
-  addGroupMembers(
-    groupId: string,
-    request: { members: { identity: string; role: 'Member' }[] },
-  ): Promise<void>;
   getMemberCapabilities(
     groupId: string,
     member: string,
   ): Promise<{ capabilities?: number }>;
 }
 
-const openBelow = (folders: OpenFolder[], folder: string) =>
-  descendantsOf(folders, folder)
-    .reverse()
-    .filter((id) => folders.find((f) => f.id === id)?.visibility === 'Open');
+/** The Open sub-folders reached through `folder`, parents first; a
+ *  Restricted sub-folder walls off everything below it. */
+function openConnected(folders: OpenFolder[], folder: string): string[] {
+  const out: string[] = [];
+  const queue = [folder];
+  while (queue.length > 0) {
+    const parent = queue.shift();
+    for (const f of folders) {
+      if (
+        f.parent_id !== parent ||
+        f.visibility !== 'Open' ||
+        out.includes(f.id)
+      )
+        continue;
+      out.push(f.id);
+      queue.push(f.id);
+    }
+  }
+  return out;
+}
 
-const lists = async (admin: Admin, folder: string, account: string) =>
-  (await listMembers(admin, folder)).some((m) => m.identity === account);
-
-/** Bans `account` from each Open sub-folder of `folder` that still lists them. */
-export async function banAcrossOpenSubtree(
+/** After a removal from `folder`, takes `account` out of each Open sub-folder
+ *  reached through it that still lists them. Returns those it could not. */
+export async function clearOpenSubtree(
   admin: Admin,
   folders: OpenFolder[],
   folder: string,
   account: string,
 ): Promise<string[]> {
   const failed: string[] = [];
-  for (const id of openBelow(folders, folder)) {
+  for (const id of openConnected(folders, folder)) {
     try {
-      if (await lists(admin, id, account))
+      if ((await listMembers(admin, id)).some((m) => m.identity === account)) {
         await admin.removeGroupMembers(id, { members: [account] });
+      }
     } catch (e: unknown) {
-      console.warn('[banAcrossOpenSubtree] not removed', id, e);
+      console.warn('[clearOpenSubtree] not removed', id, e);
       failed.push(id);
     }
   }
@@ -70,7 +86,8 @@ export async function removedFrom(
   );
   const removed: string[] = [];
   for (const m of await listMembers(admin, parent)) {
-    if (inFolder.has(m.identity) || parseGroupRole(m.role) === 'Admin')
+    const role = parseGroupRole(m.role);
+    if (inFolder.has(m.identity) || role === 'Admin' || isTeeRole(role))
       continue;
     const { capabilities } = await admin.getMemberCapabilities(
       parent,
@@ -82,26 +99,19 @@ export async function removedFrom(
   return removed;
 }
 
-/** Lets `account` back into `folder` and the Open sub-folders that dropped them. */
-export async function restoreAcrossOpenSubtree(
-  admin: Admin,
-  folders: OpenFolder[],
+/** Lifts this folder's ban on `account` (each sub-folder keeps its own), with
+ *  Read only again when the parent holds them Read only. */
+export async function restoreTo(
+  writer: FolderRoleWriter,
+  parent: string,
   folder: string,
   account: string,
-): Promise<string[]> {
-  const add = (id: string) =>
-    admin.addGroupMembers(id, {
-      members: [{ identity: account, role: 'Member' }],
-    });
-  await add(folder);
-  const failed: string[] = [];
-  for (const id of openBelow(folders, folder)) {
-    try {
-      if (!(await lists(admin, id, account))) await add(id);
-    } catch (e: unknown) {
-      console.warn('[restoreAcrossOpenSubtree] not restored', id, e);
-      failed.push(id);
-    }
+): Promise<void> {
+  // An admin add is what clears the ban; one another admin sets meanwhile is lifted with it.
+  await writer.admin.addGroupMembers(folder, {
+    members: [{ identity: account, role: 'Member' }],
+  });
+  if ((await coreRoleIn(writer, parent, account)) === 'ReadOnly') {
+    await applyAcross(writer, [folder], account, true);
   }
-  return failed;
 }

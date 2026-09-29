@@ -15,14 +15,22 @@ const setFolderRole = vi.fn();
 vi.mock('@calimero-network/mero-react', () => ({
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useMero: () => ({
-    mero: { admin: { listGroupMembers, addGroupMembers, updateMemberRole, setMemberCapabilities } },
+    mero: {
+      admin: {
+        listGroupMembers,
+        addGroupMembers,
+        updateMemberRole,
+        setMemberCapabilities,
+        getMemberCapabilities: async () => ({ capabilities: 0 }),
+      },
+    },
   }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
     refetch: vi.fn().mockResolvedValue(undefined),
-    registryClient: { setFolderRole },
+    registryClient: { setFolderRole, getFolderRole: async () => 'Editor' },
     folders: [
       { id: 'parent', parent_id: null },
       { id: 'child', parent_id: 'parent' },

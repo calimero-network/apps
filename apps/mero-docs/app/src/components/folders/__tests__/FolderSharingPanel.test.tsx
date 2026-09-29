@@ -16,7 +16,7 @@ const setMemberCapabilities = vi.fn();
 const setFolderRole = vi.fn();
 const removeGroupMembers = vi.fn();
 const getMemberCapabilities = vi.fn();
-const workspace = { parentId: null as string | null, visibility: 'Restricted' };
+const workspace = { parentId: null as string | null, visibility: 'Restricted', self: null as string | null };
 const perms = { canManagePermissions: false, permissionsNeedOwner: false };
 // Per member: the name their own metadata read answered with, and whether it has answered.
 const metadata = { names: {} as Record<string, string>, answered: new Set<string>() };
@@ -29,9 +29,9 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
       { id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: workspace.visibility },
       { id: 'f2', parent_id: 'f1', alias: 'Notes', visibility: 'Open' },
     ],
-    selfIdentity: null,
+    selfIdentity: workspace.self,
     registryContextId: null,
-    registryClient: { setFolderRole },
+    registryClient: { setFolderRole, getFolderRole: async () => 'Editor' },
     namespaceMemberNames: { [NAMED]: 'Bob', [PICKED]: 'Carol' },
   }),
 }));
@@ -109,6 +109,7 @@ beforeEach(() => {
   perms.canManagePermissions = false;
   perms.permissionsNeedOwner = false;
   workspace.parentId = null;
+  workspace.self = null;
   workspace.visibility = 'Restricted';
   for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole, removeGroupMembers]) {
     fn.mockReset().mockResolvedValue(undefined);
@@ -147,6 +148,20 @@ describe('FolderSharingPanel read-only rows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     expect(screen.getByText('Carol')).toBeTruthy();
     expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+});
+
+describe('Restricted folder removal', () => {
+  // Core keeps a direct row in an Open sub-folder (left by Read only) after
+  // the person is removed from the Restricted folder above it.
+  it('also takes the person out of the Open sub-folders reached through it', async () => {
+    confirm.mockResolvedValue(true);
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: g === 'f2' ? [{ identity: NAMED }] : [],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
+    await waitFor(() => expect(removeGroupMembers).toHaveBeenCalledWith('f2', { members: [NAMED] }));
   });
 });
 
