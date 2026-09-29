@@ -1,0 +1,66 @@
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { HTTPError } from '@calimero-network/mero-js';
+import { FolderVisibilityToggle } from '../FolderVisibilityToggle';
+
+const BOB = 'b'.repeat(64);
+const setSubgroupVisibility = vi.fn();
+const listGroupMembers = vi.fn();
+const addGroupMembers = vi.fn();
+const updateMemberRole = vi.fn();
+const setMemberCapabilities = vi.fn();
+const setFolderRole = vi.fn();
+
+vi.mock('@calimero-network/mero-react', () => ({
+  useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
+  useMero: () => ({
+    mero: { admin: { listGroupMembers, addGroupMembers, updateMemberRole, setMemberCapabilities } },
+  }),
+}));
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    refetch: vi.fn().mockResolvedValue(undefined),
+    registryClient: { setFolderRole },
+    folders: [
+      { id: 'parent', parent_id: null },
+      { id: 'child', parent_id: 'parent' },
+    ],
+  }),
+}));
+vi.mock('@/hooks/useFolderPermissions', () => ({
+  useFolderPermissions: () => ({ canManageVisibility: true }),
+}));
+vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => async () => true }));
+
+beforeEach(() => {
+  for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities, setFolderRole]) {
+    fn.mockReset().mockResolvedValue(undefined);
+  }
+  updateMemberRole.mockReset().mockRejectedValue(new HTTPError(404, '', '/groups/child', new Headers()));
+  listGroupMembers.mockReset().mockImplementation(async (g: string) => ({
+    members: [{ identity: BOB, role: g === 'parent' ? 'ReadOnly' : 'Member' }],
+  }));
+});
+
+describe('FolderVisibilityToggle', () => {
+  // Opening lets the parent's members in by inheritance, Read only ones included.
+  it("makes the parent's Read only members Read only in a folder it opens", async () => {
+    render(<FolderVisibilityToggle folderId="child" current="Restricted" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make open' }));
+    await waitFor(() =>
+      expect(addGroupMembers).toHaveBeenCalledWith('child', {
+        members: [{ identity: BOB, role: 'ReadOnly' }],
+      }),
+    );
+    expect(setSubgroupVisibility).toHaveBeenCalledWith('child', { subgroupVisibility: 'open' });
+  });
+
+  it('carries nothing when it restricts a folder', async () => {
+    render(<FolderVisibilityToggle folderId="child" current="Open" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make restricted' }));
+    await waitFor(() => expect(setSubgroupVisibility).toHaveBeenCalled());
+    expect(listGroupMembers).not.toHaveBeenCalled();
+  });
+});

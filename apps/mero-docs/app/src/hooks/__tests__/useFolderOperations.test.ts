@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 // vi.mock is hoisted above imports, so this import still resolves to
 // the mocked '@calimero-network/mero-react' below.
+import { HTTPError } from '@calimero-network/mero-js';
 import { useFolderOperations } from '../useFolderOperations';
 
 // Capture the mero-react mutation mocks so assertions can read call args.
@@ -12,6 +13,9 @@ const createContext = vi.fn();
 const deleteContext = vi.fn();
 const deleteGroup = vi.fn();
 const addGroupMembers = vi.fn();
+const listGroupMembers = vi.fn();
+const updateMemberRole = vi.fn();
+const setMemberCapabilities = vi.fn();
 
 vi.mock('@calimero-network/mero-react', () => ({
   useCreateGroupInNamespace: () => ({ createGroupInNamespace }),
@@ -23,9 +27,18 @@ vi.mock('@calimero-network/mero-react', () => ({
   // so they're mocked on `mero.admin` rather than their own `use*` export.
   useMero: () => ({
     nodeUrl: 'http://node',
-    mero: { admin: { setGroupMetadata, addGroupMembers } },
+    mero: {
+      admin: {
+        setGroupMetadata,
+        addGroupMembers,
+        listGroupMembers,
+        updateMemberRole,
+        setMemberCapabilities,
+      },
+    },
   }),
 }));
+vi.mock('../../api/reparentGroup', () => ({ reparentGroup: vi.fn().mockResolvedValue(undefined) }));
 
 function makeRegistry() {
   return {
@@ -35,6 +48,7 @@ function makeRegistry() {
     unregisterFolder: vi.fn().mockResolvedValue(undefined),
     getFolderContext: vi.fn(),
     getFolders: vi.fn().mockResolvedValue([]),
+    setFolderRole: vi.fn().mockResolvedValue(undefined),
   } as unknown as Parameters<typeof useFolderOperations>[0];
 }
 
@@ -47,6 +61,37 @@ beforeEach(() => {
   setGroupMetadata.mockResolvedValue(undefined);
   createContext.mockResolvedValue({ contextId: 'docs-ctx' });
   addGroupMembers.mockResolvedValue(undefined);
+  listGroupMembers.mockResolvedValue({ members: [] });
+  setMemberCapabilities.mockResolvedValue(undefined);
+});
+
+describe('useFolderOperations.create - Read only', () => {
+  // Read only on a folder covers the sub-folders made later, too.
+  it("makes the parent's Read only members Read only in a new sub-folder", async () => {
+    const BOB = 'b'.repeat(64);
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: [{ identity: BOB, role: g === 'parent-folder' ? 'ReadOnly' : 'Member' }],
+    }));
+    updateMemberRole.mockRejectedValue(
+      new HTTPError(404, '', '/groups/new-folder', new Headers()),
+    );
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Notes',
+      visibility: 'Open',
+    });
+    expect(addGroupMembers).toHaveBeenCalledWith('new-folder', {
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    });
+    expect((registry as unknown as { setFolderRole: unknown }).setFolderRole).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_id: 'new-folder', member: BOB, role: 'Viewer' }),
+    );
+  });
 });
 
 describe('useFolderOperations.create - members', () => {

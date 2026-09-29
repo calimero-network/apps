@@ -7,6 +7,7 @@ import { CAPABILITIES } from '@/constants/config';
 
 const FOLDER = 'f'.repeat(64);
 const BOB = 'b'.repeat(64);
+const CHILD = 'c'.repeat(64);
 const JOIN = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
 
 const calls: string[] = [];
@@ -15,15 +16,26 @@ const addGroupMembers = vi.fn();
 const setFolderRole = vi.fn();
 const setCapabilities = vi.fn();
 let folderCaps = 0;
+// Bob's row in the sub-folder, as its member list reports it.
+let childRows: { identity: string; role: string }[] = [];
+const listGroupMembers = vi.fn(async (g: string) => ({ members: g === CHILD ? childRows : [] }));
 
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: { admin: { updateMemberRole, addGroupMembers } } }),
+  useMero: () => ({
+    mero: {
+      admin: {
+        updateMemberRole,
+        addGroupMembers,
+        listGroupMembers,
+        setMemberCapabilities: setCapabilities,
+      },
+    },
+  }),
   useGroupCapabilities: () => ({
     capabilities: folderCaps,
     loading: false,
     error: null,
     refetch: vi.fn().mockResolvedValue(undefined),
-    setCapabilities,
   }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
@@ -32,6 +44,10 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: 'reg',
     namespaceId: 'ns',
     namespaceMemberNames: {},
+    folders: [
+      { id: FOLDER, parent_id: null, alias: 'Plans' },
+      { id: CHILD, parent_id: FOLDER, alias: 'Notes' },
+    ],
   }),
 }));
 vi.mock('@/hooks/useContextEvents', () => ({ useContextEvents: vi.fn() }));
@@ -71,6 +87,7 @@ function roleSelectFor(
 beforeEach(() => {
   calls.length = 0;
   folderCaps = 0;
+  childRows = [];
   const record = (name: string) => async () => {
     calls.push(name);
   };
@@ -84,7 +101,7 @@ describe('FolderMemberRoleRow', () => {
   it('makes a Read only member core ReadOnly in the folder before anything else', async () => {
     const select = roleSelectFor('Member', 'Editor');
     fireEvent.change(select, { target: { value: 'ReadOnly' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(FOLDER, BOB, { capabilities: JOIN }));
     expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, {
       role: 'ReadOnly',
     });
@@ -104,7 +121,7 @@ describe('FolderMemberRoleRow', () => {
     updateMemberRole.mockRejectedValue(httpError(404));
     const select = roleSelectFor('Member', 'Editor');
     fireEvent.change(select, { target: { value: 'ReadOnly' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(FOLDER, BOB, { capabilities: JOIN }));
     expect(addGroupMembers).toHaveBeenCalledWith(FOLDER, {
       members: [{ identity: BOB, role: 'ReadOnly' }],
     });
@@ -127,9 +144,8 @@ describe('FolderMemberRoleRow', () => {
     expect(setCapabilities).not.toHaveBeenCalled();
   });
 
-  // mero-react's setCapabilities resolves null instead of throwing.
-  it('reports a caps write that did not happen', async () => {
-    setCapabilities.mockResolvedValue(null);
+  it('reports a caps write core refused', async () => {
+    setCapabilities.mockRejectedValue(httpError(403));
     const select = roleSelectFor('Member', 'Editor');
     fireEvent.change(select, { target: { value: 'ReadOnly' } });
     expect((await screen.findByRole('alert')).textContent).toMatch(/Role update failed/);
@@ -140,7 +156,7 @@ describe('FolderMemberRoleRow', () => {
     expect(select.value).toBe('ReadOnly');
     expect(select.disabled).toBe(false);
     fireEvent.change(select, { target: { value: 'Editor' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(FOLDER, BOB, { capabilities: JOIN }));
     expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, {
       role: 'Member',
     });
@@ -149,6 +165,36 @@ describe('FolderMemberRoleRow', () => {
       'setFolderRole',
       'setCapabilities',
     ]);
+  });
+
+  // Read only on a folder covers every sub-folder the member reaches.
+  it('carries Read only into the sub-folders, and its end too', async () => {
+    childRows = [{ identity: BOB, role: 'Member' }];
+    fireEvent.change(roleSelectFor('Member', 'Editor'), { target: { value: 'ReadOnly' } });
+    await waitFor(() =>
+      expect(setCapabilities).toHaveBeenCalledWith(CHILD, BOB, { capabilities: JOIN }),
+    );
+    expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'ReadOnly' });
+    expect(setFolderRole).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_id: CHILD, role: 'Viewer' }),
+    );
+  });
+
+  it('ends Read only in the sub-folders when the member is made an Editor again', async () => {
+    childRows = [{ identity: BOB, role: 'ReadOnly' }];
+    fireEvent.change(roleSelectFor('ReadOnly', 'Viewer'), { target: { value: 'Editor' } });
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'Member' }));
+  });
+
+  it('names the sub-folders it could not make Read only', async () => {
+    childRows = [{ identity: BOB, role: 'Member' }];
+    updateMemberRole.mockImplementation(async (g: string) => {
+      if (g === CHILD) throw httpError(403);
+    });
+    fireEvent.change(roleSelectFor('Member', 'Editor'), { target: { value: 'ReadOnly' } });
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Role set here, but not in Notes. Ask the owner of each to set it.',
+    );
   });
 
   it('moves between Editor and Manager without touching the core role', async () => {
@@ -164,7 +210,7 @@ describe('FolderMemberRoleRow', () => {
     roleSelectFor('Member', 'Viewer');
     expect(screen.getByText('Read only, but not enforced.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Enforce' }));
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(FOLDER, BOB, { capabilities: JOIN }));
     expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, { role: 'ReadOnly' });
     expect(calls).toEqual(['updateMemberRole', 'setFolderRole', 'setCapabilities']);
   });

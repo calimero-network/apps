@@ -7,6 +7,13 @@ const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
 const PICKED = 'c'.repeat(64);
 const confirm = vi.fn();
+const addMember = vi.fn();
+const listGroupMembers = vi.fn();
+const addGroupMembers = vi.fn();
+const updateMemberRole = vi.fn();
+const setMemberCapabilities = vi.fn();
+const setFolderRole = vi.fn();
+const workspace = { parentId: null as string | null };
 const perms = { canManagePermissions: false, permissionsNeedOwner: false };
 // Per member: the name their own metadata read answered with, and whether it has answered.
 const metadata = { names: {} as Record<string, string>, answered: new Set<string>() };
@@ -14,10 +21,10 @@ const metadata = { names: {} as Record<string, string>, answered: new Set<string
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
-    folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
+    folders: [{ id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: 'Restricted' }],
     selfIdentity: null,
     registryContextId: null,
-    registryClient: { setFolderRole: vi.fn() },
+    registryClient: { setFolderRole },
     namespaceMemberNames: { [NAMED]: 'Bob', [PICKED]: 'Carol' },
   }),
 }));
@@ -28,7 +35,9 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
   }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: null }),
+  useMero: () => ({
+    mero: { admin: { listGroupMembers, addGroupMembers, updateMemberRole, setMemberCapabilities } },
+  }),
   useGroupCapabilities: () => ({
     capabilities: 0,
     loading: false,
@@ -53,7 +62,7 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     ],
     loading: false,
     error: null,
-    add: vi.fn(),
+    add: addMember,
     remove: vi.fn(),
     refetch: vi.fn(),
   }),
@@ -83,6 +92,11 @@ beforeEach(() => {
   confirm.mockReset().mockResolvedValue(false);
   perms.canManagePermissions = false;
   perms.permissionsNeedOwner = false;
+  workspace.parentId = null;
+  for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole]) {
+    fn.mockReset().mockResolvedValue(undefined);
+  }
+  listGroupMembers.mockReset().mockResolvedValue({ members: [] });
   metadata.names = {};
   metadata.answered = new Set([NAMED, UNNAMED]);
 });
@@ -112,6 +126,21 @@ describe('FolderSharingPanel read-only rows', () => {
 });
 
 describe('folder roles', () => {
+  // Read only on the parent covers this sub-folder, even for someone added later.
+  it('makes a member who is Read only in the parent folder Read only here when added', async () => {
+    workspace.parentId = 'p0';
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: [{ identity: PICKED, role: g === 'p0' ? 'ReadOnly' : 'Member' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() =>
+      expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
+    );
+    expect(addMember).toHaveBeenCalledWith(PICKED);
+  });
+
   it("tells a registry manager who is not the folder's admin why roles are fixed", () => {
     perms.permissionsNeedOwner = true;
     render(<FolderSharingPanel folderId="f1" />);

@@ -10,12 +10,16 @@
 // registry.setVisibility - the registry no longer carries this field.
 
 import React, { useState } from 'react';
-import { useSetSubgroupVisibility } from '@calimero-network/mero-react';
+import { useMero, useSetSubgroupVisibility } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { inheritReadOnly } from '@/lib/applyFolderRole';
+
+const READ_ONLY_NOT_CARRIED =
+  "Opened, but the parent folder's Read only members could not be made Read only here.";
 
 interface Props {
   folderId: string;
@@ -28,7 +32,8 @@ interface Props {
 }
 
 export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
-  const { namespaceId, refetch } = useDriveWorkspace();
+  const { namespaceId, refetch, folders, registryClient } = useDriveWorkspace();
+  const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const confirm = useConfirm();
@@ -62,7 +67,13 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       await setSubgroupVisibility(folderId, {
         subgroupVisibility: next.toLowerCase(),
       });
+      const parent = folders.find((f) => f.id === folderId)?.parent_id;
+      const failed =
+        next === 'Open' && parent && mero && registryClient
+          ? await inheritReadOnly({ admin: mero.admin, registry: registryClient }, parent, folderId)
+          : [];
       await refetch();
+      if (failed.length > 0) onError?.(new Error(READ_ONLY_NOT_CARRIED));
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       onError?.(err);

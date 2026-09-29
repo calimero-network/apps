@@ -9,7 +9,6 @@
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { HTTPError } from '@calimero-network/mero-js';
 import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
@@ -21,19 +20,15 @@ import { RoleSelect } from './RoleSelect';
 import {
   describeRoleChange,
   folderRoleOf,
-  FOLDER_ROLE_GRANTS,
   FOLDER_ROLES,
   isTeeRole,
   parseGroupRole,
   roleDisplayLabel,
   type FolderAccessRole,
-  type GroupRole,
 } from '@/lib/roles';
-// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point -
-// this fleet has had folder ids, context ids and account ids all be bare 64-hex
-// strings that type-check in each other's slots.
-import { FolderId } from '@/generated/registry/RegistryClient';
+import { applyAcross, applyFolderGrant } from '@/lib/applyFolderRole';
+import { folderLabel } from '@/lib/folderLabel';
+import { descendantsOf } from '@/utils/ancestry';
 import type { Role } from '@/generated/registry/RegistryClient';
 
 interface Props {
@@ -67,7 +62,7 @@ export function FolderMemberRoleRow({
   removing,
 }: Props) {
   const { mero } = useMero();
-  const { registryClient, registryContextId, namespaceId } =
+  const { registryClient, registryContextId, namespaceId, folders } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
   const { name, settled } = useMemberName(namespaceId, identity);
@@ -97,51 +92,37 @@ export function FolderMemberRoleRow({
     caps.loading || caps.error ? null : (caps.capabilities ?? null),
   );
 
-  // `identity` is the member's account, which is what core keys group rows by.
-  const setCoreRole = async (role: GroupRole) => {
-    if (!mero) throw new Error('Mero client not ready');
-    try {
-      await mero.admin.updateMemberRole(folderId, identity, { role });
-    } catch (e: unknown) {
-      // A member who only inherits an Open folder has no direct row to update.
-      if (!(e instanceof HTTPError && e.status === 404)) throw e;
-      await mero.admin.addGroupMembers(folderId, { members: [{ identity, role }] });
-    }
-  };
-
   const applyRole = async (next: FolderAccessRole) => {
-    if (!registryClient) {
+    if (!registryClient || !mero) {
       setUpdateError('Workspace not ready');
       return;
     }
-    const grant = FOLDER_ROLE_GRANTS[next];
+    // `identity` is the member's account, which is what core keys group rows by.
+    const writer = { admin: mero.admin, registry: registryClient };
+    const readOnly = next === 'ReadOnly';
     setUpdating(true);
     setUpdateError(null);
     try {
-      if (grant.coreRole !== core) await setCoreRole(grant.coreRole);
-      await registryClient.setFolderRole({
-        folder_id: FolderId(folderId),
-        member: identity,
-        role: grant.role,
-      });
-      if ((await caps.setCapabilities(grant.folderCaps)) === null) {
-        throw new Error("the folder's permissions could not be set");
+      await applyFolderGrant(writer, folderId, identity, next, core);
+      // Read only covers the subtree, so its start and its end both carry down.
+      if (readOnly || core === 'ReadOnly') {
+        const failed = await applyAcross(writer, descendantsOf(folders, folderId), identity, readOnly);
+        if (failed.length > 0) setUpdateError(subtreeFailure(failed));
       }
-      // `useGroupCapabilities.setCapabilities` resolves with the new
-      // bitmask but mero-react does NOT necessarily update the hook's
-      // own `capabilities` state until the next read - and the
-      // RoleSelect's current role derives from that value.
-      // Explicitly refetching keeps the dropdown label honest after
-      // the write lands.
       await caps.refetch();
       onAfterRoleChange?.();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
-      setUpdateError(err.message);
+      setUpdateError(`Role update failed: ${err.message}`);
     } finally {
       setUpdating(false);
     }
   };
+
+  const subtreeFailure = (failed: string[]) =>
+    `Role set here, but not in ${failed
+      .map((id) => folderLabel(folders.find((f) => f.id === id)?.alias))
+      .join(', ')}. Ask the owner of each to set it.`;
 
   const onRoleChange = async (next: FolderAccessRole) => {
     if (!current) return;
@@ -213,7 +194,7 @@ export function FolderMemberRoleRow({
       )}
       {updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
-          Role update failed: {updateError}
+          {updateError}
         </p>
       )}
       {caps.error && !updateError && (

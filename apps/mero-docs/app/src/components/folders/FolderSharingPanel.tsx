@@ -24,6 +24,7 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
+import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';
@@ -45,6 +46,9 @@ import {
 } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 import { folderLabel } from '@/lib/folderLabel';
+import { inheritReadOnly } from '@/lib/applyFolderRole';
+
+const READ_ONLY_NOT_CARRIED = 'Added, but they are Read only in the parent folder and could not be made Read only here.';
 
 interface Props {
   folderId: string;
@@ -59,7 +63,9 @@ export function FolderSharingPanel({ folderId }: Props) {
     folders,
     selfIdentity,
     registryContextId,
+    registryClient,
   } = useDriveWorkspace();
+  const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
@@ -128,6 +134,12 @@ export function FolderSharingPanel({ folderId }: Props) {
     try {
       await add(trimmedIdentity);
       setIdentity('');
+      if (folder?.parent_id && mero && registryClient) {
+        const writer = { admin: mero.admin, registry: registryClient };
+        if ((await inheritReadOnly(writer, folder.parent_id, folderId)).length > 0) {
+          setInviteError(READ_ONLY_NOT_CARRIED);
+        }
+      }
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setInviteError(err.message);
