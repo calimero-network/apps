@@ -30,25 +30,27 @@ interface Admin {
   ): Promise<{ capabilities?: number }>;
 }
 
-/** The Open sub-folders reached through `folder`, parents first; a
- *  Restricted sub-folder walls off everything below it. */
-function openConnected(folders: OpenFolder[], folder: string): string[] {
-  const out: string[] = [];
+/** The Open sub-folders reached through `folder`, parents first; a Restricted
+ *  sub-folder walls off everything below it. `unknown` are sub-folders whose
+ *  visibility is not loaded (or failed to load), which callers must report. */
+export function openConnected(
+  folders: OpenFolder[],
+  folder: string,
+): { open: string[]; unknown: string[] } {
+  const open: string[] = [];
+  const unknown: string[] = [];
   const queue = [folder];
   while (queue.length > 0) {
     const parent = queue.shift();
     for (const f of folders) {
-      if (
-        f.parent_id !== parent ||
-        f.visibility !== 'Open' ||
-        out.includes(f.id)
-      )
-        continue;
-      out.push(f.id);
+      if (f.parent_id !== parent || open.includes(f.id)) continue;
+      if (f.visibility === undefined) unknown.push(f.id);
+      if (f.visibility !== 'Open') continue;
+      open.push(f.id);
       queue.push(f.id);
     }
   }
-  return out;
+  return { open, unknown };
 }
 
 /** After a removal from `folder`, takes `account` out of each Open sub-folder
@@ -59,8 +61,9 @@ export async function clearOpenSubtree(
   folder: string,
   account: string,
 ): Promise<string[]> {
-  const failed: string[] = [];
-  for (const id of openConnected(folders, folder)) {
+  const { open, unknown } = openConnected(folders, folder);
+  const failed = [...unknown];
+  for (const id of open) {
     try {
       if ((await listMembers(admin, id)).some((m) => m.identity === account)) {
         await admin.removeGroupMembers(id, { members: [account] });

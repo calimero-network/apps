@@ -56,6 +56,14 @@ describe('clearOpenSubtree', () => {
   });
 });
 
+describe('clearOpenSubtree with unread folders', () => {
+  // Visibility is unknown until the folder's info loads, or after it failed.
+  it('names a sub-folder whose visibility it does not know, instead of skipping it', async () => {
+    const unread = [...folders, { id: 'u', parent_id: 'g', visibility: undefined }];
+    expect(await clearOpenSubtree(admin, unread, 'g', BOB)).toEqual(['u']);
+  });
+});
+
 describe('removedFrom', () => {
   it('lists a parent member who could join the Open folder but is not in it, never a Guest or a TEE', async () => {
     lists = {
