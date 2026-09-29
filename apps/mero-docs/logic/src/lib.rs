@@ -1122,6 +1122,9 @@ impl DocsState {
     /// One doc's comments: an index seek, not a walk of every comment.
     #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
+        if self.header_of(&doc_id)?.is_none() {
+            return Ok(Vec::new());
+        }
         let entries = self
             .comments
             .query("doc_id")
@@ -1134,7 +1137,7 @@ impl DocsState {
             if !seen.insert(id.clone()) {
                 continue;
             }
-            if let Some((author, c)) = self.comment_holder(&id)? {
+            if let Some((author, c)) = self.named_comment(&id)? {
                 if c.doc_id == doc_id {
                     out.push(project_comment(&id, hex(author.as_bytes()), &c));
                 }
@@ -1291,15 +1294,19 @@ impl DocsState {
             .find(|(owner, _)| id_names(id, owner)))
     }
 
-    /// The comment at `id` of the account the id names, with that account, while
-    /// its doc is listed. A key-only `get` would read the caller's own.
-    fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
-        let Some((author, c)) = self
+    /// The comment at `id` of the account the id names, with that account.
+    /// A key-only `get` would read the caller's own.
+    fn named_comment(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
+        Ok(self
             .comments
             .entries_at(id)?
             .into_iter()
-            .find(|(owner, _)| id_names(id, owner))
-        else {
+            .find(|(owner, _)| id_names(id, owner)))
+    }
+
+    /// `named_comment`, while its doc is listed.
+    fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
+        let Some((author, c)) = self.named_comment(id)? else {
             return Ok(None);
         };
         let live = self
