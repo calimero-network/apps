@@ -397,6 +397,14 @@ jobs:
         run: |
           ! git grep -nI $'\u2014' -- apps/mero-docs ':!apps/mero-docs/app/src/pages/landing' ':!apps/mero-docs/app/src/generated'
 
+      # fleet-bump rewrites the core tag everywhere except the checksummed
+      # cargo-mero installer under apps/mero-docs, which sat a release behind.
+      - name: Assert setup-cargo-mero.sh pins the workspace core tag
+        run: python3 scripts/check-cargo-mero-pin.py
+
+      - name: Assert the cargo-mero pin check still catches drift
+        run: python3 scripts/tests/cargo-mero-pin-test.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
