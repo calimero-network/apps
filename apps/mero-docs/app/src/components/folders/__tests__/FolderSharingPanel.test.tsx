@@ -217,19 +217,20 @@ describe('folder roles', () => {
     );
   });
 
-  // Core refuses a folder role change from an admin who only inherits the folder.
-  it('does not re-apply it for an admin who only inherits the folder', async () => {
+  // A same-role update is not a safe probe: without a direct Admin row it
+  // would sign MemberRoleSet{Admin} and undo a co-admin's demotion.
+  it("never writes the viewer's own role while re-applying", async () => {
     workspace.parentId = 'p0';
     workspace.self = NAMED;
     perms.canManagePermissions = true;
-    updateMemberRole.mockRejectedValue(new Error('not an admin of this group'));
     listGroupMembers.mockImplementation(async () => ({
       members: [{ identity: PICKED, role: 'ReadOnly' }],
     }));
     render(<FolderSharingPanel folderId="f1" />);
-    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith('f1', NAMED, { role: 'Admin' }));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(updateMemberRole).not.toHaveBeenCalledWith('f1', PICKED, expect.anything());
+    await waitFor(() =>
+      expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
+    );
+    expect(updateMemberRole).not.toHaveBeenCalledWith('f1', NAMED, expect.anything());
   });
 
   it('does not re-apply it for someone who is not the folder admin', async () => {
