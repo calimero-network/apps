@@ -9,6 +9,7 @@ const FOLDER = 'f'.repeat(64);
 const BOB = 'b'.repeat(64);
 const CHILD = 'c'.repeat(64);
 const WALLED = 'd'.repeat(64);
+const PARENT = 'a'.repeat(64);
 const JOIN = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
 
 const calls: string[] = [];
@@ -19,8 +20,13 @@ const setCapabilities = vi.fn();
 let folderCaps = 0;
 // Bob's row in the sub-folder, as its member list reports it.
 let childRows: { identity: string; role: string }[] = [];
+let folderParent: string | null = null;
+let parentRows: { identity: string; role: string }[] = [];
 let extraFolders: { id: string; parent_id: string; alias: string }[] = [];
-const listGroupMembers = vi.fn(async (g: string) => ({ members: g === CHILD ? childRows : [] }));
+const byFolder = async (g: string) => ({
+  members: g === CHILD ? childRows : g === PARENT ? parentRows : [],
+});
+const listGroupMembers = vi.fn(byFolder);
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
@@ -47,7 +53,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'ns',
     namespaceMemberNames: {},
     folders: [
-      { id: FOLDER, parent_id: null, alias: 'Plans' },
+      { id: FOLDER, parent_id: folderParent, alias: 'Plans', visibility: 'Open' },
+      { id: PARENT, parent_id: null, alias: 'Team', visibility: 'Open' },
       { id: CHILD, parent_id: FOLDER, alias: 'Notes', visibility: 'Open' },
       { id: WALLED, parent_id: FOLDER, alias: 'Private', visibility: 'Restricted' },
       ...extraFolders,
@@ -93,6 +100,9 @@ beforeEach(() => {
   folderCaps = 0;
   childRows = [];
   extraFolders = [];
+  folderParent = null;
+  listGroupMembers.mockImplementation(byFolder);
+  parentRows = [];
   const record = (name: string) => async () => {
     calls.push(name);
   };
@@ -216,6 +226,19 @@ describe('FolderMemberRoleRow', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Role set here, but not in Unread. Ask the owner of each to set it.',
     );
+  });
+
+  // A direct row here does not lift a parent's Read only, which covers this folder.
+  it('refuses Editor under a parent that holds the member Read only, even with a row here', async () => {
+    folderParent = PARENT;
+    parentRows = [{ identity: BOB, role: 'ReadOnly' }];
+    childRows = [{ identity: BOB, role: 'ReadOnly' }];
+    fireEvent.change(roleSelectFor('ReadOnly', 'Viewer'), { target: { value: 'Editor' } });
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Read only here comes from a parent folder. Change it there.',
+    );
+    expect(updateMemberRole).not.toHaveBeenCalled();
+    expect(setFolderRole).not.toHaveBeenCalled();
   });
 
   // Core lists them ReadOnly through a parent folder, with no row here to change.

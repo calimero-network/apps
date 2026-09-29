@@ -26,7 +26,7 @@ import {
   roleDisplayLabel,
   type FolderAccessRole,
 } from '@/lib/roles';
-import { applyAcross, applyFolderGrant } from '@/lib/applyFolderRole';
+import { applyAcross, applyFolderGrant, coreRoleIn } from '@/lib/applyFolderRole';
 import { folderLabel } from '@/lib/folderLabel';
 import { openConnected } from '@/lib/openFolderRemoval';
 import type { Role } from '@/generated/registry/RegistryClient';
@@ -105,7 +105,14 @@ export function FolderMemberRoleRow({
     setUpdating(true);
     setUpdateError(null);
     try {
-      if (!(await applyFolderGrant(writer, folderId, identity, next, core))) {
+      // A parent's Read only covers this Open folder, row here or not.
+      const here = folders.find((f) => f.id === folderId);
+      const underReadOnly =
+        !readOnly &&
+        here?.visibility === 'Open' &&
+        !!here.parent_id &&
+        (await coreRoleIn(writer, here.parent_id, identity)) === 'ReadOnly';
+      if (underReadOnly || !(await applyFolderGrant(writer, folderId, identity, next, core))) {
         setUpdateError(PARENT_READ_ONLY);
         return;
       }
