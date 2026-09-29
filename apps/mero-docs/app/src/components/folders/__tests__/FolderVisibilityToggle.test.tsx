@@ -11,6 +11,13 @@ const addGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
 const setFolderRole = vi.fn();
+const BASE = [
+  { id: 'parent', parent_id: null, visibility: 'Open' },
+  { id: 'child', parent_id: 'parent', visibility: 'Restricted' },
+];
+const workspace: { folders: { id: string; parent_id: string | null; visibility?: string }[] } = {
+  folders: BASE,
+};
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
@@ -31,10 +38,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'ns',
     refetch: vi.fn().mockResolvedValue(undefined),
     registryClient: { setFolderRole, getFolderRole: async () => 'Editor' },
-    folders: [
-      { id: 'parent', parent_id: null },
-      { id: 'child', parent_id: 'parent' },
-    ],
+    folders: workspace.folders,
   }),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
@@ -43,6 +47,7 @@ vi.mock('@/hooks/useFolderPermissions', () => ({
 vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => async () => true }));
 
 beforeEach(() => {
+  workspace.folders = BASE;
   for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities, setFolderRole]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
@@ -64,6 +69,26 @@ describe('FolderVisibilityToggle', () => {
       }),
     );
     expect(setSubgroupVisibility).toHaveBeenCalledWith('child', { subgroupVisibility: 'open' });
+  });
+
+  // Opening a folder also opens the way to its Open sub-folders, which then need the row too.
+  it("carries Read only into the Open sub-folders below a folder it opens", async () => {
+    workspace.folders = [...BASE, { id: 'grandchild', parent_id: 'child', visibility: 'Open' }];
+    render(<FolderVisibilityToggle folderId="child" current="Restricted" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make open' }));
+    await waitFor(() =>
+      expect(addGroupMembers).toHaveBeenCalledWith('grandchild', {
+        members: [{ identity: BOB, role: 'ReadOnly' }],
+      }),
+    );
+  });
+
+  it('reports a sub-folder whose visibility it does not know', async () => {
+    const onError = vi.fn();
+    workspace.folders = [...BASE, { id: 'unread', parent_id: 'child' }];
+    render(<FolderVisibilityToggle folderId="child" current="Restricted" onError={onError} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make open' }));
+    await waitFor(() => expect(onError).toHaveBeenCalled());
   });
 
   it('carries nothing when it restricts a folder', async () => {
