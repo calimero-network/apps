@@ -3,7 +3,7 @@ import styled from "styled-components";
 import { Button, SearchInput } from "@calimero-network/mero-ui";
 
 import SearchResultMessage from "./SearchResultMessage";
-import type { CurbMessage } from "../types/Common";
+import type { SearchResult } from "../hooks/messageSearch";
 
 interface ChatSearchOverlayProps {
   searchInputValue: string;
@@ -17,13 +17,11 @@ interface ChatSearchOverlayProps {
   hasSearchQuery: boolean;
   hasSearchResults: boolean;
   searchQuery: string;
-  searchResults: CurbMessage[];
-  searchTotalCount: number;
+  searchResults: SearchResult[];
   searchHasMore: boolean;
   onLoadMoreSearch: () => void | Promise<void>;
   onClose: () => void;
-  searchContextId: string;
-  onResultClick?: (contextId: string) => void;
+  onResultClick?: (result: SearchResult) => void;
 }
 
 const SearchOverlay = styled.div`
@@ -170,11 +168,9 @@ export default function ChatSearchOverlay({
   hasSearchResults,
   searchQuery,
   searchResults,
-  searchTotalCount,
   searchHasMore,
   onLoadMoreSearch,
   onClose,
-  searchContextId,
   onResultClick,
 }: ChatSearchOverlayProps) {
   return (
@@ -199,7 +195,7 @@ export default function ChatSearchOverlay({
                 label="Search messages"
                 value={searchInputValue}
                 onChange={onSearchInputChange}
-                placeholder="Search by message text or sender"
+                placeholder="Search message text"
                 clearable={false}
                 showSuggestions={false}
                 showCategories={false}
@@ -228,45 +224,45 @@ export default function ChatSearchOverlay({
             !hasSearchResults &&
             !searchError && (
               <SearchEmptyState>
-                No messages matched "{searchQuery}"
+                {searchHasMore
+                  ? `No messages matched "${searchQuery}" in the newest history`
+                  : `No messages matched "${searchQuery}"`}
               </SearchEmptyState>
             )}
           {hasSearchResults && (
             <>
               <SearchMeta>
-                Showing {searchResults.length} of {searchTotalCount} results
+                {searchHasMore
+                  ? `Showing the newest ${searchResults.length} results`
+                  : `${searchResults.length} ${searchResults.length === 1 ? "result" : "results"}`}
               </SearchMeta>
               <SearchResultsScroll>
-                {searchResults.map((message, index) => (
+                {searchResults.map((result) => (
                   <SearchResultItem
-                    key={`${message.id}-${message.timestamp}-${index}`}
+                    key={result.key}
                     onClick={
-                      onResultClick && (message.contextId ?? searchContextId)
-                        ? () =>
-                            onResultClick(
-                              message.contextId ?? searchContextId,
-                            )
-                        : undefined
+                      onResultClick ? () => onResultClick(result) : undefined
                     }
                     style={onResultClick ? { cursor: "pointer" } : undefined}
                   >
-                    <SearchResultMessage
-                      message={message}
-                      contextId={message.contextId ?? searchContextId}
-                    />
+                    <SearchResultMessage result={result} />
                   </SearchResultItem>
                 ))}
               </SearchResultsScroll>
-              {searchHasMore && (
-                <Button
-                  variant="secondary"
-                  onClick={onLoadMoreSearch}
-                  disabled={isSearchingMessages}
-                >
-                  {isSearchingMessages ? "Loading..." : "Load more results"}
-                </Button>
-              )}
             </>
+          )}
+          {hasSearchQuery && searchHasMore && (
+            <Button
+              variant="secondary"
+              onClick={onLoadMoreSearch}
+              disabled={isSearchingMessages}
+            >
+              {isSearchingMessages
+                ? "Loading..."
+                : hasSearchResults
+                  ? "Load more results"
+                  : "Search older messages"}
+            </Button>
           )}
         </SearchOverlayBody>
       </SearchOverlayPanel>

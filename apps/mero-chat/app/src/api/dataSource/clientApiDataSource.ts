@@ -50,6 +50,8 @@ import {
   type UpdateReactionProps,
   type UserId,
   type SearchAllMessagesProps,
+  type SearchMessagesProps,
+  type SearchPage,
 } from "../clientApi";
 
 // Backward-compat shim: dataSource code calls
@@ -654,6 +656,63 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  /**
+   * One page of `search_messages` in one context.
+   *
+   * The error keeps whatever the node said, including for a method the
+   * context's app version does not have: the caller tells that case apart
+   * (`isMissingMethod`) to fall back to `search_all_messages`.
+   */
+  async searchMessages(props: SearchMessagesProps): ApiResponse<SearchPage> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        SearchPage
+      >(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.SEARCH_MESSAGES,
+          argsJson: {
+            query: props.query,
+            cursor: props.cursor ?? null,
+            limit: props.limit ?? null,
+          },
+          executorPublicKey: props.executorPublicKey,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
+        },
+      );
+      if (response?.error) {
+        const cause = response.error.error?.cause;
+        const message =
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (cause?.info as any)?.message ??
+          JSON.stringify(response.error.error ?? response.error);
+        return {
+          data: null,
+          error: { code: response.error.code, message },
+        };
+      }
+      return { data: response?.result.output as SearchPage, error: null };
+    } catch (error) {
+      return {
+        error: {
+          code: 500,
+          message:
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "An unexpected error occurred during searchMessages",
+        },
+      };
+    }
+  }
+
+  /** `search_all_messages`, for a context whose app predates `search_messages`. */
   async searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse> {
     try {
       const contextId = props.contextId ?? getContextId() ?? "";
