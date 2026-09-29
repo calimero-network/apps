@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { CircleUserRound, FileText, Hash, TextAlignStart } from 'lucide-react';
 
-import { Highlight, type HighlightRange } from '@/components/common/Highlight';
+import { Highlight } from '@/components/common/Highlight';
 import { cn } from '@/lib/utils';
 import {
   byGroup,
@@ -31,9 +31,9 @@ export interface DocLinkPickerItem {
   kind: 'doc' | 'text' | 'section' | 'person';
   group?: string; // rows of the @ menu sit under People or Documents
   title: string;
-  titleRanges?: HighlightRange[];
+  titleRanges?: [number, number][];
   quote?: string;
-  quoteRanges?: HighlightRange[];
+  quoteRanges?: [number, number][];
   /** The right-hand context: the folder path, for a section its document, for a person a folder access note. */
   folderLabel: string;
 }

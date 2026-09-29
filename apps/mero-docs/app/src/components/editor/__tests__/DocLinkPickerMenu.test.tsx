@@ -12,7 +12,7 @@ const ITEMS: DocLinkPickerItem[] = [
     id: 'doc-7',
     kind: 'doc',
     title: 'Pricing notes',
-    titleRanges: [{ start: 0, end: 4 }],
+    titleRanges: [[0, 4]],
     folderLabel: 'Product',
   },
   {
@@ -20,7 +20,7 @@ const ITEMS: DocLinkPickerItem[] = [
     kind: 'text',
     title: 'Design review notes',
     quote: 'Pricing page',
-    quoteRanges: [{ start: 0, end: 4 }],
+    quoteRanges: [[0, 4]],
     folderLabel: 'Design',
   },
 ];

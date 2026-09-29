@@ -1,7 +1,6 @@
 // Doc-to-doc links: what the @ picker offers, what a pick or a pasted app URL
 // inserts, and where a click on a link goes. A doc link is an ordinary `link`.
 
-import type { HighlightRange } from '@/components/common/Highlight';
 import type { DocLinkPickerItem } from '@/components/editor/DocLinkPickerMenu';
 import type { FolderPaths } from '@/components/home/useHomeChips';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
@@ -52,9 +51,6 @@ export function opensDocPicker(tr: Textish): boolean {
   const at = tr.selection.from;
   return WORD_START.test(tr.doc.textBetween(Math.max(0, at - 1), at));
 }
-
-const toRanges = (ranges: [number, number][]): HighlightRange[] =>
-  ranges.map(([start, end]) => ({ start, end }));
 
 type PickerSource = {
   ws: string;
@@ -111,7 +107,7 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
       ? [
           {
             ...item(hit.row, 'doc'),
-            titleRanges: toRanges(hit.ranges),
+            titleRanges: hit.ranges,
             typo: hit.typo,
           },
         ]
@@ -124,7 +120,7 @@ export function docLinkItems(query: string, src: PickerSource): DocLinkItem[] {
       {
         ...item(r, 'text', hit.blockId),
         quote: hit.snippet,
-        quoteRanges: toRanges(hit.ranges),
+        quoteRanges: hit.ranges,
       },
     ];
   });
@@ -161,7 +157,7 @@ export function sectionLinkItems(
         id: `section:${rowKey(r.folderId, r.docId)}:${b.id}`,
         kind: 'section',
         title: heading,
-        titleRanges: toRanges(matchRanges(heading, text)),
+        titleRanges: matchRanges(heading, text),
         folderLabel: title,
         href: appPath({
           ws: src.ws,
