@@ -30,6 +30,10 @@ export interface FolderRoleWriter {
       identity: string,
       request: { capabilities: number },
     ): Promise<void>;
+    getMemberCapabilities(
+      groupId: string,
+      member: string,
+    ): Promise<{ capabilities?: number }>;
   };
   registry: {
     setFolderRole(params: {
@@ -37,6 +41,10 @@ export interface FolderRoleWriter {
       member: string;
       role: Role;
     }): Promise<void>;
+    getFolderRole(params: {
+      folder_id: FolderId;
+      member: string;
+    }): Promise<Role>;
   };
 }
 
@@ -143,8 +151,31 @@ export async function inheritReadOnly(
     .map((m) => m.identity);
   const failed: string[] = [];
   for (const account of readOnly) {
+    if (await holdsReadOnly(writer, folder, account)) continue;
     if ((await applyAcross(writer, [folder], account, true)).length > 0)
       failed.push(account);
   }
   return failed;
+}
+
+// Caps are kept on a direct row only, so the grant's caps prove the row is
+// there rather than inherited from the parent.
+async function holdsReadOnly(
+  writer: FolderRoleWriter,
+  folder: string,
+  account: string,
+) {
+  const grant = FOLDER_ROLE_GRANTS.ReadOnly;
+  if ((await coreRoleIn(writer, folder, account)) !== 'ReadOnly') return false;
+  const { capabilities } = await writer.admin.getMemberCapabilities(
+    folder,
+    account,
+  );
+  if (capabilities !== grant.folderCaps) return false;
+  return (
+    (await writer.registry.getFolderRole({
+      folder_id: FolderId(folder),
+      member: account,
+    })) === grant.role
+  );
 }

@@ -34,6 +34,7 @@ vi.mock('@calimero-network/mero-react', () => ({
         listGroupMembers,
         updateMemberRole,
         setMemberCapabilities,
+        getMemberCapabilities: async () => ({ capabilities: 0 }),
       },
     },
   }),
@@ -49,6 +50,7 @@ function makeRegistry() {
     getFolderContext: vi.fn(),
     getFolders: vi.fn().mockResolvedValue([]),
     setFolderRole: vi.fn().mockResolvedValue(undefined),
+    getFolderRole: vi.fn().mockResolvedValue('Editor'),
   } as unknown as Parameters<typeof useFolderOperations>[0];
 }
 

@@ -155,17 +155,22 @@ export function FolderSharingPanel({ folderId }: Props) {
   // Read only from the parent may have missed this folder: two admins can race
   // (one sets it above while another creates or opens this one). Its admin re-applies it.
   const parentId = folder?.parent_id ?? null;
-  const reapplyReadOnly = perms.canManagePermissions && !!parentId && !!mero && !!registryClient;
-  const reappliedFor = useRef<string | null>(null); // once per folder: every pass writes
+  const reapplyReadOnly = perms.canManagePermissions && !!parentId && !!selfIdentity;
+  const reappliedFor = useRef<string | null>(null); // once per folder per mount
   useEffect(() => {
-    if (!reapplyReadOnly || !parentId || !mero || !registryClient) return;
+    if (!reapplyReadOnly || !parentId || !selfIdentity || !mero || !registryClient) return;
     if (reappliedFor.current === folderId) return;
     reappliedFor.current = folderId;
     const writer = { admin: mero.admin, registry: registryClient };
-    inheritReadOnly(writer, parentId, folderId).catch((e: unknown) =>
-      console.warn('[FolderSharingPanel] Read only not re-applied', e),
-    );
-  }, [reapplyReadOnly, parentId, folderId, mero, registryClient]);
+    // Core answers a same-role update without writing, and only for the folder's direct admin.
+    mero.admin
+      .updateMemberRole(folderId, selfIdentity, { role: 'Admin' })
+      .then(
+        () => inheritReadOnly(writer, parentId, folderId),
+        () => [],
+      )
+      .catch((e: unknown) => console.warn('[FolderSharingPanel] Read only not re-applied', e));
+  }, [reapplyReadOnly, parentId, selfIdentity, folderId, mero, registryClient]);
 
   // Who an Open folder has removed: core bans them from it until an admin adds them back.
   const removedParent = folder?.parent_id ?? rootGroupId;

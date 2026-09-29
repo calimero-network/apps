@@ -21,13 +21,19 @@ const writer = {
       direct.add(g);
     }),
     setMemberCapabilities: vi.fn(async () => {}),
+    getMemberCapabilities: vi.fn(async () => ({ capabilities: 0 })),
   },
-  registry: { setFolderRole: vi.fn(async () => {}) },
+  registry: {
+    setFolderRole: vi.fn(async () => {}),
+    getFolderRole: vi.fn(async () => 'Editor'),
+  },
 };
 const w = writer as unknown as FolderRoleWriter;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  writer.admin.getMemberCapabilities.mockResolvedValue({ capabilities: 0 });
+  writer.registry.getFolderRole.mockResolvedValue('Editor');
   rows = {};
   direct = new Set();
 });
@@ -111,6 +117,18 @@ describe('applyAcross', () => {
 });
 
 describe('inheritReadOnly', () => {
+  // Re-applying writes the registry and caps every time, so a complete grant is left alone.
+  it('skips a member who already holds the whole Read only grant in the folder', async () => {
+    rows = { parent: [{ identity: BOB, role: 'ReadOnly' }], child: [{ identity: BOB, role: 'ReadOnly' }] };
+    writer.admin.getMemberCapabilities.mockResolvedValue({
+      capabilities: FOLDER_ROLE_GRANTS.ReadOnly.folderCaps,
+    });
+    writer.registry.getFolderRole.mockResolvedValue('Viewer');
+    expect(await inheritReadOnly(w, 'parent', 'child')).toEqual([]);
+    expect(writer.admin.updateMemberRole).not.toHaveBeenCalled();
+    expect(writer.registry.setFolderRole).not.toHaveBeenCalled();
+  });
+
   it("makes the parent's Read only members Read only in a new sub-folder they reach", async () => {
     const CAROL = 'c'.repeat(64);
     rows = {

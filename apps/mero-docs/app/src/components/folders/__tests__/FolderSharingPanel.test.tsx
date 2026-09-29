@@ -206,6 +206,7 @@ describe('folder roles', () => {
   // the other created or opened this folder.
   it("re-applies the parent's Read only when the folder's admin opens the panel", async () => {
     workspace.parentId = 'p0';
+    workspace.self = NAMED;
     perms.canManagePermissions = true;
     listGroupMembers.mockImplementation(async () => ({
       members: [{ identity: PICKED, role: 'ReadOnly' }],
@@ -214,6 +215,21 @@ describe('folder roles', () => {
     await waitFor(() =>
       expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
     );
+  });
+
+  // Core refuses a folder role change from an admin who only inherits the folder.
+  it('does not re-apply it for an admin who only inherits the folder', async () => {
+    workspace.parentId = 'p0';
+    workspace.self = NAMED;
+    perms.canManagePermissions = true;
+    updateMemberRole.mockRejectedValue(new Error('not an admin of this group'));
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: PICKED, role: 'ReadOnly' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith('f1', NAMED, { role: 'Admin' }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updateMemberRole).not.toHaveBeenCalledWith('f1', PICKED, expect.anything());
   });
 
   it('does not re-apply it for someone who is not the folder admin', async () => {
