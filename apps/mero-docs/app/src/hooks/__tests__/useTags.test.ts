@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { DocsClient } from '@/generated/docs/DocsClient';
 import { TagNameTakenError, useTagsSource } from '../useTags';
 import { row } from '@/lib/workspaceIndex/__tests__/row';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
@@ -21,18 +22,17 @@ const ws = {
   registryClient: { listTags, setTag, deleteTag } as Client | null,
   registryContextId: 'reg-ctx',
 };
+let mero: object | null = {}; // null: no node connection, so no docs client
 const index = {
   rows: [] as IndexRow[],
   contextOf: (folderId: string) => `ctx-${folderId}`,
+  clientOf: (folderId: string) =>
+    mero ? new DocsClient(mero as never, `ctx-${folderId}`) : undefined,
 };
 
 vi.mock('../useDriveWorkspace', () => ({ useDriveWorkspace: () => ws }));
 vi.mock('../useDocs', () => ({
   notifyDocsRefetch: (id: string) => notifyDocsRefetch(id),
-}));
-let mero: object | null = {};
-vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero }),
 }));
 vi.mock('@/generated/docs/DocsClient', () => ({
   DocsClient: class {

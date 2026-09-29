@@ -7,7 +7,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/generated/docs/DocsClient';
 import { parseRichEvents } from '@/lib/rich/events';
 import { docTextFromBlocks } from '@/lib/search/docText';
 import { rowKey, type DocText } from '@/lib/workspaceIndex/types';
@@ -31,6 +31,7 @@ type Job = {
   folderId: string;
   docId: string;
   contextId: string;
+  client: DocsClient;
   updatedAt: number; // the list's version of the doc
 };
 type Snapshot = {
@@ -46,9 +47,10 @@ export function useTextIndex({
   folders,
   folderStatus,
   contextOf,
+  clientOf,
 }: Pick<
   WorkspaceIndex,
-  'rows' | 'folders' | 'folderStatus' | 'contextOf'
+  'rows' | 'folders' | 'folderStatus' | 'contextOf' | 'clientOf'
 >): TextIndex {
   const { mero } = useMero();
 
@@ -56,18 +58,20 @@ export function useTextIndex({
     const out = new Map<string, Job>();
     for (const r of rows) {
       const contextId = contextOf(r.folderId);
-      if (!contextId) continue;
+      const client = clientOf(r.folderId);
+      if (!contextId || !client) continue;
       const key = rowKey(r.folderId, r.docId);
       out.set(key, {
         key,
         folderId: r.folderId,
         docId: r.docId,
         contextId,
+        client,
         updatedAt: r.updatedAt,
       });
     }
     return out;
-  }, [rows, contextOf]);
+  }, [rows, contextOf, clientOf]);
 
   // One mutable engine per mount; the provider remounts per workspace, which cancels it.
   const engine = useRef({
@@ -87,22 +91,6 @@ export function useTextIndex({
     searched: new Set(),
     failed: new Set(),
   }));
-
-  const clients = useMemo(
-    () => ({ mero, byContext: new Map<string, DocsClient>() }),
-    [mero],
-  );
-  const clientFor = useCallback(
-    (contextId: string) => {
-      let client = clients.byContext.get(contextId);
-      if (!client) {
-        client = new DocsClient(clients.mero!, contextId);
-        clients.byContext.set(contextId, client);
-      }
-      return client;
-    },
-    [clients],
-  );
 
   const publish = useCallback(() => {
     const e = engine.current;
@@ -135,7 +123,7 @@ export function useTextIndex({
         await yieldToEventLoop();
         if (current()) {
           version = e.wanted.get(job.key)!.updatedAt;
-          const blocks = await clientFor(job.contextId).getDocument({
+          const blocks = await job.client.getDocument({
             doc: job.docId,
           });
           text = docTextFromBlocks(
@@ -175,7 +163,7 @@ export function useTextIndex({
       pumpRef.current();
       publish();
     },
-    [clientFor, publish],
+    [publish],
   );
 
   const pump = useCallback(() => {
