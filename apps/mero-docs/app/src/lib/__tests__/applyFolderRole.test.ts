@@ -82,6 +82,14 @@ describe('applyAcross', () => {
     );
   });
 
+  // Listed ReadOnly only by inheritance from a parent that stays Read only:
+  // there is no row to end, and adding a Member row would escape the parent.
+  it('adds no row when ending Read only where the member has none', async () => {
+    rows = { child: [{ identity: BOB, role: 'ReadOnly' }] };
+    await applyAcross(w, ['child'], BOB, false);
+    expect(writer.admin.addGroupMembers).not.toHaveBeenCalled();
+  });
+
   it('never touches an owner or a TEE row', async () => {
     rows = { a: [{ identity: BOB, role: 'Admin' }], b: [{ identity: BOB, role: 'RelayTee' }] };
     await applyAcross(w, ['a', 'b'], BOB, true);

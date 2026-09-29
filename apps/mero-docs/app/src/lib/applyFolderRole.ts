@@ -16,7 +16,11 @@ import { listMembers } from './groupMembers';
 export interface FolderRoleWriter {
   admin: {
     listGroupMembers(groupId: string): Promise<unknown>;
-    updateMemberRole(groupId: string, identity: string, request: { role: GroupRole }): Promise<void>;
+    updateMemberRole(
+      groupId: string,
+      identity: string,
+      request: { role: GroupRole },
+    ): Promise<void>;
     addGroupMembers(
       groupId: string,
       request: { members: { identity: string; role: GroupRole }[] },
@@ -28,7 +32,11 @@ export interface FolderRoleWriter {
     ): Promise<void>;
   };
   registry: {
-    setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void>;
+    setFolderRole(params: {
+      folder_id: FolderId;
+      member: string;
+      role: Role;
+    }): Promise<void>;
   };
 }
 
@@ -38,24 +46,32 @@ export async function coreRoleIn(
   folder: string,
   account: string,
 ): Promise<GroupRole | null> {
-  const row = (await listMembers(writer.admin, folder)).find((m) => m.identity === account);
+  const row = (await listMembers(writer.admin, folder)).find(
+    (m) => m.identity === account,
+  );
   return row ? parseGroupRole(row.role) : null;
 }
 
-/** Sets the core role; a member who only inherits an Open folder has no
- *  direct row to update, and gets one. */
+/** Sets the core role. A member who only inherits an Open folder has no
+ *  direct row: Read only adds one, and anything else has nothing to change,
+ *  which returns false (a Member row there would escape a Read only parent). */
 export async function setCoreRole(
   writer: FolderRoleWriter,
   folder: string,
   account: string,
   role: GroupRole,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await writer.admin.updateMemberRole(folder, account, { role });
+    return true;
   } catch (e: unknown) {
     if (!(e instanceof HTTPError && e.status === 404)) throw e;
+    if (role !== 'ReadOnly') return false;
     // A row another admin adds meanwhile is overwritten by this upsert, with the role we want.
-    await writer.admin.addGroupMembers(folder, { members: [{ identity: account, role }] });
+    await writer.admin.addGroupMembers(folder, {
+      members: [{ identity: account, role }],
+    });
+    return true;
   }
 }
 
@@ -71,10 +87,16 @@ export async function applyFolderGrant(
 ): Promise<void> {
   const grant = FOLDER_ROLE_GRANTS[next];
   if (grant.coreRole === 'ReadOnly' || grant.coreRole !== current) {
-    await setCoreRole(writer, folder, account, grant.coreRole);
+    if (!(await setCoreRole(writer, folder, account, grant.coreRole))) return;
   }
-  await writer.registry.setFolderRole({ folder_id: FolderId(folder), member: account, role: grant.role });
-  await writer.admin.setMemberCapabilities(folder, account, { capabilities: grant.folderCaps });
+  await writer.registry.setFolderRole({
+    folder_id: FolderId(folder),
+    member: account,
+    role: grant.role,
+  });
+  await writer.admin.setMemberCapabilities(folder, account, {
+    capabilities: grant.folderCaps,
+  });
 }
 
 /**
@@ -94,7 +116,13 @@ export async function applyAcross(
       const role = await coreRoleIn(writer, folder, account);
       if (role === null || role === 'Admin' || isTeeRole(role)) continue;
       if (!readOnly && role !== 'ReadOnly') continue;
-      await applyFolderGrant(writer, folder, account, readOnly ? 'ReadOnly' : 'Editor', role);
+      await applyFolderGrant(
+        writer,
+        folder,
+        account,
+        readOnly ? 'ReadOnly' : 'Editor',
+        role,
+      );
     } catch (e: unknown) {
       console.warn('[applyAcross] folder role not applied', folder, e);
       failed.push(folder);
@@ -115,7 +143,8 @@ export async function inheritReadOnly(
     .map((m) => m.identity);
   const failed: string[] = [];
   for (const account of readOnly) {
-    if ((await applyAcross(writer, [folder], account, true)).length > 0) failed.push(account);
+    if ((await applyAcross(writer, [folder], account, true)).length > 0)
+      failed.push(account);
   }
   return failed;
 }
