@@ -403,72 +403,56 @@ Unsealed, the warrant and the method&rsquo;s arguments reach the relay over plai
 readable wherever that TLS ends: the load balancer, and whoever holds the relay&rsquo;s
 certificate. With **Seal to the relay&rsquo;s TEE** ticked (the default), step 6 first asks
 the relay for a TDX quote (`POST /admin-api/tee/attest`), verifies it **in the page**
-against Intel&rsquo;s root and the images below, and encrypts both relay calls to the key the
-quote binds (Noise NK over `/sealed/v2`). The proxy opens them inside the TD.
+against Intel&rsquo;s root and the image of the signed release the relay runs (below), and
+encrypts both relay calls to the key the quote binds (Noise NK over `/sealed/v2`). The
+proxy opens them inside the TD.
 
 A relay that cannot attest, or runs an image the page does not trust, is refused
 **before anything is sent**. The page does not fall back to writing in the clear, and says
-which of the two it was. For a relay that is not a TEE, untick the box. The page then
-says the write is unsealed.
+which it was. For a relay that is not a TEE, untick the box. The page then says the write
+is unsealed.
 
-This app pins `@calimero-network/mero-js` ^21.2.0 itself instead of taking the
-workspace catalog&rsquo;s 19: whole-image trust (`trustedMeasurementsFromReleases`) is
-mero-js 20. The catalog cannot move yet. mero-react still depends on mero-js 19, so every
-app that uses both would carry two copies, and their `AdminApiClient` types do not
-match. Return this app to `catalog:` when the catalog reaches 21.
+This app pins `@calimero-network/mero-js` ^22.1.0 itself instead of taking the
+workspace catalog&rsquo;s 21: trusting a signed release at run time
+(`createSignedReleaseVerifier`) is mero-js 22.1. The catalog cannot move yet. mero-react
+depends on mero-js ^21.3, so every app that uses both would carry two copies, and their
+`AdminApiClient` types do not match. Return this app to `catalog:` when the catalog
+reaches 22.1.
 
 `@phala/dcap-qvl`, the quote verifier, is loaded only when a quote needs checking. It is
 most of the page&rsquo;s weight, and a visitor who never seals never downloads it.
 
 ### Which images are trusted
 
-The `locked-read-only` image of each mero-tee node release in `app/src/trusted/`:
+The `locked-read-only` image of the signed mero-tee node release the relay runs, if that
+release is **2.3.86 or newer** (`MIN_RELEASE_VERSION` in `app/src/lib/sealing.ts`). On each
+attestation the page:
 
-| Release | `published-mrtds.json` sha256 |
-| --- | --- |
-| 2.3.86 | `2cb081d4d741d1fdf2937594116ee869bf1bb44feeddf06e36135c62ef63abfd` |
-| 2.3.87 | `c05d8ba1d57b3b1478f163e1f8b8f8e10adaecb3dbab31885b273bc5143ff451` |
+1. reads the release the relay names from its image (`GET /admin-api/tee/info`);
+2. fetches that release&rsquo;s `published-mrtds.json` and cosign bundle from the public
+   mirror (`GET https://cloud.calimero.network/api/tee/node-releases/{version}`);
+3. verifies the signature, as `cosign verify-blob` would, against the Sigstore root
+   mero-js embeds. The signer must be the node release workflow,
+   `release-node-image-gcp.yaml` of `calimero-network/mero-tee` on `master`: the identity
+   core pins as `NODE_RELEASE_IDENTITY` in `crates/tee-release`;
+4. requires the quote to match **all five registers** of that release&rsquo;s image. The
+   MRTD alone would not do: it measures the TD firmware, which every image and profile
+   shares, and the image is in RTMR1&ndash;3.
 
-A relay is trusted when its quote matches **all five registers** of one of them. The MRTD
-alone would not do: it measures the TD firmware, which every image and profile shares, and
-the image is in RTMR1&ndash;3. The debug profiles are never trusted, because they have a
-shell and their operator can read the TD&rsquo;s memory.
+The relay and the mirror are not trusted. A mirror serving a file the workflow did not
+sign is refused, and one serving nothing only stops the page sealing. A relay naming a
+release it does not run fails the register check. The signature is what is trusted, so
+the release can come over any transport, and a new release needs no new page. The debug
+profiles are never trusted, because they have a shell and their operator can read the
+TD&rsquo;s memory.
 
-The files ship with the page. Fetching them at run time would trust whoever serves them,
-which is the question the quote is meant to answer.
+### Raising the minimum
 
-### Adding a release
-
-List every release a relay may be running. During a rollout that is the old one and the
-new one, so the page works on either side of the upgrade. Drop a release once no relay
-runs it.
-
-1. Download the release&rsquo;s file and its signature bundle:
-
-   ```sh
-   V=2.3.88
-   base=https://github.com/calimero-network/mero-tee/releases/download/mero-tee-v$V
-   curl -fsSLo app/src/trusted/mero-tee-v$V.published-mrtds.json "$base/published-mrtds.json"
-   curl -fsSLo /tmp/published-mrtds.json.bundle.json "$base/published-mrtds.json.bundle.json"
-   ```
-
-2. Verify it was signed by the node release workflow, and not merely uploaded to the
-   release:
-
-   ```sh
-   cosign verify-blob app/src/trusted/mero-tee-v$V.published-mrtds.json \
-     --bundle /tmp/published-mrtds.json.bundle.json \
-     --certificate-identity https://github.com/calimero-network/mero-tee/.github/workflows/release-node-image-gcp.yaml@refs/heads/master \
-     --certificate-oidc-issuer https://token.actions.githubusercontent.com
-   ```
-
-   This is the identity core pins when a node admits by signed release
-   (`NODE_RELEASE_IDENTITY` in `crates/tee-release`). Do not add a file that fails this
-   check.
-
-3. Import it in `app/src/lib/sealing.ts`, add it to `TRUSTED_RELEASES`, and add its
-   checksum to the table above. `sealing.test.ts` names the releases it expects, so update
-   that too.
+A signature never expires, so every release ever signed stays valid. Without a floor a
+relay could run an old release, with a flaw since fixed, and pass. When a release must no
+longer be trusted, raise `MIN_RELEASE_VERSION` past it. 2.3.86 is the oldest release the
+page trusted when it shipped the files itself, so nothing older is trusted now than was
+before.
 
 ## Things it deliberately does not do
 

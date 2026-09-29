@@ -70,7 +70,7 @@ import {
   writeContext,
 } from './lib/flow.js';
 import { errorText, hostOf, parseJson, pretty, short } from './lib/format.js';
-import { TRUSTED_PROFILE, TRUSTED_RELEASE_NAMES, sealingErrorText } from './lib/sealing.js';
+import { MIN_RELEASE_VERSION, TRUSTED_PROFILE, sealingErrorText } from './lib/sealing.js';
 import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
 import {
   DEFAULT_CLOUD_URL,
@@ -1528,8 +1528,9 @@ function WriteStep({
         <input type="checkbox" checked={seal} onChange={(e) => setSeal(e.target.checked)} />
         <span>
           <strong>Seal to the relay&rsquo;s TEE.</strong> The page verifies the relay&rsquo;s
-          quote here, against Intel&rsquo;s root and the {TRUSTED_PROFILE} image of mero-tee{' '}
-          {TRUSTED_RELEASE_NAMES}, and encrypts the warrant and arguments to the key it binds.
+          quote here, against Intel&rsquo;s root and the {TRUSTED_PROFILE} image of the signed
+          mero-tee release it runs ({MIN_RELEASE_VERSION} or newer), and encrypts the warrant
+          and arguments to the key it binds.
           The relay&rsquo;s TLS terminator, and whoever runs it, reads neither.
         </span>
       </label>
@@ -1551,7 +1552,7 @@ function WriteStep({
           onClick={() =>
             void relayCall(async () => {
               const described = await describeRelay(writeUrl, settings.contextId, { seal });
-              const via = seal ? `sealed to the attested TEE (${TRUSTED_PROFILE}, mero-tee ${TRUSTED_RELEASE_NAMES})` : 'unsealed';
+              const via = seal ? `sealed to the attested TEE (${TRUSTED_PROFILE}, mero-tee ${MIN_RELEASE_VERSION} or newer)` : 'unsealed';
               return described.canAuthorOnBehalf
                 ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\nvia:      ${via}`
                 : `this node may NOT author on your behalf yet.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\n\n` +
