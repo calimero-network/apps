@@ -6,10 +6,10 @@
 //     dropdown (RoleSelect: Manager / Editor / Read only).
 //
 //   Open - inherits membership from the workspace root: there's no
-//     add/remove (anyone in the workspace is already in), so we show
-//     "open to all workspace members" copy instead, but STILL list the
-//     inherited members each with the folder-role dropdown so an admin
-//     can pin someone to Read only or Manager on this folder.
+//     add (anyone in the workspace is already in), so we show "open to
+//     all workspace members" copy instead, but STILL list the inherited
+//     members with the folder-role dropdown and remove, so an admin can
+//     pin someone to Read only or Manager, or take them out.
 //
 // Permission-gating (useFolderPermissions):
 //   - canInviteMembers      → show the invite form (Restricted only)
@@ -253,10 +253,9 @@ export function FolderSharingPanel({ folderId }: Props) {
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
-          // Open members inherit, so removal would not stick; the node never
-          // removes a folder's owner (its core admin) or last admin.
+          // In an Open folder core records a removal as a ban, so it sticks;
+          // the node never removes a folder's owner (its core admin) or last admin.
           const removable =
-            !isOpenFolder &&
             perms.canManageMembers &&
             parseGroupRole(m.role) !== 'Admin';
           if (perms.canManagePermissions) {

@@ -13,7 +13,7 @@ const addGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
 const setFolderRole = vi.fn();
-const workspace = { parentId: null as string | null };
+const workspace = { parentId: null as string | null, visibility: 'Restricted' };
 const perms = { canManagePermissions: false, permissionsNeedOwner: false };
 // Per member: the name their own metadata read answered with, and whether it has answered.
 const metadata = { names: {} as Record<string, string>, answered: new Set<string>() };
@@ -21,7 +21,7 @@ const metadata = { names: {} as Record<string, string>, answered: new Set<string
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
-    folders: [{ id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: 'Restricted' }],
+    folders: [{ id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: workspace.visibility }],
     selfIdentity: null,
     registryContextId: null,
     registryClient: { setFolderRole },
@@ -93,6 +93,7 @@ beforeEach(() => {
   perms.canManagePermissions = false;
   perms.permissionsNeedOwner = false;
   workspace.parentId = null;
+  workspace.visibility = 'Restricted';
   for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
@@ -107,6 +108,13 @@ describe('FolderSharingPanel read-only rows', () => {
     expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove Unnamed member' })).toBeTruthy();
     expect(screen.getByText('Read only')).toBeTruthy();
+  });
+
+  // A removal from an Open folder also bars rejoining it by inheritance.
+  it('lets a manager remove a member from an Open folder too', () => {
+    workspace.visibility = 'Open';
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
   });
 
   it('uses the same remove icon as every other member row, not a bare glyph', () => {
