@@ -67,10 +67,11 @@ export interface FolderPermissions {
   canDelete: boolean;
   canInviteMembers: boolean; // CAN_INVITE_MEMBERS
   canManageMembers: boolean; // MANAGE_MEMBERS
-  /** Edit or comment on documents in this folder. CONSERVATIVE: `isAdmin`, or a
-   *  folder member who is not core ReadOnly and whose registry `Role` has *definitively resolved* to
-   *  non-Viewer - OR a folder member when the workspace has no Registry
-   *  context at all (nothing to resolve, fall back to membership).
+  /** Edit or comment on documents in this folder. CONSERVATIVE: `isAdmin`,
+   *  or a folder member who is not core ReadOnly and whose registry `Role`
+   *  has *definitively resolved* to non-Viewer - OR a folder member when the
+   *  workspace has no Registry context at all (nothing to resolve, fall back
+   *  to membership).
    *  While the role is still loading, on a role-fetch error, or on a
    *  definitive `Viewer`, this is `false` (the editor stays read-only
    *  so autosave can't persist a would-be Viewer's edits). Pair with
