@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FolderSwatch } from '@/components/folders/FolderSwatch';
 import { TagChip } from '@/components/tags/TagChip';
-import type { DocTag } from '@/components/tags/DocTagRow';
+import type { TagView } from '@/lib/tags';
 
 export interface LinkedFromEntry {
   key: string;
@@ -31,7 +31,7 @@ export interface DetailsPanelProps {
   folder: { name: string; color?: string };
   created?: { dateLabel: string; by?: React.ReactNode };
   updated?: { relLabel: string; by?: React.ReactNode };
-  tags: DocTag[];
+  tags: TagView[];
   linkedFrom: LinkedFromEntry[];
   linksTo: LinksToEntry[];
   onClose: () => void;

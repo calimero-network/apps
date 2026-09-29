@@ -11,7 +11,7 @@ import {
 import { FolderSwatch } from '@/components/folders/FolderSwatch';
 import { Button } from '@/components/ui/button';
 import { TagChip } from '@/components/tags/TagChip';
-import type { DocTag } from '@/components/tags/DocTagRow';
+import type { TagView } from '@/lib/tags';
 
 export type DocLinkCardProps =
   | { state: 'loading' }
@@ -22,7 +22,7 @@ export type DocLinkCardProps =
       folderColor?: string;
       updatedLabel: string;
       excerpt?: string;
-      tags: DocTag[];
+      tags: TagView[];
     }
   | { state: 'unavailable'; onRetry?: () => void }
   | { state: 'deleted' }

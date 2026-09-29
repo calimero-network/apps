@@ -12,6 +12,7 @@ import {
 import type { IndexRow, Tag } from './workspaceIndex/types';
 
 export type { Tag } from './workspaceIndex/types';
+export type TagView = { key: string; name: string; color?: string }; // a tag as a chip shows it
 
 // One entry per colour, so a hex can never lose or swap its name. Order is the order new tags are assigned.
 const TAG_PALETTE = [
@@ -83,7 +84,7 @@ export function tagKeyFor(
 export function docTagChips(
   keys: string[],
   byKey: Map<string, Tag>,
-): { key: string; name: string; color?: string }[] {
+): TagView[] {
   return keys.flatMap((key) => {
     const tag = byKey.get(key);
     if (tag?.deleted) return [];

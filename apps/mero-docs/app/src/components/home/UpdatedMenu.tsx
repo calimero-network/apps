@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { Check } from 'lucide-react';
 
+import type { HomeQuery } from '@/lib/homeQuery';
 import { moveFocus } from './moveFocus';
 
-export type UpdatedWindow = '1d' | '7d' | '30d' | undefined;
+type UpdatedWindow = HomeQuery['updated'];
 
 export const UPDATED_OPTIONS: { value: UpdatedWindow; label: string }[] = [
   { value: '1d', label: 'Today' },

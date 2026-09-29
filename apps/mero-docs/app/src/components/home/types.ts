@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import type { TagView } from '@/lib/tags';
+
+export type { TagView };
 
 export type PersonView = { id: string; name: string; colour: string };
-export type TagView = { key: string; name: string; color?: string };
 export type DocRowView = {
   key: string; // `${folderId}/${docId}`
   title: string; // "" renders "Untitled" (muted)

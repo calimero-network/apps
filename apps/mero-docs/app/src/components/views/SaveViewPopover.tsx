@@ -24,18 +24,12 @@ import {
 import { TagChip } from '@/components/tags/TagChip';
 import { FILTER_ICONS } from '@/components/home/FilterBar';
 import { moveFocus } from '@/components/home/moveFocus';
-import type { FilterIcon } from '@/components/home/types';
+import type { FilterSummary } from '@/components/home/filterSummary';
 import {
   useSavedViews,
   type SavedView,
   type ViewScope,
 } from '@/hooks/useSavedViews';
-
-type FilterSummary = {
-  icon: FilterIcon | 'sort';
-  label: string;
-  color?: string;
-};
 
 const SUMMARY_ICONS: Record<FilterSummary['icon'], LucideIcon> = {
   ...FILTER_ICONS,
