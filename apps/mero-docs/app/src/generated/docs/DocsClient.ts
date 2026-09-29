@@ -426,6 +426,8 @@ export class DocsClient {
   /**
    * comment_count
    *
+   * Comments held by the account their id names; `len` would count planted ones too.
+   *
    * @intent read_only
    */
   public async commentCount(): Promise<number> {

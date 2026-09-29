@@ -1159,12 +1159,17 @@ impl DocsState {
         Ok(project_comment(&id, hex(author.as_bytes()), &c))
     }
 
+    /// Comments held by the account their id names; `len` would count planted ones too.
     #[app::view]
     pub fn comment_count(&self) -> app::Result<u64> {
-        Ok(self
+        let entries = self
             .comments
-            .len()
-            .map_err(|e| AppError::msg(format!("comments.len: {e}")))? as u64)
+            .entries_with_owners()
+            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?;
+        Ok(entries
+            .iter()
+            .filter(|(owner, id, _)| id_names(id, owner))
+            .count() as u64)
     }
 
     /// The comment's stored per-entry `schema_version` - `Some(1)` before
@@ -2704,6 +2709,7 @@ mod tests {
         assert_eq!((shown.author, shown.body), (hex(&ALICE), "hi".to_owned()));
         let listed = app.view(|s| s.list_comments(doc)).unwrap();
         assert_eq!(listed.len(), 1);
+        assert_eq!(app.view(|s| s.comment_count()).unwrap(), 1);
         assert_eq!(
             (&listed[0].author, &listed[0].body),
             (&hex(&ALICE), &"hi".to_owned())

@@ -1023,6 +1023,7 @@
     },
     {
       "name": "comment_count",
+      "doc": "Comments held by the account their id names; `len` would count planted ones too.",
       "params": [],
       "returns": {
         "kind": "u64"
