@@ -137,7 +137,6 @@ export function FolderSharingPanel({ folderId }: Props) {
     try {
       await add(trimmedIdentity);
       setIdentity('');
-
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setInviteError(err.message);

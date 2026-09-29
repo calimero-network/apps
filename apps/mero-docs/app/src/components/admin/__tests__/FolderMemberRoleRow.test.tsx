@@ -19,6 +19,7 @@ const setCapabilities = vi.fn();
 let folderCaps = 0;
 // Bob's row in the sub-folder, as its member list reports it.
 let childRows: { identity: string; role: string }[] = [];
+let extraFolders: { id: string; parent_id: string; alias: string }[] = [];
 const listGroupMembers = vi.fn(async (g: string) => ({ members: g === CHILD ? childRows : [] }));
 
 vi.mock('@calimero-network/mero-react', () => ({
@@ -49,6 +50,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
       { id: FOLDER, parent_id: null, alias: 'Plans' },
       { id: CHILD, parent_id: FOLDER, alias: 'Notes', visibility: 'Open' },
       { id: WALLED, parent_id: FOLDER, alias: 'Private', visibility: 'Restricted' },
+      ...extraFolders,
     ],
   }),
 }));
@@ -90,6 +92,7 @@ beforeEach(() => {
   calls.length = 0;
   folderCaps = 0;
   childRows = [];
+  extraFolders = [];
   const record = (name: string) => async () => {
     calls.push(name);
   };
@@ -205,6 +208,24 @@ describe('FolderMemberRoleRow', () => {
     childRows = [{ identity: BOB, role: 'ReadOnly' }];
     fireEvent.change(roleSelectFor('Member', 'Viewer'), { target: { value: 'Editor' } });
     await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'Member' }));
+  });
+
+  it('names a sub-folder whose visibility is not known', async () => {
+    extraFolders = [{ id: 'e'.repeat(64), parent_id: FOLDER, alias: 'Unread' }];
+    fireEvent.change(roleSelectFor('Member', 'Editor'), { target: { value: 'ReadOnly' } });
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Role set here, but not in Unread. Ask the owner of each to set it.',
+    );
+  });
+
+  // Core lists them ReadOnly through a parent folder, with no row here to change.
+  it('says so when Read only comes from a parent folder', async () => {
+    updateMemberRole.mockRejectedValue(httpError(404));
+    fireEvent.change(roleSelectFor('ReadOnly', 'Editor'), { target: { value: 'Editor' } });
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Read only here comes from a parent folder. Change it there.',
+    );
+    expect(setFolderRole).not.toHaveBeenCalled();
   });
 
   it('names the sub-folders it could not make Read only', async () => {

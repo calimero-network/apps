@@ -31,6 +31,8 @@ import { folderLabel } from '@/lib/folderLabel';
 import { openConnected } from '@/lib/openFolderRemoval';
 import type { Role } from '@/generated/registry/RegistryClient';
 
+const PARENT_READ_ONLY = 'Read only here comes from a parent folder. Change it there.'; // no row here to change
+
 interface Props {
   folderId: string;
   identity: string;
@@ -103,7 +105,10 @@ export function FolderMemberRoleRow({
     setUpdating(true);
     setUpdateError(null);
     try {
-      await applyFolderGrant(writer, folderId, identity, next, core);
+      if (!(await applyFolderGrant(writer, folderId, identity, next, core))) {
+        setUpdateError(PARENT_READ_ONLY);
+        return;
+      }
       // Read only covers the Open sub-folders reached through this one, so its
       // start and its end carry down (also when only the registry still says it).
       if (readOnly || core === 'ReadOnly' || registryRole === 'Viewer') {

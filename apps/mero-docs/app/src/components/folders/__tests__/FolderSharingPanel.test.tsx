@@ -235,6 +235,22 @@ describe('folder roles', () => {
     expect(updateMemberRole).not.toHaveBeenCalledWith('f1', NAMED, expect.anything());
   });
 
+  // An admin who only inherits the folder is refused at the first core write.
+  it('writes no registry row or caps when core refuses the re-apply', async () => {
+    workspace.parentId = 'p0';
+    workspace.visibility = 'Open';
+    perms.canManagePermissions = true;
+    updateMemberRole.mockRejectedValue(new Error('not an admin of this group'));
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: PICKED, role: 'ReadOnly' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(setFolderRole).not.toHaveBeenCalled();
+    expect(setMemberCapabilities).not.toHaveBeenCalled();
+  });
+
   it('does not re-apply it in a Restricted folder', async () => {
     workspace.parentId = 'p0';
     perms.canManagePermissions = true;

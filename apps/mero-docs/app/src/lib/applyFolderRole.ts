@@ -83,19 +83,19 @@ export async function setCoreRole(
   }
 }
 
-/** The three writes of a folder role, core first because core enforces it.
- *  Read only always writes the core row: an inheritor is listed with its anchor
- *  row's role, but core refuses writes by the direct row alone. */
+/** A folder role's three writes, core first. Read only always writes the core row (an
+ *  inheritor is listed with its anchor's role); false when there was no row to change. */
 export async function applyFolderGrant(
   writer: FolderRoleWriter,
   folder: string,
   account: string,
   next: FolderAccessRole,
   current: GroupRole,
-): Promise<void> {
+): Promise<boolean> {
   const grant = FOLDER_ROLE_GRANTS[next];
   if (grant.coreRole === 'ReadOnly' || grant.coreRole !== current) {
-    if (!(await setCoreRole(writer, folder, account, grant.coreRole))) return;
+    if (!(await setCoreRole(writer, folder, account, grant.coreRole)))
+      return false;
   }
   await writer.registry.setFolderRole({
     folder_id: FolderId(folder),
@@ -105,6 +105,7 @@ export async function applyFolderGrant(
   await writer.admin.setMemberCapabilities(folder, account, {
     capabilities: grant.folderCaps,
   });
+  return true;
 }
 
 /**
