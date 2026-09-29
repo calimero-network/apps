@@ -35,10 +35,10 @@ function shortId(id: string) {
 }
 
 export function ContextPicker({ applicationId }: { applicationId: string | null }) {
-  // An account on a relay lists the contexts it belongs to and opens one; it
-  // cannot create namespaces or contexts (a relay serves a keyholder no admin
-  // writes), so those controls are for a node login only.
-  const { isDelegated } = useMero();
+  // Asks what this connection may do, not which transport it runs on: an
+  // account on a relay can create contexts in its namespaces but cannot found
+  // a namespace; a node login can do both.
+  const { can } = useMero();
   const {
     contexts: reportedContexts,
     loading,
@@ -70,7 +70,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     loading: nsLoading,
     error: nsError,
     refetch: refetchNamespaces,
-  } = useNamespacesForApplication(isDelegated ? null : applicationId);
+  } = useNamespacesForApplication(applicationId);
   const { createNamespace } = useCreateNamespace();
   const { createContext } = useCreateContext();
 
@@ -177,8 +177,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
 
         {!loading && applicationId && contexts.length === 0 && (
           <p className="empty">
-            {isDelegated
-              ? "Your account is in no context of this app yet. Join one with an invitation below."
+            {!can.createNamespace
+              ? "Your account is in no context of this app yet. Join one with an invitation below, or add one to a namespace you are in."
               : "No contexts for this application on this node yet."}
           </p>
         )}
@@ -211,7 +211,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
             context to yet. The two-step controls below are for everything after
             that.
           */}
-          {!isDelegated && (
+          {can.createNamespace && (
             <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
               {busy === "both" ? "Creating…" : "Create namespace + context"}
             </button>
@@ -237,7 +237,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         {failed && <pre className="err">{failed}</pre>}
       </div>
 
-      {!isDelegated && (
+      {can.createContext && (
       <div className="card">
         <h2>Namespaces</h2>
         <p className="empty" style={{ marginBottom: 14 }}>
@@ -284,15 +284,17 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
           </table>
         )}
 
-        <div className="row" style={{ marginTop: 16 }}>
-          <button
-            className="ghost"
-            onClick={makeNamespace}
-            disabled={busy !== null || !applicationId}
-          >
-            {busy === "namespace" ? "Creating…" : "Create namespace"}
-          </button>
-        </div>
+        {can.createNamespace && (
+          <div className="row" style={{ marginTop: 16 }}>
+            <button
+              className="ghost"
+              onClick={makeNamespace}
+              disabled={busy !== null || !applicationId}
+            >
+              {busy === "namespace" ? "Creating…" : "Create namespace"}
+            </button>
+          </div>
+        )}
       </div>
       )}
     </>

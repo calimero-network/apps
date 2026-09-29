@@ -6,7 +6,7 @@ import { KvPanel } from "./KvPanel";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 
 export function App() {
-  const { isAuthenticated, isLoading, isDelegated, applicationId, contextId, nodeUrl, logout } =
+  const { isAuthenticated, isLoading, can, applicationId, contextId, nodeUrl, logout } =
     useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
@@ -100,8 +100,8 @@ export function App() {
             </div>
           </div>
           <KvPanel contextId={contextId} />
-          {/* Minting an invitation is a node's admin call; an account cannot. */}
-          {!isDelegated && <InviteCard contextId={contextId} />}
+          {/* Minting an invitation is a node's own operation today. */}
+          {can.invite && <InviteCard contextId={contextId} />}
         </>
       )}
 
