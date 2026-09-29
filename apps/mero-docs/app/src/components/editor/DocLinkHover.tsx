@@ -35,7 +35,6 @@ import {
   parseMemberHref,
   type MemberHrefTarget,
 } from '@/lib/links';
-import { docLinkCardState } from '@/lib/linkTargetView';
 import { parseGroupRole, roleDisplayLabel, workspaceRoleOf } from '@/lib/roles';
 import { whenLabel } from '@/lib/relativeTime';
 import {
@@ -46,7 +45,7 @@ import {
 } from '@/lib/workspaceIndex/types';
 import { DocLinkCard, type DocLinkCardProps } from './DocLinkCard';
 import { MemberCard, memberCardProps } from './MemberCard';
-import { docLinkAt, mentionAt } from './blocknote/docLinks';
+import { linkAt } from './blocknote/docLinks';
 
 const OPEN_DELAY_MS = 300; // a pointer passing over a link does not open its card
 const CLOSE_GRACE_MS = 150; // time to move the pointer from the link into the card
@@ -70,47 +69,42 @@ type OpenLink = {
   member?: MemberHrefTarget;
 };
 
-function linkAt(el: EventTarget): OpenLink | null {
+function hoveredLink(el: EventTarget): OpenLink | null {
   const origin = window.location.origin;
-  const doc = docLinkAt(el, origin);
+  const doc = linkAt(el, origin, parseDocHref);
   if (doc) return { anchor: doc.anchor, doc: doc.target };
-  const mention = mentionAt(el, origin);
+  const mention = linkAt(el, origin, parseMemberHref);
   return mention ? { anchor: mention.anchor, member: mention.target } : null;
 }
 
-/** What the card shows for a link target; the title is the doc's current one, not the link text. */
+/** What the card shows for a link target, checked in resolveLinkTarget's order; the title is the doc's current one, not the link text. */
 export function docLinkCardProps(
   target: DocHrefTarget,
   d: CardData,
   now: number,
 ): DocLinkCardProps {
   const { index } = d;
-  const withStatus = (status: string) =>
-    new Set(
-      index.folders
-        .filter((f) => index.folderStatus[f.id] === status)
-        .map((f) => f.id),
-    );
-  const view = docLinkCardState(target, {
-    ws: d.ws ?? null,
-    existingFolders: d.registryFolders
-      ? new Set(d.registryFolders.map((f) => f.id))
-      : null,
-    readableFolders: index.foldersKnown
-      ? new Set(index.folders.map((f) => f.id))
-      : null,
-    failedFolders: withStatus('error'),
-    loadedFolders: withStatus('ready'),
-    rows: new Map(index.rows.map((r) => [rowKey(r.folderId, r.docId), r])),
-  });
-  if (view.state === 'unavailable') {
+  const { folder } = target;
+  const status = index.folderStatus[folder];
+  if (d.ws == null) return { state: 'loading' };
+  if (target.ws !== d.ws) return { state: 'other-workspace' };
+  if (!d.registryFolders) return { state: 'loading' };
+  if (!d.registryFolders.some((f) => f.id === folder))
+    return { state: 'deleted' };
+  if (!index.foldersKnown) return { state: 'loading' };
+  if (!index.folders.some((f) => f.id === folder))
+    return { state: 'no-access' };
+  if (status === 'error') {
     return {
       state: 'unavailable',
-      onRetry: () => index.refetchFolder(target.folder),
+      onRetry: () => index.refetchFolder(folder),
     };
   }
-  if (view.state !== 'ok') return { state: view.state };
-  const r = view.row;
+  if (status !== 'ready') return { state: 'loading' };
+  const r = index.rows.find(
+    (row) => row.folderId === folder && row.docId === target.doc,
+  );
+  if (!r) return { state: 'deleted' };
   const path = d.paths.get(r.folderId);
   const excerpt = d.texts
     .get(rowKey(r.folderId, r.docId))
@@ -196,13 +190,13 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
   React.useEffect(() => () => clearTimeout(timer.current), []);
 
   const show = (el: EventTarget) => {
-    const link = linkAt(el);
+    const link = hoveredLink(el);
     if (!link) return;
     if (open?.anchor === link.anchor) stay();
     else later(() => setOpen(link), OPEN_DELAY_MS);
   };
   const leave = (el: EventTarget, to: EventTarget | null) => {
-    const link = linkAt(el);
+    const link = hoveredLink(el);
     if (link && !(to instanceof Node && link.anchor.contains(to))) {
       later(() => setOpen(null), CLOSE_GRACE_MS);
     }
@@ -217,7 +211,7 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
       // The card is portalled but its React events still bubble here.
       onClick={(e) => {
         if (!e.currentTarget.contains(e.target as Node)) return;
-        const link = linkAt(e.target);
+        const link = hoveredLink(e.target);
         if (link?.member) {
           clearTimeout(timer.current);
           setOpen(link);

@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { hereLabel } from '@/components/common/LivePill';
 import { QuietLoading } from '@/components/ui/empty-state';
 import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
-import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
+import { NameDialog } from '@/components/tags/NameDialog';
 import { TagPageHeader } from '@/components/tags/TagPageHeader';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
 import {
@@ -28,9 +28,8 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
-import { useSavedViews } from '@/hooks/useSavedViews';
 import { useTextMatch } from '@/hooks/useTextMatch';
-import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
+import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
 import {
@@ -45,13 +44,18 @@ import {
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { updatedLabel } from '@/lib/relativeTime';
 import { docUrl } from '@/lib/routes';
-import { TAG_NEUTRAL, withoutDeletedTags } from '@/lib/tags';
+import { withoutDeletedTags } from '@/lib/tags';
 import { rowKey } from '@/lib/workspaceIndex/types';
 import { DocTable } from './DocTable';
-import { defaultViewName, SORT_LABELS, summarizeHomeQuery } from './filterSummary';
+import {
+  defaultViewName,
+  SORT_LABELS,
+  summarizeHomeQuery,
+} from './filterSummary';
 import { FilterBar } from './FilterBar';
 import { HomeEmpty } from './HomeEmpty';
 import { HomeHeader, headerActionClass } from './HomeHeader';
+import { plural } from '@/lib/plural';
 import { NewDocFolderPicker } from './NewDocFolderPicker';
 import type { DocRowView } from './types';
 import {
@@ -67,12 +71,10 @@ const NO_FOLDERS_READ_ONLY =
 const EMPTY_FOLDER = 'No documents in this folder yet.';
 const EMPTY_FOLDER_READ_ONLY = `${EMPTY_FOLDER} They show up here when someone adds one.`;
 
+type EmptyKind = React.ComponentProps<typeof HomeEmpty>['kind'];
+
 interface Props {
   folderId?: string; // the folder route: this folder and its subfolders
-}
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 // Probes one folder's write access; a hook per folder, so each gets a component.
@@ -124,8 +126,6 @@ export function HomePage({ folderId }: Props) {
   const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
-  const canShare = useCanManageTags();
-  const { save: saveView } = useSavedViews();
   const confirm = useConfirm();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();
@@ -260,7 +260,7 @@ export function HomePage({ folderId }: Props) {
       folderColor: path?.color,
       tags: r.tags.map((k) => {
         const t = tagsByKey.get(k);
-        return { key: k, name: t?.name ?? k, color: t?.color ?? TAG_NEUTRAL };
+        return { key: k, name: t?.name ?? k, color: t?.color };
       }),
       here,
       liveLabel: hereLabel(here),
@@ -288,7 +288,6 @@ export function HomePage({ folderId }: Props) {
 
   // --- Save view ---
   const [saveOpen, setSaveOpen] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
   const workspaceName = namespaceLabel(
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,
   );
@@ -299,26 +298,8 @@ export function HomePage({ folderId }: Props) {
     personName,
     sortLabel: SORT_LABELS[q.sort],
   };
-  const saveCurrentView = async ({
-    name,
-    scope,
-  }: {
-    name: string;
-    scope: 'me' | 'everyone';
-  }) => {
-    setSaving(true);
-    try {
-      // A folder route's folder is part of the view, which opens on Home.
-      const queryForSave = serializeHomeQuery({ ...effective, view: undefined });
-      const savedView = await saveView(name, queryForSave, scope);
-      setSaveOpen(false);
-      goHome(withView(queryForSave, savedView.id), { replace: true });
-    } catch {
-      // Reported by the saved views hook's own toast; the popover stays open to retry.
-    } finally {
-      setSaving(false);
-    }
-  };
+  // A folder route's folder is part of the view, which opens on Home.
+  const queryForSave = serializeHomeQuery({ ...effective, view: undefined });
 
   // --- Tag page ---
   const pageKey = folderId ? null : tagPageKey(q);
@@ -404,16 +385,13 @@ export function HomePage({ folderId }: Props) {
                   ? 'no-docs'
                   : null;
   const folderCanWrite = folderId ? creatable[folderId] : undefined;
-  const emptyBody = {
+  const emptyBody: Partial<Record<EmptyKind, string | null>> = {
     'no-folders':
       nsPerms.loading || nsPerms.error
         ? null
         : nsPerms.canCreateFolder
           ? undefined
           : NO_FOLDERS_READ_ONLY,
-    'no-matches': undefined,
-    'no-tagged': undefined,
-    partial: undefined,
     'no-docs': !folderId
       ? undefined
       : folderCanWrite === undefined
@@ -421,16 +399,14 @@ export function HomePage({ folderId }: Props) {
         : folderCanWrite
           ? EMPTY_FOLDER
           : EMPTY_FOLDER_READ_ONLY,
-  } as const;
-  const emptyAction = {
+  };
+  const emptyAction: Partial<Record<EmptyKind, () => void>> = {
     'no-folders': nsPerms.canCreateFolder
       ? () => setNewFolderOpen(true)
       : undefined,
     'no-matches': clearFilters,
-    'no-tagged': undefined,
-    partial: undefined,
     'no-docs': writable.length ? newDocument : undefined,
-  } as const;
+  };
   const saveViewButton = isHomeQueryFiltered(q) && (
     <SaveViewPopover
       key="save-view"
@@ -443,9 +419,9 @@ export function HomePage({ folderId }: Props) {
       defaultName={defaultViewName(summaryArgs)}
       filters={summarizeHomeQuery(summaryArgs)}
       workspaceName={workspaceName}
-      canShare={canShare}
-      saving={saving}
-      onSave={(v) => void saveCurrentView(v)}
+      canShare={nsPerms.canCreateFolder}
+      query={queryForSave}
+      onSaved={(v) => goHome(withView(queryForSave, v.id), { replace: true })}
       open={saveOpen}
       onOpenChange={setSaveOpen}
     />
@@ -462,12 +438,13 @@ export function HomePage({ folderId }: Props) {
       New document
     </Button>
   );
-  const headerActions = saveViewButton || newDocumentButton ? (
-    <>
-      {saveViewButton}
-      {newDocumentButton}
-    </>
-  ) : undefined;
+  const headerActions =
+    saveViewButton || newDocumentButton ? (
+      <>
+        {saveViewButton}
+        {newDocumentButton}
+      </>
+    ) : undefined;
   const body =
     view.length > 0 ? (
       <DocTable
@@ -585,8 +562,9 @@ export function HomePage({ folderId }: Props) {
         onOpenChange={setPickerOpen}
       />
       {tagPage && (
-        <RenameTagDialog
+        <NameDialog
           open={!!renaming}
+          title="Rename tag"
           name={tagPage.name}
           error={renaming?.error}
           onSubmit={(name) => void renameTagTo(tagPage.key, name)}

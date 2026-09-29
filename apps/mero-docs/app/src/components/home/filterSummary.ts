@@ -3,17 +3,15 @@
 
 import type { HomeQuery } from '@/lib/homeQuery';
 import { cutViewName } from '@/lib/viewName';
-import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
 import {
   MENTIONED_ME_LABEL,
+  UNKNOWN_FOLDER_LABEL,
   UNKNOWN_TAG_LABEL,
   type FolderPaths,
 } from './useHomeChips';
 import { UPDATED_OPTIONS } from './UpdatedMenu';
 import type { FilterIcon } from './types';
-
-const UNKNOWN_FOLDER_LABEL = 'Unknown folder';
 
 export const SORT_LABELS: Record<HomeQuery['sort'], string> = {
   updated: 'Last updated',
@@ -53,7 +51,7 @@ export function summarizeHomeQuery({
       return {
         icon: 'tag' as const,
         label: tag && !tag.deleted ? tag.name : UNKNOWN_TAG_LABEL,
-        color: tag?.color ?? TAG_NEUTRAL,
+        color: tag?.color,
       };
     }),
   ];
@@ -62,8 +60,7 @@ export function summarizeHomeQuery({
     items.push({
       icon: 'calendar',
       label:
-        UPDATED_OPTIONS.find((o) => o.value === q.updated)?.label ??
-        q.updated,
+        UPDATED_OPTIONS.find((o) => o.value === q.updated)?.label ?? q.updated,
     });
   }
   if (q.by) {

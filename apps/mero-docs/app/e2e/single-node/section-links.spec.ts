@@ -50,7 +50,7 @@ test.describe('Section links (single-node)', () => {
     await alice.editor.expectMounted();
     const blockId = await alice.editor
       .block('Milestones')
-      .getAttribute('data-block-id');
+      .getAttribute('data-id');
     expect(url.hash).toBe(`#${new URLSearchParams({ b: blockId ?? '' })}`);
   });
 

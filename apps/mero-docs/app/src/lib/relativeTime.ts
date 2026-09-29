@@ -26,8 +26,7 @@ export function whenLabel(ms: number, nowMs: number): string {
 
 /** A day as a date: "Sep 22", or "Dec 31, 2025" outside this year. */
 export function dateLabel(ms: number, nowMs: number): string {
-  const sameYear =
-    new Date(ms).getFullYear() === new Date(nowMs).getFullYear();
+  const sameYear = new Date(ms).getFullYear() === new Date(nowMs).getFullYear();
   return (sameYear ? DAY_FORMAT : DAY_YEAR_FORMAT).format(ms);
 }
 
@@ -35,9 +34,4 @@ export function dateLabel(ms: number, nowMs: number): string {
 export function updatedLabel(ms: number, nowMs: number): string {
   const label = whenLabel(ms, nowMs);
   return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-/** When this device last opened a doc: "opened 4 min ago", "opened yesterday". */
-export function openedLabel(ms: number, nowMs: number): string {
-  return `opened ${whenLabel(ms, nowMs)}`;
 }

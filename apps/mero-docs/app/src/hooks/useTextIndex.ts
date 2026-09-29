@@ -8,7 +8,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/generated/docs/DocsClient';
 import { parseRichEvents } from '@/lib/rich/events';
 import { docTextFromBlocks } from '@/lib/search/docText';
 import { textCache, textCacheKey } from '@/lib/search/textCache';
@@ -33,6 +33,7 @@ type Job = {
   folderId: string;
   docId: string;
   contextId: string;
+  client: DocsClient;
   updatedAt: number; // the list's version of the doc
   // Queued by a body event, so the list's version is about to be stale: the
   // read asks the doc for its own first, or the list catching up re-reads it.
@@ -51,9 +52,10 @@ export function useTextIndex({
   folders,
   folderStatus,
   contextOf,
+  clientOf,
 }: Pick<
   WorkspaceIndex,
-  'rows' | 'folders' | 'folderStatus' | 'contextOf'
+  'rows' | 'folders' | 'folderStatus' | 'contextOf' | 'clientOf'
 >): TextIndex {
   const { mero } = useMero();
 
@@ -61,18 +63,20 @@ export function useTextIndex({
     const out = new Map<string, Job>();
     for (const r of rows) {
       const contextId = contextOf(r.folderId);
-      if (!contextId) continue;
+      const client = clientOf(r.folderId);
+      if (!contextId || !client) continue;
       const key = rowKey(r.folderId, r.docId);
       out.set(key, {
         key,
         folderId: r.folderId,
         docId: r.docId,
         contextId,
+        client,
         updatedAt: r.updatedAt,
       });
     }
     return out;
-  }, [rows, contextOf]);
+  }, [rows, contextOf, clientOf]);
 
   // One mutable engine per mount; the provider remounts per workspace, which cancels it.
   const engine = useRef({
@@ -93,22 +97,7 @@ export function useTextIndex({
     failed: new Set(),
   }));
 
-  const clients = useMemo(
-    () => ({ mero, byContext: new Map<string, DocsClient>() }),
-    [mero],
-  );
   const cache = useMemo(() => (mero ? textCache(mero) : null), [mero]);
-  const clientFor = useCallback(
-    (contextId: string) => {
-      let client = clients.byContext.get(contextId);
-      if (!client) {
-        client = new DocsClient(clients.mero!, contextId);
-        clients.byContext.set(contextId, client);
-      }
-      return client;
-    },
-    [clients],
-  );
 
   const publish = useCallback(() => {
     const e = engine.current;
@@ -141,7 +130,7 @@ export function useTextIndex({
         await yieldToEventLoop();
         if (current()) {
           version = e.wanted.get(job.key)!.updatedAt;
-          const client = clientFor(job.contextId);
+          const { client } = job;
           if (job.event) {
             // Its version before its text, so the text is at least that new.
             try {
@@ -192,7 +181,7 @@ export function useTextIndex({
       pumpRef.current();
       publish();
     },
-    [clientFor, publish, cache],
+    [publish, cache],
   );
 
   const pump = useCallback(() => {

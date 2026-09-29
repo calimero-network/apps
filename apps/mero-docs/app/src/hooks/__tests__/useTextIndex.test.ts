@@ -6,6 +6,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { BackendBlock } from '@/lib/rich/blocknote';
 import type { FolderIndexStatus } from '../useWorkspaceIndex';
 import type { FolderInfo, IndexRow } from '@/lib/workspaceIndex/types';
+import { DocsClient } from '@/generated/docs/DocsClient';
 import { TEXT_INDEX_CONCURRENCY, useTextIndex } from '../useTextIndex';
 
 type Event = { contextId: string; type: string; data: unknown };
@@ -85,6 +86,7 @@ type Input = {
   folders: FolderInfo[];
   folderStatus: Record<string, FolderIndexStatus>;
   contextOf: (folderId: string) => string | undefined;
+  clientOf: (folderId: string) => DocsClient | undefined;
 };
 
 function input(
@@ -96,6 +98,10 @@ function input(
     folders: Object.keys(status).map((id) => ({ id, name: id })),
     folderStatus: status,
     contextOf: (folderId) => (status[folderId] ? `c-${folderId}` : undefined),
+    clientOf: (folderId) =>
+      status[folderId]
+        ? new DocsClient(mero as never, `c-${folderId}`)
+        : undefined,
   };
 }
 

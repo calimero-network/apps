@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { FileText, X } from 'lucide-react';
 
+import { Highlight } from '@/components/common/Highlight';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FolderSwatch } from '@/components/folders/FolderSwatch';
 import { TagChip } from '@/components/tags/TagChip';
-import type { DocTag } from '@/components/tags/DocTagRow';
+import type { TagView } from '@/lib/tags';
 
 export interface LinkedFromEntry {
   key: string;
@@ -14,6 +15,7 @@ export interface LinkedFromEntry {
   sentenceBold: [number, number][];
   folderPath: string[];
   folderColor?: string;
+  onOpen: () => void;
 }
 
 export interface LinksToEntry {
@@ -22,35 +24,17 @@ export interface LinksToEntry {
   section?: string;
   folderPath: string[];
   folderColor?: string;
+  onOpen: () => void;
 }
 
 export interface DetailsPanelProps {
   folder: { name: string; color?: string };
   created?: { dateLabel: string; by?: React.ReactNode };
   updated?: { relLabel: string; by?: React.ReactNode };
-  tags: DocTag[];
+  tags: TagView[];
   linkedFrom: LinkedFromEntry[];
   linksTo: LinksToEntry[];
   onClose: () => void;
-  onOpenLink: (key: string) => void;
-}
-
-// Bolds [start, end) runs of the sentence; the caller marks where this document's title sits.
-function withBold(text: string, ranges: [number, number][]): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  let cursor = 0;
-  [...ranges]
-    .sort((a, b) => a[0] - b[0])
-    .forEach(([start, end], i) => {
-      const from = Math.max(start, cursor);
-      const to = Math.min(end, text.length);
-      if (to <= from) return;
-      if (from > cursor) nodes.push(text.slice(cursor, from));
-      nodes.push(<b key={i}>{text.slice(from, to)}</b>);
-      cursor = to;
-    });
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
 }
 
 function Fact({ label, by }: { label: string; by?: React.ReactNode }) {
@@ -141,16 +125,8 @@ function DetailsBody({
   Title,
   ...props
 }: DetailsPanelProps & { Title: React.ElementType }) {
-  const {
-    folder,
-    created,
-    updated,
-    tags,
-    linkedFrom,
-    linksTo,
-    onClose,
-    onOpenLink,
-  } = props;
+  const { folder, created, updated, tags, linkedFrom, linksTo, onClose } =
+    props;
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-b py-3 pl-4 pr-3">
@@ -211,9 +187,9 @@ function DetailsBody({
             title={link.title}
             folderPath={link.folderPath}
             folderColor={link.folderColor}
-            onOpen={() => onOpenLink(link.key)}
+            onOpen={link.onOpen}
           >
-            {withBold(link.sentence, link.sentenceBold)}
+            <Highlight as="b" text={link.sentence} ranges={link.sentenceBold} />
           </LinkRow>
         ))}
       </LinkSection>
@@ -228,7 +204,7 @@ function DetailsBody({
             title={link.title}
             folderPath={link.folderPath}
             folderColor={link.folderColor}
-            onOpen={() => onOpenLink(link.key)}
+            onOpen={link.onOpen}
           >
             {link.section && <>Linked in “{link.section}”</>}
           </LinkRow>
@@ -251,12 +227,9 @@ export function DetailsPanel(props: DetailsPanelProps) {
 }
 
 // The same details as a right-hand sheet below lg; Escape and the backdrop close it.
-export function DetailsSheet({
-  open,
-  ...props
-}: DetailsPanelProps & { open: boolean }) {
+export function DetailsSheet(props: DetailsPanelProps) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && props.onClose()}>
+    <Dialog open onOpenChange={(next) => !next && props.onClose()}>
       <DialogContent
         aria-describedby={undefined}
         className="left-auto right-0 top-0 flex h-full max-h-none w-[300px] max-w-[85vw] translate-x-0 translate-y-0 flex-col rounded-none border-y-0 border-r-0 bg-background p-0 data-[state=open]:animate-in data-[state=open]:slide-in-from-right"

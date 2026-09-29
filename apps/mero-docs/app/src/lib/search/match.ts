@@ -1,3 +1,5 @@
+import { isHigh } from '../rich/offsets';
+
 export const QUERY_MAX = 200; // longer input is cut so a paste cannot stall the palette
 const TAGS_ONLY_PREFIX = '#';
 const MARKS = /\p{M}/gu;
@@ -20,8 +22,7 @@ export function foldForSearch(s: string): string {
 
 function cutToMax(s: string): string {
   if (s.length <= QUERY_MAX) return s;
-  const last = s.charCodeAt(QUERY_MAX - 1);
-  const splitsPair = last >= 0xd800 && last <= 0xdbff;
+  const splitsPair = isHigh(s.charCodeAt(QUERY_MAX - 1));
   return s.slice(0, splitsPair ? QUERY_MAX - 1 : QUERY_MAX);
 }
 

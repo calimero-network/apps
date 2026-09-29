@@ -21,11 +21,7 @@ import { docLabel } from '@/lib/docLabel';
 import { folderLabel } from '@/lib/folderLabel';
 import { dateLabel, updatedLabel } from '@/lib/relativeTime';
 import { docTagChips } from '@/lib/tags';
-import {
-  rowKey,
-  type DocHrefTarget,
-  type IndexRow,
-} from '@/lib/workspaceIndex/types';
+import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 import {
   DetailsPanel,
   DetailsSheet,
@@ -44,8 +40,6 @@ interface Props {
   onClose: () => void;
 }
 
-type Opens = Map<string, Pick<DocHrefTarget, 'folder' | 'doc' | 'block'>>;
-
 function linkRow(r: IndexRow, paths: FolderPaths) {
   const path = paths.get(r.folderId);
   return {
@@ -60,23 +54,22 @@ function useLinks(ws: string, folderId: string, docId: string) {
   const { rows, folders } = useWorkspaceIndexValue();
   const { texts } = useTextIndexValue();
   const paths = useFolderPaths(folders);
+  const { goDoc } = useAppRoute();
   return React.useMemo(() => {
     const byKey = new Map(rows.map((r) => [rowKey(r.folderId, r.docId), r]));
-    const opens: Opens = new Map();
     const linkedFrom: LinkedFromEntry[] = backlinksTo(
       { ws, folder: folderId, doc: docId },
       texts,
     ).flatMap((b) => {
       const r = byKey.get(b.row);
       if (!r) return [];
-      const key = `from:${b.row}`;
-      opens.set(key, { folder: r.folderId, doc: r.docId });
       return [
         {
-          key,
+          key: `from:${b.row}`,
           sentence: b.sentence,
           sentenceBold: b.sentenceBold,
           ...linkRow(r, paths),
+          onOpen: () => goDoc(r.folderId, r.docId, {}),
         },
       ];
     });
@@ -86,13 +79,14 @@ function useLinks(ws: string, folderId: string, docId: string) {
         const k = rowKey(target.folder, target.doc);
         const r = target.ws === ws ? byKey.get(k) : undefined;
         if (!r) return [];
-        const key = `to:${k}`;
-        opens.set(key, {
-          folder: r.folderId,
-          doc: r.docId,
-          block: target.block,
-        });
-        return [{ key, section, ...linkRow(r, paths) }];
+        return [
+          {
+            key: `to:${k}`,
+            section,
+            ...linkRow(r, paths),
+            onOpen: () => goDoc(r.folderId, r.docId, { block: target.block }),
+          },
+        ];
       },
     );
     return {
@@ -100,9 +94,8 @@ function useLinks(ws: string, folderId: string, docId: string) {
       paths,
       linkedFrom,
       linksTo,
-      opens,
     };
-  }, [rows, texts, paths, ws, folderId, docId]);
+  }, [rows, texts, paths, goDoc, ws, folderId, docId]);
 }
 
 export function DocDetails({
@@ -114,9 +107,8 @@ export function DocDetails({
 }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const { byKey } = useTags();
-  const { goDoc } = useAppRoute();
   const now = useNow();
-  const { row, paths, linkedFrom, linksTo, opens } = useLinks(
+  const { row, paths, linkedFrom, linksTo } = useLinks(
     namespaceId ?? '',
     folderId,
     docId,
@@ -143,10 +135,6 @@ export function DocDetails({
     linkedFrom,
     linksTo,
     onClose,
-    onOpenLink: (key) => {
-      const open = opens.get(key);
-      if (open) goDoc(open.folder, open.doc, { block: open.block });
-    },
   };
-  return sheet ? <DetailsSheet open {...props} /> : <DetailsPanel {...props} />;
+  return sheet ? <DetailsSheet {...props} /> : <DetailsPanel {...props} />;
 }

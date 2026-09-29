@@ -28,6 +28,7 @@ const WorkspaceIndexContext = createContext<WorkspaceIndex>({
   foldersKnown: false,
   folderStatus: {},
   contextOf: () => undefined,
+  clientOf: () => undefined,
   refetchFolder: () => {},
 });
 

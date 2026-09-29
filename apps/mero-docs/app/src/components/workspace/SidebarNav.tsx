@@ -33,15 +33,15 @@ interface ViewItem {
   shared: boolean;
   selected: boolean;
   onSelect: () => void;
-  onRename?: () => void;
-  onCopyLink?: () => void;
-  onDelete?: () => void;
-  canManage?: boolean; // overrides the section flag, e.g. a personal view its owner can always manage
+  onRename: () => void;
+  onCopyLink: () => void;
+  onDelete: () => void;
+  canManage: boolean; // overrides the section flag, e.g. a personal view its owner can always manage
 }
 
 interface Props {
   home: { count?: number; selected: boolean; onSelect: () => void }; // no count until it is known
-  mentions?: { count?: number; selected: boolean; onSelect: () => void }; // docs that mention you
+  mentions: { count?: number; selected: boolean; onSelect: () => void }; // docs that mention you
   views: ViewItem[];
   tags: {
     key: string;
@@ -51,7 +51,7 @@ interface Props {
     selected: boolean;
     onSelect: () => void;
   }[];
-  onAddView?: () => void; // omitted, no New view is offered
+  onAddView: () => void;
   addViewRef?: React.Ref<HTMLButtonElement>; // anchors what New view opens
   onAddTag: () => void;
   canManage: boolean;
@@ -88,15 +88,13 @@ export function SidebarNav({
           selected={home.selected}
           onSelect={home.onSelect}
         />
-        {mentions && (
-          <NavRow
-            lead={<AtSign className="h-[15px] w-[15px]" aria-hidden />}
-            name="Mentions"
-            count={mentions.count}
-            selected={mentions.selected}
-            onSelect={mentions.onSelect}
-          />
-        )}
+        <NavRow
+          lead={<AtSign className="h-[15px] w-[15px]" aria-hidden />}
+          name="Mentions"
+          count={mentions.count}
+          selected={mentions.selected}
+          onSelect={mentions.onSelect}
+        />
       </div>
 
       <Section
@@ -104,13 +102,8 @@ export function SidebarNav({
         collapsed={collapsed.views}
         onToggle={() => onToggleSection('views')}
         action={
-          canManage &&
-          onAddView && (
-            <AddButton
-              ref={addViewRef}
-              label="New view"
-              onClick={onAddView}
-            />
+          canManage && (
+            <AddButton ref={addViewRef} label="New view" onClick={onAddView} />
           )
         }
       >
@@ -134,10 +127,7 @@ export function SidebarNav({
                   selected={v.selected}
                   onSelect={v.onSelect}
                 />
-                {(v.canManage ?? canManage) &&
-                  (v.onRename || v.onCopyLink || v.onDelete) && (
-                    <ViewMenu view={v} />
-                  )}
+                {v.canManage && <ViewMenu view={v} />}
               </li>
             ))}
           </ul>
@@ -278,30 +268,22 @@ function ViewMenu({ view }: { view: ViewItem }) {
         <Ellipsis className="h-3.5 w-3.5" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-40">
-        {onRename && (
-          <DropdownMenuItem onSelect={onRename} className="gap-2">
-            <Pencil className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            Rename
-          </DropdownMenuItem>
-        )}
-        {onCopyLink && (
-          <DropdownMenuItem onSelect={onCopyLink} className="gap-2">
-            <Link className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-            Copy link
-          </DropdownMenuItem>
-        )}
-        {onDelete && (
-          <>
-            {(onRename || onCopyLink) && <DropdownMenuSeparator />}
-            <DropdownMenuItem
-              onSelect={onDelete}
-              className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              Delete
-            </DropdownMenuItem>
-          </>
-        )}
+        <DropdownMenuItem onSelect={onRename} className="gap-2">
+          <Pencil className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onCopyLink} className="gap-2">
+          <Link className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          Copy link
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={onDelete}
+          className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          Delete
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

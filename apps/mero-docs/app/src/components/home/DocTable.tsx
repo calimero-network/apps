@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { FileText, Folder } from 'lucide-react';
+import { FileText } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { TagChip } from '@/components/tags/TagChip';
+import { FolderSwatch } from '@/components/folders/FolderSwatch';
 import { LivePill } from '@/components/common/LivePill';
 import { initials } from '@/components/editor/PeerAvatars';
 import type { DocRowView, PersonView, TagView } from './types';
@@ -118,21 +119,16 @@ function TitleCell({ row }: { row: DocRowView }) {
   );
 }
 
-export function FolderPath({ path, color }: { path: string[]; color?: string }) {
+export function FolderPath({
+  path,
+  color,
+}: {
+  path: string[];
+  color?: string;
+}) {
   return (
     <>
-      {color ? (
-        <span
-          className="h-2.5 w-2.5 shrink-0 rounded-sm border border-border/50"
-          style={{ backgroundColor: color }}
-          aria-hidden
-        />
-      ) : (
-        <Folder
-          className="h-[13px] w-[13px] shrink-0 text-muted-foreground/80"
-          aria-hidden
-        />
-      )}
+      <FolderSwatch color={color} />
       <span className="truncate">
         {path.map((segment, i) => (
           <React.Fragment key={i}>

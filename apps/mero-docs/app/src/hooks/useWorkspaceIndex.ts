@@ -23,6 +23,7 @@ export type WorkspaceIndex = {
   foldersKnown: boolean; // every folder's access has resolved once for this workspace
   folderStatus: Record<string, FolderIndexStatus>;
   contextOf(folderId: string): string | undefined;
+  clientOf(folderId: string): DocsClient | undefined;
   refetchFolder(folderId: string): void;
 };
 
@@ -279,6 +280,10 @@ export function useWorkspaceIndex(): WorkspaceIndex {
     (folderId: string) => bindings.get(folderId)?.contextId,
     [bindings],
   );
+  const clientOf = useCallback(
+    (folderId: string) => bindings.get(folderId)?.client,
+    [bindings],
+  );
 
   return useMemo(
     () => ({
@@ -287,8 +292,17 @@ export function useWorkspaceIndex(): WorkspaceIndex {
       foldersKnown,
       folderStatus,
       contextOf,
+      clientOf,
       refetchFolder,
     }),
-    [rows, folders, foldersKnown, folderStatus, contextOf, refetchFolder],
+    [
+      rows,
+      folders,
+      foldersKnown,
+      folderStatus,
+      contextOf,
+      clientOf,
+      refetchFolder,
+    ],
   );
 }

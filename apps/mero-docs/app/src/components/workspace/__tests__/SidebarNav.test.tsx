@@ -18,6 +18,7 @@ const tag = (name: string, count: number, selected = false) => ({
 function setup(over: Partial<NavProps> = {}) {
   const props: NavProps = {
     home: { count: 10, selected: true, onSelect: vi.fn() },
+    mentions: { count: 1, selected: false, onSelect: vi.fn() },
     views: [
       {
         id: 'v1',
@@ -26,6 +27,10 @@ function setup(over: Partial<NavProps> = {}) {
         shared: false,
         selected: false,
         onSelect: vi.fn(),
+        onRename: vi.fn(),
+        onCopyLink: vi.fn(),
+        onDelete: vi.fn(),
+        canManage: true,
       },
       {
         id: 'v2',
@@ -37,6 +42,7 @@ function setup(over: Partial<NavProps> = {}) {
         onRename: vi.fn(),
         onCopyLink: vi.fn(),
         onDelete: vi.fn(),
+        canManage: true,
       },
     ],
     tags: [
@@ -73,7 +79,9 @@ describe('SidebarNav', () => {
     const { props, user } = setup();
     const views = screen.getByRole('region', { name: 'Views' });
     await user.click(
-      within(views).getByRole('button', { name: 'Q3 launch, shared with everyone, 2' }),
+      within(views).getByRole('button', {
+        name: 'Q3 launch, shared with everyone, 2',
+      }),
     );
     expect(props.views[1].onSelect).toHaveBeenCalledTimes(1);
   });
@@ -146,6 +154,10 @@ describe('SidebarNav', () => {
           shared: false,
           selected: false,
           onSelect: () => {},
+          onRename: () => {},
+          onCopyLink: () => {},
+          onDelete: () => {},
+          canManage: true,
         },
       ],
     });
@@ -198,35 +210,6 @@ describe('SidebarNav', () => {
     expect(view.onSelect).not.toHaveBeenCalled();
   });
 
-  it('has no menu for a view without actions', () => {
-    setup();
-    expect(
-      screen.queryByRole('button', { name: 'Actions for Design this week' }),
-    ).toBeNull();
-  });
-
-  it('offers only the actions the caller supplies', async () => {
-    const { user } = setup({
-      views: [
-        {
-          id: 'v',
-          name: 'Mine',
-          count: 1,
-          shared: false,
-          selected: false,
-          onSelect: () => {},
-          onCopyLink: () => {},
-        },
-      ],
-    });
-    await user.click(screen.getByRole('button', { name: 'Actions for Mine' }));
-    expect(
-      await screen.findByRole('menuitem', { name: 'Copy link' }),
-    ).toBeTruthy();
-    expect(screen.queryByRole('menuitem', { name: 'Rename' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
-  });
-
   it('hides view menus when the viewer cannot manage, except on views they own', () => {
     setup({
       canManage: false,
@@ -239,6 +222,9 @@ describe('SidebarNav', () => {
           selected: false,
           onSelect: () => {},
           onRename: () => {},
+          onCopyLink: () => {},
+          onDelete: () => {},
+          canManage: false,
         },
         {
           id: 'v2',
@@ -248,6 +234,8 @@ describe('SidebarNav', () => {
           selected: false,
           onSelect: () => {},
           onRename: () => {},
+          onCopyLink: () => {},
+          onDelete: () => {},
           canManage: true,
         },
       ],
@@ -263,8 +251,14 @@ describe('SidebarNav', () => {
   it('names each row by its name and count, never run together', () => {
     setup();
     expect(screen.getByRole('button', { name: 'Home, 10' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Design this week, 3' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Q3 launch, shared with everyone, 2' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Design this week, 3' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: 'Q3 launch, shared with everyone, 2',
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'design, 3' })).toBeTruthy();
   });
 });

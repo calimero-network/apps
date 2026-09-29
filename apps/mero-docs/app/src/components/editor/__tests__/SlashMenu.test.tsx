@@ -31,7 +31,14 @@ const ITEMS: SlashMenuItem[] = [
 
 describe('SlashMenu', () => {
   it('lists items under their group and marks the active row', () => {
-    render(<SlashMenu items={ITEMS} activeIndex={1} onPick={() => {}} />);
+    render(
+      <SlashMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={1}
+        onItemClick={() => {}}
+      />,
+    );
     const groups = screen.getAllByRole('group');
     expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
       'Headings',
@@ -47,7 +54,14 @@ describe('SlashMenu', () => {
   });
 
   it('shows shortcuts as key caps for this platform, the same on every row', () => {
-    render(<SlashMenu items={ITEMS} activeIndex={0} onPick={() => {}} />);
+    render(
+      <SlashMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
+      />,
+    );
     const caps = [
       screen.getByText(shortcutLabel('Mod-Alt-1')),
       screen.getByText(shortcutLabel('Mod-Shift-8')),
@@ -59,15 +73,40 @@ describe('SlashMenu', () => {
   it('picks the clicked item', async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
-    render(<SlashMenu items={ITEMS} activeIndex={0} onPick={onPick} />);
+    render(
+      <SlashMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={onPick}
+      />,
+    );
     await user.click(
       screen.getByRole('option', { name: /Link to a document/ }),
     );
     expect(onPick).toHaveBeenCalledWith(ITEMS[2]);
   });
 
+  it('renders nothing until the first items load', () => {
+    const { container } = render(
+      <SlashMenu
+        loadingState="loading-initial"
+        items={[]}
+        selectedIndex={undefined}
+      />,
+    );
+    expect(container.innerHTML).toBe('');
+  });
+
   it('says when nothing matches', () => {
-    render(<SlashMenu items={[]} activeIndex={0} onPick={() => {}} />);
+    render(
+      <SlashMenu
+        items={[]}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
+      />,
+    );
     expect(screen.getByText('No matches')).toBeTruthy();
   });
 });

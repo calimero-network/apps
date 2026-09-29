@@ -258,7 +258,6 @@ export function useHomeChips({
       icon: 'mention',
       label: MENTIONED_ME_LABEL,
       active: !!q.mentions,
-      toggle: true,
       onToggle: () =>
         setQuery({ ...q, mentions: q.mentions ? undefined : 'me' }),
     },
@@ -267,7 +266,6 @@ export function useHomeChips({
       icon: 'archive',
       label: 'Archived',
       active: q.archived,
-      toggle: true,
       onToggle: () => setQuery({ ...q, archived: !q.archived }),
     },
   ];

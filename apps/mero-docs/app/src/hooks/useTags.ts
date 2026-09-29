@@ -1,18 +1,9 @@
 // The workspace's tags: each doc carries only keys, and the registry maps a key
 // to its name and colour, so one read here names every tag chip in the app.
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import { DocsClient } from '@/generated/docs/DocsClient';
+import type { DocsClient } from '@/generated/docs/DocsClient';
 import type { RegistryClient } from '@/generated/registry/RegistryClient';
 import {
   findTagByName,
@@ -22,14 +13,12 @@ import {
 } from '@/lib/tags';
 import { settleInPool } from '@/lib/pool';
 import type { IndexRow } from '@/lib/workspaceIndex/types';
-import { useContextEvents } from './useContextEvents';
 import { notifyDocsRefetch } from './useDocs';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { useNamespacePermissions } from './useNamespacePermissions';
+import { useRegistryRead } from './useRegistryRead';
 
-const REGISTRY_EVENT_DEBOUNCE_MS = 300; // one re-read per burst of registry ops
 const FIRST_READ_TRIES = 3; // a just-opened workspace's registry may not answer yet
-const RETRY_BASE_MS = 1_000; // doubles after each failed first read
 export const TAG_NAME_TAKEN = 'A tag with this name already exists';
 const SAVE_FAILED = "Couldn't save the tag. Try again.";
 const DELETE_FAILED = "Couldn't delete the tag. Try again.";
@@ -57,6 +46,7 @@ export type TagsState = {
 type IndexSource = {
   rows: IndexRow[];
   contextOf(folderId: string): string | undefined;
+  clientOf(folderId: string): DocsClient | undefined;
 };
 
 const notReady = () => Promise.reject(new Error('tags are not ready'));
@@ -84,85 +74,32 @@ export function useCanManageTags(): boolean {
 
 /** Reads the tags and re-reads on registry changes; a failed re-read keeps the last list. */
 export function useTagsSource(index: IndexSource): TagsState {
-  const { registryClient, registryContextId } = useDriveWorkspace();
-  const { mero } = useMero();
+  const { registryClient } = useDriveWorkspace();
   const indexRef = useRef(index);
   indexRef.current = index;
-  const [loaded, setLoaded] = useState<{
-    client: Pick<RegistryClient, 'listTags'>;
-    tags: Tag[];
-  } | null>(null);
-  const seqRef = useRef(0);
-  const retryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const loadedForRef = useRef<unknown>(null);
-
   // Until one read lands, a failure retries with backoff, or every chip shows a raw key.
-  const load = useCallback(
-    (attempt = 0) => {
-      if (!registryClient) return;
-      clearTimeout(retryRef.current);
-      const seq = ++seqRef.current;
-      registryClient.listTags().then(
-        (dtos) => {
-          if (seq !== seqRef.current) return;
-          const tags = dtos.map(({ key, name, color, deleted }) => ({
-            key,
-            name,
-            color,
-            deleted,
-          }));
-          loadedForRef.current = registryClient;
-          setLoaded({ client: registryClient, tags });
-        },
-        (e: unknown) => {
-          if (seq !== seqRef.current) return;
-          console.warn('[useTags] read failed', e);
-          const firstRead = loadedForRef.current !== registryClient;
-          if (firstRead && attempt + 1 < FIRST_READ_TRIES) {
-            retryRef.current = setTimeout(
-              () => load(attempt + 1),
-              RETRY_BASE_MS * 2 ** attempt,
-            );
-          }
-        },
-      );
-    },
-    [registryClient],
+  const {
+    data: tags,
+    dataRef: tagsRef,
+    reload,
+    update,
+  } = useRegistryRead(
+    'useTags',
+    (client) => client.listTags(),
+    FIRST_READ_TRIES,
   );
-
-  useEffect(() => {
-    load();
-    return () => clearTimeout(retryRef.current);
-  }, [load]);
-  const onRegistryEvent = useCallback(() => load(), [load]);
-  useContextEvents(registryContextId, onRegistryEvent, {
-    strict: true,
-    debounceMs: REGISTRY_EVENT_DEBOUNCE_MS,
-  });
-
-  const tags = useMemo(
-    () => (loaded?.client === registryClient ? loaded.tags : null),
-    [loaded, registryClient],
-  );
-  const tagsRef = useRef(tags);
-  tagsRef.current = tags;
 
   // A write shows at once; the re-read after it confirms it.
   const apply = useCallback(
     (next: Tag) => {
-      setLoaded((prev) => {
-        if (!prev || prev.client !== registryClient) return prev;
-        const has = prev.tags.some((t) => t.key === next.key);
-        return {
-          ...prev,
-          tags: has
-            ? prev.tags.map((t) => (t.key === next.key ? next : t))
-            : [...prev.tags, next],
-        };
-      });
-      load();
+      update((prev) =>
+        prev.some((t) => t.key === next.key)
+          ? prev.map((t) => (t.key === next.key ? next : t))
+          : [...prev, next],
+      );
+      reload();
     },
-    [registryClient, load],
+    [update, reload],
   );
 
   // Until the list is read, a new key could reuse a deleted one, so nothing is written.
@@ -181,7 +118,7 @@ export function useTagsSource(index: IndexSource): TagsState {
         throw e;
       }
     },
-    [registryClient],
+    [registryClient, tagsRef],
   );
 
   const setTag = useCallback(
@@ -209,7 +146,7 @@ export function useTagsSource(index: IndexSource): TagsState {
       }
       await setTag(tag && change(tag));
     },
-    [setTag],
+    [setTag, tagsRef],
   );
 
   const createTag = useCallback(
@@ -225,7 +162,7 @@ export function useTagsSource(index: IndexSource): TagsState {
       await setTag({ key, name, color, deleted: false });
       return key;
     },
-    [setTag],
+    [setTag, tagsRef],
   );
 
   const renameTag = useCallback(
@@ -236,7 +173,7 @@ export function useTagsSource(index: IndexSource): TagsState {
       if (taken && taken.key !== key) throw new TagNameTakenError();
       await changeTag(key, (tag) => ({ ...tag, name }));
     },
-    [changeTag],
+    [changeTag, tagsRef],
   );
 
   const recolorTag = useCallback(
@@ -248,17 +185,14 @@ export function useTagsSource(index: IndexSource): TagsState {
   const deleteTag = useCallback(
     async (key: string, editable: ReadonlySet<string>) => {
       await write(async (registry) => {
-        const { rows, contextOf } = indexRef.current;
-        const clients = new Map<string, DocsClient>();
+        const { rows, contextOf, clientOf } = indexRef.current;
+        const contexts = new Set<string>();
         const untag = rows.flatMap((r) => {
           const contextId = contextOf(r.folderId);
-          if (!mero || !contextId || !editable.has(r.folderId)) return [];
+          const client = clientOf(r.folderId);
+          if (!contextId || !client || !editable.has(r.folderId)) return [];
           if (!r.tags.includes(key)) return [];
-          let client = clients.get(contextId);
-          if (!client) {
-            client = new DocsClient(mero, contextId);
-            clients.set(contextId, client);
-          }
+          contexts.add(contextId);
           return [{ client, id: r.docId }];
         });
         const results = await settleInPool(untag, UNTAG_IN_FLIGHT, (doc) =>
@@ -269,13 +203,13 @@ export function useTagsSource(index: IndexSource): TagsState {
           if (result.status === 'rejected')
             console.warn('[useTags] untagging a doc failed', result.reason);
         }
-        clients.forEach((_client, contextId) => notifyDocsRefetch(contextId));
+        contexts.forEach(notifyDocsRefetch);
         await registry.deleteTag({ key });
       }, DELETE_FAILED);
       const tag = tagsRef.current?.find((t) => t.key === key);
       if (tag) apply({ ...tag, deleted: true });
     },
-    [mero, write, apply],
+    [write, apply, tagsRef],
   );
 
   return useMemo(() => {

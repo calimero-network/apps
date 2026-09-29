@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useTags } from '@/hooks/useTags';
+import { plural } from '@/lib/plural';
 import {
   docTagChips,
   findTagByName,
@@ -23,10 +24,6 @@ interface Props {
   onRemove: (key: string) => void;
 }
 
-function countLabel(n: number): string {
-  return `${n} doc${n === 1 ? '' : 's'}`;
-}
-
 // A document's tag row, named from the workspace tags; Add tag picks an existing tag before offering a new one.
 export function DocTags({ tagKeys, canEdit, onAdd, onRemove }: Props) {
   const { tags, byKey, createTag } = useTags();
@@ -44,7 +41,7 @@ export function DocTags({ tagKeys, canEdit, onAdd, onRemove }: Props) {
         key: t.key,
         name: t.name,
         color: t.color,
-        countLabel: countLabel(counts.get(t.key) ?? 0),
+        countLabel: plural(counts.get(t.key) ?? 0, 'doc'),
       }))
     : [];
 

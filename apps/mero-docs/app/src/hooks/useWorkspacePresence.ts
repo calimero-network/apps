@@ -1,13 +1,14 @@
 // Who is in this workspace right now, over ephemeral presence on the registry
 // context: the one context every namespace member shares.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
 import {
   PRESENCE_BEAT_MS as BEAT_MS,
   PRESENCE_STALE_MS as STALE_MS,
 } from '@/lib/presenceTiming';
 import { cancelLeave, leaveContext } from '@/lib/presenceLeave';
+import { useNow } from './useNow';
 import { useWarnOnError } from './useWarnOnError';
 
 const LEAVE_SLICE = {}; // carries no account, so every reader drops the author
@@ -71,11 +72,7 @@ export function useWorkspacePresence(
     useEphemeral<WorkspacePresenceSlice>(contextId);
   useWarnOnError('[useWorkspacePresence] presence off', error);
   // Ages grow without any event, so re-read them on the beat.
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), BEAT_MS);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(BEAT_MS);
 
   return useMemo(() => {
     const memberSet = new Set(members);

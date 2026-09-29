@@ -3,7 +3,6 @@ import {
   docTagChips,
   findTagByName,
   firstUnusedColor,
-  isValidTagKey,
   normalizeTagName,
   sidebarTags,
   tagCounts,
@@ -16,6 +15,8 @@ import {
   type Tag,
 } from '../tags';
 import { row } from '../workspaceIndex/__tests__/row';
+
+const CONTRACT_KEY = /^[a-z0-9-]{1,64}$/; // the contract's tag key rule
 
 function tag(key: string, name: string, deleted = false): Tag {
   return { key, name, color: TAG_COLORS[0], deleted };
@@ -134,7 +135,7 @@ describe('tagKeyFor (T-05)', () => {
     const long = 'a'.repeat(80);
     const key = tagKeyFor(long, new Set([tagKeyFor(long, none)]));
     expect(key.endsWith('-2')).toBe(true);
-    expect(isValidTagKey(key)).toBe(true);
+    expect(key).toMatch(CONTRACT_KEY);
   });
 
   it('falls back to t- plus six random base36 characters with no latin letters or digits', () => {
@@ -161,17 +162,7 @@ describe('tagKeyFor (T-05)', () => {
       'Ärger',
       'x'.repeat(32),
     ]) {
-      expect(isValidTagKey(tagKeyFor(name, none))).toBe(true);
-    }
-  });
-});
-
-describe('isValidTagKey', () => {
-  it('mirrors the contract: 1 to 64 of a-z, 0-9 and -', () => {
-    expect(isValidTagKey('launch-2')).toBe(true);
-    expect(isValidTagKey('a'.repeat(64))).toBe(true);
-    for (const bad of ['', 'Launch', 'a b', 'a_b', 'café', 'a'.repeat(65)]) {
-      expect(isValidTagKey(bad)).toBe(false);
+      expect(tagKeyFor(name, none)).toMatch(CONTRACT_KEY);
     }
   });
 });

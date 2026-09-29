@@ -203,33 +203,28 @@ export function DocumentEditor({
     [docsContextId, docId, rereadDoc],
   );
   useSubscription(metaEventContexts, onMetaEvent);
-  const onAddTag = useCallback(
-    (key: string) =>
-      void docsAddTag(docId, key).then(rereadDoc, (cause: unknown) => {
-        console.warn('[DocumentEditor] add tag failed', cause);
-        toast.error(TAG_ADD_FAILED);
+  const mutate = useCallback(
+    (pending: Promise<unknown>, failed: string) =>
+      void pending.then(rereadDoc, (cause: unknown) => {
+        console.warn('[DocumentEditor]', failed, cause);
+        toast.error(failed);
       }),
-    [docsAddTag, docId, rereadDoc],
+    [rereadDoc],
+  );
+  const onAddTag = useCallback(
+    (key: string) => mutate(docsAddTag(docId, key), TAG_ADD_FAILED),
+    [mutate, docsAddTag, docId],
   );
   const onRemoveTag = useCallback(
-    (key: string) =>
-      void docsRemoveTag(docId, key).then(rereadDoc, (cause: unknown) => {
-        console.warn('[DocumentEditor] remove tag failed', cause);
-        toast.error(TAG_REMOVE_FAILED);
-      }),
-    [docsRemoveTag, docId, rereadDoc],
+    (key: string) => mutate(docsRemoveTag(docId, key), TAG_REMOVE_FAILED),
+    [mutate, docsRemoveTag, docId],
   );
-
   const setArchived = useCallback(
     (archived: boolean) =>
-      void (archived ? docsArchive : docsUnarchive)(docId).then(
-        rereadDoc,
-        (cause: unknown) => {
-          console.warn('[DocumentEditor] archive change failed', cause);
-          toast.error(archived ? ARCHIVE_FAILED : UNARCHIVE_FAILED);
-        },
-      ),
-    [docsArchive, docsUnarchive, docId, rereadDoc],
+      archived
+        ? mutate(docsArchive(docId), ARCHIVE_FAILED)
+        : mutate(docsUnarchive(docId), UNARCHIVE_FAILED),
+    [mutate, docsArchive, docsUnarchive, docId],
   );
 
   // The panel beside the document is remembered; the sheet below lg opens only when asked.
