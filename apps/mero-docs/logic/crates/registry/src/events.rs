@@ -6,48 +6,33 @@
 
 #[calimero_sdk::app::event]
 pub enum Event<'a> {
-    FolderRegistered {
-        id: &'a str,
-    },
-    FolderUnregistered {
-        id: &'a str,
-    },
+    /// A folder was added to the registry.
+    FolderRegistered { id: &'a str },
+    /// A folder was removed from the registry.
+    FolderUnregistered { id: &'a str },
+    /// A docs context was bound to a folder.
     FolderContextBound {
         folder_id: &'a str,
         context_id: &'a str,
     },
-    FolderColorChanged {
-        id: &'a str,
-    },
-    FolderAliasChanged {
-        id: &'a str,
-    },
-    FolderParentChanged {
-        id: &'a str,
-    },
-    FolderSortOrderChanged {
-        parent_id: &'a str,
-    },
-    FolderVisibilityChanged {
-        id: &'a str,
-    },
-    ManagerAdded {
-        member: &'a str,
-    },
-    ManagerRemoved {
-        member: &'a str,
-    },
+    /// A folder's colour changed.
+    FolderColorChanged { id: &'a str },
+    /// A folder's display name changed.
+    FolderAliasChanged { id: &'a str },
+    /// A folder's recorded parent changed.
+    FolderParentChanged { id: &'a str },
+    /// The display order of a parent's child folders changed.
+    FolderSortOrderChanged { parent_id: &'a str },
+    /// A folder's registry visibility flag changed.
+    FolderVisibilityChanged { id: &'a str },
+    /// A manager was added.
+    ManagerAdded { member: &'a str },
+    /// A manager was removed.
+    ManagerRemoved { member: &'a str },
     /// A folder's per-member role was set or cleared (UI re-fetches the row).
-    FolderRoleChanged {
-        folder_id: &'a str,
-        member: &'a str,
-    },
+    FolderRoleChanged { folder_id: &'a str, member: &'a str },
     /// A tag's name, colour, or tombstone flag changed.
-    TagChanged {
-        key: &'a str,
-    },
+    TagChanged { key: &'a str },
     /// A saved view was created, edited, or deleted.
-    ViewChanged {
-        id: &'a str,
-    },
+    ViewChanged { id: &'a str },
 }

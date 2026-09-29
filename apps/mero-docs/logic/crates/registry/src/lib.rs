@@ -93,8 +93,10 @@ pub struct ContextId(pub String);
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum Visibility {
+    /// Namespace members inherit access to the folder.
     #[default]
     Inherit,
+    /// Members must be added to the folder explicitly.
     Restricted,
 }
 
@@ -116,9 +118,12 @@ pub enum Visibility {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum Role {
+    /// Read only in the web app; enforced only by the member's `ReadOnly` role in the folder's group.
     Viewer,
+    /// Reads and edits documents; the role of a member with no explicit row.
     #[default]
     Editor,
+    /// Edits, and manages the folder's members.
     Manager,
 }
 
@@ -128,8 +133,9 @@ pub enum Role {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderRoleEntry {
-    /// hex-encoded member public key.
+    /// The member's account id as 64 hex characters.
     pub member: String,
+    /// The member's role on the folder.
     pub role: Role,
 }
 
@@ -196,7 +202,9 @@ impl FolderRecord {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderDto {
+    /// The folder's group id.
     pub id: FolderId,
+    /// The parent folder's group id; `None` for a top-level folder.
     pub parent_id: Option<FolderId>,
     /// `None` when color is unset / empty.
     pub color: Option<String>,
@@ -206,6 +214,7 @@ pub struct FolderDto {
     /// or folders created before the alias field existed). Clients
     /// fall back to the admin-API alias or a truncated id stub.
     pub alias: Option<String>,
+    /// A registry-side flag the app no longer writes, so it reads `Inherit`; the folder group's visibility decides who can join.
     pub visibility: Visibility,
 }
 
@@ -256,8 +265,11 @@ fn check_color(c: &str) -> Result<(), DriveError> {
 #[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct TagRecord {
+    /// The display name.
     pub name: LwwRegister<String>,
+    /// The colour as `#rrggbb`.
     pub color: LwwRegister<String>,
+    /// Set for good once the tag is deleted.
     pub deleted: bool,
 }
 
@@ -292,9 +304,13 @@ impl TagRecord {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct TagDto {
+    /// The tag's stable key, which documents carry.
     pub key: String,
+    /// The display name.
     pub name: String,
+    /// The colour as `#rrggbb`.
     pub color: String,
+    /// Whether the tag was deleted.
     pub deleted: bool,
 }
 
@@ -313,7 +329,9 @@ fn project_tag(key: &str, rec: &TagRecord) -> TagDto {
 #[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct ViewRecord {
+    /// The display name.
     pub name: LwwRegister<String>,
+    /// The saved search text.
     pub query: LwwRegister<String>,
 }
 
@@ -330,8 +348,11 @@ impl Mergeable for ViewRecord {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ViewDto {
+    /// The view's id.
     pub id: String,
+    /// The display name.
     pub name: String,
+    /// The saved search text.
     pub query: String,
     /// Hex account of whoever created the view, from `view_origins`' owner stamp.
     pub created_by: String,
@@ -418,6 +439,17 @@ impl RegistryState {
 
     // ---- folder lifecycle ------------------------------------------------
 
+    /// Adds a folder to the workspace registry so the workspace lists it, and makes the caller its registrant.
+    /// Only the registrant can later change or bind the folder; a registry admin can also remove it.
+    /// Create the folder's group first and pass its group id as `id`.
+    /// Not idempotent: a retry after a lost response fails because the id is already taken, so check `get_folder` before repeating.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    /// * `parent_id` - The parent folder's group id; `null` for a top-level folder, whose group sits directly under the namespace.
+    /// * `color` - Accent colour as `#rrggbb`; `null` or an empty string for none.
+    /// * `alias` - The folder's display name; `null` for none.
     pub fn register_folder(
         &mut self,
         id: FolderId,
@@ -459,6 +491,14 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Removes a folder from the registry, together with its per-member role rows when the caller is a registry admin.
+    /// The folder's group, its docs context and its documents are not touched; delete the context and group separately.
+    /// Only the folder's registrant or a registry admin may do this. A registry admin is the registry owner or a manager.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    #[app::destructive]
     pub fn unregister_folder(&mut self, id: FolderId) -> app::Result<()> {
         let id_for_event = id.0.clone();
         self.unregister_folder_inner(id)
@@ -543,6 +583,16 @@ impl RegistryState {
             .map_err(|e| DriveError::Invalid(format!("folder_contexts: {e}")))
     }
 
+    /// Returns one folder's registry record, including the docs context bound to it.
+    /// Fails when the folder is not registered.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    ///
+    /// # Returns
+    ///
+    /// The folder row.
     #[app::view]
     pub fn get_folder(&self, id: FolderId) -> app::Result<FolderDto> {
         let (owner, rec) = self
@@ -555,6 +605,12 @@ impl RegistryState {
         Ok(project(&id.0, &rec, ctx.as_ref()))
     }
 
+    /// Lists every folder registered in the workspace, one row per folder, in no guaranteed order.
+    /// The list is not filtered by access: a restricted folder the caller cannot open is still listed, with its docs context id.
+    ///
+    /// # Returns
+    ///
+    /// The folder rows; `parent_id` gives the tree and `context_id` the docs context of each folder.
     #[app::view]
     pub fn get_folders(&self) -> app::Result<Vec<FolderDto>> {
         // One row per folder id: `entries()` lists an id once per account
@@ -578,6 +634,14 @@ impl RegistryState {
 
     // ---- context binding -------------------------------------------------
 
+    /// Attaches a folder's docs context to its registry record.
+    /// Allowed once per folder and only for the folder's registrant; the binding can never be changed or removed.
+    /// Not idempotent: a retry after a lost response fails as already bound, so check `get_folder_context` before repeating.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    /// * `context_id` - The id of the context created with service `docs` inside the folder's group.
     pub fn bind_folder_context(
         &mut self,
         folder_id: FolderId,
@@ -629,6 +693,15 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Returns the docs context bound to a folder.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    ///
+    /// # Returns
+    ///
+    /// The context id, or `null` when the folder is unknown or no context is bound yet.
     #[app::view]
     pub fn get_folder_context(&self, folder_id: FolderId) -> app::Result<Option<ContextId>> {
         self.binding_of(&folder_id.0).map_err(DriveError::into_app)
@@ -636,6 +709,13 @@ impl RegistryState {
 
     // ---- color / move ---------------------------------------------------
 
+    /// Sets a folder's accent colour.
+    /// Only the folder's registrant may do this.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    /// * `color` - Accent colour as `#rrggbb`; an empty string clears it.
     pub fn set_color(&mut self, id: FolderId, color: String) -> app::Result<()> {
         // Treat empty color as "clear" - matches how `get_folder` projects
         // empty-string back to `None` on read.
@@ -645,11 +725,14 @@ impl RegistryState {
         Ok(())
     }
 
-    /// Update the registry-side alias for a folder. Callers should mirror
-    /// admin-API's `setGroupAlias` with a call here so namespace members
-    /// who aren't subgroup members can still see the new name. Empty
-    /// string clears the registry alias and falls back to whatever the
-    /// client surfaces (admin API alias if visible, otherwise id stub).
+    /// Sets the display name the registry holds for a folder.
+    /// The registry copy lets members who cannot read a restricted folder's group still see its name, so keep it equal to the group's name (`set_group_metadata`).
+    /// Only the folder's registrant may do this.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    /// * `alias` - The display name; an empty string clears it.
     pub fn set_folder_alias(&mut self, id: FolderId, alias: String) -> app::Result<()> {
         self.set_folder_alias_inner(&id.0, alias)
             .map_err(DriveError::into_app)?;
@@ -657,6 +740,14 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Records a visibility flag on the folder's registry record.
+    /// The Mero Docs app does not write or read this flag; who can join a folder is decided by the group's visibility, set with `set_group_visibility`.
+    /// Only the folder's registrant may do this.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    /// * `visibility` - `Inherit` or `Restricted`.
     pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
         self.set_visibility_inner(&id.0, visibility)
             .map_err(DriveError::into_app)?;
@@ -664,6 +755,14 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Changes the parent recorded in the registry.
+    /// It does not move the folder's group in the namespace's group tree, and the Mero Docs app never calls it.
+    /// Only the folder's registrant may do this.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The folder's group id.
+    /// * `new_parent` - The new parent folder's group id; `null` for top level.
     pub fn move_folder(&mut self, id: FolderId, new_parent: Option<FolderId>) -> app::Result<()> {
         self.move_folder_inner(&id.0, new_parent.map(|p| p.0))
             .map_err(DriveError::into_app)?;
@@ -717,6 +816,14 @@ impl RegistryState {
 
     // ---- sort order ------------------------------------------------------
 
+    /// Stores the display order of one parent's child folders.
+    /// Every id must be a registered folder whose recorded parent is `parent_id`.
+    /// Any member may reorder; the last write wins.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_id` - The parent folder's group id; `null` for the top level.
+    /// * `folder_ids` - The child folders' group ids in the order to show them.
     pub fn reorder(
         &mut self,
         parent_id: Option<FolderId>,
@@ -758,6 +865,15 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Returns the stored display order of one parent's child folders.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_id` - The parent folder's group id; `null` for the top level.
+    ///
+    /// # Returns
+    ///
+    /// The child folder ids in display order; empty when no order was stored.
     #[app::view]
     pub fn get_sort_order(&self, parent_id: Option<FolderId>) -> app::Result<Vec<FolderId>> {
         let key = parent_id
@@ -775,13 +891,23 @@ impl RegistryState {
 
     // ---- permissions: owner / managers ----------------------------------
 
-    /// The hex account of the registry owner, fixed when the registry was
-    /// created.
+    /// Returns the registry owner: the account of the member who created the registry context.
+    /// The owner is fixed when the registry is created.
+    ///
+    /// # Returns
+    ///
+    /// The owner's account id as 64 hex characters.
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
         Ok(self.owner_hex())
     }
 
+    /// Makes a member a registry manager, which lets them set folder roles and remove any folder from the registry.
+    /// Only the registry owner may do this.
+    ///
+    /// # Arguments
+    ///
+    /// * `member` - The member's account id as 64 hex characters, as listed by `list_group_members`.
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.add_manager_inner(&caller, &member)
@@ -790,6 +916,13 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Takes manager rights away from a member.
+    /// Only the registry owner may do this; fails when the member is not a manager.
+    ///
+    /// # Arguments
+    ///
+    /// * `member` - The member's account id as 64 hex characters.
+    #[app::destructive]
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.remove_manager_inner(&caller, &member)
@@ -798,6 +931,12 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Lists the registry managers.
+    /// The owner is an admin implicitly and is not listed.
+    ///
+    /// # Returns
+    ///
+    /// The managers' account ids as 64 hex characters.
     #[app::view]
     pub fn list_managers(&self) -> app::Result<Vec<String>> {
         self.list_managers_inner().map_err(DriveError::into_app)
@@ -805,6 +944,16 @@ impl RegistryState {
 
     // ---- permissions: per-folder roles ----------------------------------
 
+    /// Sets a member's role on a folder: `Viewer`, `Editor` (the default) or `Manager`.
+    /// Only a registry admin may do this. A registry admin is the registry owner or a manager.
+    /// This records the role only: core refuses a member's writes when they hold `ReadOnly` in the folder's group, so pair `Viewer` with that group role.
+    /// The web app sets both, on the folder and on every Open sub-folder reached through it.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    /// * `member` - The member's account id as 64 hex characters.
+    /// * `role` - The role to set.
     pub fn set_folder_role(
         &mut self,
         folder_id: FolderId,
@@ -821,6 +970,14 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Resets a member's role on a folder to the default `Editor`.
+    /// Only a registry admin may do this; clearing a member who has no role row is not an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    /// * `member` - The member's account id as 64 hex characters.
+    #[app::destructive]
     pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
         let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.clear_folder_role_inner(&caller, &folder_id.0, &member)
@@ -832,12 +989,31 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Returns a member's role on a folder, `Editor` when none was set.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    /// * `member` - The member's account id as 64 hex characters.
+    ///
+    /// # Returns
+    ///
+    /// The member's role.
     #[app::view]
     pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
         self.get_folder_role_inner(&folder_id.0, &member)
             .map_err(DriveError::into_app)
     }
 
+    /// Lists the members who have an explicit role on a folder; everyone else is an `Editor`.
+    ///
+    /// # Arguments
+    ///
+    /// * `folder_id` - The folder's group id.
+    ///
+    /// # Returns
+    ///
+    /// One row per member with a role.
     #[app::view]
     pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
         self.list_folder_roles_inner(&folder_id.0)
@@ -846,6 +1022,15 @@ impl RegistryState {
 
     // ---- tags -------------------------------------------------------------
 
+    /// Creates a workspace tag or changes an existing tag's name and colour.
+    /// Documents carry a tag by its key, added with the docs service's `add_tag`.
+    /// Fails for a key that was deleted; deleted keys cannot be reused.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The tag's stable id: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
+    /// * `name` - The display name, 1 to 32 bytes after trimming.
+    /// * `color` - Colour as `#rrggbb`.
     pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
         self.set_tag_inner(&key, name, color)
             .map_err(DriveError::into_app)?;
@@ -853,12 +1038,24 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Deletes a workspace tag for good; the key stays in `list_tags` marked `deleted` and can never be used again.
+    /// Documents that carry the key keep it but the workspace no longer shows it.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The tag's key.
+    #[app::destructive]
     pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
         self.delete_tag_inner(&key).map_err(DriveError::into_app)?;
         app::emit!(Event::TagChanged { key: &key });
         Ok(())
     }
 
+    /// Lists the workspace tags, including deleted ones so a deleted key can be told from one never used.
+    ///
+    /// # Returns
+    ///
+    /// One row per tag key.
     #[app::view]
     pub fn list_tags(&self) -> app::Result<Vec<TagDto>> {
         let entries = self
@@ -919,6 +1116,14 @@ impl RegistryState {
 
     // ---- saved views --------------------------------------------------------
 
+    /// Saves a search under a name for the whole workspace, or renames or rewrites an existing one.
+    /// The first save records the creator.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The view's id: 1 to 64 characters of ASCII letters, digits and `-`.
+    /// * `name` - The display name, 1 to 60 bytes after trimming.
+    /// * `query` - The search text, at most 1000 bytes.
     pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
         self.save_view_inner(&id, name, query)
             .map_err(DriveError::into_app)?;
@@ -926,12 +1131,24 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Deletes a saved view.
+    /// Fails when the view does not exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The view's id.
+    #[app::destructive]
     pub fn delete_view(&mut self, id: String) -> app::Result<()> {
         self.delete_view_inner(&id).map_err(DriveError::into_app)?;
         app::emit!(Event::ViewChanged { id: &id });
         Ok(())
     }
 
+    /// Lists the workspace's saved views.
+    ///
+    /// # Returns
+    ///
+    /// One row per view, including its creator's account id.
     #[app::view]
     pub fn list_views(&self) -> app::Result<Vec<ViewDto>> {
         let entries = self

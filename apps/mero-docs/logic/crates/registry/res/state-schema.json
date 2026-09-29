@@ -224,13 +224,16 @@
       "doc": "Per-folder collaborator role. Local copy of `mero_docs_types::Role`\n(same variants, same bytes); keep the two definitions in sync.",
       "variants": [
         {
-          "name": "Viewer"
+          "name": "Viewer",
+          "doc": "Read only in the web app; enforced only by the member's `ReadOnly` role in the folder's group."
         },
         {
-          "name": "Editor"
+          "name": "Editor",
+          "doc": "Reads and edits documents; the role of a member with no explicit row."
         },
         {
-          "name": "Manager"
+          "name": "Manager",
+          "doc": "Edits, and manages the folder's members."
         }
       ]
     },
@@ -247,7 +250,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The display name."
         },
         {
           "name": "color",
@@ -258,13 +262,15 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The colour as `#rrggbb`."
         },
         {
           "name": "deleted",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Set for good once the tag is deleted."
         }
       ]
     },
@@ -281,7 +287,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The display name."
         },
         {
           "name": "query",
@@ -292,7 +299,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The saved search text."
         }
       ]
     },
@@ -301,10 +309,12 @@
       "doc": "Per-folder cascade flag. `Inherit` = namespace-member cascade descends\nthrough this folder (Open subgroup); `Restricted` = explicit-invite wall,\ncascade stops here. Mirrors the admin-API subgroup_visibility concept but\nis stored in the registry so clients can read it without a per-folder\nadmin-API call.",
       "variants": [
         {
-          "name": "Inherit"
+          "name": "Inherit",
+          "doc": "Namespace members inherit access to the folder."
         },
         {
-          "name": "Restricted"
+          "name": "Restricted",
+          "doc": "Members must be added to the folder explicitly."
         }
       ]
     }
