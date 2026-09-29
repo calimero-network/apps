@@ -9,14 +9,16 @@
           "name": "applied",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "`true` when the steps were written, `false` when the write was refused."
         },
         {
           "name": "token",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The undo token for `undo`; `null` on a refusal."
         },
         {
           "name": "spans",
@@ -25,7 +27,8 @@
             "items": {
               "$ref": "Span"
             }
-          }
+          },
+          "doc": "The block's spans after the write, or the current ones on a refusal."
         },
         {
           "name": "anchor",
@@ -63,19 +66,22 @@
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id every method takes as `block`. Opaque; pass it back unchanged."
         },
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block type, as stored by `insert_block` or `set_kind`."
         },
         {
           "name": "depth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Nesting depth, 0 for top level."
         },
         {
           "name": "attrs",
@@ -87,7 +93,8 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The block's attributes, such as `level` on a heading."
         },
         {
           "name": "spans",
@@ -96,7 +103,8 @@
             "items": {
               "$ref": "Span"
             }
-          }
+          },
+          "doc": "The block's text as runs of equally formatted characters, in order."
         },
         {
           "name": "ids",
@@ -164,25 +172,28 @@
     },
     "Change": {
       "kind": "variant",
-      "doc": "One step of an attributed editor change, mirroring `DeltaOp`, which has no\n`AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.",
+      "doc": "One step of a text change, in Quill's delta shape: `{\"retain\": 6}`, `{\"insert\": \"text\"}` or `{\"delete\": 2}`.\nA `retain` or `insert` step also carries `attributes`: an object of formatting, or `null` for none.",
       "variants": [
         {
           "name": "Retain",
           "payload": {
             "$ref": "Change_Retain"
-          }
+          },
+          "doc": "Keeps `retain` characters, optionally changing their formatting."
         },
         {
           "name": "Insert",
           "payload": {
             "$ref": "Change_Insert"
-          }
+          },
+          "doc": "Inserts text at the current position."
         },
         {
           "name": "Delete",
           "payload": {
             "$ref": "Change_Delete"
-          }
+          },
+          "doc": "Removes characters at the current position."
         }
       ],
       "untagged": true
@@ -194,7 +205,8 @@
           "name": "delete",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many characters to remove."
         }
       ]
     },
@@ -205,7 +217,8 @@
           "name": "insert",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The text to insert."
         },
         {
           "name": "attributes",
@@ -218,7 +231,8 @@
               "kind": "string"
             }
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Formatting of the inserted text."
         }
       ]
     },
@@ -229,7 +243,8 @@
           "name": "retain",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many characters to keep."
         },
         {
           "name": "attributes",
@@ -242,7 +257,8 @@
               "kind": "string"
             }
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Formatting to set on the kept characters; `null` leaves it as is."
         }
       ]
     },
@@ -266,7 +282,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The comment text."
         },
         {
           "name": "created_at",
@@ -285,7 +302,8 @@
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment id."
         },
         {
           "name": "author",
@@ -298,19 +316,22 @@
           "name": "doc_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document the comment is on."
         },
         {
           "name": "body",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment text."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the comment was added, in nanoseconds since the Unix epoch."
         }
       ]
     },
@@ -322,13 +343,15 @@
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The title text."
         },
         {
           "name": "tags",
@@ -344,19 +367,22 @@
           "name": "archived",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Whether the document is archived."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the document was created, in nanoseconds since the Unix epoch; 0 when the creator cannot be determined."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the document last changed, in nanoseconds since the Unix epoch."
         },
         {
           "name": "created_by",
@@ -369,7 +395,8 @@
           "name": "updated_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Hex account of whoever last changed the document."
         },
         {
           "name": "can_delete",
@@ -390,7 +417,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "fugue_text"
-          }
+          },
+          "doc": "The title, plain text."
         },
         {
           "name": "body",
@@ -402,7 +430,8 @@
             "value": {
               "$ref": "BlockView"
             }
-          }
+          },
+          "doc": "The ordered blocks of the document."
         },
         {
           "name": "tags",
@@ -413,7 +442,7 @@
             },
             "crdt_type": "unordered_set"
           },
-          "doc": "A set, so two members tagging the same doc at once both keep their tag."
+          "doc": "The document's tags. A set, so two members tagging the same doc at once both keep their tag."
         },
         {
           "name": "archived",
@@ -424,7 +453,8 @@
             "inner_type": {
               "kind": "bool"
             }
-          }
+          },
+          "doc": "Whether the document is hidden from the default list."
         },
         {
           "name": "updated_at",
@@ -435,7 +465,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "When the document last changed, in nanoseconds since the Unix epoch."
         },
         {
           "name": "updated_by",
@@ -446,7 +477,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Hex account id of the last editor, advanced with `updated_at`."
         }
       ]
     },
@@ -458,13 +490,15 @@
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document title."
         },
         {
           "name": "snippet",
@@ -477,13 +511,15 @@
           "name": "score",
           "type": {
             "kind": "f32"
-          }
+          },
+          "doc": "How well the document matched; higher is better."
         },
         {
           "name": "archived",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Whether the document is archived."
         }
       ]
     },
@@ -498,7 +534,8 @@
             "items": {
               "$ref": "DocSearchHit"
             }
-          }
+          },
+          "doc": "The hits on this page, best match first."
         },
         {
           "name": "total",
@@ -791,19 +828,22 @@
           "name": "replica",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The replica that wrote the run's first character."
         },
         {
           "name": "counter",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "That replica's counter for the run's first character."
         },
         {
           "name": "len",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many consecutive characters the run covers."
         }
       ]
     },
@@ -838,20 +878,23 @@
           "name": "applied",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "`true` when the steps were written, `false` when the write was refused."
         },
         {
           "name": "token",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The undo token for `title_undo`; `null` on a refusal."
         },
         {
           "name": "text",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The title after the write, or the current title on a refusal."
         },
         {
           "name": "anchor",
@@ -889,7 +932,8 @@
           "name": "text",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The title text."
         },
         {
           "name": "ids",
@@ -898,7 +942,8 @@
             "items": {
               "$ref": "Run"
             }
-          }
+          },
+          "doc": "The id of each character of `text`, in order."
         }
       ]
     }
@@ -906,39 +951,46 @@
   "methods": [
     {
       "name": "add_comment",
+      "doc": "Adds a comment to a document, owned by the caller, and returns its id.\nNot idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.",
       "params": [
         {
           "name": "doc_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The id of the document to comment on."
         },
         {
           "name": "body",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment text."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new comment's id.",
       "intent": "mutating"
     },
     {
       "name": "add_tag",
+      "doc": "Puts a tag on a document.\nAdding a tag the document already has changes nothing.\nThe tag key must be a registered tag's key for the workspace to show it by name; see the registry's `set_tag`.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "tag",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The tag key: 1 to 64 characters of lowercase ASCII letters, digits and `-`."
         }
       ],
       "returns": {
@@ -948,53 +1000,60 @@
     },
     {
       "name": "anchor_at",
-      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
+      "doc": "Returns a cursor for the gap at a position in a block's text, as an opaque token that survives concurrent edits and that any member can resolve.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "position",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The gap, counted from 0 at the start of the text."
         },
         {
           "name": "before",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Which side the anchor leans toward when text is inserted exactly at the gap."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque anchor token.",
       "intent": "read_only"
     },
     {
       "name": "apply_delta",
-      "doc": "One editor transaction, text and formatting together, returning an\nopaque token `undo` takes.",
+      "doc": "Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nA `retain` or `insert` step may carry `attributes` to set formatting, for example `{\"insert\": \"hi\", \"attributes\": {\"bold\": \"true\"}}`; to clear formatting from a range use `mark` with a `null` value.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "ops",
@@ -1003,35 +1062,40 @@
             "items": {
               "$ref": "Change"
             }
-          }
+          },
+          "doc": "The steps of the transaction, in order."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque undo token.",
       "intent": "mutating"
     },
     {
       "name": "apply_delta_on",
-      "doc": "`apply_delta`, but only onto the text the caller diffed against, since a position\ncounted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.",
+      "doc": "Like `apply_delta`, but only applies when the block's text is still exactly `base`, because a position counted in any other text names the wrong place.\nWhen `anchor` is given the write must also be an insert right where that anchor sits.\nOn refusal nothing is written: `applied` is `false` and `spans` are the block's current spans to rebase onto.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "base",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block's full plain text the steps were computed against."
         },
         {
           "name": "ops",
@@ -1040,29 +1104,34 @@
             "items": {
               "$ref": "Change"
             }
-          }
+          },
+          "doc": "The steps of the transaction, as for `apply_delta`."
         },
         {
           "name": "anchor",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Optional cursor token from `anchor_at`; `null` for an unanchored write."
         }
       ],
       "returns": {
         "$ref": "Applied"
       },
+      "returns_doc": "Whether the write applied, the undo token, the block's spans afterwards, and an anchor at the end of the edit.",
       "intent": "mutating"
     },
     {
       "name": "archive_doc",
+      "doc": "Archives a document, which hides it from `list_docs` unless archived documents are requested.\nNothing is deleted and `unarchive_doc` reverses it.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
@@ -1072,110 +1141,128 @@
     },
     {
       "name": "comment_count",
-      "doc": "Comments held by the account their id names, on a doc that is still listed;\n`len` would count planted ones and a deleted doc's too.",
+      "doc": "Returns how many comments the folder's live documents hold, across all of them.\nA comment counts only when it is held by the account its id names.",
       "params": [],
       "returns": {
         "kind": "u64"
       },
+      "returns_doc": "The comment count.",
       "intent": "read_only"
     },
     {
       "name": "comment_schema_version",
-      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account the comment's id names, read by name, so it\nanswers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
+      "doc": "Returns the storage schema version stamped on a comment, or `null` when there is no such comment.\nA diagnostic for the web app's migration banner; not needed to read or write comments.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment id."
         }
       ],
       "returns": {
         "kind": "u32"
       },
+      "returns_doc": "The schema version number, or `null`.",
       "intent": "read_only"
     },
     {
       "name": "create_doc",
-      "doc": "Creates a document and seeds its title. The body starts empty; a client\nadds the first block with `insert_block`.",
+      "doc": "Creates a document with the given title and an empty body, and returns its id.\nAdd the first block with `insert_block`.\nNot idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.",
       "params": [
         {
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document title, plain text."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new document's id, an opaque string the other methods take as `doc` or `id`.",
       "intent": "mutating"
     },
     {
       "name": "delete_block",
+      "doc": "Removes a block from a document's body.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_comment",
+      "doc": "Deletes a comment.\nOnly its author or a moderator of this folder (the member who created the folder's context) may delete it.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment id."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_doc",
+      "doc": "Deletes a document, its whole body and its comments permanently.\nOnly the document's creator or a moderator of this folder (the member who created the folder's context) may delete it; `can_delete` on the document's row says whether the caller may.\nA moderator removes every comment on it; the creator removes their own, and the rest are no longer listed.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "edit_comment",
+      "doc": "Replaces a comment's text.\nOnly the comment's author may edit it.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment id."
         },
         {
           "name": "body",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The new comment text."
         }
       ],
       "returns": {
@@ -1185,19 +1272,21 @@
     },
     {
       "name": "edit_doc",
-      "doc": "Renames a document by replacing the whole title, which is what a rename\nbox does. Character-level edits go through `title_apply_delta`.",
+      "doc": "Renames a document by replacing its whole title.\nCharacter-level title edits go through `title_apply_delta`.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The new title, plain text."
         }
       ],
       "returns": {
@@ -1207,40 +1296,46 @@
     },
     {
       "name": "get_block",
+      "doc": "Returns one block with its kind, depth, attributes and formatted text spans.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         }
       ],
       "returns": {
         "$ref": "Block"
       },
+      "returns_doc": "The block, or `null` when there is no such block.",
       "intent": "read_only"
     },
     {
       "name": "get_block_delta",
-      "doc": "One block's rendered spans: the read a binding does on every keystroke.",
+      "doc": "Returns one block's text as formatted spans, the read an editor binding does on every keystroke.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         }
       ],
       "returns": {
@@ -1249,46 +1344,55 @@
           "$ref": "Span"
         }
       },
+      "returns_doc": "The spans in order; each has `text` and, when formatted, `attributes`.",
       "intent": "read_only"
     },
     {
       "name": "get_comment",
+      "doc": "Returns one comment.\nFails when the comment does not exist.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment id."
         }
       ],
       "returns": {
         "$ref": "CommentDto"
       },
+      "returns_doc": "The comment row.",
       "intent": "read_only"
     },
     {
       "name": "get_doc",
+      "doc": "Returns one document's metadata: title, tag keys, archived flag, timestamps, creator, last editor and whether the caller may delete it.\nThe body is read with `get_document`.\nFails when the document does not exist.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
         "$ref": "DocDto"
       },
+      "returns_doc": "The document's metadata row.",
       "intent": "read_only"
     },
     {
       "name": "get_document",
+      "doc": "Returns a document's body as an ordered list of blocks, each with its id, kind, depth, attributes and formatted text spans.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
@@ -1297,74 +1401,86 @@
           "$ref": "Block"
         }
       },
+      "returns_doc": "The blocks in document order.",
       "intent": "read_only"
     },
     {
       "name": "get_state_digest",
-      "doc": "The ordered body as one canonical line, so replicas are compared exactly\nby one value. Block ids are excluded because they carry the minting\nreplica, which no two nodes agree on.",
+      "doc": "Returns the whole body as one canonical line, so two replicas can be compared by a single value.\nBlock ids are left out because they differ between nodes.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The digest string.",
       "intent": "read_only"
     },
     {
       "name": "get_text",
+      "doc": "Returns one block's plain text with formatting stripped.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The block's text.",
       "intent": "read_only"
     },
     {
       "name": "get_title",
+      "doc": "Returns a document's title text.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The title.",
       "intent": "read_only"
     },
     {
       "name": "get_title_state",
-      "doc": "The title and its character ids, read together so they line up.",
+      "doc": "Returns a document's title text together with its character ids, read at the same moment so they line up.\nPass the ids to `title_apply_delta_on` so an edit lands where the caller saw it.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
         "$ref": "TitleState"
       },
+      "returns_doc": "The title text and the ids of its characters as runs.",
       "intent": "read_only"
     },
     {
@@ -1376,46 +1492,54 @@
     },
     {
       "name": "insert_block",
+      "doc": "Inserts an empty block into a document's body and returns its id.\nThe body is an ordered list of blocks; each has a `kind`, a `depth` and its own text.\nFill the block with `apply_delta`.\nNot idempotent: a retry after a lost response adds a second block, so check `list_blocks` before repeating.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "after",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The id of the block to insert after; `null` inserts at the top."
         },
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block type, an opaque string stored as given. The Mero Docs editor uses `paragraph`, `heading`, `bulletListItem` and `image`."
         },
         {
           "name": "depth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Nesting depth, 0 for top level, 1 for a child of the block above, and so on."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new block's id.",
       "intent": "mutating"
     },
     {
       "name": "list_blocks",
+      "doc": "Returns the ids of a document's blocks in document order.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
@@ -1424,17 +1548,19 @@
           "kind": "string"
         }
       },
+      "returns_doc": "The block ids.",
       "intent": "read_only"
     },
     {
       "name": "list_comments",
-      "doc": "One doc's comments: an index seek, not a walk of every comment.",
+      "doc": "Lists one document's comments, in no guaranteed order; sort by `created_at`.",
       "params": [
         {
           "name": "doc_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
@@ -1443,17 +1569,19 @@
           "$ref": "CommentDto"
         }
       },
+      "returns_doc": "One row per comment, including its author's account id.",
       "intent": "read_only"
     },
     {
       "name": "list_docs",
-      "doc": "The docs whose creator's header lives, body or not.",
+      "doc": "Lists the documents in this folder's context, in no guaranteed order; sort by `updated_at` for most recent first.\nEach row carries metadata only; read a body with `get_document`.",
       "params": [
         {
           "name": "include_archived",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "`true` to include archived documents, `false` to leave them out."
         }
       ],
       "returns": {
@@ -1462,76 +1590,87 @@
           "$ref": "DocDto"
         }
       },
+      "returns_doc": "One metadata row per document.",
       "intent": "read_only"
     },
     {
       "name": "mark",
-      "doc": "Set `key` over visible positions `[start, end)`. `null` is a no-op result\nwhen every character already resolves to that value.",
+      "doc": "Sets one formatting key over a range of a block's text, or clears it.\nDeclared keys: `bold`, `italic`, `underline`, `strike`, `code`, `link`, `comment`, `textColor` and `backgroundColor`; any other key is refused.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "start",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "First position of the range, inclusive."
         },
         {
           "name": "end",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Position after the range, exclusive."
         },
         {
           "name": "key",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The formatting key."
         },
         {
           "name": "value",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The value, for example `\"true\"` for `bold` or a URL for `link`; `null` clears the key."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The id of the new mark, or `null` when the range already had that value and nothing was written.",
       "intent": "mutating"
     },
     {
       "name": "merge_blocks",
-      "doc": "Append `second`'s body to `first` and tombstone `second`.",
+      "doc": "Appends the text of `second` to `first` and removes `second`.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "first",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block that keeps its place and receives the text."
         },
         {
           "name": "second",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block whose text is appended and which is then removed."
         }
       ],
       "returns": {
@@ -1541,25 +1680,29 @@
     },
     {
       "name": "move_block",
+      "doc": "Moves a block to just after another block.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block to move."
         },
         {
           "name": "after",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The block to move it after; `null` moves it to the top."
         }
       ],
       "returns": {
@@ -1569,68 +1712,78 @@
     },
     {
       "name": "passage_count",
-      "doc": "How many times `needle` appears contiguously in a block's text, which is\nan exact claim about interleaving that `contains` cannot make.",
+      "doc": "Counts how many times a passage appears contiguously in a block's text.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "needle",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The text to look for."
         }
       ],
       "returns": {
         "kind": "u32"
       },
+      "returns_doc": "The number of occurrences.",
       "intent": "read_only"
     },
     {
       "name": "remove_tag",
+      "doc": "Takes a tag off a document.\nRemoving a tag the document does not have is not an error.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "tag",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The tag key."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "resolve_ids",
-      "doc": "Where anchors sit in THIS replica's block, one tree rebuild for the lot.\n`null` is an anchor this replica cannot place yet.",
+      "doc": "Returns where anchors currently sit in this node's copy of a block, in one pass.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "anchors",
@@ -1639,7 +1792,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Tokens from `anchor_at`."
         }
       ],
       "returns": {
@@ -1648,72 +1802,82 @@
           "kind": "u32"
         }
       },
+      "returns_doc": "One position per anchor, in order; `null` for an anchor this node cannot place yet.",
       "intent": "read_only"
     },
     {
       "name": "search_docs",
-      "doc": "The docs whose title or body match `query`, best match first: words\nmatch as typed or as a prefix of a longer word, so a query can be\ntyped as-you-go. The title counts double.\n\nOnly docs the list shows are returned: an archived one only with\n`include_archived`, never one whose header is gone. A page holds at\nmost `limit` hits (default 20, at most 100); `next_cursor` continues\nit. The index lives on each node and lags an edit by up to a second.\n\nOn a node running with search off the index is not there and this\nfails: the client falls back to reading the docs itself.",
+      "doc": "Searches this folder's documents by title and body, best match first.\nWords match as typed or as a prefix of a longer word, and the title counts double.\nArchived documents come back only with `include_archived`; deleted ones never do.\nThe index lives on each node and lags an edit by up to a second.\nOn a node running with search off this fails; read the documents with `list_docs` and `get_document` instead.",
       "params": [
         {
           "name": "query",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The words to find."
         },
         {
           "name": "include_archived",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "`true` to include archived documents, `false` to leave them out."
         },
         {
           "name": "cursor",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`next_cursor` from the previous page, or `null` for the first page."
         },
         {
           "name": "limit",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The most hits per page, or `null` for 20; at most 100."
         }
       ],
       "returns": {
         "$ref": "DocSearchPage"
       },
+      "returns_doc": "One page of hits, the total match count, and the cursor for the next page.",
       "intent": "read_only"
     },
     {
       "name": "set_attr",
-      "doc": "`value: null` removes the attribute.",
+      "doc": "Sets one attribute on a block, such as `level` on a heading, or removes it.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "key",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The attribute name."
         },
         {
           "name": "value",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The attribute value as a string; `null` removes the attribute."
         }
       ],
       "returns": {
@@ -1723,24 +1887,28 @@
     },
     {
       "name": "set_depth",
+      "doc": "Changes a block's nesting depth.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "depth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The new depth, 0 for top level."
         }
       ],
       "returns": {
@@ -1750,24 +1918,28 @@
     },
     {
       "name": "set_kind",
+      "doc": "Changes a block's type.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block id."
         },
         {
           "name": "kind",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The new block type, as for `insert_block`."
         }
       ],
       "returns": {
@@ -1777,69 +1949,78 @@
     },
     {
       "name": "split_block",
-      "doc": "Split at visible position `at`, returning the new block's id.",
+      "doc": "Splits a block in two at a text position and returns the new block, which holds the text after the split and follows the original.\nNot idempotent: a retry after a lost response splits again, so read the blocks before repeating.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block to split."
         },
         {
           "name": "at",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The position to split at; the text from here on moves to the new block."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new block's id.",
       "intent": "mutating"
     },
     {
       "name": "title_anchor_at",
-      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
+      "doc": "Returns a cursor for the gap at a title position, as an opaque token that survives concurrent edits and that any member can resolve.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "position",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The gap, counted from 0 at the start of the title."
         },
         {
           "name": "before",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Which side the anchor leans toward when text is inserted exactly at the gap."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque anchor token.",
       "intent": "read_only"
     },
     {
       "name": "title_apply_delta",
-      "doc": "One editor transaction on the title, returning an opaque token\n`title_undo` takes.",
+      "doc": "Applies one editing transaction to a document's title and returns a token that `title_undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nThe title carries no formatting, so a step with non-null `attributes` is refused.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "ops",
@@ -1848,29 +2029,33 @@
             "items": {
               "$ref": "Change"
             }
-          }
+          },
+          "doc": "The steps of the transaction, in order."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque undo token.",
       "intent": "mutating"
     },
     {
       "name": "title_apply_delta_on",
-      "doc": "`title_apply_delta`, but only onto the title the caller diffed against and, with an\n`anchor`, only as an insert where that anchor sits; a refusal places the anchor.",
+      "doc": "Like `title_apply_delta`, but only applies when the title is still exactly `base`, because a position counted in any other text names the wrong place.\nWhen `anchor` is given the write must also be an insert right where that anchor sits.\nOn refusal nothing is written: `applied` is `false` and `text` is the current title to rebase onto.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "base",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The full title text the steps were computed against."
         },
         {
           "name": "ops",
@@ -1879,30 +2064,34 @@
             "items": {
               "$ref": "Change"
             }
-          }
+          },
+          "doc": "The steps of the transaction, as for `title_apply_delta`."
         },
         {
           "name": "anchor",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Optional cursor token from `title_anchor_at`; `null` for an unanchored write."
         }
       ],
       "returns": {
         "$ref": "TitleApplied"
       },
+      "returns_doc": "Whether the write applied, the undo token, the resulting title, and an anchor at the end of the edit.",
       "intent": "mutating"
     },
     {
       "name": "title_resolve",
-      "doc": "Where anchors sit in THIS replica's title. `null` is an anchor this\nreplica cannot place yet.",
+      "doc": "Returns where anchors currently sit in this node's copy of the title.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "anchors",
@@ -1911,7 +2100,8 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Tokens from `title_anchor_at`."
         }
       ],
       "returns": {
@@ -1920,38 +2110,44 @@
           "kind": "u32"
         }
       },
+      "returns_doc": "One position per anchor, in order; `null` for an anchor this node cannot place yet.",
       "intent": "read_only"
     },
     {
       "name": "title_undo",
-      "doc": "Takes a whole title transaction back, returning a token that redoes it.",
+      "doc": "Takes a whole title transaction back and returns a token that redoes it.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "token",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The token `title_apply_delta` (or a previous undo) returned."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque token that redoes the transaction.",
       "intent": "mutating"
     },
     {
       "name": "unarchive_doc",
+      "doc": "Restores an archived document to the default `list_docs` view.",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         }
       ],
       "returns": {
@@ -1961,30 +2157,34 @@
     },
     {
       "name": "undo",
-      "doc": "Take a whole transaction back, returning a token that redoes it.",
+      "doc": "Takes a whole text transaction back and returns a token that redoes it.",
       "params": [
         {
           "name": "doc",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The document id."
         },
         {
           "name": "block",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The block the transaction was applied to."
         },
         {
           "name": "token",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The token `apply_delta` (or a previous undo) returned."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "An opaque token that redoes the transaction.",
       "intent": "mutating"
     }
   ],
@@ -2000,91 +2200,106 @@
       "name": "BlockDeleted",
       "payload": {
         "$ref": "Event_BlockDeleted"
-      }
+      },
+      "doc": "A block was removed from a document."
     },
     {
       "name": "BlockInserted",
       "payload": {
         "$ref": "Event_BlockInserted"
-      }
+      },
+      "doc": "A block was added to a document."
     },
     {
       "name": "BlockMoved",
       "payload": {
         "$ref": "Event_BlockMoved"
-      }
+      },
+      "doc": "A block was moved within a document."
     },
     {
       "name": "CommentAdded",
       "payload": {
         "$ref": "Event_CommentAdded"
-      }
+      },
+      "doc": "A comment was added."
     },
     {
       "name": "CommentDeleted",
       "payload": {
         "$ref": "Event_CommentDeleted"
-      }
+      },
+      "doc": "A comment was deleted."
     },
     {
       "name": "CommentEdited",
       "payload": {
         "$ref": "Event_CommentEdited"
-      }
+      },
+      "doc": "A comment was edited."
     },
     {
       "name": "DocArchived",
       "payload": {
         "$ref": "Event_DocArchived"
-      }
+      },
+      "doc": "A document was archived."
     },
     {
       "name": "DocCreated",
       "payload": {
         "$ref": "Event_DocCreated"
-      }
+      },
+      "doc": "A document was created."
     },
     {
       "name": "DocDeleted",
       "payload": {
         "$ref": "Event_DocDeleted"
-      }
+      },
+      "doc": "A document was deleted."
     },
     {
       "name": "DocEdited",
       "payload": {
         "$ref": "Event_DocEdited"
-      }
+      },
+      "doc": "A document was renamed."
     },
     {
       "name": "DocTagsChanged",
       "payload": {
         "$ref": "Event_DocTagsChanged"
-      }
+      },
+      "doc": "A tag was added to or removed from a document."
     },
     {
       "name": "DocUnarchived",
       "payload": {
         "$ref": "Event_DocUnarchived"
-      }
+      },
+      "doc": "A document was unarchived."
     },
     {
       "name": "MarkApplied",
       "payload": {
         "$ref": "Event_MarkApplied"
-      }
+      },
+      "doc": "A formatting mark was written to a block."
     },
     {
       "name": "TextChanged",
       "payload": {
         "$ref": "Event_TextChanged"
-      }
+      },
+      "doc": "A block's text or formatting was edited or undone."
     },
     {
       "name": "TitleChanged",
       "payload": {
         "$ref": "Event_TitleChanged"
-      }
+      },
+      "doc": "A document title was edited or undone."
     }
   ],
   "state_root": "DocsState",

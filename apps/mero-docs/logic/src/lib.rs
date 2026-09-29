@@ -90,10 +90,15 @@ type Body = RichDocument<DriveMarks>;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Block {
+    /// The block id every method takes as `block`. Opaque; pass it back unchanged.
     pub id: String,
+    /// The block type, as stored by `insert_block` or `set_kind`.
     pub kind: String,
+    /// Nesting depth, 0 for top level.
     pub depth: u8,
+    /// The block's attributes, such as `level` on a heading.
     pub attrs: BTreeMap<String, String>,
+    /// The block's text as runs of equally formatted characters, in order.
     pub spans: Vec<Span>,
     /// The id of each character of `spans`, in order.
     pub ids: Vec<Run>,
@@ -117,8 +122,11 @@ impl Block {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Run {
+    /// The replica that wrote the run's first character.
     pub replica: String,
+    /// That replica's counter for the run's first character.
     pub counter: u32,
+    /// How many consecutive characters the run covers.
     pub len: u32,
 }
 
@@ -137,7 +145,9 @@ fn runs(ranges: Vec<IdRange>) -> Vec<Run> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct TitleState {
+    /// The title text.
     pub text: String,
+    /// The id of each character of `text`, in order.
     pub ids: Vec<Run>,
 }
 
@@ -146,8 +156,11 @@ pub struct TitleState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Applied {
+    /// `true` when the steps were written, `false` when the write was refused.
     pub applied: bool,
+    /// The undo token for `undo`; `null` on a refusal.
     pub token: Option<String>,
+    /// The block's spans after the write, or the current ones on a refusal.
     pub spans: Vec<Span>,
     /// The gap after this write's last change, or on a refusal the anchor sent.
     pub anchor: Option<String>,
@@ -161,8 +174,11 @@ pub struct Applied {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct TitleApplied {
+    /// `true` when the steps were written, `false` when the write was refused.
     pub applied: bool,
+    /// The undo token for `title_undo`; `null` on a refusal.
     pub token: Option<String>,
+    /// The title after the write, or the current title on a refusal.
     pub text: String,
     /// The gap after this write's last change, or on a refusal the anchor sent.
     pub anchor: Option<String>,
@@ -172,22 +188,31 @@ pub struct TitleApplied {
     pub ids: Vec<Run>,
 }
 
-/// One step of an attributed editor change, mirroring `DeltaOp`, which has no
-/// `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
+/// One step of a text change, in Quill's delta shape: `{"retain": 6}`, `{"insert": "text"}` or `{"delete": 2}`.
+/// A `retain` or `insert` step also carries `attributes`: an object of formatting, or `null` for none.
+// Mirrors `DeltaOp`, which has no `AbiType`. Untagged so the JSON stays Quill's.
 #[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde", untagged)]
 pub enum Change {
+    /// Keeps `retain` characters, optionally changing their formatting.
     Retain {
+        /// How many characters to keep.
         retain: usize,
+        /// Formatting to set on the kept characters; `null` leaves it as is.
         #[serde(default)]
         attributes: Option<Attrs>,
     },
+    /// Inserts text at the current position.
     Insert {
+        /// The text to insert.
         insert: String,
+        /// Formatting of the inserted text.
         #[serde(default)]
         attributes: Option<Attrs>,
     },
+    /// Removes characters at the current position.
     Delete {
+        /// How many characters to remove.
         delete: usize,
     },
 }
@@ -298,15 +323,20 @@ fn digest_block(view: &BlockView, out: &mut String) {
 #[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Searchable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
+    /// The title, plain text.
     #[search(text, weight = 200)]
     pub title: FugueText,
+    /// The ordered blocks of the document.
     #[search(text)]
     pub body: Body,
-    /// A set, so two members tagging the same doc at once both keep their tag.
+    /// The document's tags. A set, so two members tagging the same doc at once both keep their tag.
     pub tags: UnorderedSet<String>,
+    /// Whether the document is hidden from the default list.
     pub archived: LwwRegister<bool>,
+    /// When the document last changed, in nanoseconds since the Unix epoch.
     pub updated_at: LwwRegister<u64>,
-    pub updated_by: LwwRegister<String>, // hex account id, advanced with updated_at
+    /// Hex account id of the last editor, advanced with `updated_at`.
+    pub updated_by: LwwRegister<String>,
 }
 
 /// Flat projection of a `DocRecord` for list / get APIs. The body is read
@@ -315,15 +345,21 @@ pub struct DocRecord {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocDto {
+    /// The document id.
     pub id: String,
+    /// The title text.
     pub title: String,
     /// Keys only, sorted; the registry maps each to a name and colour.
     pub tags: Vec<String>,
+    /// Whether the document is archived.
     pub archived: bool,
+    /// When the document was created, in nanoseconds since the Unix epoch; 0 when the creator cannot be determined.
     pub created_at: u64,
+    /// When the document last changed, in nanoseconds since the Unix epoch.
     pub updated_at: u64,
     /// Hex account of whoever created the doc, from its header's owner stamp.
     pub created_by: String,
+    /// Hex account of whoever last changed the document.
     pub updated_by: String,
     /// Whether the caller may delete it: the same rule `delete_doc` enforces.
     pub can_delete: bool,
@@ -397,6 +433,7 @@ pub struct Comment {
     /// comments are a seek rather than a walk of the folder's.
     #[index]
     pub doc_id: String,
+    /// The comment text.
     pub body: LwwRegister<String>,
     /// Immutable after create.
     pub created_at: u64,
@@ -415,11 +452,15 @@ impl Mergeable for Comment {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentDto {
+    /// The comment id.
     pub id: String,
     /// Hex account of the comment's author, from its owner stamp.
     pub author: String,
+    /// The document the comment is on.
     pub doc_id: String,
+    /// The comment text.
     pub body: String,
+    /// When the comment was added, in nanoseconds since the Unix epoch.
     pub created_at: u64,
 }
 
@@ -467,12 +508,16 @@ const MAX_DOC_SEARCH_QUERY: usize = 256;
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocSearchHit {
+    /// The document id.
     pub id: String,
+    /// The document title.
     pub title: String,
     /// A fragment of the title or body around the match, the matched words
     /// wrapped in `<b>`; empty when there is none to show.
     pub snippet: String,
+    /// How well the document matched; higher is better.
     pub score: f32,
+    /// Whether the document is archived.
     pub archived: bool,
 }
 
@@ -480,6 +525,7 @@ pub struct DocSearchHit {
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocSearchPage {
+    /// The hits on this page, best match first.
     pub hits: Vec<DocSearchHit>,
     /// Documents the index matched in all.
     pub total: u64,
@@ -500,8 +546,17 @@ impl DocsState {
 
     // ---- CRUD ------------------------------------------------------------
 
-    /// Creates a document and seeds its title. The body starts empty; a client
-    /// adds the first block with `insert_block`.
+    /// Creates a document with the given title and an empty body, and returns its id.
+    /// Add the first block with `insert_block`.
+    /// Not idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - The document title, plain text.
+    ///
+    /// # Returns
+    ///
+    /// The new document's id, an opaque string the other methods take as `doc` or `id`.
     pub fn create_doc(&mut self, title: String) -> app::Result<String> {
         let id = self.create_doc_inner(title).map_err(DriveError::into_app)?;
         app::emit!(Event::DocCreated { id: &id });
@@ -533,6 +588,17 @@ impl DocsState {
         Ok(id)
     }
 
+    /// Returns one document's metadata: title, tag keys, archived flag, timestamps, creator, last editor and whether the caller may delete it.
+    /// The body is read with `get_document`.
+    /// Fails when the document does not exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The document's metadata row.
     #[app::view]
     pub fn get_doc(&self, id: String) -> app::Result<DocDto> {
         let (creator, created_at) = self
@@ -545,7 +611,16 @@ impl DocsState {
             .map_err(DriveError::into_app)
     }
 
-    /// The docs whose creator's header lives, body or not.
+    /// Lists the documents in this folder's context, in no guaranteed order; sort by `updated_at` for most recent first.
+    /// Each row carries metadata only; read a body with `get_document`.
+    ///
+    /// # Arguments
+    ///
+    /// * `include_archived` - `true` to include archived documents, `false` to leave them out.
+    ///
+    /// # Returns
+    ///
+    /// One metadata row per document.
     #[app::view]
     pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocDto>> {
         let headers = self
@@ -570,17 +645,22 @@ impl DocsState {
         Ok(out)
     }
 
-    /// The docs whose title or body match `query`, best match first: words
-    /// match as typed or as a prefix of a longer word, so a query can be
-    /// typed as-you-go. The title counts double.
+    /// Searches this folder's documents by title and body, best match first.
+    /// Words match as typed or as a prefix of a longer word, and the title counts double.
+    /// Archived documents come back only with `include_archived`; deleted ones never do.
+    /// The index lives on each node and lags an edit by up to a second.
+    /// On a node running with search off this fails; read the documents with `list_docs` and `get_document` instead.
     ///
-    /// Only docs the list shows are returned: an archived one only with
-    /// `include_archived`, never one whose header is gone. A page holds at
-    /// most `limit` hits (default 20, at most 100); `next_cursor` continues
-    /// it. The index lives on each node and lags an edit by up to a second.
+    /// # Arguments
     ///
-    /// On a node running with search off the index is not there and this
-    /// fails: the client falls back to reading the docs itself.
+    /// * `query` - The words to find.
+    /// * `include_archived` - `true` to include archived documents, `false` to leave them out.
+    /// * `cursor` - `next_cursor` from the previous page, or `null` for the first page.
+    /// * `limit` - The most hits per page, or `null` for 20; at most 100.
+    ///
+    /// # Returns
+    ///
+    /// One page of hits, the total match count, and the cursor for the next page.
     #[app::view]
     pub fn search_docs(
         &self,
@@ -632,8 +712,13 @@ impl DocsState {
         Ok(page)
     }
 
-    /// Renames a document by replacing the whole title, which is what a rename
-    /// box does. Character-level edits go through `title_apply_delta`.
+    /// Renames a document by replacing its whole title.
+    /// Character-level title edits go through `title_apply_delta`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
+    /// * `title` - The new title, plain text.
     pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
         let len = self.read(&id)?.title.len()?;
         let ops = vec![
@@ -650,12 +735,30 @@ impl DocsState {
 
     // ---- title ------------------------------------------------------------
 
+    /// Returns a document's title text.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The title.
     #[app::view]
     pub fn get_title(&self, doc: String) -> app::Result<String> {
         Ok(self.read(&doc)?.title.get_text()?)
     }
 
-    /// The title and its character ids, read together so they line up.
+    /// Returns a document's title text together with its character ids, read at the same moment so they line up.
+    /// Pass the ids to `title_apply_delta_on` so an edit lands where the caller saw it.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The title text and the ids of its characters as runs.
     #[app::view]
     pub fn get_title_state(&self, doc: String) -> app::Result<TitleState> {
         let title = &self.read(&doc)?.title;
@@ -665,8 +768,20 @@ impl DocsState {
         })
     }
 
-    /// One editor transaction on the title, returning an opaque token
-    /// `title_undo` takes.
+    /// Applies one editing transaction to a document's title and returns a token that `title_undo` takes.
+    /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
+    /// Text after the last step is kept.
+    /// The title carries no formatting, so a step with non-null `attributes` is refused.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `ops` - The steps of the transaction, in order.
+    ///
+    /// # Returns
+    ///
+    /// An opaque undo token.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
         let ops: Vec<TextOp> = ops
             .into_iter()
@@ -677,8 +792,20 @@ impl DocsState {
         encode_token(&steps)
     }
 
-    /// `title_apply_delta`, but only onto the title the caller diffed against and, with an
-    /// `anchor`, only as an insert where that anchor sits; a refusal places the anchor.
+    /// Like `title_apply_delta`, but only applies when the title is still exactly `base`, because a position counted in any other text names the wrong place.
+    /// When `anchor` is given the write must also be an insert right where that anchor sits.
+    /// On refusal nothing is written: `applied` is `false` and `text` is the current title to rebase onto.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `base` - The full title text the steps were computed against.
+    /// * `ops` - The steps of the transaction, as for `title_apply_delta`.
+    /// * `anchor` - Optional cursor token from `title_anchor_at`; `null` for an unanchored write.
+    ///
+    /// # Returns
+    ///
+    /// Whether the write applied, the undo token, the resulting title, and an anchor at the end of the edit.
     pub fn title_apply_delta_on(
         &mut self,
         doc: String,
@@ -715,7 +842,16 @@ impl DocsState {
         })
     }
 
-    /// Takes a whole title transaction back, returning a token that redoes it.
+    /// Takes a whole title transaction back and returns a token that redoes it.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `token` - The token `title_apply_delta` (or a previous undo) returned.
+    ///
+    /// # Returns
+    ///
+    /// An opaque token that redoes the transaction.
     pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
         let steps: Vec<Undo> = decode_token(&token)?;
         let redo = self.write(&doc)?.title.undo(&steps)?;
@@ -723,7 +859,18 @@ impl DocsState {
         encode_token(&redo)
     }
 
-    /// A cursor for the gap at `position`, as an opaque token any member resolves.
+    /// Returns a cursor for the gap at a title position, as an opaque token that survives concurrent edits and that any member can resolve.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `position` - The gap, counted from 0 at the start of the title.
+    /// * `before` - Which side the anchor leans toward when text is inserted exactly at the gap.
+    ///
+    /// # Returns
+    ///
+    /// An opaque anchor token.
     #[app::view]
     pub fn title_anchor_at(
         &self,
@@ -735,8 +882,16 @@ impl DocsState {
         encode_token(&self.read(&doc)?.title.anchor_at(position, bias)?)
     }
 
-    /// Where anchors sit in THIS replica's title. `null` is an anchor this
-    /// replica cannot place yet.
+    /// Returns where anchors currently sit in this node's copy of the title.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `anchors` - Tokens from `title_anchor_at`.
+    ///
+    /// # Returns
+    ///
+    /// One position per anchor, in order; `null` for an anchor this node cannot place yet.
     // One tree rebuild per anchor; batch if cursor lists grow past a few peers.
     #[app::view]
     pub fn title_resolve(
@@ -753,6 +908,21 @@ impl DocsState {
 
     // ---- body structure ---------------------------------------------------
 
+    /// Inserts an empty block into a document's body and returns its id.
+    /// The body is an ordered list of blocks; each has a `kind`, a `depth` and its own text.
+    /// Fill the block with `apply_delta`.
+    /// Not idempotent: a retry after a lost response adds a second block, so check `list_blocks` before repeating.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `after` - The id of the block to insert after; `null` inserts at the top.
+    /// * `kind` - The block type, an opaque string stored as given. The Mero Docs editor uses `paragraph`, `heading`, `bulletListItem` and `image`.
+    /// * `depth` - Nesting depth, 0 for top level, 1 for a child of the block above, and so on.
+    ///
+    /// # Returns
+    ///
+    /// The new block's id.
     pub fn insert_block(
         &mut self,
         doc: String,
@@ -770,6 +940,13 @@ impl DocsState {
         Ok(block)
     }
 
+    /// Removes a block from a document's body.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    #[app::destructive]
     pub fn delete_block(&mut self, doc: String, block: String) -> app::Result<()> {
         let id = decode_token(&block)?;
         let _was = self.write(&doc)?.body.delete_block(id)?;
@@ -780,6 +957,13 @@ impl DocsState {
         Ok(())
     }
 
+    /// Moves a block to just after another block.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block to move.
+    /// * `after` - The block to move it after; `null` moves it to the top.
     pub fn move_block(
         &mut self,
         doc: String,
@@ -796,6 +980,13 @@ impl DocsState {
         Ok(())
     }
 
+    /// Changes a block's type.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `kind` - The new block type, as for `insert_block`.
     pub fn set_kind(&mut self, doc: String, block: String, kind: String) -> app::Result<()> {
         let id = decode_token(&block)?;
         self.write(&doc)?.body.set_kind(id, &kind)?;
@@ -806,6 +997,13 @@ impl DocsState {
         Ok(())
     }
 
+    /// Changes a block's nesting depth.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `depth` - The new depth, 0 for top level.
     pub fn set_depth(&mut self, doc: String, block: String, depth: u8) -> app::Result<()> {
         let id = decode_token(&block)?;
         self.write(&doc)?.body.set_depth(id, depth)?;
@@ -816,7 +1014,14 @@ impl DocsState {
         Ok(())
     }
 
-    /// `value: null` removes the attribute.
+    /// Sets one attribute on a block, such as `level` on a heading, or removes it.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `key` - The attribute name.
+    /// * `value` - The attribute value as a string; `null` removes the attribute.
     pub fn set_attr(
         &mut self,
         doc: String,
@@ -835,7 +1040,19 @@ impl DocsState {
         Ok(())
     }
 
-    /// Split at visible position `at`, returning the new block's id.
+    /// Splits a block in two at a text position and returns the new block, which holds the text after the split and follows the original.
+    /// Not idempotent: a retry after a lost response splits again, so read the blocks before repeating.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block to split.
+    /// * `at` - The position to split at; the text from here on moves to the new block.
+    ///
+    /// # Returns
+    ///
+    /// The new block's id.
     pub fn split_block(&mut self, doc: String, block: String, at: usize) -> app::Result<String> {
         let id = decode_token(&block)?;
         let new = self.write(&doc)?.body.split_block(id, at)?;
@@ -851,7 +1068,13 @@ impl DocsState {
         Ok(new)
     }
 
-    /// Append `second`'s body to `first` and tombstone `second`.
+    /// Appends the text of `second` to `first` and removes `second`.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `first` - The block that keeps its place and receives the text.
+    /// * `second` - The block whose text is appended and which is then removed.
     pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
         let (head, tail) = (decode_token(&first)?, decode_token(&second)?);
         self.write(&doc)?.body.merge_blocks(head, tail)?;
@@ -868,8 +1091,21 @@ impl DocsState {
 
     // ---- body text --------------------------------------------------------
 
-    /// One editor transaction, text and formatting together, returning an
-    /// opaque token `undo` takes.
+    /// Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.
+    /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
+    /// Text after the last step is kept.
+    /// A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `ops` - The steps of the transaction, in order.
+    ///
+    /// # Returns
+    ///
+    /// An opaque undo token.
     pub fn apply_delta(
         &mut self,
         doc: String,
@@ -886,8 +1122,21 @@ impl DocsState {
         encode_token(&undo)
     }
 
-    /// `apply_delta`, but only onto the text the caller diffed against, since a position
-    /// counted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.
+    /// Like `apply_delta`, but only applies when the block's text is still exactly `base`, because a position counted in any other text names the wrong place.
+    /// When `anchor` is given the write must also be an insert right where that anchor sits.
+    /// On refusal nothing is written: `applied` is `false` and `spans` are the block's current spans to rebase onto.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `base` - The block's full plain text the steps were computed against.
+    /// * `ops` - The steps of the transaction, as for `apply_delta`.
+    /// * `anchor` - Optional cursor token from `anchor_at`; `null` for an unanchored write.
+    ///
+    /// # Returns
+    ///
+    /// Whether the write applied, the undo token, the block's spans afterwards, and an anchor at the end of the edit.
     pub fn apply_delta_on(
         &mut self,
         doc: String,
@@ -928,7 +1177,17 @@ impl DocsState {
         })
     }
 
-    /// Take a whole transaction back, returning a token that redoes it.
+    /// Takes a whole text transaction back and returns a token that redoes it.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block the transaction was applied to.
+    /// * `token` - The token `apply_delta` (or a previous undo) returned.
+    ///
+    /// # Returns
+    ///
+    /// An opaque token that redoes the transaction.
     pub fn undo(&mut self, doc: String, block: String, token: String) -> app::Result<String> {
         let id: BlockId = decode_token(&block)?;
         let undo: DeltaUndo = decode_token(&token)?;
@@ -940,8 +1199,22 @@ impl DocsState {
         encode_token(&redo)
     }
 
-    /// Set `key` over visible positions `[start, end)`. `null` is a no-op result
-    /// when every character already resolves to that value.
+    /// Sets one formatting key over a range of a block's text, or clears it.
+    /// Declared keys: `bold`, `italic`, `underline`, `strike`, `code`, `link`, `comment`, `textColor` and `backgroundColor`; any other key is refused.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `start` - First position of the range, inclusive.
+    /// * `end` - Position after the range, exclusive.
+    /// * `key` - The formatting key.
+    /// * `value` - The value, for example `"true"` for `bold` or a URL for `link`; `null` clears the key.
+    ///
+    /// # Returns
+    ///
+    /// The id of the new mark, or `null` when the range already had that value and nothing was written.
     pub fn mark(
         &mut self,
         doc: String,
@@ -961,6 +1234,15 @@ impl DocsState {
 
     // ---- body reads -------------------------------------------------------
 
+    /// Returns a document's body as an ordered list of blocks, each with its id, kind, depth, attributes and formatted text spans.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The blocks in document order.
     #[app::view]
     pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
         let body = &self.read(&doc)?.body;
@@ -970,6 +1252,16 @@ impl DocsState {
             .collect()
     }
 
+    /// Returns one block with its kind, depth, attributes and formatted text spans.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    ///
+    /// # Returns
+    ///
+    /// The block, or `null` when there is no such block.
     #[app::view]
     pub fn get_block(&self, doc: String, block: String) -> app::Result<Option<Block>> {
         let body = &self.read(&doc)?.body;
@@ -978,12 +1270,31 @@ impl DocsState {
             .transpose()
     }
 
-    /// One block's rendered spans: the read a binding does on every keystroke.
+    /// Returns one block's text as formatted spans, the read an editor binding does on every keystroke.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    ///
+    /// # Returns
+    ///
+    /// The spans in order; each has `text` and, when formatted, `attributes`.
     #[app::view]
     pub fn get_block_delta(&self, doc: String, block: String) -> app::Result<Vec<Span>> {
         Ok(self.read(&doc)?.body.block_delta(decode_token(&block)?)?)
     }
 
+    /// Returns one block's plain text with formatting stripped.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    ///
+    /// # Returns
+    ///
+    /// The block's text.
     #[app::view]
     pub fn get_text(&self, doc: String, block: String) -> app::Result<String> {
         Ok(self
@@ -993,6 +1304,15 @@ impl DocsState {
             .get_text()?)
     }
 
+    /// Returns the ids of a document's blocks in document order.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The block ids.
     #[app::view]
     pub fn list_blocks(&self, doc: String) -> app::Result<Vec<String>> {
         self.read(&doc)?
@@ -1003,9 +1323,16 @@ impl DocsState {
             .collect()
     }
 
-    /// The ordered body as one canonical line, so replicas are compared exactly
-    /// by one value. Block ids are excluded because they carry the minting
-    /// replica, which no two nodes agree on.
+    /// Returns the whole body as one canonical line, so two replicas can be compared by a single value.
+    /// Block ids are left out because they differ between nodes.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// The digest string.
     #[app::view]
     pub fn get_state_digest(&self, doc: String) -> app::Result<String> {
         let mut out = String::new();
@@ -1015,8 +1342,17 @@ impl DocsState {
         Ok(out)
     }
 
-    /// How many times `needle` appears contiguously in a block's text, which is
-    /// an exact claim about interleaving that `contains` cannot make.
+    /// Counts how many times a passage appears contiguously in a block's text.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `needle` - The text to look for.
+    ///
+    /// # Returns
+    ///
+    /// The number of occurrences.
     #[app::view]
     pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<usize> {
         let text = self
@@ -1027,7 +1363,19 @@ impl DocsState {
         Ok(text.matches(&needle).count())
     }
 
-    /// A cursor for the gap at `position`, as an opaque token any member resolves.
+    /// Returns a cursor for the gap at a position in a block's text, as an opaque token that survives concurrent edits and that any member can resolve.
+    /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `position` - The gap, counted from 0 at the start of the text.
+    /// * `before` - Which side the anchor leans toward when text is inserted exactly at the gap.
+    ///
+    /// # Returns
+    ///
+    /// An opaque anchor token.
     #[app::view]
     pub fn anchor_at(
         &self,
@@ -1046,8 +1394,17 @@ impl DocsState {
         )
     }
 
-    /// Where anchors sit in THIS replica's block, one tree rebuild for the lot.
-    /// `null` is an anchor this replica cannot place yet.
+    /// Returns where anchors currently sit in this node's copy of a block, in one pass.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document id.
+    /// * `block` - The block id.
+    /// * `anchors` - Tokens from `anchor_at`.
+    ///
+    /// # Returns
+    ///
+    /// One position per anchor, in order; `null` for an anchor this node cannot place yet.
     #[app::view]
     pub fn resolve_ids(
         &self,
@@ -1066,6 +1423,12 @@ impl DocsState {
             .resolve_many(&anchors)?)
     }
 
+    /// Archives a document, which hides it from `list_docs` unless archived documents are requested.
+    /// Nothing is deleted and `unarchive_doc` reverses it.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
     pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.set_archived_inner(id, true)
@@ -1074,6 +1437,11 @@ impl DocsState {
         Ok(())
     }
 
+    /// Restores an archived document to the default `list_docs` view.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
     pub fn unarchive_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.set_archived_inner(id, false)
@@ -1098,6 +1466,14 @@ impl DocsState {
         Ok(())
     }
 
+    /// Deletes a document, its whole body and its comments permanently.
+    /// Only the document's creator or a moderator of this folder (the member who created the folder's context) may delete it; `can_delete` on the document's row says whether the caller may.
+    /// A moderator removes every comment on it; the creator removes their own, and the rest are no longer listed.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
+    #[app::destructive]
     pub fn delete_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.delete_doc_inner(id).map_err(DriveError::into_app)?;
@@ -1133,6 +1509,14 @@ impl DocsState {
 
     // ---- tags ------------------------------------------------------------
 
+    /// Puts a tag on a document.
+    /// Adding a tag the document already has changes nothing.
+    /// The tag key must be a registered tag's key for the workspace to show it by name; see the registry's `set_tag`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
+    /// * `tag` - The tag key: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
     pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.add_tag_inner(id, tag).map_err(DriveError::into_app)?;
@@ -1160,6 +1544,14 @@ impl DocsState {
         Ok(())
     }
 
+    /// Takes a tag off a document.
+    /// Removing a tag the document does not have is not an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The document id.
+    /// * `tag` - The tag key.
+    #[app::destructive]
     pub fn remove_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.remove_tag_inner(id, tag)
@@ -1186,6 +1578,17 @@ impl DocsState {
 
     // ---- comments (authored / identity-gated) ----------------------------
 
+    /// Adds a comment to a document, owned by the caller, and returns its id.
+    /// Not idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc_id` - The id of the document to comment on.
+    /// * `body` - The comment text.
+    ///
+    /// # Returns
+    ///
+    /// The new comment's id.
     pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
         let id = self
             .add_comment_inner(doc_id, body)
@@ -1216,7 +1619,15 @@ impl DocsState {
         Ok(id)
     }
 
-    /// One doc's comments: an index seek, not a walk of every comment.
+    /// Lists one document's comments, in no guaranteed order; sort by `created_at`.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc_id` - The document id.
+    ///
+    /// # Returns
+    ///
+    /// One row per comment, including its author's account id.
     #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
         if self.header_of(&doc_id)?.is_none() {
@@ -1243,6 +1654,16 @@ impl DocsState {
         Ok(out)
     }
 
+    /// Returns one comment.
+    /// Fails when the comment does not exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The comment id.
+    ///
+    /// # Returns
+    ///
+    /// The comment row.
     #[app::view]
     pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
         let (author, c) = self
@@ -1251,8 +1672,12 @@ impl DocsState {
         Ok(project_comment(&id, hex(author.as_bytes()), &c))
     }
 
-    /// Comments held by the account their id names, on a doc that is still listed;
-    /// `len` would count planted ones and a deleted doc's too.
+    /// Returns how many comments the folder's live documents hold, across all of them.
+    /// A comment counts only when it is held by the account its id names.
+    ///
+    /// # Returns
+    ///
+    /// The comment count.
     #[app::view]
     pub fn comment_count(&self) -> app::Result<u64> {
         let entries = self
@@ -1281,14 +1706,19 @@ impl DocsState {
         Ok(count)
     }
 
-    /// The comment's stored per-entry `schema_version` - `Some(1)` before
-    /// convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
-    /// one-tap `migrate_my_entries` actually re-stamped it.
-    #[app::view]
+    /// Returns the storage schema version stamped on a comment, or `null` when there is no such comment.
+    /// A diagnostic for the web app's migration banner; not needed to read or write comments.
     ///
-    /// The entry of the account the comment's id names, read by name, so it
-    /// answers the same on every node: a key-only
-    /// `entry_schema_version` reads the caller's own entry only.
+    /// # Arguments
+    ///
+    /// * `id` - The comment id.
+    ///
+    /// # Returns
+    ///
+    /// The schema version number, or `null`.
+    // Read by name from the account the comment's id names, so every node answers alike:
+    // a key-only `entry_schema_version` reads the caller's own entry only.
+    #[app::view]
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
         let Some((author, _)) = self.comment_holder(&id)? else {
             return Ok(None);
@@ -1300,6 +1730,13 @@ impl DocsState {
             })
     }
 
+    /// Replaces a comment's text.
+    /// Only the comment's author may edit it.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The comment id.
+    /// * `body` - The new comment text.
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.edit_comment_inner(id, body)
@@ -1340,6 +1777,13 @@ impl DocsState {
         Ok(())
     }
 
+    /// Deletes a comment.
+    /// Only its author or a moderator of this folder (the member who created the folder's context) may delete it.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The comment id.
+    #[app::destructive]
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.delete_comment_inner(id)
