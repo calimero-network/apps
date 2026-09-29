@@ -1478,9 +1478,9 @@ function CreateStep({
         <input type="checkbox" checked={seal} onChange={(e) => setSeal(e.target.checked)} />
         <span>
           <strong>Seal to the relay&rsquo;s TEE</strong>, as the write does: the page verifies
-          the relay&rsquo;s quote against the {TRUSTED_PROFILE} image of mero-tee{' '}
-          {TRUSTED_RELEASE_NAMES} and encrypts the warrant and init arguments to the key it
-          binds.
+          the relay&rsquo;s quote against the {TRUSTED_PROFILE} image of the signed mero-tee
+          release it runs ({MIN_RELEASE_VERSION} or newer) and encrypts the warrant and init
+          arguments to the key it binds.
         </span>
       </label>
 
