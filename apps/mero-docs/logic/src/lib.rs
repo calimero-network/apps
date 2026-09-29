@@ -52,6 +52,8 @@ use mero_docs_types::{is_valid_tag_key, DriveError};
 pub mod events;
 use events::Event;
 
+const CLOCK_WINDOW_NS: u64 = 60_000_000_000; // how far ahead of the reader's clock a timestamp may read; nodes refuse writes 5 s ahead
+
 // ---------------------------------------------------------------------------
 // Mark schema
 // ---------------------------------------------------------------------------
@@ -351,6 +353,11 @@ fn creator_in(id: &str) -> Option<&str> {
         [_, _, account, _] => Some(account),
         _ => None,
     }
+}
+
+/// `at`, unless it is further ahead of the reader's clock than an honest write can be.
+fn not_ahead(at: u64, now: u64) -> Option<u64> {
+    (at <= now.saturating_add(CLOCK_WINDOW_NS)).then_some(at)
 }
 
 /// Whether `id` names `owner`. Anyone may hold an owned entry at any key, so a
@@ -1281,7 +1288,8 @@ impl DocsState {
             .find(|(owner, _)| id_names(id, owner)))
     }
 
-    /// `rec` is `None` for a doc whose public body a patched node removed.
+    /// `rec` is `None` for a doc whose public body a patched node removed. Both
+    /// times are writer-chosen, so one claiming the future is not trusted.
     fn project(
         &self,
         id: &str,
@@ -1289,6 +1297,8 @@ impl DocsState {
         created_at: u64,
         rec: Option<&DocRecord>,
     ) -> Result<DocDto, DriveError> {
+        let now = storage_env::time_now();
+        let created_at = not_ahead(created_at, now).unwrap_or_default();
         let title = rec
             .map(|r| r.title.get_text())
             .transpose()
@@ -1308,7 +1318,9 @@ impl DocsState {
             tags,
             archived: rec.is_some_and(|r| *r.archived.get()),
             created_at,
-            updated_at: rec.map_or(created_at, |r| *r.updated_at.get()),
+            updated_at: rec
+                .and_then(|r| not_ahead(*r.updated_at.get(), now))
+                .unwrap_or(created_at),
             created_by: hex(creator.as_bytes()),
             updated_by: rec.map(|r| r.updated_by.get().clone()).unwrap_or_default(),
             can_delete: self.caller_may_delete(creator),
@@ -2783,5 +2795,59 @@ mod tests {
             .unwrap();
         assert!(app.view(|s| s.list_docs(true)).unwrap().is_empty());
         assert!(app.view(|s| s.get_doc(id)).is_err());
+    }
+
+    // ---- a writer cannot pin a doc to the top of every list ----------------
+
+    /// The docs by `updated_at`, newest first, as the app sorts them.
+    fn newest_first(s: &DocsState) -> Vec<String> {
+        let mut docs = s.list_docs(false).unwrap();
+        docs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        docs.into_iter().map(|d| d.id).collect()
+    }
+
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn a_forged_updated_at_does_not_pin_a_doc_to_the_top() {
+        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let (alice, mallory) = (script.member(), script.member());
+        let mut a = String::new();
+        let mut b = String::new();
+        let created = script
+            .run(alice, |s| a = s.create_doc_inner("a".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.deliver(mallory, created), 0);
+        let forged = script
+            .run(mallory, |s| {
+                b = s.create_doc_inner("b".into()).unwrap();
+                s.docs
+                    .get_mut(&b)
+                    .unwrap()
+                    .unwrap()
+                    .updated_at
+                    .set(u64::MAX);
+            })
+            .unwrap();
+        assert_eq!(script.deliver(alice, forged), 0);
+
+        // Alice edits her doc after Mallory's write: hers is the newest edit.
+        let _edited = script
+            .run(alice, |s| s.edit_doc(a.clone(), "a2".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.view(alice, newest_first), [a, b]);
+    }
+
+    #[test]
+    fn a_creation_time_ahead_of_the_readers_clock_reads_as_unknown() {
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        app.call_as_account(ALICE, ALICE, |s| s.headers.update(&id, u64::MAX))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id)).unwrap();
+        assert_eq!(doc.created_at, 0);
+        assert!(doc.updated_at > 0 && doc.updated_at < u64::MAX);
     }
 }
