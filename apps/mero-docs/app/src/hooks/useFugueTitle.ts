@@ -20,6 +20,7 @@ import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClie
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
+import { useStreamReconnect } from './useStreamReconnect';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
@@ -330,6 +331,13 @@ export function useFugueTitle({
     [docId, drain],
   );
   useSubscription(contextIds, handleEvent);
+
+  // Nothing replays the events missed while the stream was down.
+  useStreamReconnect(() => {
+    if (!docId) return;
+    staleRef.current = true;
+    void drainRef.current?.();
+  });
 
   // A node restart drops the event stream, so a peer's title edit arrives on
   // no event; an idle re-read is what closes that window.

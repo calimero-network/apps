@@ -10,10 +10,18 @@ import { useFugueTitle } from '../useFugueTitle';
 const publish = vi.fn();
 let deliver: ((event: unknown) => void) | null = null;
 
+// The shared stream's `connect` listeners, so a test can reopen it.
+const connectHandlers = new Set<() => void>();
+const events = {
+  on: (_: 'connect', h: () => void) => connectHandlers.add(h),
+  off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
+};
+
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },
+  useMero: () => ({ mero: { events } }),
 }));
 
 const DOC = 'doc-1';
@@ -536,6 +544,18 @@ describe('useFugueTitle', () => {
     act(() => result.current.onSelect());
     await settle();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('reads the title again when the event stream reconnects', async () => {
+    const client = fakeClient();
+    const { result } = mount(client);
+    await settle();
+    client.getTitle.mockResolvedValue('Notes missed');
+
+    act(() => connectHandlers.forEach((h) => h()));
+    await settle(1000);
+
+    expect(result.current.title).toBe('Notes missed');
   });
 
   it('ignores a TitleChanged for another document', async () => {
