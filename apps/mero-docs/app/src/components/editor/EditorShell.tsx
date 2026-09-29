@@ -39,6 +39,10 @@ import { EditorHeader, type TitleBinding } from './EditorHeader';
 import type { Peer } from './PeerAvatars';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
+import { ImageContext } from './blocknote/imageBlock';
+import { pastedBlocks } from './blocknote/pastedBlocks';
+import type { AddImages } from '@/hooks/useAddImages';
+import { IMAGE_TYPES } from '@/lib/images';
 import { presencePlugin } from './presence/presencePlugin';
 import { blockDecorations, setSectionWash } from './blocknote/blockDecorations';
 import {
@@ -117,6 +121,10 @@ export interface EditorShellProps {
   onUnarchive?: () => void;
   /** A status bar under the header, such as the archived banner. */
   notice?: React.ReactNode;
+  /** The docs context images are stored in and read through. */
+  imageContextId?: string | null;
+  /** Offers the / menu's Image and takes pasted or dropped image files. */
+  onAddImages?: AddImages;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -147,6 +155,8 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   onArchive,
   onUnarchive,
   notice,
+  imageContextId = null,
+  onAddImages,
 }) => {
   const { theme } = useTheme();
 
@@ -176,16 +186,34 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       }),
     [],
   );
+  const pasteGuard = useMemo(
+    () =>
+      createExtension({
+        key: 'calimeroPastedBlocks',
+        prosemirrorPlugins: [pastedBlocks()],
+      }),
+    [],
+  );
 
   // The editor's link and paste handlers are fixed at creation; DocLinkNav keeps this current.
   const linkNavRef = useRef<EditorLinkNav>(null!);
+  const addImagesRef = useRef<AddImages | undefined>(undefined);
+  addImagesRef.current = onAddImages;
 
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialBlocks,
-    extensions: [presence, blockAttrs],
+    extensions: [presence, blockAttrs, pasteGuard],
     links: { onClick: (event) => openClickedLink(event, linkNavRef.current) },
     pasteHandler: ({ event, editor: target, defaultPasteHandler }) => {
+      const files = [...(event.clipboardData?.files ?? [])];
+      if (files.length > 0) {
+        void addImagesRef.current?.(
+          files,
+          target.getTextCursorPosition().block.id,
+        );
+        return true;
+      }
       const text = event.clipboardData?.getData('text/plain') ?? '';
       const link = pastedDocLink(text, linkNavRef.current);
       if (!link) return defaultPasteHandler();
@@ -197,6 +225,37 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   useEffect(() => {
     if (editor) onEditorReady?.(editor);
   }, [editor, onEditorReady]);
+
+  const pickImage = useMemo(
+    () =>
+      onAddImages
+        ? () => {
+            const near = editor.getTextCursorPosition().block.id;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = IMAGE_TYPES.join(',');
+            input.multiple = true;
+            input.onchange = () =>
+              void onAddImages([...(input.files ?? [])], near);
+            input.click();
+          }
+        : undefined,
+    [onAddImages, editor],
+  );
+  // Dropped files never reach BlockNote, whose handler would add any file as a block.
+  const onFileDrag = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    if (e.type !== 'drop') return;
+    e.stopPropagation();
+    const near = (e.target as Element).closest?.(
+      '[data-node-type="blockOuter"]',
+    );
+    void addImagesRef.current?.(
+      [...e.dataTransfer.files],
+      near?.getAttribute('data-id') ?? '',
+    );
+  }, []);
 
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
@@ -409,27 +468,35 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                     onAuxClick={(e) =>
                       followDocLink(e.nativeEvent, linkNavRef.current)
                     }
+                    onDragOverCapture={onFileDrag}
+                    onDropCapture={onFileDrag}
                   >
-                    <BlockNoteView
-                      editor={editor}
-                      editable={!readOnly}
-                      theme={theme}
-                      sideMenu={false}
-                      linkToolbar={false}
-                      slashMenu={false}
-                      formattingToolbar={false}
-                    >
-                      <SideMenuController sideMenu={BlockSideMenu} />
-                      <FormattingToolbarController
-                        formattingToolbar={BlockFormattingToolbar}
-                      />
-                      <LinkToolbarController
-                        linkToolbar={DocAwareLinkToolbar}
-                      />
-                      <DocLinkNav navRef={linkNavRef} />
-                      <DocLinkPicker editor={editor} />
-                      <EditorSlashMenu editor={editor} />
-                    </BlockNoteView>
+                    <ImageContext.Provider value={imageContextId}>
+                      <BlockNoteView
+                        editor={editor}
+                        editable={!readOnly}
+                        theme={theme}
+                        sideMenu={false}
+                        linkToolbar={false}
+                        slashMenu={false}
+                        formattingToolbar={false}
+                        filePanel={false}
+                      >
+                        <SideMenuController sideMenu={BlockSideMenu} />
+                        <FormattingToolbarController
+                          formattingToolbar={BlockFormattingToolbar}
+                        />
+                        <LinkToolbarController
+                          linkToolbar={DocAwareLinkToolbar}
+                        />
+                        <DocLinkNav navRef={linkNavRef} />
+                        <DocLinkPicker editor={editor} />
+                        <EditorSlashMenu
+                          editor={editor}
+                          pickImage={pickImage}
+                        />
+                      </BlockNoteView>
+                    </ImageContext.Provider>
                   </div>
                 </DocLinkHover>
               </SectionLinksContext.Provider>

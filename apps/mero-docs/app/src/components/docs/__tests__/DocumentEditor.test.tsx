@@ -149,7 +149,11 @@ vi.mock('@/components/editor/EditorShell', () => ({
     onArchive,
     onUnarchive,
     notice,
+    imageContextId,
+    onAddImages,
   }: {
+    imageContextId?: string | null;
+    onAddImages?: unknown;
     tags?: React.ReactNode;
     detailsOpen?: boolean;
     onToggleDetails?: () => void;
@@ -169,7 +173,13 @@ vi.mock('@/components/editor/EditorShell', () => ({
     focusBlock?: string;
     focusKey?: string;
   }) => (
-    <div data-testid="shell" data-focus-block={focusBlock} data-focus-key={focusKey}>
+    <div
+      data-testid="shell"
+      data-focus-block={focusBlock}
+      data-focus-key={focusKey}
+      data-image-context={imageContextId ?? ''}
+      data-can-add-images={String(!!onAddImages)}
+    >
       <span data-testid="connection">
         {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
       </span>
@@ -337,6 +347,24 @@ describe('DocumentEditor', () => {
     );
     await screen.findByText('Notes');
     expect(screen.queryByText('Delete')).toBeNull();
+  });
+
+  it("lets only an editor of this folder add images, and shows them through the folder's context", async () => {
+    const { unmount } = render(
+      <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+    );
+    const shell = await screen.findByTestId('shell');
+    expect(shell.dataset.canAddImages).toBe('true');
+    expect(shell.dataset.imageContext).toBe('docs-ctx');
+    unmount();
+
+    canEditDocs = false;
+    render(
+      <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+    );
+    const viewer = await screen.findByTestId('shell');
+    expect(viewer.dataset.canAddImages).toBe('false');
+    expect(viewer.dataset.imageContext).toBe('docs-ctx');
   });
 
   it('copies the URL of this document in its folder', async () => {
