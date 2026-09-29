@@ -55,7 +55,9 @@ describe('BlockNote editor model (headless)', () => {
     expect(Object.keys(schema.blockSchema).sort()).toEqual([
       'bulletListItem',
       'heading',
+      'image',
       'paragraph',
+      'unsupported',
     ]);
     expect(Object.keys(schema.styleSchema).sort()).toEqual(['bold', 'italic']);
     expect(Object.keys(schema.inlineContentSchema).sort()).toEqual([
