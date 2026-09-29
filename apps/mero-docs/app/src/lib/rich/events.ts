@@ -16,7 +16,9 @@ const META_KINDS = ['DocTagsChanged', 'DocArchived', 'DocUnarchived']; // change
 
 type RichKind = (typeof RICH_KINDS)[number];
 
-export type RichEvent = { kind: RichKind; doc: string };
+export type RichEvent =
+  | { kind: 'TitleChanged'; doc: string }
+  | { kind: Exclude<RichKind, 'TitleChanged'>; doc: string; block: string };
 
 /** Every rich-document event in one delivered SSE payload. */
 export function parseRichEvents(data: unknown): RichEvent[] {
@@ -63,11 +65,16 @@ function decodePayload(data: unknown): unknown {
 }
 
 function parseVariant(kind: string, value: unknown): RichEvent | null {
-  const doc = asRecord(value)?.doc;
+  const record = asRecord(value);
+  const doc = record?.doc;
   if (typeof doc !== 'string' || !RICH_KINDS.includes(kind as RichKind)) {
     return null;
   }
-  return { kind: kind as RichKind, doc };
+  if (kind === 'TitleChanged') return { kind, doc };
+  const block = record?.block;
+  return typeof block === 'string'
+    ? { kind: kind as Exclude<RichKind, 'TitleChanged'>, doc, block }
+    : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

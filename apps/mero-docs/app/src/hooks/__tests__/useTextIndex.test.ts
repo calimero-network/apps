@@ -217,7 +217,7 @@ describe('useTextIndex', () => {
         subscribed!.handler({
           contextId: 'c-f1',
           type: 'StateMutation',
-          data: { BlockChanged: { doc: 'a' } },
+          data: { BlockChanged: { doc: 'a', block: 'b1' } },
         });
       }
       // Titles live in the list, not the text index.
@@ -247,7 +247,7 @@ describe('useTextIndex', () => {
       subscribed!.handler({
         contextId: 'c-f1',
         type: 'StateMutation',
-        data: { TextChanged: { doc: 'a' } },
+        data: { TextChanged: { doc: 'a', block: 'b1' } },
       }),
     );
     await settle(1_500);
