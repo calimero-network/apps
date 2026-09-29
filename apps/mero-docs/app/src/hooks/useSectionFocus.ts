@@ -10,7 +10,6 @@ import {
 } from 'react';
 
 export const WASH_MS = 1600; // the .section-wash animation in index.css
-const TOP_GAP_PX = 24; // room above the block so it does not sit flush on the edge
 
 export interface SectionBannerState {
   variant: 'opened' | 'missing';
@@ -55,9 +54,7 @@ export function useSectionFocus({
     const retry = awaitingRef.current === key;
     if (handledRef.current === key && !retry) return;
     handledRef.current = key;
-    const target = [
-      ...container.querySelectorAll<HTMLElement>('[data-block-id]'),
-    ].find((el) => el.dataset.blockId === block);
+    const target = container.querySelector(`[data-id="${CSS.escape(block)}"]`);
     if (!target) {
       if (retry) return;
       awaitingRef.current = key;
@@ -66,10 +63,7 @@ export function useSectionFocus({
       return;
     }
     awaitingRef.current = null;
-    const offset =
-      target.getBoundingClientRect().top -
-      container.getBoundingClientRect().top;
-    container.scrollTop += offset - TOP_GAP_PX;
+    target.scrollIntoView({ block: 'start' }); // index.css keeps a gap above it
     wash(block);
     if (washTimerRef.current) clearTimeout(washTimerRef.current);
     washTimerRef.current = setTimeout(() => {

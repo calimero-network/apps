@@ -138,7 +138,12 @@
     font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight;
   }
 
@@ -148,7 +153,6 @@
 }
 
 @layer components {
-
   .security-badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
     background: hsl(var(--secure-muted));
@@ -226,6 +230,11 @@ html .bn-container[data-color-scheme='dark'] {
   100% {
     opacity: 0;
   }
+}
+
+/* A block a section link scrolls to keeps room above it. */
+.bn-block-outer {
+  scroll-margin-top: 24px;
 }
 
 /* A section opened from a link: a brief lime wash that fades out. */

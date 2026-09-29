@@ -1,5 +1,5 @@
 // Opening a document at a linked block, against a real DOM container. jsdom
-// has no layout, so each block reports where it sits through a stub.
+// has no layout or CSS.escape, so both are stubbed.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import postcss, { type AtRule, type Rule } from 'postcss';
@@ -15,13 +15,17 @@ const [css] = Object.values(
 ) as string[];
 
 let container: HTMLElement;
+let scrolled: string[]; // blocks scrolled to the top, in order
 const wash = vi.fn();
 const sectionOf = (id: string) => (id === 'blk-2' ? 'Milestones' : 'Intro');
 
-function block(id: string, top: number): HTMLElement {
+function block(id: string): HTMLElement {
   const el = document.createElement('div');
-  el.dataset.blockId = id;
-  el.getBoundingClientRect = () => ({ top }) as DOMRect;
+  el.dataset.id = id;
+  el.scrollIntoView = (arg) => {
+    expect(arg).toEqual({ block: 'start' });
+    scrolled.push(id);
+  };
   container.appendChild(el);
   return el;
 }
@@ -43,28 +47,30 @@ function mount(initial: Props) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.stubGlobal('CSS', { escape: (s: string) => s });
   wash.mockReset();
+  scrolled = [];
   container = document.createElement('div');
-  container.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
   document.body.appendChild(container);
-  block('blk-1', 100);
-  block('blk-2', 700);
+  block('blk-1');
+  block('blk-2');
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
 
 describe('useSectionFocus', () => {
   it('waits for the document, then scrolls the block near the top, washes it and names it', () => {
     const view = mount({ block: 'blk-2', navKey: 'k1', ready: false });
-    expect(container.scrollTop).toBe(0);
+    expect(scrolled).toEqual([]);
     expect(view.result.current.banner).toBeNull();
 
     view.rerender({ block: 'blk-2', navKey: 'k1', ready: true });
 
-    expect(container.scrollTop).toBe(700 - 100 - 24);
+    expect(scrolled).toEqual(['blk-2']);
     expect(wash).toHaveBeenLastCalledWith('blk-2');
     expect(view.result.current.banner).toEqual({
       variant: 'opened',
@@ -97,7 +103,7 @@ describe('useSectionFocus', () => {
     });
     expect(view.result.current.banner).toEqual({ variant: 'missing' });
 
-    block('blk-late', 900);
+    block('blk-late');
     view.rerender({
       block: 'blk-late',
       navKey: 'k1',
@@ -105,7 +111,7 @@ describe('useSectionFocus', () => {
       revision: 2,
     });
 
-    expect(container.scrollTop).toBe(900 - 100 - 24);
+    expect(scrolled).toEqual(['blk-late']);
     expect(wash).toHaveBeenLastCalledWith('blk-late');
     expect(view.result.current.banner).toEqual({
       variant: 'opened',
@@ -119,7 +125,7 @@ describe('useSectionFocus', () => {
       ready: true,
       revision: 3,
     });
-    expect(container.scrollTop).toBe(40);
+    expect(scrolled).toEqual(['blk-late']);
     expect(wash).toHaveBeenCalledTimes(1);
   });
 
@@ -149,14 +155,14 @@ describe('useSectionFocus', () => {
       revision: 1,
     });
     act(() => view.result.current.dismiss());
-    block('blk-late', 900);
+    block('blk-late');
     view.rerender({
       block: 'blk-late',
       navKey: 'k1',
       ready: true,
       revision: 2,
     });
-    expect(container.scrollTop).toBe(0);
+    expect(scrolled).toEqual([]);
     expect(wash).not.toHaveBeenCalled();
     expect(view.result.current.banner).toBeNull();
   });
@@ -173,15 +179,14 @@ describe('useSectionFocus', () => {
     view.rerender({ block: 'blk-2', navKey: 'k1', ready: true });
     view.rerender({ block: 'blk-2', navKey: 'k1', ready: false });
     view.rerender({ block: 'blk-2', navKey: 'k1', ready: true });
-    expect(container.scrollTop).toBe(40);
+    expect(scrolled).toEqual(['blk-2']);
     expect(wash).toHaveBeenCalledTimes(1);
   });
 
   it('runs again for a new navigation, even to the same block', () => {
     const view = mount({ block: 'blk-2', navKey: 'k1', ready: true });
-    container.scrollTop = 40;
     view.rerender({ block: 'blk-2', navKey: 'k2', ready: true });
-    expect(container.scrollTop).toBe(40 + 700 - 100 - 24);
+    expect(scrolled).toEqual(['blk-2', 'blk-2']);
     expect(wash).toHaveBeenCalledTimes(2);
   });
 
@@ -224,6 +229,16 @@ describe('section wash styles', () => {
       .find((part) => /^\d+(\.\d+)?s$/.test(part));
     return seconds ? parseFloat(seconds) * 1000 : NaN;
   };
+
+  it('keeps room above a block scrolled to the top', () => {
+    let margin = '';
+    root.walkRules('.bn-block-outer', (rule) =>
+      rule.walkDecls('scroll-margin-top', (decl) => {
+        margin = decl.value;
+      }),
+    );
+    expect(margin).toBe('24px');
+  });
 
   it('animates the wash for as long as the hook keeps it', () => {
     const [motion] = washRules((rule) => !reducedMotion(rule));
