@@ -78,8 +78,27 @@ test.describe('Mobile layout (single-node)', () => {
     await expect(drawer).toBeHidden();
   });
 
-  test('workspace settings fit without horizontal scroll', async ({ alice }) => {
+  test('workspace settings fit without horizontal scroll', async ({
+    alice,
+  }) => {
     await alice.openSettings();
     await expectNoHorizontalScroll(alice.page);
+  });
+
+  test("the block side menu's drag handle is not clipped by the editor", async ({
+    alice,
+  }) => {
+    const { page } = alice;
+    await page.setViewportSize({ width: 1280, height: 720 }); // the folder tree is a drawer on a phone
+    await alice.createFolder({ name: 'Notes', visibility: 'Open' });
+    await alice.tree.openFolder('Notes');
+    await alice.createDoc('Phone doc');
+    await alice.openDoc('Phone doc');
+    await alice.editor.type('hello world');
+    await page.setViewportSize(PHONE);
+
+    await page.locator('.bn-block-content').first().hover();
+
+    await expectInsideViewport(page.locator('.bn-side-menu').first());
   });
 });
