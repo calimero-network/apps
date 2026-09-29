@@ -14,6 +14,7 @@ export interface LinkedFromEntry {
   sentenceBold: [number, number][];
   folderPath: string[];
   folderColor?: string;
+  onOpen: () => void;
 }
 
 export interface LinksToEntry {
@@ -22,6 +23,7 @@ export interface LinksToEntry {
   section?: string;
   folderPath: string[];
   folderColor?: string;
+  onOpen: () => void;
 }
 
 export interface DetailsPanelProps {
@@ -32,7 +34,6 @@ export interface DetailsPanelProps {
   linkedFrom: LinkedFromEntry[];
   linksTo: LinksToEntry[];
   onClose: () => void;
-  onOpenLink: (key: string) => void;
 }
 
 // Bolds [start, end) runs of the sentence; the caller marks where this document's title sits.
@@ -141,16 +142,8 @@ function DetailsBody({
   Title,
   ...props
 }: DetailsPanelProps & { Title: React.ElementType }) {
-  const {
-    folder,
-    created,
-    updated,
-    tags,
-    linkedFrom,
-    linksTo,
-    onClose,
-    onOpenLink,
-  } = props;
+  const { folder, created, updated, tags, linkedFrom, linksTo, onClose } =
+    props;
   return (
     <>
       <div className="flex shrink-0 items-center justify-between border-b py-3 pl-4 pr-3">
@@ -211,7 +204,7 @@ function DetailsBody({
             title={link.title}
             folderPath={link.folderPath}
             folderColor={link.folderColor}
-            onOpen={() => onOpenLink(link.key)}
+            onOpen={link.onOpen}
           >
             {withBold(link.sentence, link.sentenceBold)}
           </LinkRow>
@@ -228,7 +221,7 @@ function DetailsBody({
             title={link.title}
             folderPath={link.folderPath}
             folderColor={link.folderColor}
-            onOpen={() => onOpenLink(link.key)}
+            onOpen={link.onOpen}
           >
             {link.section && <>Linked in “{link.section}”</>}
           </LinkRow>

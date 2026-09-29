@@ -8,6 +8,8 @@ import {
   type DetailsPanelProps,
 } from '../DetailsPanel';
 
+const onOpen = vi.fn();
+
 const PROPS: DetailsPanelProps = {
   folder: { name: 'Product', color: '#3b82f6' },
   created: { dateLabel: 'Sep 3', by: <span>You</span> },
@@ -21,6 +23,7 @@ const PROPS: DetailsPanelProps = {
       sentenceBold: [[24, 38]],
       folderPath: ['Product'],
       folderColor: '#3b82f6',
+      onOpen: () => onOpen('doc-4'),
     },
   ],
   linksTo: [
@@ -29,11 +32,16 @@ const PROPS: DetailsPanelProps = {
       title: 'Pricing notes',
       section: 'Milestones',
       folderPath: ['Product'],
+      onOpen: () => onOpen('doc-7'),
     },
-    { key: 'doc-5', title: 'Launch blog post', folderPath: ['Marketing'] },
+    {
+      key: 'doc-5',
+      title: 'Launch blog post',
+      folderPath: ['Marketing'],
+      onOpen: () => onOpen('doc-5'),
+    },
   ],
   onClose: () => {},
-  onOpenLink: () => {},
 };
 
 describe('DetailsPanel', () => {
@@ -74,8 +82,7 @@ describe('DetailsPanel', () => {
 
   it('counts and opens backlinks and outgoing links', async () => {
     const user = userEvent.setup();
-    const onOpenLink = vi.fn();
-    render(<DetailsPanel {...PROPS} onOpenLink={onOpenLink} />);
+    render(<DetailsPanel {...PROPS} />);
     const from = screen.getByRole('region', { name: 'Linked from' });
     const to = screen.getByRole('region', { name: 'Links to' });
     expect(within(from).getByTestId('details-count').textContent).toBe('1');
@@ -88,11 +95,11 @@ describe('DetailsPanel', () => {
     await user.click(
       within(from).getByRole('button', { name: /Roadmap 2026/ }),
     );
-    expect(onOpenLink).toHaveBeenCalledWith('doc-4');
+    expect(onOpen).toHaveBeenCalledWith('doc-4');
     await user.click(
       within(to).getByRole('button', { name: /Launch blog post/ }),
     );
-    expect(onOpenLink).toHaveBeenCalledWith('doc-5');
+    expect(onOpen).toHaveBeenCalledWith('doc-5');
   });
 
   it('says when there are no links either way', () => {
