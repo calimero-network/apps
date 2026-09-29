@@ -137,6 +137,13 @@ describe('workspace member row', () => {
     expect(screen.queryByRole('option', { name: 'Read only' })).toBeNull();
   });
 
+  it('shows a TEE node as such and never lets its role be changed', () => {
+    renderWorkspaceRow({ role: 'RelayTee' });
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.value).toBe('Tee');
+    expect(select.disabled).toBe(true);
+  });
+
   it('shows Custom for a mask no role describes', () => {
     caps.value = 4;
     renderWorkspaceRow();

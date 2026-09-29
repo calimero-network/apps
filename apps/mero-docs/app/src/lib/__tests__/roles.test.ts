@@ -29,6 +29,17 @@ describe('parseGroupRole', () => {
     expect(parseGroupRole('ReadOnly')).toBe('ReadOnly');
   });
 
+  // Both TEE roles are set by attestation, never by a person.
+  it('keeps the two TEE roles apart from Member', () => {
+    expect(parseGroupRole('ReadOnlyTee')).toBe('ReadOnlyTee');
+    expect(parseGroupRole('RelayTee')).toBe('RelayTee');
+    expect(workspaceRoleOf('ReadOnlyTee', 0)).toBe('Tee');
+    expect(workspaceRoleOf('RelayTee', null)).toBe('Tee');
+    expect(folderRoleOf('RelayTee', 'Editor', 0)).toBe('Tee');
+    expect(folderRoleOfRegistryRole('ReadOnlyTee', 'Editor')).toBe('Tee');
+    expect(roleDisplayLabel('Tee')).toBe('TEE node');
+  });
+
   // Defaulting the other way would paint an admin badge on a plain member -
   // and, worse, let the last-admin guard miscount.
   it('defaults an unknown, empty or absent role to Member, never Admin', () => {
@@ -355,6 +366,7 @@ describe('planDefaultsSweep', () => {
     { identity: 'b', role: 'Member' },
     { identity: 'c', role: 'ReadOnly' },
     { identity: 'd' },
+    { identity: 'e', role: 'RelayTee' },
   ];
 
   it('applies to plain members only', () => {
@@ -375,7 +387,7 @@ describe('planDefaultsSweep', () => {
   it('skips read-only members', () => {
     expect(
       planDefaultsSweep(roster).skippedReadOnly.map((m) => m.identity),
-    ).toEqual(['c']);
+    ).toEqual(['c', 'e']);
   });
 
   it('partitions the roster with no member counted twice or dropped', () => {

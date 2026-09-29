@@ -149,6 +149,10 @@ describe('FolderMemberRoleRow', () => {
     expect(addGroupMembers).not.toHaveBeenCalled();
   });
 
+  it('keeps a TEE row fixed', () => {
+    expect(roleSelectFor('ReadOnlyTee', 'Editor').disabled).toBe(true);
+  });
+
   it("keeps a folder owner's row fixed", () => {
     expect(roleSelectFor('Admin', 'Editor').disabled).toBe(true);
   });

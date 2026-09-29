@@ -1,8 +1,8 @@
 // One member row inside FolderSharingPanel: name, one RoleSelect bound to
 // the member's (core role, registry Role, folder caps), and an optional remove
 // button. Picking a role writes all three (see FOLDER_ROLE_GRANTS), the core
-// role first because it is the one core enforces. A core Admin on the folder
-// is its owner, so that row shows it and cannot be changed here.
+// role first because it is the one core enforces. A core Admin (the folder's
+// owner) or a TEE node shows as such and cannot be changed here.
 //
 // Permission-gating lives on the parent panel; this component trusts
 // `canManage` for "is the dropdown / remove button interactive".
@@ -23,6 +23,7 @@ import {
   folderRoleOf,
   FOLDER_ROLE_GRANTS,
   FOLDER_ROLES,
+  isTeeRole,
   parseGroupRole,
   roleDisplayLabel,
   type FolderAccessRole,
@@ -169,7 +170,7 @@ export function FolderMemberRoleRow({
             onChange={(next) => {
               void onRoleChange(next);
             }}
-            disabled={!canManage || updating || core === 'Admin'}
+            disabled={!canManage || updating || core === 'Admin' || isTeeRole(core)}
             ariaLabel={label ? `Role for ${label}` : 'Member role'}
           />
           {onRemove && canManage ? (

@@ -33,9 +33,20 @@ import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS, hasCap } from '@/constants/confi
 import type { Role } from '@/generated/registry/RegistryClient';
 
 /** Core group role. The server's vocabulary, spelled as the server spells it. */
-export type GroupRole = 'Admin' | 'Member' | 'ReadOnly';
+export type GroupRole = 'Admin' | 'Member' | 'ReadOnly' | 'ReadOnlyTee' | 'RelayTee';
 
-export const GROUP_ROLES: readonly GroupRole[] = ['Admin', 'Member', 'ReadOnly'];
+export const GROUP_ROLES: readonly GroupRole[] = [
+  'Admin',
+  'Member',
+  'ReadOnly',
+  'ReadOnlyTee',
+  'RelayTee',
+];
+
+/** Both TEE roles come from attestation only, so no role control may change them. */
+export function isTeeRole(role: GroupRole): boolean {
+  return role === 'ReadOnlyTee' || role === 'RelayTee';
+}
 
 /**
  * Normalise a server-reported role string.
@@ -46,8 +57,7 @@ export const GROUP_ROLES: readonly GroupRole[] = ['Admin', 'Member', 'ReadOnly']
  * unrecognised value would paint an admin badge on somebody who is not one.
  */
 export function parseGroupRole(raw: string | undefined | null): GroupRole {
-  if (raw === 'Admin' || raw === 'ReadOnly' || raw === 'Member') return raw;
-  return 'Member';
+  return GROUP_ROLES.find((role) => role === raw) ?? 'Member';
 }
 
 /** The one role vocabulary people see. Guest is workspace-only, Read only is folder-only. */
@@ -55,8 +65,8 @@ export type WorkspaceAccessRole = 'Admin' | 'Manager' | 'Editor' | 'Guest';
 export type FolderAccessRole = 'Manager' | 'Editor' | 'ReadOnly';
 export type AccessRole = WorkspaceAccessRole | FolderAccessRole;
 /** A row's role, or 'Custom' when no role describes the underlying state.
- *  'Owner' is a folder's core admin, shown but never offered. */
-export type ShownRole = AccessRole | 'Admin' | 'Owner' | 'Custom';
+ *  'Owner' is a folder's core admin and 'Tee' a TEE node, shown but never offered. */
+export type ShownRole = AccessRole | 'Admin' | 'Owner' | 'Tee' | 'Custom';
 
 export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
   Admin: 'Full control, including who else is an admin.',
@@ -65,12 +75,14 @@ export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
   Editor: 'Can create and edit documents.',
   Guest: 'Sees only folders shared with them directly.',
   ReadOnly: 'Can open documents but not edit or comment.',
+  Tee: 'A TEE node, admitted by attestation.',
   Custom: 'Permissions that match none of the roles. Pick a role to replace them.',
 };
 
 /** Display label for a role, sentence-cased. Option values keep the code spelling. */
 export function roleDisplayLabel(role: string): string {
-  return role === 'ReadOnly' ? 'Read only' : role;
+  if (role === 'ReadOnly') return 'Read only';
+  return role === 'Tee' ? 'TEE node' : role;
 }
 
 const WORKSPACE_MANAGER_CAPS =
@@ -120,6 +132,7 @@ export const FOLDER_ROLE_GRANTS: Record<
 /** A workspace member's role; `null` while a non-admin's mask is loading. */
 export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole | null {
   if (role === 'Admin') return 'Admin';
+  if (isTeeRole(role)) return 'Tee';
   if (caps === null) return null;
   const match = WORKSPACE_ROLES.find(
     (r) => WORKSPACE_ROLE_GRANTS[r].role === role && WORKSPACE_ROLE_GRANTS[r].caps === caps,
@@ -135,6 +148,7 @@ export function folderRoleOf(
   folderCaps: number | null,
 ): ShownRole | null {
   if (coreRole === 'Admin') return 'Owner';
+  if (isTeeRole(coreRole)) return 'Tee';
   if (registryRole === null || folderCaps === null) return null;
   const match = FOLDER_ROLES.find(
     (r) =>
@@ -148,6 +162,7 @@ export function folderRoleOf(
 /** A folder member's role when only the registry Role is known, not the caps. */
 export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
   if (coreRole === 'Admin') return 'Owner';
+  if (isTeeRole(coreRole)) return 'Tee';
   return (
     FOLDER_ROLES.find(
       (r) =>
@@ -361,6 +376,8 @@ export function planDefaultsSweep<T extends { role?: string }>(
         plan.skippedAdmins.push(m);
         break;
       case 'ReadOnly':
+      case 'ReadOnlyTee':
+      case 'RelayTee':
         plan.skippedReadOnly.push(m);
         break;
       case 'Member':
