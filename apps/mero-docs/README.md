@@ -137,13 +137,14 @@ Two-axis authorization, enforced server-side in `calimero-network/core`:
 Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
 
 One layer sits on top: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service).
-The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group, and in each of its sub-folders they reach.
+The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
+A Restricted sub-folder someone was invited to directly keeps the role its admin gave them.
 Core reads only the direct row of each folder's group, so a member who only inherits an Open folder gets a direct `ReadOnly` row there.
 While the member holds those rows, nodes discard their writes to those folders' docs, comments included; the calls still return success.
 Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
 Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
 A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
-A sub-folder created, opened or joined later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
+An Open sub-folder created or opened later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
 Removing someone from a folder also removes them from the Open sub-folders reached through it, stopping at a Restricted folder.
 In an Open folder a removal is a ban: it lasts until an admin restores them from that folder's Removed list (each folder has its own), and a workspace re-invite does not lift it; someone the parent holds Read only comes back Read only.
 Only the folder's admin can change a folder role, since core takes the role and caps change from its admin alone.

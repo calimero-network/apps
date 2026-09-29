@@ -8,6 +8,7 @@ import { CAPABILITIES } from '@/constants/config';
 const FOLDER = 'f'.repeat(64);
 const BOB = 'b'.repeat(64);
 const CHILD = 'c'.repeat(64);
+const WALLED = 'd'.repeat(64);
 const JOIN = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
 
 const calls: string[] = [];
@@ -46,7 +47,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
     folders: [
       { id: FOLDER, parent_id: null, alias: 'Plans' },
-      { id: CHILD, parent_id: FOLDER, alias: 'Notes' },
+      { id: CHILD, parent_id: FOLDER, alias: 'Notes', visibility: 'Open' },
+      { id: WALLED, parent_id: FOLDER, alias: 'Private', visibility: 'Restricted' },
     ],
   }),
 }));
@@ -179,6 +181,17 @@ describe('FolderMemberRoleRow', () => {
     expect(setFolderRole).toHaveBeenCalledWith(
       expect.objectContaining({ folder_id: CHILD, role: 'Viewer' }),
     );
+  });
+
+  // A Restricted sub-folder the member was invited to is its admin's call.
+  it('leaves a Restricted sub-folder alone', async () => {
+    childRows = [{ identity: BOB, role: 'Member' }];
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: g === CHILD || g === WALLED ? childRows : [],
+    }));
+    fireEvent.change(roleSelectFor('Member', 'Editor'), { target: { value: 'ReadOnly' } });
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'ReadOnly' }));
+    expect(updateMemberRole).not.toHaveBeenCalledWith(WALLED, expect.anything(), expect.anything());
   });
 
   it('ends Read only in the sub-folders when the member is made an Editor again', async () => {

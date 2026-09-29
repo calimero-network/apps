@@ -4,9 +4,10 @@ description: >
   Restricted sub-folder H. Bob reaches F, G and G2 by inheritance and is
   added to H. Each step does what the app does for the change named.
 
-  Read only on F writes Bob's ReadOnly row in F and in every sub-folder he
-  reaches (core lists him ReadOnly in G by inheritance but refuses writes
-  only by a direct row): his renames and comment in G, G2 and H land nowhere.
+  Read only on F writes Bob's ReadOnly row in F and in each Open sub-folder
+  reached through it (core lists him ReadOnly in G by inheritance but refuses
+  writes only by a direct row): his renames and comment in G and G2 land
+  nowhere, while Restricted H, which he was invited to, keeps his own role.
   A sub-folder created later, and one opened later, take Read only from F.
   Setting Bob back restores his writes across the subtree.
 
@@ -498,31 +499,6 @@ steps:
       member: '{{bob_account}}'
       role: Viewer
 
-  - name: Alice makes Bob core ReadOnly in H
-    type: update_member_role
-    node: curn-node-1
-    group_id: '{{g_H}}'
-    member_id: '{{bob_account}}'
-    role: ReadOnly
-
-  - name: Alice keeps Bob's join bit in H
-    type: set_member_capabilities
-    node: curn-node-1
-    group_id: '{{g_H}}'
-    member_id: '{{bob_account}}'
-    capabilities: 4
-
-  - name: Alice sets Bob's registry role in H to Viewer
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_H}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
   - name: Wait for the Read only rows to reach Bob
     type: wait
     seconds: 10
@@ -631,12 +607,12 @@ steps:
     outputs:
       g_comments: result.output
 
-  - name: Read only on F reaches its sub-folders
+  - name: Read only on F reaches its Open sub-folders and leaves Restricted H alone
     type: json_assert
     statements:
       - 'json_equal({{g_ro}}, "G control")'
       - 'json_equal({{g2_ro}}, "G2 original")'
-      - 'json_equal({{h_ro}}, "H original")'
+      - 'json_equal({{h_ro}}, "H while read only")'
       - 'json_equal({{g_comments}}, 0)'
 
   - name: Alice creates folder G3
@@ -990,24 +966,6 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       folder_id: '{{g_K}}'
-      member: '{{bob_account}}'
-      role: Editor
-
-  - name: Alice makes Bob core Member in H again
-    type: update_member_role
-    node: curn-node-1
-    group_id: '{{g_H}}'
-    member_id: '{{bob_account}}'
-    role: Member
-
-  - name: Alice sets Bob's registry role in H to Editor
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_H}}'
       member: '{{bob_account}}'
       role: Editor
 

@@ -51,7 +51,6 @@ import { clearOpenSubtree, removedFrom, restoreTo } from '@/lib/openFolderRemova
 
 const OPEN_REMOVAL_NOTE =
   'They stay removed from it until you restore them here, even if they are invited to the workspace again.';
-const READ_ONLY_NOT_CARRIED = 'Added, but they are Read only in the parent folder and could not be made Read only here.';
 
 interface Props {
   folderId: string;
@@ -138,12 +137,7 @@ export function FolderSharingPanel({ folderId }: Props) {
     try {
       await add(trimmedIdentity);
       setIdentity('');
-      if (folder?.parent_id && mero && registryClient) {
-        const writer = { admin: mero.admin, registry: registryClient };
-        if ((await inheritReadOnly(writer, folder.parent_id, folderId)).length > 0) {
-          setInviteError(READ_ONLY_NOT_CARRIED);
-        }
-      }
+
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setInviteError(err.message);
@@ -152,10 +146,10 @@ export function FolderSharingPanel({ folderId }: Props) {
     }
   };
 
-  // Read only from the parent may have missed this folder: two admins can race
+  // Read only from the parent may have missed this Open folder: two admins can race
   // (one sets it above while another creates or opens this one). Its admin re-applies it.
   const parentId = folder?.parent_id ?? null;
-  const reapplyReadOnly = perms.canManagePermissions && !!parentId;
+  const reapplyReadOnly = perms.canManagePermissions && !!parentId && isOpenFolder;
   const reappliedFor = useRef<string | null>(null); // once per folder per mount
   useEffect(() => {
     if (!reapplyReadOnly || !parentId || !mero || !registryClient) return;

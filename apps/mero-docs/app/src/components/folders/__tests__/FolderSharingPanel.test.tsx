@@ -206,6 +206,7 @@ describe('folder roles', () => {
   // the other created or opened this folder.
   it("re-applies the parent's Read only when the folder's admin opens the panel", async () => {
     workspace.parentId = 'p0';
+    workspace.visibility = 'Open';
     workspace.self = NAMED;
     perms.canManagePermissions = true;
     listGroupMembers.mockImplementation(async () => ({
@@ -221,6 +222,7 @@ describe('folder roles', () => {
   // would sign MemberRoleSet{Admin} and undo a co-admin's demotion.
   it("never writes the viewer's own role while re-applying", async () => {
     workspace.parentId = 'p0';
+    workspace.visibility = 'Open';
     workspace.self = NAMED;
     perms.canManagePermissions = true;
     listGroupMembers.mockImplementation(async () => ({
@@ -231,6 +233,17 @@ describe('folder roles', () => {
       expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
     );
     expect(updateMemberRole).not.toHaveBeenCalledWith('f1', NAMED, expect.anything());
+  });
+
+  it('does not re-apply it in a Restricted folder', async () => {
+    workspace.parentId = 'p0';
+    perms.canManagePermissions = true;
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: PICKED, role: 'ReadOnly' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updateMemberRole).not.toHaveBeenCalled();
   });
 
   it('does not re-apply it for someone who is not the folder admin', async () => {
@@ -245,7 +258,8 @@ describe('folder roles', () => {
   });
 
   // Read only on the parent covers this sub-folder, even for someone added later.
-  it('makes a member who is Read only in the parent folder Read only here when added', async () => {
+  // Inviting someone to a Restricted folder is its admin's call, Read only above or not.
+  it('leaves the role of someone added to a Restricted sub-folder alone', async () => {
     workspace.parentId = 'p0';
     listGroupMembers.mockImplementation(async (g: string) => ({
       members: [{ identity: PICKED, role: g === 'p0' ? 'ReadOnly' : 'Member' }],
@@ -253,10 +267,9 @@ describe('folder roles', () => {
     render(<FolderSharingPanel folderId="f1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    await waitFor(() =>
-      expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
-    );
-    expect(addMember).toHaveBeenCalledWith(PICKED);
+    await waitFor(() => expect(addMember).toHaveBeenCalledWith(PICKED));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updateMemberRole).not.toHaveBeenCalled();
   });
 
   it("tells a registry manager who is not the folder's admin why roles are fixed", () => {

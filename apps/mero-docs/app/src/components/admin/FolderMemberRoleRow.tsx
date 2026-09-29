@@ -28,7 +28,7 @@ import {
 } from '@/lib/roles';
 import { applyAcross, applyFolderGrant } from '@/lib/applyFolderRole';
 import { folderLabel } from '@/lib/folderLabel';
-import { descendantsOf } from '@/utils/ancestry';
+import { openConnected } from '@/lib/openFolderRemoval';
 import type { Role } from '@/generated/registry/RegistryClient';
 
 interface Props {
@@ -104,11 +104,11 @@ export function FolderMemberRoleRow({
     setUpdateError(null);
     try {
       await applyFolderGrant(writer, folderId, identity, next, core);
-      // Read only covers the subtree, so its start and its end both carry down,
-      // also when only the registry row still says Read only.
+      // Read only covers the Open sub-folders reached through this one, so its
+      // start and its end carry down (also when only the registry still says it).
       if (readOnly || core === 'ReadOnly' || registryRole === 'Viewer') {
-        const subtree = descendantsOf(folders, folderId).reverse();
-        const failed = await applyAcross(writer, subtree, identity, readOnly);
+        const { open, unknown } = openConnected(folders, folderId);
+        const failed = [...unknown, ...(await applyAcross(writer, open, identity, readOnly))];
         if (failed.length > 0) setUpdateError(subtreeFailure(failed));
       }
       await caps.refetch();

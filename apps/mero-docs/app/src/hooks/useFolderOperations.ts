@@ -232,7 +232,7 @@ export function useFolderOperations(
             failedMembers = input.members;
           }
         }
-        if (input.parentGroupId !== rootGroupId) {
+        if (input.parentGroupId !== rootGroupId && input.visibility === 'Open') {
           const writer = { admin: mero.admin, registry: registryClient };
           await inheritReadOnly(writer, input.parentGroupId, createdGroupId)
             .then((failed) => failed.length > 0 && toast.error(READ_ONLY_NOT_CARRIED))

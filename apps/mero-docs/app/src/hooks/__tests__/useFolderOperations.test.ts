@@ -68,6 +68,24 @@ beforeEach(() => {
 });
 
 describe('useFolderOperations.create - Read only', () => {
+  it('leaves the members of a new Restricted sub-folder with the role they were added with', async () => {
+    const BOB = 'b'.repeat(64);
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    }));
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Private',
+      visibility: 'Restricted',
+      members: [BOB],
+    });
+    expect(updateMemberRole).not.toHaveBeenCalled();
+  });
+
   // Read only on a folder covers the sub-folders made later, too.
   it("makes the parent's Read only members Read only in a new sub-folder", async () => {
     const BOB = 'b'.repeat(64);
