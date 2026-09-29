@@ -31,7 +31,7 @@ function mountEditor() {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
 const stamped = (root: HTMLElement) =>
   [...root.querySelectorAll<HTMLElement>('[data-testid="doc-block"]')].map(
-    (el) => el.dataset.blockId,
+    (el) => el.dataset.id,
   );
 
 afterEach(() => {
@@ -82,7 +82,7 @@ describe('blockDecorations', () => {
     await flush();
     const washed = () =>
       [...root.querySelectorAll<HTMLElement>('.section-wash')].map(
-        (el) => el.dataset.blockId,
+        (el) => el.dataset.id,
       );
     expect(washed()).toEqual(['blk-2']);
 

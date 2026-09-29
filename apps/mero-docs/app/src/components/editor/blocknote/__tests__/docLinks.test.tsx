@@ -205,9 +205,9 @@ describe('docLinkItems (L-11, L-13)', () => {
         'Product / Design',
       ],
     ]);
-    expect(items[0].titleRanges).toEqual([{ start: 0, end: 4 }]);
+    expect(items[0].titleRanges).toEqual([[0, 4]]);
     expect(items[1].quote).toBe('The pricing page');
-    expect(items[1].quoteRanges).toEqual([{ start: 4, end: 8 }]);
+    expect(items[1].quoteRanges).toEqual([[4, 8]]);
   });
 
   it('never offers the doc being edited or an archived doc', () => {
@@ -270,7 +270,7 @@ describe('docLinkItems (L-11, L-13)', () => {
     expect([hit.kind, hit.title, hit.titleRanges]).toEqual([
       'doc',
       'Roadmap',
-      [{ start: 0, end: 7 }],
+      [[0, 7]],
     ]);
     expect(docLinkItems('notes design', src).map((i) => i.title)).toEqual([
       'Design review notes',
@@ -327,7 +327,7 @@ describe('sectionLinkItems', () => {
   it('matches a heading or its doc title, best match first', () => {
     const items = sectionLinkItems('pric', src);
     expect(items.map((i) => i.title)).toEqual(['Pricing page', 'Tiers']);
-    expect(items[0].titleRanges).toEqual([{ start: 0, end: 4 }]);
+    expect(items[0].titleRanges).toEqual([[0, 4]]);
     expect(items[1].titleRanges).toEqual([]);
   });
 

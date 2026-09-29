@@ -21,6 +21,29 @@ test.describe('Landing (unauthenticated)', () => {
     ).toBeVisible({ timeout: 30_000 });
   });
 
+  test('the hero is the real Home screen, and takes no input', async ({
+    page,
+  }) => {
+    const hero = page.locator('.cal-lp-a');
+    await expect(hero.getByTestId('doc-title')).toHaveCount(7);
+    // Real buttons inside an aria-hidden picture must not be focusable.
+    await expect(hero).toHaveAttribute('inert', '');
+  });
+
+  test('the hero follows the landing theme, not the app theme', async ({
+    page,
+  }) => {
+    await page.evaluate(() =>
+      localStorage.setItem('mero-theme', JSON.stringify('dark')),
+    );
+    await page.reload();
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    const app = page.locator('.cal-lp-a > div').first();
+    await expect(app).toHaveCSS('background-color', 'rgb(250, 250, 250)');
+    await page.getByTestId('theme-toggle').click();
+    await expect(app).toHaveCSS('background-color', 'rgb(14, 14, 16)');
+  });
+
   test('unknown routes redirect to /', async ({ page }) => {
     await page.goto('/nonexistent-path');
     await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });

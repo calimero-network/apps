@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Highlight, type HighlightRange } from '@/components/common/Highlight';
+import { Highlight } from '@/components/common/Highlight';
 import { Kbd } from '@/components/common/Kbd';
 import { KEY_LABELS } from '@/lib/platform';
 import { TAG_NEUTRAL } from '@/lib/tags';
@@ -81,10 +81,6 @@ function focusAtEnd(input: HTMLInputElement | null) {
   if (!input) return;
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
-}
-
-function toRanges(ranges: [number, number][] | undefined): HighlightRange[] {
-  return (ranges ?? []).map(([start, end]) => ({ start, end }));
 }
 
 // Moves only the results box, so an off-screen palette in the dev gallery never scrolls the page.
@@ -290,7 +286,7 @@ function PaletteRow({ item, active, id, onHover, onPick }: PaletteRowProps) {
       )}
       <div className="min-w-0 flex-1">
         <div className={cn('truncate text-[13px] font-medium', active ? 'text-selected-foreground' : 'text-foreground')}>
-          <Highlight text={item.title} ranges={toRanges(item.titleRanges)} />
+          <Highlight text={item.title} ranges={item.titleRanges ?? []} />
         </div>
         {item.context && (
           <div className={cn('mt-px flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11.5px]', FAINT)}>
@@ -299,7 +295,7 @@ function PaletteRow({ item, active, id, onHover, onPick }: PaletteRowProps) {
         )}
         {item.snippet && (
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            <Highlight text={item.snippet} ranges={toRanges(item.snippetRanges)} />
+            <Highlight text={item.snippet} ranges={item.snippetRanges ?? []} />
           </div>
         )}
       </div>

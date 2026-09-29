@@ -7,16 +7,14 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { toast } from 'sonner';
 import { nameCollator } from '@/lib/collate';
-import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
+import { useRegistryRead } from './useRegistryRead';
 
 const VIEWS_KEY_PREFIX = 'mero-drive:views:'; // + workspace id
-const REGISTRY_EVENT_DEBOUNCE_MS = 300; // one re-read per burst of registry ops
 const SAVE_FAILED = "Couldn't save the view. Try again.";
 const RENAME_FAILED = "Couldn't rename the view. Try again.";
 const DELETE_FAILED = "Couldn't delete the view. Try again.";
@@ -79,8 +77,7 @@ export function useSavedViews(): SavedViewsState {
 
 /** Personal views on this device, plus the workspace's shared views, merged and named by scope. */
 export function useSavedViewsSource(): SavedViewsState {
-  const { namespaceId, registryClient, registryContextId } =
-    useDriveWorkspace();
+  const { namespaceId, registryClient } = useDriveWorkspace();
   const ws = namespaceId ?? '';
 
   // Storage is re-read on every write and on another tab's, so neither undoes the other's.
@@ -102,50 +99,22 @@ export function useSavedViewsSource(): SavedViewsState {
     [ws],
   );
 
-  const [shared, setShared] = useState<{
-    client: typeof registryClient;
-    views: SavedView[];
-  }>({ client: null, views: [] });
-  const seqRef = useRef(0);
-  const load = useCallback(() => {
-    if (!registryClient) return;
-    const seq = ++seqRef.current;
-    registryClient.listViews().then(
-      (dtos) => {
-        if (seq !== seqRef.current) return;
-        setShared({
-          client: registryClient,
-          views: dtos.map((d) => ({
-            id: d.id,
-            name: d.name,
-            query: d.query,
-            scope: 'everyone' as const,
-            createdBy: d.created_by,
-          })),
-        });
-      },
-      (e: unknown) => {
-        if (seq !== seqRef.current) return;
-        console.warn('[useSavedViews] read failed', e);
-        // A failed re-read keeps the last good shared list rather than blanking it.
-      },
-    );
-  }, [registryClient]);
-  useEffect(() => {
-    load();
-  }, [load]);
-  const onRegistryEvent = useCallback(() => load(), [load]);
-  useContextEvents(registryContextId, onRegistryEvent, {
-    strict: true,
-    debounceMs: REGISTRY_EVENT_DEBOUNCE_MS,
-  });
-
-  const sharedViews = useMemo(
-    () => (shared.client === registryClient ? shared.views : []),
-    [shared, registryClient],
+  const {
+    data,
+    dataRef: sharedRef,
+    reload,
+  } = useRegistryRead('useSavedViews', (client) =>
+    client.listViews().then((dtos) =>
+      dtos.map((d) => ({
+        id: d.id,
+        name: d.name,
+        query: d.query,
+        scope: 'everyone' as const,
+        createdBy: d.created_by,
+      })),
+    ),
   );
-  const sharedRef = useRef(sharedViews);
-  sharedRef.current = sharedViews;
+  const sharedViews = useMemo(() => data ?? [], [data]);
 
   const views = useMemo(
     () =>
@@ -173,10 +142,10 @@ export function useSavedViewsSource(): SavedViewsState {
       } catch (e: unknown) {
         failed('save', SAVE_FAILED, e);
       }
-      load();
+      reload();
       return { id, name, query, scope };
     },
-    [registryClient, load, updatePersonal],
+    [registryClient, reload, updatePersonal],
   );
 
   const rename = useCallback(
@@ -188,15 +157,15 @@ export function useSavedViewsSource(): SavedViewsState {
         return;
       }
       try {
-        const view = sharedRef.current.find((v) => v.id === id);
+        const view = sharedRef.current?.find((v) => v.id === id);
         if (!registryClient || !view) throw new Error('view not found');
         await registryClient.saveView({ id, name, query: view.query });
       } catch (e: unknown) {
         failed('rename', RENAME_FAILED, e);
       }
-      load();
+      reload();
     },
-    [ws, registryClient, load, updatePersonal],
+    [ws, registryClient, reload, updatePersonal, sharedRef],
   );
 
   const remove = useCallback(
@@ -211,9 +180,9 @@ export function useSavedViewsSource(): SavedViewsState {
       } catch (e: unknown) {
         failed('delete', DELETE_FAILED, e);
       }
-      load();
+      reload();
     },
-    [ws, registryClient, load, updatePersonal],
+    [ws, registryClient, reload, updatePersonal],
   );
 
   return useMemo(

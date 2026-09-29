@@ -5,10 +5,14 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { FolderTree } from '@/components/folders/FolderTree';
-import { defaultViewName, SORT_LABELS, summarizeHomeQuery } from '@/components/home/filterSummary';
+import {
+  defaultViewName,
+  SORT_LABELS,
+  summarizeHomeQuery,
+} from '@/components/home/filterSummary';
 import { useFolderPaths } from '@/components/home/useHomeChips';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
+import { NameDialog } from '@/components/tags/NameDialog';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
@@ -18,7 +22,6 @@ import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
-import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
 import { copyLink } from '@/lib/copyLink';
 import {
@@ -77,7 +80,6 @@ export function WorkspaceNav({
   const { namespaces } = useDriveWorkspace();
   const {
     views: savedViews,
-    save: saveView,
     rename: renameView,
     remove: removeView,
   } = useSavedViews();
@@ -86,7 +88,6 @@ export function WorkspaceNav({
   const [newTag, setNewTag] = React.useState<{ error?: string } | null>(null);
   const [saveViewOpen, setSaveViewOpen] = React.useState(false);
   const addViewRef = React.useRef<HTMLButtonElement>(null);
-  const [savingView, setSavingView] = React.useState(false);
   const [renamingView, setRenamingView] = React.useState<SavedView | null>(
     null,
   );
@@ -170,25 +171,7 @@ export function WorkspaceNav({
     }
     setSaveViewOpen((open) => !open);
   };
-  const saveFromSidebar = async ({
-    name,
-    scope,
-  }: {
-    name: string;
-    scope: 'me' | 'everyone';
-  }) => {
-    setSavingView(true);
-    try {
-      const query = serializeHomeQuery({ ...q, view: undefined });
-      const view = await saveView(name, query, scope);
-      setSaveViewOpen(false);
-      go(withView(query, view.id));
-    } catch {
-      // Reported by the saved views hook's own toast; the popover stays open to retry.
-    } finally {
-      setSavingView(false);
-    }
-  };
+  const viewQuery = serializeHomeQuery({ ...q, view: undefined });
   const deleteViewAfterConfirm = async (view: SavedView) => {
     const ok = await confirm({
       title: 'Delete view?',
@@ -206,7 +189,8 @@ export function WorkspaceNav({
     if (!ok) return;
     try {
       await removeView(view.id);
-      if (selectedViewId === view.id) go(serializeHomeQuery({ ...q, view: undefined }));
+      if (selectedViewId === view.id)
+        go(serializeHomeQuery({ ...q, view: undefined }));
     } catch {
       // Reported by the saved views hook's own toast.
     }
@@ -277,22 +261,26 @@ export function WorkspaceNav({
         filters={summarizeHomeQuery(summaryArgs)}
         workspaceName={workspaceName}
         canShare={canManageTags}
-        saving={savingView}
-        onSave={(view) => void saveFromSidebar(view)}
+        query={viewQuery}
+        onSaved={(view) => go(withView(viewQuery, view.id))}
       />
-      <NewTagDialog
+      <NameDialog
         open={!!newTag}
+        title="New tag"
+        submitLabel="Create"
         color={firstUnusedColor(tags)}
         error={newTag?.error}
-        onSubmit={(name, color) => void createTagFromSidebar(name, color)}
+        onSubmit={(name, color) => void createTagFromSidebar(name, color!)}
         onOpenChange={(open) => !open && setNewTag(null)}
       />
       {renamingView && (
-        <RenameTagDialog
+        <NameDialog
           open
           title="Rename view"
           maxLength={VIEW_NAME_MAX}
-          validate={(name) => (viewNameFits(name) ? undefined : VIEW_NAME_TOO_LONG)}
+          validate={(name) =>
+            viewNameFits(name) ? undefined : VIEW_NAME_TOO_LONG
+          }
           name={renamingView.name}
           onSubmit={(name) => {
             const view = renamingView;

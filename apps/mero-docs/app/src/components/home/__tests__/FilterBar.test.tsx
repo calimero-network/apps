@@ -50,10 +50,23 @@ describe('FilterBar', () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it('hides Clear when no chip is active', () => {
+  it('draws a chip with no popover or toggle as a plain label', () => {
     render(
       <FilterBar
         chips={[chip({})]}
+        sortLabel="Last updated"
+        onSortClick={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(screen.getByText('Tag')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tag' })).toBeNull();
+  });
+
+  it('hides Clear when no chip is active', () => {
+    render(
+      <FilterBar
+        chips={[chip({ popover: <p>Tag list</p> })]}
         sortLabel="Last updated"
         onSortClick={() => {}}
         onClear={() => {}}
@@ -72,7 +85,6 @@ describe('FilterBar', () => {
             id: 'archived',
             icon: 'archive',
             label: 'Archived',
-            toggle: true,
             onToggle,
           }),
         ]}
@@ -92,7 +104,6 @@ describe('FilterBar', () => {
             id: 'archived',
             icon: 'archive',
             label: 'Archived',
-            toggle: true,
             onToggle,
             active: true,
           }),

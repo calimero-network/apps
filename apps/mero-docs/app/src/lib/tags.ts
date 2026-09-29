@@ -12,6 +12,7 @@ import {
 import type { IndexRow, Tag } from './workspaceIndex/types';
 
 export type { Tag } from './workspaceIndex/types';
+export type TagView = { key: string; name: string; color?: string }; // a tag as a chip shows it
 
 // One entry per colour, so a hex can never lose or swap its name. Order is the order new tags are assigned.
 const TAG_PALETTE = [
@@ -35,7 +36,6 @@ const RANDOM_KEY_PREFIX = 't-'; // for names with no latin letters or digits
 const RANDOM_KEY_LEN = 6;
 const RANDOM_KEY_RADIX = 36;
 const RANDOM_KEY_TRIES = 8; // then number the last random key, so a stuck `random` still ends
-const VALID_KEY = /^[a-z0-9-]+$/;
 const SUGGESTIONS_MAX = 8; // the Add tag list stays short; typing narrows it
 
 /** Trimmed, inner whitespace collapsed, cut to TAG_NAME_MAX characters. */
@@ -80,15 +80,11 @@ export function tagKeyFor(
   return key;
 }
 
-export function isValidTagKey(key: string): boolean {
-  return key.length <= TAG_KEY_MAX && VALID_KEY.test(key);
-}
-
 /** A doc's tag keys as chips named from the workspace tags; a deleted tag shows nowhere. */
 export function docTagChips(
   keys: string[],
   byKey: Map<string, Tag>,
-): { key: string; name: string; color?: string }[] {
+): TagView[] {
   return keys.flatMap((key) => {
     const tag = byKey.get(key);
     if (tag?.deleted) return [];

@@ -1,16 +1,11 @@
 import * as React from 'react';
 import { Tag } from 'lucide-react';
 
+import type { TagView } from '@/lib/tags';
 import { TagChip } from './TagChip';
 
-export interface DocTag {
-  key: string;
-  name: string;
-  color?: string;
-}
-
 interface DocTagRowProps {
-  tags: DocTag[];
+  tags: TagView[];
   canEdit: boolean;
   onRemove: (key: string) => void;
   addTrigger: React.ReactNode;

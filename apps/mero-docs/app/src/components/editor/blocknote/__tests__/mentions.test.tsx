@@ -92,7 +92,7 @@ describe('peopleItems', () => {
     ]);
     const lo = peopleItems('lo', people());
     expect(lo.map((i) => i.title)).toEqual(['Ada Lovelace', 'Chloé']);
-    expect(lo[0].titleRanges).toEqual([{ start: 4, end: 6 }]);
+    expect(lo[0].titleRanges).toEqual([[4, 6]]);
   });
 
   it('forgives a typo in a name', () => {
@@ -105,7 +105,7 @@ describe('peopleItems', () => {
       }),
     );
     expect(items.map((i) => i.title)).toEqual(['Alice']);
-    expect(items[0].titleRanges).toEqual([{ start: 0, end: 5 }]);
+    expect(items[0].titleRanges).toEqual([[0, 5]]);
   });
 
   it('finds you by your own name or by You', () => {

@@ -70,7 +70,7 @@ function FilterChip({ chip }: { chip: FilterChipView }) {
   const open = chip.open ?? localOpen;
   const setOpen = chip.onOpenChange ?? setLocalOpen;
   const Icon = FILTER_ICONS[chip.icon];
-  const showClear = chip.active && !chip.toggle && chip.onClear;
+  const showClear = chip.active && !chip.onToggle && chip.onClear;
   const inner =
     'flex h-full items-center gap-1.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring';
   const label = (
@@ -102,7 +102,7 @@ function FilterChip({ chip }: { chip: FilterChipView }) {
         open && 'ring-[3px] ring-primary/55 dark:ring-primary/45',
       )}
     >
-      {chip.toggle ? (
+      {chip.onToggle ? (
         <button
           type="button"
           aria-pressed={chip.active}
@@ -135,7 +135,7 @@ function FilterChip({ chip }: { chip: FilterChipView }) {
     </span>
   );
 
-  if (!chip.popover || chip.toggle) return shell;
+  if (!chip.popover || chip.onToggle) return shell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>{shell}</PopoverAnchor>

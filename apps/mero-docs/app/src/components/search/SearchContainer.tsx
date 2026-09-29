@@ -26,9 +26,11 @@ import { docLabel } from '@/lib/docLabel';
 import { folderLabel } from '@/lib/folderLabel';
 import { parseHomeQuery, serializeHomeQuery } from '@/lib/homeQuery';
 import { namespaceLabel } from '@/lib/namespaceLabel';
-import { openedLabel, updatedLabel } from '@/lib/relativeTime';
+import { updatedLabel, whenLabel } from '@/lib/relativeTime';
 import { normalizeQuery } from '@/lib/search/match';
 import { searchV1 } from '@/lib/search/rank';
+import { sidebarTags, tagCounts } from '@/lib/tags';
+import { plural } from '@/lib/plural';
 import { searchText } from '@/lib/search/docText';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 
@@ -56,10 +58,6 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   recent: RecentDoc[];
-}
-
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -172,11 +170,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     failed: partlyRead,
   } = useTextIndexValue();
   const { tags, byKey: tagsByKey } = useTags();
-  const {
-    mentions,
-    known: mentionsKnown,
-    reading: mentionsReading,
-  } = useMentionedMe();
+  const { mentions, known: mentionsKnown, reading } = useMentionedMe();
   const presence = usePresenceByDoc();
   const { namespaceId, namespaces } = useDriveWorkspace();
   const { href, goDoc, goFolder, goHome } = useAppRoute();
@@ -237,11 +231,11 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         docItem(ctx, `recent:${rowKey(r.folderId, r.docId)}`, 'recent', r, {
           context: dotted(
             folderPathOf(paths, r.folderId),
-            openedLabel(entry.openedAt, now),
+            `opened ${whenLabel(entry.openedAt, now)}`,
           ),
         }),
       );
-      const topTags = searchV1('#', rows, [], tags).slice(0, TIP_TAGS);
+      const topTags = sidebarTags(tags, tagCounts(rows)).slice(0, TIP_TAGS);
       groups.push(
         { id: 'recent', label: 'Recent', items: recentItems },
         {
@@ -253,17 +247,9 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
               kind: 'tip',
               title: TAGS_TIP,
               context: topTags.length
-                ? topTags.flatMap((t) =>
-                    t.kind === 'tag'
-                      ? [
-                          <TagChip
-                            key={t.tag.key}
-                            name={t.tag.name}
-                            color={t.tag.color}
-                          />,
-                        ]
-                      : [],
-                  )
+                ? topTags.map((t) => (
+                    <TagChip key={t.key} name={t.name} color={t.color} />
+                  ))
                 : undefined,
             },
             {
@@ -391,18 +377,13 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     return { ...ctx, items };
   }, [open, textQuery, texts, live, paths, presence]);
 
-  // Still reading a folder, not merely missing one that failed.
-  const reading = foldersDone + partlyRead.length < foldersTotal;
   const groups = React.useMemo(() => {
-    if (titles.mentionsOnly)
-      return titles.groups.map((g) => ({
-        ...g,
-        aside: mentionsReading ? (
-          <SearchProgress
-            label={`${foldersDone} of ${foldersTotal} folders searched`}
-          />
-        ) : undefined,
-      }));
+    const aside = reading ? (
+      <SearchProgress
+        label={`${foldersDone} of ${foldersTotal} folders searched`}
+      />
+    ) : undefined;
+    if (titles.mentionsOnly) return titles.groups.map((g) => ({ ...g, aside }));
     if (titles.empty || titles.tagsOnly) return titles.groups;
     // Hits for an older query would highlight words no longer typed.
     const textItems = textQuery === query ? textHits.items : [];
@@ -417,23 +398,10 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       id: 'text',
       label: 'In document text',
       items: textItems,
-      aside: reading ? (
-        <SearchProgress
-          label={`${foldersDone} of ${foldersTotal} folders searched`}
-        />
-      ) : undefined,
+      aside,
     };
     return [...titleGroups, textGroup];
-  }, [
-    titles,
-    textHits,
-    textQuery,
-    query,
-    reading,
-    mentionsReading,
-    foldersDone,
-    foldersTotal,
-  ]);
+  }, [titles, textHits, textQuery, query, reading, foldersDone, foldersTotal]);
 
   const routeOf = (t: Target): { route: AppRoute; search?: string } => {
     const ws = namespaceId ?? '';

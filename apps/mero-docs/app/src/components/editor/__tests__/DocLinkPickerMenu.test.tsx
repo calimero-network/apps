@@ -12,7 +12,7 @@ const ITEMS: DocLinkPickerItem[] = [
     id: 'doc-7',
     kind: 'doc',
     title: 'Pricing notes',
-    titleRanges: [{ start: 0, end: 4 }],
+    titleRanges: [[0, 4]],
     folderLabel: 'Product',
   },
   {
@@ -20,7 +20,7 @@ const ITEMS: DocLinkPickerItem[] = [
     kind: 'text',
     title: 'Design review notes',
     quote: 'Pricing page',
-    quoteRanges: [{ start: 0, end: 4 }],
+    quoteRanges: [[0, 4]],
     folderLabel: 'Design',
   },
 ];
@@ -28,7 +28,12 @@ const ITEMS: DocLinkPickerItem[] = [
 describe('DocLinkPickerMenu', () => {
   it('labels the list and marks the active row', () => {
     render(
-      <DocLinkPickerMenu items={ITEMS} activeIndex={1} onPick={() => {}} />,
+      <DocLinkPickerMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={1}
+        onItemClick={() => {}}
+      />,
     );
     expect(
       screen.getByRole('listbox', { name: 'Mention or link' }),
@@ -45,7 +50,12 @@ describe('DocLinkPickerMenu', () => {
 
   it('highlights the matched part of the title', () => {
     render(
-      <DocLinkPickerMenu items={ITEMS} activeIndex={0} onPick={() => {}} />,
+      <DocLinkPickerMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
+      />,
     );
     expect(screen.getAllByText('Pric').map((m) => m.tagName)).toEqual([
       'MARK',
@@ -56,7 +66,14 @@ describe('DocLinkPickerMenu', () => {
   it('picks the clicked item', async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
-    render(<DocLinkPickerMenu items={ITEMS} activeIndex={0} onPick={onPick} />);
+    render(
+      <DocLinkPickerMenu
+        items={ITEMS}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={onPick}
+      />,
+    );
     await user.click(
       screen.getByRole('option', { name: /Design review notes/ }),
     );
@@ -64,7 +81,14 @@ describe('DocLinkPickerMenu', () => {
   });
 
   it('says when nothing matches', () => {
-    render(<DocLinkPickerMenu items={[]} activeIndex={0} onPick={() => {}} />);
+    render(
+      <DocLinkPickerMenu
+        items={[]}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
+      />,
+    );
     expect(screen.getByText('No people or documents match')).toBeTruthy();
     expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
@@ -88,7 +112,12 @@ describe('DocLinkPickerMenu', () => {
       { ...ITEMS[0], group: 'Documents' },
     ];
     render(
-      <DocLinkPickerMenu items={grouped} activeIndex={2} onPick={() => {}} />,
+      <DocLinkPickerMenu
+        items={grouped}
+        loadingState="loaded"
+        selectedIndex={2}
+        onItemClick={() => {}}
+      />,
     );
     const groups = screen.getAllByRole('group');
     expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
@@ -120,8 +149,9 @@ describe('DocLinkPickerMenu', () => {
             folderLabel: 'Q3 launch plan',
           },
         ]}
-        activeIndex={0}
-        onPick={() => {}}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
       />,
     );
     expect(
@@ -135,8 +165,9 @@ describe('DocLinkPickerMenu', () => {
       <DocLinkPickerMenu
         mode="section"
         items={[]}
-        activeIndex={0}
-        onPick={() => {}}
+        loadingState="loaded"
+        selectedIndex={0}
+        onItemClick={() => {}}
       />,
     );
     expect(screen.getByText('No sections match')).toBeTruthy();

@@ -13,12 +13,7 @@ import { row } from '../../workspaceIndex/__tests__/row';
 const TEXT = '🚀 launch plan';
 
 function marks(text: string, ranges: [number, number][]): string[] {
-  const { container } = render(
-    <Highlight
-      text={text}
-      ranges={ranges.map(([start, end]) => ({ start, end }))}
-    />,
-  );
+  const { container } = render(<Highlight text={text} ranges={ranges} />);
   // <mark> has no implicit ARIA role, so only a DOM query finds it.
   // eslint-disable-next-line testing-library/no-container
   return [...container.querySelectorAll('mark')].map(

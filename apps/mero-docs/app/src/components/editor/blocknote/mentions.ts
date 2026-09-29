@@ -53,10 +53,7 @@ export function peopleItems(query: string, src: PeopleSource): DocLinkItem[] {
       kind: 'person',
       group: PEOPLE_GROUP,
       title,
-      titleRanges: matchRanges(title, text).map(([start, end]) => ({
-        start,
-        end,
-      })),
+      titleRanges: matchRanges(title, text),
       folderLabel: cantOpen ? CANT_OPEN_FOLDER : '',
       href: memberHref({ ws: src.ws, member: id }),
       mention: { name, cantOpen },

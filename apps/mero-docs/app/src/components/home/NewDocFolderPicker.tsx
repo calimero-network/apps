@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { Folder } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { nameCollator } from '@/lib/collate';
 import { filterByLabel } from '@/lib/search/match';
+import { FolderPath } from './DocTable';
 
 const FILTER_THRESHOLD = 6; // more folders than this and the list gets a filter field
 
@@ -75,19 +75,7 @@ export function NewDocFolderPicker({
                     onClick={() => onPick(f.id)}
                     className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-secondary-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground"
                   >
-                    {f.color ? (
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-sm border border-border/50"
-                        style={{ backgroundColor: f.color }}
-                        aria-hidden
-                      />
-                    ) : (
-                      <Folder
-                        className="h-[13px] w-[13px] shrink-0 text-muted-foreground/80"
-                        aria-hidden
-                      />
-                    )}
-                    <span className="truncate">{f.path.join(' / ')}</span>
+                    <FolderPath path={f.path} color={f.color} />
                   </button>
                 </li>
               ))}

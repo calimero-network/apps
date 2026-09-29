@@ -15,7 +15,7 @@ interface BlockAttrs {
 
 const blockAttrsKey = new PluginKey<BlockAttrs>('calimero-block-attrs');
 
-// The browser suites address blocks through the testid and the id.
+// The browser suites address blocks through the testid; BlockNote renders the id as data-id.
 function build(doc: EditorState['doc'], wash: string | null): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
@@ -25,7 +25,6 @@ function build(doc: EditorState['doc'], wash: string | null): DecorationSet {
     decorations.push(
       Decoration.node(pos, pos + node.nodeSize, {
         'data-testid': 'doc-block',
-        'data-block-id': id,
         ...(id === wash ? { class: WASH_CLASS } : {}),
       }),
     );
