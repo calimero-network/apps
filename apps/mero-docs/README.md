@@ -143,6 +143,7 @@ Core reads only the direct row of each folder's group, so a member who only inhe
 While the member holds those rows, nodes discard their writes to those folders' docs, comments included; the calls still return success.
 Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
 Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
+The rows Read only wrote in Open sub-folders stay as direct Member rows after that, so restricting such a folder or making the person a Guest leaves them in with write access; remove them from the folder to take it away (the Make restricted confirmation names them).
 A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
 For the moment between a folder becoming Open (created Open, or opened) and its Read only rows being written, the parent's Read only members can write there; adding the rows first would make them members of a folder that is still Restricted.
 An Open sub-folder created or opened later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.

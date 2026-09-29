@@ -28,7 +28,7 @@ vi.mock('@calimero-network/mero-react', () => ({
         addGroupMembers,
         updateMemberRole,
         setMemberCapabilities,
-        getMemberCapabilities: async () => ({ capabilities: 0 }),
+        getMemberCapabilities,
       },
     },
   }),
@@ -37,16 +37,23 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
     refetch: vi.fn().mockResolvedValue(undefined),
-    registryClient: { setFolderRole, getFolderRole: async () => 'Editor' },
+    registryClient: { setFolderRole, getFolderRole: async () => 'Editor', listFolderRoles },
+    namespaceMemberNames: { [BOB]: 'Bob' },
     folders: workspace.folders,
   }),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canManageVisibility: true }),
 }));
-vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => async () => true }));
+const confirm = vi.fn(async (_opts: { body: unknown }) => true);
+vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => confirm }));
+const listFolderRoles = vi.fn();
+const getMemberCapabilities = vi.fn();
 
 beforeEach(() => {
+  confirm.mockClear();
+  listFolderRoles.mockReset().mockResolvedValue([]);
+  getMemberCapabilities.mockReset().mockResolvedValue({ capabilities: 0 });
   workspace.folders = BASE;
   for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities, setFolderRole]) {
     fn.mockReset().mockResolvedValue(undefined);
@@ -89,6 +96,18 @@ describe('FolderVisibilityToggle', () => {
     render(<FolderVisibilityToggle folderId="child" current="Restricted" onError={onError} />);
     fireEvent.click(screen.getByRole('button', { name: 'Make open' }));
     await waitFor(() => expect(onError).toHaveBeenCalled());
+  });
+
+  // Their direct rows outlast the switch, so the warning must not say they lose access.
+  it('names who keeps access when a folder is restricted: people with a role set here', async () => {
+    workspace.folders = [{ ...BASE[0] }, { ...BASE[1], visibility: 'Open' }];
+    listFolderRoles.mockResolvedValue([{ member: BOB, role: 'Editor' }]);
+    getMemberCapabilities.mockResolvedValue({ capabilities: 4 });
+    render(<FolderVisibilityToggle folderId="child" current="Open" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make restricted' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const body = render(<>{confirm.mock.calls[0][0].body}</>).container.textContent;
+    expect(body).toContain('Bob keeps access, because a role was set for them here.');
   });
 
   it('carries nothing when it restricts a folder', async () => {

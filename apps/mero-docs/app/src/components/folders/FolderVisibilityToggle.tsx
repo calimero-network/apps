@@ -10,7 +10,10 @@
 // registry.setVisibility - the registry no longer carries this field.
 
 import React, { useState } from 'react';
-import { useMero, useSetSubgroupVisibility } from '@calimero-network/mero-react';
+import {
+  useMero,
+  useSetSubgroupVisibility,
+} from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';
@@ -18,6 +21,9 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { inheritReadOnly, type FolderRoleWriter } from '@/lib/applyFolderRole';
 import { openConnected } from '@/lib/openFolderRemoval';
+import { CAPABILITIES, hasCap } from '@/constants/config';
+import { FolderId } from '@/generated/registry/RegistryClient';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 
 const READ_ONLY_NOT_CARRIED =
   "Opened, but the parent folder's Read only members could not be made Read only here.";
@@ -33,7 +39,13 @@ interface Props {
 }
 
 export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
-  const { namespaceId, refetch, folders, registryClient } = useDriveWorkspace();
+  const {
+    namespaceId,
+    refetch,
+    folders,
+    registryClient,
+    namespaceMemberNames,
+  } = useDriveWorkspace();
   const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
@@ -42,18 +54,47 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
 
   if (!perms.canManageVisibility || !current) return null;
 
-  const next: 'Open' | 'Restricted' = current === 'Open' ? 'Restricted' : 'Open';
+  const next: 'Open' | 'Restricted' =
+    current === 'Open' ? 'Restricted' : 'Open';
 
   // Opened, the folder also opens the way to its own Open sub-folders, so each
   // one, parents first, takes Read only from the folder above it.
-  const carryReadOnlyDown = async (writer: FolderRoleWriter, parent: string) => {
+  const carryReadOnlyDown = async (
+    writer: FolderRoleWriter,
+    parent: string,
+  ) => {
     const { open, unknown } = openConnected(folders, folderId);
     const failed: string[] = [...unknown];
     for (const id of [folderId, ...open]) {
-      const above = id === folderId ? parent : folders.find((f) => f.id === id)?.parent_id;
+      const above =
+        id === folderId ? parent : folders.find((f) => f.id === id)?.parent_id;
       if (above) failed.push(...(await inheritReadOnly(writer, above, id)));
     }
     return failed;
+  };
+
+  // A role set in this folder or its Open sub-folders left a direct row there,
+  // which outlasts the switch; the grant's join bit shows the row is direct.
+  const keptNote = async (): Promise<string> => {
+    if (!mero || !registryClient) return '';
+    const kept = new Set<string>();
+    for (const id of [folderId, ...openConnected(folders, folderId).open]) {
+      for (const { member } of await registryClient.listFolderRoles({
+        folder_id: FolderId(id),
+      })) {
+        const { capabilities } = await mero.admin.getMemberCapabilities(
+          id,
+          member,
+        );
+        if (hasCap(capabilities ?? 0, CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS))
+          kept.add(member);
+      }
+    }
+    if (kept.size === 0) return '';
+    const names = [...kept].map(
+      (m) => namespaceMemberNames[m] || UNNAMED_MEMBER_LABEL,
+    );
+    return ` ${names.join(', ')} ${names.length === 1 ? 'keeps' : 'keep'} access, because a role was set for them here.`;
   };
 
   const onToggle = async () => {
@@ -62,7 +103,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       next === 'Restricted' &&
       !(await confirm({
         title: 'Make this folder restricted?',
-        body: 'Workspace members you have not added will lose access to this folder and its subfolders.',
+        body: `Workspace members you have not added will lose access to this folder and its subfolders.${await keptNote()}`,
         confirmLabel: 'Make restricted',
         destructive: true,
       }))
@@ -83,7 +124,10 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       const parent = folders.find((f) => f.id === folderId)?.parent_id;
       const failed =
         next === 'Open' && parent && mero && registryClient
-          ? await carryReadOnlyDown({ admin: mero.admin, registry: registryClient }, parent)
+          ? await carryReadOnlyDown(
+              { admin: mero.admin, registry: registryClient },
+              parent,
+            )
           : [];
       await refetch();
       if (failed.length > 0) onError?.(new Error(READ_ONLY_NOT_CARRIED));

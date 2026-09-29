@@ -45,7 +45,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'ns',
     selfIdentity: 'me',
     registryContextId: 'ctx',
-    registryClient: { setFolderRole },
+    registryClient: { setFolderRole, listFolderRoles: async () => [] },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
     namespaceMemberNames: { bob: 'Bob', me: 'Me' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
