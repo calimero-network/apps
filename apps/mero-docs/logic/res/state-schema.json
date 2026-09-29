@@ -216,7 +216,7 @@
             "fields": [],
             "crdt_type": "counter"
           },
-          "doc": "Comment-id allocator (`cmt-<n>-<account tag>`)."
+          "doc": "Comment-id allocator (`cmt-<n>-<account>-<device tag>`)."
         }
       ]
     },

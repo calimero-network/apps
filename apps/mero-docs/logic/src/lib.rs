@@ -30,7 +30,7 @@
 //! about the folder tree, color, or visibility - those live in the registry
 //! context, which the client queries separately and joins on the folder id.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::DerefMut;
 
 use calimero_sdk::abi::AbiType;
@@ -337,11 +337,6 @@ fn caller_account_hex() -> String {
     hex(&calimero_sdk::env::account_id())
 }
 
-/// A short, per-account id component, for comment ids.
-fn account_tag() -> String {
-    hex(&calimero_sdk::env::account_id()[..4])
-}
-
 /// `<kind>-<n>-<account hex>-<device tag>`. Every device reads the same counter, so the
 /// device tag keeps one account's concurrent creates apart; the full account is checked on read.
 fn mint_id(kind: &str, n: u64) -> String {
@@ -433,7 +428,7 @@ pub struct DocsState {
     /// the folder's moderators (its founder, who created this context) may
     /// also remove any. Every node enforces both.
     comments: Moderated<IndexedMap<String, Comment>>,
-    /// Comment-id allocator (`cmt-<n>-<account tag>`).
+    /// Comment-id allocator (`cmt-<n>-<account>-<device tag>`).
     next_comment_id: Counter,
 }
 
@@ -1103,7 +1098,7 @@ impl DocsState {
             .next_comment_id
             .value()
             .map_err(|e| DriveError::Invalid(format!("next_comment_id.value: {e}")))?;
-        let id = format!("cmt-{n}-{}", account_tag());
+        let id = mint_id("cmt", n);
 
         let comment = Comment {
             doc_id,
@@ -1126,9 +1121,17 @@ impl DocsState {
             .eq(doc_id.as_str())
             .entries()
             .map_err(|e| AppError::msg(format!("comments.query: {e}")))?;
+        let mut seen = BTreeSet::new();
         let mut out = Vec::with_capacity(entries.len());
-        for (id, c) in entries {
-            out.push(project_comment(&id, self.comment_author(&id, &c)?, &c));
+        for (id, _) in entries {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            if let Some((author, c)) = self.comment_holder(&id)? {
+                if c.doc_id == doc_id {
+                    out.push(project_comment(&id, hex(author.as_bytes()), &c));
+                }
+            }
         }
         Ok(out)
     }
@@ -1154,8 +1157,8 @@ impl DocsState {
     /// one-tap `migrate_my_entries` actually re-stamped it.
     #[app::view]
     ///
-    /// The entry of the account holding the comment (the lowest, if several
-    /// do), read by name, so it answers the same on every node: a key-only
+    /// The entry of the account the comment's id names, read by name, so it
+    /// answers the same on every node: a key-only
     /// `entry_schema_version` reads the caller's own entry only.
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
         let Some((author, _)) = self.comment_holder(&id)? else {
@@ -1264,15 +1267,15 @@ impl DocsState {
             .find(|(owner, _)| creator == Some(hex(owner.as_bytes()).as_str())))
     }
 
-    /// The comment at `id` of the lowest account holding one, with that
-    /// account: the same pick on every node. A key-only `get` would read the
-    /// caller's own comment only.
+    /// The comment at `id` of the account the id names, with that account.
+    /// Anyone may hold an entry at any key; a key-only `get` reads the caller's.
     fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
+        let creator = creator_in(id);
         Ok(self
             .comments
             .entries_at(id)?
             .into_iter()
-            .min_by_key(|(owner, _)| *owner))
+            .find(|(owner, _)| creator == Some(hex(owner.as_bytes()).as_str())))
     }
 
     fn project(&self, id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
@@ -1307,26 +1310,6 @@ impl DocsState {
         let me = AccountId::from(calimero_sdk::env::account_id());
         let created_by_me = self.origin_of(id)?.is_some_and(|(owner, _)| owner == me);
         Ok(created_by_me || self.comments.is_moderator(&me))
-    }
-
-    /// The author of the comment row `c` at `id`: the holder of `id` whose
-    /// entry it is, matched by bytes (keys are per owner, so a key-only
-    /// `owner_of` would only ever name the caller). A comment carries an
-    /// `LwwRegister`, stamped with its write, so two accounts' entries are
-    /// never byte-identical.
-    fn comment_author(&self, id: &String, c: &Comment) -> app::Result<String> {
-        let Ok(row) = calimero_sdk::borsh::to_vec(c) else {
-            return Ok(String::new());
-        };
-        Ok(self
-            .comments
-            .entries_at(id)?
-            .into_iter()
-            .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|b| b == row))
-            .map(|(owner, _)| owner)
-            .min()
-            .map(|owner| hex(owner.as_bytes()))
-            .unwrap_or_default())
     }
 
     fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
@@ -2681,5 +2664,70 @@ mod tests {
         assert!(doc.can_delete);
         app.call_as_account(ALICE, ALICE, |s| s.delete_doc(id))
             .unwrap();
+    }
+
+    /// An account that sorts below the author files its own comment at the
+    /// author's comment id.
+    #[test]
+    fn a_comment_planted_at_anothers_id_is_not_theirs() {
+        const MALLORY: [u8; 32] = [0x01; 32];
+        let mut app = folder();
+        let doc = app.call(|s| s.create_doc("d".into())).unwrap();
+        let cmt = app
+            .call_as_account(ALICE, ALICE, |s| s.add_comment(doc.clone(), "hi".into()))
+            .unwrap();
+        let planted = Comment {
+            doc_id: doc.clone(),
+            body: LwwRegister::new("forged".to_owned()),
+            created_at: 1,
+        };
+        app.call_as_account(MALLORY, MALLORY, |s| {
+            s.comments.insert(cmt.clone(), planted)
+        })
+        .unwrap();
+        let shown = app.view(|s| s.get_comment(cmt.clone())).unwrap();
+        assert_eq!((shown.author, shown.body), (hex(&ALICE), "hi".to_owned()));
+        let listed = app.view(|s| s.list_comments(doc)).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(
+            (&listed[0].author, &listed[0].body),
+            (&hex(&ALICE), &"hi".to_owned())
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn two_devices_of_one_account_add_two_comments() {
+        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let (laptop, phone) = (script.founder(), script.founder());
+        let mut doc = String::new();
+        let created = script
+            .run(laptop, |s| doc = s.create_doc_inner("d".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.deliver(phone, created), 0);
+        let on_laptop = script
+            .run(laptop, |s| {
+                let _id = s.add_comment_inner(doc.clone(), "Laptop".into()).unwrap();
+            })
+            .unwrap();
+        let on_phone = script
+            .run(phone, |s| {
+                let _id = s.add_comment_inner(doc.clone(), "Phone".into()).unwrap();
+            })
+            .unwrap();
+        assert_eq!(script.deliver(laptop, on_phone), 0);
+        assert_eq!(script.deliver(phone, on_laptop), 0);
+        for device in [laptop, phone] {
+            let mut bodies: Vec<String> = script.view(device, |s| {
+                s.list_comments(doc.clone())
+                    .unwrap()
+                    .into_iter()
+                    .map(|c| c.body)
+                    .collect()
+            });
+            bodies.sort();
+            assert_eq!(bodies, ["Laptop", "Phone"], "one comment per add");
+        }
     }
 }

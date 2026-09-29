@@ -512,7 +512,7 @@
             "fields": [],
             "crdt_type": "counter"
           },
-          "doc": "Comment-id allocator (`cmt-<n>-<account tag>`)."
+          "doc": "Comment-id allocator (`cmt-<n>-<account>-<device tag>`)."
         }
       ]
     },
@@ -1031,7 +1031,7 @@
     },
     {
       "name": "comment_schema_version",
-      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account holding the comment (the lowest, if several\ndo), read by name, so it answers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
+      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account the comment's id names, read by name, so it\nanswers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
       "params": [
         {
           "name": "id",
