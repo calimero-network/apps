@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { hereLabel } from '@/components/common/LivePill';
 import { QuietLoading } from '@/components/ui/empty-state';
 import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
-import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
+import { NameDialog } from '@/components/tags/NameDialog';
 import { TagPageHeader } from '@/components/tags/TagPageHeader';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
@@ -575,8 +575,9 @@ export function HomePage({ folderId }: Props) {
         onOpenChange={setPickerOpen}
       />
       {tagPage && (
-        <RenameTagDialog
+        <NameDialog
           open={!!renaming}
+          title="Rename tag"
           name={tagPage.name}
           error={renaming?.error}
           onSubmit={(name) => void renameTagTo(tagPage.key, name)}

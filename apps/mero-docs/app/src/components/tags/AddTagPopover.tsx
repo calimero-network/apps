@@ -56,7 +56,7 @@ export const AddTagButton = React.forwardRef<
 AddTagButton.displayName = 'AddTagButton';
 
 interface TagColorSwatchesProps {
-  value: string;
+  value?: string;
   onChange: (color: string) => void;
   labelledBy: string;
   className?: string;

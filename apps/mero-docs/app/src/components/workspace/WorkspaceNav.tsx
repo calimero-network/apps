@@ -12,7 +12,7 @@ import {
 } from '@/components/home/filterSummary';
 import { useFolderPaths } from '@/components/home/useHomeChips';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
+import { NameDialog } from '@/components/tags/NameDialog';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import { useAppRoute } from '@/hooks/useAppRoute';
@@ -22,7 +22,6 @@ import { useMentionedMe } from '@/hooks/useMentionedMe';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
-import { NewTagDialog } from '@/components/tags/NewTagDialog';
 import { TAG_NAME_TAKEN, useCanManageTags, useTags } from '@/hooks/useTags';
 import { copyLink } from '@/lib/copyLink';
 import {
@@ -285,15 +284,17 @@ export function WorkspaceNav({
         saving={savingView}
         onSave={(view) => void saveFromSidebar(view)}
       />
-      <NewTagDialog
+      <NameDialog
         open={!!newTag}
+        title="New tag"
+        submitLabel="Create"
         color={firstUnusedColor(tags)}
         error={newTag?.error}
-        onSubmit={(name, color) => void createTagFromSidebar(name, color)}
+        onSubmit={(name, color) => void createTagFromSidebar(name, color!)}
         onOpenChange={(open) => !open && setNewTag(null)}
       />
       {renamingView && (
-        <RenameTagDialog
+        <NameDialog
           open
           title="Rename view"
           maxLength={VIEW_NAME_MAX}
