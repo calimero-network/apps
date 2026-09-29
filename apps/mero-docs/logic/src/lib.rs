@@ -2313,12 +2313,9 @@ mod tests {
     const ALICE: [u8; 32] = [0xA1; 32];
     const BOB: [u8; 32] = [0xB0; 32];
 
-    /// A folder context founded by the test host's default account, with the
-    /// storage layer's account aligned to it while `init` runs, as on a node.
+    /// A folder context founded by the test host's default account.
     fn folder() -> TestHost<DocsState> {
-        TestHost::new(|| {
-            calimero_storage::env::with_account_id(calimero_sdk::env::account_id(), DocsState::init)
-        })
+        TestHost::new(DocsState::init)
     }
 
     #[test]

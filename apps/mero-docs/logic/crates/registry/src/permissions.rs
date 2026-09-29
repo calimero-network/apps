@@ -390,12 +390,8 @@ mod tests {
     }
 
     /// A registry created by `owner()`, with folder "f1" registered by them.
-    ///
-    /// `TestHost::new` does not align the storage layer's account with the
-    /// SDK's while `init` runs; a node does, so align them here.
     fn registry() -> TestHost<RegistryState> {
-        let mut host =
-            TestHost::new(|| calimero_storage::env::with_account_id(owner(), RegistryState::init));
+        let mut host = TestHost::new(RegistryState::init);
         host.call(|s| s.register_folder(fid("f1"), None, None, None))
             .unwrap();
         host

@@ -1092,10 +1092,7 @@ mod tests {
     #[test]
     fn a_grant_written_for_an_account_authorises_that_caller() {
         let (account, device) = probe_ids();
-        let owner = calimero_sdk::env::account_id();
-        let mut host = calimero_sdk::testing::TestHost::new(|| {
-            calimero_storage::env::with_account_id(owner, RegistryState::init)
-        });
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
 
         // What a client can actually pass: the member's ACCOUNT, because that
         // is the only id `listGroupMembers` gives it.
@@ -1117,10 +1114,7 @@ mod tests {
         // The shape of the old bug, kept as an executable description of it:
         // a row filed under any id the caller is not derived from is inert.
         let (account, device) = probe_ids();
-        let owner = calimero_sdk::env::account_id();
-        let mut host = calimero_sdk::testing::TestHost::new(|| {
-            calimero_storage::env::with_account_id(owner, RegistryState::init)
-        });
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
         host.call(|s| s.add_manager(hex::encode(device))).unwrap();
 
         host.set_account(account);
