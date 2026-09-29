@@ -110,6 +110,7 @@ function healContext(
 
 // core's `execute` (jsonrpc/execute.rs) rejects with this when the
 // node holds no owned `ContextIdentity` for the target context.
+// Core gives it no typed error, so its text is all there is to match.
 //
 // IMPORTANT - error shape: mero-js throws the JSON-RPC error as
 // `new E(code, message, data, type)`. For a FunctionCallError there
