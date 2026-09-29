@@ -281,6 +281,30 @@ describe('useFugueBody', () => {
     },
   );
 
+  // A write the node answers with an error it may not repeat (a contract error
+  // arrives with no HTTP status) was resent at once, re-read and resent again,
+  // hundreds of times a second, for as long as the node kept answering the same.
+  it('backs off an edit whose write keeps failing instead of resending it at once', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.getDocument.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve([row('blk-1', 'The fox.')]), 10)),
+    );
+    client.applyDeltaOn.mockRejectedValue(new Error('unknown block'));
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. ab');
+    await settle(900);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    // The re-read still runs, so the page shows what the node holds.
+    expect(client.getDocument.mock.calls.length).toBeGreaterThan(1);
+
+    await settle(1_000);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
+    expect(editor.textOf('blk-1')).toBe('The fox. ab');
+  });
+
   it('rebases a refused write onto the peer text and resends it', async () => {
     const client = fakeClient([row('blk-1', 'The fox.')]);
     client.applyDeltaOn

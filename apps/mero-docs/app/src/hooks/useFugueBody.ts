@@ -193,15 +193,15 @@ export function useFugueBody({
   const editorRef = useRef<BodyEditor | null>(editor);
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set when the node refused an edit for a reason it will give again (a 413
-  // over its body limit, a 403): resending at once only loops. Cleared by the
-  // user's next edit, which is what can change the answer.
+  // Set when the node refused an edit: resending at once only loops. Cleared by
+  // the user's next edit, or by the backoff retry when the answer may change.
   const heldRef = useRef(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drainRef = useRef<(() => Promise<void>) | null>(null);
-  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
-    () => void drainRef.current?.(),
-  );
+  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(() => {
+    heldRef.current = false;
+    void drainRef.current?.();
+  });
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
 
@@ -623,8 +623,9 @@ export function useFugueBody({
       setError(asError(cause));
       setStatus('error');
       resyncRef.current = true;
-      // Still re-read what did land; the drain loop just stops resending.
-      if (!classifyError(cause).retryable) heldRef.current = true;
+      // Still re-read what did land; resend only after a backoff, if ever.
+      heldRef.current = true;
+      if (classifyError(cause).retryable) scheduleRetry();
       return true;
     }
   }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
