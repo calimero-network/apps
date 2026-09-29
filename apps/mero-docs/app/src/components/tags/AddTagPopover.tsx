@@ -2,12 +2,14 @@ import * as React from 'react';
 import { Plus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { TAG_COLORS, TAG_COLOR_NAMES, TAG_NEUTRAL } from '@/lib/tags';
+import { TAG_COLORS, TAG_COLOR_NAMES } from '@/lib/tags';
+import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { TagDot } from './TagChip';
 
 const rowClass =
   'flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] text-secondary-foreground aria-selected:bg-accent aria-selected:text-foreground'; // a suggestion or the create row
@@ -167,7 +169,7 @@ export function AddTagPopover({
         className="w-[260px] max-w-[calc(100vw-16px)] overflow-hidden rounded-[10px] p-0"
       >
         <div className="px-2 pb-1.5 pt-2">
-          <input
+          <Input
             ref={inputRef}
             role="combobox"
             aria-label="Tag name"
@@ -184,7 +186,6 @@ export function AddTagPopover({
               setIndex(0);
             }}
             onKeyDown={onKeyDown}
-            className="h-8 w-full rounded-md border border-input bg-popover px-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
           />
         </div>
         {rowCount > 0 && (
@@ -198,11 +199,7 @@ export function AddTagPopover({
               option(
                 row,
                 <>
-                  <span
-                    aria-hidden
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: tag.color ?? TAG_NEUTRAL }}
-                  />
+                  <TagDot color={tag.color} className="h-2 w-2" />
                   <span className="min-w-0 truncate">{tag.name}</span>
                   <span className="ml-auto shrink-0 text-[11.5px] text-muted-foreground">
                     {tag.countLabel}

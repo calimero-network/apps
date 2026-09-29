@@ -3,7 +3,6 @@
 
 import type { HomeQuery } from '@/lib/homeQuery';
 import { cutViewName } from '@/lib/viewName';
-import { TAG_NEUTRAL } from '@/lib/tags';
 import type { Tag } from '@/lib/workspaceIndex/types';
 import {
   MENTIONED_ME_LABEL,
@@ -52,7 +51,7 @@ export function summarizeHomeQuery({
       return {
         icon: 'tag' as const,
         label: tag && !tag.deleted ? tag.name : UNKNOWN_TAG_LABEL,
-        color: tag?.color ?? TAG_NEUTRAL,
+        color: tag?.color,
       };
     }),
   ];

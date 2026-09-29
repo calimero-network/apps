@@ -40,7 +40,7 @@ import {
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { updatedLabel } from '@/lib/relativeTime';
 import { docUrl } from '@/lib/routes';
-import { TAG_NEUTRAL, withoutDeletedTags } from '@/lib/tags';
+import { withoutDeletedTags } from '@/lib/tags';
 import { rowKey } from '@/lib/workspaceIndex/types';
 import { DocTable } from './DocTable';
 import {
@@ -249,7 +249,7 @@ export function HomePage({ folderId }: Props) {
       folderColor: path?.color,
       tags: r.tags.map((k) => {
         const t = tagsByKey.get(k);
-        return { key: k, name: t?.name ?? k, color: t?.color ?? TAG_NEUTRAL };
+        return { key: k, name: t?.name ?? k, color: t?.color };
       }),
       here,
       liveLabel: hereLabel(here),

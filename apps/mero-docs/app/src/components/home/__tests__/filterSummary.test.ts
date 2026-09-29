@@ -41,7 +41,7 @@ describe('summarizeHomeQuery', () => {
       ),
     ).toEqual([
       { icon: 'tag', label: 'Design', color: '#8b5cf6' },
-      { icon: 'tag', label: 'Unknown tag', color: '#94a3b8' },
+      { icon: 'tag', label: 'Unknown tag', color: undefined }, // TagChip paints it neutral
       { icon: 'sort', label: 'Last updated' },
     ]);
   });
