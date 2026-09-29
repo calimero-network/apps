@@ -396,13 +396,19 @@ export function useDocs(
     [docsClient, refetch, contextId],
   );
 
-  const edit = useCallback(
-    async (id: string, patch: { title: string }): Promise<void> => {
+  const mutate = useCallback(
+    async (write: (client: DocsClient) => Promise<void>): Promise<void> => {
       if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.editDoc({ id, title: patch.title });
+      await write(docsClient);
       notifyDocsRefetch(contextId);
     },
     [docsClient, contextId],
+  );
+
+  const edit = useCallback(
+    (id: string, patch: { title: string }) =>
+      mutate((c) => c.editDoc({ id, title: patch.title })),
+    [mutate],
   );
 
   const get = useCallback(
@@ -424,39 +430,20 @@ export function useDocs(
   );
 
   const addTag = useCallback(
-    async (id: string, tag: string): Promise<void> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.addTag({ id, tag });
-      notifyDocsRefetch(contextId);
-    },
-    [docsClient, contextId],
+    (id: string, tag: string) => mutate((c) => c.addTag({ id, tag })),
+    [mutate],
   );
-
   const removeTag = useCallback(
-    async (id: string, tag: string): Promise<void> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.removeTag({ id, tag });
-      notifyDocsRefetch(contextId);
-    },
-    [docsClient, contextId],
+    (id: string, tag: string) => mutate((c) => c.removeTag({ id, tag })),
+    [mutate],
   );
-
   const archive = useCallback(
-    async (id: string): Promise<void> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.archiveDoc({ id });
-      notifyDocsRefetch(contextId);
-    },
-    [docsClient, contextId],
+    (id: string) => mutate((c) => c.archiveDoc({ id })),
+    [mutate],
   );
-
   const unarchive = useCallback(
-    async (id: string): Promise<void> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.unarchiveDoc({ id });
-      notifyDocsRefetch(contextId);
-    },
-    [docsClient, contextId],
+    (id: string) => mutate((c) => c.unarchiveDoc({ id })),
+    [mutate],
   );
 
   const listed =
