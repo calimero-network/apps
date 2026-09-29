@@ -184,7 +184,9 @@ test.describe('Doc links (single-node)', () => {
     expect(page.context().pages()).toHaveLength(1);
 
     await page.goBack();
-    await expect(page.getByTestId('doc-title-input')).toHaveValue('Launch plan');
+    await expect(page.getByTestId('doc-title-input')).toHaveValue(
+      'Launch plan',
+    );
     const [tab] = await Promise.all([
       page.context().waitForEvent('page'),
       editor.docLink('Pricing notes').click({ modifiers: ['ControlOrMeta'] }),
