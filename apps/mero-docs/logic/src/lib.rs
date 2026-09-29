@@ -2893,4 +2893,34 @@ mod tests {
         app.call(|s| s.delete_doc(doc.clone())).unwrap();
         assert!(authors(&app, &doc).is_empty(), "a moderator removes all");
     }
+
+    /// A planted comment at the author's id, filed under another doc, is not
+    /// that doc's comment, and deleting that doc leaves the author's alone.
+    #[test]
+    fn a_comment_planted_under_another_doc_stays_out_of_it() {
+        const MALLORY: [u8; 32] = [0x01; 32];
+        let mut app = folder();
+        let z = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("z".into()))
+            .unwrap();
+        let y = app
+            .call_as_account(MALLORY, MALLORY, |s| s.create_doc("y".into()))
+            .unwrap();
+        let x = app
+            .call_as_account(ALICE, ALICE, |s| s.add_comment(z.clone(), "hi".into()))
+            .unwrap();
+        let planted = Comment {
+            doc_id: y.clone(),
+            body: LwwRegister::new("forged".to_owned()),
+            created_at: 1,
+        };
+        app.call_as_account(MALLORY, MALLORY, |s| s.comments.insert(x.clone(), planted))
+            .unwrap();
+        assert!(app.view(|s| s.list_comments(y.clone())).unwrap().is_empty());
+
+        app.call(|s| s.delete_doc(y)).unwrap();
+        let on_z = app.view(|s| s.list_comments(z)).unwrap();
+        assert_eq!(on_z.len(), 1);
+        assert_eq!((&on_z[0].id, &on_z[0].body), (&x, &"hi".to_owned()));
+    }
 }
