@@ -1,6 +1,12 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
@@ -292,7 +298,10 @@ describe('SearchContainer results', () => {
       texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'the roadmpa typo'])),
     };
     mount();
-    await type('roadmpa');
+    // One change and no await before the check, so the 80 ms text debounce cannot fire first.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), {
+      target: { value: 'roadmpa' },
+    });
     expect(optionTexts('Documents')).toEqual([
       expect.stringMatching(/^Roadmap 2026/),
     ]);
