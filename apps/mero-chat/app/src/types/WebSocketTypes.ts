@@ -54,7 +54,7 @@ export interface GroupMembershipData {
    * this against a device key fails loudly instead of silently never matching.
    */
   memberAccount: string;
-  role?: "Admin" | "Member" | "ReadOnly" | "ReadOnlyTee";
+  role?: "Admin" | "Member" | "ReadOnly" | "ReadOnlyTee" | "RelayTee";
 }
 
 export interface WebSocketEvent {

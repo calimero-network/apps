@@ -108,7 +108,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
 
   const add = useCallback(
     // Core's MemberRole is a PascalCase serde enum
-    // (`Admin | Member | ReadOnly | ReadOnlyTee`); lowercase `member`
+    // (`Admin | Member | ReadOnly | ReadOnlyTee | RelayTee`); lowercase `member`
     // is rejected with a 400 deserialize error.
     async (identity: string, role: string = 'Member') => {
       if (!folderId) return;
