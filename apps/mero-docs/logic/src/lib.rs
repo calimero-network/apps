@@ -1030,6 +1030,7 @@ impl DocsState {
             .headers
             .remove_by(&creator, &id)
             .map_err(|e| DriveError::Forbidden(format!("headers.remove: {e}")))?;
+        self.remove_comments_on(&id)?;
         let _body = self
             .docs
             .remove(&id)
@@ -1329,6 +1330,37 @@ impl DocsState {
             updated_by: rec.map(|r| r.updated_by.get().clone()).unwrap_or_default(),
             can_delete: self.caller_may_delete(creator),
         })
+    }
+
+    /// Removes the comments on `doc` that storage lets the caller remove: every
+    /// author's for a moderator, otherwise the caller's own.
+    fn remove_comments_on(&mut self, doc: &str) -> Result<(), DriveError> {
+        let me = AccountId::from(calimero_sdk::env::account_id());
+        let moderator = self.comments.is_moderator(&me);
+        let ids: BTreeSet<String> = self
+            .comments
+            .query("doc_id")
+            .eq(doc)
+            .entries()
+            .map_err(|e| DriveError::Invalid(format!("comments.query: {e}")))?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        for id in ids {
+            let holders = self
+                .comments
+                .entries_at(&id)
+                .map_err(|e| DriveError::Invalid(format!("comments.entries_at: {e}")))?;
+            for (owner, c) in holders {
+                if c.doc_id == doc && (moderator || owner == me) {
+                    let _ = self
+                        .comments
+                        .remove_by(&owner, &id)
+                        .map_err(|e| DriveError::Forbidden(format!("comments.remove: {e}")))?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The one rule `delete_doc` enforces and `DocDto::can_delete` reports.
@@ -2863,5 +2895,43 @@ mod tests {
         let edge = now + DRIFT_TOLERANCE_NANOS;
         assert_eq!(not_ahead(edge, now), Some(edge));
         assert_eq!(not_ahead(edge + 1, now), None);
+    }
+
+    /// Deleting a doc removes its comments as far as the deleter may: a
+    /// moderator removes every author's, a creator only their own.
+    #[test]
+    fn deleting_a_doc_removes_the_comments_the_deleter_may_remove() {
+        let mut app = folder();
+        let seed = |app: &mut TestHost<DocsState>| {
+            let doc = app
+                .call_as_account(ALICE, ALICE, |s| s.create_doc("d".into()))
+                .unwrap();
+            for who in [ALICE, BOB] {
+                let _id = app
+                    .call_as_account(who, who, |s| s.add_comment(doc.clone(), "c".into()))
+                    .unwrap();
+            }
+            doc
+        };
+        let authors = |app: &TestHost<DocsState>, doc: &String| {
+            app.view(|s| s.list_comments(doc.clone()))
+                .unwrap()
+                .into_iter()
+                .map(|c| c.author)
+                .collect::<Vec<_>>()
+        };
+
+        let doc = seed(&mut app);
+        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(doc.clone()))
+            .unwrap();
+        assert_eq!(
+            authors(&app, &doc),
+            [hex(&BOB)],
+            "the creator removes her own"
+        );
+
+        let doc = seed(&mut app);
+        app.call(|s| s.delete_doc(doc.clone())).unwrap();
+        assert!(authors(&app, &doc).is_empty(), "a moderator removes all");
     }
 }
