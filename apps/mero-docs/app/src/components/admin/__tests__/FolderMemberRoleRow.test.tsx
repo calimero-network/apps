@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { HTTPError } from '@calimero-network/mero-js';
 import { FolderMemberRoleRow } from '../FolderMemberRoleRow';
+import { CAPABILITIES } from '@/constants/config';
 
 const FOLDER = 'f'.repeat(64);
 const BOB = 'b'.repeat(64);
+const JOIN = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
 
 const calls: string[] = [];
 const updateMemberRole = vi.fn();
@@ -82,7 +84,7 @@ describe('FolderMemberRoleRow', () => {
   it('makes a Read only member core ReadOnly in the folder before anything else', async () => {
     const select = roleSelectFor('Member', 'Editor');
     fireEvent.change(select, { target: { value: 'ReadOnly' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
     expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, {
       role: 'ReadOnly',
     });
@@ -102,7 +104,7 @@ describe('FolderMemberRoleRow', () => {
     updateMemberRole.mockRejectedValue(httpError(404));
     const select = roleSelectFor('Member', 'Editor');
     fireEvent.change(select, { target: { value: 'ReadOnly' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
     expect(addGroupMembers).toHaveBeenCalledWith(FOLDER, {
       members: [{ identity: BOB, role: 'ReadOnly' }],
     });
@@ -130,7 +132,7 @@ describe('FolderMemberRoleRow', () => {
     expect(select.value).toBe('ReadOnly');
     expect(select.disabled).toBe(false);
     fireEvent.change(select, { target: { value: 'Editor' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(0));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
     expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, {
       role: 'Member',
     });

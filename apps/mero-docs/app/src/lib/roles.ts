@@ -119,14 +119,23 @@ export const WORKSPACE_ROLE_GRANTS: Record<
 };
 
 /** What each folder role writes: the core role in the folder's group, the
- *  registry folder Role and folder caps. Core ReadOnly is what refuses writes. */
+ *  registry folder Role and folder caps. Core ReadOnly is what refuses writes;
+ *  every role keeps CAN_JOIN_OPEN_SUBGROUPS, which reaches the Open sub-folders. */
 export const FOLDER_ROLE_GRANTS: Record<
   FolderAccessRole,
   { coreRole: GroupRole; role: Role; folderCaps: number }
 > = {
-  Manager: { coreRole: 'Member', role: 'Manager', folderCaps: MANAGER_FOLDER_CAPS },
-  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: 0 },
-  ReadOnly: { coreRole: 'ReadOnly', role: 'Viewer', folderCaps: 0 },
+  Manager: {
+    coreRole: 'Member',
+    role: 'Manager',
+    folderCaps: MANAGER_FOLDER_CAPS | CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+  },
+  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS },
+  ReadOnly: {
+    coreRole: 'ReadOnly',
+    role: 'Viewer',
+    folderCaps: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+  },
 };
 
 /** A workspace member's role; `null` while a non-admin's mask is loading. */
@@ -154,7 +163,7 @@ export function folderRoleOf(
     (r) =>
       FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
       FOLDER_ROLE_GRANTS[r].role === registryRole &&
-      FOLDER_ROLE_GRANTS[r].folderCaps === folderCaps,
+      FOLDER_ROLE_GRANTS[r].folderCaps === (folderCaps | CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS),
   );
   return match ?? 'Custom';
 }

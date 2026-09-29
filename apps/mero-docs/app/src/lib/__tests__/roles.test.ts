@@ -113,7 +113,7 @@ describe('folderRoleOf', () => {
     expect(FOLDER_ROLE_GRANTS.ReadOnly).toEqual({
       coreRole: 'ReadOnly',
       role: 'Viewer',
-      folderCaps: 0,
+      folderCaps: C.CAN_JOIN_OPEN_SUBGROUPS,
     });
     expect(FOLDER_ROLE_GRANTS.Editor.coreRole).toBe('Member');
     expect(FOLDER_ROLE_GRANTS.Manager.coreRole).toBe('Member');
@@ -136,6 +136,16 @@ describe('folderRoleOf', () => {
   it('shows a core ReadOnly member with a non-Viewer registry row as Custom', () => {
     expect(folderRoleOf('ReadOnly', 'Editor', 0)).toBe('Custom');
     expect(folderRoleOfRegistryRole('ReadOnly', 'Manager')).toBe('Custom');
+  });
+
+  // The bit is what reaches the folder's Open sub-folders; every role keeps it.
+  it('keeps CAN_JOIN_OPEN_SUBGROUPS in every folder grant and ignores it when reading', () => {
+    for (const role of FOLDER_ROLES) {
+      const g = FOLDER_ROLE_GRANTS[role];
+      expect(g.folderCaps & C.CAN_JOIN_OPEN_SUBGROUPS).toBe(C.CAN_JOIN_OPEN_SUBGROUPS);
+      const without = g.folderCaps & ~C.CAN_JOIN_OPEN_SUBGROUPS;
+      expect(folderRoleOf(g.coreRole, g.role, without)).toBe(role);
+    }
   });
 
   it('shows Custom for an off-grant (role, caps) pair', () => {

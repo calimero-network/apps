@@ -10,7 +10,7 @@ import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityToggle';
 import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
-import { MANAGER_FOLDER_CAPS, WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
+import { FOLDER_ROLE_GRANTS, WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
 
 const confirm = vi.fn();
 const setMemberCapabilities = vi.fn();
@@ -251,7 +251,7 @@ describe('folder member row', () => {
     await waitFor(() => expect(setCapabilities).toHaveBeenCalledTimes(1));
     expect(setFolderRole).toHaveBeenCalledTimes(1);
     expect(setFolderRole.mock.calls[0][0].role).toBe('Manager');
-    expect(setCapabilities).toHaveBeenCalledWith(MANAGER_FOLDER_CAPS);
+    expect(setCapabilities).toHaveBeenCalledWith(FOLDER_ROLE_GRANTS.Manager.folderCaps);
   });
 
   it('shows a core admin as the folder Owner, not as a choice', () => {
