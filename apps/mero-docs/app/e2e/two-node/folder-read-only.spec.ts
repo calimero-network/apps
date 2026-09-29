@@ -142,7 +142,11 @@ test.describe('Folder Read only (two-node)', () => {
       .toBe('ReadOnly');
 
     await expect(bob.page.getByTestId('doc-title-input')).toBeVisible();
-    await bob.editor.type(' phantom');
+    // A new block would go through insert_block, whose discarded result the
+    // editor resends without end; this test is about text, so stay on the line.
+    await bob.page.locator('.ProseMirror').first().getByText('before').click();
+    await bob.page.keyboard.press('End');
+    await bob.page.keyboard.type(' phantom');
     await expect(bob.page.locator('.ProseMirror').first()).not.toContainText(
       'phantom',
       { timeout: 30_000 },
