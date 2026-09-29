@@ -417,7 +417,8 @@ export class DocsClient {
   /**
    * comment_count
    *
-   * Comments held by the account their id names; `len` would count planted ones too.
+   * Comments held by the account their id names, on a doc that is still listed;
+   * `len` would count planted ones and a deleted doc's too.
    *
    * @intent read_only
    */

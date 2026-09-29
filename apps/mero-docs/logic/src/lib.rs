@@ -1100,6 +1100,9 @@ impl DocsState {
         doc_id: String,
         body: String,
     ) -> Result<String, DriveError> {
+        if self.header_of(&doc_id)?.is_none() {
+            return Err(DriveError::NotFound(doc_id));
+        }
         let id = mint_id("cmt");
 
         let comment = Comment {
@@ -1146,17 +1149,29 @@ impl DocsState {
         Ok(project_comment(&id, hex(author.as_bytes()), &c))
     }
 
-    /// Comments held by the account their id names; `len` would count planted ones too.
+    /// Comments held by the account their id names, on a doc that is still listed;
+    /// `len` would count planted ones and a deleted doc's too.
     #[app::view]
     pub fn comment_count(&self) -> app::Result<u64> {
         let entries = self
             .comments
             .entries_with_owners()
             .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?;
-        Ok(entries
-            .iter()
-            .filter(|(owner, id, _)| id_names(id, owner))
-            .count() as u64)
+        let mut live = BTreeMap::new();
+        let mut count = 0;
+        for (owner, id, c) in entries {
+            if !id_names(&id, &owner) {
+                continue;
+            }
+            if !*live
+                .entry(c.doc_id.clone())
+                .or_insert(self.header_of(&c.doc_id)?.is_some())
+            {
+                continue;
+            }
+            count += 1;
+        }
+        Ok(count)
     }
 
     /// The comment's stored per-entry `schema_version` - `Some(1)` before
@@ -1269,14 +1284,22 @@ impl DocsState {
             .find(|(owner, _)| id_names(id, owner)))
     }
 
-    /// The comment at `id` of the account the id names, with that account.
-    /// A key-only `get` would read the caller's own.
+    /// The comment at `id` of the account the id names, with that account, while
+    /// its doc is listed. A key-only `get` would read the caller's own.
     fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
-        Ok(self
+        let Some((author, c)) = self
             .comments
             .entries_at(id)?
             .into_iter()
-            .find(|(owner, _)| id_names(id, owner)))
+            .find(|(owner, _)| id_names(id, owner))
+        else {
+            return Ok(None);
+        };
+        let live = self
+            .header_of(&c.doc_id)
+            .map_err(|e| AppError::msg(e.to_string()))?
+            .is_some();
+        Ok(live.then_some((author, c)))
     }
 
     /// `rec` is `None` for a doc whose public body a patched node removed. Both
@@ -2872,11 +2895,13 @@ mod tests {
             }
             doc
         };
+        // What storage still holds, since reads hide a deleted doc's comments.
         let authors = |app: &TestHost<DocsState>, doc: &String| {
-            app.view(|s| s.list_comments(doc.clone()))
+            app.view(|s| s.comments.entries_with_owners())
                 .unwrap()
                 .into_iter()
-                .map(|c| c.author)
+                .filter(|(_, _, c)| c.doc_id == *doc)
+                .map(|(owner, _, _)| hex(owner.as_bytes()))
                 .collect::<Vec<_>>()
         };
 
@@ -2922,5 +2947,24 @@ mod tests {
         let on_z = app.view(|s| s.list_comments(z)).unwrap();
         assert_eq!(on_z.len(), 1);
         assert_eq!((&on_z[0].id, &on_z[0].body), (&x, &"hi".to_owned()));
+    }
+
+    #[test]
+    fn comments_of_a_missing_or_deleted_doc_are_refused_and_hidden() {
+        let mut app = folder();
+        assert!(app
+            .call_as_account(BOB, BOB, |s| s.add_comment("ghost".into(), "c".into()))
+            .is_err());
+        let doc = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("d".into()))
+            .unwrap();
+        let bobs = app
+            .call_as_account(BOB, BOB, |s| s.add_comment(doc.clone(), "c".into()))
+            .unwrap();
+        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(doc.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
+        assert!(app.view(|s| s.get_comment(bobs)).is_err());
+        assert_eq!(app.view(|s| s.comment_count()).unwrap(), 0);
     }
 }

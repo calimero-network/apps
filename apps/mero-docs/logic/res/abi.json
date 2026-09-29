@@ -1005,7 +1005,7 @@
     },
     {
       "name": "comment_count",
-      "doc": "Comments held by the account their id names; `len` would count planted ones too.",
+      "doc": "Comments held by the account their id names, on a doc that is still listed;\n`len` would count planted ones and a deleted doc's too.",
       "params": [],
       "returns": {
         "kind": "u64"
