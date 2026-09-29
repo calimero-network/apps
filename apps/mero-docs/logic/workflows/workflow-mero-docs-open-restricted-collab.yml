@@ -10,7 +10,7 @@ description: >
     A. Alice creates a namespace, sets the default member capabilities new
        members inherit (CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS |
        CAN_CREATE_SUBGROUP = 1|4|32 = 37), creates the per-namespace Registry
-       context, and `claim_owner`s it.
+       context, which makes her its owner.
     B. Alice creates an Open folder + Docs context + a doc - all before Bob
        joins.
     C. Bob joins ONLY the namespace (one invitation; no folder add_group_members).
@@ -72,7 +72,7 @@ nodes:
 steps:
   # =================================================================
   # Phase A: Bootstrap - bundle on both nodes, namespace + default
-  # capabilities + Registry context + claim_owner.
+  # capabilities + Registry context.
   # =================================================================
 
   - name: Install Mero Docs bundle on Alice
@@ -130,16 +130,6 @@ steps:
     outputs:
       reg_ctx: contextId
       alice_key: memberPublicKey
-
-  # The registry's owner is whoever created its context, fixed in `init`.
-  # `claim_owner` confirms it: it succeeds for the creator and is refused for
-  # anyone else (mirrors the frontend bootstrap).
-  - name: Alice claims registry ownership
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: claim_owner
-    executor_public_key: '{{alice_key}}'
 
   # ⚠️ This returns Alice's ACCOUNT, which is NOT `alice_key`.
   #

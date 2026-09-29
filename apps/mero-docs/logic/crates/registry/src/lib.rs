@@ -783,18 +783,8 @@ impl RegistryState {
 
     // ---- permissions: owner / managers ----------------------------------
 
-    pub fn claim_owner(&mut self) -> app::Result<()> {
-        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
-        self.claim_owner_inner(&caller)
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::OwnerClaimed { owner: &caller });
-        Ok(())
-    }
-
-    /// The base58 public key of the registry owner, or an empty string if
-    /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
-    /// keeps the generated TS type honest - `Promise<string>`, not a lying
-    /// non-nullable Option.)
+    /// The hex account of the registry owner, fixed when the registry was
+    /// created.
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
         Ok(self.owner_hex())

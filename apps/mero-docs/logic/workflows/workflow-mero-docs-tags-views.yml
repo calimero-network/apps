@@ -72,13 +72,6 @@ steps:
       reg_ctx: contextId
       alice_key: memberPublicKey
 
-  - name: Alice claims registry ownership
-    type: call
-    node: tags-node-1
-    context_id: '{{reg_ctx}}'
-    method: claim_owner
-    executor_public_key: '{{alice_key}}'
-
   # Alice's account id as the contract derives it, which is what a saved
   # view records as its creator.
   - name: Alice reads her account id

@@ -34,7 +34,7 @@ vi.mock('@/hooks/useNamespacePermissions', () => ({
   useNamespacePermissions: () => ({ canManageNamespace: true }),
 }));
 const registryAdmin = {
-  owner: OWNER,
+  owner: OWNER as string | null,
   isOwner: true,
   managers: [NAMED, UNNAMED],
   loading: false,
@@ -57,6 +57,7 @@ vi.mock('@/components/common/MemberPicker', () => ({
 describe('WorkspaceSettingsPanel folder role setters', () => {
   afterEach(() => {
     registryAdmin.error = null;
+    registryAdmin.owner = OWNER;
     registryAdmin.managers = [NAMED, UNNAMED];
     answered.ids = null;
   });
@@ -66,6 +67,13 @@ describe('WorkspaceSettingsPanel folder role setters', () => {
     render(<WorkspaceSettingsPanel />);
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toBe("Couldn't load roles. Try refreshing the page.");
+  });
+
+  it('offers no ownership claim while the owner is still being read', () => {
+    registryAdmin.owner = null;
+    render(<WorkspaceSettingsPanel />);
+    expect(screen.queryByRole('button', { name: /claim ownership/i })).toBeNull();
+    expect(screen.queryByText(/no owner yet/i)).toBeNull();
   });
 
   it('names each remove button by display name or the shared fallback', () => {
