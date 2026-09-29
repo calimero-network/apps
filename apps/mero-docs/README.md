@@ -136,7 +136,11 @@ Two-axis authorization, enforced server-side in `calimero-network/core`:
 
 Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
 
-One layer sits on top and is **not** enforced server-side: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service - what the sharing panel's "Read-only" writes). The app hides the editor from a `Viewer`, but core admits every member of a folder's group to write its docs, and the docs service does not consult the registry, so a `Viewer` running a modified client can still edit. Treat it as a UI preference until core can make a group member read-only. Who may *set* document roles (the registry owner and managers) is enforced by storage on every node.
+One layer sits on top: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service).
+The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group.
+Every node then discards that member's writes to the folder's docs, comments included; the calls still return success.
+A member who only inherits an Open folder has no row in its group, so "Read only" adds a direct `ReadOnly` row for them.
+Who may *set* document roles (the registry owner and managers) is enforced by storage on every node; the core role needs an admin of the folder.
 
 UI helpers:
 - [`useFolderPermissions`](app/src/hooks/useFolderPermissions.ts) - wraps the role+caps read for a specific folder
