@@ -503,7 +503,8 @@ impl DocsState {
             .map_err(|e| AppError::msg(e.to_string()))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
         let rec = self.docs.get(&id)?;
-        self.project(&id, &creator, created_at, rec.as_deref())
+        let now = storage_env::time_now();
+        self.project(&id, &creator, created_at, rec.as_deref(), now)
             .map_err(|e| AppError::msg(e.to_string()))
     }
 
@@ -514,6 +515,7 @@ impl DocsState {
             .headers
             .entries_with_owners()
             .map_err(|e| AppError::msg(format!("headers.entries: {e}")))?;
+        let now = storage_env::time_now();
         let mut out = Vec::new();
         for (creator, id, created_at) in headers {
             if !id_names(&id, &creator) {
@@ -524,7 +526,7 @@ impl DocsState {
                 continue;
             }
             out.push(
-                self.project(&id, &creator, created_at, rec.as_deref())
+                self.project(&id, &creator, created_at, rec.as_deref(), now)
                     .map_err(|e| AppError::msg(e.to_string()))?,
             );
         }
@@ -1310,8 +1312,8 @@ impl DocsState {
         creator: &AccountId,
         created_at: u64,
         rec: Option<&DocRecord>,
+        now: u64,
     ) -> Result<DocDto, DriveError> {
-        let now = storage_env::time_now();
         let created_at = not_ahead(created_at, now).unwrap_or_default();
         let title = rec
             .map(|r| r.title.get_text())
