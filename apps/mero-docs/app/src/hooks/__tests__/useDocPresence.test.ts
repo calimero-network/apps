@@ -113,6 +113,32 @@ describe('useDocPresence', () => {
     vi.useRealTimers();
   });
 
+  it('ignores a caret write from the closed editor, so the repeated leave still goes out', () => {
+    vi.useFakeTimers();
+    const { result, unmount } = render('bob');
+    const late = result.current.publish;
+    unmount();
+    setPresence.mockClear();
+    late(CARET);
+    expect(setPresence).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(PRESENCE_LEAVE_REPEAT_MS);
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(set).toHaveBeenLastCalledWith(CTX, {});
+    vi.useRealTimers();
+  });
+
+  it('ignores a caret write while the tab is hidden', () => {
+    const { result } = render('bob');
+    setHidden(true);
+    setPresence.mockClear();
+    result.current.publish(CARET);
+    expect(setPresence).not.toHaveBeenCalled();
+    setHidden(false);
+    expect(setPresence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ docId: DOC }),
+    );
+  });
+
   it('never repeats a leave once the next doc has announced', () => {
     vi.useFakeTimers();
     const { rerender } = render('bob');

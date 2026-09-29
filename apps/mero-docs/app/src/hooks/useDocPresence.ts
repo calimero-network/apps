@@ -48,11 +48,16 @@ export function useDocPresence(
     null,
   );
   const beatRef = useRef(0);
+  // The doc this tab is announcing on right now, or null once it has left.
+  // A caret write from a closed editor lands after the leave; publishing it
+  // would both re-announce the doc and cancel the leave's repeat, so the node
+  // would replay "here" for as long as this tab stays in the context.
+  const liveDocRef = useRef<string | null>(null);
 
   const publish = useCallback(
     (caret: CaretSlice) => {
       const who = identityRef.current;
-      if (!docId || !who) return;
+      if (!docId || !who || liveDocRef.current !== docId) return;
       if (contextId) cancelLeave(contextId);
       lastCaretRef.current = { docId, caret };
       publishRef.current({
@@ -80,7 +85,10 @@ export function useDocPresence(
   // context, so an open doc re-announces every beat and a hidden or closed one leaves.
   useEffect(() => {
     if (!ephemeral || !contextId || !docId) return;
-    const leave = () => leaveContext(ephemeral, contextId, LEAVE_SLICE);
+    const leave = () => {
+      liveDocRef.current = null;
+      leaveContext(ephemeral, contextId, LEAVE_SLICE);
+    };
     let timer: ReturnType<typeof setInterval> | undefined;
     const beat = () => {
       beatRef.current += 1;
@@ -89,6 +97,7 @@ export function useDocPresence(
     const onVisibility = () => {
       clearInterval(timer);
       if (document.visibilityState === 'hidden') return leave();
+      liveDocRef.current = docId;
       announce();
       timer = setInterval(beat, PRESENCE_BEAT_MS);
     };
