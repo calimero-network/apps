@@ -2,15 +2,10 @@
 // Without merod or the bundle, node-backed specs skip locally but fail in CI, so CI cannot pass untested.
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import {
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pipeToLog } from '@calimero-apps/e2e-node';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGIC_DIR = path.resolve(__dirname, '..', '..', 'logic');
@@ -142,9 +137,7 @@ async function startNode(
     stdio: ['ignore', 'pipe', 'pipe'],
     env: NODE_ENV,
   });
-  const log = createWriteStream(path.join(DATA_DIR, `${node.name}.log`));
-  proc.stdout?.pipe(log);
-  proc.stderr?.pipe(log);
+  pipeToLog(proc, path.join(DATA_DIR, `${node.name}.log`));
   return proc.pid!;
 }
 

@@ -1065,6 +1065,9 @@ importers:
         specifier: ^1.0.7
         version: 1.0.7(tailwindcss@3.4.19(tsx@4.23.13))
     devDependencies:
+      '@calimero-apps/e2e-node':
+        specifier: workspace:*
+        version: link:../../../packages/e2e-node
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
         version: 2.3.0

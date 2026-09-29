@@ -37,6 +37,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "^9.4.0",
     "@playwright/test": "catalog:",
