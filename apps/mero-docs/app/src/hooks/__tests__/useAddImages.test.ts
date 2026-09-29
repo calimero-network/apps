@@ -105,4 +105,13 @@ describe('useAddImages', () => {
     await act(() => add([png()], 'gone'));
     expect(editor.document.map((b) => b.type)).toContain('image');
   });
+
+  it('leaves the cursor in a line after the last image so typing carries on', async () => {
+    const { editor, add } = setup([{ type: 'paragraph' }]);
+    await act(() => add([png('a.png'), png('b.png')], editor.document[0].id));
+    const [last] = editor.document.filter((b) => b.type === 'image').reverse();
+    const after = editor.getNextBlock(last)!;
+    expect(after.type).toBe('paragraph');
+    expect(editor.getTextCursorPosition().block.id).toBe(after.id);
+  });
 });

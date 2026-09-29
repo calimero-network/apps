@@ -28,12 +28,22 @@ function place(editor: DriveEditor, near: string, image: { name: string; url: st
   return emptyLine ? editor.updateBlock(at, block).id : editor.insertBlocks([block], at, 'after')[0].id;
 }
 
+/** Moves the cursor to the line after `imageId`, adding one when the image ends the document. */
+function resumeTypingAfter(editor: DriveEditor, imageId: string): void {
+  const image = editor.getBlock(imageId);
+  if (!image) return;
+  const next =
+    editor.getNextBlock(image) ?? editor.insertBlocks([{ type: 'paragraph' }], image, 'after')[0];
+  editor.setTextCursorPosition(next, 'start');
+}
+
 export function useAddImages(editor: DriveEditor | null, contextId: string | null): AddImages {
   const { mero } = useMero();
   return useCallback(
     async (files, near) => {
       if (!editor) return;
       let anchor = near;
+      let placed = false;
       for (const file of files) {
         const title = `Couldn't add ${file.name}`;
         const checked = await checkImageFile(file);
@@ -49,6 +59,7 @@ export function useAddImages(editor: DriveEditor | null, contextId: string | nul
           const url = blobRef(blobId);
           if (!parseBlobRef(url)) throw new Error(`unusable blob id ${blobId}`);
           anchor = place(editor, anchor, { name: file.name, url });
+          placed = true;
           toast.dismiss(id);
         } catch (cause) {
           console.warn('[images] upload failed', cause);
@@ -56,6 +67,7 @@ export function useAddImages(editor: DriveEditor | null, contextId: string | nul
           toast.error(title, { id, description: denied ? UPLOAD_DENIED : UPLOAD_FAILED });
         }
       }
+      if (placed) resumeTypingAfter(editor, anchor);
     },
     [editor, mero, contextId],
   );
