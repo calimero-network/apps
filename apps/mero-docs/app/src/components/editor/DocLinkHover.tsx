@@ -35,7 +35,6 @@ import {
   parseMemberHref,
   type MemberHrefTarget,
 } from '@/lib/links';
-import { docLinkCardState } from '@/lib/linkTargetView';
 import { parseGroupRole, roleDisplayLabel, workspaceRoleOf } from '@/lib/roles';
 import { whenLabel } from '@/lib/relativeTime';
 import {
@@ -78,39 +77,34 @@ function hoveredLink(el: EventTarget): OpenLink | null {
   return mention ? { anchor: mention.anchor, member: mention.target } : null;
 }
 
-/** What the card shows for a link target; the title is the doc's current one, not the link text. */
+/** What the card shows for a link target, checked in resolveLinkTarget's order; the title is the doc's current one, not the link text. */
 export function docLinkCardProps(
   target: DocHrefTarget,
   d: CardData,
   now: number,
 ): DocLinkCardProps {
   const { index } = d;
-  const withStatus = (status: string) =>
-    new Set(
-      index.folders
-        .filter((f) => index.folderStatus[f.id] === status)
-        .map((f) => f.id),
-    );
-  const view = docLinkCardState(target, {
-    ws: d.ws ?? null,
-    existingFolders: d.registryFolders
-      ? new Set(d.registryFolders.map((f) => f.id))
-      : null,
-    readableFolders: index.foldersKnown
-      ? new Set(index.folders.map((f) => f.id))
-      : null,
-    failedFolders: withStatus('error'),
-    loadedFolders: withStatus('ready'),
-    rows: new Map(index.rows.map((r) => [rowKey(r.folderId, r.docId), r])),
-  });
-  if (view.state === 'unavailable') {
+  const { folder } = target;
+  const status = index.folderStatus[folder];
+  if (d.ws == null) return { state: 'loading' };
+  if (target.ws !== d.ws) return { state: 'other-workspace' };
+  if (!d.registryFolders) return { state: 'loading' };
+  if (!d.registryFolders.some((f) => f.id === folder))
+    return { state: 'deleted' };
+  if (!index.foldersKnown) return { state: 'loading' };
+  if (!index.folders.some((f) => f.id === folder))
+    return { state: 'no-access' };
+  if (status === 'error') {
     return {
       state: 'unavailable',
-      onRetry: () => index.refetchFolder(target.folder),
+      onRetry: () => index.refetchFolder(folder),
     };
   }
-  if (view.state !== 'ok') return { state: view.state };
-  const r = view.row;
+  if (status !== 'ready') return { state: 'loading' };
+  const r = index.rows.find(
+    (row) => row.folderId === folder && row.docId === target.doc,
+  );
+  if (!r) return { state: 'deleted' };
   const path = d.paths.get(r.folderId);
   const excerpt = d.texts
     .get(rowKey(r.folderId, r.docId))
