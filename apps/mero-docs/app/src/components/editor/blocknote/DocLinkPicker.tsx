@@ -33,30 +33,8 @@ import type { DriveEditor } from './schema';
 
 const TEXT_PAUSE_MS = 80; // the text scan waits for a typing pause, as in the search palette
 
-type PickerMenuProps = SuggestionMenuProps<DocLinkItem> & {
-  mode?: 'doc' | 'section';
-};
-
-function PickerMenu({
-  mode,
-  items,
-  selectedIndex,
-  onItemClick,
-  loadingState,
-}: PickerMenuProps) {
-  if (loadingState === 'loading-initial') return null;
-  return (
-    <DocLinkPickerMenu
-      mode={mode}
-      items={items}
-      activeIndex={selectedIndex ?? -1}
-      onPick={(item) => onItemClick?.(item as DocLinkItem)}
-    />
-  );
-}
-
-const SectionPickerMenu = (props: PickerMenuProps) => (
-  <PickerMenu {...props} mode="section" />
+const SectionPickerMenu = (props: SuggestionMenuProps<DocLinkItem>) => (
+  <DocLinkPickerMenu {...props} mode="section" />
 );
 
 export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
@@ -148,7 +126,7 @@ export function DocLinkPicker({ editor }: { editor: DriveEditor }) {
         triggerCharacter={DOC_LINK_TRIGGER}
         shouldOpen={opensDocPicker}
         getItems={getDocs}
-        suggestionMenuComponent={PickerMenu}
+        suggestionMenuComponent={DocLinkPickerMenu}
         onItemClick={pick}
       />
       <SuggestionMenuController
