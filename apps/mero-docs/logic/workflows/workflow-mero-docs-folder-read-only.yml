@@ -9,9 +9,13 @@ description: >
   Carol stays an Editor: Bob's edit_doc, add_tag and add_comment change nothing,
   Carol's writes land, and setting Bob back to Editor restores his writes.
 
-  In an Open folder Bob is a member by inheritance only, so there is no direct
-  row to mark: the app adds a direct ReadOnly row, which refuses his writes the
-  same way, and setting him back to Member restores them.
+  In an Open folder Bob is a member by inheritance only: his write lands (the
+  control), then the direct ReadOnly row the app adds refuses his rename and
+  his comment, and setting him back to Member restores them. Made Read only
+  again, leaving the folder and rejoining it by inheritance does not shed it.
+
+  Finally Alice removes Bob from the workspace and, as the app does, from the
+  folders that still list him: his write to the Restricted folder is refused.
 
 e2e_mode: true
 
@@ -525,6 +529,38 @@ steps:
     outputs:
       bob_open_key: memberPublicKey
 
+  - name: Inherited Bob renames the Open doc before any Read only row
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      id: '{{open_doc}}'
+      title: Written while inherited
+
+  - name: Sync Bob's inherited write
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    context_id: '{{open_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the Open doc after Bob's inherited write
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_open_key}}'
+    args:
+      id: '{{open_doc}}'
+    outputs:
+      alice_open_control_title: result.output.title
+
+  - name: Control - an inherited member writes before the Read only row
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_open_control_title}}, "Written while inherited")'
+
   - name: Alice adds a direct ReadOnly row for Bob in the Open folder
     type: add_group_members
     node: curo-node-1
@@ -548,7 +584,18 @@ steps:
       title: Edited by an inherited Read only member
     allow_failure: true
 
-  - name: Sync after Bob's Open-folder call
+  - name: Inherited Read only Bob comments on the Open doc
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: add_comment
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      doc_id: '{{open_doc}}'
+      body: an inherited Read only comment
+    allow_failure: true
+
+  - name: Sync after Bob's Open-folder calls
     type: wait_for_sync
     nodes: [curo-node-1, curo-node-2]
     context_id: '{{open_ctx}}'
@@ -565,6 +612,15 @@ steps:
     outputs:
       alice_open_ro_title: result.output.title
 
+  - name: Alice counts the Open folder's comments
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: comment_count
+    executor_public_key: '{{alice_open_key}}'
+    outputs:
+      alice_open_ro_comments: result.output
+
   - name: Bob reads the Open doc on his own node
     type: call
     node: curo-node-2
@@ -576,11 +632,12 @@ steps:
     outputs:
       bob_open_ro_title: result.output.title
 
-  - name: The inherited Read only member's write landed nowhere
+  - name: The inherited Read only member's writes landed nowhere
     type: json_assert
     statements:
-      - 'json_equal({{alice_open_ro_title}}, "Open original")'
-      - 'json_equal({{bob_open_ro_title}}, "Open original")'
+      - 'json_equal({{alice_open_ro_title}}, "Written while inherited")'
+      - 'json_equal({{bob_open_ro_title}}, "Written while inherited")'
+      - 'json_equal({{alice_open_ro_comments}}, 0)'
 
   - name: Alice makes Bob a Member of the Open folder again
     type: update_member_role
@@ -624,5 +681,111 @@ steps:
     type: json_assert
     statements:
       - 'json_equal({{alice_open_restored_title}}, "Edited after the Open restore")'
+
+  - name: Alice makes Bob Read only in the Open folder again
+    type: update_member_role
+    node: curo-node-1
+    group_id: '{{open_folder}}'
+    member_id: '{{bob_account}}'
+    role: ReadOnly
+
+  - name: Wait for the second ReadOnly role to reach Bob
+    type: wait
+    seconds: 10
+
+  - name: Read only Bob leaves the Open folder
+    type: leave_group
+    node: curo-node-2
+    group_id: '{{open_folder}}'
+
+  - name: Wait for the leave to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Bob tries to rejoin the Open folder by inheritance
+    type: join_subgroup_inheritance
+    node: curo-node-2
+    group_id: '{{open_folder}}'
+    expected_failure: true
+
+  - name: Bob renames the Open doc after trying to rejoin
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      id: '{{open_doc}}'
+      title: Edited after leaving
+    allow_failure: true
+
+  - name: Give a rejoined write time to sync
+    type: wait
+    seconds: 10
+
+  - name: Alice reads the Open doc after Bob left
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_open_key}}'
+    args:
+      id: '{{open_doc}}'
+    outputs:
+      alice_open_left_title: result.output.title
+
+  - name: Leaving did not shed Read only through inheritance
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_open_left_title}}, "Edited after the Open restore")'
+
+  - name: Alice removes Bob from the workspace
+    type: remove_group_members
+    node: curo-node-1
+    group_id: '{{namespace_id}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Alice removes Bob's direct row in the Restricted folder, as the app does
+    type: remove_group_members
+    node: curo-node-1
+    group_id: '{{folder}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Wait for the removals to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Removed Bob renames the Restricted doc
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      title: Edited after removal
+    allow_failure: true
+
+  - name: Give a removed member's write time to sync
+    type: wait
+    seconds: 10
+
+  - name: Alice reads the Restricted doc after the removal
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+    outputs:
+      alice_removed_title: result.output.title
+
+  - name: A member removed from the workspace no longer writes
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_removed_title}}, "Edited after the restore")'
 
 stop_all_nodes: false

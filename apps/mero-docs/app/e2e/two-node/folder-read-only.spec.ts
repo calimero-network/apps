@@ -61,18 +61,25 @@ async function keepBobAnEditor(page: Page) {
   });
 }
 
-async function bobIsReadOnlyOnHisNode(page: Page): Promise<boolean> {
+// Bob's own core role in the folder his page shows, as his node reports it.
+async function bobsCoreRole(page: Page): Promise<string | null> {
   const folder = parseAppPath(new URL(page.url()).pathname, '')?.folder;
   const node = getEnv({ twoNode: true }).node2!;
-  const res = await fetch(`${node.url}/admin-api/groups/${folder}/members`, {
-    headers: { Authorization: `Bearer ${node.accessToken}` },
-  });
-  let readOnly = false;
-  JSON.parse(await res.text(), (k, v) => {
-    if (k === 'role' && v === 'ReadOnly') readOnly = true;
-    return v;
-  });
-  return readOnly;
+  const get = async (path: string) => {
+    const res = await fetch(`${node.url}${path}`, {
+      headers: { Authorization: `Bearer ${node.accessToken}` },
+    });
+    return (await res.json()) as {
+      accountId?: string;
+      data?: { accountId?: string };
+      members?: { identity: string; role: string }[];
+    };
+  };
+  // mero-js unwraps an optional `data` envelope; so does this.
+  const identity = await get('/admin-api/identity');
+  const account = (identity.data ?? identity).accountId;
+  const { members } = await get(`/admin-api/groups/${folder}/members`);
+  return members?.find((m) => m.identity === account)?.role ?? null;
 }
 
 test.describe('Folder Read only (two-node)', () => {
@@ -82,6 +89,10 @@ test.describe('Folder Read only (two-node)', () => {
   }) => {
     await shareOpenDoc(alice, bob, 'Read only WS');
     await setBobsRole(alice, 'Read only');
+    // Core, not the registry row, is what refuses his writes.
+    await expect
+      .poll(() => bobsCoreRole(bob.page), { timeout: SYNC_MS })
+      .toBe('ReadOnly');
 
     await bob.openDoc('Plan');
     await expect(bob.page.getByTestId('doc-title-input')).toHaveCount(0, {
@@ -102,6 +113,9 @@ test.describe('Folder Read only (two-node)', () => {
     await bob.editor.expectContent('live from alice', { timeout: SYNC_MS });
 
     await setBobsRole(alice, 'Editor');
+    await expect
+      .poll(() => bobsCoreRole(bob.page), { timeout: SYNC_MS })
+      .toBe('Member');
     await expect(bob.page.getByTestId('doc-title-input')).toBeVisible({
       timeout: SYNC_MS,
     });
@@ -116,25 +130,26 @@ test.describe('Folder Read only (two-node)', () => {
     bob,
   }) => {
     await shareOpenDoc(alice, bob, 'Stale role WS');
-    await bob.openDoc('Plan');
-    await bob.editor.type('before');
     await alice.openDoc('Plan');
-    await alice.editor.expectContent('before', { timeout: SYNC_MS });
+    await alice.editor.type('before');
+    await bob.openDoc('Plan');
+    await bob.editor.expectContent('before', { timeout: SYNC_MS });
 
     await keepBobAnEditor(bob.page);
     await setBobsRole(alice, 'Read only');
     await expect
-      .poll(() => bobIsReadOnlyOnHisNode(bob.page), { timeout: SYNC_MS })
-      .toBe(true);
+      .poll(() => bobsCoreRole(bob.page), { timeout: SYNC_MS })
+      .toBe('ReadOnly');
 
     await expect(bob.page.getByTestId('doc-title-input')).toBeVisible();
     await bob.editor.type(' phantom');
     await expect(bob.page.locator('.ProseMirror').first()).not.toContainText(
       'phantom',
-      {
-        timeout: 30_000,
-      },
+      { timeout: 30_000 },
     );
+    // Alice's next edit reaching Bob shows her node has taken everything he sent.
+    await alice.editor.type(' after');
+    await bob.editor.expectContent('before after', { timeout: SYNC_MS });
     await expect(alice.page.locator('.ProseMirror').first()).not.toContainText(
       'phantom',
     );
