@@ -25,7 +25,6 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
-import { useSavedViews } from '@/hooks/useSavedViews';
 import { TagNameTakenError, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
@@ -123,7 +122,6 @@ export function HomePage({ folderId }: Props) {
   const { rows, folders, foldersKnown, folderStatus, refetchFolder } =
     useWorkspaceIndexValue();
   const { byKey: tagsByKey, renameTag, recolorTag, deleteTag } = useTags();
-  const { save: saveView } = useSavedViews();
   const confirm = useConfirm();
   const presence = usePresenceByDoc();
   const { route, goHome, goFolder, goDoc } = useAppRoute();
@@ -279,7 +277,6 @@ export function HomePage({ folderId }: Props) {
 
   // --- Save view ---
   const [saveOpen, setSaveOpen] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
   const workspaceName = namespaceLabel(
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,
   );
@@ -290,29 +287,8 @@ export function HomePage({ folderId }: Props) {
     personName,
     sortLabel: SORT_LABELS[q.sort],
   };
-  const saveCurrentView = async ({
-    name,
-    scope,
-  }: {
-    name: string;
-    scope: 'me' | 'everyone';
-  }) => {
-    setSaving(true);
-    try {
-      // A folder route's folder is part of the view, which opens on Home.
-      const queryForSave = serializeHomeQuery({
-        ...effective,
-        view: undefined,
-      });
-      const savedView = await saveView(name, queryForSave, scope);
-      setSaveOpen(false);
-      goHome(withView(queryForSave, savedView.id), { replace: true });
-    } catch {
-      // Reported by the saved views hook's own toast; the popover stays open to retry.
-    } finally {
-      setSaving(false);
-    }
-  };
+  // A folder route's folder is part of the view, which opens on Home.
+  const queryForSave = serializeHomeQuery({ ...effective, view: undefined });
 
   // --- Tag page ---
   const pageKey = folderId ? null : tagPageKey(q);
@@ -433,8 +409,8 @@ export function HomePage({ folderId }: Props) {
       filters={summarizeHomeQuery(summaryArgs)}
       workspaceName={workspaceName}
       canShare={nsPerms.canCreateFolder}
-      saving={saving}
-      onSave={(v) => void saveCurrentView(v)}
+      query={queryForSave}
+      onSaved={(v) => goHome(withView(queryForSave, v.id), { replace: true })}
       open={saveOpen}
       onOpenChange={setSaveOpen}
     />

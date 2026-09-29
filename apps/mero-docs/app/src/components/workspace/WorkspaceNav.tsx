@@ -80,7 +80,6 @@ export function WorkspaceNav({
   const { namespaces } = useDriveWorkspace();
   const {
     views: savedViews,
-    save: saveView,
     rename: renameView,
     remove: removeView,
   } = useSavedViews();
@@ -89,7 +88,6 @@ export function WorkspaceNav({
   const [newTag, setNewTag] = React.useState<{ error?: string } | null>(null);
   const [saveViewOpen, setSaveViewOpen] = React.useState(false);
   const addViewRef = React.useRef<HTMLButtonElement>(null);
-  const [savingView, setSavingView] = React.useState(false);
   const [renamingView, setRenamingView] = React.useState<SavedView | null>(
     null,
   );
@@ -173,25 +171,7 @@ export function WorkspaceNav({
     }
     setSaveViewOpen((open) => !open);
   };
-  const saveFromSidebar = async ({
-    name,
-    scope,
-  }: {
-    name: string;
-    scope: 'me' | 'everyone';
-  }) => {
-    setSavingView(true);
-    try {
-      const query = serializeHomeQuery({ ...q, view: undefined });
-      const view = await saveView(name, query, scope);
-      setSaveViewOpen(false);
-      go(withView(query, view.id));
-    } catch {
-      // Reported by the saved views hook's own toast; the popover stays open to retry.
-    } finally {
-      setSavingView(false);
-    }
-  };
+  const viewQuery = serializeHomeQuery({ ...q, view: undefined });
   const deleteViewAfterConfirm = async (view: SavedView) => {
     const ok = await confirm({
       title: 'Delete view?',
@@ -281,8 +261,8 @@ export function WorkspaceNav({
         filters={summarizeHomeQuery(summaryArgs)}
         workspaceName={workspaceName}
         canShare={canManageTags}
-        saving={savingView}
-        onSave={(view) => void saveFromSidebar(view)}
+        query={viewQuery}
+        onSaved={(view) => go(withView(viewQuery, view.id))}
       />
       <NameDialog
         open={!!newTag}

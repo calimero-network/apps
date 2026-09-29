@@ -25,8 +25,12 @@ import { TagChip } from '@/components/tags/TagChip';
 import { FILTER_ICONS } from '@/components/home/FilterBar';
 import { moveFocus } from '@/components/home/moveFocus';
 import type { FilterIcon } from '@/components/home/types';
+import {
+  useSavedViews,
+  type SavedView,
+  type ViewScope,
+} from '@/hooks/useSavedViews';
 
-type Scope = 'me' | 'everyone';
 type FilterSummary = {
   icon: FilterIcon | 'sort';
   label: string;
@@ -45,8 +49,8 @@ interface Props {
   filters: FilterSummary[];
   workspaceName: string;
   canShare: boolean;
-  saving: boolean;
-  onSave: (view: { name: string; scope: Scope }) => void;
+  query: string; // the Home query the view saves
+  onSaved: (view: SavedView) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -56,6 +60,7 @@ export function SaveViewPopover({
   anchorRef,
   open,
   onOpenChange,
+  onSaved,
   ...form
 }: Props) {
   // Without a trigger, Radix has nothing to return focus to on close.
@@ -77,7 +82,13 @@ export function SaveViewPopover({
         className="w-[320px] overflow-hidden rounded-[10px] p-0"
         onCloseAutoFocus={returnFocus}
       >
-        <SaveViewForm {...form} />
+        <SaveViewForm
+          {...form}
+          onSaved={(view) => {
+            onOpenChange?.(false);
+            onSaved(view);
+          }}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -89,21 +100,33 @@ function SaveViewForm({
   filters,
   workspaceName,
   canShare,
-  saving,
-  onSave,
+  query,
+  onSaved,
 }: Omit<Props, 'trigger' | 'anchorRef' | 'open' | 'onOpenChange'>) {
+  const { save } = useSavedViews();
   const [name, setName] = React.useState(defaultName);
-  const [scope, setScope] = React.useState<Scope>('me');
+  const [scope, setScope] = React.useState<ViewScope>('me');
+  const [saving, setSaving] = React.useState(false);
   const nameId = React.useId();
   const tooLongId = React.useId();
   const tooLong = !viewNameFits(name);
   const canSave = name.trim() !== '' && !tooLong && !saving;
+  const submit = async () => {
+    setSaving(true);
+    try {
+      onSaved(await save(name.trim(), query, scope));
+    } catch {
+      // Reported by the saved views hook's own toast; the popover stays open to retry.
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (canSave) onSave({ name: name.trim(), scope });
+        if (canSave) void submit();
       }}
     >
       <div className="px-3 pb-2 pt-2.5 text-xs font-semibold text-foreground">
