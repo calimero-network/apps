@@ -89,7 +89,7 @@ export function NamespaceMembersPanel() {
       await mero.admin.removeGroupMembers(rootGroupId, { members: [identity] });
       await membership.refetch();
       if (identity === selfIdentity) return;
-      const failed = await removeFromFolders(mero.admin, folders.map((f) => f.id), identity);
+      const failed = await removeFromFolders(mero.admin, folders, identity);
       if (failed.length > 0) {
         const names = failed.map((id) => folderLabel(folders.find((f) => f.id === id)?.alias));
         setRemoveError(

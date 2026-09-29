@@ -20,8 +20,8 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: null,
     registryAdmin: { owner: ME },
     folders: [
-      { id: 'plans', alias: 'Plans' },
-      { id: 'notes', alias: 'Notes' },
+      { id: 'plans', parent_id: null, alias: 'Plans' },
+      { id: 'notes', parent_id: null, alias: 'Notes' },
     ],
   }),
 }));
