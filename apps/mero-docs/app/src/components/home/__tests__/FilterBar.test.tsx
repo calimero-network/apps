@@ -50,6 +50,19 @@ describe('FilterBar', () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
+  it('draws a chip with no popover or toggle as a plain label', () => {
+    render(
+      <FilterBar
+        chips={[chip({})]}
+        sortLabel="Last updated"
+        onSortClick={() => {}}
+        onClear={() => {}}
+      />,
+    );
+    expect(screen.getByText('Tag')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tag' })).toBeNull();
+  });
+
   it('hides Clear when no chip is active', () => {
     render(
       <FilterBar

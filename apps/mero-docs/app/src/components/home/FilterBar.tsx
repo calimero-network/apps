@@ -111,12 +111,16 @@ function FilterChip({ chip }: { chip: FilterChipView }) {
         >
           {label}
         </button>
-      ) : (
+      ) : chip.popover ? (
         <PopoverTrigger
           className={cn(inner, 'pl-2.5', showClear ? 'pr-0' : 'pr-[9px]')}
         >
           {label}
         </PopoverTrigger>
+      ) : (
+        <span className={cn(inner, 'pl-2.5', showClear ? 'pr-0' : 'pr-[9px]')}>
+          {label}
+        </span>
       )}
       {showClear && (
         <button
@@ -131,7 +135,7 @@ function FilterChip({ chip }: { chip: FilterChipView }) {
     </span>
   );
 
-  if (!chip.popover) return shell;
+  if (!chip.popover || chip.onToggle) return shell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>{shell}</PopoverAnchor>
