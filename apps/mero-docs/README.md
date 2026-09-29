@@ -144,7 +144,8 @@ Read only lasts while the member stays in the folder: someone who leaves and com
 Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
 A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
 A sub-folder created, opened or joined later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
-Removing someone from an Open folder bans them from it and its Open sub-folders until an admin restores them from the folder's Removed list; a workspace re-invite does not lift it.
+Removing someone from a folder also removes them from the Open sub-folders reached through it, stopping at a Restricted folder.
+In an Open folder a removal is a ban: it lasts until an admin restores them from that folder's Removed list (each folder has its own), and a workspace re-invite does not lift it; someone the parent holds Read only comes back Read only.
 Only the folder's admin can change a folder role, since core takes the role and caps change from its admin alone.
 
 UI helpers:
