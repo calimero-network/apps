@@ -144,6 +144,7 @@ While the member holds those rows, nodes discard their writes to those folders' 
 Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
 Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
 A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
+For the moment between a folder becoming Open (created Open, or opened) and its Read only rows being written, the parent's Read only members can write there; adding the rows first would make them members of a folder that is still Restricted.
 An Open sub-folder created or opened later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
 Removing someone from a folder also removes them from the Open sub-folders reached through it, stopping at a Restricted folder.
 In an Open folder a removal is a ban: it lasts until an admin restores them from that folder's Removed list (each folder has its own), and a workspace re-invite does not lift it; someone the parent holds Read only comes back Read only.
