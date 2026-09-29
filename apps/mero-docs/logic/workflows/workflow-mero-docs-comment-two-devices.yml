@@ -1,0 +1,248 @@
+name: Mero Docs E2E - One Author's Comment Edited From Two Devices
+description: >
+  One account on two nodes: node-1 is Alice's laptop, which founds the
+  workspace and its folder, and node-2 is her phone, paired onto the same
+  account. Each device edits the same comment while the other is offline.
+  After they reconnect both read one body and hold one root hash.
+
+  A comment is an `#[app::mergeable]` value in an authored map, so both
+  devices sign writes to one entry and each receives the other's write in
+  the opposite order.
+
+force_pull_image: true
+
+# Required: without it the nodes dial the public boot node instead of each
+# other. See workflow-mero-docs-docs-lifecycle.yml.
+e2e_mode: true
+
+# Defined individually so every port is pinned: the count form lets --e2e-mode
+# allocate ports dynamically, and a later start_node reconnects on base_port.
+nodes:
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
+  devices-node-1:
+    port: 3970
+    rpc_port: 3971
+  devices-node-2:
+    port: 3972
+    rpc_port: 3973
+
+steps:
+  # =================================================================
+  # Phase A: the laptop founds the workspace, a folder and its docs
+  # =================================================================
+
+  - name: Install bundle on the laptop
+    type: install_application
+    node: devices-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # merobox waits for health, which is not the same as ready.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: devices-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates a folder group
+    type: create_group_in_namespace
+    node: devices-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: notes
+    outputs:
+      notes_group: groupId
+
+  - name: Alice creates the folder's docs context
+    type: create_context
+    node: devices-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{notes_group}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      laptop_key: memberPublicKey
+
+  - name: Alice creates a doc
+    type: call
+    node: devices-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{laptop_key}}'
+    args:
+      title: Plan
+    outputs:
+      doc_id: result.output
+
+  - name: Alice comments on it from the laptop
+    type: call
+    node: devices-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_comment
+    executor_public_key: '{{laptop_key}}'
+    args:
+      doc_id: '{{doc_id}}'
+      body: first draft
+    outputs:
+      comment_id: result.output
+
+  # =================================================================
+  # Phase B: pair the phone onto the same account
+  # =================================================================
+
+  - name: The laptop's account root
+    type: node_identity
+    node: devices-node-1
+    outputs:
+      root_key: accountRootPublicKey
+
+  # Installed here: the phone has nothing to do until it pairs.
+  - name: Install bundle on the phone
+    type: install_application
+    node: devices-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Pair the phone onto Alice's account
+    type: account_pair
+    node: devices-node-2
+    holder: devices-node-1
+    root_key: '{{root_key}}'
+    namespaces:
+      - '{{namespace_id}}'
+    outputs:
+      key_delivered: keyDelivered
+
+  - name: The pairing delivered a key
+    type: json_assert
+    statements:
+      - 'json_equal({{key_delivered}}, true)'
+
+  # A paired device is a member of nothing: the join gate admits it as a
+  # live device of the folder's member account.
+  - name: The phone follows the docs context
+    type: join_context
+    node: devices-node-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      phone_key: memberPublicKey
+
+  - name: Settle the comment onto the phone
+    type: wait_for_sync
+    nodes: [devices-node-1, devices-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 60
+    trigger_sync: true
+
+  # Only the comment's author may edit it, so this passing is what shows the
+  # phone speaks for the laptop's account.
+  - name: The phone edits the laptop's comment
+    type: call
+    node: devices-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_comment
+    executor_public_key: '{{phone_key}}'
+    args:
+      id: '{{comment_id}}'
+      body: from both
+
+  - name: Both devices hold the phone's edit before the partition
+    type: wait_for_sync
+    nodes: [devices-node-1, devices-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 60
+    trigger_sync: true
+
+  # =================================================================
+  # Phase C: each device edits the comment while the other is offline
+  # =================================================================
+
+  - name: Take the phone offline
+    type: stop_node
+    nodes: [devices-node-2]
+
+  - name: The laptop edits the comment offline
+    type: call
+    node: devices-node-1
+    context_id: '{{docs_ctx}}'
+    method: edit_comment
+    executor_public_key: '{{laptop_key}}'
+    args:
+      id: '{{comment_id}}'
+      body: from the laptop
+
+  - name: Take the laptop offline
+    type: stop_node
+    nodes: [devices-node-1]
+
+  - name: Bring the phone back alone
+    type: start_node
+    nodes: [devices-node-2]
+
+  - name: The phone edits the comment offline
+    type: call
+    node: devices-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_comment
+    executor_public_key: '{{phone_key}}'
+    args:
+      id: '{{comment_id}}'
+      body: from the phone
+
+  - name: Bring the laptop back
+    type: start_node
+    nodes: [devices-node-1]
+
+  - name: Wait for the nodes to find each other
+    type: wait
+    seconds: 15
+
+  # Converges only when both nodes report one context state hash.
+  - name: Heal - both devices settle on one root hash
+    type: wait_for_sync
+    nodes: [devices-node-1, devices-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 180
+    trigger_sync: true
+    outputs:
+      healed_hash: root_hash
+
+  - name: The laptop reads the comment
+    type: call
+    node: devices-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_comment
+    executor_public_key: '{{laptop_key}}'
+    args:
+      id: '{{comment_id}}'
+    outputs:
+      laptop_body: result.output.body
+
+  - name: The phone reads the comment
+    type: call
+    node: devices-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_comment
+    executor_public_key: '{{phone_key}}'
+    args:
+      id: '{{comment_id}}'
+    outputs:
+      phone_body: result.output.body
+
+  # The phone wrote last, so its body wins on both.
+  - name: Both devices read the phone's edit
+    type: assert
+    statements:
+      - 'is_set({{healed_hash}})'
+      - '{{laptop_body}} == "from the phone"'
+      - '{{phone_body}} == "from the phone"'
+
+# Left up like the other scenarios: CI's retry loop nukes between attempts.
+stop_all_nodes: false
