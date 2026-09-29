@@ -2978,6 +2978,11 @@ mod tests {
         app.call_as_account(ALICE, ALICE, |s| s.delete_doc(doc.clone()))
             .unwrap();
         assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
+        assert_eq!(
+            app.view(|s| s.comment_schema_version(bobs.clone()))
+                .unwrap(),
+            None
+        );
         assert!(app.view(|s| s.get_comment(bobs)).is_err());
         assert_eq!(app.view(|s| s.comment_count()).unwrap(), 0);
     }
