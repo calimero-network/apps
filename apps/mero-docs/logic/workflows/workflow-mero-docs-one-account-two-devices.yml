@@ -1,8 +1,8 @@
 name: Mero Docs - two devices of one account each create a doc offline
 description: >
   Alice's laptop (node 1) holds her account root; her phone (node 2) is paired
-  onto the same account. Each creates a doc while the other is stopped, so
-  both read the same id counter. Each doc must keep its own id and title
+  onto the same account. Each creates a doc while the other is stopped, and
+  each device mints its own id. Each doc must keep its own id and title
   after they meet again.
 
 e2e_mode: true
