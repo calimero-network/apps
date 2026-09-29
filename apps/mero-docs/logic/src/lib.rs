@@ -46,13 +46,12 @@ use calimero_storage::collections::{
     BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
     Mergeable, Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef,
 };
+use calimero_storage::constants::DRIFT_TOLERANCE_NANOS;
 use calimero_storage::env as storage_env;
 use mero_docs_types::{is_valid_tag_key, DriveError};
 
 pub mod events;
 use events::Event;
-
-const CLOCK_WINDOW_NS: u64 = 60_000_000_000; // how far ahead of the reader's clock a timestamp may read; nodes refuse writes 5 s ahead
 
 // ---------------------------------------------------------------------------
 // Mark schema
@@ -355,9 +354,9 @@ fn creator_in(id: &str) -> Option<&str> {
     }
 }
 
-/// `at`, unless it is further ahead of the reader's clock than an honest write can be.
+/// `at`, unless it is further ahead of the reader's clock than storage lets a write be.
 fn not_ahead(at: u64, now: u64) -> Option<u64> {
-    (at <= now.saturating_add(CLOCK_WINDOW_NS)).then_some(at)
+    (at <= now.saturating_add(DRIFT_TOLERANCE_NANOS)).then_some(at)
 }
 
 /// Whether `id` names `owner`. Anyone may hold an owned entry at any key, so a
@@ -2849,5 +2848,14 @@ mod tests {
         let doc = app.view(|s| s.get_doc(id)).unwrap();
         assert_eq!(doc.created_at, 0);
         assert!(doc.updated_at > 0 && doc.updated_at < u64::MAX);
+    }
+
+    /// A stamp is trusted up to exactly the skew storage accepts on a write.
+    #[test]
+    fn a_stamp_is_trusted_up_to_the_drift_storage_accepts() {
+        let now = 1_000;
+        let edge = now + DRIFT_TOLERANCE_NANOS;
+        assert_eq!(not_ahead(edge, now), Some(edge));
+        assert_eq!(not_ahead(edge + 1, now), None);
     }
 }
