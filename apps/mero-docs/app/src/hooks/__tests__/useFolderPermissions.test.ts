@@ -209,6 +209,29 @@ describe('useFolderPermissions', () => {
     expect(result.current.canEditDocs).toBe(true);
   });
 
+  // Core discards a ReadOnly member's writes, so the UI must not offer one.
+  it('core ReadOnly on the folder → canEditDocs false whatever the registry role', async () => {
+    folderRoleState.role = 'Editor';
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'ReadOnly' }],
+    });
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
+  it('core ReadOnly on the folder → canEditDocs false with no Registry context', async () => {
+    folderRoleState.registryAvailable = false;
+    folderRoleState.role = null;
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'ReadOnly' }],
+    });
+    const { result } = renderWithCaps(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
   it("isAdmin → canEditDocs true regardless of role ('Viewer')", async () => {
     folderRoleState.role = 'Viewer';
     listMembersMock.mockResolvedValue({
