@@ -69,8 +69,9 @@ describe('useFolderOperations.create - Read only', () => {
   // Read only on a folder covers the sub-folders made later, too.
   it("makes the parent's Read only members Read only in a new sub-folder", async () => {
     const BOB = 'b'.repeat(64);
-    listGroupMembers.mockImplementation(async (g: string) => ({
-      members: [{ identity: BOB, role: g === 'parent-folder' ? 'ReadOnly' : 'Member' }],
+    listGroupMembers.mockImplementation(async () => ({
+      // An Open folder lists an inheritor with the parent row's role.
+      members: [{ identity: BOB, role: 'ReadOnly' }],
     }));
     updateMemberRole.mockRejectedValue(
       new HTTPError(404, '', '/groups/new-folder', new Headers()),

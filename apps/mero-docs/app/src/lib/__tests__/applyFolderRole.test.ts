@@ -57,6 +57,17 @@ describe('applyAcross', () => {
     );
   });
 
+  // Core lists an inheritor with its anchor row's role, but refuses writes by
+  // the direct row alone, so a listed ReadOnly is no reason to skip.
+  it('writes a direct ReadOnly row where the member is listed ReadOnly only by inheritance', async () => {
+    rows = { 'open-child': [{ identity: BOB, role: 'ReadOnly' }] };
+    const failed = await applyAcross(w, ['open-child'], BOB, true);
+    expect(failed).toEqual([]);
+    expect(writer.admin.addGroupMembers).toHaveBeenCalledWith('open-child', {
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    });
+  });
+
   it('restores Editor only where the member is Read only', async () => {
     rows = {
       a: [{ identity: BOB, role: 'ReadOnly' }],
@@ -99,8 +110,9 @@ describe('inheritReadOnly', () => {
         { identity: BOB, role: 'ReadOnly' },
         { identity: CAROL, role: 'Member' },
       ],
+      // An Open child lists each inheritor with the parent row's role.
       child: [
-        { identity: BOB, role: 'Member' },
+        { identity: BOB, role: 'ReadOnly' },
         { identity: CAROL, role: 'Member' },
       ],
     };

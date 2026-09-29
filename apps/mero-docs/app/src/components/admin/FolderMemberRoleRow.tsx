@@ -104,9 +104,11 @@ export function FolderMemberRoleRow({
     setUpdateError(null);
     try {
       await applyFolderGrant(writer, folderId, identity, next, core);
-      // Read only covers the subtree, so its start and its end both carry down.
-      if (readOnly || core === 'ReadOnly') {
-        const failed = await applyAcross(writer, descendantsOf(folders, folderId), identity, readOnly);
+      // Read only covers the subtree, so its start and its end both carry down,
+      // also when only the registry row still says Read only.
+      if (readOnly || core === 'ReadOnly' || registryRole === 'Viewer') {
+        const subtree = descendantsOf(folders, folderId).reverse();
+        const failed = await applyAcross(writer, subtree, identity, readOnly);
         if (failed.length > 0) setUpdateError(subtreeFailure(failed));
       }
       await caps.refetch();

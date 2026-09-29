@@ -169,7 +169,8 @@ describe('FolderMemberRoleRow', () => {
 
   // Read only on a folder covers every sub-folder the member reaches.
   it('carries Read only into the sub-folders, and its end too', async () => {
-    childRows = [{ identity: BOB, role: 'Member' }];
+    // An Open sub-folder lists Bob with his parent row's role.
+    childRows = [{ identity: BOB, role: 'ReadOnly' }];
     fireEvent.change(roleSelectFor('Member', 'Editor'), { target: { value: 'ReadOnly' } });
     await waitFor(() =>
       expect(setCapabilities).toHaveBeenCalledWith(CHILD, BOB, { capabilities: JOIN }),
@@ -183,6 +184,13 @@ describe('FolderMemberRoleRow', () => {
   it('ends Read only in the sub-folders when the member is made an Editor again', async () => {
     childRows = [{ identity: BOB, role: 'ReadOnly' }];
     fireEvent.change(roleSelectFor('ReadOnly', 'Viewer'), { target: { value: 'Editor' } });
+    await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'Member' }));
+  });
+
+  // Core already says Member here, but the sub-folders may still be Read only.
+  it('ends Read only in the sub-folders when only the registry row still says Read only', async () => {
+    childRows = [{ identity: BOB, role: 'ReadOnly' }];
+    fireEvent.change(roleSelectFor('Member', 'Viewer'), { target: { value: 'Editor' } });
     await waitFor(() => expect(updateMemberRole).toHaveBeenCalledWith(CHILD, BOB, { role: 'Member' }));
   });
 

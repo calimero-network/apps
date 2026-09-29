@@ -54,11 +54,14 @@ export async function setCoreRole(
     await writer.admin.updateMemberRole(folder, account, { role });
   } catch (e: unknown) {
     if (!(e instanceof HTTPError && e.status === 404)) throw e;
+    // A row another admin adds meanwhile is overwritten by this upsert, with the role we want.
     await writer.admin.addGroupMembers(folder, { members: [{ identity: account, role }] });
   }
 }
 
-/** The three writes of a folder role, core first because core enforces it. */
+/** The three writes of a folder role, core first because core enforces it.
+ *  Read only always writes the core row: an inheritor is listed with its anchor
+ *  row's role, but core refuses writes by the direct row alone. */
 export async function applyFolderGrant(
   writer: FolderRoleWriter,
   folder: string,
@@ -67,14 +70,16 @@ export async function applyFolderGrant(
   current: GroupRole,
 ): Promise<void> {
   const grant = FOLDER_ROLE_GRANTS[next];
-  if (grant.coreRole !== current) await setCoreRole(writer, folder, account, grant.coreRole);
+  if (grant.coreRole === 'ReadOnly' || grant.coreRole !== current) {
+    await setCoreRole(writer, folder, account, grant.coreRole);
+  }
   await writer.registry.setFolderRole({ folder_id: FolderId(folder), member: account, role: grant.role });
   await writer.admin.setMemberCapabilities(folder, account, { capabilities: grant.folderCaps });
 }
 
 /**
- * Carries Read only, or its end, into each of `folders` the member reaches:
- * Read only where they are not already, Editor where they are Read only.
+ * Carries Read only, or its end, into each of `folders` (parents first) the
+ * member reaches: Read only everywhere, Editor where they are listed Read only.
  * Returns the folders it could not change.
  */
 export async function applyAcross(
@@ -88,7 +93,7 @@ export async function applyAcross(
     try {
       const role = await coreRoleIn(writer, folder, account);
       if (role === null || role === 'Admin' || isTeeRole(role)) continue;
-      if (readOnly === (role === 'ReadOnly')) continue;
+      if (!readOnly && role !== 'ReadOnly') continue;
       await applyFolderGrant(writer, folder, account, readOnly ? 'ReadOnly' : 'Editor', role);
     } catch (e: unknown) {
       console.warn('[applyAcross] folder role not applied', folder, e);

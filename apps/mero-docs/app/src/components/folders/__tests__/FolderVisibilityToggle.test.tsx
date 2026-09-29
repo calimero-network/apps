@@ -39,8 +39,9 @@ beforeEach(() => {
     fn.mockReset().mockResolvedValue(undefined);
   }
   updateMemberRole.mockReset().mockRejectedValue(new HTTPError(404, '', '/groups/child', new Headers()));
-  listGroupMembers.mockReset().mockImplementation(async (g: string) => ({
-    members: [{ identity: BOB, role: g === 'parent' ? 'ReadOnly' : 'Member' }],
+  listGroupMembers.mockReset().mockImplementation(async () => ({
+    // Opened, the child lists Bob with his parent row's role.
+    members: [{ identity: BOB, role: 'ReadOnly' }],
   }));
 });
 
