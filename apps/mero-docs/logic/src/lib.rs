@@ -2835,7 +2835,7 @@ mod tests {
     /// The docs by `updated_at`, newest first, as the app sorts them.
     fn newest_first(s: &DocsState) -> Vec<String> {
         let mut docs = s.list_docs(false).unwrap();
-        docs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        docs.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
         docs.into_iter().map(|d| d.id).collect()
     }
 
