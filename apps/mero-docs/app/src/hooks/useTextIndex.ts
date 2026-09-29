@@ -1,5 +1,6 @@
-// The text of every listed doc, read once per doc with `get_document` and kept
-// in memory only, so search and Details can read inside documents on this device.
+// The text of every listed doc, read once per doc version with `get_document`
+// and kept in memory only, so search and Details can read inside documents on
+// this device. Reads survive a remount through the session's text cache.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -10,7 +11,8 @@ import {
 import { DocsClient } from '@/generated/docs/DocsClient';
 import { parseRichEvents } from '@/lib/rich/events';
 import { docTextFromBlocks } from '@/lib/search/docText';
-import { rowKey, type DocText } from '@/lib/workspaceIndex/types';
+import { textCache, textCacheKey } from '@/lib/search/textCache';
+import { nsToMs, rowKey, type DocText } from '@/lib/workspaceIndex/types';
 import { isContextEvent } from './useContextEvents';
 import type { WorkspaceIndex } from './useWorkspaceIndex';
 
@@ -32,6 +34,9 @@ type Job = {
   docId: string;
   contextId: string;
   updatedAt: number; // the list's version of the doc
+  // Queued by a body event, so the list's version is about to be stale: the
+  // read asks the doc for its own first, or the list catching up re-reads it.
+  event?: boolean;
 };
 type Snapshot = {
   texts: Map<string, DocText>;
@@ -92,6 +97,7 @@ export function useTextIndex({
     () => ({ mero, byContext: new Map<string, DocsClient>() }),
     [mero],
   );
+  const cache = useMemo(() => (mero ? textCache(mero) : null), [mero]);
   const clientFor = useCallback(
     (contextId: string) => {
       let client = clients.byContext.get(contextId);
@@ -135,7 +141,17 @@ export function useTextIndex({
         await yieldToEventLoop();
         if (current()) {
           version = e.wanted.get(job.key)!.updatedAt;
-          const blocks = await clientFor(job.contextId).getDocument({
+          const client = clientFor(job.contextId);
+          if (job.event) {
+            // Its version before its text, so the text is at least that new.
+            try {
+              const doc = await client.getDoc({ id: job.docId });
+              version = Math.max(version, nsToMs(doc.updated_at));
+            } catch {
+              // The list's version it is; the next list pass may read it again.
+            }
+          }
+          const blocks = await client.getDocument({
             doc: job.docId,
           });
           text = docTextFromBlocks(
@@ -158,6 +174,7 @@ export function useTextIndex({
         e.texts.set(job.key, text);
         e.readAt.set(job.key, version);
         e.failed.delete(job.key);
+        cache?.set(textCacheKey(job.contextId, job.key), { version, text });
       } else if (failed && current()) {
         // The last good text, if any, stays searchable; the next list pass retries.
         e.failed.add(job.key);
@@ -169,13 +186,13 @@ export function useTextIndex({
         (again || !done || !current() || behind) &&
         !e.queued.has(job.key)
       ) {
-        e.queue.unshift(next);
+        e.queue.unshift(again ? { ...next, event: true } : next);
         e.queued.add(job.key);
       }
       pumpRef.current();
       publish();
     },
-    [clientFor, publish],
+    [clientFor, publish, cache],
   );
 
   const pump = useCallback(() => {
@@ -207,15 +224,30 @@ export function useTextIndex({
   // leaves it; a failed read gets one more try on each pass.
   useEffect(() => {
     const e = engine.current;
+    // A doc gone from the list is gone from the session's cache too.
+    for (const [key, job] of e.wanted)
+      if (wanted.get(key)?.contextId !== job.contextId)
+        cache?.delete(textCacheKey(job.contextId, key));
     e.wanted = wanted;
     for (const key of [...e.texts.keys()])
       if (!wanted.has(key)) e.texts.delete(key);
     for (const key of [...e.readAt.keys()])
       if (!wanted.has(key)) e.readAt.delete(key);
     for (const key of [...e.failed]) if (!wanted.has(key)) e.failed.delete(key);
-    e.queue = e.queue.flatMap((job) => wanted.get(job.key) ?? []);
+    e.queue = e.queue.flatMap((job) => {
+      const listed = wanted.get(job.key);
+      return listed ? [{ ...listed, event: job.event }] : [];
+    });
     e.queued = new Set(e.queue.map((job) => job.key));
     for (const [key, job] of wanted) {
+      const cached = e.readAt.has(key)
+        ? undefined
+        : cache?.get(textCacheKey(job.contextId, key));
+      if (cached && cached.version >= job.updatedAt) {
+        // Read earlier this session, and not changed since.
+        e.texts.set(key, cached.text);
+        e.readAt.set(key, cached.version);
+      }
       const readAt = e.readAt.get(key);
       const fresh =
         readAt !== undefined && readAt >= job.updatedAt && !e.failed.has(key);
@@ -225,7 +257,7 @@ export function useTextIndex({
     }
     pump();
     publish();
-  }, [wanted, pump, publish]);
+  }, [wanted, pump, publish, cache]);
 
   const reindex = useCallback(
     (key: string) => {
@@ -235,7 +267,7 @@ export function useTextIndex({
       const running = e.running.get(key);
       if (running) running.again = true;
       else if (!e.queued.has(key)) {
-        e.queue.unshift(job);
+        e.queue.unshift({ ...job, event: true });
         e.queued.add(key);
         pump();
       }

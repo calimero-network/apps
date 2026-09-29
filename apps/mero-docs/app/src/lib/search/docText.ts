@@ -19,6 +19,19 @@ const SENTENCE_END = /[.!?](?=\s)/g;
 type Link = DocText['links'][number];
 type Mention = DocText['mentions'][number];
 
+// Each doc's blocks folded once, not on every keystroke. A re-read replaces
+// the DocText, which is what drops its entry; memory only, like the text.
+const foldedBlocks = new WeakMap<DocText, string[]>();
+
+function foldedOf(text: DocText): string[] {
+  let folded = foldedBlocks.get(text);
+  if (!folded) {
+    folded = text.blocks.map((b) => foldForSearch(b.text));
+    foldedBlocks.set(text, folded);
+  }
+  return folded;
+}
+
 /** A cut of a longer text: window index = original index - `offset`; `body` excludes the `…`. */
 type TextWindow = { text: string; offset: number; body: [number, number] };
 
@@ -204,9 +217,10 @@ export function searchText(
   }[] = [];
   for (const text of texts.values()) {
     let top: (typeof best)[number] | null = null;
-    for (const block of text.blocks) {
+    const folded = foldedOf(text);
+    for (const [i, block] of text.blocks.entries()) {
       // Typos stay off: long text is slow to scan and turns up near misses.
-      const score = matchScore(foldForSearch(block.text), words, false);
+      const score = matchScore(folded[i], words, false);
       if (score !== null && (!top || score < top.score)) {
         top = { score, text, block };
         if (score === 0) break;
