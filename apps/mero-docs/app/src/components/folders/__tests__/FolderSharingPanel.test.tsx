@@ -7,7 +7,7 @@ const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
 const PICKED = 'c'.repeat(64);
 const confirm = vi.fn();
-const perms = { canManagePermissions: false };
+const perms = { canManagePermissions: false, permissionsNeedOwner: false };
 // Per member: the name their own metadata read answered with, and whether it has answered.
 const metadata = { names: {} as Record<string, string>, answered: new Set<string>() };
 
@@ -40,6 +40,7 @@ vi.mock('@calimero-network/mero-react', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({
     canManagePermissions: perms.canManagePermissions,
+    permissionsNeedOwner: perms.permissionsNeedOwner,
     canManageMembers: true,
     canInviteMembers: true,
   }),
@@ -81,6 +82,7 @@ vi.mock('@/components/common/MemberPicker', () => ({
 beforeEach(() => {
   confirm.mockReset().mockResolvedValue(false);
   perms.canManagePermissions = false;
+  perms.permissionsNeedOwner = false;
   metadata.names = {};
   metadata.answered = new Set([NAMED, UNNAMED]);
 });
@@ -106,6 +108,15 @@ describe('FolderSharingPanel read-only rows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     expect(screen.getByText('Carol')).toBeTruthy();
     expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+});
+
+describe('folder roles', () => {
+  it("tells a registry manager who is not the folder's admin why roles are fixed", () => {
+    perms.permissionsNeedOwner = true;
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(screen.getByText("Only this folder's owner can change roles.")).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: /Role for/ })).toBeNull();
   });
 });
 

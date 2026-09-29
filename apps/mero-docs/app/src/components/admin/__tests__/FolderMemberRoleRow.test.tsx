@@ -127,6 +127,14 @@ describe('FolderMemberRoleRow', () => {
     expect(setCapabilities).not.toHaveBeenCalled();
   });
 
+  // mero-react's setCapabilities resolves null instead of throwing.
+  it('reports a caps write that did not happen', async () => {
+    setCapabilities.mockResolvedValue(null);
+    const select = roleSelectFor('Member', 'Editor');
+    fireEvent.change(select, { target: { value: 'ReadOnly' } });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Role update failed/);
+  });
+
   it('lets a Read only member be made an Editor again, restoring the core role first', async () => {
     const select = roleSelectFor('ReadOnly', 'Viewer');
     expect(select.value).toBe('ReadOnly');

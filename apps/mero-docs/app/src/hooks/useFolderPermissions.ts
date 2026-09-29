@@ -14,9 +14,9 @@
 //     default), so a brand-new member can edit by default; an explicit
 //     `Viewer` downgrades them to read-only.
 //
-//  3. Registry ownership/managers - gates `canManagePermissions` (who
-//     may change folder roles / see the sharing-panel admin section).
-//     The owner is the registry's creator, fixed by the contract at `init`;
+//  3. Registry ownership/managers - only `permissionsNeedOwner`: folder
+//     roles also write core's role and caps, which only the folder's
+//     admin may, so `canManagePermissions` is `isAdmin`. The owner is the registry's creator, fixed by the contract at `init`;
 //     managers are added by the owner. Read from `useDriveWorkspace().registryAdmin`
 //     (fetched ONCE for the whole tree) - NOT via a per-row hook call.
 //
@@ -76,9 +76,12 @@ export interface FolderPermissions {
    *  so autosave can't persist a would-be Viewer's edits). Pair with
    *  `roleLoading` for a "checking permissions" hint. */
   canEditDocs: boolean;
-  /** Change per-folder roles / see the sharing-panel admin section:
-   *  `isAdmin`, or the registry owner/manager. */
+  /** Change per-folder roles: `isAdmin` only, since core takes a folder's
+   *  role and caps changes from its admin alone. */
   canManagePermissions: boolean;
+  /** A registry owner or manager who is not this folder's admin: the panel
+   *  says why the roles are fixed for them. */
+  permissionsNeedOwner: boolean;
   /** The caller's registry `Role` on this folder; `null` while loading
    *  OR when there's no Registry context. `'Editor'` once loaded if no
    *  explicit row exists (WASM default). */
@@ -171,7 +174,7 @@ export function useFolderPermissions(
     : true;
   const canEditDocs = isAdmin || (isMember && !isReadOnly && roleAllowsEdit);
 
-  const canManagePermissions = isAdmin || isOwnerOrManager;
+  const canManagePermissions = isAdmin;
 
   return {
     isMember,
@@ -183,6 +186,7 @@ export function useFolderPermissions(
     canManageMembers,
     canEditDocs,
     canManagePermissions,
+    permissionsNeedOwner: isOwnerOrManager && !isAdmin,
     role,
     roleLoading,
     roleError,

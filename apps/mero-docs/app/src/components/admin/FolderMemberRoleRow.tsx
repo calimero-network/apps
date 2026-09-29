@@ -134,7 +134,9 @@ export function FolderMemberRoleRow({
         member: identity,
         role: grant.role,
       });
-      await caps.setCapabilities(grant.folderCaps);
+      if ((await caps.setCapabilities(grant.folderCaps)) === null) {
+        throw new Error("the folder's permissions could not be set");
+      }
       // `useGroupCapabilities.setCapabilities` resolves with the new
       // bitmask but mero-react does NOT necessarily update the hook's
       // own `capabilities` state until the next read - and the

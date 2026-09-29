@@ -15,8 +15,8 @@
 //   - canInviteMembers      → show the invite form (Restricted only)
 //   - canManageMembers      → show the per-member remove button
 //   - canManagePermissions  → show the folder-role dropdowns (the
-//                             registry owner / managers, or a core
-//                             group-admin)
+//                             folder's core admin; a registry owner or
+//                             manager is told why they cannot)
 // Read-only viewers still see the members list.
 //
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
@@ -213,6 +213,12 @@ export function FolderSharingPanel({ folderId }: Props) {
             specific person to <strong>Read only</strong> or{' '}
             <strong>Manager</strong>.
           </span>
+        </p>
+      )}
+
+      {perms.permissionsNeedOwner && (
+        <p className="border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+          Only this folder&apos;s owner can change roles.
         </p>
       )}
 
