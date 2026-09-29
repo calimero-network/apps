@@ -1,15 +1,16 @@
 // One member row inside FolderSharingPanel: name, one RoleSelect bound to
-// the member's (registry Role, folder caps), and an optional remove button.
-// Picking a role writes BOTH setFolderRole and the folder caps (see
-// FOLDER_ROLE_GRANTS). A core Admin or ReadOnly role on the folder overrides
-// both on the server, so that row shows it and cannot be changed here.
+// the member's (core role, registry Role, folder caps), and an optional remove
+// button. Picking a role writes all three (see FOLDER_ROLE_GRANTS), the core
+// role first because it is the one core enforces. A core Admin on the folder
+// is its owner, so that row shows it and cannot be changed here.
 //
 // Permission-gating lives on the parent panel; this component trusts
 // `canManage` for "is the dropdown / remove button interactive".
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { useGroupCapabilities } from '@calimero-network/mero-react';
+import { HTTPError } from '@calimero-network/mero-js';
+import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -25,6 +26,7 @@ import {
   parseGroupRole,
   roleDisplayLabel,
   type FolderAccessRole,
+  type GroupRole,
 } from '@/lib/roles';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
 // The generated constructor is the only way to make one, which is the point -
@@ -63,6 +65,7 @@ export function FolderMemberRoleRow({
   onRemove,
   removing,
 }: Props) {
+  const { mero } = useMero();
   const { registryClient, registryContextId, namespaceId } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
@@ -93,6 +96,18 @@ export function FolderMemberRoleRow({
     caps.loading || caps.error ? null : (caps.capabilities ?? null),
   );
 
+  // `identity` is the member's account, which is what core keys group rows by.
+  const setCoreRole = async (role: GroupRole) => {
+    if (!mero) throw new Error('Mero client not ready');
+    try {
+      await mero.admin.updateMemberRole(folderId, identity, { role });
+    } catch (e: unknown) {
+      // A member who only inherits an Open folder has no direct row to update.
+      if (!(e instanceof HTTPError && e.status === 404)) throw e;
+      await mero.admin.addGroupMembers(folderId, { members: [{ identity, role }] });
+    }
+  };
+
   const onRoleChange = async (next: FolderAccessRole) => {
     if (!registryClient) {
       setUpdateError('Workspace not ready');
@@ -112,6 +127,7 @@ export function FolderMemberRoleRow({
     setUpdating(true);
     setUpdateError(null);
     try {
+      if (grant.coreRole !== core) await setCoreRole(grant.coreRole);
       await registryClient.setFolderRole({
         folder_id: FolderId(folderId),
         member: identity,
@@ -153,7 +169,7 @@ export function FolderMemberRoleRow({
             onChange={(next) => {
               void onRoleChange(next);
             }}
-            disabled={!canManage || updating || core !== 'Member'}
+            disabled={!canManage || updating || core === 'Admin'}
             ariaLabel={label ? `Role for ${label}` : 'Member role'}
           />
           {onRemove && canManage ? (

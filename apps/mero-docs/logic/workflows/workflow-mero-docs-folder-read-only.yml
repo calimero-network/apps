@@ -1,0 +1,628 @@
+name: Mero Docs - a folder's Read only member cannot write its docs
+description: >
+  The app's "Read only" folder role writes the core group role ReadOnly for the
+  member in that folder's group (plus the registry Viewer row the UI reads).
+  Core then refuses the member's doc writes on every node: the calls return
+  success, but nothing is written on the member's node or on any peer.
+
+  Alice owns the workspace. In a Restricted folder, Bob is set to Read only and
+  Carol stays an Editor: Bob's edit_doc, add_tag and add_comment change nothing,
+  Carol's writes land, and setting Bob back to Editor restores his writes.
+
+  In an Open folder Bob is a member by inheritance only, so there is no direct
+  row to mark: the app adds a direct ReadOnly row, which refuses his writes the
+  same way, and setting him back to Member restores them.
+
+e2e_mode: true
+
+nodes:
+  count: 3
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.62
+  prefix: curo-node
+  base_port: 4040
+  base_rpc_port: 4044
+
+steps:
+  - name: Install the bundle on Alice
+    type: install_application
+    node: curo-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install the bundle on Bob
+    type: install_application
+    node: curo-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Install the bundle on Carol
+    type: install_application
+    node: curo-node-3
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Alice creates the namespace
+    type: create_namespace
+    node: curo-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the Registry context
+    type: create_context
+    node: curo-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      reg_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Alice creates the Restricted folder
+    type: create_group_in_namespace
+    node: curo-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: private
+    outputs:
+      folder: groupId
+
+  - name: Mark it Restricted
+    type: set_subgroup_visibility
+    node: curo-node-1
+    group_id: '{{folder}}'
+    visibility: Restricted
+
+  - name: Register the Restricted folder
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{folder}}'
+      parent_id: null
+      color: null
+      alias: Private
+
+  - name: Alice creates the Restricted folder's Docs context
+    type: create_context
+    node: curo-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{folder}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      alice_docs_key: memberPublicKey
+
+  - name: Bind it
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{folder}}'
+      context_id: '{{docs_ctx}}'
+
+  - name: Alice creates a doc
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      title: Original
+    outputs:
+      doc_id: result.output
+
+  - name: Alice invites Bob to the namespace
+    type: create_namespace_invitation
+    node: curo-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      bob_invite: invitation
+
+  - name: Alice invites Carol to the namespace
+    type: create_namespace_invitation
+    node: curo-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      carol_invite: invitation
+
+  - name: Wait for namespace governance to reach Bob and Carol
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: curo-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{bob_invite}}'
+    outputs:
+      bob_account: memberAccount
+
+  - name: Carol joins the namespace
+    type: join_namespace
+    node: curo-node-3
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{carol_invite}}'
+    outputs:
+      carol_account: memberAccount
+
+  - name: Wait for membership to settle
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the Registry context
+    type: join_context
+    node: curo-node-2
+    context_id: '{{reg_ctx}}'
+    outputs:
+      bob_reg_key: memberPublicKey
+
+  - name: Alice adds Bob and Carol to the Restricted folder
+    type: add_group_members
+    node: curo-node-1
+    group_id: '{{folder}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: Member
+      - identity: '{{carol_account}}'
+        role: Member
+
+  - name: Wait for folder membership to reach Bob and Carol
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the Docs context
+    type: join_context
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      bob_docs_key: memberPublicKey
+
+  - name: Carol joins the Docs context
+    type: join_context
+    node: curo-node-3
+    context_id: '{{docs_ctx}}'
+    outputs:
+      carol_docs_key: memberPublicKey
+
+  # ---- Read only, as the app writes it ----
+
+  - name: Alice makes Bob core ReadOnly in the folder's group
+    type: update_member_role
+    node: curo-node-1
+    group_id: '{{folder}}'
+    member_id: '{{bob_account}}'
+    role: ReadOnly
+
+  - name: Alice sets Bob's registry folder role to Viewer
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{folder}}'
+      member: '{{bob_account}}'
+      role: Viewer
+
+  - name: Sync the registry to Bob
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+
+  - name: Bob reads back his folder role
+    type: call
+    node: curo-node-2
+    context_id: '{{reg_ctx}}'
+    method: get_folder_role
+    executor_public_key: '{{bob_reg_key}}'
+    args:
+      folder_id: '{{folder}}'
+      member: '{{bob_account}}'
+    outputs:
+      bob_role: result.output
+
+  - name: Bob's registry row says Viewer
+    type: assert
+    statements:
+      - "equal({{bob_role}}, 'Viewer')"
+
+  - name: Wait for the core role to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Read only Bob renames the doc
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      title: Edited while Read only
+    allow_failure: true
+
+  - name: Read only Bob tags the doc
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: add_tag
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      tag: read-only-was-here
+    allow_failure: true
+
+  - name: Read only Bob comments
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: add_comment
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      doc_id: '{{doc_id}}'
+      body: a Read only member's comment
+    allow_failure: true
+
+  - name: Sync after Bob's calls
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the doc
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+    outputs:
+      alice_ro_title: result.output.title
+      alice_ro_tags: result.output.tags
+
+  - name: Alice counts comments
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: comment_count
+    executor_public_key: '{{alice_docs_key}}'
+    outputs:
+      alice_ro_comments: result.output
+
+  - name: Bob reads the doc on his own node
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+    outputs:
+      bob_ro_title: result.output.title
+      bob_ro_tags: result.output.tags
+
+  - name: Bob counts comments on his own node
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: comment_count
+    executor_public_key: '{{bob_docs_key}}'
+    outputs:
+      bob_ro_comments: result.output
+
+  - name: Nothing Bob wrote landed on either node
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_ro_title}}, "Original")'
+      - 'json_equal({{alice_ro_tags}}, [])'
+      - 'json_equal({{alice_ro_comments}}, 0)'
+      - 'json_equal({{bob_ro_title}}, "Original")'
+      - 'json_equal({{bob_ro_tags}}, [])'
+      - 'json_equal({{bob_ro_comments}}, 0)'
+
+  # ---- an Editor in the same folder still writes ----
+
+  - name: Editor Carol renames the doc
+    type: call
+    node: curo-node-3
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{carol_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      title: Edited by an Editor
+
+  - name: Editor Carol comments
+    type: call
+    node: curo-node-3
+    context_id: '{{docs_ctx}}'
+    method: add_comment
+    executor_public_key: '{{carol_docs_key}}'
+    args:
+      doc_id: '{{doc_id}}'
+      body: an Editor's comment
+
+  - name: Sync Carol's writes
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the doc after Carol's writes
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+    outputs:
+      alice_editor_title: result.output.title
+
+  - name: Alice counts comments after Carol's writes
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: comment_count
+    executor_public_key: '{{alice_docs_key}}'
+    outputs:
+      alice_editor_comments: result.output
+
+  - name: Carol's writes landed
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_editor_title}}, "Edited by an Editor")'
+      - 'json_equal({{alice_editor_comments}}, 1)'
+
+  # ---- back to Editor ----
+
+  - name: Alice makes Bob a core Member again
+    type: update_member_role
+    node: curo-node-1
+    group_id: '{{folder}}'
+    member_id: '{{bob_account}}'
+    role: Member
+
+  - name: Alice sets Bob's registry folder role back to Editor
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{folder}}'
+      member: '{{bob_account}}'
+      role: Editor
+
+  - name: Wait for the restored role to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Restored Bob renames the doc
+    type: call
+    node: curo-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      title: Edited after the restore
+
+  - name: Sync Bob's restored write
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the doc after the restore
+    type: call
+    node: curo-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+    outputs:
+      alice_restored_title: result.output.title
+
+  - name: Bob's write landed once he was an Editor again
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_restored_title}}, "Edited after the restore")'
+
+  # ---- an Open folder, where Bob is a member by inheritance only ----
+
+  - name: Alice creates the Open folder
+    type: create_group_in_namespace
+    node: curo-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: open
+    outputs:
+      open_folder: groupId
+
+  - name: Mark it Open
+    type: set_subgroup_visibility
+    node: curo-node-1
+    group_id: '{{open_folder}}'
+    visibility: Open
+
+  - name: Register the Open folder
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{open_folder}}'
+      parent_id: null
+      color: null
+      alias: Open
+
+  - name: Alice creates the Open folder's Docs context
+    type: create_context
+    node: curo-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{open_folder}}'
+    service_name: docs
+    outputs:
+      open_ctx: contextId
+      alice_open_key: memberPublicKey
+
+  - name: Bind the Open folder
+    type: call
+    node: curo-node-1
+    context_id: '{{reg_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{open_folder}}'
+      context_id: '{{open_ctx}}'
+
+  - name: Alice creates a doc in the Open folder
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_open_key}}'
+    args:
+      title: Open original
+    outputs:
+      open_doc: result.output
+
+  - name: Wait for the Open visibility to reach Bob
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the Open folder by inheritance
+    type: join_subgroup_inheritance
+    node: curo-node-2
+    group_id: '{{open_folder}}'
+    outputs:
+      bob_was_inherited: wasInherited
+
+  - name: Bob has no direct row in the Open folder
+    type: json_assert
+    statements:
+      - 'json_equal({{bob_was_inherited}}, true)'
+
+  - name: Bob joins the Open folder's Docs context
+    type: join_context
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    outputs:
+      bob_open_key: memberPublicKey
+
+  - name: Alice adds a direct ReadOnly row for Bob in the Open folder
+    type: add_group_members
+    node: curo-node-1
+    group_id: '{{open_folder}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: ReadOnly
+
+  - name: Wait for the ReadOnly row to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Inherited Read only Bob renames the Open doc
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      id: '{{open_doc}}'
+      title: Edited by an inherited Read only member
+    allow_failure: true
+
+  - name: Sync after Bob's Open-folder call
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    context_id: '{{open_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the Open doc
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_open_key}}'
+    args:
+      id: '{{open_doc}}'
+    outputs:
+      alice_open_ro_title: result.output.title
+
+  - name: Bob reads the Open doc on his own node
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      id: '{{open_doc}}'
+    outputs:
+      bob_open_ro_title: result.output.title
+
+  - name: The inherited Read only member's write landed nowhere
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_open_ro_title}}, "Open original")'
+      - 'json_equal({{bob_open_ro_title}}, "Open original")'
+
+  - name: Alice makes Bob a Member of the Open folder again
+    type: update_member_role
+    node: curo-node-1
+    group_id: '{{open_folder}}'
+    member_id: '{{bob_account}}'
+    role: Member
+
+  - name: Wait for the restored Open-folder role to reach every node
+    type: wait
+    seconds: 10
+
+  - name: Restored Bob renames the Open doc
+    type: call
+    node: curo-node-2
+    context_id: '{{open_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_open_key}}'
+    args:
+      id: '{{open_doc}}'
+      title: Edited after the Open restore
+
+  - name: Sync Bob's restored Open-folder write
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    context_id: '{{open_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the Open doc after the restore
+    type: call
+    node: curo-node-1
+    context_id: '{{open_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_open_key}}'
+    args:
+      id: '{{open_doc}}'
+    outputs:
+      alice_open_restored_title: result.output.title
+
+  - name: Bob's Open-folder write landed once he was a Member again
+    type: json_assert
+    statements:
+      - 'json_equal({{alice_open_restored_title}}, "Edited after the Open restore")'
+
+stop_all_nodes: false

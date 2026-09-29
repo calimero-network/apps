@@ -28,6 +28,7 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
   }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
+  useMero: () => ({ mero: null }),
   useGroupCapabilities: () => ({
     capabilities: 0,
     loading: false,
@@ -57,7 +58,10 @@ vi.mock('@/hooks/useFolderMembership', () => ({
   }),
 }));
 vi.mock('@/hooks/useFolderRole', () => ({
-  useFolderRoles: () => ({ entries: [], refetch: vi.fn() }),
+  useFolderRoles: () => ({
+    entries: [{ member: UNNAMED, role: 'Viewer' }],
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('@/hooks/useNamespaceInvitation', () => ({
   useCreateFolderInvite: () => ({ create: vi.fn() }),

@@ -64,7 +64,7 @@ export const ROLE_DESCRIPTIONS: Record<ShownRole, string> = {
   Manager: 'Can invite and remove people, and edit.',
   Editor: 'Can create and edit documents.',
   Guest: 'Sees only folders shared with them directly.',
-  ReadOnly: 'Can open documents but not edit them.',
+  ReadOnly: 'Can open documents but not edit or comment.',
   Custom: 'Permissions that match none of the roles. Pick a role to replace them.',
 };
 
@@ -106,11 +106,15 @@ export const WORKSPACE_ROLE_GRANTS: Record<
   Guest: { role: 'ReadOnly', caps: 0 },
 };
 
-/** What each folder role writes: the registry folder Role plus folder caps. */
-export const FOLDER_ROLE_GRANTS: Record<FolderAccessRole, { role: Role; folderCaps: number }> = {
-  Manager: { role: 'Manager', folderCaps: MANAGER_FOLDER_CAPS },
-  Editor: { role: 'Editor', folderCaps: 0 },
-  ReadOnly: { role: 'Viewer', folderCaps: 0 },
+/** What each folder role writes: the core role in the folder's group, the
+ *  registry folder Role and folder caps. Core ReadOnly is what refuses writes. */
+export const FOLDER_ROLE_GRANTS: Record<
+  FolderAccessRole,
+  { coreRole: GroupRole; role: Role; folderCaps: number }
+> = {
+  Manager: { coreRole: 'Member', role: 'Manager', folderCaps: MANAGER_FOLDER_CAPS },
+  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: 0 },
+  ReadOnly: { coreRole: 'ReadOnly', role: 'Viewer', folderCaps: 0 },
 };
 
 /** A workspace member's role; `null` while a non-admin's mask is loading. */
@@ -123,22 +127,18 @@ export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole
   return match ?? 'Custom';
 }
 
-/** A folder's core role as shown: an Admin is the folder's Owner. */
-function folderCoreRole(coreRole: 'Admin' | 'ReadOnly'): ShownRole {
-  return coreRole === 'Admin' ? 'Owner' : coreRole;
-}
-
-/** A folder member's role. A core Admin or ReadOnly role on the folder
- *  overrides both fields: core bypasses them, or discards the writes. */
+/** A folder member's role. A core Admin is the folder's Owner, whatever the
+ *  other fields say, because core bypasses them. */
 export function folderRoleOf(
   coreRole: GroupRole,
   registryRole: Role | null,
   folderCaps: number | null,
 ): ShownRole | null {
-  if (coreRole !== 'Member') return folderCoreRole(coreRole);
+  if (coreRole === 'Admin') return 'Owner';
   if (registryRole === null || folderCaps === null) return null;
   const match = FOLDER_ROLES.find(
     (r) =>
+      FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
       FOLDER_ROLE_GRANTS[r].role === registryRole &&
       FOLDER_ROLE_GRANTS[r].folderCaps === folderCaps,
   );
@@ -147,8 +147,14 @@ export function folderRoleOf(
 
 /** A folder member's role when only the registry Role is known, not the caps. */
 export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
-  if (coreRole !== 'Member') return folderCoreRole(coreRole);
-  return FOLDER_ROLES.find((r) => FOLDER_ROLE_GRANTS[r].role === registryRole) ?? 'Custom';
+  if (coreRole === 'Admin') return 'Owner';
+  return (
+    FOLDER_ROLES.find(
+      (r) =>
+        FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
+        FOLDER_ROLE_GRANTS[r].role === registryRole,
+    ) ?? 'Custom'
+  );
 }
 
 // Lowest role first; each level lists what it adds over the one below.
@@ -161,13 +167,13 @@ const ROLE_LADDERS: Record<'workspace' | 'folder', [AccessRole, string[]][]> = {
   ],
   folder: [
     ['ReadOnly', []],
-    ['Editor', ['edit its documents']],
+    ['Editor', ['edit and comment on its documents']],
     ['Manager', ['invite and remove its members', 'rename, restrict or delete it']],
   ],
 };
 const LOWEST_ROLE_CLAUSE: Record<'workspace' | 'folder', string> = {
   workspace: 'they will see only folders shared with them directly',
-  folder: 'they can open its documents but not edit them',
+  folder: 'they can open its documents but not edit or comment on them',
 };
 
 function listOf(parts: string[], conjunction: string): string {
