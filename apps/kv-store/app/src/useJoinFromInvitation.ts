@@ -1,47 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDeepLink } from "@calimero-network/mero-platform-react";
 import type { DeepLinkIntent } from "@calimero-network/mero-platform";
-import {
-  setContextId,
-  useDelegatedBootstrap,
-  useJoinContext,
-  useJoinNamespace,
-  useMero,
-  type BootstrapFailure,
-} from "@calimero-network/mero-react";
+import { setContextId, useJoinInvitation, useMero } from "@calimero-network/mero-react";
 import {
   decodeInvitationPayload,
-  isTerminalInvitationError,
   parseInvitationPayload,
   type KvInvitationPayload,
 } from "./utils/invitation";
-
-/**
- * An admitter URL given out of band, for testing.
- *
- * The invitation names its admitters by account only — it carries no HTTPS URL
- * — so the join normally asks the cloud where they are. For a local rig the
- * URLs are handed over separately:
- *
- *   localStorage["kv.relayUrls"] = {"<admitter account>": "<url>", …}
- *     picks the URL of the admitter THIS invitation names, so invitations to
- *     namespaces served by different relays each go to their own;
- *   `?relay=<url>` or localStorage["kv.relayUrl"] pins one URL for every join.
- *
- * Unset, nothing changes.
- */
-function pinnedAdmitterUrl(admitters: readonly string[]): string | undefined {
-  try {
-    const byAccount = JSON.parse(localStorage.getItem("kv.relayUrls") ?? "{}") as Record<string, string>;
-    const named = admitters.map((a) => byAccount[a]).find((u) => typeof u === "string" && u.trim());
-    if (named) return named.trim();
-    const fromQuery = new URLSearchParams(window.location.search).get("relay");
-    const url = (fromQuery ?? localStorage.getItem("kv.relayUrl") ?? "").trim();
-    return url || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 export type JoinState =
   /** Nothing pending. */
@@ -63,43 +28,6 @@ export type JoinState =
    * pasted one was never captured there and is simply gone.
    */
   | { status: "failed"; message: string; retryable: boolean; fromLink: boolean };
-
-/**
- * How a bootstrap refusal maps onto "will trying again help?".
- *
- * Per STEP, because the steps are not variations of one failure:
- *
- * - `not-invited` — nodes serve the namespace and the invitation names none of
- *   them. No retry changes a signed list; a fresh invitation is the only cure.
- * - `sign` — the op could not be signed from this invitation and credential.
- *   Local and deterministic, so it will fail identically next time.
- * - `admit` at 400 or 403 — the node judged the op or the invitation. Also
- *   final. At 409 it is the node having no device of its own, and another
- *   admitter (or the same one, later) can still work.
- *
- * Everything else — the cloud read failing, a namespace with no fleet
- * assignment, an admitter with a lapsed heartbeat, no credential yet — is kept,
- * matching `isTerminalInvitationError`'s bias: a dropped invitation is
- * unrecoverable for the user, a retried one costs a round trip.
- */
-function bootstrapIsTerminal(failure: BootstrapFailure): boolean {
-  if (failure.step === "admit") {
-    return failure.status === 400 || failure.status === 403;
-  }
-  return failure.step === "not-invited" || failure.step === "sign";
-}
-
-/** Which step failed, in the words a person can act on. */
-const BOOTSTRAP_STEP_LABEL: Record<BootstrapFailure["step"], string> = {
-  "no-credential": "No enrolled account",
-  "admitters-lookup": "Admitters lookup failed",
-  "no-nodes": "No hosted node serves this namespace",
-  "not-invited": "This invitation names none of the serving nodes",
-  "invited-unreachable": "The invited admitter cannot take a join right now",
-  "no-relay-url": "The invited admitter has no address yet",
-  sign: "The join could not be signed",
-  admit: "The admitter refused the join",
-};
 
 /**
  * Redeem a pending invitation, whenever one arrives and the session is ready.
@@ -125,27 +53,9 @@ export function useJoinFromInvitation(): {
   declineJoin: () => void;
 } {
   const { isAuthenticated } = useMero();
-  const { joinNamespace } = useJoinNamespace();
-  const { joinContext } = useJoinContext();
-  /*
-   * The delegated door.
-   *
-   * An account that is a member of nothing is signed in and has no relay — the
-   * cloud's account→relay read correctly answers `[]` — so the two hooks above
-   * have no client to call. The invitation is what breaks that circle: the
-   * namespace it names resolves to a node, that node carries the signed join,
-   * and the account is a member with a relay from then on.
-   *
-   * Everything hard about it lives in mero-react (`useDelegatedBootstrap`): the
-   * admitters intersection, the signed op, the step names. What is here is the
-   * ordering and which refusals are worth keeping the invitation for.
-   */
-  const { credential, bootstrap } = useDelegatedBootstrap();
-  // An account holder joins through an admitter whether or not it already has
-  // a relay: `joinNamespace` + `joinContext` are a node's own admin calls, which
-  // a relay does not serve to a keyholder.
-  const isAccount = credential !== null;
-
+  // One call whatever the connection: a node joins on itself, an account
+  // through an admitter the invitation names (see mero-react useJoinInvitation).
+  const { joinInvitation } = useJoinInvitation();
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
   // retry effect below re-fires whenever `redeem`'s identity changes — which is
@@ -168,82 +78,37 @@ export function useJoinFromInvitation(): {
     attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
-      if (isAccount) {
-        /*
-         * The delegated path, and deliberately NOT `joinNamespace` +
-         * `joinContext`.
-         *
-         * Those two are a node publishing its own membership op and then joining
-         * a context with it. A keyholder has no node to publish from, which is
-         * why admission goes to somebody else's: the op is signed here with the
-         * device key the account certified, and the admitter can carry it or
-         * refuse it and nothing else. There is also no context to join — the
-         * relay is already in it, and membership of the namespace is what grants
-         * access.
-         */
-        const outcome = await bootstrap({
-          namespaceId: held.payload.namespaceId,
-          invitation: held.payload.invitation,
-          nodeUrl: pinnedAdmitterUrl(held.payload.invitation.invitation.admitters ?? []),
-          contextId: held.payload.contextId,
-        });
-        if (!outcome.ok) {
-          const terminal = bootstrapIsTerminal(outcome);
-          if (terminal) {
-            held.intent.resolve?.();
-            pending.current = null;
-          }
-          setState({
-            status: "failed",
-            // The step, then what it means. A generic "could not join" would
-            // conflate an empty intersection, an unreachable admitter and a
-            // namespace with no fleet assignment — three unrelated actions.
-            message: `${BOOTSTRAP_STEP_LABEL[outcome.step]}. ${outcome.reason}`,
-            retryable: !terminal,
-            fromLink: held.fromLink,
-          });
-          return;
-        }
-
-        setContextId(held.payload.contextId);
-        held.intent.resolve?.();
-        pending.current = null;
-        // Reloaded for the same reason the node path reloads: the provider reads
-        // the stored context on mount, and the connection this just installed
-        // lives in sessionStorage, so a reload is what makes the provider and the
-        // UI agree instead of duplicating that logic here.
-        window.location.reload();
-        return;
-      }
-
-      await joinNamespace(held.payload.namespaceId, {
+      const outcome = await joinInvitation({
+        namespaceId: held.payload.namespaceId,
+        contextId: held.payload.contextId,
         invitation: held.payload.invitation,
       });
-      await joinContext(held.payload.contextId);
-
+      if (!outcome.ok) {
+        if (outcome.final) {
+          // Never going to work — stop asking on every load.
+          held.intent.resolve?.();
+          pending.current = null;
+        }
+        setState({
+          status: "failed",
+          message: outcome.reason,
+          retryable: !outcome.final,
+          fromLink: held.fromLink,
+        });
+        return;
+      }
       setContextId(held.payload.contextId);
       // Ack FIRST, then reload: a reload before the ack would replay the same
-      // intent forever.
+      // intent forever. The reload lets the provider read the stored context.
       held.intent.resolve?.();
       pending.current = null;
       window.location.reload();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const terminal = isTerminalInvitationError(message);
-      if (terminal) {
-        // Never going to work — stop asking on every load.
-        held.intent.resolve?.();
-        pending.current = null;
-      }
-      setState({ status: "failed", message, retryable: !terminal, fromLink: held.fromLink });
     } finally {
       running.current = false;
     }
-    // `isAccount` and `bootstrap` join the list because this callback now
-    // branches on them. Safe for the same reason the others are: `attempted`
-    // guards the retry effect, so a changing identity here cannot restart a
-    // failed join.
-  }, [joinNamespace, joinContext, isAccount, bootstrap]);
+    // Safe to depend on: `attempted` guards the retry effect, so a changing
+    // identity here cannot restart a failed join.
+  }, [joinInvitation]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or
