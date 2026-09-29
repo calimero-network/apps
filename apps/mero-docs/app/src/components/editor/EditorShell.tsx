@@ -41,6 +41,8 @@ import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { ImageContext } from './blocknote/imageBlock';
 import { pastedBlocks } from './blocknote/pastedBlocks';
+import { toolbarOffset } from './blocknote/toolbarOffset';
+import { flip, offset, shift } from '@floating-ui/react';
 import type { AddImages } from '@/hooks/useAddImages';
 import { IMAGE_TYPES } from '@/lib/images';
 import { presencePlugin } from './presence/presencePlugin';
@@ -256,6 +258,19 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       near?.getAttribute('data-id') ?? '',
     );
   }, []);
+
+  const toolbarFloating = useMemo(
+    () => ({
+      useFloatingOptions: {
+        middleware: [
+          offset(({ rects }) => toolbarOffset(editor, rects.floating.height)),
+          shift(),
+          flip(),
+        ],
+      },
+    }),
+    [editor],
+  );
 
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
@@ -485,6 +500,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                         <SideMenuController sideMenu={BlockSideMenu} />
                         <FormattingToolbarController
                           formattingToolbar={BlockFormattingToolbar}
+                          floatingUIOptions={toolbarFloating}
                         />
                         <LinkToolbarController
                           linkToolbar={DocAwareLinkToolbar}
