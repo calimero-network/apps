@@ -731,6 +731,7 @@ impl MeroChat {
         }
     }
 
+    #[app::view]
     pub fn get_info(&self) -> app::Result<ContextInfo> {
         let founding = self.founding.get()?;
         let info = self.info.get()?;
@@ -745,12 +746,14 @@ impl MeroChat {
 
     /// Alias for `get_info` — satisfies frontends that call `get_channel_info`.
     /// The legacy `channel` argument is accepted but ignored.
+    #[app::view]
     pub fn get_channel_info(&self, _channel: Option<String>) -> app::Result<ContextInfo> {
         self.get_info()
     }
 
     /// No-op stub so frontends that call `mark_messages_as_read` don't get
     /// a "method not found" error. Read state is tracked client-side only.
+    #[app::view]
     pub fn mark_messages_as_read(
         &self,
         _channel: Option<String>,
@@ -770,6 +773,7 @@ impl MeroChat {
     /// Count messages newer than the caller's last-read timestamp, excluding
     /// messages sent by the caller and soft-deleted messages. Looks at the
     /// newest `MAX_UNREAD_SCAN` messages only, so the count saturates there.
+    #[app::view]
     pub fn get_unread_count(&self) -> u32 {
         let caller = Self::executor_id();
         self.unread(|_| true, &caller)
@@ -778,6 +782,7 @@ impl MeroChat {
     /// Count unread messages that mention the caller directly (@username),
     /// or use a broadcast mention (@everyone / @here). Same window as
     /// `get_unread_count`.
+    #[app::view]
     pub fn get_unread_mentions(&self) -> u32 {
         let caller = Self::executor_id();
         self.unread(
@@ -894,6 +899,7 @@ impl MeroChat {
         Ok("Profile set".to_string())
     }
 
+    #[app::view]
     pub fn get_profiles(&self) -> Vec<UserProfile> {
         let mut result = Vec::new();
         if let Ok(entries) = self.profiles.entries() {
@@ -927,6 +933,7 @@ impl MeroChat {
 
     /// Return the calling user's draft for the given channel, or an empty
     /// string if none exists.
+    #[app::view]
     pub fn get_draft(&self, channel: String) -> String {
         let key = draft_key(&Self::executor_id().to_string(), &channel);
         let Ok(drafts) = Drafts::private_load_or_default() else {
@@ -955,12 +962,14 @@ impl MeroChat {
     /// Read the current role of `identity`. Defaults to `User` when the
     /// identity has no explicit entry (i.e. anyone who joined and never
     /// had their role changed).
+    #[app::view]
     pub fn get_member_role(&self, identity: UserId) -> Role {
         self.role_of(&identity)
     }
 
     /// All members with a non-default role (Admin / Mod / Banned). Members with
     /// the implicit `User` role are not returned (they're inferred).
+    #[app::view]
     pub fn list_roles(&self) -> Vec<(UserId, Role)> {
         let mut ids: Vec<UserId> = Vec::new();
         if let Ok(banned) = self.banned.get() {
@@ -1168,6 +1177,7 @@ impl MeroChat {
         Ok(msg)
     }
 
+    #[app::view]
     pub fn get_messages(
         &self,
         parent_message: Option<MessageId>,
@@ -1231,6 +1241,7 @@ impl MeroChat {
     ///
     /// `total_count` is the channel's length, so a client can tell how far
     /// behind it is before fetching anything.
+    #[app::view]
     pub fn get_messages_from(
         &self,
         start: u64,
@@ -1270,10 +1281,12 @@ impl MeroChat {
     /// One row read — the child trie maintains the count. A client compares it
     /// with the highest index it has stored to know whether it is behind, and
     /// by how much, before deciding what to fetch.
+    #[app::view]
     pub fn get_message_count(&self) -> app::Result<u64> {
         Ok(self.messages.len().unwrap_or(0) as u64)
     }
 
+    #[app::view]
     pub fn search_all_messages(
         &self,
         search_term: String,
