@@ -187,6 +187,31 @@ describe('Open folder removal', () => {
 });
 
 describe('folder roles', () => {
+  // Closes the gap when two admins raced: one made Bob Read only above while
+  // the other created or opened this folder.
+  it("re-applies the parent's Read only when the folder's admin opens the panel", async () => {
+    workspace.parentId = 'p0';
+    perms.canManagePermissions = true;
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: PICKED, role: 'ReadOnly' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    await waitFor(() =>
+      expect(updateMemberRole).toHaveBeenCalledWith('f1', PICKED, { role: 'ReadOnly' }),
+    );
+  });
+
+  it('does not re-apply it for someone who is not the folder admin', async () => {
+    workspace.parentId = 'p0';
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: PICKED, role: 'ReadOnly' }],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(listGroupMembers).not.toHaveBeenCalled();
+    expect(updateMemberRole).not.toHaveBeenCalled();
+  });
+
   // Read only on the parent covers this sub-folder, even for someone added later.
   it('makes a member who is Read only in the parent folder Read only here when added', async () => {
     workspace.parentId = 'p0';
