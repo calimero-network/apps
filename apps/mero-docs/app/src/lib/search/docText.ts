@@ -94,6 +94,18 @@ function linkRuns(
   return runs;
 }
 
+/** The sentence around [from, to), cut to SENTENCE_MAX, and where [from, to) sits in it. */
+function sentenceWindow(
+  text: string,
+  from: number,
+  to: number,
+): { sentence: string; range: [number, number] } {
+  const [start, end] = sentenceAround(text, from, to);
+  const range: [number, number] = [from - start, to - start];
+  const win = windowAround(text.slice(start, end), ...range, SENTENCE_MAX);
+  return { sentence: win.text, range: clip(range, win) ?? [0, 0] };
+}
+
 function linksIn(
   block: BackendBlock,
   section: string | undefined,
@@ -103,18 +115,12 @@ function linksIn(
   return linkRuns(block).flatMap(({ href, from, to }) => {
     const target = parseDocHref(href, origin);
     if (!target) return [];
-    const [start, end] = sentenceAround(text, from, to);
-    const win = windowAround(
-      text.slice(start, end),
-      from - start,
-      to - start,
-      SENTENCE_MAX,
-    );
+    const { sentence, range } = sentenceWindow(text, from, to);
     const link: Link = {
       target,
       blockId: block.id,
-      sentence: win.text,
-      linkRange: clip([from - start, to - start], win) ?? [0, 0],
+      sentence,
+      linkRange: range,
     };
     return section === undefined ? [link] : [{ ...link, section }];
   });
@@ -128,13 +134,7 @@ function mentionsIn(
   return linkRuns(block).flatMap(({ href, from, to }) => {
     const target = parseMemberHref(href, origin);
     if (!target) return [];
-    const [start, end] = sentenceAround(text, from, to);
-    const sentence = windowAround(
-      text.slice(start, end),
-      from - start,
-      to - start,
-      SENTENCE_MAX,
-    ).text;
+    const { sentence } = sentenceWindow(text, from, to);
     return [{ ...target, blockId: block.id, sentence }];
   });
 }
