@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSubscription } from "@calimero-network/mero-react";
 import { useKvStore } from "./useKvStore";
 
 type Result = { ok: unknown } | { err: string } | null;
@@ -60,6 +61,16 @@ export function KvPanel({ contextId }: { contextId: string }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live: any write to this context — ours, or another member's through any
+  // node — arrives as a StateMutation and re-reads the listing. Refresh stays
+  // for a transport that cannot subscribe.
+  const watched = useMemo(() => [contextId], [contextId]);
+  useSubscription(watched, (event) => {
+    if ("type" in event && event.type === "StateMutation" && "contextId" in event && event.contextId === contextId) {
+      void refresh();
+    }
+  });
 
   // Every call refreshes the listing afterwards. A KV store where the table
   // disagrees with the contract is worse than one that reloads too often.
