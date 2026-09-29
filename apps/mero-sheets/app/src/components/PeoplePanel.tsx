@@ -10,16 +10,17 @@
  *    every spreadsheet in the workspace and rotates the group key, so they get
  *    nothing written after that.
  *
- * And an always-on copy: TEE replicas (hardware-attested, read-only nodes)
- * that admit themselves when their measurements match the workspace's
- * admission policy, so the data stays available while everyone is offline.
+ * And an always-on copy: TEEs (hardware-attested nodes) that admit
+ * themselves when they run a release the workspace's admission policy names,
+ * so the data stays available while everyone is offline. Admitted as relays,
+ * they also carry members' writes; as replicas, they only hold a copy.
  */
 import React, { useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { C } from '../theme';
 import type { Member } from '../hooks/useSpreadsheet';
 import { ROLE_HELP, ROLE_NOTE, WORKBOOK_ROLES } from '../spreadsheet/access';
-import { REPLICA_PROFILES, isReleaseVersion, type ReplicaPolicy } from '../spreadsheet/replicas';
+import { REPLICA_PROFILES, isReleaseVersion, isTeeRole, teeRoleLabel, type ReplicaPolicy, type TeeMode } from '../spreadsheet/replicas';
 
 export type { ReplicaPolicy };
 
@@ -51,7 +52,8 @@ interface PeoplePanelProps {
   onRemove: (account: string) => Promise<void>;
   /** The replica admission policy, once read (null while unknown). */
   policy: ReplicaPolicy | null;
-  onSetPolicy: (policy: ReplicaPolicy) => Promise<void>;
+  /** Stores the policy; resolves to a warning when the node stored less than asked. */
+  onSetPolicy: (policy: ReplicaPolicy) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -134,7 +136,7 @@ export default function PeoplePanel(props: PeoplePanelProps) {
                       >
                         {NETWORK_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                         {!NETWORK_ROLES.some((r) => r.value === person.role) && (
-                          <option value={person.role}>{person.role === 'ReadOnlyTee' ? 'Always-on replica' : person.role}</option>
+                          <option value={person.role}>{teeRoleLabel(person.role) ?? person.role}</option>
                         )}
                       </select>
                     </label>
@@ -169,10 +171,10 @@ export default function PeoplePanel(props: PeoplePanelProps) {
           })}
         </List>
         <AlwaysOn
-          replicas={group.filter((g) => g.role === 'ReadOnlyTee').length}
+          tees={group.filter((g) => isTeeRole(g.role)).length}
           policy={props.policy}
           canEdit={props.isGroupAdmin}
-          onSave={(p) => run(() => props.onSetPolicy(p))}
+          onSave={props.onSetPolicy}
         />
         <Help>
           <p><b>Workbook</b> roles are this spreadsheet&apos;s: owners set them, and the contract checks every write.</p>
@@ -183,17 +185,25 @@ export default function PeoplePanel(props: PeoplePanelProps) {
   );
 }
 
-function AlwaysOn({ replicas, policy, canEdit, onSave }: {
-  replicas: number;
+/** The roles an admitted TEE may take, relays first: they are what a cloud TEE is for. */
+const TEE_MODES: { value: TeeMode; label: string; help: string }[] = [
+  { value: 'relay', label: 'Relays', help: 'Hold a copy and carry members\' writes while they are offline.' },
+  { value: 'replica', label: 'Replicas', help: 'Hold a read-only copy, and carry no one\'s writes.' },
+];
+
+function AlwaysOn({ tees, policy, canEdit, onSave }: {
+  tees: number;
   policy: ReplicaPolicy | null;
   canEdit: boolean;
-  onSave: (p: ReplicaPolicy) => Promise<void>;
+  onSave: (p: ReplicaPolicy) => Promise<string | null>;
 }) {
   const [editing, setEditing] = useState(false);
   const [profiles, setProfiles] = useState<string[]>([]);
   const [minRelease, setMinRelease] = useState('');
+  const [mode, setMode] = useState<TeeMode>('relay');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const on = !!policy && policy.profiles.length > 0;
   const legacy = !!policy && !on && policy.legacyMeasurements > 0;
   const minValid = minRelease.trim() === '' || isReleaseVersion(minRelease);
@@ -202,6 +212,7 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
   const startEditing = () => {
     setProfiles(on ? policy.profiles : ['locked-read-only']);
     setMinRelease(policy?.minRelease ?? '');
+    setMode(on ? policy.mode : 'relay');
     setError(null);
     setEditing(true);
   };
@@ -210,8 +221,9 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
   const save = async () => {
     setSaving(true);
     setError(null);
+    setWarning(null);
     try {
-      await onSave({ profiles, minRelease: minRelease.trim().replace(/^v/, '') || null, legacyMeasurements: 0 });
+      setWarning(await onSave({ profiles, minRelease: minRelease.trim().replace(/^v/, '') || null, legacyMeasurements: 0, mode }));
       setEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -224,27 +236,43 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
     <Section data-testid="always-on">
       <h4>Always-on copy</h4>
       <p>
-        {replicas > 0
-          ? `${replicas} always-on replica${replicas === 1 ? '' : 's'} hold${replicas === 1 ? 's' : ''} a read-only copy, so the workspace stays available while everyone is offline.`
-          : 'No always-on replica yet: the workspace is available while at least one member is online.'}
+        {tees > 0
+          ? `${tees} always-on TEE${tees === 1 ? '' : 's'} hold${tees === 1 ? 's' : ''} a copy, so the workspace stays available while everyone is offline.`
+          : 'No always-on TEE yet: the workspace is available while at least one member is online.'}
       </p>
       <p className="muted" data-testid="replica-policy">
         {policy === null ? 'Reading the admission policy…'
-          : on ? `Replicas running a signed release${policy.minRelease ? ` (${policy.minRelease} or newer)` : ''} of ${policy.profiles.map(labelOf).join(' or ')} admit themselves, read-only.`
+          : on ? `TEEs running a signed release${policy.minRelease ? ` (${policy.minRelease} or newer)` : ''} of ${policy.profiles.map(labelOf).join(' or ')} admit themselves, ${policy.mode === 'relay' ? 'as relays for members\' writes' : 'as read-only replicas'}.`
             : legacy ? `The policy lists ${policy.legacyMeasurements} image measurement${policy.legacyMeasurements === 1 ? '' : 's'} by hand, which no longer identifies an image. Switch it to signed releases.`
-              : 'Replicas are not admitted.'}
+              : 'TEEs are not admitted.'}
       </p>
+      {warning && <p className="muted" role="status" data-testid="replica-warning">{warning}</p>}
       {canEdit && !editing && (
         <div className="row">
           <button type="button" onClick={startEditing} data-testid="action-edit-replicas">
-            {on ? 'Change admitted images' : legacy ? 'Switch to signed releases…' : 'Admit replicas…'}
+            {on ? 'Change admission' : legacy ? 'Switch to signed releases…' : 'Admit TEEs…'}
           </button>
         </div>
       )}
       {canEdit && editing && (
         <div>
           <fieldset>
-            <legend>Admit replicas running a signed mero-tee release of</legend>
+            <legend>Admit TEEs as</legend>
+            {TEE_MODES.map((option) => (
+              <label key={option.value} className="check">
+                <input
+                  type="radio"
+                  name="tee-mode"
+                  checked={mode === option.value}
+                  onChange={() => setMode(option.value)}
+                  data-testid={`field-mode-${option.value}`}
+                />
+                <span><b>{option.label}</b> — {option.help}</span>
+              </label>
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>Running a signed mero-tee release of</legend>
             {REPLICA_PROFILES.map((profile) => (
               <label key={profile.value} className="check">
                 <input
@@ -268,7 +296,7 @@ function AlwaysOn({ replicas, policy, canEdit, onSave }: {
           />
           {!minValid && <p className="muted">A release is three numbers, like 2.3.86.</p>}
           <p className="muted">
-            A new release is admitted without changing this. Once admitted, a replica stays in the workspace: nodes have no way to switch admission off, so choose the profiles with care.
+            A new release is admitted without changing this. Once admitted, a TEE stays in the workspace: nodes have no way to switch admission off, so choose the profiles with care.
           </p>
           {error && <p className="muted" role="alert">Not saved: {error}</p>}
           <div className="row">

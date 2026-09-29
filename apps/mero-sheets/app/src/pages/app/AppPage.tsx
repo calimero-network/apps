@@ -47,7 +47,7 @@ import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
 import PeoplePanel, { type ReplicaPolicy } from '../../components/PeoplePanel';
-import { NO_REPLICA_POLICY, replicaPolicyFrom, replicaPolicyRequest } from '../../spreadsheet/replicas';
+import { NO_REPLICA_POLICY, replicaPolicyFrom, storeReplicaPolicy } from '../../spreadsheet/replicas';
 import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
@@ -1984,9 +1984,10 @@ export default function AppPage() {
           }}
           policy={replicaPolicy}
           onSetPolicy={async (p) => {
-            if (!mero || !ws.namespaceId) return;
-            await mero.admin.setTeeAdmissionPolicy(ws.namespaceId, replicaPolicyRequest(p));
-            setReplicaPolicy(p);
+            if (!mero || !ws.namespaceId) return null;
+            const { stored, warning } = await storeReplicaPolicy(mero.admin, ws.namespaceId, p);
+            setReplicaPolicy(stored);
+            return warning;
           }}
           onClose={() => setShowPeople(false)}
         />

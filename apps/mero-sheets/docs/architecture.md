@@ -267,7 +267,7 @@ xcall runs on the node making the change, against a workbook that node has
 opened; a workbook this node has never opened does not receive the push
 until it is opened and the source pushes again.
 
-## Sync status and always-on replicas
+## Sync status and always-on TEEs
 
 The status bar reports sync from the node's own signals rather than a guess:
 whether the browser reaches the node (the event stream's connect/error),
@@ -277,17 +277,25 @@ or retrying after a failure with its reason (`spreadsheet/sync.ts`).
 
 A workbook is only reachable while some member's node is online. To keep it
 available when everyone's laptop is closed, an owner can admit **always-on
-replicas** from People: the workspace's TEE admission policy names the image
+TEEs** from People: the workspace's TEE admission policy names the image
 profiles (`locked-read-only`, and optionally `debug-read-only`) and the oldest
 mero-tee release a node may run. A node is admitted when its quote matches that
 profile in the `published-mrtds.json` of the signed release it runs, so the
 policy needs no edit when a new release ships (`spreadsheet/replicas.ts`).
 Nobody types a measurement: an MRTD alone names only the TD firmware, which
 every image shares, and nodes refuse a policy that pins nothing else. Such a
-node joins as a read-only replica, holds the state, and serves it to members
-who come online later. It cannot write, so it adds availability without adding
-an editor. Admission cannot be switched off again, since nodes have no route
-for it, so the panel offers no "stop".
+node holds the state and serves it to members who come online later, and never
+writes through its own API, so it adds availability without adding an editor.
+
+The policy's `mode` says which role it joins as, and the panel sets `relay` by
+default: a **TEE relay** (core's `RelayTee`) also runs members' delegated
+writes, which is what a cloud TEE is for, while a **replica** (`ReadOnlyTee`)
+only holds a copy. Storing the policy converts TEEs already admitted to its
+role. Anything that asks "is this a TEE?" accepts both roles
+(`isTeeRole`). A node older than core 0.11.0-rc.61 refuses `mode` with a 400;
+the panel then stores the policy without it, which admits replicas, and warns
+that relays need a newer node. Admission cannot be switched off again, since
+nodes have no route for it, so the panel offers no "stop".
 
 ## Derive-on-read
 
