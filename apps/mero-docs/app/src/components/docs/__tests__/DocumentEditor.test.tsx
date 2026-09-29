@@ -5,6 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
+import { contractErrorFixture } from '@/lib/__tests__/contractErrorFixture';
 import { DocumentEditor } from '../DocumentEditor';
 
 const getDoc = vi.fn();
@@ -277,9 +278,7 @@ describe('DocumentEditor', () => {
   // The contract answers an id it no longer holds with a FunctionCallError whose
   // words are in `data`; showing "FunctionCallError" told nobody anything.
   it('says a deleted document is gone', async () => {
-    getDoc.mockRejectedValue(
-      Object.assign(new Error('FunctionCallError'), { data: 'not found: doc-1' }),
-    );
+    getDoc.mockRejectedValue(contractErrorFixture('NotFound', 'doc-1'));
     render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
     await screen.findByText(/doesn't exist anymore/);
     expect(screen.queryByText('FunctionCallError')).toBeNull();
