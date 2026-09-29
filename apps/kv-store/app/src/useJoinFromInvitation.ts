@@ -20,12 +20,21 @@ import {
  * An admitter URL given out of band, for testing.
  *
  * The invitation names its admitters by account only — it carries no HTTPS URL
- * — so the join normally asks the cloud where they are. When the relay's URL is
- * handed over separately, `?relay=<url>` or `localStorage["kv.relayUrl"]` pins
- * it and skips that lookup. Unset, nothing changes.
+ * — so the join normally asks the cloud where they are. For a local rig the
+ * URLs are handed over separately:
+ *
+ *   localStorage["kv.relayUrls"] = {"<admitter account>": "<url>", …}
+ *     picks the URL of the admitter THIS invitation names, so invitations to
+ *     namespaces served by different relays each go to their own;
+ *   `?relay=<url>` or localStorage["kv.relayUrl"] pins one URL for every join.
+ *
+ * Unset, nothing changes.
  */
-function pinnedAdmitterUrl(): string | undefined {
+function pinnedAdmitterUrl(admitters: readonly string[]): string | undefined {
   try {
+    const byAccount = JSON.parse(localStorage.getItem("kv.relayUrls") ?? "{}") as Record<string, string>;
+    const named = admitters.map((a) => byAccount[a]).find((u) => typeof u === "string" && u.trim());
+    if (named) return named.trim();
     const fromQuery = new URLSearchParams(window.location.search).get("relay");
     const url = (fromQuery ?? localStorage.getItem("kv.relayUrl") ?? "").trim();
     return url || undefined;
@@ -175,7 +184,8 @@ export function useJoinFromInvitation(): {
         const outcome = await bootstrap({
           namespaceId: held.payload.namespaceId,
           invitation: held.payload.invitation,
-          nodeUrl: pinnedAdmitterUrl(),
+          nodeUrl: pinnedAdmitterUrl(held.payload.invitation.invitation.admitters ?? []),
+          contextId: held.payload.contextId,
         });
         if (!outcome.ok) {
           const terminal = bootstrapIsTerminal(outcome);
