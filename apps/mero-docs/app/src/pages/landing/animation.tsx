@@ -32,7 +32,6 @@ import { DocTable } from '@/components/home/DocTable';
 import type { DocRowView, FilterChipView } from '@/components/home/types';
 import { COLOR_PRESETS } from '@/constants/config';
 import { TAG_COLORS, TAG_COLOR_NAMES } from '@/lib/tags';
-import { KEY_LABELS } from '@/lib/platform';
 
 const APP_W = 1120; // the width the app lays out at before it is scaled down
 const SCALE = 495 / APP_W; // the stage's design width, see STAGE_DESIGN_W
@@ -107,7 +106,7 @@ function TopBar() {
         </Button>
       </div>
       <div className="flex min-w-0 flex-1 justify-center px-6">
-        <TopBarSearch onOpen={noop} shortcutLabel={KEY_LABELS.search} />
+        <TopBarSearch onOpen={noop} />
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
@@ -198,6 +197,10 @@ export default function DriveAnimation() {
                   shared: false,
                   selected: false,
                   onSelect: noop,
+                  onRename: noop,
+                  onCopyLink: noop,
+                  onDelete: noop,
+                  canManage: false,
                 },
               ]}
               tags={TAGS.map((t) => ({
