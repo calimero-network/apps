@@ -20,6 +20,18 @@ describe('parseDocHref (L-15)', () => {
     });
   });
 
+  it('reads a doc id as the docs contract mints it', () => {
+    const doc = `doc-12-${'a1'.repeat(32)}-edededed`;
+    expect(
+      parseDocHref(`${ORIGIN}/app/w1/f/f1/d/${doc}#b=blk-9`, ORIGIN),
+    ).toEqual({
+      ws: 'w1',
+      folder: 'f1',
+      doc,
+      block: 'blk-9',
+    });
+  });
+
   it('reads a section link', () => {
     expect(parseDocHref('/app/w1/f/f1/d/d1#b=blk-9', ORIGIN)).toEqual({
       ws: 'w1',

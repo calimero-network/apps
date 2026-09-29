@@ -163,7 +163,7 @@ export interface DocRecord {
 export interface DocsState {
   /**
    * doc_id → record. Public: collaborative editing. The id is
-   * `doc-<counter>-<account tag>` and assigned by `create_doc`.
+   * `doc-<counter>-<account>-<device tag>` and assigned by `create_doc`.
    */
   docs: Record<string, DocRecord>;
   /**
@@ -172,8 +172,8 @@ export interface DocsState {
    */
   origins: Record<string, number>;
   /**
-   * Id allocator. Every create increments; the account tag in the id is
-   * what keeps two concurrent creates apart (see `account_tag`).
+   * Id allocator. Every create increments; the account and device in the
+   * id are what keep two concurrent creates apart (see `mint_id`).
    */
   next_id: {  };
   /**

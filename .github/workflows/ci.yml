@@ -476,6 +476,9 @@ jobs:
       # Covers every app's TestHost tests and tests/converge.rs in one
       # invocation, sharing the compiled SDK.
       - run: cargo test --workspace
+      # Core caches the storage root id per process, so a `Script` test cannot share
+      # one with `TestHost` tests: they are `#[ignore]`d above and run alone here.
+      - run: cargo test -p mero-docs --lib -- --ignored
 
   wasm:
     name: Build WASM (${{ matrix.app }})

@@ -170,7 +170,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account tag>` and assigned by `create_doc`."
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account>-<device tag>` and assigned by `create_doc`."
         },
         {
           "name": "origins",
@@ -193,7 +193,7 @@
             "fields": [],
             "crdt_type": "counter"
           },
-          "doc": "Id allocator. Every create increments; the account tag in the id is\nwhat keeps two concurrent creates apart (see `account_tag`)."
+          "doc": "Id allocator. Every create increments; the account and device in the\nid are what keep two concurrent creates apart (see `mint_id`)."
         },
         {
           "name": "comments",

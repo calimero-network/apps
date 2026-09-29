@@ -337,13 +337,24 @@ fn caller_account_hex() -> String {
     hex(&calimero_sdk::env::account_id())
 }
 
-/// A short, per-account id component. Ids are minted from a counter every
-/// replica increments; two members creating at once read the same count, and
-/// before this each named their doc `doc-<n>` - the two docs then merged into
-/// one, titles interleaved and bodies combined. The caller's account prefix
-/// keeps concurrent creators apart.
+/// A short, per-account id component, for comment ids.
 fn account_tag() -> String {
     hex(&calimero_sdk::env::account_id()[..4])
+}
+
+/// `<kind>-<n>-<account hex>-<device tag>`. Every device reads the same counter, so the
+/// device tag keeps one account's concurrent creates apart; the full account is checked on read.
+fn mint_id(kind: &str, n: u64) -> String {
+    let device = hex(&calimero_sdk::env::device_id()[..4]);
+    format!("{kind}-{n}-{}-{device}", caller_account_hex())
+}
+
+/// The hex account a `mint_id` id names.
+fn creator_in(id: &str) -> Option<&str> {
+    match id.split('-').collect::<Vec<_>>()[..] {
+        [_, _, account, _] => Some(account),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -410,13 +421,13 @@ fn project_comment(id: &str, author: String, c: &Comment) -> CommentDto {
 #[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
     /// doc_id → record. Public: collaborative editing. The id is
-    /// `doc-<counter>-<account tag>` and assigned by `create_doc`.
+    /// `doc-<counter>-<account>-<device tag>` and assigned by `create_doc`.
     docs: UnorderedMap<String, DocRecord>,
     /// doc_id → created_at, written once by the doc's creator. Its owner
     /// stamp is who created the doc, and nobody can rewrite either.
     origins: WriteOnce<UnorderedMap<String, u64>>,
-    /// Id allocator. Every create increments; the account tag in the id is
-    /// what keeps two concurrent creates apart (see `account_tag`).
+    /// Id allocator. Every create increments; the account and device in the
+    /// id are what keep two concurrent creates apart (see `mint_id`).
     next_id: Counter,
     /// comment_id → comment. Each is owned by its author, who alone edits it;
     /// the folder's moderators (its founder, who created this context) may
@@ -459,7 +470,7 @@ impl DocsState {
             .next_id
             .value()
             .map_err(|e| DriveError::Invalid(format!("next_id.value: {e}")))?;
-        let id = format!("doc-{n}-{}", account_tag());
+        let id = mint_id("doc", n);
 
         let now = storage_env::time_now();
         let mut title_text = FugueText::new();
@@ -1241,22 +1252,16 @@ impl DocsState {
     ///
     /// Keys are per owner (core rc.57): a patched node can file an origin of
     /// its own under someone else's doc id, and a key-only `owner_of` or `get`
-    /// answers for the CALLER only. A doc id ends in its creator's account
-    /// tag (`account_tag`), so the origin is the one entry at the id whose
-    /// owner carries that tag; with none, or with several, the doc has no
-    /// known creator, rather than one a claimant chose.
+    /// answers for the CALLER only. A doc id names its creator's full account
+    /// (`mint_id`), so the origin is the entry at the id that account owns.
     fn origin_of(&self, id: &String) -> Result<Option<(AccountId, u64)>, DriveError> {
-        let tag = id.rsplit('-').next().unwrap_or_default();
-        let mut matching = self
+        let creator = creator_in(id);
+        Ok(self
             .origins
             .entries_at(id)
             .map_err(|e| DriveError::Invalid(format!("origins: {e}")))?
             .into_iter()
-            .filter(|(owner, _)| hex(&owner.as_bytes()[..4]) == tag);
-        match (matching.next(), matching.next()) {
-            (Some(origin), None) => Ok(Some(origin)),
-            _ => Ok(None),
-        }
+            .find(|(owner, _)| creator == Some(hex(owner.as_bytes()).as_str())))
     }
 
     /// The comment at `id` of the lowest account holding one, with that
@@ -1373,9 +1378,10 @@ mod tests {
 
     use super::*;
 
-    /// The first doc the default test account creates: the counter, then the
-    /// account's tag (`0xEE…` is the test host's default account).
-    const DOC: &str = "doc-1-eeeeeeee";
+    /// The first doc the test host's default account (`0xEE…`) creates on its
+    /// default device (`0xED…`).
+    const DOC: &str =
+        "doc-1-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-edededed";
 
     fn host(title: &str) -> TestHost<DocsState> {
         let mut app = TestHost::new(DocsState::init);
@@ -2169,8 +2175,8 @@ mod tests {
         let mut app = DocsState::init();
         let a = app.create_doc_inner("a".into()).unwrap();
         let b = app.create_doc_inner("b".into()).unwrap();
-        assert_eq!(a, "doc-1-eeeeeeee");
-        assert_eq!(b, "doc-2-eeeeeeee");
+        assert_eq!(a, DOC);
+        assert_eq!(b, DOC.replacen("doc-1-", "doc-2-", 1));
     }
 
     #[test]
@@ -2448,8 +2454,8 @@ mod tests {
         let b = app
             .call_as_account(BOB, BOB, |s| s.create_doc("b".into()))
             .unwrap();
-        assert!(a.ends_with("-a1a1a1a1"), "{a}");
-        assert!(b.ends_with("-b0b0b0b0"), "{b}");
+        assert_eq!(creator_in(&a), Some(hex(&ALICE).as_str()), "{a}");
+        assert_eq!(creator_in(&b), Some(hex(&BOB).as_str()), "{b}");
     }
 
     #[test]
@@ -2468,7 +2474,7 @@ mod tests {
             .call_as_account(ALICE, ALICE, |s| s.origins.insert(id.clone(), 1))
             .is_err());
         // Keys are per owner: Bob's write lands as his own entry at the id.
-        // His account does not carry the id's tag, so it is never the origin.
+        // The id does not name his account, so it is never the origin.
         app.call_as_account(BOB, BOB, |s| s.origins.insert(id.clone(), 1))
             .unwrap();
         let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
@@ -2612,5 +2618,68 @@ mod tests {
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         assert_eq!(*working.updated_at.get(), 3);
         assert!(!*working.archived.get());
+    }
+
+    // ---- a doc id is its creator's alone ---------------------------------
+
+    /// Two devices of one account, each creating before it has seen the
+    /// other's doc, as a partitioned pair of nodes would.
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn two_devices_of_one_account_create_two_docs() {
+        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let (laptop, phone) = (script.founder(), script.founder());
+        assert_eq!(script.account(laptop), script.account(phone));
+        let on_laptop = script
+            .run(laptop, |s| {
+                let _id = s.create_doc_inner("Laptop".into()).unwrap();
+            })
+            .unwrap();
+        let on_phone = script
+            .run(phone, |s| {
+                let _id = s.create_doc_inner("Phone".into()).unwrap();
+            })
+            .unwrap();
+        assert_eq!(script.deliver(laptop, on_phone), 0);
+        assert_eq!(script.deliver(phone, on_laptop), 0);
+        for device in [laptop, phone] {
+            let mut titles: Vec<String> = script.view(device, |s| {
+                s.list_docs(true)
+                    .unwrap()
+                    .into_iter()
+                    .map(|d| d.title)
+                    .collect()
+            });
+            titles.sort();
+            assert_eq!(titles, ["Laptop", "Phone"], "one whole doc per create");
+        }
+    }
+
+    /// An account whose first four bytes match the creator's, as a brute-forced
+    /// key gives, files its own origin at the creator's doc id.
+    #[test]
+    fn a_prefix_matching_account_cannot_strip_a_docs_creator() {
+        const MALLORY: [u8; 32] = {
+            let mut id = [0u8; 32];
+            id[0] = 0xA1;
+            id[1] = 0xA1;
+            id[2] = 0xA1;
+            id[3] = 0xA1;
+            id
+        };
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        app.call_as_account(MALLORY, MALLORY, |s| s.origins.insert(id.clone(), 1))
+            .unwrap();
+        let doc = app
+            .call_as_account(ALICE, ALICE, |s| s.get_doc(id.clone()))
+            .unwrap();
+        assert_eq!(doc.created_by, hex(&ALICE));
+        assert!(doc.can_delete);
+        app.call_as_account(ALICE, ALICE, |s| s.delete_doc(id))
+            .unwrap();
     }
 }
