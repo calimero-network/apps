@@ -1,6 +1,6 @@
 import { parseDocHref, parseMemberHref } from '../links';
 import type { BackendBlock } from '../rich/blocknote';
-import { rowKey, type DocText } from '../workspaceIndex/types';
+import { rowKey, type DocText, type IndexRow } from '../workspaceIndex/types';
 import {
   foldForSearch,
   matchRanges,
@@ -202,6 +202,33 @@ export type TextHit = {
 };
 
 /** The best matching block of each doc, best docs first; one row per doc. */
+/**
+ * The rowKeys of `rows` whose title, or one block of whose text, holds every
+ * word of `q`, typos off: the Home text filter, which narrows a list rather
+ * than ranking it. Text is what this device has read so far (`useTextIndex`).
+ */
+export function docsMatchingText(
+  q: string,
+  rows: IndexRow[],
+  texts: Map<string, DocText>,
+): Set<string> {
+  const out = new Set<string>();
+  const words = queryWords(normalizeQuery(q).text);
+  if (!words.length) return out;
+  for (const r of rows) {
+    const key = rowKey(r.folderId, r.docId);
+    const text = texts.get(key);
+    const hit =
+      matchScore(foldForSearch(r.title), words, false) !== null ||
+      (!!text &&
+        foldedOf(text).some(
+          (folded) => matchScore(folded, words, false) !== null,
+        ));
+    if (hit) out.add(key);
+  }
+  return out;
+}
+
 export function searchText(
   q: string,
   texts: Map<string, DocText>,

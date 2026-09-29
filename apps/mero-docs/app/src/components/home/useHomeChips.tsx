@@ -12,6 +12,7 @@ import type { HomeQuery } from '@/lib/homeQuery';
 import { sidebarTags, TAG_NEUTRAL } from '@/lib/tags';
 import type { FolderInfo, IndexRow } from '@/lib/workspaceIndex/types';
 import { FilterChecklist } from './FilterChecklist';
+import { TextFilter } from './TextFilter';
 import { UPDATED_OPTIONS, UpdatedMenu } from './UpdatedMenu';
 import type { FilterChipView } from './types';
 
@@ -195,6 +196,24 @@ export function useHomeChips({
           footerHint="Match any selected tag"
         />
       ),
+    },
+    {
+      id: 'text',
+      icon: 'search',
+      label: q.text ? `Text: “${q.text}”` : 'Text',
+      active: !!q.text,
+      onClear: () => setQuery({ ...q, text: undefined }),
+      popover: (
+        <TextFilter
+          value={q.text}
+          onApply={(text) => {
+            setOpenChip(null);
+            setQuery({ ...q, text });
+          }}
+        />
+      ),
+      open: openChip === 'text',
+      onOpenChange: (open) => setOpenChip(open ? 'text' : null),
     },
     {
       id: 'updated',

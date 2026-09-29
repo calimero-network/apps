@@ -20,7 +20,8 @@ export type FilterIcon =
   | 'calendar'
   | 'user'
   | 'mention'
-  | 'archive';
+  | 'archive'
+  | 'search';
 export type FilterChipView = {
   id: string;
   icon: FilterIcon;

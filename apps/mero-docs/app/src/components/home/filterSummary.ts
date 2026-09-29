@@ -57,6 +57,7 @@ export function summarizeHomeQuery({
       };
     }),
   ];
+  if (q.text) items.push({ icon: 'search', label: `“${q.text}”` });
   if (q.updated) {
     items.push({
       icon: 'calendar',

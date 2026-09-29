@@ -2,6 +2,7 @@
 // Parsing drops anything it does not understand; serializing is canonical.
 
 import { nameCollator } from './collate';
+import { QUERY_MAX } from './search/match';
 import { docLabel } from './docLabel';
 import { rowKey, type FolderInfo, type IndexRow } from './workspaceIndex/types';
 
@@ -15,6 +16,8 @@ const LIST_SEPARATOR = ',';
 export type HomeQuery = {
   folders: string[];
   tags: string[];
+  text?: string; // `q=`: words each doc's title or text must hold
+
   updated?: (typeof UPDATED_WINDOWS)[number];
   by?: string;
   mentions?: (typeof MENTIONS)[number];
@@ -49,6 +52,8 @@ export function parseHomeQuery(search: URLSearchParams): HomeQuery {
   };
   const updated = oneOf(UPDATED_WINDOWS, search.get('updated'));
   if (updated) q.updated = updated;
+  const text = search.get('q')?.trim().slice(0, QUERY_MAX);
+  if (text) q.text = text;
   const by = search.get('by');
   if (by) q.by = by;
   const mentions = oneOf(MENTIONS, search.get('mentions'));
@@ -65,6 +70,7 @@ export function serializeHomeQuery(q: HomeQuery): string {
   const pairs: [string, string | undefined][] = [
     ['folder', list(q.folders)],
     ['tag', list(q.tags)],
+    ['q', q.text?.trim() && encodeURIComponent(q.text.trim())],
     ['updated', q.updated],
     ['by', q.by && encodeURIComponent(q.by)],
     ['mentions', q.mentions],
@@ -83,6 +89,7 @@ export function isHomeQueryFiltered(q: HomeQuery): boolean {
   return (
     q.folders.length > 0 ||
     q.tags.length > 0 ||
+    !!q.text ||
     !!q.updated ||
     !!q.by ||
     !!q.mentions ||
@@ -103,6 +110,9 @@ export function withView(query: string, id: string): string {
   });
 }
 
+/** The rowKeys whose title or text holds a query's words: see `docsMatchingText`. */
+export type TextMatch = (text: string) => ReadonlySet<string>;
+
 /** How many rows a saved view's stored query matches; 0, never a crash, for a stale filter (R-23). */
 export function viewRowCount(
   rows: IndexRow[],
@@ -110,6 +120,7 @@ export function viewRowCount(
   nowMs: number,
   query: string,
   mentioned?: ReadonlySet<string>,
+  textMatch?: TextMatch,
 ): number {
   return applyHomeQuery(
     rows,
@@ -117,6 +128,7 @@ export function viewRowCount(
     nowMs,
     folders,
     mentioned,
+    textMatch,
   ).length;
 }
 
@@ -125,6 +137,7 @@ export function tagPageKey(q: HomeQuery): string | null {
   const onlyTag =
     q.tags.length === 1 &&
     q.folders.length === 0 &&
+    !q.text &&
     !q.updated &&
     !q.by &&
     !q.mentions &&
@@ -164,14 +177,21 @@ function compareBy(sort: HomeQuery['sort'], a: IndexRow, b: IndexRow): number {
   return b.updatedAt - a.updatedAt;
 }
 
-/** The rows Home shows for `q`; a folder filter includes its subfolders; `mentioned` holds the rowKeys of docs that mention you. */
+/**
+ * The rows Home shows for `q`; a folder filter includes its subfolders;
+ * `mentioned` holds the rowKeys of docs that mention you, `textMatch` answers
+ * which docs hold `q.text`. Every filter narrows the same list, so text, tags,
+ * folders, dates and author combine in one query, as a saved view stores it.
+ */
 export function applyHomeQuery(
   rows: IndexRow[],
   q: HomeQuery,
   nowMs: number,
   folders: FolderInfo[],
   mentioned?: ReadonlySet<string>,
+  textMatch?: TextMatch,
 ): IndexRow[] {
+  const texted = q.text ? textMatch?.(q.text) ?? new Set<string>() : null;
   const inFolders = q.folders.length
     ? withDescendants(q.folders, folders)
     : null;
@@ -185,7 +205,8 @@ export function applyHomeQuery(
         (!tags.size || r.tags.some((t) => tags.has(t))) &&
         (since === null || r.updatedAt >= since) &&
         (!q.by || r.createdBy === q.by) &&
-        (!q.mentions || !!mentioned?.has(rowKey(r.folderId, r.docId))),
+        (!q.mentions || !!mentioned?.has(rowKey(r.folderId, r.docId))) &&
+        (!texted || texted.has(rowKey(r.folderId, r.docId))),
     )
     .sort(
       (a, b) =>

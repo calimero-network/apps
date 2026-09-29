@@ -14,7 +14,10 @@ import { NewFolderDialog } from '@/components/folders/NewFolderDialog';
 import { RenameTagDialog } from '@/components/tags/RenameTagDialog';
 import { TagPageHeader } from '@/components/tags/TagPageHeader';
 import { SaveViewPopover } from '@/components/views/SaveViewPopover';
-import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
+import {
+  useTextIndexValue,
+  useWorkspaceIndexValue,
+} from '@/context/WorkspaceIndexContext';
 import { DEV_NODE_PARAM, useAppRoute } from '@/hooks/useAppRoute';
 import { useCreateDocument } from '@/hooks/useCreateDocument';
 import { useDocs } from '@/hooks/useDocs';
@@ -26,6 +29,7 @@ import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { usePresenceByDoc } from '@/hooks/usePresenceByDoc';
 import { useSavedViews } from '@/hooks/useSavedViews';
+import { useTextMatch } from '@/hooks/useTextMatch';
 import { TagNameTakenError, useCanManageTags, useTags } from '@/hooks/useTags';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import { folderLabel } from '@/lib/folderLabel';
@@ -176,12 +180,17 @@ export function HomePage({ folderId }: Props) {
   const effective: HomeQuery = folderId ? { ...q, folders: [folderId] } : q;
   const personName = usePersonName(q.by);
   const mentioned = useMentionedMe();
+  const textMatch = useTextMatch();
+  const textIndex = useTextIndexValue();
+  const textReading =
+    textIndex.foldersDone + textIndex.failed.length < textIndex.foldersTotal;
   const shown = applyHomeQuery(
     liveRows,
     effective,
     now,
     folders,
     mentioned.keys,
+    textMatch,
   );
   // What the chip counts are taken over: the scope and the Archived switch, no other filter.
   const base = liveRows.filter(
@@ -193,13 +202,15 @@ export function HomePage({ folderId }: Props) {
   const loading =
     !foldersKnown ||
     scope.some((f) => statusOf(f.id) === 'loading') ||
-    (!!q.mentions && mentioned.reading);
+    (!!q.mentions && mentioned.reading) ||
+    (!!q.text && textReading);
   const syncing = scope.filter((f) => statusOf(f.id) === 'syncing');
   const failed = scope.filter((f) => statusOf(f.id) === 'error');
-  // Mentions come from doc text, so a folder with an unread doc may hide some.
-  const partlyRead = q.mentions
-    ? scope.filter((f) => mentioned.failed.includes(f.id))
-    : [];
+  // Mentions and text come from doc text, so a folder with an unread doc may hide some.
+  const partlyRead =
+    q.mentions || q.text
+      ? scope.filter((f) => textIndex.failed.includes(f.id))
+      : [];
 
   // --- New document ---
   // Undefined while a folder's write access is still being checked.

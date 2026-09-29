@@ -101,6 +101,22 @@ describe('serializeHomeQuery', () => {
     );
   });
 
+  it('carries a text filter as q, trimmed, escaped and round-tripped', () => {
+    const q: HomeQuery = { ...EMPTY, tags: ['t1'], text: '  café & co ' };
+    const search = serializeHomeQuery(q);
+    expect(search).toBe('tag=t1&q=caf%C3%A9%20%26%20co');
+    expect(parse(search)).toEqual({
+      ...EMPTY,
+      tags: ['t1'],
+      text: 'café & co',
+    });
+    expect(parse('q=%20%20')).toEqual(EMPTY);
+    expect(parse(`q=${'x'.repeat(500)}`).text).toHaveLength(200);
+    expect(isHomeQueryFiltered(parse('q=plan'))).toBe(true);
+    expect(tagPageKey(parse('tag=t1&q=plan'))).toBeNull();
+    expect(isMentionsPage(parse('mentions=me&q=plan'))).toBe(false);
+  });
+
   it('de-duplicates lists and drops empty values', () => {
     expect(
       serializeHomeQuery({ ...EMPTY, tags: ['a', 'a', ''], by: '', view: '' }),
@@ -198,6 +214,29 @@ describe('applyHomeQuery', () => {
     expect(
       ids(applyHomeQuery(rows, EMPTY, NOW, folders, new Set())),
     ).toHaveLength(2);
+  });
+
+  it('narrows by text together with every other filter', () => {
+    const rows = [
+      row({ docId: 'a', folderId: 'root', tags: ['t1'], createdBy: 'bob' }),
+      row({ docId: 'b', folderId: 'root', tags: ['t1'], createdBy: 'alice' }),
+      row({ docId: 'c', folderId: 'root', tags: ['t2'], createdBy: 'bob' }),
+    ];
+    const asked: string[] = [];
+    const textMatch = (text: string) => {
+      asked.push(text);
+      return new Set(['root/a', 'root/b', 'root/c']);
+    };
+    const q: HomeQuery = { ...EMPTY, text: 'plan', tags: ['t1'], by: 'bob' };
+    expect(
+      ids(applyHomeQuery(rows, q, NOW, folders, undefined, textMatch)),
+    ).toEqual(['a']);
+    expect(asked).toEqual(['plan']);
+    // No matcher is no match, never "ignore the filter".
+    expect(ids(applyHomeQuery(rows, q, NOW, folders))).toEqual([]);
+    expect(
+      viewRowCount(rows, folders, NOW, 'q=plan', undefined, textMatch),
+    ).toBe(3);
   });
 
   it('filters by creator', () => {
