@@ -104,9 +104,11 @@ export async function removedFrom(
 
 /** Lifts this folder's ban on `account` (each sub-folder keeps its own). A
  *  person the parent holds Read only is added as ReadOnly, so they are never
- *  writable here, and then gets the rest of the grant; a shortfall throws. */
+ *  writable here, then Read only is written here and in the Open sub-folders
+ *  that let them back in; a shortfall throws. */
 export async function restoreTo(
   writer: FolderRoleWriter,
+  folders: OpenFolder[],
   parent: string,
   folder: string,
   account: string,
@@ -116,7 +118,13 @@ export async function restoreTo(
   await writer.admin.addGroupMembers(folder, {
     members: [{ identity: account, role: readOnly ? 'ReadOnly' : 'Member' }],
   });
-  if (readOnly && (await applyAcross(writer, [folder], account, true)).length > 0) {
-    throw new Error('restored, but Read only could not be finished here');
-  }
+  if (!readOnly) return;
+  // A folder that does not list them (a ban there) is skipped by applyAcross.
+  const { open, unknown } = openConnected(folders, folder);
+  const failed = [
+    ...unknown,
+    ...(await applyAcross(writer, [folder, ...open], account, true)),
+  ];
+  if (failed.length > 0)
+    throw new Error('restored, but Read only could not be finished everywhere');
 }

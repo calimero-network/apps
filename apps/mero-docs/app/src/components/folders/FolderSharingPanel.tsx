@@ -186,7 +186,13 @@ export function FolderSharingPanel({ folderId }: Props) {
     if (!mero || !registryClient || !removedParent) return;
     setRestoringId(id);
     try {
-      await restoreTo({ admin: mero.admin, registry: registryClient }, removedParent, folderId, id);
+      await restoreTo(
+        { admin: mero.admin, registry: registryClient },
+        folders,
+        removedParent,
+        folderId,
+        id,
+      );
       await refetch();
     } catch (e: unknown) {
       setRemoveError({ identity: id, message: e instanceof Error ? e.message : String(e) });

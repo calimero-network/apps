@@ -84,7 +84,7 @@ describe('restoreTo', () => {
   // Each folder has its own Removed list, so a restore lifts this folder's ban only.
   it('lets the person back into this folder alone', async () => {
     lists = { root: [{ identity: BOB, role: 'Member' }] };
-    await restoreTo(writer, 'root', 'g', BOB);
+    await restoreTo(writer, folders, 'root', 'g', BOB);
     expect(admin.addGroupMembers.mock.calls).toEqual([
       ['g', { members: [{ identity: BOB, role: 'Member' }] }],
     ]);
@@ -93,7 +93,7 @@ describe('restoreTo', () => {
   // Added as ReadOnly first, so there is no moment they could write.
   it('adds a person the parent holds Read only as ReadOnly, then writes the rest of the grant', async () => {
     lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
-    await restoreTo(writer, 'root', 'g', BOB);
+    await restoreTo(writer, folders, 'root', 'g', BOB);
     expect(admin.addGroupMembers.mock.calls[0]).toEqual([
       'g',
       { members: [{ identity: BOB, role: 'ReadOnly' }] },
@@ -103,9 +103,30 @@ describe('restoreTo', () => {
     );
   });
 
+  // A sub-folder made while they were banned inherits them back once restored,
+  // with no row of its own; a Restricted one they are not in stays out.
+  it('makes a Read only person Read only again in the Open sub-folders that let them back in', async () => {
+    lists = {
+      root: [{ identity: BOB, role: 'ReadOnly' }],
+      g: [{ identity: BOB, role: 'ReadOnly' }],
+      g2: [{ identity: BOB, role: 'ReadOnly' }],
+    };
+    await restoreTo(writer, folders, 'root', 'g', BOB);
+    expect(admin.addGroupMembers).toHaveBeenCalledWith('g2', {
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    });
+    expect(admin.addGroupMembers).not.toHaveBeenCalledWith('h2', expect.anything());
+  });
+
+  it('fails when a sub-folder it should cover has an unknown visibility', async () => {
+    lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
+    const unread = [...folders, { id: 'u', parent_id: 'g', visibility: undefined }];
+    await expect(restoreTo(writer, unread, 'root', 'g', BOB)).rejects.toThrow();
+  });
+
   it('fails when the Read only grant could not be finished', async () => {
     lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
     registry.setFolderRole.mockRejectedValueOnce(new Error('registry refused'));
-    await expect(restoreTo(writer, 'root', 'g', BOB)).rejects.toThrow();
+    await expect(restoreTo(writer, folders, 'root', 'g', BOB)).rejects.toThrow();
   });
 });
