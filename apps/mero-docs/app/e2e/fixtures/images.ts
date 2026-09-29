@@ -20,7 +20,9 @@ export const pngFile = (name = 'diagram.png'): ImageFile => ({
 export const svgAsPng = (): ImageFile => ({
   name: 'logo.png',
   mimeType: 'image/png',
-  buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+  buffer: Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+  ),
 });
 
 /** A real PNG one byte over the cap. */
