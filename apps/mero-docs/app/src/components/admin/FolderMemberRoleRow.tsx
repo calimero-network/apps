@@ -109,21 +109,11 @@ export function FolderMemberRoleRow({
     }
   };
 
-  const onRoleChange = async (next: FolderAccessRole) => {
+  const applyRole = async (next: FolderAccessRole) => {
     if (!registryClient) {
       setUpdateError('Workspace not ready');
       return;
     }
-    if (!current) return;
-    const ok = await confirm({
-      title: label
-        ? `Change ${label}'s role to ${roleDisplayLabel(next)}?`
-        : `Change role to ${roleDisplayLabel(next)}?`,
-      body: describeRoleChange(current, next, 'folder'),
-      confirmLabel: 'Change role',
-      destructive: true,
-    });
-    if (!ok) return;
     const grant = FOLDER_ROLE_GRANTS[next];
     setUpdating(true);
     setUpdateError(null);
@@ -152,6 +142,22 @@ export function FolderMemberRoleRow({
       setUpdating(false);
     }
   };
+
+  const onRoleChange = async (next: FolderAccessRole) => {
+    if (!current) return;
+    const ok = await confirm({
+      title: label
+        ? `Change ${label}'s role to ${roleDisplayLabel(next)}?`
+        : `Change role to ${roleDisplayLabel(next)}?`,
+      body: describeRoleChange(current, next, 'folder'),
+      confirmLabel: 'Change role',
+      destructive: true,
+    });
+    if (ok) await applyRole(next);
+  };
+
+  // A Viewer row written before Read only also set the core role.
+  const unenforced = canManage && core === 'Member' && registryRole === 'Viewer';
 
   return (
     <li className="px-4 py-2 text-sm">
@@ -191,6 +197,20 @@ export function FolderMemberRoleRow({
           )}
         </div>
       </div>
+      {unenforced && (
+        <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          Read only, but not enforced.
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            disabled={updating}
+            onClick={() => void applyRole('ReadOnly')}
+          >
+            Enforce
+          </Button>
+        </p>
+      )}
       {updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
           Role update failed: {updateError}

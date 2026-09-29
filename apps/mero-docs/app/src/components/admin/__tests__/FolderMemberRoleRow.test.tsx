@@ -159,6 +159,21 @@ describe('FolderMemberRoleRow', () => {
     expect(addGroupMembers).not.toHaveBeenCalled();
   });
 
+  // A Viewer row from before Read only wrote the core role: nothing enforces it.
+  it('says a Read only row core does not enforce is not enforced, and applies it in one click', async () => {
+    roleSelectFor('Member', 'Viewer');
+    expect(screen.getByText('Read only, but not enforced.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Enforce' }));
+    await waitFor(() => expect(setCapabilities).toHaveBeenCalledWith(JOIN));
+    expect(updateMemberRole).toHaveBeenCalledWith(FOLDER, BOB, { role: 'ReadOnly' });
+    expect(calls).toEqual(['updateMemberRole', 'setFolderRole', 'setCapabilities']);
+  });
+
+  it('says nothing about enforcement for an enforced Read only row', () => {
+    roleSelectFor('ReadOnly', 'Viewer');
+    expect(screen.queryByText('Read only, but not enforced.')).toBeNull();
+  });
+
   it('keeps a TEE row fixed', () => {
     expect(roleSelectFor('ReadOnlyTee', 'Editor').disabled).toBe(true);
   });
