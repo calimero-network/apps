@@ -6,11 +6,7 @@ import type { DocLinkPickerItem } from '@/components/editor/DocLinkPickerMenu';
 import type { FolderPaths } from '@/components/home/useHomeChips';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
 import { docLabel } from '@/lib/docLabel';
-import {
-  parseDocHref,
-  parseMemberHref,
-  type MemberHrefTarget,
-} from '@/lib/links';
+import { parseDocHref, parseMemberHref } from '@/lib/links';
 import { appPath, type AppRoute } from '@/lib/routes';
 import {
   foldForSearch,
@@ -25,7 +21,6 @@ import { searchV1 } from '@/lib/search/rank';
 import { HEADING_KIND, searchText } from '@/lib/search/docText';
 import {
   rowKey,
-  type DocHrefTarget,
   type DocText,
   type IndexRow,
 } from '@/lib/workspaceIndex/types';
@@ -224,36 +219,26 @@ function anchorAt(el: EventTarget | null): HTMLAnchorElement | null {
     : null;
 }
 
-/** The doc link an element is part of, with what it points at; null inside any other link or none. */
-export function docLinkAt(
+/** The link an element is part of, with what `parse` reads from its href; null inside any other link or none. */
+export function linkAt<Target>(
   el: EventTarget | null,
   origin: string,
-): { anchor: HTMLAnchorElement; target: DocHrefTarget } | null {
+  parse: (href: string, origin: string) => Target | null,
+): { anchor: HTMLAnchorElement; target: Target } | null {
   const anchor = anchorAt(el);
   const href = anchor?.getAttribute('href');
-  const target = href ? parseDocHref(href, origin) : null;
-  return anchor && target ? { anchor, target } : null;
-}
-
-/** The member mention an element is part of; null inside any other link or none. */
-export function mentionAt(
-  el: EventTarget | null,
-  origin: string,
-): { anchor: HTMLAnchorElement; target: MemberHrefTarget } | null {
-  const anchor = anchorAt(el);
-  const href = anchor?.getAttribute('href');
-  const target = href ? parseMemberHref(href, origin) : null;
+  const target = href ? parse(href, origin) : null;
   return anchor && target ? { anchor, target } : null;
 }
 
 /** Opens a clicked doc link inside the app, or in a new tab on a modified or middle click; a mention stays put for its card; false for any other link or button. */
 export function followDocLink(event: MouseEvent, nav: LinkNav): boolean {
   if (event.button > MIDDLE_BUTTON) return false;
-  if (mentionAt(event.target, nav.origin)) {
+  if (linkAt(event.target, nav.origin, parseMemberHref)) {
     event.preventDefault();
     return true;
   }
-  const target = docLinkAt(event.target, nav.origin)?.target;
+  const target = linkAt(event.target, nav.origin, parseDocHref)?.target;
   if (!target) return false;
   event.preventDefault();
   if (

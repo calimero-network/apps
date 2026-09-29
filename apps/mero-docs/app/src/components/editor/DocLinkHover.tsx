@@ -46,7 +46,7 @@ import {
 } from '@/lib/workspaceIndex/types';
 import { DocLinkCard, type DocLinkCardProps } from './DocLinkCard';
 import { MemberCard, memberCardProps } from './MemberCard';
-import { docLinkAt, mentionAt } from './blocknote/docLinks';
+import { linkAt } from './blocknote/docLinks';
 
 const OPEN_DELAY_MS = 300; // a pointer passing over a link does not open its card
 const CLOSE_GRACE_MS = 150; // time to move the pointer from the link into the card
@@ -70,11 +70,11 @@ type OpenLink = {
   member?: MemberHrefTarget;
 };
 
-function linkAt(el: EventTarget): OpenLink | null {
+function hoveredLink(el: EventTarget): OpenLink | null {
   const origin = window.location.origin;
-  const doc = docLinkAt(el, origin);
+  const doc = linkAt(el, origin, parseDocHref);
   if (doc) return { anchor: doc.anchor, doc: doc.target };
-  const mention = mentionAt(el, origin);
+  const mention = linkAt(el, origin, parseMemberHref);
   return mention ? { anchor: mention.anchor, member: mention.target } : null;
 }
 
@@ -196,13 +196,13 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
   React.useEffect(() => () => clearTimeout(timer.current), []);
 
   const show = (el: EventTarget) => {
-    const link = linkAt(el);
+    const link = hoveredLink(el);
     if (!link) return;
     if (open?.anchor === link.anchor) stay();
     else later(() => setOpen(link), OPEN_DELAY_MS);
   };
   const leave = (el: EventTarget, to: EventTarget | null) => {
-    const link = linkAt(el);
+    const link = hoveredLink(el);
     if (link && !(to instanceof Node && link.anchor.contains(to))) {
       later(() => setOpen(null), CLOSE_GRACE_MS);
     }
@@ -217,7 +217,7 @@ export function DocLinkHover({ children }: { children: React.ReactNode }) {
       // The card is portalled but its React events still bubble here.
       onClick={(e) => {
         if (!e.currentTarget.contains(e.target as Node)) return;
-        const link = linkAt(e.target);
+        const link = hoveredLink(e.target);
         if (link?.member) {
           clearTimeout(timer.current);
           setOpen(link);
