@@ -22,7 +22,7 @@ import type {
 export type TeeMode = 'relay' | 'replica';
 
 // The installed mero-js types predate the policy's `mode` (core
-// 0.11.0-rc.61); these two extend them by that one field until a release
+// 0.11.0-rc.62); these two extend them by that one field until a release
 // carries it.
 type StoredTeeAdmissionPolicy = GetTeeAdmissionPolicyResponseData & { mode?: TeeMode };
 type TeeAdmissionPolicyRequest = SignedReleaseTeeAdmissionPolicyRequest & { mode?: TeeMode };
@@ -85,7 +85,7 @@ export function isReleaseVersion(value: string): boolean {
 
 /** The policy as the panel shows it, from what the node stored. */
 export function replicaPolicyFrom(stored: StoredTeeAdmissionPolicy): ReplicaPolicy {
-  // A node older than rc.61 leaves `mode` out, and admits replicas.
+  // A node older than rc.62 leaves `mode` out, and admits replicas.
   const mode = stored.mode ?? 'replica';
   if (stored.signedRelease) {
     return {
@@ -120,7 +120,7 @@ export function replicaPolicyRequest(policy: ReplicaPolicy): TeeAdmissionPolicyR
   };
 }
 
-/** Whether `err` is a node refusing the policy's `mode` field, as one older than rc.61 does. */
+/** Whether `err` is a node refusing the policy's `mode` field, as one older than rc.62 does. */
 function refusesMode(err: unknown): boolean {
   const e = err as { status?: unknown; bodyText?: unknown; message?: unknown } | null;
   if (e?.status !== 400) return false;
@@ -130,7 +130,7 @@ function refusesMode(err: unknown): boolean {
 /**
  * Store `policy` on the namespace `groupId`, and say what the node stored.
  *
- * A node older than core 0.11.0-rc.61 refuses the `mode` field outright, so a
+ * A node older than core 0.11.0-rc.62 refuses the `mode` field outright, so a
  * refusal naming it is retried once without it: that node admits replicas
  * whatever was asked, and the warning says so when relays were.
  */
@@ -151,7 +151,7 @@ export async function storeReplicaPolicy(
   return {
     stored: { ...policy, mode: 'replica' },
     warning: policy.mode === 'relay'
-      ? 'This node admits TEEs only as replicas, which do not relay members\' writes. Relays need core 0.11.0-rc.61 or newer.'
+      ? 'This node admits TEEs only as replicas, which do not relay members\' writes. Relays need core 0.11.0-rc.62 or newer.'
       : null,
   };
 }
