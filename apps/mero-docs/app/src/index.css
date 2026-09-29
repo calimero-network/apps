@@ -12,8 +12,10 @@
 
 @layer base {
   /* Calimero green on MeroDesign neutrals. --primary (#a5ff11) is a fill only,
-     under --primary-foreground; green text, icons and rings use --primary-ink. */
-  :root {
+     under --primary-foreground; green text, icons and rings use --primary-ink.
+     The landing hero (.cal-lp-a) follows the landing page's theme, not the app's. */
+  :root,
+  [data-cal-lp-theme='light'] .cal-lp-a {
     /* Native controls (scrollbars, checkboxes, date pickers) follow the theme instead of staying light. */
     color-scheme: light;
 
@@ -72,7 +74,8 @@
 
   /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
      ink and fill are the same green. */
-  .dark {
+  .dark,
+  [data-cal-lp-theme='dark'] .cal-lp-a {
     color-scheme: dark;
 
     --background: 240 7% 6%;
