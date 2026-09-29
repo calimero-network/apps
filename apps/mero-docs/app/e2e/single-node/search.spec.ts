@@ -135,12 +135,16 @@ test.describe('Search (single-node)', () => {
     alice,
   }) => {
     const { page, palette } = alice;
-    // "p": Q3 launch plan (word start), Roadmap 2026 (inside), then the Product folder.
+    // "p": Q3 launch plan (word start), Roadmap 2026 (inside), the Product
+    // folder, then the Home filter for the same text, always last.
     await palette.search('p');
     const active = palette.dialog().getByRole('option', { selected: true });
     await expect(active).toContainText('Q3 launch plan');
     await page.keyboard.press('ArrowUp');
+    await expect(active).toContainText('Every document with “p”');
+    await page.keyboard.press('ArrowUp');
     await expect(active).toHaveText('Product');
+    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await expect(active).toContainText('Q3 launch plan');
 
