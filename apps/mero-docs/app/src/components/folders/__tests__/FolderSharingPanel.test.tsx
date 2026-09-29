@@ -2,6 +2,7 @@ import React from 'react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FolderSharingPanel } from '../FolderSharingPanel';
+import { CAPABILITIES } from '@/constants/config';
 
 const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
@@ -13,6 +14,8 @@ const addGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
 const setFolderRole = vi.fn();
+const removeGroupMembers = vi.fn();
+const getMemberCapabilities = vi.fn();
 const workspace = { parentId: null as string | null, visibility: 'Restricted' };
 const perms = { canManagePermissions: false, permissionsNeedOwner: false };
 // Per member: the name their own metadata read answered with, and whether it has answered.
@@ -21,7 +24,11 @@ const metadata = { names: {} as Record<string, string>, answered: new Set<string
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
-    folders: [{ id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: workspace.visibility }],
+    rootGroupId: 'root',
+    folders: [
+      { id: 'f1', parent_id: workspace.parentId, alias: 'Plans', visibility: workspace.visibility },
+      { id: 'f2', parent_id: 'f1', alias: 'Notes', visibility: 'Open' },
+    ],
     selfIdentity: null,
     registryContextId: null,
     registryClient: { setFolderRole },
@@ -36,7 +43,16 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
 }));
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
-    mero: { admin: { listGroupMembers, addGroupMembers, updateMemberRole, setMemberCapabilities } },
+    mero: {
+      admin: {
+        listGroupMembers,
+        addGroupMembers,
+        updateMemberRole,
+        setMemberCapabilities,
+        removeGroupMembers,
+        getMemberCapabilities,
+      },
+    },
   }),
   useGroupCapabilities: () => ({
     capabilities: 0,
@@ -94,10 +110,11 @@ beforeEach(() => {
   perms.permissionsNeedOwner = false;
   workspace.parentId = null;
   workspace.visibility = 'Restricted';
-  for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole]) {
+  for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole, removeGroupMembers]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
   listGroupMembers.mockReset().mockResolvedValue({ members: [] });
+  getMemberCapabilities.mockReset().mockResolvedValue({ capabilities: 0 });
   metadata.names = {};
   metadata.answered = new Set([NAMED, UNNAMED]);
 });
@@ -130,6 +147,42 @@ describe('FolderSharingPanel read-only rows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
     expect(screen.getByText('Carol')).toBeTruthy();
     expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+});
+
+describe('Open folder removal', () => {
+  beforeEach(() => {
+    workspace.visibility = 'Open';
+    confirm.mockResolvedValue(true);
+  });
+
+  it('warns that a removal outlasts a workspace re-invite, and reaches the Open sub-folders', async () => {
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: g === 'f2' ? [{ identity: NAMED }] : [],
+    }));
+    render(<FolderSharingPanel folderId="f1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bob' }));
+    await waitFor(() => expect(removeGroupMembers).toHaveBeenCalledWith('f2', { members: [NAMED] }));
+    expect(removeGroupMembers.mock.calls[0]).toEqual(['f1', { members: [NAMED] }]);
+    const body = render(<>{confirm.mock.calls[0][0].body}</>).container.textContent;
+    expect(body).toContain(
+      'They stay removed from it until you restore them here, even if they are invited to the workspace again.',
+    );
+  });
+
+  it('lists who the folder removed and lets a manager restore them', async () => {
+    listGroupMembers.mockImplementation(async (g: string) => ({
+      members: g === 'root' ? [{ identity: PICKED, role: 'Member' }] : [],
+    }));
+    getMemberCapabilities.mockResolvedValue({ capabilities: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS });
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(await screen.findByText('Removed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    await waitFor(() =>
+      expect(addGroupMembers).toHaveBeenCalledWith('f1', {
+        members: [{ identity: PICKED, role: 'Member' }],
+      }),
+    );
   });
 });
 

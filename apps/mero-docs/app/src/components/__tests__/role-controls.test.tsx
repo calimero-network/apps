@@ -33,7 +33,9 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  useMero: () => ({ mero: { admin: { setMemberCapabilities } } }),
+  useMero: () => ({
+    mero: { admin: { setMemberCapabilities, removeGroupMembers: removeMember } },
+  }),
   useUpdateMemberRole: () => ({ updateMemberRole }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useGroupMembers: () => ({ members: [], loading: false, error: null, refetch: vi.fn() }),
@@ -72,7 +74,6 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     loading: false,
     error: null,
     add: vi.fn(),
-    remove: removeMember,
     refetch: vi.fn(),
   }),
 }));
@@ -291,6 +292,7 @@ describe('leaving a folder', () => {
     render(<FolderSharingPanel folderId="f1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Me' }));
     await waitFor(() => expect(removeMember).toHaveBeenCalledTimes(1));
+    expect(removeMember).toHaveBeenCalledWith('f1', { members: ['me'] });
   });
 });
 

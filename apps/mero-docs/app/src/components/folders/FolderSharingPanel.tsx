@@ -22,7 +22,7 @@
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
 // the Role radio) - a follow-up; today only the preset dropdown ships.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,14 @@ import {
 import { looksLikeMemberIdentity } from '@/utils/validation';
 import { folderLabel } from '@/lib/folderLabel';
 import { inheritReadOnly } from '@/lib/applyFolderRole';
+import {
+  banAcrossOpenSubtree,
+  removedFrom,
+  restoreAcrossOpenSubtree,
+} from '@/lib/openFolderRemoval';
 
+const OPEN_REMOVAL_NOTE =
+  'They stay removed from it until you restore them here, even if they are invited to the workspace again.';
 const READ_ONLY_NOT_CARRIED = 'Added, but they are Read only in the parent folder and could not be made Read only here.';
 
 interface Props {
@@ -64,10 +71,11 @@ export function FolderSharingPanel({ folderId }: Props) {
     selfIdentity,
     registryContextId,
     registryClient,
+    rootGroupId,
   } = useDriveWorkspace();
   const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
-  const { members, loading, error, add, remove, refetch } =
+  const { members, loading, error, add, refetch } =
     useFolderMembership(folderId);
   const { entries: roleEntries, refetch: refetchRoles } =
     useFolderRoles(folderId);
@@ -148,6 +156,43 @@ export function FolderSharingPanel({ folderId }: Props) {
     }
   };
 
+  // Who an Open folder has removed: core bans them from it until an admin adds them back.
+  const removedParent = folder?.parent_id ?? rootGroupId;
+  const showRemoved = isOpenFolder && perms.canManageMembers;
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const refreshRemoved = useCallback(async () => {
+    if (!showRemoved || !mero || !removedParent) return;
+    try {
+      const next = await removedFrom(mero.admin, removedParent, folderId);
+      setRemoved((prev) => (prev.join() === next.join() ? prev : next));
+    } catch (e: unknown) {
+      console.warn('[FolderSharingPanel] removed members not read', e);
+    }
+  }, [showRemoved, mero, removedParent, folderId]);
+  const memberKey = members.map((m) => m.identity).join();
+  useEffect(() => {
+    void refreshRemoved();
+  }, [refreshRemoved, memberKey]);
+
+  const onRestore = async (id: string) => {
+    if (!mero) return;
+    setRestoringId(id);
+    try {
+      const failed = await restoreAcrossOpenSubtree(mero.admin, folders, folderId, id);
+      if (failed.length > 0) {
+        const names = failed.map((f) => folderLabel(folders.find((x) => x.id === f)?.alias));
+        setRemoveError({ identity: id, message: `restored here, but not in ${names.join(', ')}` });
+      }
+      await refetch();
+    } catch (e: unknown) {
+      setRemoveError({ identity: id, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRestoringId(null);
+      void refreshRemoved();
+    }
+  };
+
   const onRemove = async (id: string) => {
     const leaving = !!selfIdentity && id === selfIdentity;
     const ok = await confirm(leaving ? {
@@ -166,6 +211,7 @@ export function FolderSharingPanel({ folderId }: Props) {
             className="font-medium"
           />
           {' '}from this folder?
+          {isOpenFolder && ` ${OPEN_REMOVAL_NOTE}`}
         </>
       ),
       confirmLabel: 'Remove',
@@ -175,7 +221,18 @@ export function FolderSharingPanel({ folderId }: Props) {
     setRemovingId(id);
     setRemoveError(null);
     try {
-      await remove(id);
+      if (!mero) throw new Error('Workspace not ready');
+      // The admin client throws on a refusal, where the mero-react hook would not.
+      await mero.admin.removeGroupMembers(folderId, { members: [id] });
+      await refetch();
+      if (isOpenFolder && id !== selfIdentity) {
+        const failed = await banAcrossOpenSubtree(mero.admin, folders, folderId, id);
+        if (failed.length > 0) {
+          const names = failed.map((f) => folderLabel(folders.find((x) => x.id === f)?.alias));
+          setRemoveError({ identity: id, message: `still in ${names.join(', ')}` });
+        }
+        void refreshRemoved();
+      }
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError({ identity: id, message: err.message });
@@ -299,6 +356,27 @@ export function FolderSharingPanel({ folderId }: Props) {
           );
         })}
       </ul>
+
+      {showRemoved && removed.length > 0 && (
+        <div className="border-t border-border/60 px-4 py-2">
+          <h4 className="text-xs font-medium text-muted-foreground">Removed</h4>
+          <ul>
+            {removed.map((id) => (
+              <li key={id} className="flex items-center justify-between gap-3 py-1 text-sm">
+                <MemberLabel namespaceId={namespaceId} memberId={id} className="truncate" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={restoringId === id}
+                  onClick={() => void onRestore(id)}
+                >
+                  Restore
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!isOpenFolder && perms.canInviteMembers && (
         <div className="space-y-3 border-t border-border/60 px-4 py-3">
