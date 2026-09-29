@@ -678,13 +678,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // registry - it just did not claim it.
         let callerIsNsAdmin = false;
         try {
-          const raw = (await mero.admin.listGroupMembers(
-            healingNsId,
-          )) as unknown as {
-            members?: Array<{ identity: string; role?: string }>;
-            data?: Array<{ identity: string; role?: string }>;
-          };
-          const membersList = raw.members ?? raw.data ?? [];
+          const { members: membersList } =
+            await mero.admin.listGroupMembers(healingNsId);
           callerIsNsAdmin =
             membersList.find((m) => m.identity === callerIdentity)?.role ===
             'Admin';
@@ -968,12 +963,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // --- Alias lookup (per-folder getGroupInfo) ---
   //
-  // `listSubgroups` is broken upstream (mero-js unwraps `.data` from a
-  // response whose actual wire shape is `{subgroups: [...]}`) so we
-  // can't read folder names from the subgroup list. `getGroupInfo`
-  // IS correctly shaped (`{data: {..., metadata}}`) - unwrap works,
-  // and the human-readable name lives at `metadata.name`. We fan out
-  // one getGroupInfo per folder and cache by id.
+  // The human-readable name lives at `metadata.name` on `getGroupInfo`. We
+  // fan out one getGroupInfo per folder and cache by id.
   //
   // `aliasRevision` bumps on refetch() so rename flows re-fetch even
   // though the folder id set hasn't changed.
@@ -1094,9 +1085,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // --- Merge admin subgroups with registry metadata ---
   // Registry is the source of truth for existence + tree shape;
-  // aliases come from the per-folder getGroupInfo cache above. The
-  // `subgroups` list (from mero-react) is unreliable upstream but
-  // included as a secondary alias source when it happens to work.
+  // aliases come from the per-folder getGroupInfo cache above, with the
+  // `subgroups` list (from mero-react) as a secondary alias source.
   const folders = useMemo<MergedFolder[]>(() => {
     if (!rootGroupId) return [];
     const admin: AdminSubgroup[] = regFolders.map((f) => {
