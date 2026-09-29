@@ -292,7 +292,7 @@ default: a **TEE relay** (core's `RelayTee`) also runs members' delegated
 writes, which is what a cloud TEE is for, while a **replica** (`ReadOnlyTee`)
 only holds a copy. Storing the policy converts TEEs already admitted to its
 role. Anything that asks "is this a TEE?" accepts both roles
-(`isTeeRole`). A node older than core 0.11.0-rc.61 refuses `mode` with a 400;
+(`isTeeRole`). A node older than core 0.11.0-rc.62 refuses `mode` with a 400;
 the panel then stores the policy without it, which admits replicas, and warns
 that relays need a newer node. Admission cannot be switched off again, since
 nodes have no route for it, so the panel offers no "stop".

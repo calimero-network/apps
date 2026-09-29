@@ -42,7 +42,7 @@ describe('replica admission policy', () => {
     })).toEqual({ profiles: ['locked-read-only', 'debug-read-only'], minRelease: '2.3.86', legacyMeasurements: 0, mode: 'relay' });
   });
 
-  it('reads a policy with no mode, from a node older than rc.61, as admitting replicas', () => {
+  it('reads a policy with no mode, from a node older than rc.62, as admitting replicas', () => {
     expect(replicaPolicyFrom({
       ...lists,
       allowedTcbStatuses: ['UpToDate'],
@@ -89,13 +89,13 @@ describe('storing the policy', () => {
     expect(setTeeAdmissionPolicy.mock.calls[0][1]).toMatchObject({ mode: 'relay' });
   });
 
-  it('retries once without the mode on a node that refuses it, and warns that relays need rc.61', async () => {
+  it('retries once without the mode on a node that refuses it, and warns that relays need rc.62', async () => {
     const setTeeAdmissionPolicy = vi.fn().mockRejectedValueOnce(refusal).mockResolvedValue(undefined);
     const { stored, warning } = await storeReplicaPolicy({ setTeeAdmissionPolicy }, 'ns', relays);
     expect(setTeeAdmissionPolicy).toHaveBeenCalledTimes(2);
     expect(setTeeAdmissionPolicy.mock.calls[1][1]).not.toHaveProperty('mode');
     expect(stored.mode).toBe('replica');
-    expect(warning).toMatch(/0\.11\.0-rc\.61/);
+    expect(warning).toMatch(/0\.11\.0-rc\.62/);
   });
 
   it('does not warn when a replica was asked for anyway', async () => {
