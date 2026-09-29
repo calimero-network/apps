@@ -8,10 +8,10 @@
 //! - `Inherit`  - cascade parent members down from the parent folder
 //! - `Restricted` - subtree is opaque; cascades stop at the boundary
 //!
-//! `DriveError` is the *internal* error type used inside each service's
-//! helper functions. Public `#[app::logic]` methods return `app::Result<T>`
-//! and convert `DriveError` via `AppError::msg(e.to_string())`, so the ABI
-//! surface exposes a single uniform error variant per service.
+//! `DriveError` is the error type used inside each service's helper
+//! functions. Public `#[app::logic]` methods return `app::Result<T>` and
+//! convert it with `DriveError::into_app`, so a client receives the tagged
+//! `{ kind, data }` value rather than prose.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -123,6 +123,15 @@ pub enum DriveError {
     AlreadyExists(String),
     #[error("conflict: {0}")]
     Conflict(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+impl DriveError {
+    /// The contract error a client receives: `{ "kind": <variant>, "data": <detail> }`.
+    pub fn into_app(self) -> calimero_sdk::types::Error {
+        calimero_sdk::app::err!(self)
+    }
 }
 
 #[cfg(test)]

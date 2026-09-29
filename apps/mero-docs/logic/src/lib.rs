@@ -37,7 +37,6 @@ use std::ops::DerefMut;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, TextOp, Undo};
@@ -464,9 +463,7 @@ impl DocsState {
     /// Creates a document and seeds its title. The body starts empty; a client
     /// adds the first block with `insert_block`.
     pub fn create_doc(&mut self, title: String) -> app::Result<String> {
-        let id = self
-            .create_doc_inner(title)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+        let id = self.create_doc_inner(title).map_err(DriveError::into_app)?;
         app::emit!(Event::DocCreated { id: &id });
         Ok(id)
     }
@@ -500,12 +497,12 @@ impl DocsState {
     pub fn get_doc(&self, id: String) -> app::Result<DocDto> {
         let (creator, created_at) = self
             .header_of(&id)
-            .map_err(|e| AppError::msg(e.to_string()))?
-            .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
+            .map_err(DriveError::into_app)?
+            .ok_or_else(|| DriveError::NotFound(id.clone()).into_app())?;
         let rec = self.docs.get(&id)?;
         let now = storage_env::time_now();
         self.project(&id, &creator, created_at, rec.as_deref(), now)
-            .map_err(|e| AppError::msg(e.to_string()))
+            .map_err(DriveError::into_app)
     }
 
     /// The docs whose creator's header lives, body or not.
@@ -514,7 +511,7 @@ impl DocsState {
         let headers = self
             .headers
             .entries_with_owners()
-            .map_err(|e| AppError::msg(format!("headers.entries: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("headers.entries: {e}")).into_app())?;
         let now = storage_env::time_now();
         let mut out = Vec::new();
         for (creator, id, created_at) in headers {
@@ -527,7 +524,7 @@ impl DocsState {
             }
             out.push(
                 self.project(&id, &creator, created_at, rec.as_deref(), now)
-                    .map_err(|e| AppError::msg(e.to_string()))?,
+                    .map_err(DriveError::into_app)?,
             );
         }
         Ok(out)
@@ -970,7 +967,7 @@ impl DocsState {
     pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.set_archived_inner(id, true)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::DocArchived { id: &id_for_event });
         Ok(())
     }
@@ -978,7 +975,7 @@ impl DocsState {
     pub fn unarchive_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.set_archived_inner(id, false)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::DocUnarchived { id: &id_for_event });
         Ok(())
     }
@@ -1001,8 +998,7 @@ impl DocsState {
 
     pub fn delete_doc(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
-        self.delete_doc_inner(id)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+        self.delete_doc_inner(id).map_err(DriveError::into_app)?;
         app::emit!(Event::DocDeleted { id: &id_for_event });
         Ok(())
     }
@@ -1037,8 +1033,7 @@ impl DocsState {
 
     pub fn add_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         let id_for_event = id.clone();
-        self.add_tag_inner(id, tag)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+        self.add_tag_inner(id, tag).map_err(DriveError::into_app)?;
         app::emit!(Event::DocTagsChanged { id: &id_for_event });
         Ok(())
     }
@@ -1066,7 +1061,7 @@ impl DocsState {
     pub fn remove_tag(&mut self, id: String, tag: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.remove_tag_inner(id, tag)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::DocTagsChanged { id: &id_for_event });
         Ok(())
     }
@@ -1092,7 +1087,7 @@ impl DocsState {
     pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
         let id = self
             .add_comment_inner(doc_id, body)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::CommentAdded { id: &id });
         Ok(id)
     }
@@ -1130,7 +1125,7 @@ impl DocsState {
             .query("doc_id")
             .eq(doc_id.as_str())
             .entries()
-            .map_err(|e| AppError::msg(format!("comments.query: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("comments.query: {e}")).into_app())?;
         let mut seen = BTreeSet::new();
         let mut out = Vec::with_capacity(entries.len());
         for (id, _) in entries {
@@ -1150,7 +1145,7 @@ impl DocsState {
     pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
         let (author, c) = self
             .comment_holder(&id)?
-            .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
+            .ok_or_else(|| DriveError::NotFound(id.clone()).into_app())?;
         Ok(project_comment(&id, hex(author.as_bytes()), &c))
     }
 
@@ -1161,7 +1156,7 @@ impl DocsState {
         let entries = self
             .comments
             .entries_with_owners()
-            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("comments.entries: {e}")).into_app())?;
         let mut live = BTreeMap::new();
         let mut count = 0;
         for (owner, id, c) in entries {
@@ -1198,13 +1193,15 @@ impl DocsState {
         };
         self.comments
             .entry_schema_version_by(&author, &id)
-            .map_err(|e| AppError::msg(format!("comments.entry_schema_version: {e}")))
+            .map_err(|e| {
+                DriveError::Internal(format!("comments.entry_schema_version: {e}")).into_app()
+            })
     }
 
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.edit_comment_inner(id, body)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::CommentEdited { id: &id_for_event });
         Ok(())
     }
@@ -1244,7 +1241,7 @@ impl DocsState {
     pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.delete_comment_inner(id)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::CommentDeleted { id: &id_for_event });
         Ok(())
     }
@@ -1311,7 +1308,7 @@ impl DocsState {
         };
         let live = self
             .header_of(&c.doc_id)
-            .map_err(|e| AppError::msg(e.to_string()))?
+            .map_err(DriveError::into_app)?
             .is_some();
         Ok(live.then_some((author, c)))
     }
@@ -2226,7 +2223,24 @@ mod tests {
     #[test]
     fn get_doc_missing_is_error() {
         let app = DocsState::init();
-        assert!(app.get_doc("ghost".into()).is_err());
+        let err = app.get_doc("ghost".into()).unwrap_err();
+        assert_eq!(
+            calimero_sdk::serde_json::to_value(&err).unwrap(),
+            calimero_sdk::serde_json::json!({"kind": "NotFound", "data": "ghost"})
+        );
+    }
+
+    #[test]
+    fn a_refused_write_reaches_the_client_as_a_tagged_kind() {
+        let mut app = folder();
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
+            .unwrap();
+        let err = app
+            .call_as_account(BOB, BOB, |s| s.delete_doc(id))
+            .unwrap_err();
+        let wire = calimero_sdk::serde_json::to_value(&err).unwrap();
+        assert_eq!(wire["kind"], "Forbidden");
     }
 
     #[test]
