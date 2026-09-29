@@ -1,18 +1,16 @@
-import { trustedMeasurementsFromReleases, type DcapCollateral } from '@calimero-network/mero-js';
+import { DEFAULT_RELEASE_MIRROR, type DcapCollateral, type SignedNodeRelease } from '@calimero-network/mero-js';
 import { verify as dcapVerify } from '@phala/dcap-qvl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { describeRelay } from './flow.js';
+import published86 from './fixtures/mero-tee-v2.3.86.published-mrtds.json?raw';
+import bundle86 from './fixtures/mero-tee-v2.3.86.published-mrtds.json.bundle.json?raw';
+import published87 from './fixtures/mero-tee-v2.3.87.published-mrtds.json?raw';
+import bundle87 from './fixtures/mero-tee-v2.3.87.published-mrtds.json.bundle.json?raw';
+import tampered87 from './fixtures/mero-tee-v2.3.87.tampered.published-mrtds.json?raw';
 import collateral from './fixtures/tdx_quote_collateral.json';
 import quote from './fixtures/tdx_quote.json';
-import {
-  TRUSTED_PROFILE,
-  TRUSTED_RELEASES,
-  TRUSTED_RELEASE_NAMES,
-  relayQuoteVerifier,
-  sealedRelayFetch,
-  sealingErrorText,
-} from './sealing.js';
+import { MIN_RELEASE_VERSION, relayQuoteVerifier, sealedRelayFetch, sealingErrorText } from './sealing.js';
 
 // A real TDX quote and its Intel-signed collateral (dcap-qvl's sample, as
 // mero-js tests it), verified at a moment inside the collateral's validity.
@@ -21,56 +19,51 @@ const COLLATERAL = collateral as unknown as DcapCollateral;
 const AT = 1_751_000_000_000;
 const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 const td = dcapVerify(QUOTE, COLLATERAL, AT / 1000).report.data as { reportData: Uint8Array };
+const ATTESTATION = {
+  quoteB64: quote.quoteB64,
+  nonce: hex(td.reportData.slice(0, 32)),
+  reportDataSuffix: hex(td.reportData.slice(32)),
+  collateral: COLLATERAL,
+};
+
+// Real mero-tee releases, as the node release workflow signed them and the
+// mirror serves them: the file byte for byte, and its cosign bundle.
+const R86: SignedNodeRelease = { version: '2.3.86', publishedMrtds: published86, bundle: bundle86 };
+const R87: SignedNodeRelease = { version: '2.3.87', publishedMrtds: published87, bundle: bundle87 };
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe('the trusted releases', () => {
-  it('are node releases, named as their files say, with the production profile', () => {
-    expect(TRUSTED_RELEASES.map((r) => [r.role, r.tag])).toEqual([
-      ['node', '2.3.86'],
-      ['node', '2.3.87'],
-    ]);
-    expect(TRUSTED_RELEASE_NAMES).toBe('2.3.86 or 2.3.87');
-    for (const release of TRUSTED_RELEASES) expect(release.profiles[TRUSTED_PROFILE]).toBeDefined();
-  });
-
-  it('trust each release as a whole image, and nothing but locked-read-only', () => {
-    // Both releases, so a relay mid-upgrade verifies on either side of it.
-    const { allowedMeasurements } = trustedMeasurementsFromReleases([...TRUSTED_RELEASES], { profile: TRUSTED_PROFILE });
-    expect(allowedMeasurements).toHaveLength(2);
-    // The MRTD is the TD firmware, shared by every image: RTMR1-3 are what differ.
-    expect(new Set(allowedMeasurements.map((m) => m.mrtd)).size).toBe(1);
-    expect(new Set(allowedMeasurements.map((m) => m.rtmr3)).size).toBe(2);
-    const debug = TRUSTED_RELEASES.flatMap((r) => [r.profiles['debug']?.rtmr3, r.profiles['debug-read-only']?.rtmr3]);
-    for (const image of allowedMeasurements) expect(debug).not.toContain(image.rtmr3);
-  });
+  vi.useRealTimers();
 });
 
 describe('the relay quote verifier', () => {
-  it('checks a real quote against Intel, then refuses an image it does not trust', async () => {
-    // The sample passes the signature chain, the TCB appraisal and the binding;
-    // it is not a mero-tee image, so the measurement check is what refuses it.
-    await expect(
-      relayQuoteVerifier(dcapVerify, () => AT)({
-        quoteB64: quote.quoteB64,
-        nonce: hex(td.reportData.slice(0, 32)),
-        reportDataSuffix: hex(td.reportData.slice(32)),
-        collateral: COLLATERAL,
-      }),
-    ).rejects.toThrow('are not an image this verifier trusts');
+  it('checks the release signature and a real quote, then refuses an image not of that release', async () => {
+    // The sample passes Intel's signature chain and the TCB appraisal; it
+    // is not a mero-tee image, so the measurement check is what refuses it.
+    const release = vi.fn(async () => R87);
+    await expect(relayQuoteVerifier(dcapVerify, release, () => AT)(ATTESTATION)).rejects.toThrow(
+      'are not an image this verifier trusts',
+    );
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses a quote that does not commit to this request', async () => {
+  it(`trusts ${MIN_RELEASE_VERSION}, the oldest release the page shipped with, as far as its quote`, async () => {
+    expect(MIN_RELEASE_VERSION).toBe('2.3.86');
+    await expect(relayQuoteVerifier(dcapVerify, async () => R86, () => AT)(ATTESTATION)).rejects.toThrow(
+      'are not an image this verifier trusts',
+    );
+  });
+
+  it('refuses a release that is not the signed one, before looking at the quote', async () => {
+    const error = await relayQuoteVerifier(dcapVerify, async () => ({ ...R87, publishedMrtds: tampered87 }), () => AT)(
+      ATTESTATION,
+    ).catch((e: unknown) => e);
+    expect(String(error)).toContain('SHA-256');
+    expect(sealingErrorText(error)).toMatch(/not the one the mero-tee release workflow signed/);
+    // A genuine file served under another release's name is refused the same way.
     await expect(
-      relayQuoteVerifier(dcapVerify, () => AT)({
-        quoteB64: quote.quoteB64,
-        nonce: '00'.repeat(32),
-        reportDataSuffix: hex(td.reportData.slice(32)),
-        collateral: COLLATERAL,
-      }),
-    ).rejects.toThrow();
+      relayQuoteVerifier(dcapVerify, async () => ({ ...R87, version: '2.3.88' }), () => AT)(ATTESTATION),
+    ).rejects.toThrow('The signed release is 2.3.87, not 2.3.88');
   });
 });
 
@@ -92,6 +85,37 @@ describe('a sealed relay call', () => {
     expect(sealingErrorText(error)).toMatch(/not a TEE node.*refused to attest: HTTP 404/s);
     // Only the attestation was asked for; the intents route was never reached.
     expect(calls).toEqual(['https://plain-relay.example/admin-api/tee/attest']);
+  });
+
+  it('trusts the release the relay names, from the public mirror, and sends nothing on a mismatch', async () => {
+    const relay = 'https://tee-relay.example';
+    const calls: string[] = [];
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AT);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        calls.push(url);
+        const data =
+          url === `${relay}/admin-api/tee/attest`
+            ? { quoteB64: quote.quoteB64, quote: {}, transportPublicKey: '44'.repeat(32), collateral: COLLATERAL }
+            : url === `${relay}/admin-api/tee/info`
+              ? { osImage: 'merotee-ubuntu-questing-25-10-locked-read-only-2-3-87' }
+              : url === `${DEFAULT_RELEASE_MIRROR}/api/tee/node-releases/2.3.87`
+                ? R87
+                : undefined;
+        return data ? Response.json({ data }) : new Response('unexpected', { status: 500 });
+      }),
+    );
+
+    const error = await sealedRelayFetch(relay)(`${relay}/admin-api/health`).catch((e: unknown) => e);
+    expect(sealingErrorText(error)).toMatch(/not running the locked-read-only image of a signed mero-tee release/);
+    expect(calls).toEqual([
+      `${relay}/admin-api/tee/attest`,
+      `${relay}/admin-api/tee/info`,
+      `${DEFAULT_RELEASE_MIRROR}/api/tee/node-releases/2.3.87`,
+    ]);
   });
 
   it('attests again after a failure, rather than keeping it until a reload', async () => {
@@ -121,9 +145,23 @@ describe('a sealed relay call', () => {
 describe('sealing errors', () => {
   it('name what to do about each', () => {
     expect(sealingErrorText(new Error('The node refused to attest: HTTP 404'))).toMatch(/not a TEE node.*Untick/s);
+    expect(sealingErrorText(new Error('Release 2.3.85 is older than the minimum trusted, 2.3.86'))).toMatch(
+      /older than 2\.3\.86, the oldest this page trusts/,
+    );
     expect(
       sealingErrorText(new Error('The measurements (MRTD …) are not an image this verifier trusts')),
-    ).toMatch(/not running a locked-read-only image of mero-tee 2\.3\.86 or 2\.3\.87.*src\/trusted/s);
+    ).toMatch(/not running the locked-read-only image of a signed mero-tee release/);
+    const unreleased = '"merotee-ubuntu-questing-25-10-locked-read-only-2-3-88-dev"';
+    expect(sealingErrorText(new Error(`${unreleased} is not the image of a mero-tee node release`))).toMatch(
+      /not running the locked-read-only image/,
+    );
+    expect(
+      sealingErrorText(new Error('The release was signed by "https://example.com", not by https://github.com/…')),
+    ).toMatch(/not the one the mero-tee release workflow signed/);
+    const mirror = `${DEFAULT_RELEASE_MIRROR}/api/tee/node-releases/2.3.87`;
+    expect(sealingErrorText(new Error(`Fetching the node release from ${mirror} failed: HTTP 503`))).toMatch(
+      /could not get the release.*Try again/s,
+    );
     expect(sealingErrorText(new Error('HTTP 403: not a member'))).toBeNull();
   });
 });

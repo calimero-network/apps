@@ -5,83 +5,103 @@
  * terminator in the clear: anyone operating the load balancer, and anyone
  * holding the relay's certificate, reads what you wrote. Sealed, the page asks
  * the relay for a quote, verifies it HERE against Intel's root and against the
- * images this page trusts, and encrypts every relay call to the key that quote
- * binds (Noise NK, `/sealed/v2`). The relay's proxy opens it inside the TD.
+ * image of a signed mero-tee release, and encrypts every relay call to the key
+ * that quote binds (Noise NK, `/sealed/v2`). The relay's proxy opens it inside
+ * the TD.
  *
- * ## Which images, and why they ship with the page
+ * ## Which image, and why it can come from anywhere
  *
- * The trusted images are the `published-mrtds.json` of the mero-tee node
- * releases in `src/trusted/`, checked in after verifying each one's Sigstore
- * signature (see the README). Fetching them at run time would trust whoever
- * serves them, which is the question the quote is meant to answer.
+ * The relay names the release it runs (`GET /admin-api/tee/info`), and the page
+ * fetches that release's `published-mrtds.json` and cosign bundle from the
+ * public mirror. Neither is trusted. What is trusted is the signature: mero-js
+ * checks it here, against the Sigstore root it embeds, and accepts only a file
+ * the mero-tee node release workflow signed. A mirror that serves anything else
+ * is refused, and one that serves nothing only stops the page sealing. A relay
+ * that names the wrong release fails too: its quote must match all five
+ * registers of the release it named.
  *
- * Every release a relay may run is listed, so a rollout does not strand the
- * page: during an upgrade some relays run the old release and some the new one.
- * Drop a release once no relay runs it.
+ * So a new release needs no new page, and a rollout does not strand it: a relay
+ * on either side of an upgrade names its own release. What the relay does
+ * choose is bounded by {@link MIN_RELEASE_VERSION}, since a signature never
+ * expires and every release ever signed stays valid. Raise it when a release
+ * must no longer be trusted.
  *
  * Only `locked-read-only` is trusted. The debug profiles have a shell, so their
  * operator can read the TD's memory, and sealing to one protects nothing.
  */
 
 import {
+  DEFAULT_RELEASE_MIRROR,
+  cloudNodeReleaseUrl,
   createAttestedSealedFetch,
-  createQuoteVerifier,
-  trustedMeasurementsFromReleases,
+  createSignedReleaseVerifier,
+  fetchNodeRelease,
+  fetchNodeReleaseVersion,
   type DcapVerify,
-  type PublishedMrtds,
   type QuoteVerifier,
+  type SignedNodeRelease,
   type VerifyTransportQuote,
 } from '@calimero-network/mero-js';
-
-import release2386 from '../trusted/mero-tee-v2.3.86.published-mrtds.json';
-import release2387 from '../trusted/mero-tee-v2.3.87.published-mrtds.json';
-
-/** The node releases a relay may run, oldest first. */
-export const TRUSTED_RELEASES: readonly PublishedMrtds[] = [release2386, release2387];
 
 /** The one image profile trusted: no shell, so nobody reads the TD. */
 export const TRUSTED_PROFILE = 'locked-read-only';
 
-/** "2.3.86 or 2.3.87", for the page to say what it trusts. */
-export const TRUSTED_RELEASE_NAMES = TRUSTED_RELEASES.map((release) => release.tag ?? '?').join(' or ');
+/** The oldest mero-tee release a relay may run: the oldest the page shipped with. */
+export const MIN_RELEASE_VERSION = '2.3.86';
 
 /**
- * The verifier for a relay's quote: Intel's chain, a TCB status every trusted
- * release accepts, all five registers of one trusted image, and the binding.
+ * The verifier for a relay's quote: the signature of the release `release`
+ * returns, a release no older than {@link MIN_RELEASE_VERSION}, Intel's chain,
+ * a TCB status that release accepts, all five registers of its image, and the
+ * binding.
  *
  * `now` is for tests, which verify a sample quote at a moment inside its
  * collateral's validity.
  */
-export function relayQuoteVerifier(dcapVerify: DcapVerify, now?: () => number): QuoteVerifier {
-  return createQuoteVerifier({
+export function relayQuoteVerifier(
+  dcapVerify: DcapVerify,
+  release: () => Promise<SignedNodeRelease>,
+  now?: () => number,
+): QuoteVerifier {
+  return createSignedReleaseVerifier({
     dcapVerify,
-    ...trustedMeasurementsFromReleases([...TRUSTED_RELEASES], { profile: TRUSTED_PROFILE }),
+    release,
+    profile: TRUSTED_PROFILE,
+    minReleaseVersion: MIN_RELEASE_VERSION,
     ...(now ? { now } : {}),
   });
 }
 
+/** The signed release the relay says it runs, from the public mirror. Verified by the caller. */
+async function relayRelease(baseUrl: string): Promise<SignedNodeRelease> {
+  const version = await fetchNodeReleaseVersion(baseUrl);
+  return fetchNodeRelease(cloudNodeReleaseUrl(DEFAULT_RELEASE_MIRROR, version));
+}
+
 /**
- * {@link relayQuoteVerifier}, with DCAP loaded on the first quote it checks.
+ * {@link relayQuoteVerifier} for the relay at `baseUrl`, with DCAP loaded on
+ * the first quote it checks.
  *
  * `@phala/dcap-qvl` is most of this page's weight (it more than doubles the
- * bundle), and a visitor who never writes sealed never needs it. mero-js calls
- * the verifier asynchronously, so it can wait for the import; it reads
- * `includeCollateral` up front, so that is kept on the wrapper.
+ * bundle), and a visitor who never writes sealed never needs it. This is why
+ * the page does not use `createSignedReleaseSealedFetch`, which takes DCAP up
+ * front. mero-js calls the verifier asynchronously, so it can wait for the
+ * import; it reads `includeCollateral` up front, so that is kept on the wrapper.
  */
-let loadedVerifier: Promise<QuoteVerifier> | undefined;
+let loadedDcap: Promise<DcapVerify> | undefined;
 
-function lazyRelayQuoteVerifier(): QuoteVerifier {
+function lazyRelayQuoteVerifier(baseUrl: string): QuoteVerifier {
   const verify: VerifyTransportQuote = async (attestation) => {
     // A failed download is forgotten, so the next click tries again rather
     // than failing on a promise that rejected once.
-    loadedVerifier ??= import('@phala/dcap-qvl').then(
-      ({ verify: dcapVerify }) => relayQuoteVerifier(dcapVerify),
+    loadedDcap ??= import('@phala/dcap-qvl').then(
+      ({ verify: dcapVerify }) => dcapVerify,
       (error: unknown) => {
-        loadedVerifier = undefined;
+        loadedDcap = undefined;
         throw error;
       },
     );
-    return (await loadedVerifier)(attestation);
+    return relayQuoteVerifier(await loadedDcap, () => relayRelease(baseUrl))(attestation);
   };
   return Object.assign(verify, { includeCollateral: true as const });
 }
@@ -91,12 +111,12 @@ function lazyRelayQuoteVerifier(): QuoteVerifier {
  *
  * The sealed fetch attests the relay once and reuses the session, attesting
  * again only when the relay restarts. Building a new one per click would fetch
- * and verify a quote before every call.
+ * the release and verify a quote before every call.
  *
  * A call that fails drops it, so the next click attests afresh. The sealed
  * fetch keeps a failed attestation (a 502 while the relay restarts, a quote
- * that did not verify) and would otherwise answer every later call with it
- * until the page is reloaded.
+ * that did not verify, a mirror that did not answer) and would otherwise
+ * answer every later call with it until the page is reloaded.
  */
 const sealedFetches = new Map<string, typeof fetch>();
 
@@ -104,7 +124,7 @@ export function sealedRelayFetch(relayUrl: string): typeof fetch {
   const baseUrl = relayUrl.replace(/\/+$/, '');
   const cached = sealedFetches.get(baseUrl);
   if (cached) return cached;
-  const sealed = createAttestedSealedFetch({ baseUrl, verify: lazyRelayQuoteVerifier() });
+  const sealed = createAttestedSealedFetch({ baseUrl, verify: lazyRelayQuoteVerifier(baseUrl) });
   const kept: typeof fetch = async (input, init) => {
     try {
       return await sealed(input, init);
@@ -117,28 +137,49 @@ export function sealedRelayFetch(relayUrl: string): typeof fetch {
   return kept;
 }
 
+/** How verifying a release's signature refuses one (mero-js's sigstore checks). */
+const BAD_SIGNATURE = /^(The (release was signed|signed|signing|signature|detached|bundle|certificate|logged|file's SHA-256)\b|Rekor)/;
+
 /**
  * What went wrong sealing, in terms of what to do about it.
  *
- * The two a person hits are different fixes. A relay that is not a TEE has no
- * attestation route: write unsealed, knowingly, or pick a TEE relay. A TEE that
- * runs an image this page does not trust is either a release newer than the
- * page (update `src/trusted/`) or an image nobody should trust, and the page
- * cannot tell which, so it refuses.
+ * A relay that is not a TEE has no attestation route: write unsealed,
+ * knowingly, or pick a TEE relay. A TEE on a release older than the minimum,
+ * or whose quote is not the image of the release it names, is refused: the
+ * page cannot tell a stale relay from one nobody should trust. A release the
+ * mirror did not serve is worth a retry; one it served that does not verify is
+ * not, since the page trusts no copy but the signed one.
  */
 export function sealingErrorText(error: unknown): string | null {
   const message = reasonOf(error);
-  if (/are not an image this verifier trusts/.test(message)) {
-    return (
-      `The relay is a TEE, but not running a ${TRUSTED_PROFILE} image of mero-tee ` +
-      `${TRUSTED_RELEASE_NAMES}, so nothing was sent to it. If it runs a newer release, add that ` +
-      `release to src/trusted/ (see the README).\n\n${message}`
-    );
-  }
   if (/refused to attest|predates sealed transport/.test(message)) {
     return (
       'The relay did not attest: it is not a TEE node, or runs an image without sealed transport. ' +
       `Nothing was sent. Untick “Seal to the relay’s TEE” to write in the clear.\n\n${message}`
+    );
+  }
+  if (/is older than the minimum trusted/.test(message)) {
+    return (
+      `The relay runs a mero-tee release older than ${MIN_RELEASE_VERSION}, the oldest this page ` +
+      `trusts, so nothing was sent to it. Pick a relay on a newer release.\n\n${message}`
+    );
+  }
+  if (/are not an image this verifier trusts|is not the image of a mero-tee node release/.test(message)) {
+    return (
+      `The relay is a TEE, but not running the ${TRUSTED_PROFILE} image of a signed mero-tee ` +
+      `release, so nothing was sent to it.\n\n${message}`
+    );
+  }
+  if (BAD_SIGNATURE.test(message)) {
+    return (
+      "The mirror's copy of the release the relay names is not the one the mero-tee release " +
+      `workflow signed, so nothing was sent. Nobody should trust that copy.\n\n${message}`
+    );
+  }
+  if (/node release from|did not answer with|did not name the node's image|\/admin-api\/tee\/info/.test(message)) {
+    return (
+      'The page could not get the release the relay runs, from the relay or from the mirror, so ' +
+      `nothing was sent. Try again.\n\n${message}`
     );
   }
   return null;
