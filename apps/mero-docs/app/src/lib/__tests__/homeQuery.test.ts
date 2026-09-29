@@ -395,4 +395,8 @@ describe('tagPageKey', () => {
       expect(tagPageKey(parse(search))).toBeNull();
     }
   });
+
+  it('is nothing for a saved view, which stays on Home even with one tag', () => {
+    expect(tagPageKey(parse('tag=q3&view=v1'))).toBeNull();
+  });
 });
