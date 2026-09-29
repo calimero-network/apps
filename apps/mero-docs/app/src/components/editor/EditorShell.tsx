@@ -444,6 +444,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
             lastSavedAt={lastSavedAt}
             isAppReady={isAppReady}
             isOffline={isOffline}
+            readOnly={readOnly}
           />
         </div>
       </div>

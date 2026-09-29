@@ -19,6 +19,8 @@ interface EditorStatusBarProps {
   /** True only once the connection is known to be down. Distinct from
    *  `!isAppReady`, which also covers "still loading". */
   isOffline?: boolean;
+  /** The member cannot edit, so nothing is ever saved for them. */
+  readOnly?: boolean;
 }
 
 export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
@@ -29,6 +31,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   lastSavedAt,
   isAppReady = true,
   isOffline = false,
+  readOnly = false,
 }) => {
   const shownStatus = useSettledSaveStatus(saveStatus);
 
@@ -47,6 +50,15 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
         <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
           <span>Connecting…</span>
+        </div>
+      );
+    }
+
+    if (readOnly) {
+      return (
+        <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
+          <div className="w-2 h-2 rounded-full bg-current opacity-80" />
+          <span>Read only</span>
         </div>
       );
     }
