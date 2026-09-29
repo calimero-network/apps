@@ -21,8 +21,9 @@
 //! together, and every node accepts any member's write to them. Owning a doc's
 //! entry would hand its nested title and body to its creator alone. What is
 //! not collaborative is held to its writer by storage instead: who created a
-//! doc and when (`origins`, written once) and each comment (`comments`, owned
-//! by its author and removable by the folder's moderators).
+//! doc and when (`headers`, which lists the doc and which only its creator or
+//! a moderator removes) and each comment (`comments`, owned by its author and
+//! removable by the folder's moderators).
 //!
 //! ## Scope
 //!
@@ -43,7 +44,7 @@ use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, TextOp, U
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
     BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
-    Mergeable, Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef, WriteOnce,
+    Mergeable, Moderated, RichDocument, Span, UnorderedMap, UnorderedSet, ValueRef,
 };
 use calimero_storage::env as storage_env;
 use mero_docs_types::{is_valid_tag_key, DriveError};
@@ -315,7 +316,7 @@ pub struct DocDto {
     pub archived: bool,
     pub created_at: u64,
     pub updated_at: u64,
-    /// Hex account of whoever created the doc, from `origins`' owner stamp.
+    /// Hex account of whoever created the doc, from its header's owner stamp.
     pub created_by: String,
     pub updated_by: String,
     /// Whether the caller may delete it: the same rule `delete_doc` enforces.
@@ -340,8 +341,8 @@ fn caller_account_hex() -> String {
 /// `<kind>-<n>-<account hex>-<device tag>`. Every device reads the same counter, so the
 /// device tag keeps one account's concurrent creates apart; the full account is checked on read.
 fn mint_id(kind: &str, n: u64) -> String {
-    let device = hex(&calimero_sdk::env::device_id()[..4]);
-    format!("{kind}-{n}-{}-{device}", caller_account_hex())
+    let (account, device) = (storage_env::account_id(), storage_env::device_id());
+    format!("{kind}-{n}-{}-{}", hex(&account), hex(&device[..4]))
 }
 
 /// The hex account a `mint_id` id names.
@@ -350,6 +351,12 @@ fn creator_in(id: &str) -> Option<&str> {
         [_, _, account, _] => Some(account),
         _ => None,
     }
+}
+
+/// Whether `id` names `owner`. Anyone may hold an owned entry at any key, so a
+/// reader trusts only the entry of the account its id names.
+fn id_names(id: &str, owner: &AccountId) -> bool {
+    creator_in(id) == Some(hex(owner.as_bytes()).as_str())
 }
 
 // ---------------------------------------------------------------------------
@@ -412,15 +419,16 @@ fn project_comment(id: &str, author: String, c: &Comment) -> CommentDto {
 // State
 // ---------------------------------------------------------------------------
 
-/// `docs` + their `origins` + moderated `comments`.
+/// `docs` + their `headers` + moderated `comments`.
 #[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
     /// doc_id → record. Public: collaborative editing. The id is
     /// `doc-<counter>-<account>-<device tag>` and assigned by `create_doc`.
     docs: UnorderedMap<String, DocRecord>,
-    /// doc_id → created_at, written once by the doc's creator. Its owner
-    /// stamp is who created the doc, and nobody can rewrite either.
-    origins: WriteOnce<UnorderedMap<String, u64>>,
+    /// doc_id → created_at, filed by the doc's creator, whose owner stamp it
+    /// carries. A doc is listed while that entry lives; only its creator or a
+    /// moderator (the founder) may remove it, and every node enforces that.
+    headers: Moderated<UnorderedMap<String, u64>>,
     /// Id allocator. Every create increments; the account and device in the
     /// id are what keep two concurrent creates apart (see `mint_id`).
     next_id: Counter,
@@ -438,7 +446,7 @@ impl DocsState {
     pub fn init() -> DocsState {
         DocsState {
             docs: UnorderedMap::new_with_field_name("docs:docs"),
-            origins: WriteOnce::new_with_field_name("docs:origins"),
+            headers: Moderated::new_with_field_name("docs:headers"),
             next_id: Counter::new_with_field_name("docs:next_id"),
             comments: Moderated::new_with_field_name("docs:comments"),
             next_comment_id: Counter::new_with_field_name("docs:next_comment_id"),
@@ -480,9 +488,9 @@ impl DocsState {
             updated_at: LwwRegister::new(now),
             updated_by: LwwRegister::new(caller_account_hex()),
         };
-        self.origins
+        self.headers
             .insert(id.clone(), now)
-            .map_err(|e| DriveError::Conflict(format!("origins.insert: {e}")))?;
+            .map_err(|e| DriveError::Conflict(format!("headers.insert: {e}")))?;
         self.docs
             .insert(id.clone(), rec)
             .map_err(|e| DriveError::Invalid(format!("docs.insert: {e}")))?;
@@ -491,28 +499,33 @@ impl DocsState {
 
     #[app::view]
     pub fn get_doc(&self, id: String) -> app::Result<DocDto> {
-        let rec = self
-            .docs
-            .get(&id)
-            .map_err(|e| AppError::msg(format!("docs.get: {e}")))?
+        let (creator, created_at) = self
+            .header_of(&id)
+            .map_err(|e| AppError::msg(e.to_string()))?
             .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
-        self.project(&id, &rec)
+        let rec = self.docs.get(&id)?;
+        self.project(&id, &creator, created_at, rec.as_deref())
             .map_err(|e| AppError::msg(e.to_string()))
     }
 
+    /// The docs whose creator's header lives, body or not.
     #[app::view]
     pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocDto>> {
-        let entries = self
-            .docs
-            .entries()
-            .map_err(|e| AppError::msg(format!("docs.entries: {e}")))?;
+        let headers = self
+            .headers
+            .entries_with_owners()
+            .map_err(|e| AppError::msg(format!("headers.entries: {e}")))?;
         let mut out = Vec::new();
-        for (id, rec) in entries {
-            if !include_archived && *rec.archived.get() {
+        for (creator, id, created_at) in headers {
+            if !id_names(&id, &creator) {
+                continue;
+            }
+            let rec = self.docs.get(&id)?;
+            if !include_archived && rec.as_deref().is_some_and(|r| *r.archived.get()) {
                 continue;
             }
             out.push(
-                self.project(&id, &rec)
+                self.project(&id, &creator, created_at, rec.as_deref())
                     .map_err(|e| AppError::msg(e.to_string()))?,
             );
         }
@@ -995,30 +1008,26 @@ impl DocsState {
 
     /// The doc's creator, or a moderator of this folder, may delete it.
     ///
-    /// This check is the app's, not storage's: `docs` is public so that every
-    /// member can co-edit, and a public entry is one any member's node may
-    /// remove. A patched node can skip it. What it cannot touch is `origins`,
-    /// so the doc's creator and creation time survive whoever removed it.
+    /// Every node enforces that on the header, which is what lists the doc. The
+    /// body is public so every member can co-edit, so a patched node can still
+    /// remove it, as any editor can empty it; the doc then stays listed.
     pub(crate) fn delete_doc_inner(&mut self, id: String) -> Result<(), DriveError> {
-        if !self
-            .docs
-            .contains(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.contains: {e}")))?
-        {
-            return Err(DriveError::NotFound(id));
-        }
-        if !self.caller_may_delete(&id)? {
+        let (creator, _) = self
+            .header_of(&id)?
+            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
+        if !self.caller_may_delete(&creator) {
             return Err(DriveError::Forbidden(format!(
                 "only the creator of {id} or a moderator may delete it"
             )));
         }
-        let existed = self
+        let _header = self
+            .headers
+            .remove_by(&creator, &id)
+            .map_err(|e| DriveError::Forbidden(format!("headers.remove: {e}")))?;
+        let _body = self
             .docs
             .remove(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.remove: {e}")))?;
-        if existed.is_none() {
-            return Err(DriveError::NotFound(id));
-        }
         Ok(())
     }
 
@@ -1251,65 +1260,65 @@ impl DocsState {
 
 /// Outside `#[app::logic]`: these are plumbing, not JSON-RPC surface.
 impl DocsState {
-    /// A doc's origin stamp: its creator and creation time.
-    ///
-    /// Keys are per owner (core rc.57): a patched node can file an origin of
-    /// its own under someone else's doc id, and a key-only `owner_of` or `get`
-    /// answers for the CALLER only. A doc id names its creator's full account
-    /// (`mint_id`), so the origin is the entry at the id that account owns.
-    fn origin_of(&self, id: &String) -> Result<Option<(AccountId, u64)>, DriveError> {
-        let creator = creator_in(id);
+    /// A doc's creator and creation time: the header at `id` owned by the
+    /// account the id names. A key-only `get` would read the caller's own.
+    fn header_of(&self, id: &String) -> Result<Option<(AccountId, u64)>, DriveError> {
         Ok(self
-            .origins
+            .headers
             .entries_at(id)
-            .map_err(|e| DriveError::Invalid(format!("origins: {e}")))?
+            .map_err(|e| DriveError::Invalid(format!("headers: {e}")))?
             .into_iter()
-            .find(|(owner, _)| creator == Some(hex(owner.as_bytes()).as_str())))
+            .find(|(owner, _)| id_names(id, owner)))
     }
 
     /// The comment at `id` of the account the id names, with that account.
-    /// Anyone may hold an entry at any key; a key-only `get` reads the caller's.
+    /// A key-only `get` would read the caller's own.
     fn comment_holder(&self, id: &String) -> app::Result<Option<(AccountId, Comment)>> {
-        let creator = creator_in(id);
         Ok(self
             .comments
             .entries_at(id)?
             .into_iter()
-            .find(|(owner, _)| creator == Some(hex(owner.as_bytes()).as_str())))
+            .find(|(owner, _)| id_names(id, owner)))
     }
 
-    fn project(&self, id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
-        let key = id.to_string();
-        let origin = self.origin_of(&key)?;
-        let mut tags: Vec<String> = rec
-            .tags
-            .iter()
-            .map_err(|e| DriveError::Invalid(format!("tags.iter: {e}")))?
-            .collect();
+    /// `rec` is `None` for a doc whose public body a patched node removed.
+    fn project(
+        &self,
+        id: &str,
+        creator: &AccountId,
+        created_at: u64,
+        rec: Option<&DocRecord>,
+    ) -> Result<DocDto, DriveError> {
+        let title = rec
+            .map(|r| r.title.get_text())
+            .transpose()
+            .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?;
+        let mut tags: Vec<String> = match rec {
+            Some(r) => r
+                .tags
+                .iter()
+                .map_err(|e| DriveError::Invalid(format!("tags.iter: {e}")))?
+                .collect(),
+            None => Vec::new(),
+        };
         tags.sort();
         Ok(DocDto {
-            id: key.clone(),
-            title: rec
-                .title
-                .get_text()
-                .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
+            id: id.to_owned(),
+            title: title.unwrap_or_default(),
             tags,
-            archived: *rec.archived.get(),
-            created_at: origin.map(|(_, at)| at).unwrap_or_default(),
-            updated_at: *rec.updated_at.get(),
-            created_by: origin
-                .map(|(owner, _)| hex(owner.as_bytes()))
-                .unwrap_or_default(),
-            updated_by: rec.updated_by.get().clone(),
-            can_delete: self.caller_may_delete(&key)?,
+            archived: rec.is_some_and(|r| *r.archived.get()),
+            created_at,
+            updated_at: rec.map_or(created_at, |r| *r.updated_at.get()),
+            created_by: hex(creator.as_bytes()),
+            updated_by: rec.map(|r| r.updated_by.get().clone()).unwrap_or_default(),
+            can_delete: self.caller_may_delete(creator),
         })
     }
 
     /// The one rule `delete_doc` enforces and `DocDto::can_delete` reports.
-    fn caller_may_delete(&self, id: &String) -> Result<bool, DriveError> {
+    fn caller_may_delete(&self, creator: &AccountId) -> bool {
         let me = AccountId::from(calimero_sdk::env::account_id());
-        let created_by_me = self.origin_of(id)?.is_some_and(|(owner, _)| owner == me);
-        Ok(created_by_me || self.comments.is_moderator(&me))
+        me == *creator || self.headers.is_moderator(&me)
     }
 
     fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
@@ -2158,8 +2167,8 @@ mod tests {
         let mut app = DocsState::init();
         let a = app.create_doc_inner("a".into()).unwrap();
         let b = app.create_doc_inner("b".into()).unwrap();
-        assert_eq!(a, DOC);
-        assert_eq!(b, DOC.replacen("doc-1-", "doc-2-", 1));
+        assert!(a.starts_with("doc-1-"), "{a}");
+        assert_eq!(b, a.replacen("doc-1-", "doc-2-", 1));
     }
 
     #[test]
@@ -2216,8 +2225,7 @@ mod tests {
     #[test]
     fn delete_doc_removes_from_map() {
         // Through `TestHost`, which aligns the SDK account with the storage
-        // writer as a node does: a doc's creator is the origin entry whose
-        // owner carries the id's account tag.
+        // writer as a node does: a doc's creator is the owner of its header.
         let mut app = folder();
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc_inner("t".into()))
@@ -2442,7 +2450,7 @@ mod tests {
     }
 
     #[test]
-    fn a_docs_creator_is_its_origin_stamp_and_is_fixed() {
+    fn a_docs_creator_is_its_headers_owner() {
         let mut app = folder();
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
@@ -2451,22 +2459,18 @@ mod tests {
         assert_eq!(doc.created_by, hex(&ALICE));
         assert!(doc.created_at > 0);
 
-        // Nobody can write the origin again, its creator included: a
-        // write-once entry has no update.
-        assert!(app
-            .call_as_account(ALICE, ALICE, |s| s.origins.insert(id.clone(), 1))
-            .is_err());
         // Keys are per owner: Bob's write lands as his own entry at the id.
-        // The id does not name his account, so it is never the origin.
-        app.call_as_account(BOB, BOB, |s| s.origins.insert(id.clone(), 1))
+        // The id does not name his account, so it is never the header.
+        app.call_as_account(BOB, BOB, |s| s.headers.insert(id.clone(), 1))
             .unwrap();
         let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
         assert_eq!(doc.created_by, hex(&ALICE));
         assert!(doc.created_at > 1);
+        assert_eq!(app.view(|s| s.list_docs(true)).unwrap().len(), 1);
         let bobs_view = app.call_as_account(BOB, BOB, |s| s.get_doc(id.clone()));
         assert!(
             !bobs_view.unwrap().can_delete,
-            "a planted origin is not a creator"
+            "a planted header is not a creator"
         );
         assert!(app.call_as_account(BOB, BOB, |s| s.delete_doc(id)).is_err());
     }
@@ -2640,7 +2644,7 @@ mod tests {
     }
 
     /// An account whose first four bytes match the creator's, as a brute-forced
-    /// key gives, files its own origin at the creator's doc id.
+    /// key gives, files its own header at the creator's doc id.
     #[test]
     fn a_prefix_matching_account_cannot_strip_a_docs_creator() {
         const MALLORY: [u8; 32] = {
@@ -2655,7 +2659,7 @@ mod tests {
         let id = app
             .call_as_account(ALICE, ALICE, |s| s.create_doc("mine".into()))
             .unwrap();
-        app.call_as_account(MALLORY, MALLORY, |s| s.origins.insert(id.clone(), 1))
+        app.call_as_account(MALLORY, MALLORY, |s| s.headers.insert(id.clone(), 1))
             .unwrap();
         let doc = app
             .call_as_account(ALICE, ALICE, |s| s.get_doc(id.clone()))
@@ -2729,5 +2733,55 @@ mod tests {
             bodies.sort();
             assert_eq!(bodies, ["Laptop", "Phone"], "one comment per add");
         }
+    }
+
+    // ---- a doc is deleted only by its creator or a moderator ---------------
+
+    /// Replicas apply each other's signed deltas as nodes do.
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn a_direct_body_delete_by_a_non_creator_leaves_the_doc_listed() {
+        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let (alice, bob) = (script.member(), script.member());
+        let mut id = String::new();
+        let created = script
+            .run(alice, |s| id = s.create_doc_inner("mine".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.deliver(bob, created), 0);
+
+        // A patched node skips `delete_doc`'s check.
+        let forged = script
+            .run(bob, |s| {
+                let _ = s.docs.remove(&id).unwrap();
+            })
+            .unwrap();
+        let _dropped = script.deliver(alice, forged);
+        let creator = hex(script.account(alice).as_bytes());
+        let listed = script.view(alice, |s| {
+            s.list_docs(true)
+                .unwrap()
+                .into_iter()
+                .map(|d| (d.id, d.created_by, d.can_delete))
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(listed, [(id.clone(), creator, true)]);
+        let deleted = script.run(alice, |s| s.delete_doc_inner(id.clone()).unwrap());
+        assert!(deleted.is_some());
+        assert!(script.view(alice, |s| s.list_docs(true).unwrap().is_empty()));
+    }
+
+    /// The list is the docs whose creator still holds their header.
+    #[test]
+    fn a_body_without_its_creators_header_is_not_listed() {
+        let mut app = folder();
+        let id = app
+            .call_as_account(BOB, BOB, |s| s.create_doc("orphan".into()))
+            .unwrap();
+        let _removed = app
+            .call_as_account(BOB, BOB, |s| s.headers.remove(&id))
+            .unwrap();
+        assert!(app.view(|s| s.list_docs(true)).unwrap().is_empty());
+        assert!(app.view(|s| s.get_doc(id)).is_err());
     }
 }

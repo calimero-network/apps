@@ -127,7 +127,7 @@ export interface DocDto {
   created_at: number;
   updated_at: number;
   /**
-   * Hex account of whoever created the doc, from `origins`' owner stamp.
+   * Hex account of whoever created the doc, from its header's owner stamp.
    */
   created_by: string;
   updated_by: string;
@@ -158,7 +158,7 @@ export interface DocRecord {
 }
 
 /**
- * `docs` + their `origins` + moderated `comments`.
+ * `docs` + their `headers` + moderated `comments`.
  */
 export interface DocsState {
   /**
@@ -167,10 +167,11 @@ export interface DocsState {
    */
   docs: Record<string, DocRecord>;
   /**
-   * doc_id → created_at, written once by the doc's creator. Its owner
-   * stamp is who created the doc, and nobody can rewrite either.
+   * doc_id → created_at, filed by the doc's creator, whose owner stamp it
+   * carries. A doc is listed while that entry lives; only its creator or a
+   * moderator (the founder) may remove it, and every node enforces that.
    */
-  origins: Record<string, number>;
+  headers: Record<string, number>;
   /**
    * Id allocator. Every create increments; the account and device in the
    * id are what keep two concurrent creates apart (see `mint_id`).
@@ -656,6 +657,8 @@ export class DocsClient {
 
   /**
    * list_docs
+   *
+   * The docs whose creator's header lives, body or not.
    *
    * @intent read_only
    */

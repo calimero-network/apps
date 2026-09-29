@@ -363,7 +363,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "Hex account of whoever created the doc, from `origins`' owner stamp."
+          "doc": "Hex account of whoever created the doc, from its header's owner stamp."
         },
         {
           "name": "updated_by",
@@ -452,7 +452,7 @@
     },
     "DocsState": {
       "kind": "record",
-      "doc": "`docs` + their `origins` + moderated `comments`.",
+      "doc": "`docs` + their `headers` + moderated `comments`.",
       "fields": [
         {
           "name": "docs",
@@ -469,7 +469,7 @@
           "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account>-<device tag>` and assigned by `create_doc`."
         },
         {
-          "name": "origins",
+          "name": "headers",
           "type": {
             "kind": "map",
             "key": {
@@ -480,7 +480,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "doc_id → created_at, written once by the doc's creator. Its owner\nstamp is who created the doc, and nobody can rewrite either."
+          "doc": "doc_id → created_at, filed by the doc's creator, whose owner stamp it\ncarries. A doc is listed while that entry lives; only its creator or a\nmoderator (the founder) may remove it, and every node enforces that."
         },
         {
           "name": "next_id",
@@ -1397,6 +1397,7 @@
     },
     {
       "name": "list_docs",
+      "doc": "The docs whose creator's header lives, body or not.",
       "params": [
         {
           "name": "include_archived",
