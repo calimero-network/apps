@@ -109,6 +109,10 @@ describe('useFolderOperations.create - Read only', () => {
     expect(addGroupMembers).toHaveBeenCalledWith('new-folder', {
       members: [{ identity: BOB, role: 'ReadOnly' }],
     });
+    // Written while the folder is still Restricted, so it is never Open without them.
+    expect(addGroupMembers.mock.invocationCallOrder[0]).toBeLessThan(
+      setSubgroupVisibility.mock.invocationCallOrder[0],
+    );
     expect((registry as unknown as { setFolderRole: unknown }).setFolderRole).toHaveBeenCalledWith(
       expect.objectContaining({ folder_id: 'new-folder', member: BOB, role: 'Viewer' }),
     );

@@ -180,3 +180,23 @@ async function holdsReadOnly(
     })) === grant.role
   );
 }
+
+/** Before a new folder under `parent` turns Open: a direct ReadOnly row, with
+ *  the grant's caps, for each person `parent` holds Read only, so the folder
+ *  is never Open without them. The registry rows follow once it is bound. */
+export async function readOnlyRowsBeforeOpen(
+  writer: FolderRoleWriter,
+  parent: string,
+  folder: string,
+): Promise<void> {
+  const readOnly = (await listMembers(writer.admin, parent))
+    .filter((m) => parseGroupRole(m.role) === 'ReadOnly')
+    .map((m) => ({ identity: m.identity, role: 'ReadOnly' as const }));
+  if (readOnly.length === 0) return;
+  await writer.admin.addGroupMembers(folder, { members: readOnly });
+  for (const { identity } of readOnly) {
+    await writer.admin.setMemberCapabilities(folder, identity, {
+      capabilities: FOLDER_ROLE_GRANTS.ReadOnly.folderCaps,
+    });
+  }
+}

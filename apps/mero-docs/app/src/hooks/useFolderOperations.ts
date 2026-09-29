@@ -33,7 +33,7 @@ import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { reparentGroup } from '../api/reparentGroup';
 import { descendantsOf } from '../utils/ancestry';
-import { inheritReadOnly } from '../lib/applyFolderRole';
+import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';
 
 const READ_ONLY_NOT_CARRIED = "Couldn't make the parent folder's Read only members read only here."; // shown after create
 
@@ -134,6 +134,10 @@ export function useFolderOperations(
         if (input.parentGroupId !== rootGroupId) {
           if (!nodeUrl) throw new Error('Node URL not resolved');
           await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
+        }
+
+        if (input.parentGroupId !== rootGroupId && input.visibility === 'Open') {
+          await readOnlyRowsBeforeOpen({ admin: mero.admin, registry: registryClient }, input.parentGroupId, newId);
         }
 
         // Core expects lowercase `"open"` / `"restricted"`; see

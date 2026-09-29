@@ -629,6 +629,21 @@ steps:
     child_group_id: '{{g_G3}}'
     new_parent_id: '{{g_F}}'
 
+  - name: Alice adds a ReadOnly row for Bob in G3 before it opens
+    type: add_group_members
+    node: curn-node-1
+    group_id: '{{g_G3}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: ReadOnly
+
+  - name: Alice keeps Bob's join bit in G3
+    type: set_member_capabilities
+    node: curn-node-1
+    group_id: '{{g_G3}}'
+    member_id: '{{bob_account}}'
+    capabilities: 4
+
   - name: Mark G3 Open
     type: set_subgroup_visibility
     node: curn-node-1
@@ -677,21 +692,6 @@ steps:
       title: G3 original
     outputs:
       d_G3: result.output
-
-  - name: Alice adds a direct ReadOnly row for Bob in G3
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_G3}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: ReadOnly
-
-  - name: Alice keeps Bob's join bit in G3
-    type: set_member_capabilities
-    node: curn-node-1
-    group_id: '{{g_G3}}'
-    member_id: '{{bob_account}}'
-    capabilities: 4
 
   - name: Alice sets Bob's registry role in G3 to Viewer
     type: call
