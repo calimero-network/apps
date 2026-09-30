@@ -2575,7 +2575,7 @@ mod tests {
     use calimero_storage::logical_clock::HybridTimestamp;
 
     fn zero_lww<T>(v: T) -> LwwRegister<T> {
-        LwwRegister::new_with_metadata(v, HybridTimestamp::zero(), [0u8; 32])
+        LwwRegister::new_with_metadata(v, HybridTimestamp::zero())
     }
 
     fn stub_record() -> DocRecord {
