@@ -482,6 +482,9 @@ importers:
         specifier: ^5.0.1
         version: 5.0.1
     devDependencies:
+      '@calimero-apps/e2e-node':
+        specifier: workspace:*
+        version: link:../../../packages/e2e-node
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.62.1

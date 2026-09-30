@@ -203,7 +203,7 @@ export function PollDetail({
           <p className="hint">Who voted is public. What they voted is not.</p>
           <div className="chips">
             {(phase === "Closed" ? counted.map((c) => c.voter) : view.turnout.map((t) => t.voter)).map((v) => (
-              <span key={v} className="chip" title={v}>
+              <span key={v} className="chip" title={v} data-testid="voter">
                 {label(v)}
                 {v === me && " (you)"}
               </span>

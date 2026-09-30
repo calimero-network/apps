@@ -92,12 +92,12 @@ export function AuditPanel({
         {counts ? (
           <div className="bars">
             {options.map((o, i) => (
-              <div className="bar-row" key={i}>
+              <div className="bar-row" key={i} data-testid="result-row">
                 <span className="bar-label">{o}</span>
                 <span className="bar-track">
                   <span className="bar-fill" style={{ width: `${(100 * counts[i]!) / max}%` }} />
                 </span>
-                <span className="bar-count">{counts[i]}</span>
+                <span className="bar-count" data-testid="result-count">{counts[i]}</span>
               </div>
             ))}
             <p className="empty">
