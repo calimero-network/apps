@@ -72,7 +72,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId);
   const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
+  // `createContext` resolves to null on failure and keeps the reason in `error`.
+  const { createContext, error: createError } = useCreateContext();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -119,7 +120,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       // `createNamespaceInvitation` a subgroup id and fail confusingly.
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      // Null means the create failed; the hook holds why (`createError`, shown below).
+      if (!newContextId) return;
       select(newContextId);
     } catch (e) {
       // Surfaced rather than swallowed on purpose: a bare 500 from
@@ -144,7 +146,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       if (!namespaceId) throw new Error("namespace created but no id came back");
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      // Null means the create failed; the hook holds why (`createError`, shown below).
+      if (!newContextId) return;
       select(newContextId);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : String(e));
@@ -235,6 +238,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
         {note && <p className="empty" style={{ marginTop: 12 }}>{note}</p>}
         {failed && <pre className="err">{failed}</pre>}
+        {!failed && createError && <pre className="err">{createError.message}</pre>}
       </div>
 
       {can.createContext && (
