@@ -31,7 +31,7 @@ export default class StrictJourneyReporter implements Reporter {
     }
   }
 
-  onEnd(result: FullResult): { status?: FullResult["status"] } | undefined {
+  async onEnd(result: FullResult): Promise<{ status?: FullResult["status"] } | undefined> {
     const totals = [...this.byProject.values()].reduce(
       (a, t) => ({
         passed: a.passed + t.passed,

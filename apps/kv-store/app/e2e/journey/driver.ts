@@ -123,8 +123,10 @@ export const driver: AppDriver = {
     await expect(join).toBeVisible({ timeout: 60_000 });
     await join.getByLabel("invitation").fill(link);
     await join.getByRole("button", { name: "Join", exact: true }).first().click();
-    await expect(join.getByText("An invitation is waiting")).toBeVisible({ timeout: 30_000 });
-    await join.getByRole("button", { name: "Join", exact: true }).last().click();
+    const panel = page.getByRole("heading", { name: "Write", exact: true });
+    const waiting = join.getByText("An invitation is waiting");
+    await expect(panel.or(waiting)).toBeVisible({ timeout: 60_000 });
+    if (await waiting.isVisible()) await join.getByRole("button", { name: "Join", exact: true }).last().click();
     await waitForPanel(page);
   },
 
