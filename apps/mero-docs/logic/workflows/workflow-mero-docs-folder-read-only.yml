@@ -50,7 +50,7 @@ steps:
 
   - name: Settle before the first admin call
     type: wait
-    seconds: 12
+    seconds: 5
 
   - name: Alice creates the namespace
     type: create_namespace
@@ -164,9 +164,11 @@ steps:
     outputs:
       carol_account: memberAccount
 
-  - name: Wait for membership to settle
-    type: wait
-    seconds: 10
+  - name: Sync the namespace to Bob and Carol
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    group_id: '{{namespace_id}}'
+    timeout: 60
 
   - name: Bob joins the Registry context
     type: join_context
@@ -185,9 +187,17 @@ steps:
       - identity: '{{carol_account}}'
         role: Member
 
-  - name: Wait for folder membership to reach Bob and Carol
-    type: wait
-    seconds: 10
+  - name: Sync the namespace after the folder add
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    group_id: '{{namespace_id}}'
+    timeout: 60
+
+  - name: Sync the folder's membership to Bob and Carol
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    group_id: '{{folder}}'
+    timeout: 60
 
   - name: Bob joins the Docs context
     type: join_context
@@ -246,9 +256,11 @@ steps:
     statements:
       - "equal({{bob_role}}, 'Viewer')"
 
-  - name: Wait for the core role to reach every node
-    type: wait
-    seconds: 10
+  - name: Sync Bob's Read only role to every node
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    group_id: '{{folder}}'
+    timeout: 60
 
   - name: Read only Bob renames the doc
     type: call
@@ -415,9 +427,11 @@ steps:
       member: '{{bob_account}}'
       role: Editor
 
-  - name: Wait for the restored role to reach every node
-    type: wait
-    seconds: 10
+  - name: Sync Bob's restored role to every node
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2, curo-node-3]
+    group_id: '{{folder}}'
+    timeout: 60
 
   - name: Restored Bob renames the doc
     type: call
@@ -510,9 +524,14 @@ steps:
     outputs:
       open_doc: result.output
 
-  - name: Wait for the Open visibility to reach Bob
-    type: wait
-    seconds: 10
+  - name: Wait until Bob's node sees the folder Open
+    type: assert_api_response
+    node: curo-node-2
+    path: /admin-api/groups/{{open_folder}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
 
   - name: Bob joins the Open folder by inheritance
     type: join_subgroup_inheritance
@@ -573,9 +592,11 @@ steps:
       - identity: '{{bob_account}}'
         role: ReadOnly
 
-  - name: Wait for the ReadOnly row to reach every node
-    type: wait
-    seconds: 10
+  - name: Sync Bob's ReadOnly row in the Open folder
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    group_id: '{{open_folder}}'
+    timeout: 60
 
   - name: Inherited Read only Bob renames the Open doc
     type: call
@@ -650,9 +671,11 @@ steps:
     member_id: '{{bob_account}}'
     role: Member
 
-  - name: Wait for the restored Open-folder role to reach every node
-    type: wait
-    seconds: 10
+  - name: Sync Bob's restored Open-folder role
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    group_id: '{{open_folder}}'
+    timeout: 60
 
   - name: Restored Bob renames the Open doc
     type: call
@@ -693,18 +716,20 @@ steps:
     member_id: '{{bob_account}}'
     role: ReadOnly
 
-  - name: Wait for the second ReadOnly role to reach Bob
-    type: wait
-    seconds: 10
+  - name: Sync Bob's second ReadOnly role
+    type: wait_for_sync
+    nodes: [curo-node-1, curo-node-2]
+    group_id: '{{open_folder}}'
+    timeout: 60
 
   - name: Read only Bob leaves the Open folder
     type: leave_group
     node: curo-node-2
     group_id: '{{open_folder}}'
 
-  - name: Wait for the leave to reach every node
+  - name: Let the leave reach every node
     type: wait
-    seconds: 10
+    seconds: 5
 
   - name: Bob tries to rejoin the Open folder by inheritance
     type: join_subgroup_inheritance
@@ -725,7 +750,7 @@ steps:
 
   - name: Give a rejoined write time to sync
     type: wait
-    seconds: 10
+    seconds: 5
 
   - name: Alice reads the Open doc after Bob left
     type: call
@@ -757,9 +782,9 @@ steps:
     members:
       - '{{bob_account}}'
 
-  - name: Wait for the removals to reach every node
+  - name: Let the removals reach every node
     type: wait
-    seconds: 10
+    seconds: 5
 
   - name: Removed Bob renames the Restricted doc
     type: call
@@ -774,7 +799,7 @@ steps:
 
   - name: Give a removed member's write time to sync
     type: wait
-    seconds: 10
+    seconds: 5
 
   - name: Alice reads the Restricted doc after the removal
     type: call

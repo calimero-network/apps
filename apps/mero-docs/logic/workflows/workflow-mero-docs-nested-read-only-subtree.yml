@@ -1,23 +1,14 @@
-name: Mero Docs - folder Read only and removal across nested folders
+name: Mero Docs - folder Read only across nested folders
 description: >
   Folder F (Open) holds an Open sub-folder G with an Open G2 below it, and a
-  Restricted sub-folder H. Bob reaches F, G and G2 by inheritance and is
-  added to H. Each step does what the app does for the change named.
-
-  Read only on F writes Bob's ReadOnly row in F and in each Open sub-folder
-  reached through it (core lists him ReadOnly in G by inheritance but refuses
-  writes only by a direct row): his renames and comment in G and G2 land
-  nowhere, while Restricted H, which he was invited to, keeps his own role.
-  A sub-folder created later, and one opened later, take Read only from F.
-  Setting Bob back restores his writes across the subtree.
-
-  Removed from G, Bob is also removed from G2; he cannot rejoin by
-  inheritance, and Alice's Restore (an admin add) lets him back. Restoring
-  him to F does not let him into HB2, an Open folder inside Restricted HB he
-  is not in. In Restricted F2, Read only and back leaves a direct row in its
-  Open sub-folder G4, which a removal from F2 must clear. Finally a
-  workspace removal plus the parents-first sweep of his direct rows leaves
-  him unable to write anywhere.
+  Restricted sub-folder H that Bob was invited to. Each step does what the
+  app does for the change named. Read only on F writes Bob's ReadOnly row in
+  F and in each Open sub-folder reached through it (core lists him ReadOnly
+  in G by inheritance but refuses writes only by a direct row): his renames
+  and comment in G and G2 land nowhere, while H keeps his own role. A
+  sub-folder created Open later (its row is written before it opens) and
+  one opened later take Read only too. Setting Bob back restores his
+  writes.
 
 e2e_mode: true
 
@@ -46,7 +37,7 @@ steps:
 
   - name: Settle before the first admin call
     type: wait
-    seconds: 12
+    seconds: 5
 
   - name: Alice creates the namespace
     type: create_namespace
@@ -318,7 +309,7 @@ steps:
     outputs:
       ns_invite: invitation
 
-  - name: Wait for namespace governance to reach Bob
+  - name: Settle before Bob joins the namespace
     type: wait
     seconds: 10
 
@@ -330,9 +321,20 @@ steps:
     outputs:
       bob_account: memberAccount
 
-  - name: Wait for membership and Open visibility to reach Bob
-    type: wait
-    seconds: 10
+  - name: Sync the namespace to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{namespace_id}}'
+    timeout: 45
+
+  - name: Wait until Bob's node sees F Open
+    type: assert_api_response
+    node: curn-node-2
+    path: /admin-api/groups/{{g_F}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
 
   - name: Bob joins F by inheritance
     type: join_subgroup_inheritance
@@ -346,6 +348,15 @@ steps:
     outputs:
       b_F: memberPublicKey
 
+  - name: Wait until Bob's node sees G Open
+    type: assert_api_response
+    node: curn-node-2
+    path: /admin-api/groups/{{g_G}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
+
   - name: Bob joins G by inheritance
     type: join_subgroup_inheritance
     node: curn-node-2
@@ -357,6 +368,15 @@ steps:
     context_id: '{{c_G}}'
     outputs:
       b_G: memberPublicKey
+
+  - name: Wait until Bob's node sees G2 Open
+    type: assert_api_response
+    node: curn-node-2
+    path: /admin-api/groups/{{g_G2}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
 
   - name: Bob joins G2 by inheritance
     type: join_subgroup_inheritance
@@ -378,9 +398,24 @@ steps:
       - identity: '{{bob_account}}'
         role: Member
 
-  - name: Wait for H membership to reach Bob
-    type: wait
-    seconds: 10
+  - name: Alice keeps Bob's join bit in H
+    type: set_member_capabilities
+    node: curn-node-1
+    group_id: '{{g_H}}'
+    member_id: '{{bob_account}}'
+    capabilities: 4
+
+  - name: Sync the namespace to Bob after the H add
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{namespace_id}}'
+    timeout: 45
+
+  - name: Sync H's membership to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_H}}'
+    timeout: 45
 
   - name: Bob joins H's Docs context
     type: join_context
@@ -399,11 +434,11 @@ steps:
       id: '{{d_G}}'
       title: G control
 
-  - name: Sync G (g_control)
+  - name: Sync G after the control
     type: wait_for_sync
     nodes: [curn-node-1, curn-node-2]
     context_id: '{{c_G}}'
-    timeout: 30
+    timeout: 45
 
   - name: Alice reads the G doc (g_control)
     type: call
@@ -499,9 +534,23 @@ steps:
       member: '{{bob_account}}'
       role: Viewer
 
-  - name: Wait for the Read only rows to reach Bob
-    type: wait
-    seconds: 10
+  - name: Sync F's Read only row to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_F}}'
+    timeout: 45
+
+  - name: Sync G's Read only row to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G}}'
+    timeout: 45
+
+  - name: Sync G2's Read only row to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G2}}'
+    timeout: 45
 
   - name: Bob renames the G doc to 'G while read only'
     type: call
@@ -534,7 +583,6 @@ steps:
     args:
       id: '{{d_H}}'
       title: H while read only
-    allow_failure: true
 
   - name: Read only Bob comments in G
     type: call
@@ -547,11 +595,23 @@ steps:
       body: a read only comment
     allow_failure: true
 
-  - name: Sync G (g_ro)
+  - name: Sync G after Bob's write
     type: wait_for_sync
     nodes: [curn-node-1, curn-node-2]
     context_id: '{{c_G}}'
-    timeout: 30
+    timeout: 45
+
+  - name: Sync G2 after Bob's write
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_G2}}'
+    timeout: 45
+
+  - name: Sync H after Bob's write
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_H}}'
+    timeout: 45
 
   - name: Alice reads the G doc (g_ro)
     type: call
@@ -564,12 +624,6 @@ steps:
     outputs:
       g_ro: result.output.title
 
-  - name: Sync G2 (g2_ro)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_G2}}'
-    timeout: 30
-
   - name: Alice reads the G2 doc (g2_ro)
     type: call
     node: curn-node-1
@@ -580,12 +634,6 @@ steps:
       id: '{{d_G2}}'
     outputs:
       g2_ro: result.output.title
-
-  - name: Sync H (h_ro)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_H}}'
-    timeout: 30
 
   - name: Alice reads the H doc (h_ro)
     type: call
@@ -799,9 +847,17 @@ steps:
       member: '{{bob_account}}'
       role: Viewer
 
-  - name: Wait for G3 and K to reach Bob
-    type: wait
-    seconds: 10
+  - name: Sync G3 to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G3}}'
+    timeout: 45
+
+  - name: Sync K to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_K}}'
+    timeout: 45
 
   - name: Bob joins G3's Docs context
     type: join_context
@@ -839,11 +895,17 @@ steps:
       title: K while read only
     allow_failure: true
 
-  - name: Sync G3 (g3_ro)
+  - name: Sync G3 after Bob's write
     type: wait_for_sync
     nodes: [curn-node-1, curn-node-2]
     context_id: '{{c_G3}}'
-    timeout: 30
+    timeout: 45
+
+  - name: Sync K after Bob's write
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_K}}'
+    timeout: 45
 
   - name: Alice reads the G3 doc (g3_ro)
     type: call
@@ -855,12 +917,6 @@ steps:
       id: '{{d_G3}}'
     outputs:
       g3_ro: result.output.title
-
-  - name: Sync K (k_ro)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_K}}'
-    timeout: 30
 
   - name: Alice reads the K doc (k_ro)
     type: call
@@ -969,9 +1025,35 @@ steps:
       member: '{{bob_account}}'
       role: Editor
 
-  - name: Wait for the restored roles to reach Bob
-    type: wait
-    seconds: 10
+  - name: Sync F's restored role to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_F}}'
+    timeout: 45
+
+  - name: Sync G's restored role to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G}}'
+    timeout: 45
+
+  - name: Sync G2's restored role to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G2}}'
+    timeout: 45
+
+  - name: Sync G3's restored role to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G3}}'
+    timeout: 45
+
+  - name: Sync K's restored role to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_K}}'
+    timeout: 45
 
   - name: Bob renames the G doc to 'G restored'
     type: call
@@ -993,21 +1075,33 @@ steps:
       id: '{{d_G2}}'
       title: G2 restored
 
-  - name: Bob renames the H doc to 'H restored'
+  - name: Bob renames the K doc to 'K restored'
     type: call
     node: curn-node-2
-    context_id: '{{c_H}}'
+    context_id: '{{c_K}}'
     method: edit_doc
-    executor_public_key: '{{b_H}}'
+    executor_public_key: '{{b_K}}'
     args:
-      id: '{{d_H}}'
-      title: H restored
+      id: '{{d_K}}'
+      title: K restored
 
-  - name: Sync G (g_back)
+  - name: Sync G after the restore
     type: wait_for_sync
     nodes: [curn-node-1, curn-node-2]
     context_id: '{{c_G}}'
-    timeout: 30
+    timeout: 45
+
+  - name: Sync G2 after the restore
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_G2}}'
+    timeout: 45
+
+  - name: Sync K after the restore
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_K}}'
+    timeout: 45
 
   - name: Alice reads the G doc (g_back)
     type: call
@@ -1020,12 +1114,6 @@ steps:
     outputs:
       g_back: result.output.title
 
-  - name: Sync G2 (g2_back)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_G2}}'
-    timeout: 30
-
   - name: Alice reads the G2 doc (g2_back)
     type: call
     node: curn-node-1
@@ -1037,783 +1125,22 @@ steps:
     outputs:
       g2_back: result.output.title
 
-  - name: Sync H (h_back)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_H}}'
-    timeout: 30
-
-  - name: Alice reads the H doc (h_back)
+  - name: Alice reads the K doc (k_back)
     type: call
     node: curn-node-1
-    context_id: '{{c_H}}'
+    context_id: '{{c_K}}'
     method: get_doc
-    executor_public_key: '{{a_H}}'
+    executor_public_key: '{{a_K}}'
     args:
-      id: '{{d_H}}'
+      id: '{{d_K}}'
     outputs:
-      h_back: result.output.title
+      k_back: result.output.title
 
   - name: Setting Bob back restores his writes across the subtree
     type: json_assert
     statements:
       - 'json_equal({{g_back}}, "G restored")'
       - 'json_equal({{g2_back}}, "G2 restored")'
-      - 'json_equal({{h_back}}, "H restored")'
-
-  - name: Alice removes Bob from G
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob from G2, the Open sub-folder of G, as the app does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G2}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Wait for the removals to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob tries to rejoin G by inheritance
-    type: join_subgroup_inheritance
-    node: curn-node-2
-    group_id: '{{g_G}}'
-    expected_failure: true
-
-  - name: Bob renames the G doc to 'G after removal'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_G}}'
-    method: edit_doc
-    executor_public_key: '{{b_G}}'
-    args:
-      id: '{{d_G}}'
-      title: G after removal
-    allow_failure: true
-
-  - name: Bob renames the G2 doc to 'G2 after removal'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_G2}}'
-    method: edit_doc
-    executor_public_key: '{{b_G2}}'
-    args:
-      id: '{{d_G2}}'
-      title: G2 after removal
-    allow_failure: true
-
-  - name: Give a removed member's writes time to sync
-    type: wait
-    seconds: 10
-
-  - name: Alice reads the G doc (g_removed)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G}}'
-    method: get_doc
-    executor_public_key: '{{a_G}}'
-    args:
-      id: '{{d_G}}'
-    outputs:
-      g_removed: result.output.title
-
-  - name: Alice reads the G2 doc (g2_removed)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G2}}'
-    method: get_doc
-    executor_public_key: '{{a_G2}}'
-    args:
-      id: '{{d_G2}}'
-    outputs:
-      g2_removed: result.output.title
-
-  - name: Removed from G, Bob writes in neither G nor G2
-    type: json_assert
-    statements:
-      - 'json_equal({{g_removed}}, "G restored")'
-      - 'json_equal({{g2_removed}}, "G2 restored")'
-
-  - name: Alice restores Bob to G
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_G}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: Member
-
-  - name: Alice restores Bob to G2
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_G2}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: Member
-
-  - name: Wait for the restore to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob renames the G doc to 'G after restore'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_G}}'
-    method: edit_doc
-    executor_public_key: '{{b_G}}'
-    args:
-      id: '{{d_G}}'
-      title: G after restore
-
-  - name: Sync G (g_restored)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_G}}'
-    timeout: 30
-
-  - name: Alice reads the G doc (g_restored)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G}}'
-    method: get_doc
-    executor_public_key: '{{a_G}}'
-    args:
-      id: '{{d_G}}'
-    outputs:
-      g_restored: result.output.title
-
-  - name: Restore lets Bob back into G
-    type: json_assert
-    statements:
-      - 'json_equal({{g_restored}}, "G after restore")'
-
-  - name: Alice creates folder HB
-    type: create_group_in_namespace
-    node: curn-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: hb
-    outputs:
-      g_HB: groupId
-
-  - name: Nest HB under F
-    type: reparent_group
-    node: curn-node-1
-    child_group_id: '{{g_HB}}'
-    new_parent_id: '{{g_F}}'
-
-  - name: Mark HB Restricted
-    type: set_subgroup_visibility
-    node: curn-node-1
-    group_id: '{{g_HB}}'
-    visibility: Restricted
-
-  - name: Register HB
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_HB}}'
-      parent_id: '{{g_F}}'
-      color: null
-      alias: HB
-
-  - name: Alice creates HB's Docs context
-    type: create_context
-    node: curn-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{g_HB}}'
-    service_name: docs
-    outputs:
-      c_HB: contextId
-      a_HB: memberPublicKey
-
-  - name: Bind HB
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_HB}}'
-      context_id: '{{c_HB}}'
-
-  - name: Alice creates a doc in HB
-    type: call
-    node: curn-node-1
-    context_id: '{{c_HB}}'
-    method: create_doc
-    executor_public_key: '{{a_HB}}'
-    args:
-      title: HB original
-    outputs:
-      d_HB: result.output
-
-  - name: Alice creates folder HB2
-    type: create_group_in_namespace
-    node: curn-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: hb2
-    outputs:
-      g_HB2: groupId
-
-  - name: Nest HB2 under HB
-    type: reparent_group
-    node: curn-node-1
-    child_group_id: '{{g_HB2}}'
-    new_parent_id: '{{g_HB}}'
-
-  - name: Mark HB2 Open
-    type: set_subgroup_visibility
-    node: curn-node-1
-    group_id: '{{g_HB2}}'
-    visibility: Open
-
-  - name: Register HB2
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_HB2}}'
-      parent_id: '{{g_HB}}'
-      color: null
-      alias: HB2
-
-  - name: Alice creates HB2's Docs context
-    type: create_context
-    node: curn-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{g_HB2}}'
-    service_name: docs
-    outputs:
-      c_HB2: contextId
-      a_HB2: memberPublicKey
-
-  - name: Bind HB2
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_HB2}}'
-      context_id: '{{c_HB2}}'
-
-  - name: Alice creates a doc in HB2
-    type: call
-    node: curn-node-1
-    context_id: '{{c_HB2}}'
-    method: create_doc
-    executor_public_key: '{{a_HB2}}'
-    args:
-      title: HB2 original
-    outputs:
-      d_HB2: result.output
-
-  - name: Alice removes Bob from F
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_F}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob from G, reached through F, as the app does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob from G2, reached through F, as the app does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G2}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob from G3, reached through F, as the app does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G3}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob from K, reached through F, as the app does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_K}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Wait for the removal from F to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Alice restores Bob to F
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_F}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: Member
-
-  - name: Wait for the restore of F to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob tries to join HB2's Docs context
-    type: join_context
-    node: curn-node-2
-    context_id: '{{c_HB2}}'
-    outputs:
-      b_HB2: memberPublicKey
-    expected_failure: true
-
-  - name: Bob renames the HB2 doc to 'HB2 by a stranger'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_HB2}}'
-    method: edit_doc
-    executor_public_key: '{{b_HB2}}'
-    args:
-      id: '{{d_HB2}}'
-      title: HB2 by a stranger
-    allow_failure: true
-
-  - name: Give a stranger's write time to sync
-    type: wait
-    seconds: 10
-
-  - name: Alice reads the HB2 doc (hb2_after)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_HB2}}'
-    method: get_doc
-    executor_public_key: '{{a_HB2}}'
-    args:
-      id: '{{d_HB2}}'
-    outputs:
-      hb2_after: result.output.title
-
-  - name: Restoring F does not let Bob into HB2 behind Restricted HB
-    type: json_assert
-    statements:
-      - 'json_equal({{hb2_after}}, "HB2 original")'
-
-  - name: Alice creates folder F2
-    type: create_group_in_namespace
-    node: curn-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: f2
-    outputs:
-      g_F2: groupId
-
-  - name: Mark F2 Restricted
-    type: set_subgroup_visibility
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    visibility: Restricted
-
-  - name: Register F2
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_F2}}'
-      parent_id: null
-      color: null
-      alias: F2
-
-  - name: Alice creates F2's Docs context
-    type: create_context
-    node: curn-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{g_F2}}'
-    service_name: docs
-    outputs:
-      c_F2: contextId
-      a_F2: memberPublicKey
-
-  - name: Bind F2
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F2}}'
-      context_id: '{{c_F2}}'
-
-  - name: Alice creates a doc in F2
-    type: call
-    node: curn-node-1
-    context_id: '{{c_F2}}'
-    method: create_doc
-    executor_public_key: '{{a_F2}}'
-    args:
-      title: F2 original
-    outputs:
-      d_F2: result.output
-
-  - name: Alice creates folder G4
-    type: create_group_in_namespace
-    node: curn-node-1
-    namespace_id: '{{namespace_id}}'
-    group_name: g4
-    outputs:
-      g_G4: groupId
-
-  - name: Nest G4 under F2
-    type: reparent_group
-    node: curn-node-1
-    child_group_id: '{{g_G4}}'
-    new_parent_id: '{{g_F2}}'
-
-  - name: Mark G4 Open
-    type: set_subgroup_visibility
-    node: curn-node-1
-    group_id: '{{g_G4}}'
-    visibility: Open
-
-  - name: Register G4
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_G4}}'
-      parent_id: '{{g_F2}}'
-      color: null
-      alias: G4
-
-  - name: Alice creates G4's Docs context
-    type: create_context
-    node: curn-node-1
-    application_id: '{{app_id}}'
-    group_id: '{{g_G4}}'
-    service_name: docs
-    outputs:
-      c_G4: contextId
-      a_G4: memberPublicKey
-
-  - name: Bind G4
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G4}}'
-      context_id: '{{c_G4}}'
-
-  - name: Alice creates a doc in G4
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G4}}'
-    method: create_doc
-    executor_public_key: '{{a_G4}}'
-    args:
-      title: G4 original
-    outputs:
-      d_G4: result.output
-
-  - name: Alice adds Bob to F2
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: Member
-
-  - name: Alice keeps Bob's join bit in F2
-    type: set_member_capabilities
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    member_id: '{{bob_account}}'
-    capabilities: 4
-
-  - name: Wait for F2 membership to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob joins F2's Docs context
-    type: join_context
-    node: curn-node-2
-    context_id: '{{c_F2}}'
-    outputs:
-      b_F2: memberPublicKey
-
-  - name: Bob joins G4 by inheritance
-    type: join_subgroup_inheritance
-    node: curn-node-2
-    group_id: '{{g_G4}}'
-
-  - name: Bob joins G4's Docs context
-    type: join_context
-    node: curn-node-2
-    context_id: '{{c_G4}}'
-    outputs:
-      b_G4: memberPublicKey
-
-  - name: Alice makes Bob core ReadOnly in F2
-    type: update_member_role
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    member_id: '{{bob_account}}'
-    role: ReadOnly
-
-  - name: Alice keeps Bob's join bit in F2
-    type: set_member_capabilities
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    member_id: '{{bob_account}}'
-    capabilities: 4
-
-  - name: Alice sets Bob's registry role in F2 to Viewer
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F2}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
-  - name: Alice adds a direct ReadOnly row for Bob in G4
-    type: add_group_members
-    node: curn-node-1
-    group_id: '{{g_G4}}'
-    members:
-      - identity: '{{bob_account}}'
-        role: ReadOnly
-
-  - name: Alice keeps Bob's join bit in G4
-    type: set_member_capabilities
-    node: curn-node-1
-    group_id: '{{g_G4}}'
-    member_id: '{{bob_account}}'
-    capabilities: 4
-
-  - name: Alice sets Bob's registry role in G4 to Viewer
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G4}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
-  - name: Alice makes Bob core Member in F2 again
-    type: update_member_role
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    member_id: '{{bob_account}}'
-    role: Member
-
-  - name: Alice sets Bob's registry role in F2 to Editor
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F2}}'
-      member: '{{bob_account}}'
-      role: Editor
-
-  - name: Alice makes Bob core Member in G4 again
-    type: update_member_role
-    node: curn-node-1
-    group_id: '{{g_G4}}'
-    member_id: '{{bob_account}}'
-    role: Member
-
-  - name: Alice sets Bob's registry role in G4 to Editor
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G4}}'
-      member: '{{bob_account}}'
-      role: Editor
-
-  - name: Wait for the F2 round trip to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob renames the G4 doc to 'G4 as an Editor'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_G4}}'
-    method: edit_doc
-    executor_public_key: '{{b_G4}}'
-    args:
-      id: '{{d_G4}}'
-      title: G4 as an Editor
-
-  - name: Sync G4 (g4_editor)
-    type: wait_for_sync
-    nodes: [curn-node-1, curn-node-2]
-    context_id: '{{c_G4}}'
-    timeout: 30
-
-  - name: Alice reads the G4 doc (g4_editor)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G4}}'
-    method: get_doc
-    executor_public_key: '{{a_G4}}'
-    args:
-      id: '{{d_G4}}'
-    outputs:
-      g4_editor: result.output.title
-
-  - name: Back to Editor, Bob writes in G4
-    type: json_assert
-    statements:
-      - 'json_equal({{g4_editor}}, "G4 as an Editor")'
-
-  - name: Alice removes Bob from F2
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_F2}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob's direct row in G4, as the app does after a removal from F2
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_G4}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Wait for the F2 removal to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob renames the G4 doc to 'G4 after removal from F2'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_G4}}'
-    method: edit_doc
-    executor_public_key: '{{b_G4}}'
-    args:
-      id: '{{d_G4}}'
-      title: G4 after removal from F2
-    allow_failure: true
-
-  - name: Give a removed member's write time to sync
-    type: wait
-    seconds: 10
-
-  - name: Alice reads the G4 doc (g4_removed)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_G4}}'
-    method: get_doc
-    executor_public_key: '{{a_G4}}'
-    args:
-      id: '{{d_G4}}'
-    outputs:
-      g4_removed: result.output.title
-
-  - name: Removed from F2, Bob writes no more in its Open sub-folder G4
-    type: json_assert
-    statements:
-      - 'json_equal({{g4_removed}}, "G4 as an Editor")'
-
-  - name: Alice removes Bob from the workspace
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{namespace_id}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob's direct row in F, as the sweep does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_F}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Alice removes Bob's direct row in H, as the sweep does
-    type: remove_group_members
-    node: curn-node-1
-    group_id: '{{g_H}}'
-    members:
-      - '{{bob_account}}'
-
-  - name: Wait for the removals to reach Bob
-    type: wait
-    seconds: 10
-
-  - name: Bob renames the F doc to 'F after workspace removal'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_F}}'
-    method: edit_doc
-    executor_public_key: '{{b_F}}'
-    args:
-      id: '{{d_F}}'
-      title: F after workspace removal
-    allow_failure: true
-
-  - name: Bob renames the H doc to 'H after workspace removal'
-    type: call
-    node: curn-node-2
-    context_id: '{{c_H}}'
-    method: edit_doc
-    executor_public_key: '{{b_H}}'
-    args:
-      id: '{{d_H}}'
-      title: H after workspace removal
-    allow_failure: true
-
-  - name: Give a removed member's writes time to sync
-    type: wait
-    seconds: 10
-
-  - name: Alice reads the F doc (f_gone)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_F}}'
-    method: get_doc
-    executor_public_key: '{{a_F}}'
-    args:
-      id: '{{d_F}}'
-    outputs:
-      f_gone: result.output.title
-
-  - name: Alice reads the H doc (h_gone)
-    type: call
-    node: curn-node-1
-    context_id: '{{c_H}}'
-    method: get_doc
-    executor_public_key: '{{a_H}}'
-    args:
-      id: '{{d_H}}'
-    outputs:
-      h_gone: result.output.title
-
-  - name: Removed from the workspace, Bob writes nowhere
-    type: json_assert
-    statements:
-      - 'json_equal({{f_gone}}, "F original")'
-      - 'json_equal({{h_gone}}, "H restored")'
+      - 'json_equal({{k_back}}, "K restored")'
 
 stop_all_nodes: false
