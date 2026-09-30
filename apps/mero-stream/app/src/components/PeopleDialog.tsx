@@ -42,10 +42,11 @@ export default function PeopleDialog({
   // Re-seed the draft each time it opens, so an abandoned edit does not persist
   // as a stale value the next time someone looks.
   useEffect(() => {
-    if (open) {
-      setDraft(name);
-      setSaved(false);
-    }
+    if (open) setSaved(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) setDraft(name);
   }, [open, name]);
 
   const trimmed = draft.trim();
