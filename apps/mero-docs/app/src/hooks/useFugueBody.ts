@@ -118,6 +118,32 @@ interface Outcome {
   touched: Set<string>;
 }
 
+// What each prop reads as when a block does not carry it, as an attr value.
+const PROP_DEFAULTS: Record<string, Record<string, string>> = Object.fromEntries(
+  Object.entries(schema.blockSchema).map(([kind, spec]) => [
+    kind,
+    Object.fromEntries(
+      Object.entries(spec.propSchema as Record<string, { default?: unknown }>)
+        .filter(([, prop]) => prop.default !== undefined)
+        .map(([key, prop]) => [key, String(prop.default)]),
+    ),
+  ]),
+);
+
+/**
+ * `block` with every attr that only restates its kind's default left out.
+ * BlockNote fills those in on any block it is handed, so a peer's block read
+ * before its attrs land would otherwise differ from the editor's copy of it,
+ * and this reader would write the difference back as if the user had made it.
+ */
+const withoutDefaults = (block: EditorBlock): EditorBlock => {
+  const defaults = PROP_DEFAULTS[block.kind] ?? {};
+  const attrs = Object.fromEntries(
+    Object.entries(block.attrs).filter(([key, value]) => defaults[key] !== value),
+  );
+  return { ...block, attrs };
+};
+
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
@@ -226,10 +252,9 @@ export function useFugueBody({
   const localBlocks = useCallback((): EditorBlock[] => {
     const live = editorRef.current;
     if (!live) return [];
-    const blocks = fromBlockNote(live.document).map((block) => ({
-      ...block,
-      id: backendIdOf(block.id),
-    }));
+    const blocks = fromBlockNote(live.document).map((block) =>
+      withoutDefaults({ ...block, id: backendIdOf(block.id) }),
+    );
     // Opening a document must not write to it, so this stays unsent until typed into.
     return serverRef.current.length === 0 && isEditorStandIn(blocks) ? [] : blocks;
   }, [backendIdOf]);
@@ -465,7 +490,7 @@ export function useFugueBody({
     async (touched: Set<string>) => {
       if (!client || !docId) return;
       try {
-        const remote = backendBlocks(await client.getDocument({ doc: docId }));
+        const remote = backendBlocks(await client.getDocument({ doc: docId })).map(withoutDefaults);
         reconcile(remote, touched);
         setStatus((prev) => (prev === 'error' ? prev : 'saved'));
       } catch (cause) {
