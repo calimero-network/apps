@@ -53,6 +53,8 @@ jobs:
       # producer of the artifacts BOTH it and `browser` download, and `browser`
       # runs over `apps` — see the note on the wasm job's matrix.
       contract_apps: ${{ steps.set.outputs.contract_apps }}
+      # `contract_apps` as {app, workflow} pairs: one e2e runner per scenario.
+      contract_workflows: ${{ steps.set.outputs.contract_workflows }}
       # `apps` as {app, shard} pairs: an app in BROWSER_SHARDS runs its browser
       # e2e split across that many runners.
       browser_matrix: ${{ steps.set.outputs.browser_matrix }}
@@ -297,6 +299,7 @@ jobs:
             echo "::notice::merobox apps: $contract_apps"
           fi
           echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
+          echo "contract_workflows=$(bash scripts/app-packages.sh workflows <<<"$contract_apps")" >> "$GITHUB_OUTPUT"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -912,7 +915,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
-    name: E2E (${{ matrix.app }})
+    name: E2E (${{ matrix.app }} / ${{ matrix.workflow }})
     # BLOCKING again. It was made advisory when the namespace joins looked like
     # an unfixable core-side race; they were not. Every scenario now sets
     # `e2e_mode: true`, which clears `merod init`'s default `bootstrap.nodes` —
@@ -928,17 +931,17 @@ jobs:
     # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
     # alter what a two-node merobox run does, and each of these pulls an image
     # and starts two merod containers.
-    if: needs.changes.outputs.contract_apps != '[]'
+    if: needs.changes.outputs.contract_workflows != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25 # one scenario with retries, not the whole app
     strategy:
       fail-fast: false
       # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
       # so GitHub prints the raw template as a skipped check. Falling back to
-      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
-      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
+      # `none` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none / none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.contract_apps != '[]' && needs.changes.outputs.contract_apps || '["none"]') }}
+        include: ${{ fromJSON(needs.changes.outputs.contract_workflows != '[]' && needs.changes.outputs.contract_workflows || '[{"app":"none","workflow":"none"}]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1044,13 +1047,11 @@ jobs:
 
       # Free schema gate. Catches a YAML mistake before fourteen containers
       # start, instead of after.
-      - name: Validate workflows
+      - name: Validate the workflow
         working-directory: apps/${{ matrix.app }}/logic
-        run: |
-          shopt -s nullglob
-          for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
+        run: merobox bootstrap validate "workflows/${{ matrix.workflow }}.yml"
 
-      # ⚠️ Tear the containers down BETWEEN scenarios, not just at the end.
+      # ⚠️ Tear the containers down BETWEEN attempts, not just at the end.
       # `nuke_on_start` in a scenario clears DATA, not a previous scenario's
       # running containers, and scenarios pick their own node prefix while
       # sharing the default host ports. So the second scenario to want 2428
@@ -1061,13 +1062,16 @@ jobs:
       # which reads like a runner problem rather than a missing teardown. Any
       # app with ONE scenario — kv-store, mero-design, merraria — never sees it;
       # scaffolding-e2e has 18.
-      - name: Run workflows
+      - name: Run the workflow
         working-directory: apps/${{ matrix.app }}/logic
+        env:
+          WORKFLOW: workflows/${{ matrix.workflow }}.yml
+          ATTEMPT_TIMEOUT: 10m # a healthy scenario takes minutes; a hung one must not eat the job budget
         run: |
-          shopt -s nullglob
+          log=$(mktemp)
 
           # Run one scenario; always tear the containers down afterwards so a
-          # retry (or the next scenario) starts from a clean host.
+          # retry starts from a clean host.
           # ⚠️ THE DATA DIRECTORIES SURVIVE EVERY TEARDOWN WE HAD, and a scenario
           # that inherits one dies at its FIRST admin call for a reason that
           # names nothing.
@@ -1114,11 +1118,12 @@ jobs:
           }
 
           run_one() {
-            # Cold BEFORE, not only after: the once-per-job prep step runs before
-            # the loop, so without this the second scenario onwards inherits.
+            # Cold BEFORE, not only after: the prep steps run once, ahead of attempt 1.
             cold_host || return 1
-            merobox bootstrap run "$1" --log-level info
-            local s=$?
+            # Wide terminal so rich never wraps the step name the retry decision parses.
+            COLUMNS=1000 timeout --kill-after=30s "$ATTEMPT_TIMEOUT" \
+              merobox bootstrap run "$1" --log-level info 2>&1 | tee "$log"
+            local s=${PIPESTATUS[0]}
             # ⚠️ `stop` alone is not enough between attempts, which made the
             # retry loop actively misleading.
             #
@@ -1181,67 +1186,32 @@ jobs:
             # done this; it has not (see cold_host).
             cold_host || true
             echo "remaining: $(docker ps -aq 2>/dev/null | wc -l | tr -d ' ') container(s)"
-            return $s
+            return "$s"
           }
 
-          # Up to 6 attempts per scenario, for the cold-namespace-join
-          # KeyDelivery flake: `join_namespace` (and `create_mesh`, which joins
-          # internally) 500s when the group key misses its 5s gossip window — a
-          # core-side timing race CI load provokes. It has been observed to lose
-          # TWICE in a row on a heavily loaded runner, so one retry was not
-          # enough; three attempts makes that vanishingly unlikely while a
-          # genuine failure still loses all three and reds the job. A
-          # `create_mesh` scenario has no step boundary to settle at, so the
-          # whole scenario is the unit of retry.
-          for f in workflows/*.yml; do
-            echo "::group::$f"
-            ok=0
-            # 4 attempts with an ESCALATING gap, not 3 with a flat 5s. The
-            # in-scenario settle before each join is already 12s and
-            # group-late-joiner.yml is explicit that widening it further is the
-            # wrong lever; what is left is the gap BETWEEN attempts. A retry
-            # starting 5s after a torn-down stack races the same cold state the
-            # previous attempt lost to.
-            #
-            # Observed on a full-fanout run (a `shared` change reaches all 16
-            # apps): battleships, mero-design, mero-calendar and scaffolding-e2e
-            # each lost all THREE attempts at `Node 2 Joins Namespace`, while the
-            # same legs pass on a narrow run.
-            # 6 attempts, and the count is chosen from the observed failure
-            # SHAPE rather than picked round.
-            #
-            # `create_mesh` joins its `nodes:` list in a sequential loop with NO
-            # delay between them (merobox mesh.py), so a settle before the step
-            # only helps the FIRST node — the second joins with nothing. That is
-            # why `authored-shared.yml` (2 nodes in one mesh) is the worst leg,
-            # while `access-control.yml` (1 node) fails an attempt and passes the
-            # next. Losing 4 independent attempts puts its per-attempt success
-            # near 1 in 4; 6 attempts with teardown between each is what makes
-            # the leg reliable without pretending the underlying race is fixed.
-            #
-            # This cannot be fixed from this repository: the join races core's
-            # KeyDelivery window, merobox exposes no wait-for-connectivity gate
-            # (`wait_for_sync` needs membership the joining node does not yet
-            # have), `bootstrap_nodes` wants a peer id unknown until runtime, and
-            # group-late-joiner.yml rules out widening the in-scenario settle.
-            for attempt in 1 2 3 4 5 6; do
-              if run_one "$f"; then ok=1; break; fi
-              if [ "$attempt" -lt 6 ]; then
-                # capped so six attempts do not blow the 40-minute job budget
-                gap=$(( attempt * 15 )); [ "$gap" -gt 45 ] && gap=45
-                echo "::warning file=$f::attempt $attempt failed — retrying in ${gap}s (cold-join KeyDelivery flake)"
-                sleep "$gap"
-              fi
-            done
-            echo "::endgroup::"
-            if [ "$ok" -ne 1 ]; then
-              # Deliberately NOT "this is a real failure". Six backed-off
-              # attempts still lose sometimes, and saying otherwise sends the
-              # reader after the app instead of the race.
-              echo "::error file=$f::scenario failed on all 6 attempts — most likely the cold-join KeyDelivery race (core-side); check the node-logs artifact before treating it as an app defect"
-              exit 1
+          # Retry only a failure at a joining step: that is the cold-join
+          # KeyDelivery race, core-side and provoked by CI load. Anything else,
+          # and any timeout, is deterministic and fails at once.
+          # `create_mesh` joins its nodes back to back, so only the whole
+          # scenario can be retried; 6 attempts because 4 still lost on busy runners.
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            rc=0; run_one "$WORKFLOW" || rc=$?
+            if [ "$rc" -eq 0 ]; then ok=1; break; fi
+            if ! why=$(python3 "$GITHUB_WORKSPACE/scripts/e2e-retry-decision.py" "$WORKFLOW" "$log" "$rc"); then
+              echo "::error file=$WORKFLOW::$why"
+              break
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              # escalating gap: a retry right after teardown races the same cold state
+              gap=$(( attempt * 15 )); [ "$gap" -gt 45 ] && gap=45
+              echo "::warning file=$WORKFLOW::attempt $attempt failed - $why - retrying in ${gap}s"
+              sleep "$gap"
+            else
+              echo "::error file=$WORKFLOW::lost the cold-join race on all 6 attempts - $why - check the node-logs artifact"
             fi
           done
+          [ "$ok" -eq 1 ]
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
       # `Error: Missing argument 'NODE_NAME'`, so the first version of this step
@@ -1252,7 +1222,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: node-logs-${{ matrix.app }}-${{ github.run_attempt }}
+          name: node-logs-${{ matrix.app }}-${{ matrix.workflow }}-${{ github.run_attempt }}
           # Copied out of ./data by `run_one` per attempt: the teardown
           # deletes ./data, so the export itself is gone by the time this runs.
           path: apps/${{ matrix.app }}/node-logs/

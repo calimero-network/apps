@@ -17,6 +17,7 @@ not 5s, and why merobox offers no wait-for-connectivity gate to use instead.
 """
 
 import glob
+import importlib.util
 import pathlib
 import sys
 
@@ -25,9 +26,11 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MIN_SETTLE = 5  # anything less merely doubles a budget that was already short
 
-# Every step that JOINS races the KeyDelivery window: an explicit
-# `join_namespace`/`join_group`, and `create_mesh`, which joins internally.
-JOINING = {"create_mesh", "join_namespace", "join_group"}
+# The retry decision owns the set of joining steps; this must not drift from it.
+_spec = importlib.util.spec_from_file_location("decision", ROOT / "scripts/e2e-retry-decision.py")
+_decision = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_decision)
+JOINING = _decision.JOINING
 
 failures = []
 checked = 0

@@ -16,6 +16,7 @@
 # Usage:
 #   scripts/app-packages.sh all           JSON array of every app package
 #   scripts/app-packages.sh from-paths    JSON array for paths on stdin
+#   scripts/app-packages.sh workflows     [{app, workflow}] for the app JSON array on stdin
 #
 # `from-paths` reads whitespace-separated paths and maps any under an app
 # directory to that app's package, so it covers logic/ and app/ alike.
@@ -77,8 +78,18 @@ case "${1:-}" in
       | unique | sort
     ' <<<"$paths"
     ;;
+  workflows)
+    # One entry per merobox scenario; probes/ sits below the glob on purpose.
+    for app in $(jq -r '.[]' | sed '/^$/d'); do
+      for f in apps/"$app"/logic/workflows/*.yml; do
+        if [ -e "$f" ]; then
+          jq -cn --arg app "$app" --arg wf "$(basename "$f" .yml)" '{app: $app, workflow: $wf}'
+        fi
+      done
+    done | jq -sc .
+    ;;
   *)
-    echo "usage: $0 {all|from-paths}" >&2
+    echo "usage: $0 {all|from-paths|workflows}" >&2
     exit 2
     ;;
 esac
