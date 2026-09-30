@@ -10,7 +10,7 @@ import { TileStore } from "./engine/world";
 import { createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
-import { GameClient } from "./net/client";
+import { GameClient, type WorldMeta } from "./net/client";
 import {
   captureSessionFromHash,
   clearWorld,
@@ -37,6 +37,20 @@ import { PauseMenu } from "./ui/overlays";
 primeInviteCapture("merraria");
 
 const SAVE_MS = 5000;
+const WORLD_READY_MS = 60_000;
+
+async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
+  const deadline = Date.now() + WORLD_READY_MS;
+  for (;;) {
+    try {
+      return await client.fetchWorldMeta();
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      if (!/"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text) || Date.now() >= deadline) throw err;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+}
 const MINIMAP_MS = 500; // live map: remote miners move on it in near real time
 
 interface RemoteAvatar {
@@ -102,7 +116,7 @@ async function boot(): Promise<void> {
   let seed: number;
   let createdAt = Math.floor(Date.now() / 1000);
   try {
-    const meta = await client.fetchWorldMeta();
+    const meta = await fetchWorldMetaWhenReady(client);
     seed = meta.seed;
     createdAt = meta.createdAt || createdAt;
   } catch (err) {
