@@ -50,7 +50,7 @@ function ImageNotice({
       role="status"
       data-image-status={image.status}
       contentEditable={false}
-      className="flex h-40 max-w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/40 px-4 text-center"
+      className="flex min-h-40 max-w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-4 text-center"
       style={{ width: width ?? NOTICE_WIDTH }}
     >
       <Icon
@@ -58,7 +58,7 @@ function ImageNotice({
         className={`mb-1 h-5 w-5 text-muted-foreground ${image.status === 'loading' ? 'animate-spin' : ''}`}
       />
       <p className="text-sm font-medium text-foreground">{title}</p>
-      {body && <p className="text-xs text-muted-foreground">{body}</p>}
+      {body && <p className="text-xs leading-relaxed text-muted-foreground">{body}</p>}
       {onRetry && (
         <Button variant="outline" size="sm" className="mt-2 h-8" onClick={onRetry}>
           Try again
