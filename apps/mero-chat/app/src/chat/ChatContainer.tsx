@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useRef, useState, memo } from "react";
 import type { FormEvent } from "react";
 import { styled } from "styled-components";
 import { log } from "../utils/logger";
@@ -16,14 +16,12 @@ import { MessageStatus } from "../types/Common";
 import JoinChannel from "./JoinChannel";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import {
-  getContextId,
-  getContextIdentity as getExecutorPublicKey,
-} from "@calimero-network/mero-react";
+import { getContextIdentity as getExecutorPublicKey } from "@calimero-network/mero-react";
 import type { ResponseData } from "../api/types";
 import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
 import ChatSearchOverlay from "./ChatSearchOverlay";
+import type { SearchResult } from "../hooks/messageSearch";
 import { isSelfSender } from "../utils/selfIdentity";
 import { getSelfAccountHex, sameAccount } from "../utils/accountIdentity";
 
@@ -55,8 +53,7 @@ interface ChatContainerProps {
   addOptimisticMessage?: (message: CurbMessage) => void;
   addOptimisticThreadMessage?: (message: CurbMessage) => void;
   clearThreadsMessagesOnSwitch: () => void;
-  searchResults: CurbMessage[];
-  searchTotalCount: number;
+  searchResults: SearchResult[];
   searchQuery: string;
   isSearchingMessages: boolean;
   searchHasMore: boolean;
@@ -66,7 +63,7 @@ interface ChatContainerProps {
   onClearSearch: () => void;
   isSearchOverlayOpen: boolean;
   onCloseSearchOverlay: () => void;
-  onSearchResultClick?: (contextId: string) => void;
+  onSearchResultClick?: (result: SearchResult) => void;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -127,7 +124,6 @@ function ChatContainer({
   addOptimisticThreadMessage,
   clearThreadsMessagesOnSwitch,
   searchResults,
-  searchTotalCount,
   searchQuery,
   isSearchingMessages,
   searchHasMore,
@@ -653,13 +649,6 @@ function ChatContainer({
     await onLoadMoreSearch();
   }, [onLoadMoreSearch, searchQuery]);
 
-  const searchContextId = useMemo(() => {
-    if (activeChat.contextId && activeChat.contextId.length > 0) {
-      return activeChat.contextId;
-    }
-    return getContextId() ?? "";
-  }, [activeChat.contextId]);
-
   const trimmedSearchInput = searchInputValue.trim();
   const hasSearchResults = searchResults.length > 0;
   const hasSearchQuery = searchQuery.length > 0;
@@ -687,14 +676,12 @@ function ChatContainer({
           hasSearchResults={hasSearchResults}
           searchQuery={searchQuery}
           searchResults={searchResults}
-          searchTotalCount={searchTotalCount}
           searchHasMore={searchHasMore}
           onLoadMoreSearch={handleLoadMoreSearch}
           onClose={() => {
             handleClearSearch();
             onCloseSearchOverlay();
           }}
-          searchContextId={searchContextId}
           onResultClick={onSearchResultClick}
         />
       )}

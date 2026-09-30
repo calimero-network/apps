@@ -64,6 +64,44 @@ For more information how to build app check our docs:
 https://calimero-network.github.io/build/quickstart
 
 
+## Search
+
+`search_messages(query, cursor, limit)` walks the channel newest first by
+position, each top-level message followed by its thread, and returns slim hits
+(id, parent id, position, timestamps, sender, a plain-text snippet with the
+match offsets) plus an opaque `next_cursor`. One call stops at `limit` hits
+(default 20, max 50) or after reading 2,000 messages or 1 MiB of text, so a
+common term in a big channel costs one page, never the channel. Text is matched
+as it is shown (markup dropped) and folded for case, accents and width as
+mero-docs' `foldForSearch` folds it. Deleted and staff-removed messages are
+never found. The app asks every conversation for a page, merges the pages
+newest first by each page's `frontier_timestamp`, and "Load more" continues each
+conversation from its own cursor.
+
+Gas per call, measured through the real runtime (calimero-runtime
+0.11.0-rc.57, metered wasm, in-memory store; `needle` is in 1% of messages and
+10% of replies, `w5` in 2%, `zebrafish` in none; the budget is 1e9):
+
+| call | 2,000 msgs before | after | 5,000 msgs before | after |
+| --- | ---: | ---: | ---: | ---: |
+| `get_message_count` | 93M | 93M | 201M | 201M |
+| `get_messages` newest 50 | 124M | 109M | 251M | 217M |
+| search `needle`, first page | 192M | 205M | 446M | 312M |
+| search `zebrafish`, first page | 184M | 241M | 426M | 348M |
+| search `w5`, first page | 193M | 173M | 447M | 280M |
+
+"Before" is `search_all_messages` (every match, rendered in full); "after" is
+one `search_messages` page. The old cost is ~90k gas per message in the channel
+and reaches the budget near 10k messages; a page adds at most 2,000 rows to the
+fixed cost below.
+
+That fixed cost is core's, and it bounds this app today: on rc.57 any call that
+touches `messages` walks the vector's whole child trie (`get_message_count`
+alone is ~40k gas and ~1.6 storage reads per message in the channel), and
+`send_message` costs 658M gas at 2,000 messages and 1.55G at 5,000, so sends
+exceed the default budget near 3,200 messages. Search cannot fix that from the
+contract.
+
 ## Workflows
 
 The `workflows/` folder contains an example bootstrap workflow that demonstrates the complete setup process with the following steps:

@@ -671,6 +671,105 @@
         }
       ]
     },
+    "SearchHit": {
+      "kind": "record",
+      "doc": "One message a search found: enough to list and open it, not the message.\n\nDeliberately slim. Rendering a full message walks its mentions, files,\nimages, reactions and thread; a search used to do that for every hit and\nthen throw away all but one page. A client wanting the whole message reads\nit by `index` (`get_messages_from`), or opens the thread by\n`parent_message_id`.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_message_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Set for a thread reply: the top-level message it replies to."
+        },
+        {
+          "name": "index",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Position of the top-level message: the hit itself, or a reply's\nparent. What a permalink to the conversation is made of."
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "anchor_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The timestamp the hit is ranked by: its own for a top-level message,\nits parent's for a reply, which is listed with its thread."
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          },
+          "doc": "From the entry's owner stamp, never the message's own field."
+        },
+        {
+          "name": "snippet",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Plain text around the first match, not markup."
+        },
+        {
+          "name": "match_start",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The match inside `snippet`, in UTF-16 code units (a JS string index)."
+        },
+        {
+          "name": "match_end",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "SearchPage": {
+      "kind": "record",
+      "doc": "A page of `search_messages`.",
+      "fields": [
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "SearchHit"
+            }
+          }
+        },
+        {
+          "name": "next_cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Opaque; pass it back for the next page. `None` once the walk reached the\noldest message."
+        },
+        {
+          "name": "frontier_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true,
+          "doc": "The oldest timestamp among the top-level messages this call read, or\n`None` if it read none. The walk goes newest first by position, so later\npages rank at or below it (up to clock skew between senders): a client\nmerging several channels can show every hit above it without waiting\nfor more pages."
+        }
+      ]
+    },
     "Slot": {
       "kind": "variant",
       "doc": "Where a message lives: a slot of the channel, or a key of the thread map.",
@@ -890,6 +989,7 @@
     },
     {
       "name": "get_messages",
+      "doc": "A page of the channel, or of one thread, counted back from the END:\noffset 0 is the newest page. `search_term` keeps only the messages whose\ntext contains it (see `search_messages` for how text is compared), and\n`total_count` is then the number of matches.\n\nA search here still reads the whole channel, because `total_count`\npromises every match; it builds only the page it returns, though.\nAnything that searches a channel which can grow should use\n`search_messages`, whose cost per call is bounded.",
       "params": [
         {
           "name": "parent_message",
@@ -1099,13 +1199,21 @@
       "intent": "mutating"
     },
     {
-      "name": "search_all_messages",
+      "name": "search_messages",
+      "doc": "Messages whose text contains `query`, newest first, a bounded amount of\nwork per call.\n\nText is compared as a reader sees it (markup dropped, entities decoded)\nand folded for case, accents and width as mero-docs folds it, so \"cafe\"\nfinds \"Café\". Deleted and staff-removed messages are never returned.\n\nThe channel is walked by position from the newest message down, each\ntop-level message followed by the replies in its thread, so a reply is\nlisted with its thread and ranked by `anchor_timestamp`. A call stops at\n`limit` hits (default 20, at most 50) or once it has read\n`MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever\ncomes first, and returns a `next_cursor` to continue from; a page can\ntherefore hold fewer hits than `limit`, even none, and still not be the\nlast. A common term in a huge channel costs a page, never the channel.",
       "params": [
         {
-          "name": "search_term",
+          "name": "query",
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         },
         {
           "name": "limit",
@@ -1113,17 +1221,10 @@
             "kind": "u32"
           },
           "nullable": true
-        },
-        {
-          "name": "offset",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
         }
       ],
       "returns": {
-        "$ref": "FullMessageResponse"
+        "$ref": "SearchPage"
       },
       "intent": "read_only"
     },

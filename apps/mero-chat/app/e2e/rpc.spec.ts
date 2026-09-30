@@ -877,10 +877,28 @@ test.describe("error guards", () => {
 // presence moved to ephemeral state — useEphemeralPresence.ts. Calling them is
 // `method "heartbeat" not found`.)
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. search_all_messages
+// 10. search_messages
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe("search_all_messages", () => {
+interface SearchHitOut {
+  id: string;
+  parent_message_id: string | null;
+  index: number;
+  timestamp: number;
+  anchor_timestamp: number;
+  sender: string;
+  snippet: string;
+  match_start: number;
+  match_end: number;
+}
+
+interface SearchPageOut {
+  hits: SearchHitOut[];
+  next_cursor: string | null;
+  frontier_timestamp: number | null;
+}
+
+test.describe("search_messages", () => {
   test.beforeAll(requireEnv);
 
   async function seedMessage(text: string): Promise<MessageOut> {
@@ -896,107 +914,78 @@ test.describe("search_all_messages", () => {
     });
   }
 
-  test("search_all_messages returns GetMessagesOut shape", async () => {
+  test("search_messages returns the page shape", async () => {
     const client = makeClient();
-    const result = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: "test",
+    const result = await client.call<SearchPageOut>("search_messages", {
+      query: "test",
+      cursor: null,
       limit: 10,
-      offset: 0,
     });
-    expect(typeof result.total_count).toBe("number");
-    expect(Array.isArray(result.messages)).toBe(true);
-    expect(typeof result.start_position).toBe("number");
+    expect(Array.isArray(result.hits)).toBe(true);
+    expect(result.next_cursor === null || typeof result.next_cursor === "string").toBe(true);
   });
 
-  test("search_all_messages finds a seeded message", async () => {
-    const marker = `search-all-${Date.now()}`;
-    await seedMessage(marker);
+  test("search_messages finds a seeded message, folded and marked", async () => {
+    const marker = `search-${Date.now()}`;
+    await seedMessage(`<p>Café ${marker}</p>`);
 
     const client = makeClient();
-    const result = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: marker,
+    const result = await client.call<SearchPageOut>("search_messages", {
+      query: `cafe ${marker}`.toUpperCase(),
+      cursor: null,
       limit: 50,
-      offset: 0,
     });
-    expect(result.messages.length).toBeGreaterThan(0);
-    expect(result.messages.some((m) => m.text === marker)).toBe(true);
-    expect(result.total_count).toBeGreaterThan(0);
+    const hit = result.hits.find((h) => h.snippet.includes(marker));
+    expect(hit).toBeDefined();
+    expect(hit!.snippet).toBe(`Café ${marker}`);
+    expect(hit!.snippet.slice(hit!.match_start, hit!.match_end)).toBe(`Café ${marker}`);
+    expect(typeof hit!.sender).toBe("string");
+    expect(typeof hit!.index).toBe("number");
+    expect(hit!.parent_message_id).toBeNull();
   });
 
-  test("search_all_messages returns empty for no-match term", async () => {
+  test("search_messages returns nothing for a no-match term", async () => {
     const client = makeClient();
-    const result = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: "zzz-absolutely-no-match-xyzzy-search-all-99",
+    const result = await client.call<SearchPageOut>("search_messages", {
+      query: "zzz-absolutely-no-match-xyzzy-search-99",
+      cursor: null,
       limit: 50,
-      offset: 0,
     });
-    expect(result.messages).toHaveLength(0);
-    expect(result.total_count).toBe(0);
+    expect(result.hits).toHaveLength(0);
   });
 
-  test("search_all_messages limit restricts returned count", async () => {
-    // Seed 3 messages with a shared marker
-    const tag = `search-limit-${Date.now()}`;
-    for (let i = 0; i < 3; i++) {
-      await seedMessage(`${tag}-${i}`);
-    }
-
-    const client = makeClient();
-    const result = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: tag,
-      limit: 2,
-      offset: 0,
-    });
-    expect(result.messages.length).toBeLessThanOrEqual(2);
-    expect(result.total_count).toBeGreaterThanOrEqual(3);
-  });
-
-  test("search_all_messages offset paginates results", async () => {
+  test("search_messages pages by cursor, newest first, without repeats", async () => {
     const tag = `search-page-${Date.now()}`;
     for (let i = 0; i < 4; i++) {
       await seedMessage(`${tag}-${i}`);
     }
 
     const client = makeClient();
-    const page1 = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: tag,
-      limit: 2,
-      offset: 0,
-    });
-    const page2 = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: tag,
-      limit: 2,
-      offset: 2,
-    });
-
-    expect(page1.messages.length).toBeGreaterThan(0);
-    expect(page2.messages.length).toBeGreaterThan(0);
-    // Pages should not overlap
-    const ids1 = new Set(page1.messages.map((m) => m.id));
-    const ids2 = new Set(page2.messages.map((m) => m.id));
-    for (const id of ids2) {
-      expect(ids1.has(id)).toBe(false);
+    const seen: SearchHitOut[] = [];
+    let cursor: string | null = null;
+    for (let pages = 0; pages < 50; pages++) {
+      const page: SearchPageOut = await client.call<SearchPageOut>("search_messages", {
+        query: tag,
+        cursor,
+        limit: 2,
+      });
+      expect(page.hits.length).toBeLessThanOrEqual(2);
+      seen.push(...page.hits);
+      cursor = page.next_cursor;
+      if (!cursor) break;
     }
+    expect(seen.map((h) => h.snippet)).toEqual([3, 2, 1, 0].map((i) => `${tag}-${i}`));
+    expect(new Set(seen.map((h) => h.id)).size).toBe(seen.length);
   });
 
-  test("search_all_messages result messages have all required fields", async () => {
-    const marker = `search-shape-${Date.now()}`;
-    await seedMessage(marker);
-
+  test("search_messages refuses a malformed cursor", async () => {
     const client = makeClient();
-    const result = await client.call<GetMessagesOut>("search_all_messages", {
-      search_term: marker,
+    const { ok } = await client.tryCall("search_messages", {
+      query: "x",
+      cursor: "not-a-cursor",
       limit: 1,
-      offset: 0,
     });
-    expect(result.messages.length).toBeGreaterThan(0);
-    const m = result.messages[0];
-    expect(typeof m.id).toBe("string");
-    expect(typeof m.text).toBe("string");
-    expect(typeof m.sender).toBe("string");
-    expect(typeof m.timestamp).toBe("number");
-    expect(Array.isArray(m.files)).toBe(true);
-    expect(Array.isArray(m.images)).toBe(true);
+    expect(ok).toBe(false);
   });
 });
 

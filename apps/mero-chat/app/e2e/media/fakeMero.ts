@@ -130,10 +130,30 @@ function rpc(method: string, args: Record<string, unknown>, contextId: string): 
       const lim = args.limit == null ? all.length : Number(args.limit);
       return { total_count: all.length, messages: all.slice(start, start + lim), start_position: start };
     }
-    case "search_all_messages": {
-      const term = String(args.search_term ?? "").toLowerCase();
-      const hits = c.messages.filter((x) => x.text.toLowerCase().includes(term));
-      return paginate(hits.map((x) => toContractMsg(c, x)).reverse(), args.limit as number, args.offset as number);
+    // One page, newest first, no cursor: the recording's channels are short.
+    case "search_messages": {
+      const term = String(args.query ?? "").trim().toLowerCase();
+      if (!term) return { hits: [], next_cursor: null, frontier_timestamp: null };
+      const hits = c.messages
+        .map((x, index) => ({ x, index, m: toContractMsg(c, x) }))
+        .filter(({ x }) => x.text.toLowerCase().includes(term))
+        .reverse()
+        .slice(0, Number(args.limit ?? 20))
+        .map(({ x, index, m }) => {
+          const at = x.text.toLowerCase().indexOf(term);
+          return {
+            id: m.id,
+            parent_message_id: null,
+            index,
+            timestamp: m.timestamp,
+            anchor_timestamp: m.timestamp,
+            sender: m.sender,
+            snippet: x.text,
+            match_start: at,
+            match_end: at + term.length,
+          };
+        });
+      return { hits, next_cursor: null, frontier_timestamp: hits.length ? hits[hits.length - 1].timestamp : null };
     }
     case "get_unread_count":
       return c.unread ?? 0;

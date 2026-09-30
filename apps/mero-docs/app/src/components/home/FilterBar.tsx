@@ -6,6 +6,7 @@ import {
   Calendar,
   ChevronDown,
   Folder,
+  Search,
   Tag,
   User,
   X,
@@ -28,6 +29,7 @@ export const FILTER_ICONS: Record<FilterIcon, LucideIcon> = {
   user: User,
   archive: Archive,
   mention: AtSign,
+  search: Search,
 };
 
 interface Props {

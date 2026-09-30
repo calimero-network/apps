@@ -19,6 +19,7 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useMentionedMe } from '@/hooks/useMentionedMe';
+import { useTextMatch } from '@/hooks/useTextMatch';
 import { useNow } from '@/hooks/useNow';
 import { usePersonName } from '@/hooks/usePersonName';
 import { useSavedViews, type SavedView } from '@/hooks/useSavedViews';
@@ -104,6 +105,7 @@ export function WorkspaceNav({
   const tagPage = onHome ? tagPageKey(q) : null;
   const mentionsPage = onHome && isMentionsPage(q);
   const mentioned = useMentionedMe();
+  const textMatch = useTextMatch();
   // Only Home's person filter is named here, so no other page reads a member's profile.
   const personName = usePersonName(onHome ? q.by : null);
   const liveRows = React.useMemo(
@@ -222,7 +224,14 @@ export function WorkspaceNav({
         views={savedViews.map((v) => ({
           id: v.id,
           name: v.name,
-          count: viewRowCount(liveRows, folders, now, v.query, mentioned.keys),
+          count: viewRowCount(
+            liveRows,
+            folders,
+            now,
+            v.query,
+            mentioned.keys,
+            textMatch,
+          ),
           shared: v.scope === 'everyone',
           selected: selectedViewId === v.id,
           onSelect: () => go(withView(v.query, v.id)),

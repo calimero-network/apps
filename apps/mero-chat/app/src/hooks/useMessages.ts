@@ -2,6 +2,25 @@ import { useState, useRef, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { ResponseData } from "../api/types";
 import type { FullMessageResponse } from "../api/clientApi";
+import {
+  applyPage,
+  failPage,
+  hasMore,
+  isMissingMethod,
+  legacyPage,
+  mapConcurrent,
+  nextToFetch,
+  SEARCH_CONCURRENCY,
+  SEARCH_MAX_ROUNDS,
+  SEARCH_PAGE_SIZE,
+  SEARCH_TIMEOUT_MS,
+  startSearch,
+  visibleResults,
+  withTimeout,
+  type ContextSearch,
+  type SearchContext,
+  type SearchResult,
+} from "./messageSearch";
 import type {
   ActiveChat,
   CurbMessage,
@@ -34,13 +53,22 @@ export function useMessages() {
   const [messages, setMessages] = useState<CurbMessage[]>([]);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [searchResults, setSearchResults] = useState<CurbMessage[]>([]);
-  const [searchTotalCount, setSearchTotalCount] = useState(0);
-  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchHasMore, setSearchHasMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const messagesRef = useRef<CurbMessage[]>([]);
+  /**
+   * The search in progress: its query, each context's pages so far, and a
+   * generation that a newer search or a clear bumps, so a slow page from an
+   * old search is dropped rather than painted over the new one.
+   */
+  const searchRef = useRef<{
+    query: string;
+    states: ContextSearch[];
+    generation: number;
+  }>({ query: "", states: [], generation: 0 });
   /**
    * Index of the oldest message currently on screen — where scrolling up
    * continues from. Deliberately NOT the store's low bound: a catch-up can
@@ -291,176 +319,139 @@ export function useMessages() {
    * Clear current search state
    */
   const clearSearch = useCallback(() => {
+    const search = searchRef.current;
+    searchRef.current = { query: "", states: [], generation: search.generation + 1 };
     setSearchResults([]);
-    setSearchTotalCount(0);
-    setSearchOffset(0);
+    setSearchHasMore(false);
     setSearchQuery("");
     setSearchError(null);
+    setIsSearching(false);
   }, []);
 
   /**
-   * Search within messages without mutating primary message state
+   * Read pages until at least `target` hits can be shown, every context is
+   * finished, or `SEARCH_MAX_ROUNDS` rounds were read. `first` reads one page
+   * of every context; later rounds read the contexts holding the merge back.
    */
-  const searchMessages = useCallback(
-    async (
-      activeChat: ActiveChat | null,
-      query: string,
-      options: { reset?: boolean; offset?: number } = {},
-    ): Promise<{
-      messages: CurbMessage[];
-      totalCount: number;
-      hasMore: boolean;
-      nextOffset: number;
-    }> => {
-      const normalizedQuery = query.trim();
-      const shouldReset = options.reset ?? false;
-      const offsetOverride = options.offset;
+  const fillSearch = useCallback(
+    async (target: number, first: boolean): Promise<void> => {
+      const search = searchRef.current;
+      const { generation, query } = search;
+      const api = new ClientApiDataSource();
 
-      if (!activeChat?.name || normalizedQuery.length === 0) {
-        if (shouldReset) {
-          clearSearch();
-          setSearchQuery(normalizedQuery);
+      const fetchPage = async (state: ContextSearch): Promise<ContextSearch> => {
+        const { contextId, executorPublicKey } = state.context;
+        try {
+          const response = await withTimeout(
+            api.searchMessages({
+              query,
+              cursor: state.cursor,
+              limit: SEARCH_PAGE_SIZE,
+              contextId,
+              executorPublicKey,
+            }),
+            SEARCH_TIMEOUT_MS,
+          );
+          if (response.data) return applyPage(state, response.data);
+          const message = response.error?.message ?? "Search failed";
+          if (!isMissingMethod(message)) return failPage(state, message);
+          // An app version from before `search_messages`: its one page.
+          const legacy = await withTimeout(
+            api.searchAllMessages({
+              search_term: query,
+              limit: 50,
+              offset: 0,
+              contextId,
+              executorPublicKey,
+            }),
+            SEARCH_TIMEOUT_MS,
+          );
+          return legacy.data
+            ? applyPage(state, legacyPage(legacy, query))
+            : failPage(state, legacy.error?.message ?? "Search failed");
+        } catch (error) {
+          return failPage(
+            state,
+            error instanceof Error ? error.message : "Search failed",
+          );
         }
-        return {
-          messages: [],
-          totalCount: 0,
-          hasMore: false,
-          nextOffset: 0,
-        };
-      }
+      };
 
-      const effectiveOffset = shouldReset
-        ? 0
-        : offsetOverride ?? searchOffset;
+      const publish = (states: ContextSearch[]) => {
+        const failed = states.filter((s) => s.error);
+        setSearchResults(visibleResults(states));
+        setSearchHasMore(hasMore(states));
+        setSearchError(
+          failed.length === 0
+            ? null
+            : failed.length === states.length
+              ? (failed[0].error ?? "Search failed")
+              : `${failed.length} of ${states.length} conversations could not be searched`,
+        );
+      };
 
       setIsSearching(true);
-      setSearchError(null);
-
       try {
-        const response: ResponseData<FullMessageResponse> =
-          await new ClientApiDataSource().searchAllMessages({
-            search_term: normalizedQuery,
-            limit: MESSAGE_PAGE_SIZE,
-            offset: effectiveOffset,
-          });
-
-        if (response.data) {
-          const transformed = transformMessagesToUI(response.data.messages).reverse();
-          setSearchResults((prev) =>
-            shouldReset ? transformed : [...prev, ...transformed],
+        for (let round = 0; round < SEARCH_MAX_ROUNDS; round++) {
+          const states = searchRef.current.states;
+          const picked =
+            first && round === 0
+              ? states.map((_, i) => i)
+              : nextToFetch(states, SEARCH_CONCURRENCY);
+          if (picked.length === 0) break;
+          const pages = await mapConcurrent(picked, SEARCH_CONCURRENCY, (i) =>
+            fetchPage(states[i]),
           );
-          setSearchTotalCount(response.data.total_count);
-          setSearchOffset(effectiveOffset + transformed.length);
-          setSearchQuery(normalizedQuery);
-
-          const hasMore =
-            effectiveOffset + transformed.length < response.data.total_count;
-
-          return {
-            messages: transformed,
-            totalCount: response.data.total_count,
-            hasMore,
-            nextOffset: effectiveOffset + transformed.length,
-          };
+          if (searchRef.current.generation !== generation) return;
+          const next = [...searchRef.current.states];
+          picked.forEach((i, n) => {
+            next[i] = pages[n];
+          });
+          searchRef.current = { ...searchRef.current, states: next };
+          publish(next);
+          if (!hasMore(next) || visibleResults(next).length >= target) break;
         }
-
-        if (shouldReset) {
-          clearSearch();
-          setSearchQuery(normalizedQuery);
-        }
-
-        return {
-          messages: [],
-          totalCount: 0,
-          hasMore: false,
-          nextOffset: effectiveOffset,
-        };
-      } catch (error) {
-        console.error("searchMessages failed:", error);
-        setSearchError(
-          error instanceof Error ? error.message : "Search failed",
-        );
-        if (shouldReset) {
-          clearSearch();
-          setSearchQuery(normalizedQuery);
-        }
-        return {
-          messages: [],
-          totalCount: 0,
-          hasMore: false,
-          nextOffset: effectiveOffset,
-        };
       } finally {
-        setIsSearching(false);
+        if (searchRef.current.generation === generation) setIsSearching(false);
       }
     },
-    [clearSearch, searchOffset],
+    [],
   );
 
   /**
-   * Fan-out search across multiple contexts. Calls searchAllMessages on each
-   * context in parallel, merges results sorted newest-first, and stores them
-   * in the same searchResults state that the single-context search uses.
-   * All results are fetched at once — no pagination.
+   * Search `contexts` for `query`: the first page of each, merged newest
+   * first. `loadMoreSearch` continues from each context's cursor.
    */
   const searchAllContexts = useCallback(
-    async (
-      contexts: Array<{
-        contextId: string;
-        executorPublicKey: string;
-        label: string;
-      }>,
-      query: string,
-    ): Promise<void> => {
+    async (contexts: SearchContext[], query: string): Promise<void> => {
       const normalizedQuery = query.trim();
-      if (!normalizedQuery || contexts.length === 0) {
-        clearSearch();
-        setSearchQuery(normalizedQuery);
-        return;
-      }
-
-      setIsSearching(true);
-      setSearchError(null);
+      clearSearch();
       setSearchQuery(normalizedQuery);
+      if (!normalizedQuery || contexts.length === 0) return;
 
-      try {
-        const api = new ClientApiDataSource();
-        const allResults: CurbMessage[] = [];
-
-        await Promise.all(
-          contexts.map(async ({ contextId, executorPublicKey, label }) => {
-            const resp = await api.searchAllMessages({
-              search_term: normalizedQuery,
-              contextId,
-              executorPublicKey,
-            });
-            if (resp.data) {
-              const msgs = transformMessagesToUI(resp.data.messages).map(
-                (m) => ({ ...m, contextLabel: label, contextId }),
-              );
-              allResults.push(...msgs);
-            }
-          }),
-        );
-
-        allResults.sort((a, b) => b.timestamp - a.timestamp);
-        setSearchResults(allResults);
-        setSearchTotalCount(allResults.length);
-        setSearchOffset(allResults.length);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Search failed";
-        // Clear results but preserve the error so the UI can display it.
-        setSearchResults([]);
-        setSearchTotalCount(0);
-        setSearchOffset(0);
-        setSearchQuery(normalizedQuery);
-        setSearchError(msg);
-      } finally {
-        setIsSearching(false);
-      }
+      searchRef.current = {
+        query: normalizedQuery,
+        states: startSearch(contexts),
+        generation: searchRef.current.generation + 1,
+      };
+      await fillSearch(SEARCH_PAGE_SIZE, true);
     },
-    [clearSearch],
+    [clearSearch, fillSearch],
   );
+
+  /** The next page of results: reads on until a page more can be shown. */
+  const loadingMoreRef = useRef(false);
+  const loadMoreSearch = useCallback(async (): Promise<void> => {
+    const { states } = searchRef.current;
+    // One at a time: two rounds from the same cursors would read one page twice.
+    if (!hasMore(states) || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      await fillSearch(visibleResults(states).length + SEARCH_PAGE_SIZE, false);
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [fillSearch]);
 
   /**
    * Add incoming messages (from websocket)
@@ -568,13 +559,12 @@ export function useMessages() {
     clear,
     getCurrent,
     searchResults,
-    searchTotalCount,
-    searchOffset,
+    searchHasMore,
     searchQuery,
     isSearching,
     searchError,
-    searchMessages,
     searchAllContexts,
+    loadMoreSearch,
     clearSearch,
   };
 }

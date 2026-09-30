@@ -2,7 +2,7 @@
 // titles, folders and tags from the workspace index and matches inside docs.
 
 import * as React from 'react';
-import { ArrowRight, AtSign } from 'lucide-react';
+import { ArrowRight, AtSign, Search } from 'lucide-react';
 
 import { hereLabel, LivePill } from '@/components/common/LivePill';
 import { FolderPath } from '@/components/home/DocTable';
@@ -48,11 +48,13 @@ const TAGS_TIP = 'Type # to search tags only';
 const MENTIONS_QUERY = '@me'; // lists the docs that mention you, instead of a search
 const MENTIONS_TIP = `Type ${MENTIONS_QUERY} for documents that mention you`;
 const NO_MENTIONS = 'No documents mention you yet';
+const HOME_TEXT_ID = 'home:text'; // the palette row that opens Home filtered by the query
 
 type Target =
   | { kind: 'doc'; folderId: string; docId: string; block?: string }
   | { kind: 'folder'; folderId: string }
-  | { kind: 'tag'; key: string };
+  | { kind: 'tag'; key: string }
+  | { kind: 'home'; text: string };
 
 interface Props {
   open: boolean;
@@ -400,8 +402,38 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       items: textItems,
       aside,
     };
-    return [...titleGroups, textGroup];
-  }, [titles, textHits, textQuery, query, reading, foldersDone, foldersTotal]);
+    // The same words as a Home filter, to narrow further by tag, folder or
+    // author; offered once some document matches, so "no match" still says so.
+    const { text } = normalizeQuery(query);
+    const anyDoc =
+      textItems.length > 0 ||
+      titleGroups.some((g) => g.id === 'docs' && g.items.length > 0);
+    const filterGroup: PaletteGroupView = {
+      id: 'filter',
+      label: 'Filter',
+      items: anyDoc
+        ? [
+            {
+              id: HOME_TEXT_ID,
+              kind: 'text',
+              icon: Search,
+              title: `Every document with “${text}”`,
+              context: 'On Home, to combine with tags, folders and people',
+              right: <ArrowRight className="h-3.5 w-3.5" aria-hidden />,
+            },
+          ]
+        : [],
+    };
+    return [...titleGroups, textGroup, filterGroup];
+  }, [
+    titles,
+    textHits,
+    textQuery,
+    query,
+    reading,
+    foldersDone,
+    foldersTotal,
+  ]);
 
   const routeOf = (t: Target): { route: AppRoute; search?: string } => {
     const ws = namespaceId ?? '';
@@ -410,17 +442,22 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         route: { ws, folder: t.folderId, doc: t.docId, block: t.block },
       };
     if (t.kind === 'folder') return { route: { ws, folder: t.folderId } };
+    const blank = parseHomeQuery(new URLSearchParams());
     return {
       route: { ws },
-      search: serializeHomeQuery({
-        ...parseHomeQuery(new URLSearchParams()),
-        tags: [t.key],
-      }),
+      search: serializeHomeQuery(
+        t.kind === 'tag'
+          ? { ...blank, tags: [t.key] }
+          : { ...blank, text: t.text },
+      ),
     };
   };
 
   const onOpen = (item: PaletteItemView, { newTab }: OpenOptions) => {
-    const target = titles.targets.get(item.id) ?? textHits.targets.get(item.id);
+    const target: Target | undefined =
+      item.id === HOME_TEXT_ID
+        ? { kind: 'home', text: normalizeQuery(query).text }
+        : titles.targets.get(item.id) ?? textHits.targets.get(item.id);
     if (!target) return;
     if (newTab) {
       const { route, search } = routeOf(target);

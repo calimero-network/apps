@@ -1,37 +1,14 @@
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { styled } from "styled-components";
 import { useDisplayName } from "../repositories/names/useNames";
-import type { CurbFile, CurbMessage, FileObject } from "../types/Common";
 import { IdentityAvatar } from "../components/IdentityAvatar";
-import RenderHtml from "../components/virtualized-chat/Message/RenderHtml";
-import MessageImageField from "./MessageImageField";
-import MessageFileField from "./MessageFileField";
-import { downloadBlob } from "../api/meroJsClient";
-import { MessageText } from "../components/virtualized-chat/Message";
+import type { SearchResult } from "../hooks/messageSearch";
 
 const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
   color: #ffffff;
-
-  .msg-content {
-    color: #ffffff;
-    font-size: 14px;
-    line-height: 1.5;
-
-    p,
-    span,
-    div,
-    li {
-      color: #ffffff;
-    }
-
-    a {
-      color: #a8b7ff;
-      text-decoration: underline;
-    }
-  }
 `;
 
 const Header = styled.div`
@@ -77,9 +54,18 @@ const Timestamp = styled.div`
   white-space: nowrap;
 `;
 
-const EmptyBody = styled.div`
-  font-size: 13px;
-  color: #777583;
+const Snippet = styled.div`
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  mark {
+    background: rgba(165, 255, 17, 0.25);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
 `;
 
 const ThreadBadge = styled.div`
@@ -110,154 +96,65 @@ const ContextLabel = styled.div`
   width: fit-content;
 `;
 
-const Attachments = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-`;
-
 interface SearchResultMessageProps {
-  message: CurbMessage;
-  contextId?: string;
-  avatarSrc?: string | null;
+  result: SearchResult;
 }
 
-const toFileObject = (attachment: CurbFile): FileObject => ({
-  blobId: attachment.ipfs_cid,
-  name: attachment.name ?? "Attachment",
-  size: attachment.size ?? 0,
-  type: attachment.mime_type ?? "application/octet-stream",
-  uploadedAt: attachment.uploaded_at,
-});
-
+/**
+ * One search hit: who, when, where, and the words around the match.
+ *
+ * The snippet is plain text the contract cut around the first match, with the
+ * match's position; highlighting it is slicing, never re-matching, so it marks
+ * exactly what the contract matched however the text was folded.
+ */
 export default function SearchResultMessage({
-  message,
-  contextId,
+  result,
 }: SearchResultMessageProps) {
-  const displayName = useDisplayName(message.sender);
+  const displayName = useDisplayName(result.sender);
   const timestampLabel = useMemo(
     () =>
-      new Date(message.timestamp).toLocaleString(undefined, {
+      new Date(result.timestamp).toLocaleString(undefined, {
         year: "numeric",
         month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
       }),
-    [message.timestamp]
+    [result.timestamp],
   );
-
-  const imageAttachments = useMemo(
-    () =>
-      (message.images ?? []).map((attachment, index) => ({
-        key: `${attachment.ipfs_cid}-${index}`,
-        file: toFileObject(attachment),
-        previewUrl: attachment.preview_url,
-      })),
-    [message.images]
-  );
-
-  const fileAttachments = useMemo(
-    () =>
-      (message.files ?? []).map((attachment, index) => ({
-        key: `${attachment.ipfs_cid}-${index}`,
-        attachment,
-        file: toFileObject(attachment),
-      })),
-    [message.files]
-  );
-
-  const hasGlobalMention = useMemo(() => {
-    return (
-      message.text?.includes("mention-everyone") ||
-      message.text?.includes("mention-here") ||
-      message.text?.includes(`mention-user-${message.sender}`)
-    );
-  }, [message.text, message.sender]);
-
-  const escapedAccountId = useMemo(() => {
-    return message.sender.replace(/\./g, "\\.").replace(/_/g, "\\_");
-  }, [message.sender]);
-
-  const handleFileDownload = useCallback(
-    async (attachment: CurbFile) => {
-      if (!contextId) return;
-
-      try {
-        const blob = await downloadBlob(
-          attachment.ipfs_cid,
-          contextId
-        );
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = attachment.name ?? "attachment";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } catch (error) {
-        console.error("SearchResultMessage", "Failed to download file", error);
-      }
-    },
-    [contextId]
-  );
-
-  const contextLabel = message.contextLabel ?? message.group;
+  const { snippet, matchStart, matchEnd } = result;
+  const marked = matchEnd > matchStart && matchEnd <= snippet.length;
 
   return (
     <Wrapper>
-      {contextLabel && <ContextLabel># {contextLabel}</ContextLabel>}
-      {message.parentMessageId && (
-        <ThreadBadge>↩ Thread reply</ThreadBadge>
-      )}
+      <ContextLabel># {result.contextLabel}</ContextLabel>
+      {result.parentMessageId && <ThreadBadge>↩ Thread reply</ThreadBadge>}
       <Header>
         <AvatarWrapper>
           <IdentityAvatar
             size="md"
-            identity={message.sender}
-            contextId={contextId}
-            name={displayName || message.sender}
+            identity={result.sender}
+            contextId={result.contextId}
+            name={displayName || result.sender}
           />
         </AvatarWrapper>
         <SenderBlock>
           <SenderName>{displayName}</SenderName>
-          <SenderId>{message.sender}</SenderId>
+          <SenderId>{result.sender}</SenderId>
         </SenderBlock>
         <Timestamp>{timestampLabel}</Timestamp>
       </Header>
-      {message.text ? (
-        <MessageText
-          $globalMention={hasGlobalMention}
-          $accountId={escapedAccountId}
-        >
-          <RenderHtml html={message.text} />
-        </MessageText>
-      ) : (
-        <EmptyBody>This message has no text content.</EmptyBody>
-      )}
-      {(imageAttachments.length > 0 || fileAttachments.length > 0) && (
-        <Attachments>
-          {imageAttachments.map(({ key, file, previewUrl }) => (
-            <MessageImageField
-              key={key}
-              file={file}
-              previewUrl={previewUrl}
-              contextId={contextId}
-              containerSize={96}
-              isInput={false}
-            />
-          ))}
-          {fileAttachments.map(({ key, file, attachment }) => (
-            <MessageFileField
-              key={key}
-              file={file}
-              truncate={false}
-              onDownload={() => handleFileDownload(attachment)}
-            />
-          ))}
-        </Attachments>
-      )}
+      <Snippet>
+        {marked ? (
+          <>
+            {snippet.slice(0, matchStart)}
+            <mark>{snippet.slice(matchStart, matchEnd)}</mark>
+            {snippet.slice(matchEnd)}
+          </>
+        ) : (
+          snippet
+        )}
+      </Snippet>
     </Wrapper>
   );
 }

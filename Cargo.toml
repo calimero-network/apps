@@ -62,6 +62,8 @@ bs58      = "0.5.1"
 hex       = "0.4.3"
 sha2      = "0.10.8"
 borsh     = "1.6.1"
+# The NFKD reference mero-chat's search fold table is tested against.
+unicode-normalization = { version = "0.1.25", default-features = false }
 
 # ── fleet-wide values, in a table cargo-mero does not claim ──────────────────
 #

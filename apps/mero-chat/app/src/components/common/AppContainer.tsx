@@ -8,6 +8,7 @@ import type {
   CurbMessage,
 } from "../../types/Common";
 import type { SubgroupEntry } from "../../api/groupApi";
+import type { SearchResult } from "../../hooks/messageSearch";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
@@ -80,8 +81,7 @@ interface AppContainerProps {
   wsIsSubscribed?: boolean;
   wsContextId?: string | null;
   wsSubscriptionCount?: number;
-  searchResults: CurbMessage[];
-  searchTotalCount: number;
+  searchResults: SearchResult[];
   searchQuery: string;
   isSearchingMessages: boolean;
   searchHasMore: boolean;
@@ -89,7 +89,7 @@ interface AppContainerProps {
   onSearchMessages: (query: string) => Promise<void>;
   onLoadMoreSearch: () => Promise<void>;
   onClearSearch: () => void;
-  onSearchResultClick?: (contextId: string) => void;
+  onSearchResultClick?: (result: SearchResult) => void;
 }
 function AppContainer({
   activeChat,
@@ -139,7 +139,6 @@ function AppContainer({
   wsContextId,
   wsSubscriptionCount,
   searchResults,
-  searchTotalCount,
   searchQuery,
   isSearchingMessages,
   searchHasMore,
@@ -236,7 +235,6 @@ function AppContainer({
                 addOptimisticThreadMessage={addOptimisticThreadMessage}
                 clearThreadsMessagesOnSwitch={clearThreadsMessagesOnSwitch}
                 searchResults={searchResults}
-                searchTotalCount={searchTotalCount}
                 searchQuery={searchQuery}
                 isSearchingMessages={isSearchingMessages}
                 searchHasMore={searchHasMore}
@@ -246,7 +244,14 @@ function AppContainer({
                 onClearSearch={onClearSearch}
                 isSearchOverlayOpen={isSearchOverlayOpen}
                 onCloseSearchOverlay={() => setIsSearchOverlayOpen(false)}
-                onSearchResultClick={onSearchResultClick}
+                onSearchResultClick={
+                  onSearchResultClick &&
+                  ((result) => {
+                    // Close first: the result opens behind the overlay.
+                    setIsSearchOverlayOpen(false);
+                    onSearchResultClick(result);
+                  })
+                }
               />
             )}
             {isOpenSearchChannel && (

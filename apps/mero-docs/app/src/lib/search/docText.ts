@@ -1,7 +1,7 @@
 import { parseDocHref, parseMemberHref } from '../links';
 import type { BackendBlock } from '../rich/blocknote';
 import { isLow } from '../rich/offsets';
-import { rowKey, type DocText } from '../workspaceIndex/types';
+import { rowKey, type DocText, type IndexRow } from '../workspaceIndex/types';
 import {
   foldForSearch,
   matchRanges,
@@ -19,6 +19,19 @@ const SENTENCE_END = /[.!?](?=\s)/g;
 
 type Link = DocText['links'][number];
 type Mention = DocText['mentions'][number];
+
+// Each doc's blocks folded once, not on every keystroke. A re-read replaces
+// the DocText, which is what drops its entry; memory only, like the text.
+const foldedBlocks = new WeakMap<DocText, string[]>();
+
+function foldedOf(text: DocText): string[] {
+  let folded = foldedBlocks.get(text);
+  if (!folded) {
+    folded = text.blocks.map((b) => foldForSearch(b.text));
+    foldedBlocks.set(text, folded);
+  }
+  return folded;
+}
 
 /** A cut of a longer text: window index = original index - `offset`; `body` excludes the `…`. */
 type TextWindow = { text: string; offset: number; body: [number, number] };
@@ -186,6 +199,33 @@ export type TextHit = {
 };
 
 /** The best matching block of each doc, best docs first; one row per doc. */
+/**
+ * The rowKeys of `rows` whose title, or one block of whose text, holds every
+ * word of `q`, typos off: the Home text filter, which narrows a list rather
+ * than ranking it. Text is what this device has read so far (`useTextIndex`).
+ */
+export function docsMatchingText(
+  q: string,
+  rows: IndexRow[],
+  texts: Map<string, DocText>,
+): Set<string> {
+  const out = new Set<string>();
+  const words = queryWords(normalizeQuery(q).text);
+  if (!words.length) return out;
+  for (const r of rows) {
+    const key = rowKey(r.folderId, r.docId);
+    const text = texts.get(key);
+    const hit =
+      matchScore(foldForSearch(r.title), words, false) !== null ||
+      (!!text &&
+        foldedOf(text).some(
+          (folded) => matchScore(folded, words, false) !== null,
+        ));
+    if (hit) out.add(key);
+  }
+  return out;
+}
+
 export function searchText(
   q: string,
   texts: Map<string, DocText>,
@@ -201,9 +241,10 @@ export function searchText(
   }[] = [];
   for (const text of texts.values()) {
     let top: (typeof best)[number] | null = null;
-    for (const block of text.blocks) {
+    const folded = foldedOf(text);
+    for (const [i, block] of text.blocks.entries()) {
       // Typos stay off: long text is slow to scan and turns up near misses.
-      const score = matchScore(foldForSearch(block.text), words, false);
+      const score = matchScore(folded[i], words, false);
       if (score !== null && (!top || score < top.score)) {
         top = { score, text, block };
         if (score === 0) break;

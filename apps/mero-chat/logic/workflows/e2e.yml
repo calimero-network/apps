@@ -492,6 +492,25 @@ steps:
     statements:
       - "contains({{search_result}}, 'carol-unique-keyword joining the chat!')"
 
+  # The paged search the app uses: case-folded, one bounded page per call.
+  - name: Search Messages Page for Carol's Keyword
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: search_messages
+    args:
+      query: "CAROL-UNIQUE-KEYWORD"
+      cursor: null
+      limit: 20
+    outputs:
+      search_page: result
+
+  - name: Assert the Page Holds Carol's Message
+    type: assert
+    statements:
+      - "contains({{search_page}}, 'carol-unique-keyword joining the chat!')"
+
   # ── Reactions ─────────────────────────────────────────────────────────────
   # A reaction needs a message to attach to (the contract refuses one on an
   # unknown id), so Bob reacts to Alice's first message, synced above.

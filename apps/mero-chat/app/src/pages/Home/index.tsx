@@ -31,6 +31,10 @@ import { useChatMembers } from "../../hooks/useChatMembers";
 import { useChannelMembers } from "../../hooks/useChannelMembers";
 import { useGroupMembers } from "../../hooks/useGroupMembers";
 import { useMessages } from "../../hooks/useMessages";
+import type {
+  SearchContext,
+  SearchResult,
+} from "../../hooks/messageSearch";
 import { useThreadMessages } from "../../hooks/useThreadMessages";
 import { useWebSocket, useWebSocketEvents } from "../../contexts/WebSocketContext";
 import { useChatHandlers } from "../../hooks/useChatHandlers";
@@ -140,16 +144,14 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const threadMessages = useThreadMessages();
   const {
     searchResults,
-    searchTotalCount,
+    searchHasMore,
     searchQuery,
     isSearching: isSearchingMessages,
-    searchOffset,
-    searchMessages: executeSearchMessages,
     searchAllContexts: executeSearchAllContexts,
+    loadMoreSearch,
     clearSearch: clearMessageSearch,
     searchError,
   } = mainMessages;
-  const searchHasMore = searchOffset < searchTotalCount;
 
   const {
     notifyMessage,
@@ -358,11 +360,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   const handleSearchMessages = useCallback(
     async (query: string) => {
-      const contexts: Array<{
-        contextId: string;
-        executorPublicKey: string;
-        label: string;
-      }> = [];
+      const contexts: SearchContext[] = [];
 
       groupContextsHook.channels.forEach((ch) => {
         if (ch.isJoined && ch.contextId && ch.contextIdentity) {
@@ -390,31 +388,46 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         }
       });
 
-      if (contexts.length === 0) {
-        await executeSearchMessages(activeChatRef.current, query, {
-          reset: true,
+      // Nothing listed yet: the open conversation is still searchable.
+      const open = activeChatRef.current;
+      if (contexts.length === 0 && open?.contextId && open.contextIdentity) {
+        contexts.push({
+          contextId: open.contextId,
+          executorPublicKey: open.contextIdentity,
+          label: open.name,
         });
-      } else {
-        await executeSearchAllContexts(contexts, query);
       }
+
+      await executeSearchAllContexts(contexts, query);
     },
-    [
-      groupContextsHook.channels,
-      privateDMs,
-      executeSearchMessages,
-      executeSearchAllContexts,
-    ],
+    [groupContextsHook.channels, privateDMs, executeSearchAllContexts],
   );
 
-  // All results are fetched at once in searchAllContexts; load-more is a no-op.
-  const handleLoadMoreSearch = useCallback(async () => {}, []);
+  const handleLoadMoreSearch = useCallback(async () => {
+    await loadMoreSearch();
+  }, [loadMoreSearch]);
 
   const handleClearSearch = useCallback(() => {
     clearMessageSearch();
   }, [clearMessageSearch]);
 
+  /**
+   * Open a result where it was said: the conversation, loaded around the
+   * hit (around its parent, for a thread reply), through the same path a
+   * permalink takes. A result with no position just opens the conversation.
+   */
   const handleResultClick = useCallback(
-    (contextId: string) => {
+    (result: SearchResult) => {
+      const { contextId } = result;
+      pendingLinkRef.current =
+        result.index >= 0
+          ? { contextId, index: result.index, messageId: result.indexMessageId }
+          : null;
+      if (activeChatRef.current?.contextId === contextId) {
+        // Already open: reload the list so it consumes the link.
+        setMessagesReloadKey((key) => key + 1);
+        return;
+      }
       const channel = groupContextsHook.channels.find(
         (ch) => ch.contextId === contextId && ch.isJoined && ch.contextIdentity,
       );
@@ -1305,7 +1318,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       wsContextId={webSocket.getSubscribedContexts().join(", ") || null}
       wsSubscriptionCount={webSocket.getSubscriptionCount()}
       searchResults={searchResults}
-      searchTotalCount={searchTotalCount}
       searchQuery={searchQuery}
       isSearchingMessages={isSearchingMessages}
       searchHasMore={searchHasMore}

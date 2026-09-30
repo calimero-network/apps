@@ -40,6 +40,9 @@ calimero-wasm-abi = { workspace = true }
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
 calimero-storage = { workspace = true, features = ["testing"] }
+# The reference `src/search/fold_table.rs` is checked against: search folds as
+# mero-docs' `foldForSearch` (NFKD). Test-only: its tables are ~130 KB of wasm.
+unicode-normalization = { workspace = true }
 
 [package.metadata.calimero]
 package     = "com.calimero.chat"

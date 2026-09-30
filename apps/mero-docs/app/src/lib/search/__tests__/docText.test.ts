@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { BackendBlock } from '@/lib/rich/blocknote';
-import { docTextFromBlocks, mentionsOf, searchText } from '../docText';
+import {
+  docsMatchingText,
+  docTextFromBlocks,
+  mentionsOf,
+  searchText,
+} from '../docText';
+import { row } from '../../workspaceIndex/__tests__/row';
 import { rowKey, type DocText } from '../../workspaceIndex/types';
 
 const ORIGIN = 'http://localhost:5173';
@@ -376,5 +382,37 @@ describe('searchText', () => {
     const elapsed = performance.now() - started;
     expect(hits).toHaveLength(20);
     expect(elapsed).toBeLessThan(250);
+  });
+});
+
+describe('docsMatchingText', () => {
+  const rows = [
+    row({ folderId: 'f1', docId: 'a', title: 'Roadmap' }),
+    row({ folderId: 'f1', docId: 'b', title: 'Notes' }),
+    row({ folderId: 'f1', docId: 'c', title: 'Other' }),
+  ];
+  const texts = index(
+    text('f1', 'b', [
+      block('b1', 'paragraph', 'Meet at the Café'),
+      block('b2', 'paragraph', 'bring the roadmap'),
+    ]),
+    text('f1', 'c', [block('c1', 'paragraph', 'nothing here')]),
+  );
+
+  it('matches the title or any block, folded, every word in one place', () => {
+    expect([...docsMatchingText('roadmap', rows, texts)].sort()).toEqual([
+      'f1/a',
+      'f1/b',
+    ]);
+    expect([...docsMatchingText('CAFE meet', rows, texts)]).toEqual(['f1/b']);
+    // The two words are in different blocks.
+    expect([...docsMatchingText('cafe roadmap', rows, texts)]).toEqual([]);
+    expect(docsMatchingText('   ', rows, texts).size).toBe(0);
+  });
+
+  it('answers from the same folded text as the palette search', () => {
+    const before = searchText('cafe', texts);
+    expect(before.map((h) => h.row)).toEqual(['f1/b']);
+    expect(searchText('cafe', texts)).toEqual(before);
   });
 });

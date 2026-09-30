@@ -13,12 +13,15 @@ type Event = { contextId: string; type: string; data: unknown };
 
 const getDocument =
   vi.fn<(contextId: string, doc: string) => Promise<BackendBlock[]>>();
+const getDoc =
+  vi.fn<(contextId: string, id: string) => Promise<{ updated_at: number }>>();
 const getBlockDelta =
   vi.fn<
     (contextId: string, doc: string, block: string) => Promise<BackendBlock['spans']>
   >();
 let subscribed: { ids: string[]; handler: (e: Event) => void } | null = null;
-const mero = {};
+// A new session per test: the text cache is per mero client.
+let mero = {};
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({ mero }),
@@ -34,6 +37,9 @@ vi.mock('@/generated/docs/DocsClient', () => ({
     ) {}
     getDocument({ doc }: { doc: string }) {
       return getDocument(this.contextId, doc);
+    }
+    getDoc({ id }: { id: string }) {
+      return getDoc(this.contextId, id);
     }
     getBlockDelta({ doc, block }: { doc: string; block: string }) {
       return getBlockDelta(this.contextId, doc, block);
@@ -120,7 +126,10 @@ function textOf(
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mero = {};
   getDocument.mockReset();
+  getDoc.mockReset();
+  getDoc.mockRejectedValue(new Error('no version'));
   getBlockDelta.mockReset();
   subscribed = null;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -479,5 +488,90 @@ describe('useTextIndex', () => {
     held.forEach((done) => done());
     await settle(2_000);
     expect(getDocument).toHaveBeenCalledTimes(TEXT_INDEX_CONCURRENCY);
+  });
+
+  it('reads nothing again on a remount in the same session, only what changed', async () => {
+    getDocument.mockImplementation((_ctx, doc) =>
+      Promise.resolve(blocks(`v1 ${doc}`)),
+    );
+    const rows = [row('f1', 'a', false, 5), row('f1', 'b', false, 5)];
+    const { unmount } = renderHook(() =>
+      useTextIndex(input(rows, { f1: 'ready' })),
+    );
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    unmount();
+
+    // Switching workspace and back remounts the index.
+    const view = renderHook(() =>
+      useTextIndex(
+        input([row('f1', 'a', false, 5), row('f1', 'b', false, 8)], {
+          f1: 'ready',
+        }),
+      ),
+    );
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(3);
+    expect(getDocument).toHaveBeenLastCalledWith('c-f1', 'b');
+    expect(textOf(view.result, 'f1/a')).toBe('v1 a');
+    expect(view.result.current).toMatchObject({ foldersDone: 1, pending: [] });
+    view.unmount();
+
+    // A new session (a new mero client) keeps nothing.
+    mero = {};
+    renderHook(() => useTextIndex(input(rows, { f1: 'ready' })));
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(5);
+  });
+
+  it('forgets a doc that left the list', async () => {
+    getDocument.mockImplementation((_ctx, doc) => Promise.resolve(blocks(doc)));
+    const both = [row('f1', 'a'), row('f1', 'b')];
+    const { rerender, unmount } = renderHook(
+      ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
+      { initialProps: { rows: both } },
+    );
+    await settle();
+    rerender({ rows: [row('f1', 'a')] });
+    await settle();
+    unmount();
+
+    renderHook(() => useTextIndex(input(both, { f1: 'ready' })));
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(3);
+    expect(getDocument).toHaveBeenLastCalledWith('c-f1', 'b');
+  });
+
+  it('asks an edited doc for its version, so the list catching up reads nothing more', async () => {
+    getDocument.mockImplementation((_ctx, doc) =>
+      Promise.resolve(blocks(`v1 ${doc}`)),
+    );
+    const { result, rerender } = renderHook(
+      ({ rows }) => useTextIndex(input(rows, { f1: 'ready' })),
+      { initialProps: { rows: [row('f1', 'a', false, 5)] } },
+    );
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(1);
+
+    getDoc.mockResolvedValue({ updated_at: 9 * 1_000_000 });
+    getDocument.mockImplementation((_ctx, doc) =>
+      Promise.resolve(blocks(`v2 ${doc}`)),
+    );
+    act(() => {
+      subscribed!.handler({
+        contextId: 'c-f1',
+        type: 'StateMutation',
+        data: { BlockChanged: { doc: 'a', block: 'b1' } },
+      });
+    });
+    await settle(1_500);
+    expect(getDoc).toHaveBeenCalledWith('c-f1', 'a');
+    expect(getDocument).toHaveBeenCalledTimes(2);
+
+    // The list refetch the same edit caused.
+    rerender({ rows: [row('f1', 'a', false, 9)] });
+    await settle();
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(textOf(result, 'f1/a')).toBe('v2 a');
   });
 });

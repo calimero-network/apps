@@ -85,6 +85,49 @@ export interface GetMessageCountProps {
   refetch_identity?: UserId;
 }
 
+/**
+ * One page of `search_messages` in one context. `cursor` is the previous
+ * page's `next_cursor`; omit it for the first page.
+ */
+export interface SearchMessagesProps {
+  query: string;
+  cursor?: string | null;
+  limit?: number;
+  contextId: string;
+  executorPublicKey: string;
+}
+
+/** A message `search_messages` found: enough to list and open it. */
+export interface SearchHit {
+  id: string;
+  /** Set for a thread reply: the top-level message it replies to. */
+  parent_message_id?: string | null;
+  /** Position of the top-level message (a reply's parent). */
+  index: number;
+  /** Seconds, as the contract stores them. */
+  timestamp: number;
+  /** What the hit is ranked by: its own timestamp, or its parent's for a reply. */
+  anchor_timestamp: number;
+  sender: UserId;
+  /** Plain text around the first match. */
+  snippet: string;
+  /** The match inside `snippet`, as JS string indices. */
+  match_start: number;
+  match_end: number;
+}
+
+export interface SearchPage {
+  hits: SearchHit[];
+  /** `null` once the walk reached the oldest message. */
+  next_cursor?: string | null;
+  /** Oldest top-level timestamp the call read; later pages rank at or below it. */
+  frontier_timestamp?: number | null;
+}
+
+/**
+ * `search_all_messages`: what a context still on an app version older than
+ * `search_messages` answers. Used only as that fallback.
+ */
 export interface SearchAllMessagesProps {
   search_term: string;
   limit?: number;
@@ -332,6 +375,8 @@ export enum ClientMethod {
   MARK_AS_READ = "mark_as_read",
   GET_UNREAD_COUNT = "get_unread_count",
   GET_UNREAD_MENTIONS = "get_unread_mentions",
+  SEARCH_MESSAGES = "search_messages",
+  // Pre-`search_messages` contracts only; see `searchAllMessages`.
   SEARCH_ALL_MESSAGES = "search_all_messages",
   // Per-user per-channel drafts (WASM-backed, effectively private).
   SAVE_DRAFT = "save_draft",
@@ -385,6 +430,7 @@ export interface ClientApi {
   getMessagesFrom(props: GetMessagesFromProps): ApiResponse<FullMessageResponse>;
   /** Channel length. One row read — no message bodies cross the wire. */
   getMessageCount(props: GetMessageCountProps): ApiResponse<number>;
+  searchMessages(props: SearchMessagesProps): ApiResponse<SearchPage>;
   searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;
