@@ -28,7 +28,10 @@ test.describe('Namespace (single-node)', () => {
     for (let n = (await listAll()).length; n <= NODE_PAGE; n++) {
       const res = await alice.page.request.post(
         `${env.node1.url}/admin-api/namespaces`,
-        { headers, data: { applicationId: env.applicationId, name: `Page Two ${n}` } },
+        {
+          headers,
+          data: { applicationId: env.applicationId, name: `Page Two ${n}` },
+        },
       );
       expect(res.ok()).toBe(true);
     }
@@ -67,9 +70,7 @@ test.describe('Namespace (single-node)', () => {
     // item that opened the dialog must not steal it back.
     await expect(input).toBeFocused();
     await alice.page.keyboard.type('Typed Without Clicking');
-    await expect(input).toHaveValue(
-      'Typed Without Clicking',
-    );
+    await expect(input).toHaveValue('Typed Without Clicking');
     await dialog.getByRole('button', { name: /^Cancel$/ }).click();
   });
 
@@ -102,9 +103,9 @@ test.describe('Namespace (single-node)', () => {
     await alice.closeSettings();
     // Either an empty state or a folder view; settings header must
     // not be on-screen.
-    await expect(
-      alice.page.getByText(/Your display name/i),
-    ).toBeHidden({ timeout: 5_000 });
+    await expect(alice.page.getByText(/Your display name/i)).toBeHidden({
+      timeout: 5_000,
+    });
   });
 
   test('set and clear my display name', async ({ alice }) => {
@@ -129,9 +130,9 @@ test.describe('Namespace (single-node)', () => {
     await alice.tree.openFolder('Foo');
     await alice.openSettings();
     await alice.tree.openFolder('Foo');
-    await expect(
-      alice.page.getByText(/Your display name/i),
-    ).toBeHidden({ timeout: 5_000 });
+    await expect(alice.page.getByText(/Your display name/i)).toBeHidden({
+      timeout: 5_000,
+    });
   });
 
   test('settings closes when opening a document', async ({ alice }) => {
@@ -142,9 +143,9 @@ test.describe('Namespace (single-node)', () => {
     await alice.createDoc('Notes');
     await alice.openSettings();
     await alice.docs.clickDoc('Notes');
-    await expect(
-      alice.page.getByText(/Your display name/i),
-    ).toBeHidden({ timeout: 5_000 });
+    await expect(alice.page.getByText(/Your display name/i)).toBeHidden({
+      timeout: 5_000,
+    });
     await alice.editor.expectMounted();
   });
 });

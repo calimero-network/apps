@@ -2,7 +2,13 @@
 // node-side handle (context id + doc id) every assertion reads through.
 
 import { randomBytes } from 'node:crypto';
-import { test as base, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import {
+  test as base,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test';
 import { WorkspaceDriver } from '../../fixtures/workspace';
 import { rigAvailable, rigNodes } from '../helpers/nodes';
 import { goOnline, waitForHealth } from '../helpers/rig';
@@ -45,13 +51,20 @@ export class RichRig {
     // and lands on the landing page instead of the workspace.
     await waitForHealth(node, true);
     const context = await this.browser.newContext(
-      VIDEO_DIR ? { viewport: VIDEO_SIZE, recordVideo: { dir: VIDEO_DIR, size: VIDEO_SIZE } } : {},
+      VIDEO_DIR
+        ? {
+            viewport: VIDEO_SIZE,
+            recordVideo: { dir: VIDEO_DIR, size: VIDEO_SIZE },
+          }
+        : {},
     );
     this.contexts.push(context);
     const page = await context.newPage();
     await page.goto(`/app?node=${node}`);
     const ws = new WorkspaceDriver(page, { label: `node${node}` });
-    await expect(page.getByTestId('workspace-switcher')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('workspace-switcher')).toBeVisible({
+      timeout: 30_000,
+    });
     // A fresh member is asked for a display name before the workspace is usable.
     await ws.dismissNameGateIfPresent(`node${node}`);
     const window: RichWindow = {
@@ -60,13 +73,17 @@ export class RichRig {
       ws,
       reopen: async () => {
         await page.reload();
-        await expect(page.getByTestId('workspace-switcher')).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('workspace-switcher')).toBeVisible({
+          timeout: 60_000,
+        });
         await ws.dismissNameGateIfPresent(`node${node}`);
         // A node that has just restarted serves the folder tree slowly.
         await ws.tree.expectFolderVisible(this.folder, { timeout: 120_000 });
         await ws.tree.openFolder(this.folder);
         // By id, not title: the scenarios rename the document.
-        const row = page.locator(`[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`);
+        const row = page.locator(
+          `[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`,
+        );
         await expect(row).toBeVisible({ timeout: 120_000 });
         await row.click();
         await ws.editor.expectMounted();
@@ -99,7 +116,9 @@ export class RichRig {
     await window.ws.tree.openFolder(this.folder);
     await window.ws.restrictedCard.joinIfPrompted(this.folder);
     // By id, not title: a scenario may have renamed the document by now.
-    const row = window.page.locator(`[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`);
+    const row = window.page.locator(
+      `[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`,
+    );
     await expect(row).toBeVisible({ timeout: 120_000 });
     await row.click();
     await window.ws.editor.expectMounted();
@@ -114,7 +133,10 @@ export class RichRig {
 export const test = base.extend<{ rig: RichRig }>({
   rig: async ({ browser }, use, testInfo) => {
     if (!rigAvailable(3)) {
-      testInfo.skip(true, 'the rich suite needs three rig nodes (scripts/local-rig.sh up)');
+      testInfo.skip(
+        true,
+        'the rich suite needs three rig nodes (scripts/local-rig.sh up)',
+      );
       // Unreachable, but TS needs a value.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await use(undefined as any);

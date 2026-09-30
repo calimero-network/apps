@@ -38,9 +38,10 @@ test.describe('Saved views (single-node)', () => {
     await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue(
       'design',
     );
-    await expect(
-      page.getByRole('radio', { name: /Only me/ }),
-    ).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radio', { name: /Only me/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
     await saveSubmit(page).click();
 
     await expect(page.getByRole('textbox', { name: 'Name' })).toBeHidden();
@@ -67,9 +68,9 @@ test.describe('Saved views (single-node)', () => {
     await home.viewMenuButton('Design docs').click();
     await page.getByRole('menuitem', { name: 'Rename' }).click();
     const renameDialog = page.getByRole('dialog', { name: 'Rename view' });
-    await renameDialog.getByRole('textbox', { name: 'Name' }).fill(
-      'Design this week',
-    );
+    await renameDialog
+      .getByRole('textbox', { name: 'Name' })
+      .fill('Design this week');
     await renameDialog.getByRole('button', { name: 'Save' }).click();
     await expect(renameDialog).toBeHidden();
     await expect(home.viewRow('Design this week')).toBeVisible();

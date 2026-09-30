@@ -37,12 +37,22 @@ export async function settledAcross(
   let previous: string | null = null;
   for (;;) {
     // A failed read is a node not answering yet, never a value it agrees on.
-    const values = await Promise.all(nodes.map((node) => read(node).catch((cause: unknown) => ({ failed: String(cause) }))));
+    const values = await Promise.all(
+      nodes.map((node) =>
+        read(node).catch((cause: unknown) => ({ failed: String(cause) })),
+      ),
+    );
     const [first] = values;
-    const agreed = typeof first === 'string' && values.every((value) => value === first) ? first : null;
+    const agreed =
+      typeof first === 'string' && values.every((value) => value === first)
+        ? first
+        : null;
     if (agreed !== null && agreed === previous) return agreed;
     previous = agreed;
-    if (Date.now() > deadline) throw new Error(`nodes ${nodes.join(', ')} never settled; last read ${JSON.stringify(values)}`);
+    if (Date.now() > deadline)
+      throw new Error(
+        `nodes ${nodes.join(', ')} never settled; last read ${JSON.stringify(values)}`,
+      );
     await new Promise((resolve) => setTimeout(resolve, interval));
   }
 }

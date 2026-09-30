@@ -134,28 +134,28 @@ test.describe('Open folder inheritance (two-node)', () => {
     expect(calledJoinInheritance).toBe(true);
   });
 
-  test.skip(
-    'Open folder created AFTER Bob joined appears on Bob without manual refresh',
-    async ({ alice, bob }) => {
-      // Same flow as above but: invite Bob first, then create the
-      // folder. Asserts Bob's tree refreshes via subscription rather
-      // than poll. Pending a stable subscription-vs-poll signal in
-      // the workspace state.
-      void alice;
-      void bob;
-    },
-  );
+  test.skip('Open folder created AFTER Bob joined appears on Bob without manual refresh', async ({
+    alice,
+    bob,
+  }) => {
+    // Same flow as above but: invite Bob first, then create the
+    // folder. Asserts Bob's tree refreshes via subscription rather
+    // than poll. Pending a stable subscription-vs-poll signal in
+    // the workspace state.
+    void alice;
+    void bob;
+  });
 
-  test.skip(
-    'RestrictedFolderCard shows syncing pre-visibility-op; swaps to Join CTA',
-    async ({ alice, bob }) => {
-      // Race: open the card view before the visibility op has
-      // reached Bob's node. Card should show "Workspace is still
-      // syncing" → "Try joining"; once the op arrives the heading
-      // swaps to "Join this open folder" / "Join folder". Needs a
-      // way to gate gossip propagation per-test.
-      void alice;
-      void bob;
-    },
-  );
+  test.skip('RestrictedFolderCard shows syncing pre-visibility-op; swaps to Join CTA', async ({
+    alice,
+    bob,
+  }) => {
+    // Race: open the card view before the visibility op has
+    // reached Bob's node. Card should show "Workspace is still
+    // syncing" → "Try joining"; once the op arrives the heading
+    // swaps to "Join this open folder" / "Join folder". Needs a
+    // way to gate gossip propagation per-test.
+    void alice;
+    void bob;
+  });
 });

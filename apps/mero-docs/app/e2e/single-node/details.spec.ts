@@ -50,7 +50,9 @@ test.describe('Details panel (single-node)', () => {
     const out = details.section('Links to');
     await expect(out.getByRole('button')).toHaveCount(1, { timeout: 30_000 });
     await expect(out.getByRole('button')).toContainText('Pricing notes');
-    await expect(out.getByRole('button')).toContainText('Linked in “Milestones”');
+    await expect(out.getByRole('button')).toContainText(
+      'Linked in “Milestones”',
+    );
     await expect(details.section('Linked from')).toContainText(
       'No documents link here yet',
     );
@@ -79,7 +81,10 @@ test.describe('Details panel (single-node)', () => {
     await editor.expectMounted();
     await expect(details.panel()).toBeVisible();
 
-    await details.panel().getByRole('button', { name: 'Close details' }).click();
+    await details
+      .panel()
+      .getByRole('button', { name: 'Close details' })
+      .click();
     await expect(details.panel()).toBeHidden();
     await page.reload();
     await editor.expectMounted();

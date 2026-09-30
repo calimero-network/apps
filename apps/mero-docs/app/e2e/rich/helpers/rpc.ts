@@ -40,14 +40,18 @@ export async function execute<T>(
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   if (!resp.ok) {
-    throw new Error(`node ${node} ${method} -> ${resp.status}: ${await resp.text()}`);
+    throw new Error(
+      `node ${node} ${method} -> ${resp.status}: ${await resp.text()}`,
+    );
   }
   const body = (await resp.json()) as {
     result?: { output?: unknown };
     error?: unknown;
   };
   if (body.error !== undefined) {
-    throw new Error(`node ${node} ${method} failed: ${JSON.stringify(body.error)}`);
+    throw new Error(
+      `node ${node} ${method} failed: ${JSON.stringify(body.error)}`,
+    );
   }
   return body.result?.output as T;
 }
@@ -59,7 +63,9 @@ export async function adminContexts(node: number): Promise<AdminContext[]> {
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   if (!resp.ok) {
-    throw new Error(`node ${node} contexts -> ${resp.status}: ${await resp.text()}`);
+    throw new Error(
+      `node ${node} contexts -> ${resp.status}: ${await resp.text()}`,
+    );
   }
   const body = (await resp.json()) as { data: { contexts: AdminContext[] } };
   return body.data.contexts;
@@ -98,18 +104,27 @@ export function blocksOnNode(node: number, doc: DocRef): Promise<Block[]> {
 }
 
 /** The identity this node signs with in a context, which presence names as the author. */
-export async function ownedIdentity(node: number, contextId: string): Promise<string> {
+export async function ownedIdentity(
+  node: number,
+  contextId: string,
+): Promise<string> {
   const { url, accessToken } = rigNode(node);
-  const resp = await fetch(`${url}/admin-api/contexts/${contextId}/identities-owned`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-  });
+  const resp = await fetch(
+    `${url}/admin-api/contexts/${contextId}/identities-owned`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    },
+  );
   if (!resp.ok) {
-    throw new Error(`node ${node} identities -> ${resp.status}: ${await resp.text()}`);
+    throw new Error(
+      `node ${node} identities -> ${resp.status}: ${await resp.text()}`,
+    );
   }
   const body = (await resp.json()) as { data: { identities: string[] } };
   const [identity] = body.data.identities;
-  if (!identity) throw new Error(`node ${node} owns no identity in ${contextId}`);
+  if (!identity)
+    throw new Error(`node ${node} owns no identity in ${contextId}`);
   return identity;
 }
 
@@ -138,15 +153,31 @@ export async function waitForValue<T>(
 }
 
 /** Adds `identity` to the group behind `contextId` as an explicit member, from `node`. */
-export async function addExplicitMember(node: number, contextId: string, identity: string): Promise<void> {
-  const context = (await adminContexts(node)).find((candidate) => candidate.id === contextId);
-  if (!context?.groupId) throw new Error(`node ${node} has no group for ${contextId}`);
+export async function addExplicitMember(
+  node: number,
+  contextId: string,
+  identity: string,
+): Promise<void> {
+  const context = (await adminContexts(node)).find(
+    (candidate) => candidate.id === contextId,
+  );
+  if (!context?.groupId)
+    throw new Error(`node ${node} has no group for ${contextId}`);
   const { url, accessToken } = rigNode(node);
-  const resp = await fetch(`${url}/admin-api/groups/${context.groupId}/members`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ members: [{ identity, role: 'Member' }] }),
-    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`node ${node} add member -> ${resp.status}: ${await resp.text()}`);
+  const resp = await fetch(
+    `${url}/admin-api/groups/${context.groupId}/members`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ members: [{ identity, role: 'Member' }] }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    },
+  );
+  if (!resp.ok)
+    throw new Error(
+      `node ${node} add member -> ${resp.status}: ${await resp.text()}`,
+    );
 }

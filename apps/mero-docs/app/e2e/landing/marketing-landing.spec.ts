@@ -6,7 +6,14 @@
  */
 import { test, expect } from '@playwright/test';
 
-const DOC_SECTIONS = ["concepts","start","sharing","storage","offline","trouble"];
+const DOC_SECTIONS = [
+  'concepts',
+  'start',
+  'sharing',
+  'storage',
+  'offline',
+  'trouble',
+];
 
 test.describe('Mero Docs landing page', () => {
   test.beforeEach(async ({ page }) => {
@@ -14,7 +21,9 @@ test.describe('Mero Docs landing page', () => {
   });
 
   test('hero names the app and its tagline', async ({ page }) => {
-    await expect(page.getByRole('heading', { level: 1, name: "Mero Docs" })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Mero Docs' }),
+    ).toBeVisible();
     await expect(page.locator('.cal-lp-lede')).toBeVisible();
   });
 
@@ -23,7 +32,7 @@ test.describe('Mero Docs landing page', () => {
     // again in the trust strip, and an unscoped getByText is a strict-mode
     // violation the moment an app says both.
     await expect(
-      page.locator('.cal-lp-badge').filter({ hasText: "Web + Desktop" }),
+      page.locator('.cal-lp-badge').filter({ hasText: 'Web + Desktop' }),
     ).toHaveCount(1);
   });
 
@@ -39,7 +48,9 @@ test.describe('Mero Docs landing page', () => {
     await expect(page.locator('#faq')).toHaveCount(0);
   });
 
-  test('defaults to light, even when the OS asks for dark', async ({ page }) => {
+  test('defaults to light, even when the OS asks for dark', async ({
+    page,
+  }) => {
     // The page is deliberately NOT prefers-color-scheme aware: a landing page
     // is the first thing a stranger sees, and the same page in a screenshot, a
     // review and a share card. Dark is reachable only by clicking the toggle.
@@ -63,12 +74,18 @@ test.describe('Mero Docs landing page', () => {
     await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
   });
 
-  test('the theme toggle lives in the footer and flips both ways', async ({ page }) => {
+  test('the theme toggle lives in the footer and flips both ways', async ({
+    page,
+  }) => {
     const toggle = page.getByTestId('theme-toggle');
     // In the footer, not the header. The header's job is to say what this is
     // and offer the way in; a colour preference is small print.
-    await expect(page.locator('.cal-lp-footer').getByTestId('theme-toggle')).toHaveCount(1);
-    await expect(page.locator('.cal-lp-header').getByTestId('theme-toggle')).toHaveCount(0);
+    await expect(
+      page.locator('.cal-lp-footer').getByTestId('theme-toggle'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('.cal-lp-header').getByTestId('theme-toggle'),
+    ).toHaveCount(0);
 
     const root = page.locator('.cal-lp-root');
     await toggle.click();
@@ -78,36 +95,61 @@ test.describe('Mero Docs landing page', () => {
   });
 
   // ── The three pages ─────────────────────────────────────────────────────
-  test('the nav moves between the three pages, and the URL follows', async ({ page }) => {
-    await page.getByRole('navigation').getByRole('link', { name: 'Docs' }).click();
+  test('the nav moves between the three pages, and the URL follows', async ({
+    page,
+  }) => {
+    await page
+      .getByRole('navigation')
+      .getByRole('link', { name: 'Docs' })
+      .click();
     await expect(page).toHaveURL(/\/docs$/);
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'docs');
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'docs',
+    );
 
-    await page.getByRole('navigation').getByRole('link', { name: 'Preview' }).click();
+    await page
+      .getByRole('navigation')
+      .getByRole('link', { name: 'Preview' })
+      .click();
     await expect(page).toHaveURL(/\/preview$/);
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'preview');
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'preview',
+    );
 
     // Real history, not just state: the back button has to work or these are
     // tabs wearing a URL.
     await page.goBack();
     await expect(page).toHaveURL(/\/docs$/);
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'docs');
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'docs',
+    );
   });
 
-  test('the docs sidebar marks the section being read, and scrolls to it', async ({ page }) => {
+  test('the docs sidebar marks the section being read, and scrolls to it', async ({
+    page,
+  }) => {
     await page.goto('/docs');
     const toc = page.locator('.cal-lp-toc');
     // Exactly one entry is current, and before any scrolling it is the first.
     await expect(toc.locator('[data-cal-lp-active]')).toHaveCount(1);
-    await expect(toc.locator('[data-cal-lp-active]')).toHaveText('What this is');
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText(
+      'What this is',
+    );
 
     // Clicking an entry brings its section into view and moves the marker.
     // ⚠️ The scroll is smooth, so both of these are retried assertions rather
     // than a single read - a synchronous check here passes only by accident,
     // on whichever frame it happens to land.
-    await toc.getByRole('link', { name: "The words, and what they mean here" }).click();
-    await expect(page.locator('#' + "concepts")).toBeInViewport();
-    await expect(toc.locator('[data-cal-lp-active]')).toHaveText("The words, and what they mean here");
+    await toc
+      .getByRole('link', { name: 'The words, and what they mean here' })
+      .click();
+    await expect(page.locator('#' + 'concepts')).toBeInViewport();
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText(
+      'The words, and what they mean here',
+    );
   });
 
   test('/docs opens cold, as a shared link would', async ({ page }) => {
@@ -116,8 +158,13 @@ test.describe('Mero Docs landing page', () => {
     // swallows /docs passes the nav test above and fails this one, which is
     // exactly what a shared link would hit.
     await page.goto('/docs');
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'docs');
-    await expect(page.getByRole('heading', { level: 2, name: 'What this is' })).toBeVisible();
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'docs',
+    );
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'What this is' }),
+    ).toBeVisible();
     for (const id of DOC_SECTIONS) {
       await expect(page.locator(`#${id}`)).toBeVisible();
     }
@@ -126,13 +173,17 @@ test.describe('Mero Docs landing page', () => {
     await expect(page.locator('.cal-lp-step')).toHaveCount(8);
   });
 
-  test('the docs page has a table of contents that points at real sections', async ({ page }) => {
+  test('the docs page has a table of contents that points at real sections', async ({
+    page,
+  }) => {
     await page.goto('/docs');
     const links = page.locator('.cal-lp-toclink');
     await expect(links).toHaveCount(9);
     // Every entry must resolve to an element that exists - a TOC pointing at a
     // renamed section is worse than no TOC.
-    const hrefs = await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    const hrefs = await links.evaluateAll((els) =>
+      els.map((e) => e.getAttribute('href')),
+    );
     for (const href of hrefs) {
       expect(href).toMatch(/^#./);
       await expect(page.locator(href!)).toHaveCount(1);
@@ -150,26 +201,35 @@ test.describe('Mero Docs landing page', () => {
 
   test('/preview opens cold and captions every beat', async ({ page }) => {
     await page.goto('/preview');
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'preview');
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'preview',
+    );
     await expect(page.locator('.cal-lp-stage--big')).toBeVisible();
     await expect(page.locator('.cal-lp-a').first()).toBeAttached();
     await expect(page.locator('.cal-lp-beat')).toHaveCount(4);
   });
 
-
   // ── No more /login ──────────────────────────────────────────────────────
-  test('the login page is gone, and its path lands on the front door', async ({ page }) => {
+  test('the login page is gone, and its path lands on the front door', async ({
+    page,
+  }) => {
     // This app had a /login route whose whole content was a button the visitor
     // had already pressed to get there. The path stays as a redirect so a
     // bookmark is not a blank route.
     await page.goto('/login');
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'overview',
+    );
   });
 
-
   test('connecting does not navigate to another page', async ({ page }) => {
-    const cta = page.locator('button').filter({ hasText: /^Connect to node$/ }).first();
+    const cta = page
+      .locator('button')
+      .filter({ hasText: /^Connect to node$/ })
+      .first();
     await expect(cta).toBeVisible();
     // ⚠️ Compared against the URL we are ACTUALLY on, not against the root.
     // mero-stream and mero-meet redirect / to a picker route and render the
@@ -185,10 +245,16 @@ test.describe('Mero Docs landing page', () => {
   });
 
   test('and the landing page stays put underneath it', async ({ page }) => {
-    await page.locator('button').filter({ hasText: /^Connect to node$/ }).first().click();
-    await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'overview');
+    await page
+      .locator('button')
+      .filter({ hasText: /^Connect to node$/ })
+      .first()
+      .click();
+    await expect(page.locator('.cal-lp-root')).toHaveAttribute(
+      'data-cal-lp-view',
+      'overview',
+    );
   });
-
 
   test('offers the desktop download', async ({ page }) => {
     await expect(
@@ -202,7 +268,9 @@ test.describe('Mero Docs landing page', () => {
   // because they are three different layouts.
   for (const width of [390, 320]) {
     for (const path of ['/', '/docs', '/preview']) {
-      test(`${path} does not scroll sideways on a ${width}px phone`, async ({ page }) => {
+      test(`${path} does not scroll sideways on a ${width}px phone`, async ({
+        page,
+      }) => {
         await page.setViewportSize({ width, height: 780 });
         await page.goto(path);
         await expect(page.locator('.cal-lp-root')).toBeVisible();
@@ -228,7 +296,9 @@ test.describe('Mero Docs landing page', () => {
     }
   }
 
-  test('the brand never wraps under its own icon on a phone', async ({ page }) => {
+  test('the brand never wraps under its own icon on a phone', async ({
+    page,
+  }) => {
     // `Mero Issue Tracker` used to wrap under the mark and double the sticky
     // header's height. The header itself is taller on a phone now - the nav
     // wraps onto its own row rather than disappearing, because it is the only
@@ -241,12 +311,18 @@ test.describe('Mero Docs landing page', () => {
     expect(box?.height ?? 0).toBeLessThanOrEqual(34);
   });
 
-  test('the nav survives a phone, rather than being hidden', async ({ page }) => {
+  test('the nav survives a phone, rather than being hidden', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Docs' })).toBeVisible();
+    await expect(
+      page.getByRole('navigation').getByRole('link', { name: 'Docs' }),
+    ).toBeVisible();
   });
 
-  test('the hero art is drawn to fit its frame on a phone', async ({ page }) => {
+  test('the hero art is drawn to fit its frame on a phone', async ({
+    page,
+  }) => {
     // The animations position their parts in literal pixels against a 495px
     // stage, so an unscaled box writes its rows over each other inside a 328px
     // phone frame. useStageScale() is what stops that, and it is invisible in
@@ -256,8 +332,13 @@ test.describe('Mero Docs landing page', () => {
     await expect(body).toBeVisible();
     const art = page.locator('.cal-lp-a').first();
     await expect(art).toBeAttached();
-    const [bodyBox, artBox] = await Promise.all([body.boundingBox(), art.boundingBox()]);
+    const [bodyBox, artBox] = await Promise.all([
+      body.boundingBox(),
+      art.boundingBox(),
+    ]);
     // Rendered width, after the scale - within a pixel of the frame it sits in.
-    expect(Math.abs((artBox?.width ?? 0) - (bodyBox?.width ?? 0))).toBeLessThanOrEqual(1.5);
+    expect(
+      Math.abs((artBox?.width ?? 0) - (bodyBox?.width ?? 0)),
+    ).toBeLessThanOrEqual(1.5);
   });
 });

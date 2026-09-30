@@ -3,7 +3,12 @@
 
 import { expect, test } from '@playwright/test';
 import type { Block } from '../../src/generated/docs/DocsClient';
-import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
+import {
+  blockText,
+  occurrences,
+  sameCharacterCounts,
+  spanSummary,
+} from './helpers/doc-model';
 import { settledAcross } from './helpers/converge';
 import { waitForValue } from './helpers/rpc';
 
@@ -47,11 +52,10 @@ test.describe('doc model helpers', () => {
 test.describe('waitForValue', () => {
   test('returns as soon as the read matches', async () => {
     let calls = 0;
-    await waitForValue(
-      async () => ++calls,
-      2,
-      { timeout: 5_000, label: 'counter' },
-    );
+    await waitForValue(async () => ++calls, 2, {
+      timeout: 5_000,
+      label: 'counter',
+    });
     expect(calls).toBe(2);
   });
 
@@ -75,21 +79,28 @@ test.describe('settledAcross', () => {
   };
 
   test('waits out a node that is behind on its first reads', async () => {
-    const nodes = [answers('moved'), answers('stale', 'stale', 'stale', 'moved')];
-    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe('moved');
+    const nodes = [
+      answers('moved'),
+      answers('stale', 'stale', 'stale', 'moved'),
+    ];
+    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe(
+      'moved',
+    );
   });
 
-  test('does not settle on the first node\'s value before a peer\'s write reaches it', async () => {
+  test("does not settle on the first node's value before a peer's write reaches it", async () => {
     const nodes = [answers('stale', 'stale', 'moved'), answers('moved')];
-    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe('moved');
+    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe(
+      'moved',
+    );
   });
 
   test('never takes a failed read as agreement, and names the last reads when it gives up', async () => {
     const failing = async () => {
       throw new Error('node down');
     };
-    await expect(settledAcross([1, 2], failing, { interval: 1, timeout: 50 })).rejects.toThrow(
-      /nodes 1, 2 never settled; last read .*node down/,
-    );
+    await expect(
+      settledAcross([1, 2], failing, { interval: 1, timeout: 50 }),
+    ).rejects.toThrow(/nodes 1, 2 never settled; last read .*node down/);
   });
 });

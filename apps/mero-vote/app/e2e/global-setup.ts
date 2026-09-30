@@ -10,7 +10,6 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import {
-  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -22,6 +21,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import nacl from "tweetnacl";
+import { pipeToLog } from "@calimero-apps/e2e-node";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(__dirname, "..");
@@ -199,9 +199,7 @@ export default async function globalSetup() {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, MERO_AUTH_ADMIN_USER: ADMIN_USER, MERO_AUTH_ADMIN_PASSWORD: ADMIN_PASSWORD },
     });
-    const log = createWriteStream(path.join(DATA_DIR, `${NODE_NAME}.log`));
-    proc.stdout?.pipe(log);
-    proc.stderr?.pipe(log);
+    pipeToLog(proc, path.join(DATA_DIR, `${NODE_NAME}.log`));
     if (proc.pid) pids.push(proc.pid);
     console.log(`[setup] ${NODE_NAME} started (pid ${proc.pid})`);
   }

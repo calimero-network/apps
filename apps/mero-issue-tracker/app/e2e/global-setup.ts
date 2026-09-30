@@ -3,10 +3,11 @@
  * authenticates each, installs the chat bundle on each.
  */
 import { execSync, execFileSync, spawn, ChildProcess } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, createWriteStream, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nacl from 'tweetnacl';
+import { pipeToLog } from '@calimero-apps/e2e-node';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -211,9 +212,7 @@ function runNode(node: typeof NODES[0]): ChildProcess {
     detached: false,
   });
   const logFile = path.join(DATA_DIR, `${node.name}.log`);
-  const logStream = createWriteStream(logFile);
-  proc.stdout?.pipe(logStream);
-  proc.stderr?.pipe(logStream);
+  pipeToLog(proc, logFile);
   return proc;
 }
 

@@ -4,18 +4,17 @@ set -euo pipefail
 # Install the released cargo-mero binary from core, so the tool that writes
 # bundle contents cannot drift under us.
 #
-# ⚠️ Keep this on the release the workspace pins. Nothing in CI calls this
-# script and `fleet-bump` does not rewrite it, so it is free to rot: it sat on
-# rc.28 while the fleet moved to rc.34. Bump RELEASE and the three checksums
-# together - a stale checksum fails closed, a stale RELEASE does not.
-RELEASE=0.11.0-rc.61
+# ⚠️ Keep this on the release the workspace pins. `fleet-bump` does not rewrite
+# it; CI fails when RELEASE differs from the core tag in the root Cargo.toml.
+# Bump RELEASE and the three checksums together - a stale checksum fails closed.
+RELEASE=0.11.0-rc.62
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
 #   shasum -a 256 cargo-mero_<target>.tar.gz
-CHECKSUM_aarch64_apple_darwin=b3406dd330c425893579c87b7115650b17343257bd2d4aaa20a391e7ac62fc0a
-CHECKSUM_aarch64_unknown_linux_gnu=ea78a06f2dbf320823fc35cad767cc32d7cf09477787e78d216d77813d097207
-CHECKSUM_x86_64_unknown_linux_gnu=2b07e86c9b0c81461b5ca4d9258158554cf1af52eb5ff6472a591368a6aca8e1
+CHECKSUM_aarch64_apple_darwin=9bd47d0af2bb114cc30551db966603ce5f2e9789ac29414a52aa49ab9bafabe8
+CHECKSUM_aarch64_unknown_linux_gnu=de0d9c38071380599a763f83e534b7da9d6ed93cbf5e0f9b960cea127e0e5a11
+CHECKSUM_x86_64_unknown_linux_gnu=afe62457b26d5644301d40053332996b5986afccd331202a86a6b12096316918
 
 # The CI action needs this value for its cache key; it asks rather than
 # grepping this file, so reformatting the line above cannot silently break it.

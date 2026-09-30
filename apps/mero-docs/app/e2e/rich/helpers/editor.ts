@@ -8,7 +8,9 @@ export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 /** Where the caret sits inside the text of block `blockIndex`, or -1 elsewhere. */
 function offsetIn(page: Page, blockIndex: number): Promise<number> {
   return page.evaluate((index) => {
-    const text = document.querySelectorAll('[data-testid="doc-editor"] .bn-inline-content')[index];
+    const text = document.querySelectorAll(
+      '[data-testid="doc-editor"] .bn-inline-content',
+    )[index];
     const selection = window.getSelection();
     if (!text || !selection || selection.rangeCount === 0) return -1;
     const range = selection.getRangeAt(0);
@@ -21,15 +23,26 @@ function offsetIn(page: Page, blockIndex: number): Promise<number> {
 }
 
 /** Puts the caret `offset` characters into a block, counting from its start. */
-export async function caretTo(page: Page, blockIndex: number, offset: number): Promise<void> {
-  const text = page.getByTestId('doc-editor').locator('.bn-inline-content').nth(blockIndex);
+export async function caretTo(
+  page: Page,
+  blockIndex: number,
+  offset: number,
+): Promise<void> {
+  const text = page
+    .getByTestId('doc-editor')
+    .locator('.bn-inline-content')
+    .nth(blockIndex);
   // A peer's edit landing mid-move can shift the layout or the text under the
   // caret, so confirm it sits exactly where asked and place it again if not.
   await expect(async () => {
     await text.click();
     await collapseToEdge(text, 'start');
-    for (let step = 0; step < offset; step++) await page.keyboard.press('ArrowRight');
-    expect(await offsetIn(page, blockIndex), `caret at ${blockIndex}:${offset}`).toBe(offset);
+    for (let step = 0; step < offset; step++)
+      await page.keyboard.press('ArrowRight');
+    expect(
+      await offsetIn(page, blockIndex),
+      `caret at ${blockIndex}:${offset}`,
+    ).toBe(offset);
   }).toPass({ timeout: 20_000 });
 }
 
@@ -48,12 +61,21 @@ function collapseToEdge(text: Locator, edge: 'start' | 'end'): Promise<number> {
 }
 
 /** Puts the caret at the end of a block's text. */
-export async function caretToEnd(page: Page, blockIndex: number): Promise<void> {
-  const text = page.getByTestId('doc-editor').locator('.bn-inline-content').nth(blockIndex);
+export async function caretToEnd(
+  page: Page,
+  blockIndex: number,
+): Promise<void> {
+  const text = page
+    .getByTestId('doc-editor')
+    .locator('.bn-inline-content')
+    .nth(blockIndex);
   await expect(async () => {
     await text.click();
     const length = await collapseToEdge(text, 'end');
-    expect(await offsetIn(page, blockIndex), `caret at the end of block ${blockIndex}`).toBe(length);
+    expect(
+      await offsetIn(page, blockIndex),
+      `caret at the end of block ${blockIndex}`,
+    ).toBe(length);
   }).toPass({ timeout: 20_000 });
 }
 
@@ -90,17 +112,27 @@ export async function redo(page: Page): Promise<void> {
 
 /** Selects `text` inside a block with Shift+Arrow, as a person does, and
  *  confirms the editor holds exactly that selection before returning. */
-export async function selectText(page: Page, blockIndex: number, text: string): Promise<void> {
+export async function selectText(
+  page: Page,
+  blockIndex: number,
+  text: string,
+): Promise<void> {
   await expect(async () => {
     const start = await page
       .getByTestId('doc-editor')
       .locator('.bn-inline-content')
       .nth(blockIndex)
-      .evaluate((node, needle) => (node.textContent ?? '').indexOf(needle), text);
+      .evaluate(
+        (node, needle) => (node.textContent ?? '').indexOf(needle),
+        text,
+      );
     expect(start, `"${text}" in block ${blockIndex}`).toBeGreaterThanOrEqual(0);
     await caretTo(page, blockIndex, start);
-    for (let step = 0; step < text.length; step++) await page.keyboard.press('Shift+ArrowRight');
-    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(text);
+    for (let step = 0; step < text.length; step++)
+      await page.keyboard.press('Shift+ArrowRight');
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+      text,
+    );
   }).toPass({ timeout: 30_000 });
 }
 
@@ -108,7 +140,8 @@ export async function selectText(page: Page, blockIndex: number, text: string): 
 export function caretBlockText(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     const node = window.getSelection()?.anchorNode ?? null;
-    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+    const element =
+      node instanceof Element ? node : node?.parentElement ?? null;
     return element?.closest('[data-content-type]')?.textContent ?? null;
   });
 }

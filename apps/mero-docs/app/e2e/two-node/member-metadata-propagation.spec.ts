@@ -107,15 +107,15 @@ test.describe('Member metadata propagation (two-node)', () => {
     );
   });
 
-  test.skip(
-    'Display name reflects in document author/owner',
-    async ({ alice, bob }) => {
-      // Doc-level authorship metadata isn't surfaced in the current
-      // DocumentList row UI, so there's no obvious place to assert
-      // the name resolution. Re-enable when DocumentList shows
-      // owner labels.
-      void alice;
-      void bob;
-    },
-  );
+  test.skip('Display name reflects in document author/owner', async ({
+    alice,
+    bob,
+  }) => {
+    // Doc-level authorship metadata isn't surfaced in the current
+    // DocumentList row UI, so there's no obvious place to assert
+    // the name resolution. Re-enable when DocumentList shows
+    // owner labels.
+    void alice;
+    void bob;
+  });
 });
