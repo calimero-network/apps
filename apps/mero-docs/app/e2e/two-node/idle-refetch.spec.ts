@@ -1,24 +1,13 @@
 // An idle, synced workspace refetches once per interval sync: core reports each
 // run as `syncing` then a terminal phase, and only the terminal one may refetch.
 
-import type { Page, Request } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/two-user';
+import { rpcMethod } from '../fixtures/rpc';
 
 const SYNC_DEADLINE_MS = 120_000; // core's 10 s interval sync can skip a beat on a loaded machine
 const MAX_REQUESTS_PER_SYNC = 36; // midway between 31 per sync (one refetch per run) and 42 (one per sync phase)
 const MIN_SYNCS = 4; // enough whole sync runs, or the ratio proves nothing
-
-/** The app method of a JSON-RPC `execute` call, or null for any other request. */
-function rpcMethod(req: Request): string | null {
-  try {
-    const body = JSON.parse(req.postData() ?? '') as {
-      params?: { method?: unknown };
-    };
-    return typeof body.params?.method === 'string' ? body.params.method : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Records, in issue order, whether each node request from `page` (the `/sse`
  *  stream aside) is the workspace's `get_folders` read, one per sync it refetches on. */

@@ -8,6 +8,8 @@ import { injectMeroAuth } from './auth';
 import { envAvailable, getEnv } from './env';
 import { WorkspaceDriver } from './workspace';
 
+export const SYNC_MS = 60_000; // a write or a role change crossing to the other node
+
 export interface TwoUserFixtures {
   alice: WorkspaceDriver;
   bob: WorkspaceDriver;
@@ -54,5 +56,27 @@ export const test = base.extend<TwoUserFixtures>({
     await ctx.close();
   },
 });
+
+// Alice owns an Open folder "Team" holding the doc "Plan"; Bob has joined and sees it.
+export async function shareOpenDoc(
+  alice: WorkspaceDriver,
+  bob: WorkspaceDriver,
+  ws: string,
+) {
+  await alice.goToWorkspace();
+  await alice.createNamespace(ws);
+  await alice.createFolder({ name: 'Team', visibility: 'Open' });
+  await alice.tree.openFolder('Team');
+  await alice.createDoc('Plan');
+  await alice.openSettings();
+  const inviteUrl = await alice.settings.copyNamespaceInvite();
+  await alice.closeSettings();
+
+  await bob.joinNamespace(inviteUrl);
+  await bob.tree.expectFolderVisible('Team', { timeout: SYNC_MS });
+  await bob.tree.openFolder('Team');
+  await bob.restrictedCard.joinIfPrompted('Team');
+  await bob.docs.expectDocVisible('Plan', { timeout: SYNC_MS });
+}
 
 export { expect } from '@playwright/test';
