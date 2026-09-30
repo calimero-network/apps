@@ -25,7 +25,8 @@
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
     "shots": "node e2e/shots.mjs",
-    "test:live": "vitest run --config e2e/live/vitest.config.ts"
+    "test:live": "vitest run --config e2e/live/vitest.config.ts",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",
@@ -41,6 +42,7 @@
     "react-router-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "catalog:",
     "@playwright/test": "catalog:",

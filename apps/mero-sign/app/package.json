@@ -40,6 +40,7 @@
     "vite-plugin-environment": "^1.1.3"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "catalog:",
     "@playwright/test": "catalog:",
@@ -82,7 +83,8 @@
     "test:e2e": "playwright test",
     "shots": "node e2e/shots.mjs",
     "test:live": "vitest run --config e2e/live/vitest.config.ts",
-    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroSignClient --import-path @calimero-network/mero-js"
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroSignClient --import-path @calimero-network/mero-js",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "eslintConfig": {
     "extends": [
