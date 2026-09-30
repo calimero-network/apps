@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type { SseEventData } from '@calimero-network/mero-react';
+import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
 import { useMemberCaps } from '../useMemberCaps';
+
+const httpError = (status: number, body: string) =>
+  new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
+// core's typed refusal for a caller that is not in the group
+const notAMember = () => httpError(403, '{"error":"identity is not a member of group g"}');
 
 // useMemberCaps fetches members + capabilities straight off
 // `mero.admin` and reads the caller identity from useDriveWorkspace.
@@ -95,7 +101,7 @@ describe('useMemberCaps', () => {
   it(
     'reports a denial once the not-a-member retries are exhausted',
     async () => {
-      getCaps.mockRejectedValue(new Error('identity is not a member'));
+      getCaps.mockRejectedValue(notAMember());
       const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
       await waitFor(() => expect(result.current.error).not.toBeNull(), {
         timeout: 9000,
@@ -105,6 +111,24 @@ describe('useMemberCaps', () => {
     },
     12000,
   );
+
+  it('does not retry a 500 whose body reads like a refusal', async () => {
+    const fault = httpError(500, '{"error":"identity is not a member"}');
+    getCaps.mockRejectedValue(fault);
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.error).toBe(fault));
+    expect(getCaps).toHaveBeenCalledTimes(1);
+    expect(result.current.denied).toBe(false);
+  });
+
+  it('does not retry a revoked session that also answers 403', async () => {
+    const revoked = new AuthRevokedError('token_revoked', 403, '', '/', new Headers(), '');
+    getCaps.mockRejectedValue(revoked);
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.error).toBe(revoked));
+    expect(getCaps).toHaveBeenCalledTimes(1);
+    expect(result.current.denied).toBe(false);
+  });
 
   it('keeps the last good caps when a re-read fails for another reason', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -125,7 +149,7 @@ describe('useMemberCaps', () => {
       getCaps.mockResolvedValue({ capabilities: 5 });
       const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
       await waitFor(() => expect(result.current.caps).toBe(5));
-      getCaps.mockRejectedValue(new Error('identity is not a member'));
+      getCaps.mockRejectedValue(notAMember());
       act(() => result.current.refetch());
       await waitFor(() => expect(result.current.denied).toBe(true), {
         timeout: 9000,

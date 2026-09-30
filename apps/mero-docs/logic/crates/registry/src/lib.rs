@@ -27,8 +27,7 @@
 //! definitions (same shape, same bytes; keep them in sync). The ABI is now
 //! derived from the type system, so they could be unified with the shared
 //! crate; they stay local to keep this crate's ABI unchanged. `DriveError`
-//! stays internal-only (converted to `AppError` at the boundary), so it is
-//! imported from the shared crate.
+//! is imported from the shared crate and converted at the boundary.
 //!
 //! ## Subgroup visibility
 //!
@@ -43,7 +42,6 @@ use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, UnorderedMap, WriteOnce,
@@ -429,7 +427,7 @@ impl RegistryState {
     ) -> app::Result<()> {
         let id_for_event = id.0.clone();
         self.register_folder_inner(id, parent_id, color, alias)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderRegistered { id: &id_for_event });
         Ok(())
     }
@@ -464,7 +462,7 @@ impl RegistryState {
     pub fn unregister_folder(&mut self, id: FolderId) -> app::Result<()> {
         let id_for_event = id.0.clone();
         self.unregister_folder_inner(id)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderUnregistered { id: &id_for_event });
         Ok(())
     }
@@ -549,11 +547,11 @@ impl RegistryState {
     pub fn get_folder(&self, id: FolderId) -> app::Result<FolderDto> {
         let (owner, rec) = self
             .folder_holder(&id.0)
-            .map_err(|e| AppError::msg(e.to_string()))?
-            .ok_or_else(|| AppError::msg(format!("not found: {}", id.0)))?;
+            .map_err(DriveError::into_app)?
+            .ok_or_else(|| DriveError::NotFound(id.0.clone()).into_app())?;
         let ctx = self
             .binding_by(&owner, &id.0)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         Ok(project(&id.0, &rec, ctx.as_ref()))
     }
 
@@ -564,20 +562,15 @@ impl RegistryState {
         let ids: BTreeSet<String> = self
             .folders
             .entries()
-            .map_err(|e| AppError::msg(format!("folders.entries: {e}")))?
+            .map_err(|e| DriveError::Internal(format!("folders.entries: {e}")).into_app())?
             .map(|(id, _)| id)
             .collect();
         let mut out = Vec::new();
         for id in ids {
-            let Some((owner, rec)) = self
-                .folder_holder(&id)
-                .map_err(|e| AppError::msg(e.to_string()))?
-            else {
+            let Some((owner, rec)) = self.folder_holder(&id).map_err(DriveError::into_app)? else {
                 continue;
             };
-            let ctx = self
-                .binding_by(&owner, &id)
-                .map_err(|e| AppError::msg(e.to_string()))?;
+            let ctx = self.binding_by(&owner, &id).map_err(DriveError::into_app)?;
             out.push(project(&id, &rec, ctx.as_ref()));
         }
         Ok(out)
@@ -593,7 +586,7 @@ impl RegistryState {
         let fid = folder_id.0.clone();
         let cid = context_id.0.clone();
         self.bind_folder_context_inner(folder_id, context_id)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderContextBound {
             folder_id: &fid,
             context_id: &cid,
@@ -638,8 +631,7 @@ impl RegistryState {
 
     #[app::view]
     pub fn get_folder_context(&self, folder_id: FolderId) -> app::Result<Option<ContextId>> {
-        self.binding_of(&folder_id.0)
-            .map_err(|e| AppError::msg(e.to_string()))
+        self.binding_of(&folder_id.0).map_err(DriveError::into_app)
     }
 
     // ---- color / move ---------------------------------------------------
@@ -648,7 +640,7 @@ impl RegistryState {
         // Treat empty color as "clear" - matches how `get_folder` projects
         // empty-string back to `None` on read.
         self.set_color_inner(&id.0, color)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderColorChanged { id: &id.0 });
         Ok(())
     }
@@ -660,21 +652,21 @@ impl RegistryState {
     /// client surfaces (admin API alias if visible, otherwise id stub).
     pub fn set_folder_alias(&mut self, id: FolderId, alias: String) -> app::Result<()> {
         self.set_folder_alias_inner(&id.0, alias)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderAliasChanged { id: &id.0 });
         Ok(())
     }
 
     pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
         self.set_visibility_inner(&id.0, visibility)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderVisibilityChanged { id: &id.0 });
         Ok(())
     }
 
     pub fn move_folder(&mut self, id: FolderId, new_parent: Option<FolderId>) -> app::Result<()> {
         self.move_folder_inner(&id.0, new_parent.map(|p| p.0))
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderParentChanged { id: &id.0 });
         Ok(())
     }
@@ -735,7 +727,7 @@ impl RegistryState {
             .map(|p| p.0.clone())
             .unwrap_or_else(|| ROOT_SORT_KEY.to_string());
         self.reorder_inner(parent_id, folder_ids)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderSortOrderChanged { parent_id: &key });
         Ok(())
     }
@@ -774,7 +766,7 @@ impl RegistryState {
         let reg = self
             .sort_order
             .get(&key)
-            .map_err(|e| AppError::msg(format!("sort_order.get: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("sort_order.get: {e}")).into_app())?;
         Ok(match reg {
             Some(r) => r.get().iter().cloned().map(FolderId).collect(),
             None => Vec::new(),
@@ -791,25 +783,24 @@ impl RegistryState {
     }
 
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.add_manager_inner(&caller, &member)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::ManagerAdded { member: &member });
         Ok(())
     }
 
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.remove_manager_inner(&caller, &member)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::ManagerRemoved { member: &member });
         Ok(())
     }
 
     #[app::view]
     pub fn list_managers(&self) -> app::Result<Vec<String>> {
-        self.list_managers_inner()
-            .map_err(|e| AppError::msg(e.to_string()))
+        self.list_managers_inner().map_err(DriveError::into_app)
     }
 
     // ---- permissions: per-folder roles ----------------------------------
@@ -820,9 +811,9 @@ impl RegistryState {
         member: String,
         role: Role,
     ) -> app::Result<()> {
-        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderRoleChanged {
             folder_id: &folder_id.0,
             member: &member,
@@ -831,9 +822,9 @@ impl RegistryState {
     }
 
     pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
-        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(DriveError::into_app)?;
         self.clear_folder_role_inner(&caller, &folder_id.0, &member)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::FolderRoleChanged {
             folder_id: &folder_id.0,
             member: &member,
@@ -844,27 +835,26 @@ impl RegistryState {
     #[app::view]
     pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
         self.get_folder_role_inner(&folder_id.0, &member)
-            .map_err(|e| AppError::msg(e.to_string()))
+            .map_err(DriveError::into_app)
     }
 
     #[app::view]
     pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
         self.list_folder_roles_inner(&folder_id.0)
-            .map_err(|e| AppError::msg(e.to_string()))
+            .map_err(DriveError::into_app)
     }
 
     // ---- tags -------------------------------------------------------------
 
     pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
         self.set_tag_inner(&key, name, color)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::TagChanged { key: &key });
         Ok(())
     }
 
     pub fn delete_tag(&mut self, key: String) -> app::Result<()> {
-        self.delete_tag_inner(&key)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+        self.delete_tag_inner(&key).map_err(DriveError::into_app)?;
         app::emit!(Event::TagChanged { key: &key });
         Ok(())
     }
@@ -874,7 +864,7 @@ impl RegistryState {
         let entries = self
             .tags
             .entries()
-            .map_err(|e| AppError::msg(format!("tags.entries: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("tags.entries: {e}")).into_app())?;
         Ok(entries
             .into_iter()
             .map(|(key, rec)| project_tag(&key, &rec))
@@ -931,14 +921,13 @@ impl RegistryState {
 
     pub fn save_view(&mut self, id: String, name: String, query: String) -> app::Result<()> {
         self.save_view_inner(&id, name, query)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(DriveError::into_app)?;
         app::emit!(Event::ViewChanged { id: &id });
         Ok(())
     }
 
     pub fn delete_view(&mut self, id: String) -> app::Result<()> {
-        self.delete_view_inner(&id)
-            .map_err(|e| AppError::msg(e.to_string()))?;
+        self.delete_view_inner(&id).map_err(DriveError::into_app)?;
         app::emit!(Event::ViewChanged { id: &id });
         Ok(())
     }
@@ -948,12 +937,12 @@ impl RegistryState {
         let entries = self
             .views
             .entries()
-            .map_err(|e| AppError::msg(format!("views.entries: {e}")))?;
+            .map_err(|e| DriveError::Internal(format!("views.entries: {e}")).into_app())?;
         let mut out = Vec::new();
         for (id, rec) in entries {
             let created_by = self
                 .view_creator(&id)
-                .map_err(|e| AppError::msg(e.to_string()))?
+                .map_err(DriveError::into_app)?
                 .map(|owner| hex::encode(owner.as_bytes()))
                 .unwrap_or_default();
             out.push(ViewDto {
@@ -1229,7 +1218,11 @@ mod tests {
     #[test]
     fn get_folder_missing_returns_error() {
         let app = RegistryState::init();
-        assert!(app.get_folder(fid("ghost")).is_err());
+        let err = app.get_folder(fid("ghost")).unwrap_err();
+        assert_eq!(
+            calimero_sdk::serde_json::to_value(&err).unwrap(),
+            calimero_sdk::serde_json::json!({"kind": "NotFound", "data": "ghost"})
+        );
     }
 
     // ---- context binding ----
@@ -1295,6 +1288,16 @@ mod tests {
             .unwrap();
         app.set_color_inner("f1", "".into()).unwrap();
         assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
+    }
+
+    #[test]
+    fn a_rejected_colour_reaches_the_client_as_kind_invalid() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        let err = app.set_color(fid("f1"), "red".into()).unwrap_err();
+        let wire = calimero_sdk::serde_json::to_value(&err).unwrap();
+        assert_eq!(wire["kind"], "Invalid");
     }
 
     #[test]

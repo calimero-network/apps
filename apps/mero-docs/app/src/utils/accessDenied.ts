@@ -3,8 +3,8 @@ import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
 // Membership refusals, told apart from real faults by HTTP status so the UI can
 // show a restricted state instead of a red error.
 
-// get_group_info refuses a non-member with an untyped 500, so a failed probe is
-// confirmed against list_group_members, which refuses it with a 403.
+// get_group_info and list_group_members both refuse a non-member with a typed
+// 403; a probe that failed any other way is confirmed against the latter.
 export async function isGroupAccessDenied(
   admin: { listGroupMembers(groupId: string): Promise<unknown> },
   groupId: string,
@@ -25,7 +25,7 @@ export function lacksFolderAccess(perms: {
 }
 
 // A revoked session also answers 403, but says nothing about membership.
-function isForbidden(err: unknown): boolean {
+export function isForbidden(err: unknown): boolean {
   return (
     err instanceof HTTPError &&
     !(err instanceof AuthRevokedError) &&
