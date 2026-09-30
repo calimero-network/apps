@@ -6,24 +6,25 @@
 //     dropdown (RoleSelect: Manager / Editor / Read only).
 //
 //   Open - inherits membership from the workspace root: there's no
-//     add/remove (anyone in the workspace is already in), so we show
-//     "open to all workspace members" copy instead, but STILL list the
-//     inherited members each with the folder-role dropdown so an admin
-//     can pin someone to Read only or Manager on this folder.
+//     add (anyone in the workspace is already in), so we show "open to
+//     all workspace members" copy instead, but STILL list the inherited
+//     members with the folder-role dropdown and remove, so an admin can
+//     pin someone to Read only or Manager, or take them out.
 //
 // Permission-gating (useFolderPermissions):
 //   - canInviteMembers      → show the invite form (Restricted only)
 //   - canManageMembers      → show the per-member remove button
 //   - canManagePermissions  → show the folder-role dropdowns (the
-//                             registry owner / managers, or a core
-//                             group-admin)
+//                             folder's core admin; a registry owner or
+//                             manager is told why they cannot)
 // Read-only viewers still see the members list.
 //
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
 // the Role radio) - a follow-up; today only the preset dropdown ships.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
+import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';
@@ -44,7 +45,12 @@ import {
   roleDisplayLabel,
 } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
-import { folderLabel } from '@/lib/folderLabel';
+import { folderLabel, folderNames } from '@/lib/folderLabel';
+import { inheritReadOnly } from '@/lib/applyFolderRole';
+import { clearOpenSubtree, removedFrom, restoreTo } from '@/lib/openFolderRemoval';
+
+const OPEN_REMOVAL_NOTE =
+  'They stay removed from it until you restore them here, even if they are invited to the workspace again.';
 
 interface Props {
   folderId: string;
@@ -59,9 +65,12 @@ export function FolderSharingPanel({ folderId }: Props) {
     folders,
     selfIdentity,
     registryContextId,
+    registryClient,
+    rootGroupId,
   } = useDriveWorkspace();
+  const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
-  const { members, loading, error, add, remove, refetch } =
+  const { members, loading, error, add, refetch } =
     useFolderMembership(folderId);
   const { entries: roleEntries, refetch: refetchRoles } =
     useFolderRoles(folderId);
@@ -136,6 +145,62 @@ export function FolderSharingPanel({ folderId }: Props) {
     }
   };
 
+  // Read only from the parent may have missed this Open folder: two admins can race
+  // (one sets it above while another creates or opens this one). Its admin re-applies it.
+  const parentId = folder?.parent_id ?? null;
+  const reapplyReadOnly = perms.canManagePermissions && !!parentId && isOpenFolder;
+  const reappliedFor = useRef<string | null>(null); // once per folder per mount
+  useEffect(() => {
+    if (!reapplyReadOnly || !parentId || !mero || !registryClient) return;
+    if (reappliedFor.current === folderId) return;
+    reappliedFor.current = folderId;
+    const writer = { admin: mero.admin, registry: registryClient };
+    // An admin who only inherits the folder is refused at the first core write,
+    // before the registry row or caps are touched.
+    inheritReadOnly(writer, parentId, folderId).catch((e: unknown) =>
+      console.warn('[FolderSharingPanel] Read only not re-applied', e),
+    );
+  }, [reapplyReadOnly, parentId, folderId, mero, registryClient]);
+
+  // Who an Open folder has removed: core bans them from it until an admin adds them back.
+  const removedParent = folder?.parent_id ?? rootGroupId;
+  const showRemoved = isOpenFolder && perms.canManageMembers;
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const refreshRemoved = useCallback(async () => {
+    if (!showRemoved || !mero || !removedParent) return;
+    try {
+      const next = await removedFrom(mero.admin, removedParent, folderId);
+      setRemoved((prev) => (prev.join() === next.join() ? prev : next));
+    } catch (e: unknown) {
+      console.warn('[FolderSharingPanel] removed members not read', e);
+    }
+  }, [showRemoved, mero, removedParent, folderId]);
+  const memberKey = members.map((m) => m.identity).join();
+  useEffect(() => {
+    void refreshRemoved();
+  }, [refreshRemoved, memberKey]);
+
+  const onRestore = async (id: string) => {
+    if (!mero || !registryClient || !removedParent) return;
+    setRestoringId(id);
+    try {
+      await restoreTo(
+        { admin: mero.admin, registry: registryClient },
+        folders,
+        removedParent,
+        folderId,
+        id,
+      );
+      await refetch();
+    } catch (e: unknown) {
+      setRemoveError({ identity: id, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRestoringId(null);
+      void refreshRemoved();
+    }
+  };
+
   const onRemove = async (id: string) => {
     const leaving = !!selfIdentity && id === selfIdentity;
     const ok = await confirm(leaving ? {
@@ -154,6 +219,7 @@ export function FolderSharingPanel({ folderId }: Props) {
             className="font-medium"
           />
           {' '}from this folder?
+          {isOpenFolder && ` ${OPEN_REMOVAL_NOTE}`}
         </>
       ),
       confirmLabel: 'Remove',
@@ -163,7 +229,17 @@ export function FolderSharingPanel({ folderId }: Props) {
     setRemovingId(id);
     setRemoveError(null);
     try {
-      await remove(id);
+      if (!mero) throw new Error('Workspace not ready');
+      // The admin client throws on a refusal, where the mero-react hook would not.
+      await mero.admin.removeGroupMembers(folderId, { members: [id] });
+      await refetch();
+      if (id !== selfIdentity) {
+        const failed = await clearOpenSubtree(mero.admin, folders, folderId, id);
+        if (failed.length > 0) {
+          setRemoveError({ identity: id, message: `still in ${folderNames(folders, failed)}` });
+        }
+        void refreshRemoved();
+      }
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError({ identity: id, message: err.message });
@@ -216,6 +292,12 @@ export function FolderSharingPanel({ folderId }: Props) {
         </p>
       )}
 
+      {perms.permissionsNeedOwner && (
+        <p className="border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+          Only this folder&apos;s owner can change roles.
+        </p>
+      )}
+
       {error && (
         <p
           className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive"
@@ -235,10 +317,9 @@ export function FolderSharingPanel({ folderId }: Props) {
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
-          // Open members inherit, so removal would not stick; the node never
-          // removes a folder's owner (its core admin) or last admin.
+          // In an Open folder core records a removal as a ban, so it sticks;
+          // the node never removes a folder's owner (its core admin) or last admin.
           const removable =
-            !isOpenFolder &&
             perms.canManageMembers &&
             parseGroupRole(m.role) !== 'Admin';
           if (perms.canManagePermissions) {
@@ -282,6 +363,27 @@ export function FolderSharingPanel({ folderId }: Props) {
           );
         })}
       </ul>
+
+      {showRemoved && removed.length > 0 && (
+        <div className="border-t border-border/60 px-4 py-2">
+          <h4 className="text-xs font-medium text-muted-foreground">Removed</h4>
+          <ul>
+            {removed.map((id) => (
+              <li key={id} className="flex items-center justify-between gap-3 py-1 text-sm">
+                <MemberLabel namespaceId={namespaceId} memberId={id} className="truncate" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={restoringId === id}
+                  onClick={() => void onRestore(id)}
+                >
+                  Restore
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!isOpenFolder && perms.canInviteMembers && (
         <div className="space-y-3 border-t border-border/60 px-4 py-3">

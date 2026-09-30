@@ -282,10 +282,8 @@ impl RegistryState {
     /// Read - no caller gating. Validates `member` as a hex account; returns
     /// the stored role or `Role::Editor` if none.
     ///
-    /// A role is what the app shows and gates in its own UI. Nothing below
-    /// the app enforces it: the docs service does not consult the registry,
-    /// and core admits every member of a folder's group to write its docs,
-    /// so a `Viewer` running a modified client can still edit.
+    /// The docs service never reads this role. The app pairs `Viewer` with core
+    /// `ReadOnly` in the folder's group, and that is what refuses the writes.
     pub(crate) fn get_folder_role_inner(
         &self,
         folder_id: &str,

@@ -11,9 +11,12 @@
 
 import React, { useMemo, useState } from 'react';
 import { UserPlus } from 'lucide-react';
+import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
+import { folderNames } from '@/lib/folderLabel';
+import { removeFromFolders } from '@/lib/removeFromFolders';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
@@ -32,7 +35,9 @@ export function NamespaceMembersPanel() {
     selfIdentity,
     registryContextId,
     registryAdmin,
+    folders,
   } = useDriveWorkspace();
+  const { mero } = useMero();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
   const memberIds = useMemo(
@@ -79,7 +84,17 @@ export function NamespaceMembersPanel() {
   const onRemove = async (identity: string, label: string) => {
     setRemoveError(null);
     try {
-      await membership.remove(identity);
+      if (!mero || !rootGroupId) throw new Error('Workspace not ready');
+      // The admin client throws on a refusal, where the mero-react hook would not.
+      await mero.admin.removeGroupMembers(rootGroupId, { members: [identity] });
+      await membership.refetch();
+      if (identity === selfIdentity) return;
+      const failed = await removeFromFolders(mero.admin, folders, identity);
+      if (failed.length > 0) {
+        setRemoveError(
+          `Removed ${label} from the workspace, but not from ${folderNames(folders, failed)}. Ask the owner of each to remove them.`,
+        );
+      }
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError(`Couldn't remove ${label}: ${err.message}`);

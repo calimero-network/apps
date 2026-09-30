@@ -10,14 +10,13 @@ import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityToggle';
 import { DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
-import { MANAGER_FOLDER_CAPS, WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
+import { FOLDER_ROLE_GRANTS, WORKSPACE_ROLE_GRANTS } from '@/lib/roles';
 
 const confirm = vi.fn();
 const setMemberCapabilities = vi.fn();
 const updateMemberRole = vi.fn();
 const setSubgroupVisibility = vi.fn();
 const setFolderRole = vi.fn();
-const setCapabilities = vi.fn();
 const removeMember = vi.fn();
 const caps = { value: DEFAULT_NEW_MEMBER_CAPS as number | null };
 const ME = { identity: 'me', name: 'Me', role: 'Member' };
@@ -33,9 +32,10 @@ vi.mock('@calimero-network/mero-react', () => ({
     loading: false,
     error: null,
     refetch: vi.fn(),
-    setCapabilities,
   }),
-  useMero: () => ({ mero: { admin: { setMemberCapabilities } } }),
+  useMero: () => ({
+    mero: { admin: { setMemberCapabilities, removeGroupMembers: removeMember } },
+  }),
   useUpdateMemberRole: () => ({ updateMemberRole }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useGroupMembers: () => ({ members: [], loading: false, error: null, refetch: vi.fn() }),
@@ -45,7 +45,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'ns',
     selfIdentity: 'me',
     registryContextId: 'ctx',
-    registryClient: { setFolderRole },
+    registryClient: { setFolderRole, listFolderRoles: async () => [] },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
     namespaceMemberNames: { bob: 'Bob', me: 'Me' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
@@ -74,7 +74,6 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     loading: false,
     error: null,
     add: vi.fn(),
-    remove: removeMember,
     refetch: vi.fn(),
   }),
 }));
@@ -95,7 +94,6 @@ beforeEach(() => {
     updateMemberRole,
     setSubgroupVisibility,
     setFolderRole,
-    setCapabilities,
     removeMember,
   ]) {
     fn.mockResolvedValue(undefined);
@@ -135,6 +133,13 @@ describe('workspace member row', () => {
     renderWorkspaceRow();
     expect(screen.getByRole('option', { name: 'Guest' })).toBeTruthy();
     expect(screen.queryByRole('option', { name: 'Read only' })).toBeNull();
+  });
+
+  it('shows a TEE node as such and never lets its role be changed', () => {
+    renderWorkspaceRow({ role: 'RelayTee' });
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.value).toBe('Tee');
+    expect(select.disabled).toBe(true);
   });
 
   it('shows Custom for a mask no role describes', () => {
@@ -233,7 +238,7 @@ describe('folder member row', () => {
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(confirm.mock.calls[0][0].title).toBe("Change Bob's role to Read only?");
     expect(setFolderRole).not.toHaveBeenCalled();
-    expect(setCapabilities).not.toHaveBeenCalled();
+    expect(setMemberCapabilities).not.toHaveBeenCalled();
   });
 
   it('writes the folder role and caps once when confirmed', async () => {
@@ -241,10 +246,12 @@ describe('folder member row', () => {
     confirm.mockResolvedValue(true);
     renderFolderRow();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Manager' } });
-    await waitFor(() => expect(setCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(setMemberCapabilities).toHaveBeenCalledTimes(1));
     expect(setFolderRole).toHaveBeenCalledTimes(1);
     expect(setFolderRole.mock.calls[0][0].role).toBe('Manager');
-    expect(setCapabilities).toHaveBeenCalledWith(MANAGER_FOLDER_CAPS);
+    expect(setMemberCapabilities).toHaveBeenCalledWith('f1', 'bob', {
+      capabilities: FOLDER_ROLE_GRANTS.Manager.folderCaps,
+    });
   });
 
   it('shows a core admin as the folder Owner, not as a choice', () => {
@@ -285,6 +292,7 @@ describe('leaving a folder', () => {
     render(<FolderSharingPanel folderId="f1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Me' }));
     await waitFor(() => expect(removeMember).toHaveBeenCalledTimes(1));
+    expect(removeMember).toHaveBeenCalledWith('f1', { members: ['me'] });
   });
 });
 

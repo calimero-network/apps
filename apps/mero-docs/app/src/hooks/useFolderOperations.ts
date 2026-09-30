@@ -12,6 +12,7 @@
 // hooks resolve a failed call to null, so they call `mero.admin`, which throws.
 
 import { useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import {
   useCreateGroupInNamespace,
   useCreateContext,
@@ -32,6 +33,9 @@ import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { reparentGroup } from '../api/reparentGroup';
 import { descendantsOf } from '../utils/ancestry';
+import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';
+
+const READ_ONLY_NOT_CARRIED = "Couldn't make the parent folder's Read only members read only here."; // shown after create
 
 export interface CreateFolderInput {
   namespaceId: string;
@@ -96,6 +100,9 @@ export function useFolderOperations(
       // A leaked docs context with no registry entry is the artifact
       // nothing else can recover, so rolling back the context on later
       // failures is the most valuable of the three.
+      const writer = { admin: mero.admin, registry: registryClient };
+      const openChild =
+        input.parentGroupId !== rootGroupId && input.visibility === 'Open';
       let createdGroupId: string | null = null;
       let createdContextId: string | null = null;
       let registryEntryCreated = false;
@@ -130,6 +137,10 @@ export function useFolderOperations(
         if (input.parentGroupId !== rootGroupId) {
           if (!nodeUrl) throw new Error('Node URL not resolved');
           await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
+        }
+
+        if (openChild) {
+          await readOnlyRowsBeforeOpen(writer, input.parentGroupId, newId);
         }
 
         // Core expects lowercase `"open"` / `"restricted"`; see
@@ -227,6 +238,14 @@ export function useFolderOperations(
             );
             failedMembers = input.members;
           }
+        }
+        if (openChild) {
+          await inheritReadOnly(writer, input.parentGroupId, createdGroupId)
+            .then((failed) => failed.length > 0 && toast.error(READ_ONLY_NOT_CARRIED))
+            .catch((e) => {
+              console.error('[create] Read only not carried into the new folder', e);
+              toast.error(READ_ONLY_NOT_CARRIED);
+            });
         }
         await refetch().catch((e) =>
           console.error('[create] post-create refetch failed', e),

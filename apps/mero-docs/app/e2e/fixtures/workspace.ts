@@ -482,6 +482,28 @@ export class SharingDriver {
     await expect(remove).toHaveCount(0, { timeout: 30_000 });
   }
 
+  roleSelect(name: string): Locator {
+    return this.page.getByRole('combobox', { name: `Role for ${name}` });
+  }
+
+  // `role` is the option's label as shown, e.g. 'Read only'.
+  async setMemberRole(name: string, role: string): Promise<void> {
+    await this.roleSelect(name).selectOption({ label: role });
+    const confirm = this.page.getByRole('dialog', {
+      name: /^Change .*role to/,
+    });
+    await confirm
+      .getByRole('button', { name: 'Change role', exact: true })
+      .click();
+    await expect(confirm).toBeHidden({ timeout: 15_000 });
+    await expect(this.roleSelect(name).locator('option:checked')).toHaveText(
+      role,
+      {
+        timeout: 30_000,
+      },
+    );
+  }
+
   async expectMemberVisible(label: string, opts: { timeout?: number } = {}) {
     await expect(
       this.page.locator('li').filter({ hasText: label }).first(),

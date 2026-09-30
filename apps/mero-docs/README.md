@@ -136,7 +136,20 @@ Two-axis authorization, enforced server-side in `calimero-network/core`:
 
 Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
 
-One layer sits on top and is **not** enforced server-side: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service - what the sharing panel's "Read-only" writes). The app hides the editor from a `Viewer`, but core admits every member of a folder's group to write its docs, and the docs service does not consult the registry, so a `Viewer` running a modified client can still edit. Treat it as a UI preference until core can make a group member read-only. Who may *set* document roles (the registry owner and managers) is enforced by storage on every node.
+One layer sits on top: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service).
+The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
+A Restricted sub-folder someone was invited to directly keeps the role its admin gave them.
+Core reads only the direct row of each folder's group, so a member who only inherits an Open folder gets a direct `ReadOnly` row there.
+While the member holds those rows, nodes refuse their writes to those folders' docs, comments included, with a `ReadOnlyWriteRefused` error; an editor page that still offered the edit drops it and shows the node's text.
+Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
+Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
+The rows Read only wrote in Open sub-folders stay as direct Member rows after that, so restricting such a folder or making the person a Guest leaves them in with write access; remove them from the folder to take it away (the Make restricted confirmation names them).
+A Read only member who is the admin of a sub-folder keeps writing there: core does not demote a folder's admin.
+When an existing folder is opened, the parent's Read only members can write in it and its Open sub-folders, and a Read only person restored to an Open folder can write in its Open sub-folders, for the moment before their Read only rows are written; writing those rows first would add them to folders that are still Restricted, or that still ban them. A folder created Open gets the rows before it opens.
+An Open sub-folder created or opened later takes Read only from its parent, and its admin re-applies it when opening its sharing panel, which covers two admins acting at once.
+Removing someone from a folder also removes them from the Open sub-folders reached through it, stopping at a Restricted folder.
+In an Open folder a removal is a ban: it lasts until an admin restores them from that folder's Removed list (each folder has its own), and a workspace re-invite does not lift it; someone the parent holds Read only comes back Read only.
+Only the folder's admin can change a folder role, since core takes the role and caps change from its admin alone.
 
 UI helpers:
 - [`useFolderPermissions`](app/src/hooks/useFolderPermissions.ts) - wraps the role+caps read for a specific folder
