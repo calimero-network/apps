@@ -18,7 +18,7 @@ import { WheelSteps } from "./input/wheel";
 import { inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
 import { createWorldInvite, ownedContextIdentity } from "./net/admin";
-import { GameClient } from "./net/client";
+import { GameClient, type WorldMeta } from "./net/client";
 import { captureSessionFromHash, clearWorld, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer } from "./renderer";
@@ -43,6 +43,20 @@ const REACH = 6;
 const EDIT_REPEAT_MS = 250;
 const SAVE_MS = 5000;
 const RELIGHT_FULL_THRESHOLD = 8;
+const WORLD_READY_MS = 60_000;
+
+async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
+  const deadline = Date.now() + WORLD_READY_MS;
+  for (;;) {
+    try {
+      return await client.fetchWorldMeta();
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      if (!/"type"\s*:\s*"(Uninitialized|GroupKeyPending)"/i.test(text) || Date.now() >= deadline) throw err;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+}
 
 interface RemoteAvatar {
   cur: { x: number; y: number; z: number; yaw: number };
@@ -105,7 +119,7 @@ async function boot(): Promise<void> {
   let seed: number;
   let createdAt = Math.floor(Date.now() / 1000);
   try {
-    const meta = await client.fetchWorldMeta();
+    const meta = await fetchWorldMetaWhenReady(client);
     seed = meta.seed;
     createdAt = meta.createdAt || createdAt;
   } catch (err) {
