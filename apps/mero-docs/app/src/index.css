@@ -232,6 +232,13 @@ html .bn-container[data-color-scheme='dark'] {
   }
 }
 
+/* A selected block (an image) takes the app's ring, not BlockNote's blue. */
+.bn-editor .bn-block-content.ProseMirror-selectednode > *,
+.bn-editor .ProseMirror-selectednode > .bn-block-content > * {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
 /* A block a section link scrolls to keeps room above it. */
 .bn-block-outer {
   scroll-margin-top: 24px;
