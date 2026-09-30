@@ -35,7 +35,7 @@ function persistSession(): void {
   try {
     localStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ applicationId, contextId, executorPublicKey, devMode }),
+      JSON.stringify({ applicationId, contextId, executorPublicKey, activeNamespaceId, devMode }),
     );
   } catch {
     /* ignore blocked storage */
@@ -50,6 +50,7 @@ function restoreSession(): void {
     applicationId = s.applicationId ?? applicationId;
     contextId = s.contextId ?? contextId;
     executorPublicKey = s.executorPublicKey ?? executorPublicKey;
+    activeNamespaceId = s.activeNamespaceId ?? activeNamespaceId;
     if (typeof s.devMode === "boolean") devMode = s.devMode;
   } catch {
     /* ignore malformed/blocked storage */
