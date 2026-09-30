@@ -14,9 +14,9 @@
 //     default), so a brand-new member can edit by default; an explicit
 //     `Viewer` downgrades them to read-only.
 //
-//  3. Registry ownership/managers - gates `canManagePermissions` (who
-//     may change folder roles / see the sharing-panel admin section).
-//     The owner is the registry's creator, fixed by the contract at `init`;
+//  3. Registry ownership/managers - only `permissionsNeedOwner`: folder
+//     roles also write core's role and caps, which only the folder's
+//     admin may, so `canManagePermissions` is `isAdmin`. The owner is the registry's creator, fixed by the contract at `init`;
 //     managers are added by the owner. Read from `useDriveWorkspace().registryAdmin`
 //     (fetched ONCE for the whole tree) - NOT via a per-row hook call.
 //
@@ -31,9 +31,8 @@
 // non-Viewer (or the workspace has no Registry context at all, in which
 // case there's no Role to wait on and we fall back to membership). A
 // still-loading role, a role-fetch error, or a definitively-`Viewer`
-// role all keep `canEditDocs` false - autosave must never persist a
-// would-be Viewer's edits during the resolve window (core gates doc
-// writes on folder membership only, so the app is the only guard).
+// role all keep `canEditDocs` false, and so does core ReadOnly on the
+// folder: core refuses those writes, so the UI must never offer one.
 //
 // TODO(perf): split a lightweight `useFolderCaps(folderId)` that skips
 // `useFolderRole` (and the registry Role read it does), for
@@ -67,18 +66,22 @@ export interface FolderPermissions {
   canDelete: boolean;
   canInviteMembers: boolean; // CAN_INVITE_MEMBERS
   canManageMembers: boolean; // MANAGE_MEMBERS
-  /** Edit documents in this folder. CONSERVATIVE: `isAdmin`, or a
-   *  folder member whose registry `Role` has *definitively resolved* to
-   *  non-Viewer - OR a folder member when the workspace has no Registry
-   *  context at all (nothing to resolve, fall back to membership).
+  /** Edit or comment on documents in this folder. CONSERVATIVE: `isAdmin`,
+   *  or a folder member who is not core ReadOnly and whose registry `Role`
+   *  has *definitively resolved* to non-Viewer - OR a folder member when the
+   *  workspace has no Registry context at all (nothing to resolve, fall back
+   *  to membership).
    *  While the role is still loading, on a role-fetch error, or on a
    *  definitive `Viewer`, this is `false` (the editor stays read-only
    *  so autosave can't persist a would-be Viewer's edits). Pair with
    *  `roleLoading` for a "checking permissions" hint. */
   canEditDocs: boolean;
-  /** Change per-folder roles / see the sharing-panel admin section:
-   *  `isAdmin`, or the registry owner/manager. */
+  /** Change per-folder roles: `isAdmin` only, since core takes a folder's
+   *  role and caps changes from its admin alone. */
   canManagePermissions: boolean;
+  /** A registry owner or manager who is not this folder's admin: the panel
+   *  says why the roles are fixed for them. */
+  permissionsNeedOwner: boolean;
   /** The caller's registry `Role` on this folder; `null` while loading
    *  OR when there's no Registry context. `'Editor'` once loaded if no
    *  explicit row exists (WASM default). */
@@ -114,6 +117,7 @@ export function useFolderPermissions(
   const {
     caps,
     isAdmin,
+    isReadOnly,
     error,
     denied,
     refetch: refetchCaps,
@@ -153,11 +157,10 @@ export function useFolderPermissions(
     isAdmin ||
     (hasDeleteCap && (registryAvailable ? role === 'Manager' : true));
 
-  // Doc editing - CONSERVATIVE. Core only gates doc-context writes on
-  // folder membership, so this app-layer check is the ONLY thing
-  // stopping a registry-`Viewer` from autosaving edits during the role
-  // resolve window. Therefore:
+  // Doc editing - CONSERVATIVE. Core refuses a ReadOnly member's writes,
+  // so an offered edit could only be typed and then lost. Therefore:
   //   - `isAdmin`                       → always.
+  //   - core ReadOnly on the folder      → never.
   //   - a folder member, registry exists → only once `useFolderRole`
   //     has *definitively* resolved to a non-Viewer role (not while
   //     `roleLoading`, not on `roleError`).
@@ -169,9 +172,9 @@ export function useFolderPermissions(
   const roleAllowsEdit = registryAvailable
     ? roleError === null && role !== null && role !== 'Viewer'
     : true;
-  const canEditDocs = isAdmin || (isMember && roleAllowsEdit);
+  const canEditDocs = isAdmin || (isMember && !isReadOnly && roleAllowsEdit);
 
-  const canManagePermissions = isAdmin || isOwnerOrManager;
+  const canManagePermissions = isAdmin;
 
   return {
     isMember,
@@ -183,6 +186,7 @@ export function useFolderPermissions(
     canManageMembers,
     canEditDocs,
     canManagePermissions,
+    permissionsNeedOwner: isOwnerOrManager && !isAdmin,
     role,
     roleLoading,
     roleError,

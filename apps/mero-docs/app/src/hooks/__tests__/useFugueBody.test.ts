@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueBody, type BodyEditor } from '../useFugueBody';
 import { schema } from '@/components/editor/blocknote/schema';
@@ -303,6 +303,24 @@ describe('useFugueBody', () => {
     await settle(1_000);
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
     expect(editor.textOf('blk-1')).toBe('The fox. ab');
+  });
+
+  // Core refuses every write of a ReadOnly member, so the edit will never land:
+  // resending only loops, and keeping it shows text the node does not hold.
+  it('drops an edit the node refuses as read-only and shows the node text', async () => {
+    const client = fakeClient([row('blk-1', 'before')]);
+    client.applyDeltaOn.mockRejectedValue(
+      new RpcError(-1, 'ReadOnlyWriteRefused', { context_id: CTX }, 'ReadOnlyWriteRefused'),
+    );
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'before phantom');
+    await settle();
+    expect(editor.textOf('blk-1')).toBe('before');
+    expect((result.current.error as RpcError | null)?.type).toBe('ReadOnlyWriteRefused');
+    await settle(20_000);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
   });
 
   it('rebases a refused write onto the peer text and resends it', async () => {

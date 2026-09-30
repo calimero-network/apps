@@ -1,8 +1,10 @@
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
+import { contractErrorFixture } from './contractErrorFixture';
 import {
   DOC_NOT_FOUND,
   DOC_NO_ACCESS,
+  DOC_READ_ONLY,
   DOC_TOO_LARGE,
   DOC_UNREACHABLE,
   documentLoadErrorMessage,
@@ -12,13 +14,19 @@ import {
 const httpError = (status: number) =>
   new HTTPError(status, 'x', 'http://node/jsonrpc', new Headers(), '{"error":"no"}');
 
-/** The shape mero-js throws for a contract error: the type in `message`, the words in `data`. */
-const contractError = (data: string) =>
-  Object.assign(new Error('FunctionCallError'), { data, type: 'FunctionCallError' });
 
 describe('documentLoadErrorMessage', () => {
   it('says a document the contract no longer holds is gone', () => {
-    expect(documentLoadErrorMessage(contractError('not found: doc-1'))).toBe(DOC_NOT_FOUND);
+    expect(documentLoadErrorMessage(contractErrorFixture('NotFound', 'doc-1'))).toBe(DOC_NOT_FOUND);
+  });
+
+  it('says a refused read is no access', () => {
+    expect(documentLoadErrorMessage(contractErrorFixture('Forbidden', 'x'))).toBe(DOC_NO_ACCESS);
+  });
+
+  it('does not read prose as a not-found answer', () => {
+    const prose = Object.assign(new Error('FunctionCallError'), { data: 'not found: doc-1' });
+    expect(documentLoadErrorMessage(prose)).not.toBe(DOC_NOT_FOUND);
   });
 
   it('says the same for a 404 from the node', () => {
@@ -34,7 +42,7 @@ describe('documentLoadErrorMessage', () => {
   });
 
   it('never shows the raw error type', () => {
-    expect(documentLoadErrorMessage(contractError('boom'))).not.toContain('FunctionCallError');
+    expect(documentLoadErrorMessage(contractErrorFixture('Internal', 'boom'))).not.toContain('FunctionCallError');
   });
 });
 
@@ -44,12 +52,21 @@ describe('documentSaveErrorMessage', () => {
   });
 
   it('says a document deleted meanwhile is gone', () => {
-    expect(documentSaveErrorMessage(contractError('not found: doc-1'))).toBe(DOC_NOT_FOUND);
+    expect(documentSaveErrorMessage(contractErrorFixture('NotFound', 'doc-1'))).toBe(DOC_NOT_FOUND);
+  });
+
+  it('says a write the contract refused is not allowed', () => {
+    expect(documentSaveErrorMessage(contractErrorFixture('Forbidden', 'x'))).toMatch(/can't edit/i);
   });
 
   it('tells a lapsed session apart from lost access', () => {
     expect(documentSaveErrorMessage(httpError(401))).toMatch(/sign in/i);
     expect(documentSaveErrorMessage(httpError(403))).toMatch(/can't edit/i);
+  });
+
+  it("says a Read only member's change was not kept", () => {
+    const refused = new RpcError(-1, 'ReadOnlyWriteRefused', {}, 'ReadOnlyWriteRefused');
+    expect(documentSaveErrorMessage(refused)).toBe(DOC_READ_ONLY);
   });
 
   it('falls back to plain copy', () => {

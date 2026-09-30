@@ -1,0 +1,578 @@
+name: Mero Docs - workspace removal sweeps nested folder rows
+description: >
+  After Read only and back, Bob holds direct rows in Open F and G and in
+  Restricted H. A workspace removal plus the app's parents-first sweep of his
+  direct rows leaves him unable to write anywhere.
+
+e2e_mode: true
+
+nodes:
+  count: 2
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
+  prefix: curn-node
+  base_port: 4040
+  base_rpc_port: 4044
+
+steps:
+  - name: Install the bundle on Alice
+    type: install_application
+    node: curn-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install the bundle on Bob
+    type: install_application
+    node: curn-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 5
+
+  - name: Alice creates the namespace
+    type: create_namespace
+    node: curn-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the Registry context
+    type: create_context
+    node: curn-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      reg_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Alice creates folder F
+    type: create_group_in_namespace
+    node: curn-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: f
+    outputs:
+      g_F: groupId
+
+  - name: Mark F Open
+    type: set_subgroup_visibility
+    node: curn-node-1
+    group_id: '{{g_F}}'
+    visibility: Open
+
+  - name: Register F
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{g_F}}'
+      parent_id: null
+      color: null
+      alias: F
+
+  - name: Alice creates F's Docs context
+    type: create_context
+    node: curn-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{g_F}}'
+    service_name: docs
+    outputs:
+      c_F: contextId
+      a_F: memberPublicKey
+
+  - name: Bind F
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_F}}'
+      context_id: '{{c_F}}'
+
+  - name: Alice creates a doc in F
+    type: call
+    node: curn-node-1
+    context_id: '{{c_F}}'
+    method: create_doc
+    executor_public_key: '{{a_F}}'
+    args:
+      title: F original
+    outputs:
+      d_F: result.output
+
+  - name: Alice creates folder G
+    type: create_group_in_namespace
+    node: curn-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: g
+    outputs:
+      g_G: groupId
+
+  - name: Nest G under F
+    type: reparent_group
+    node: curn-node-1
+    child_group_id: '{{g_G}}'
+    new_parent_id: '{{g_F}}'
+
+  - name: Mark G Open
+    type: set_subgroup_visibility
+    node: curn-node-1
+    group_id: '{{g_G}}'
+    visibility: Open
+
+  - name: Register G
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{g_G}}'
+      parent_id: '{{g_F}}'
+      color: null
+      alias: G
+
+  - name: Alice creates G's Docs context
+    type: create_context
+    node: curn-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{g_G}}'
+    service_name: docs
+    outputs:
+      c_G: contextId
+      a_G: memberPublicKey
+
+  - name: Bind G
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_G}}'
+      context_id: '{{c_G}}'
+
+  - name: Alice creates a doc in G
+    type: call
+    node: curn-node-1
+    context_id: '{{c_G}}'
+    method: create_doc
+    executor_public_key: '{{a_G}}'
+    args:
+      title: G original
+    outputs:
+      d_G: result.output
+
+  - name: Alice creates folder H
+    type: create_group_in_namespace
+    node: curn-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: h
+    outputs:
+      g_H: groupId
+
+  - name: Nest H under F
+    type: reparent_group
+    node: curn-node-1
+    child_group_id: '{{g_H}}'
+    new_parent_id: '{{g_F}}'
+
+  - name: Mark H Restricted
+    type: set_subgroup_visibility
+    node: curn-node-1
+    group_id: '{{g_H}}'
+    visibility: Restricted
+
+  - name: Register H
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{g_H}}'
+      parent_id: '{{g_F}}'
+      color: null
+      alias: H
+
+  - name: Alice creates H's Docs context
+    type: create_context
+    node: curn-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{g_H}}'
+    service_name: docs
+    outputs:
+      c_H: contextId
+      a_H: memberPublicKey
+
+  - name: Bind H
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_H}}'
+      context_id: '{{c_H}}'
+
+  - name: Alice creates a doc in H
+    type: call
+    node: curn-node-1
+    context_id: '{{c_H}}'
+    method: create_doc
+    executor_public_key: '{{a_H}}'
+    args:
+      title: H original
+    outputs:
+      d_H: result.output
+
+  - name: Alice invites Bob to the namespace
+    type: create_namespace_invitation
+    node: curn-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Settle before Bob joins the namespace
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: curn-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_account: memberAccount
+
+  - name: Sync the namespace to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{namespace_id}}'
+    timeout: 45
+
+  - name: Wait until Bob's node sees F Open
+    type: assert_api_response
+    node: curn-node-2
+    path: /admin-api/groups/{{g_F}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
+
+  - name: Bob joins F by inheritance
+    type: join_subgroup_inheritance
+    node: curn-node-2
+    group_id: '{{g_F}}'
+
+  - name: Bob joins F's Docs context
+    type: join_context
+    node: curn-node-2
+    context_id: '{{c_F}}'
+    outputs:
+      b_F: memberPublicKey
+
+  - name: Wait until Bob's node sees G Open
+    type: assert_api_response
+    node: curn-node-2
+    path: /admin-api/groups/{{g_G}}
+    match:
+      data.subgroupVisibility: open
+    retries: 60
+    interval: 1
+
+  - name: Bob joins G by inheritance
+    type: join_subgroup_inheritance
+    node: curn-node-2
+    group_id: '{{g_G}}'
+
+  - name: Bob joins G's Docs context
+    type: join_context
+    node: curn-node-2
+    context_id: '{{c_G}}'
+    outputs:
+      b_G: memberPublicKey
+
+  - name: Alice adds Bob to H
+    type: add_group_members
+    node: curn-node-1
+    group_id: '{{g_H}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: Member
+
+  - name: Alice keeps Bob's join bit in H
+    type: set_member_capabilities
+    node: curn-node-1
+    group_id: '{{g_H}}'
+    member_id: '{{bob_account}}'
+    capabilities: 4
+
+  - name: Sync the namespace to Bob after the H add
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{namespace_id}}'
+    timeout: 45
+
+  - name: Sync H's membership to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_H}}'
+    timeout: 45
+
+  - name: Bob joins H's Docs context
+    type: join_context
+    node: curn-node-2
+    context_id: '{{c_H}}'
+    outputs:
+      b_H: memberPublicKey
+
+  - name: Alice adds a direct ReadOnly row for Bob in F
+    type: add_group_members
+    node: curn-node-1
+    group_id: '{{g_F}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: ReadOnly
+
+  - name: Alice keeps Bob's join bit in F
+    type: set_member_capabilities
+    node: curn-node-1
+    group_id: '{{g_F}}'
+    member_id: '{{bob_account}}'
+    capabilities: 4
+
+  - name: Alice sets Bob's registry role in F to Viewer
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_F}}'
+      member: '{{bob_account}}'
+      role: Viewer
+
+  - name: Alice adds a direct ReadOnly row for Bob in G
+    type: add_group_members
+    node: curn-node-1
+    group_id: '{{g_G}}'
+    members:
+      - identity: '{{bob_account}}'
+        role: ReadOnly
+
+  - name: Alice keeps Bob's join bit in G
+    type: set_member_capabilities
+    node: curn-node-1
+    group_id: '{{g_G}}'
+    member_id: '{{bob_account}}'
+    capabilities: 4
+
+  - name: Alice sets Bob's registry role in G to Viewer
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_G}}'
+      member: '{{bob_account}}'
+      role: Viewer
+
+  - name: Alice makes Bob core Member in F again
+    type: update_member_role
+    node: curn-node-1
+    group_id: '{{g_F}}'
+    member_id: '{{bob_account}}'
+    role: Member
+
+  - name: Alice sets Bob's registry role in F to Editor
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_F}}'
+      member: '{{bob_account}}'
+      role: Editor
+
+  - name: Alice makes Bob core Member in G again
+    type: update_member_role
+    node: curn-node-1
+    group_id: '{{g_G}}'
+    member_id: '{{bob_account}}'
+    role: Member
+
+  - name: Alice sets Bob's registry role in G to Editor
+    type: call
+    node: curn-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_folder_role
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{g_G}}'
+      member: '{{bob_account}}'
+      role: Editor
+
+  - name: Sync F's roles to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_F}}'
+    timeout: 45
+
+  - name: Sync G's roles to Bob
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    group_id: '{{g_G}}'
+    timeout: 45
+
+  - name: Bob renames the G doc to 'G restored'
+    type: call
+    node: curn-node-2
+    context_id: '{{c_G}}'
+    method: edit_doc
+    executor_public_key: '{{b_G}}'
+    args:
+      id: '{{d_G}}'
+      title: G restored
+
+  - name: Sync G after Bob's write
+    type: wait_for_sync
+    nodes: [curn-node-1, curn-node-2]
+    context_id: '{{c_G}}'
+    timeout: 45
+
+  - name: Alice reads the G doc (g_back)
+    type: call
+    node: curn-node-1
+    context_id: '{{c_G}}'
+    method: get_doc
+    executor_public_key: '{{a_G}}'
+    args:
+      id: '{{d_G}}'
+    outputs:
+      g_back: result.output.title
+
+  - name: Bob writes in G before the removal
+    type: json_assert
+    statements:
+      - 'json_equal({{g_back}}, "G restored")'
+
+  - name: Alice removes Bob from the workspace
+    type: remove_group_members
+    node: curn-node-1
+    group_id: '{{namespace_id}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Alice removes Bob from F's direct row, as the sweep does (parents first)
+    type: remove_group_members
+    node: curn-node-1
+    group_id: '{{g_F}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Alice removes Bob from G's direct row, as the sweep does (parents first)
+    type: remove_group_members
+    node: curn-node-1
+    group_id: '{{g_G}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Alice removes Bob from H's direct row, as the sweep does (parents first)
+    type: remove_group_members
+    node: curn-node-1
+    group_id: '{{g_H}}'
+    members:
+      - '{{bob_account}}'
+
+  - name: Let the workspace removal reach Bob
+    type: wait
+    seconds: 5
+
+  - name: Bob renames the F doc to 'F after workspace removal'
+    type: call
+    node: curn-node-2
+    context_id: '{{c_F}}'
+    method: edit_doc
+    executor_public_key: '{{b_F}}'
+    args:
+      id: '{{d_F}}'
+      title: F after workspace removal
+    allow_failure: true
+
+  - name: Bob renames the G doc to 'G after workspace removal'
+    type: call
+    node: curn-node-2
+    context_id: '{{c_G}}'
+    method: edit_doc
+    executor_public_key: '{{b_G}}'
+    args:
+      id: '{{d_G}}'
+      title: G after workspace removal
+    allow_failure: true
+
+  - name: Bob renames the H doc to 'H after workspace removal'
+    type: call
+    node: curn-node-2
+    context_id: '{{c_H}}'
+    method: edit_doc
+    executor_public_key: '{{b_H}}'
+    args:
+      id: '{{d_H}}'
+      title: H after workspace removal
+    allow_failure: true
+
+  - name: Give a removed member's writes time to sync
+    type: wait
+    seconds: 5
+
+  - name: Alice reads the F doc (f_gone)
+    type: call
+    node: curn-node-1
+    context_id: '{{c_F}}'
+    method: get_doc
+    executor_public_key: '{{a_F}}'
+    args:
+      id: '{{d_F}}'
+    outputs:
+      f_gone: result.output.title
+
+  - name: Alice reads the G doc (g_gone)
+    type: call
+    node: curn-node-1
+    context_id: '{{c_G}}'
+    method: get_doc
+    executor_public_key: '{{a_G}}'
+    args:
+      id: '{{d_G}}'
+    outputs:
+      g_gone: result.output.title
+
+  - name: Alice reads the H doc (h_gone)
+    type: call
+    node: curn-node-1
+    context_id: '{{c_H}}'
+    method: get_doc
+    executor_public_key: '{{a_H}}'
+    args:
+      id: '{{d_H}}'
+    outputs:
+      h_gone: result.output.title
+
+  - name: Removed from the workspace, Bob writes nowhere
+    type: json_assert
+    statements:
+      - 'json_equal({{f_gone}}, "F original")'
+      - 'json_equal({{g_gone}}, "G restored")'
+      - 'json_equal({{h_gone}}, "H original")'
+
+stop_all_nodes: false

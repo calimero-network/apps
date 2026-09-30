@@ -120,7 +120,7 @@ test.describe('Open folder inheritance (two-node)', () => {
       async (route) => {
         if (calledJoinInheritance) return route.continue();
         await route.fulfill({
-          status: 500,
+          status: 403,
           contentType: 'application/json',
           body: JSON.stringify({ error: 'identity is not a member of group' }),
         });

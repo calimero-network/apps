@@ -209,6 +209,29 @@ describe('useFolderPermissions', () => {
     expect(result.current.canEditDocs).toBe(true);
   });
 
+  // Core discards a ReadOnly member's writes, so the UI must not offer one.
+  it('core ReadOnly on the folder → canEditDocs false whatever the registry role', async () => {
+    folderRoleState.role = 'Editor';
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'ReadOnly' }],
+    });
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
+  it('core ReadOnly on the folder → canEditDocs false with no Registry context', async () => {
+    folderRoleState.registryAvailable = false;
+    folderRoleState.role = null;
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'ReadOnly' }],
+    });
+    const { result } = renderWithCaps(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
   it("isAdmin → canEditDocs true regardless of role ('Viewer')", async () => {
     folderRoleState.role = 'Viewer';
     listMembersMock.mockResolvedValue({
@@ -279,26 +302,27 @@ describe('useFolderPermissions', () => {
     expect(result.current.canEditDocs).toBe(false);
   });
 
-  it('isOwnerOrManager → canManagePermissions true; canManageGroup still cap-driven', async () => {
-    // Registry owner/manager is an orthogonal authorization plane to
-    // the folder capability bits. `canManagePermissions` is the
-    // sharing-panel admin gate; `canManageGroup` is the "any folder-
-    // admin power" aggregate over folder caps. A registry-only manager
-    // with zero folder caps gets `canManagePermissions=true` but NOT
-    // `canManageGroup` - otherwise the FolderContextMenu would show
-    // its ⋯ trigger with no enabled items underneath.
+  // Core takes a folder's role changes from its direct admin only.
+  it('a registry owner or manager who is not a folder admin cannot set folder roles', async () => {
     registryAdminState.isOwnerOrManager = true;
     const { result } = renderWithCaps(0);
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canManagePermissions).toBe(true);
+    expect(result.current.canManagePermissions).toBe(false);
+    expect(result.current.permissionsNeedOwner).toBe(true);
     expect(result.current.canManageGroup).toBe(false);
+  });
+
+  it('a folder admin can set folder roles', async () => {
+    listMembersMock.mockResolvedValue({ members: [{ identity: 'me', role: 'Admin' }] });
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(result.current.canManagePermissions).toBe(true));
+    expect(result.current.permissionsNeedOwner).toBe(false);
   });
 
   it('isOwnerOrManager + any folder cap → canManageGroup true (driven by the cap)', async () => {
     registryAdminState.isOwnerOrManager = true;
     const { result } = renderWithCaps(C.CAN_MANAGE_METADATA);
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canManagePermissions).toBe(true);
     expect(result.current.canManageGroup).toBe(true);
   });
 

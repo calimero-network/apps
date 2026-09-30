@@ -32,6 +32,7 @@ import { useGroupRoleAdmin } from '@/hooks/useGroupRoleAdmin';
 import {
   canChangeRole,
   describeRoleChange,
+  isTeeRole,
   parseGroupRole,
   roleDisplayLabel,
   workspaceRoleOf,
@@ -341,7 +342,7 @@ export function NamespaceMemberRow({
               void onRoleChange(next);
             }}
             reasonFor={roleVeto}
-            disabled={!canManage || updating || roleAdmin.saving}
+            disabled={!canManage || updating || roleAdmin.saving || isTeeRole(currentRole)}
             ariaLabel={`Role for ${label}`}
           />
           {removable ? (

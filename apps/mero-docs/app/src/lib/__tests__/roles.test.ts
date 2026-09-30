@@ -29,6 +29,17 @@ describe('parseGroupRole', () => {
     expect(parseGroupRole('ReadOnly')).toBe('ReadOnly');
   });
 
+  // Both TEE roles are set by attestation, never by a person.
+  it('keeps the two TEE roles apart from Member', () => {
+    expect(parseGroupRole('ReadOnlyTee')).toBe('ReadOnlyTee');
+    expect(parseGroupRole('RelayTee')).toBe('RelayTee');
+    expect(workspaceRoleOf('ReadOnlyTee', 0)).toBe('Tee');
+    expect(workspaceRoleOf('RelayTee', null)).toBe('Tee');
+    expect(folderRoleOf('RelayTee', 'Editor', 0)).toBe('Tee');
+    expect(folderRoleOfRegistryRole('ReadOnlyTee', 'Editor')).toBe('Tee');
+    expect(roleDisplayLabel('Tee')).toBe('TEE node');
+  });
+
   // Defaulting the other way would paint an admin badge on a plain member -
   // and, worse, let the last-admin guard miscount.
   it('defaults an unknown, empty or absent role to Member, never Admin', () => {
@@ -93,13 +104,26 @@ describe('folderRoleOf', () => {
   it('maps every folder role grant back to its role', () => {
     for (const role of FOLDER_ROLES) {
       const g = FOLDER_ROLE_GRANTS[role];
-      expect(folderRoleOf('Member', g.role, g.folderCaps)).toBe(role);
+      expect(folderRoleOf(g.coreRole, g.role, g.folderCaps)).toBe(role);
     }
   });
 
-  it('shows the folder Viewer role as Read only', () => {
-    expect(FOLDER_ROLE_GRANTS.ReadOnly).toEqual({ role: 'Viewer', folderCaps: 0 });
-    expect(roleDisplayLabel(folderRoleOf('Member', 'Viewer', 0)!)).toBe('Read only');
+  // Core discards every state write of a ReadOnly member, comments included.
+  it('makes Read only core ReadOnly in the folder, plus the registry Viewer row', () => {
+    expect(FOLDER_ROLE_GRANTS.ReadOnly).toEqual({
+      coreRole: 'ReadOnly',
+      role: 'Viewer',
+      folderCaps: C.CAN_JOIN_OPEN_SUBGROUPS,
+    });
+    expect(FOLDER_ROLE_GRANTS.Editor.coreRole).toBe('Member');
+    expect(FOLDER_ROLE_GRANTS.Manager.coreRole).toBe('Member');
+    expect(roleDisplayLabel(folderRoleOf('ReadOnly', 'Viewer', 0)!)).toBe('Read only');
+  });
+
+  // Nothing enforces a Viewer row alone, so it must not read as Read only.
+  it('shows a registry Viewer who is still a core Member as Custom', () => {
+    expect(folderRoleOf('Member', 'Viewer', 0)).toBe('Custom');
+    expect(folderRoleOfRegistryRole('Member', 'Viewer')).toBe('Custom');
   });
 
   // "Admin" is workspace vocabulary; in a folder the core admin is its owner.
@@ -109,10 +133,19 @@ describe('folderRoleOf', () => {
     expect(roleDisplayLabel('Owner')).toBe('Owner');
   });
 
-  // Core discards a ReadOnly member's writes to the folder's documents.
-  it('reads a core ReadOnly member of the folder as Read only', () => {
-    expect(folderRoleOf('ReadOnly', 'Editor', 0)).toBe('ReadOnly');
-    expect(folderRoleOfRegistryRole('ReadOnly', 'Manager')).toBe('ReadOnly');
+  it('shows a core ReadOnly member with a non-Viewer registry row as Custom', () => {
+    expect(folderRoleOf('ReadOnly', 'Editor', 0)).toBe('Custom');
+    expect(folderRoleOfRegistryRole('ReadOnly', 'Manager')).toBe('Custom');
+  });
+
+  // The bit is what reaches the folder's Open sub-folders; every role keeps it.
+  it('keeps CAN_JOIN_OPEN_SUBGROUPS in every folder grant and ignores it when reading', () => {
+    for (const role of FOLDER_ROLES) {
+      const g = FOLDER_ROLE_GRANTS[role];
+      expect(g.folderCaps & C.CAN_JOIN_OPEN_SUBGROUPS).toBe(C.CAN_JOIN_OPEN_SUBGROUPS);
+      const without = g.folderCaps & ~C.CAN_JOIN_OPEN_SUBGROUPS;
+      expect(folderRoleOf(g.coreRole, g.role, without)).toBe(role);
+    }
   });
 
   it('shows Custom for an off-grant (role, caps) pair', () => {
@@ -128,7 +161,7 @@ describe('folderRoleOf', () => {
 // The read-only sharing list has the registry Role but no per-member caps.
 describe('folderRoleOfRegistryRole', () => {
   it('names the role from the registry Role alone', () => {
-    expect(folderRoleOfRegistryRole('Member', 'Viewer')).toBe('ReadOnly');
+    expect(folderRoleOfRegistryRole('ReadOnly', 'Viewer')).toBe('ReadOnly');
     expect(folderRoleOfRegistryRole('Member', 'Editor')).toBe('Editor');
     expect(folderRoleOfRegistryRole('Member', 'Manager')).toBe('Manager');
     expect(folderRoleOfRegistryRole('Admin', 'Viewer')).toBe('Owner');
@@ -144,7 +177,7 @@ describe('describeRoleChange', () => {
 
   it('says what a demotion takes away', () => {
     expect(describeRoleChange('Manager', 'ReadOnly', 'folder')).toBe(
-      'In this folder, they will no longer be able to edit its documents, invite and remove its members or rename, restrict or delete it. They can open its documents but not edit them.',
+      'In this folder, they will no longer be able to edit and comment on its documents, invite and remove its members or rename, restrict or delete it. They can open its documents but not edit or comment on them.',
     );
   });
 
@@ -160,7 +193,7 @@ describe('describeRoleChange', () => {
       'Their custom permissions are replaced. In this workspace, they will be able to open folders shared with the whole workspace and create folders and documents.',
     );
     expect(describeRoleChange('Custom', 'ReadOnly', 'folder')).toBe(
-      'Their custom permissions are replaced. In this folder, they can open its documents but not edit them.',
+      'Their custom permissions are replaced. In this folder, they can open its documents but not edit or comment on them.',
     );
   });
 });
@@ -343,6 +376,7 @@ describe('planDefaultsSweep', () => {
     { identity: 'b', role: 'Member' },
     { identity: 'c', role: 'ReadOnly' },
     { identity: 'd' },
+    { identity: 'e', role: 'RelayTee' },
   ];
 
   it('applies to plain members only', () => {
@@ -363,7 +397,7 @@ describe('planDefaultsSweep', () => {
   it('skips read-only members', () => {
     expect(
       planDefaultsSweep(roster).skippedReadOnly.map((m) => m.identity),
-    ).toEqual(['c']);
+    ).toEqual(['c', 'e']);
   });
 
   it('partitions the roster with no member counted twice or dropped', () => {
