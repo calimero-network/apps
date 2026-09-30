@@ -35,10 +35,22 @@ catalog:
   # mero-js 21.3.0 (#207) carries the invitation redeem that
   # @calimero-apps/invite used to keep its own copy of, and `classifyError`.
   # The two majors in between removed `getCertificate` and changed TEE image
-  # trust; no app on the catalog used either (delegated-execution pins its own).
-  "@calimero-network/mero-js": ^21.4.0
+  # trust; no app on the catalog used either.
+  # mero-js 22.5.1 (#216) is the pin now, and the reason is the schema: core
+  # 0.11.0-rc.65 accepts a namespace op signed at SIGNED_NAMESPACE_OP_SCHEMA_VERSION
+  # 16 and refuses every other value exactly, and 22.5.1 is the first release
+  # that signs at 16 — every 21.x signs older, so every join and governance op
+  # from an app on 21 was refused. The 22.0.0 break (#202) dropped the chosen
+  # `groupId` from CreateGroupRequest; no app sent one. 22.4.0 (#214) added
+  # RelayClient.describeCreation/createContext, which is what let
+  # delegated-execution drop its own ^22.1.0 pin and come back to `catalog:`.
+  "@calimero-network/mero-js": ^22.5.1
   # mero-react 9.2.0 (#77): the join hooks report why a join failed, and
-  # useRedeemInvitation. It depends on mero-js ^21.3.0, so it moves with it.
+  # useRedeemInvitation. It still declares mero-js ^21.3.0 and no 9.x moves it,
+  # so the root package.json overrides mero-react's mero-js to ^22.5.1. Without
+  # that every app on both carries two copies, MeroProvider's client is the 21
+  # one — signing at the refused schema — and the two AdminApiClient types do
+  # not match. Drop the override when a mero-react release depends on ^22.5.1.
   "@calimero-network/mero-react": ^9.2.0
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
