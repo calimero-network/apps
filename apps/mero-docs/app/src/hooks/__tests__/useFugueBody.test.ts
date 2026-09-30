@@ -792,6 +792,39 @@ describe('useFugueBody', () => {
     expect(replace.mock.calls[0][0]).toEqual(['blk-3', 'blk-4']);
   });
 
+  it("keeps a real editor's untouched blocks through a peer's move, defaults and all", async () => {
+    // BlockNote fills in its props' defaults, which the node does not store:
+    // the range a move replaces must still start at the moved blocks.
+    const rows = [
+      row('blk-1', 'Alpha', 'paragraph', { textAlignment: 'left' }),
+      row('blk-2', 'Bravo'),
+      row('blk-3', 'Charlie'),
+      row('blk-4', 'Delta'),
+    ];
+    const client = fakeClient(rows);
+    const editor = renderHook(() => useCreateBlockNote({ schema })).result.current;
+    editor.mount(document.body.appendChild(document.createElement('div')));
+    const view = renderHook(() =>
+      useFugueBody({
+        client: client as unknown as DocsClient,
+        docId: DOC,
+        contextId: CTX,
+        editor: editor as unknown as BodyEditor,
+      }),
+    );
+    await settle();
+    editor.replaceBlocks(editor.document, JSON.parse(view.result.current.content ?? '[]'));
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([rows[0], rows[1], rows[3], rows[2]]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockMoved')));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1', 'blk-2', 'blk-4', 'blk-3']);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toEqual(['blk-3', 'blk-4']);
+  });
+
   it("inserts a peer's nested block beside the untouched ones instead of rebuilding the document", async () => {
     const rows = [row('blk-1', 'Alpha'), row('blk-2', 'Bravo')];
     const client = fakeClient(rows);
