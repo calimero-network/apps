@@ -29,6 +29,10 @@ function namespaceIdOf(ns: unknown): string | undefined {
   return n?.namespaceId ?? n?.groupId ?? n?.id;
 }
 
+function tableInit(): number[] {
+  return Array.from(new TextEncoder().encode(JSON.stringify({ title: "Chess table", now: Date.now() })));
+}
+
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
@@ -112,7 +116,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       // namespace — which is what lets `InviteCard` mint a namespace invitation
       // from `useContextGroup` alone. A subgroup here would hand
       // `createNamespaceInvitation` a subgroup id and fail confusingly.
-      const ctx = await createContext({ applicationId, groupId: namespaceId });
+      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: tableInit() });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
       if (!newContextId) throw new Error("context created but no contextId came back");
       select(newContextId);
@@ -137,7 +141,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       const ns = await createNamespace({ applicationId });
       const namespaceId = namespaceIdOf(ns);
       if (!namespaceId) throw new Error("namespace created but no id came back");
-      const ctx = await createContext({ applicationId, groupId: namespaceId });
+      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: tableInit() });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
       if (!newContextId) throw new Error("context created but no contextId came back");
       select(newContextId);
