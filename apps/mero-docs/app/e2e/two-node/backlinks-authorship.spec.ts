@@ -63,7 +63,9 @@ test.describe('Details across nodes (two-node)', () => {
     await alice.page.goto(planUrl);
     await alice.editor.expectMounted();
     await expect(
-      alice.details.section('Linked from').getByRole('button', { name: /Secret/ }),
+      alice.details
+        .section('Linked from')
+        .getByRole('button', { name: /Secret/ }),
     ).toBeVisible({ timeout: SYNC_MS });
 
     await bob.page.goto(planUrl);

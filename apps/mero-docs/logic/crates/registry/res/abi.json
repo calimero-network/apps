@@ -141,17 +141,6 @@
         }
       ]
     },
-    "Event_OwnerClaimed": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "owner",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "Event_TagChanged": {
       "kind": "record",
       "fields": [
@@ -649,14 +638,6 @@
       "intent": "mutating"
     },
     {
-      "name": "claim_owner",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "clear_folder_role",
       "params": [
         {
@@ -771,7 +752,7 @@
     },
     {
       "name": "get_owner",
-      "doc": "The base58 public key of the registry owner, or an empty string if\n`claim_owner` has not been called yet. (Empty-string-means-unclaimed\nkeeps the generated TS type honest - `Promise<string>`, not a lying\nnon-nullable Option.)",
+      "doc": "The hex account of the registry owner, fixed when the registry was\ncreated.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -1180,12 +1161,6 @@
       "name": "ManagerRemoved",
       "payload": {
         "$ref": "Event_ManagerRemoved"
-      }
-    },
-    {
-      "name": "OwnerClaimed",
-      "payload": {
-        "$ref": "Event_OwnerClaimed"
       }
     },
     {

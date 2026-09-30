@@ -83,7 +83,9 @@ test.describe('Search live (two-node)', () => {
     // Only a doc's creator or the folder's founder may delete it.
     await bob.openDoc('Plan');
     await bob.page.getByRole('button', { name: 'Document actions' }).click();
-    await expect(bob.page.getByRole('menuitem', { name: 'Archive' })).toBeVisible();
+    await expect(
+      bob.page.getByRole('menuitem', { name: 'Archive' }),
+    ).toBeVisible();
     await expect(
       bob.page.getByRole('menuitem', { name: 'Delete document' }),
     ).toHaveCount(0);

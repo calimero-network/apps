@@ -115,10 +115,7 @@ test.describe('Document collab (two-node)', () => {
   // '-' at byte 8" because useBodyCursors → useFugueBody.backendIdOf falls back
   // to the editor's own UUID for a block with no backend id mapped yet, and the
   // contract decodes `block` as a base58 token. No anchor, no slice, no cursor.
-  test.fixme("Each sees the other's named cursor", async ({
-    alice,
-    bob,
-  }) => {
+  test.fixme("Each sees the other's named cursor", async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Cursor Setup');
     await alice.createFolder({ name: 'Desk', visibility: 'Open' });

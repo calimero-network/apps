@@ -35,7 +35,9 @@ test.describe('Archive (single-node)', () => {
     await expect(
       palette.getByRole('option', { name: /Current plan/ }).first(),
     ).toBeVisible();
-    await expect(palette.getByRole('option', { name: /Old plan/ })).toHaveCount(0);
+    await expect(palette.getByRole('option', { name: /Old plan/ })).toHaveCount(
+      0,
+    );
     await page.keyboard.press('Escape');
 
     await page.goto(docUrl);

@@ -29,7 +29,7 @@ import {
 } from '@/lib/rich/blocknote';
 import { attrsEqual } from '@/lib/rich/attributes';
 import { inlineOffset, posAt, scalarAt } from '@/lib/rich/cursors';
-import { diffSpans, insertAt, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
+import { diffSpans, diffSpansByIds, insertAt, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
@@ -48,6 +48,7 @@ import { schema } from '@/components/editor/blocknote/schema';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
+import { useStreamReconnect } from './useStreamReconnect';
 
 const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
@@ -128,6 +129,16 @@ const isEditorStandIn = (blocks: EditorBlock[]): boolean =>
   blocks[0].inline.length === 0 &&
   Object.entries(blocks[0].attrs).every(([key, value]) => FRESH_PARAGRAPH_ATTRS[key] === value);
 
+/** One block's text as the node reported it; `ids` name its characters when the read carried them. */
+type BlockText = Pick<EditorBlock, 'inline' | 'ids'>;
+
+/** What a peer changed from `base` to `remote`: by character id where both carry ids, else by text. */
+const peerChange = (base: BlockText, remote: BlockText): Change[] =>
+  (base.ids &&
+    remote.ids &&
+    diffSpansByIds(base.inline, base.ids, remote.inline, remote.ids)) ||
+  diffSpans(base.inline, remote.inline, { keepShared: true });
+
 const structureOf = (blocks: EditorBlock[]): string =>
   JSON.stringify(blocks.map((b) => [b.id, b.kind, b.depth, b.attrs]));
 
@@ -173,6 +184,8 @@ export function useFugueBody({
   const anchorsRef = useRef(new Map<string, { token: string; pos: number }>());
   const dirtyRef = useRef(false);
   const staleRef = useRef(false);
+  // Blocks whose text a peer changed: each needs only its own read.
+  const staleBlocksRef = useRef(new Set<string>());
   const resyncRef = useRef(false);
   const inFlightRef = useRef(false);
   const loadedRef = useRef(false);
@@ -180,15 +193,15 @@ export function useFugueBody({
   const editorRef = useRef<BodyEditor | null>(editor);
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set when the node refused an edit for a reason it will give again (a 413
-  // over its body limit, a 403): resending at once only loops. Cleared by the
-  // user's next edit, which is what can change the answer.
+  // Set when the node refused an edit: resending at once only loops. Cleared by
+  // the user's next edit, or by the backoff retry when the answer may change.
   const heldRef = useRef(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drainRef = useRef<(() => Promise<void>) | null>(null);
-  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
-    () => void drainRef.current?.(),
-  );
+  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(() => {
+    heldRef.current = false;
+    void drainRef.current?.();
+  });
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
 
@@ -275,8 +288,9 @@ export function useFugueBody({
    * `anchorAt` is where a refused write's anchor sits in `remote`.
    */
   const rebaseBlock = useCallback(
-    (backendId: string, base: AttrSpan[], remote: AttrSpan[], anchorAt: number | null = null) => {
-      const remoteChange = diffSpans(base, remote, { keepShared: true });
+    (backendId: string, from: BlockText, to: BlockText, anchorAt: number | null = null) => {
+      const [base, remote] = [from.inline, to.inline];
+      const remoteChange = peerChange(from, to);
       // A refusal at an anchor moves the typing even when the text is unchanged.
       if (remoteChange.length === 0 && anchorAt === null) return;
       // Read pending input before the editor is diffed, or the diff misses it.
@@ -438,7 +452,7 @@ export function useFugueBody({
       const previous = new Map(serverRef.current.map((b) => [b.id, b]));
       for (const block of remote) {
         const was = previous.get(block.id);
-        if (was && !touched.has(block.id)) rebaseBlock(block.id, was.inline, block.inline);
+        if (was && !touched.has(block.id)) rebaseBlock(block.id, was, block);
       }
       serverRef.current = remote;
       // What still differs is the user's newer edit, which the next flush sends.
@@ -463,6 +477,29 @@ export function useFugueBody({
     [client, docId, reconcile],
   );
   const refresh = useCallback(() => refreshWith(new Set()), [refreshWith]);
+
+  /** Re-reads just the blocks a peer's text event named; anything it cannot place falls back to a whole read. */
+  const refreshBlocks = useCallback(
+    async (blocks: Set<string>) => {
+      if (!client || !docId) return;
+      if (!isSynced()) return void (await refresh());
+      try {
+        for (const block of blocks) {
+          const was = serverBlock(block);
+          if (!was) return void (await refresh());
+          const read = await client.getBlock({ doc: docId, block });
+          if (!read) return void (await refresh());
+          const remote = { inline: backendSpans(read.spans), ids: read.ids };
+          rebaseBlock(block, was, remote);
+          Object.assign(was, remote);
+        }
+        setStatus((prev) => (prev === 'error' ? prev : 'saved'));
+      } catch {
+        await refresh();
+      }
+    },
+    [client, docId, isSynced, rebaseBlock, refresh],
+  );
 
   /** Runs one diff's calls in order, stopping at the first refused write. */
   const runCalls = useCallback(
@@ -529,10 +566,10 @@ export function useFugueBody({
               anchor: typed ? (anchor?.token ?? null) : null,
             });
             if (was && !touched.has(block)) {
-              const base = result.applied ? applyChanges(was.inline, ops) : was.inline;
-              const spans = backendSpans(result.spans);
-              rebaseBlock(block, base, spans, result.applied ? null : result.anchor_pos);
-              was.inline = spans;
+              const base = result.applied ? { inline: applyChanges(was.inline, ops) } : was;
+              const remote = { inline: backendSpans(result.spans), ids: result.ids };
+              rebaseBlock(block, base, remote, result.applied ? null : result.anchor_pos);
+              Object.assign(was, remote);
             }
             if (result.anchor !== null && result.anchor_pos !== null) {
               anchorsRef.current.set(block, { token: result.anchor, pos: result.anchor_pos });
@@ -586,8 +623,9 @@ export function useFugueBody({
       setError(asError(cause));
       setStatus('error');
       resyncRef.current = true;
-      // Still re-read what did land; the drain loop just stops resending.
-      if (!classifyError(cause).retryable) heldRef.current = true;
+      // Still re-read what did land; resend only after a backoff, if ever.
+      heldRef.current = true;
+      if (classifyError(cause).retryable) scheduleRetry();
       return true;
     }
   }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
@@ -596,22 +634,32 @@ export function useFugueBody({
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      while ((dirtyRef.current && !heldRef.current) || staleRef.current || resyncRef.current) {
+      while (
+        (dirtyRef.current && !heldRef.current) ||
+        staleRef.current ||
+        resyncRef.current ||
+        staleBlocksRef.current.size > 0
+      ) {
         if (resyncRef.current) {
           resyncRef.current = false;
           await refreshWith(new Set(serverRef.current.map((b) => b.id)));
         } else if (dirtyRef.current && !heldRef.current) {
           dirtyRef.current = false;
           if (!(await flush())) break;
-        } else {
+        } else if (staleRef.current) {
           staleRef.current = false;
+          staleBlocksRef.current.clear();
           await refresh();
+        } else {
+          const blocks = staleBlocksRef.current;
+          staleBlocksRef.current = new Set();
+          await refreshBlocks(blocks);
         }
       }
     } finally {
       inFlightRef.current = false;
     }
-  }, [flush, refresh, refreshWith]);
+  }, [flush, refresh, refreshBlocks, refreshWith]);
   drainRef.current = drain;
 
   useEffect(() => {
@@ -620,6 +668,7 @@ export function useFugueBody({
     serverRef.current = [];
     dirtyRef.current = false;
     staleRef.current = false;
+    staleBlocksRef.current = new Set();
     resyncRef.current = false;
     heldRef.current = false;
     loadedRef.current = false;
@@ -676,11 +725,15 @@ export function useFugueBody({
   const handleEvent = useCallback(
     (event: SubscriptionEventData) => {
       if (!isContextEvent(event) || !docId) return;
-      const touched = parseRichEvents(event.data).some(
-        (parsed) => parsed.kind !== 'TitleChanged' && parsed.doc === docId,
-      );
+      let touched = false;
+      for (const parsed of parseRichEvents(event.data)) {
+        if (parsed.kind === 'TitleChanged' || parsed.doc !== docId) continue;
+        touched = true;
+        const textOnly = parsed.kind === 'TextChanged' || parsed.kind === 'MarkApplied';
+        if (textOnly) staleBlocksRef.current.add(parsed.block);
+        else staleRef.current = true;
+      }
       if (!touched) return;
-      staleRef.current = true;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null;
@@ -690,6 +743,13 @@ export function useFugueBody({
     [docId, drain],
   );
   useSubscription(contextIds, handleEvent);
+
+  // Nothing replays the events missed while the stream was down.
+  useStreamReconnect(() => {
+    if (!docId) return;
+    staleRef.current = true;
+    void drainRef.current?.();
+  });
 
   // One history for the buttons and the keyboard: the editor's own, which
   // holds only this user's edits and groups a typing burst into one step.

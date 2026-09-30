@@ -64,7 +64,9 @@ test.describe('Deep-link cards (single-node)', () => {
     ).toBeVisible({ timeout: 30_000 });
     // Go to Home leaves for the visitor's own workspace, not the dead one.
     await alice.page.getByRole('button', { name: 'Go to Home' }).click();
-    await expect.poll(() => pathOf(alice.page)).not.toBe('/app/not-a-real-workspace-id');
+    await expect
+      .poll(() => pathOf(alice.page))
+      .not.toBe('/app/not-a-real-workspace-id');
     await expect(alice.page.getByTestId('workspace-switcher')).toContainText(
       'Deep Link Cards WS',
     );

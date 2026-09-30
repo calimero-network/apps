@@ -37,6 +37,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "^9.4.0",
     "@playwright/test": "catalog:",
@@ -81,6 +82,7 @@
     "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
     "preview": "vite preview",
     "prettier": "exec prettier . --write",
+    "format:check": "prettier --check e2e",
     "codegen": "calimero-abi-codegen -i ../logic/crates/registry/res/abi.json -o src/generated/registry --client-name RegistryClient && calimero-abi-codegen -i ../logic/res/abi.json -o src/generated/docs --client-name DocsClient",
     "e2e:landing": "playwright test --project=landing",
     "e2e:single": "playwright test --project=single-node",

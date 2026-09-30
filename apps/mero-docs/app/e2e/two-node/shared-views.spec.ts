@@ -39,7 +39,10 @@ test.describe('Shared views across nodes (two-node)', () => {
     await home.saveViewButton().click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Design docs');
     await page.getByRole('radio', { name: /Everyone in/ }).click();
-    await page.locator('form').getByRole('button', { name: 'Save view' }).click();
+    await page
+      .locator('form')
+      .getByRole('button', { name: 'Save view' })
+      .click();
     await expect(home.viewRow('Design docs')).toBeVisible();
 
     await expect(bob.home.viewRow('Design docs')).toBeVisible({
@@ -65,7 +68,10 @@ test.describe('Shared views across nodes (two-node)', () => {
 
     await home.saveViewButton().click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Mine only');
-    await page.locator('form').getByRole('button', { name: 'Save view' }).click();
+    await page
+      .locator('form')
+      .getByRole('button', { name: 'Save view' })
+      .click();
     await expect(home.viewRow('Mine only')).toBeVisible();
 
     await bob.page.waitForTimeout(NO_SYNC_HOLD_MS);

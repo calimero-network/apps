@@ -29,7 +29,10 @@ async function switchNode(
   expect((await resp.json()).ok).toBe(true);
 }
 
-test.skip(!existsSync(RIG_ENV), 'the offline switch needs the local rig (scripts/local-rig.sh up)');
+test.skip(
+  !existsSync(RIG_ENV),
+  'the offline switch needs the local rig (scripts/local-rig.sh up)',
+);
 
 test.describe('Rig offline switch (two-node)', () => {
   // Both hooks are tolerant restores: another suite driving the same rig, or a

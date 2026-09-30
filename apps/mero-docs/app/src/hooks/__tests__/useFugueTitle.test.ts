@@ -10,16 +10,24 @@ import { useFugueTitle } from '../useFugueTitle';
 const publish = vi.fn();
 let deliver: ((event: unknown) => void) | null = null;
 
+// The shared stream's `connect` listeners, so a test can reopen it.
+const connectHandlers = new Set<() => void>();
+const events = {
+  on: (_: 'connect', h: () => void) => connectHandlers.add(h),
+  off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
+};
+
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },
+  useMero: () => ({ mero: { events } }),
 }));
 
 const DOC = 'doc-1';
 const CTX = 'ctx-1';
 
-type FakeClient = Record<'getTitle' | 'titleApplyDeltaOn' | 'titleUndo' | 'titleAnchorAt', Mock>;
+type FakeClient = Record<'getTitle' | 'getTitleState' | 'titleApplyDeltaOn' | 'titleUndo' | 'titleAnchorAt', Mock>;
 
 const applied = (text: string, token = 'tok-1', anchor: string | null = null, anchor_pos: number | null = null) => ({
   applied: true,
@@ -27,6 +35,7 @@ const applied = (text: string, token = 'tok-1', anchor: string | null = null, an
   text,
   anchor,
   anchor_pos,
+  ids: [],
 });
 const refused = (text: string, anchor: string | null = null, anchor_pos: number | null = null) => ({
   applied: false,
@@ -34,11 +43,18 @@ const refused = (text: string, anchor: string | null = null, anchor_pos: number 
   text,
   anchor,
   anchor_pos,
+  ids: [],
 });
 
+/** One run per writer, `len` characters from `counter`. */
+const run = (replica: string, counter: number, len = 1) => ({ replica, counter, len });
+
+// A test sets the title through `getTitle`; the read the hook makes answers it without ids.
 function fakeClient(): FakeClient {
+  const getTitle = vi.fn().mockResolvedValue('Notes');
   return {
-    getTitle: vi.fn().mockResolvedValue('Notes'),
+    getTitle,
+    getTitleState: vi.fn(async (params: unknown) => ({ text: await getTitle(params), ids: [] })),
     titleApplyDeltaOn: vi.fn(),
     titleUndo: vi.fn().mockResolvedValue('redo-1'),
     titleAnchorAt: vi.fn().mockResolvedValue('anc-1'),
@@ -67,6 +83,12 @@ const payload = (value: unknown) =>
 
 const change = (value: string) =>
   ({ target: { value } }) as ChangeEvent<HTMLInputElement>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 const settle = async (ms = 400) => {
   await act(async () => {
@@ -97,6 +119,53 @@ afterEach(() => {
 });
 
 describe('useFugueTitle', () => {
+  // A peer typed an `a` before the two this user typed between: read as text,
+  // it lands after them and the user's `X` ends up after the wrong `a`.
+  it("keeps a refused keystroke between its own letters when a peer typed an identical one", async () => {
+    const client = fakeClient();
+    client.getTitleState.mockResolvedValue({ text: 'aa', ids: [run('1', 1, 2)] });
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce({ ...refused('aaa'), ids: [run('2', 1), run('1', 1, 2)] })
+      .mockResolvedValueOnce(applied('aaXa'));
+    const { result } = mount(client);
+    await settle();
+
+    act(() => result.current.onChange(change('aXa')));
+    await settle();
+
+    expect(result.current.title).toBe('aaXa');
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'aaa',
+      ops: [{ retain: 2 }, { insert: 'X' }],
+      anchor: null,
+    });
+  });
+
+  it("places a peer's identical letter by id when the title is re-read", async () => {
+    const client = fakeClient();
+    client.getTitleState.mockResolvedValue({ text: 'aa', ids: [run('1', 1, 2)] });
+    const { result } = mount(client);
+    await settle();
+    const read = deferred<unknown>();
+    client.getTitleState.mockReturnValueOnce(read.promise);
+    client.titleApplyDeltaOn.mockResolvedValue(applied('aaXa'));
+
+    act(() => deliver?.(titleEvent(DOC)));
+    await settle(100);
+    act(() => result.current.onChange(change('aXa')));
+    await act(async () => read.resolve({ text: 'aaa', ids: [run('2', 1), run('1', 1, 2)] }));
+    await settle();
+
+    expect(result.current.title).toBe('aaXa');
+    expect(client.titleApplyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      base: 'aaa',
+      ops: [{ retain: 2 }, { insert: 'X' }],
+      anchor: null,
+    });
+  });
+
   it('reads the title of the document it is pointed at', async () => {
     const { result } = mount(fakeClient());
     await settle();
@@ -475,6 +544,18 @@ describe('useFugueTitle', () => {
     act(() => result.current.onSelect());
     await settle();
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('reads the title again when the event stream reconnects', async () => {
+    const client = fakeClient();
+    const { result } = mount(client);
+    await settle();
+    client.getTitle.mockResolvedValue('Notes missed');
+
+    act(() => connectHandlers.forEach((h) => h()));
+    await settle(1000);
+
+    expect(result.current.title).toBe('Notes missed');
   });
 
   it('ignores a TitleChanged for another document', async () => {

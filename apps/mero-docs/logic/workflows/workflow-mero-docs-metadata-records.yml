@@ -18,7 +18,7 @@ description: >
     6. Rename round trip: Alice renames the namespace, the folder,
        and her own member record; Bob reads each renamed value
        after sync.
-    7. Registry permissions on the folder: Alice claims ownership,
+    7. Registry permissions on the folder: Alice (the owner)
        registers Shared, and grants/revokes Bob as a manager
        (add_manager/remove_manager/list_managers). Bob exercises the
        manager-gated clear_folder_role on himself while a manager,
@@ -281,13 +281,6 @@ steps:
   # D2. Registry permissions: add_manager/remove_manager/list_managers,
   # clear_folder_role (manager-gated), set_folder_alias.
   # =================================================================
-  - name: Alice claims registry ownership
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: claim_owner
-    executor_public_key: '{{alice_key}}'
-
   - name: register_folder Shared in the registry
     type: call
     node: calimero-node-1

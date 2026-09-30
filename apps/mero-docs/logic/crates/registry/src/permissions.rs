@@ -119,23 +119,6 @@ impl RegistryState {
         self.owner.get().cloned().unwrap_or_default()
     }
 
-    /// Confirms `caller` owns the registry. The owner is whoever created it,
-    /// fixed at `init`, so there is nothing left to claim: this succeeds for
-    /// the owner and is `Forbidden` for everyone else. It used to set the
-    /// owner first-come-first-served, which let any member take a registry
-    /// that had not been claimed yet - and let a patched node overwrite the
-    /// owner of one that had.
-    pub(crate) fn claim_owner_inner(&self, caller: &str) -> Result<(), DriveError> {
-        let cur = self.owner_hex();
-        if cur == caller {
-            Ok(())
-        } else {
-            Err(DriveError::Forbidden(format!(
-                "registry already owned by {cur}"
-            )))
-        }
-    }
-
     /// Owner-only. Validates `member` as hex. Re-adding / re-granting an
     /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
     /// with the current HLC always wins - the key is never tombstoned).
@@ -390,12 +373,8 @@ mod tests {
     }
 
     /// A registry created by `owner()`, with folder "f1" registered by them.
-    ///
-    /// `TestHost::new` does not align the storage layer's account with the
-    /// SDK's while `init` runs; a node does, so align them here.
     fn registry() -> TestHost<RegistryState> {
-        let mut host =
-            TestHost::new(|| calimero_storage::env::with_account_id(owner(), RegistryState::init));
+        let mut host = TestHost::new(RegistryState::init);
         host.call(|s| s.register_folder(fid("f1"), None, None, None))
             .unwrap();
         host
@@ -416,12 +395,8 @@ mod tests {
     // ---- owner ----
 
     #[test]
-    fn the_owner_is_whoever_created_the_registry_and_is_fixed() {
-        let mut host = registry();
-        assert_eq!(host.view(|s| s.get_owner()).unwrap(), key(owner()));
-        // Claiming confirms the owner, and nobody else can claim it.
-        host.call(|s| s.claim_owner()).unwrap();
-        assert!(as_account(&mut host, OTHER, |s| s.claim_owner()).is_err());
+    fn the_owner_is_whoever_created_the_registry() {
+        let host = registry();
         assert_eq!(host.view(|s| s.get_owner()).unwrap(), key(owner()));
     }
 

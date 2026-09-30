@@ -37,7 +37,10 @@ test.describe('Visibility toggle (two-node)', () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
-  test('Restricted -> Open reveals the folder to Bob', async ({ alice, bob }) => {
+  test('Restricted -> Open reveals the folder to Bob', async ({
+    alice,
+    bob,
+  }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Flip Restricted->Open');
     await alice.createFolder({ name: 'Liberating', visibility: 'Restricted' });

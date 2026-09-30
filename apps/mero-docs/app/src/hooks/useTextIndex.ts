@@ -9,6 +9,7 @@ import {
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
+import type { BackendBlock } from '@/lib/rich/blocknote';
 import { parseRichEvents } from '@/lib/rich/events';
 import { docTextFromBlocks } from '@/lib/search/docText';
 import { textCache, textCacheKey } from '@/lib/search/textCache';
@@ -44,6 +45,25 @@ type Snapshot = {
   searched: Set<string>;
   failed: Set<string>;
 };
+
+/** The doc's blocks with `changed` re-read one by one; the whole doc when one is not held. */
+async function readBlocks(
+  job: Job,
+  held: BackendBlock[] | undefined,
+  changed: Set<string> | null | undefined,
+): Promise<BackendBlock[]> {
+  const doc = job.docId;
+  if (!held || !changed || [...changed].some((id) => !held.some((b) => b.id === id)))
+    return job.client.getDocument({ doc });
+  try {
+    const spans = new Map<string, BackendBlock['spans']>();
+    for (const block of changed)
+      spans.set(block, await job.client.getBlockDelta({ doc, block }));
+    return held.map((b) => (spans.has(b.id) ? { ...b, spans: spans.get(b.id)! } : b));
+  } catch {
+    return job.client.getDocument({ doc });
+  }
+}
 
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve));
 
@@ -83,6 +103,8 @@ export function useTextIndex({
     alive: true,
     wanted: new Map<string, Job>(),
     texts: new Map<string, DocText>(),
+    blocks: new Map<string, BackendBlock[]>(), // what each text was built from
+    changed: new Map<string, Set<string> | null>(), // blocks a text event named; null = re-read the whole doc
     readAt: new Map<string, number>(), // the list version each text was read at
     failed: new Set<string>(), // last read failed; its folder is not fully searched
     queue: [] as Job[],
@@ -123,30 +145,30 @@ export function useTextIndex({
       const current = () =>
         e.alive && e.wanted.get(job.key)?.contextId === job.contextId;
       e.running.set(job.key, { again: false });
+      const changed = e.changed.get(job.key);
+      e.changed.delete(job.key);
       let text: DocText | null = null;
+      let read: BackendBlock[] = [];
       let failed = false;
       let version = job.updatedAt;
       try {
         await yieldToEventLoop();
         if (current()) {
           version = e.wanted.get(job.key)!.updatedAt;
-          const { client } = job;
           if (job.event) {
             // Its version before its text, so the text is at least that new.
             try {
-              const doc = await client.getDoc({ id: job.docId });
+              const doc = await job.client.getDoc({ id: job.docId });
               version = Math.max(version, nsToMs(doc.updated_at));
             } catch {
               // The list's version it is; the next list pass may read it again.
             }
           }
-          const blocks = await client.getDocument({
-            doc: job.docId,
-          });
+          read = await readBlocks(job, e.blocks.get(job.key), changed);
           text = docTextFromBlocks(
             job.folderId,
             job.docId,
-            blocks,
+            read,
             window.location.origin,
           );
         }
@@ -161,6 +183,7 @@ export function useTextIndex({
       const done = text !== null || failed;
       if (text && current()) {
         e.texts.set(job.key, text);
+        e.blocks.set(job.key, read);
         e.readAt.set(job.key, version);
         e.failed.delete(job.key);
         cache?.set(textCacheKey(job.contextId, job.key), { version, text });
@@ -219,7 +242,11 @@ export function useTextIndex({
         cache?.delete(textCacheKey(job.contextId, key));
     e.wanted = wanted;
     for (const key of [...e.texts.keys()])
-      if (!wanted.has(key)) e.texts.delete(key);
+      if (!wanted.has(key)) {
+        e.texts.delete(key);
+        e.blocks.delete(key);
+        e.changed.delete(key);
+      }
     for (const key of [...e.readAt.keys()])
       if (!wanted.has(key)) e.readAt.delete(key);
     for (const key of [...e.failed]) if (!wanted.has(key)) e.failed.delete(key);
@@ -279,9 +306,14 @@ export function useTextIndex({
       const folderId = folderByContext.get(event.contextId);
       if (!folderId) return;
       const { timers } = engine.current;
-      for (const { kind, doc } of parseRichEvents(event.data)) {
-        if (kind === 'TitleChanged') continue; // titles live in the list
-        const key = rowKey(folderId, doc);
+      for (const parsed of parseRichEvents(event.data)) {
+        if (parsed.kind === 'TitleChanged') continue; // titles live in the list
+        const key = rowKey(folderId, parsed.doc);
+        const { changed } = engine.current;
+        if (parsed.kind === 'TextChanged' || parsed.kind === 'MarkApplied') {
+          if (changed.get(key) !== null)
+            changed.set(key, (changed.get(key) ?? new Set()).add(parsed.block));
+        } else changed.set(key, null);
         clearTimeout(timers.get(key));
         timers.set(
           key,

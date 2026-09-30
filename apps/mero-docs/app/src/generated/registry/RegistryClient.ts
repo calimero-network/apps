@@ -58,10 +58,6 @@ export interface Event_ManagerRemoved {
   member: string;
 }
 
-export interface Event_OwnerClaimed {
-  owner: string;
-}
-
 export interface Event_TagChanged {
   key: string;
 }
@@ -281,7 +277,6 @@ export type Visibility = 'Inherit' | 'Restricted';
 
 
 
-
 export type AbiEvent =
   | { name: "FolderAliasChanged"; payload: Event_FolderAliasChanged }
   | { name: "FolderColorChanged"; payload: Event_FolderColorChanged }
@@ -300,7 +295,6 @@ export type AbiEvent =
   | { name: "FolderVisibilityChanged"; payload: Event_FolderVisibilityChanged }
   | { name: "ManagerAdded"; payload: Event_ManagerAdded }
   | { name: "ManagerRemoved"; payload: Event_ManagerRemoved }
-  | { name: "OwnerClaimed"; payload: Event_OwnerClaimed }
   | {
     /**
      * A tag's name, colour, or tombstone flag changed.
@@ -344,16 +338,6 @@ export class RegistryClient {
    */
   public async bindFolderContext(params: { folder_id: FolderId; context_id: ContextId }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'bind_folder_context', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * claim_owner
-   *
-   * @intent mutating
-   */
-  public async claimOwner(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_owner', argsJson: {} });
     return response as void;
   }
 
@@ -430,10 +414,8 @@ export class RegistryClient {
   /**
    * get_owner
    *
-   * The base58 public key of the registry owner, or an empty string if
-   * `claim_owner` has not been called yet. (Empty-string-means-unclaimed
-   * keeps the generated TS type honest - `Promise<string>`, not a lying
-   * non-nullable Option.)
+   * The hex account of the registry owner, fixed when the registry was
+   * created.
    *
    * @intent read_only
    */

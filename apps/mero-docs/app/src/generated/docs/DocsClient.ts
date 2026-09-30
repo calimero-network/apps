@@ -22,6 +22,10 @@ export interface Applied {
    * Where `anchor` sits in `spans`.
    */
   anchor_pos: number | null;
+  /**
+   * The id of each character of `spans`, so a refused write rebases by identity.
+   */
+  ids: Run[];
 }
 
 /**
@@ -34,6 +38,10 @@ export interface Block {
   depth: number;
   attrs: Record<string, string>;
   spans: Span[];
+  /**
+   * The id of each character of `spans`, in order.
+   */
+  ids: Run[];
 }
 
 export interface BlockView {
@@ -119,7 +127,7 @@ export interface DocDto {
   created_at: number;
   updated_at: number;
   /**
-   * Hex account of whoever created the doc, from `origins`' owner stamp.
+   * Hex account of whoever created the doc, from its header's owner stamp.
    */
   created_by: string;
   updated_by: string;
@@ -141,43 +149,35 @@ export interface DocRecord {
   title: {  };
   body: Record<string, BlockView>;
   /**
-   * tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
+   * A set, so two members tagging the same doc at once both keep their tag.
    */
-  tags: Record<string, boolean>;
+  tags: string[];
   archived: boolean;
   updated_at: number;
   updated_by: string;
 }
 
 /**
- * `docs` + their `origins` + moderated `comments`.
+ * `docs` + their `headers` + moderated `comments`.
  */
 export interface DocsState {
   /**
    * doc_id → record. Public: collaborative editing. The id is
-   * `doc-<counter>-<account tag>` and assigned by `create_doc`.
+   * `doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`.
    */
   docs: Record<string, DocRecord>;
   /**
-   * doc_id → created_at, written once by the doc's creator. Its owner
-   * stamp is who created the doc, and nobody can rewrite either.
+   * doc_id → created_at, filed by the doc's creator, whose owner stamp it
+   * carries. A doc is listed while that entry lives; only its creator or a
+   * moderator (the founder) may remove it, and every node enforces that.
    */
-  origins: Record<string, number>;
-  /**
-   * Id allocator. Every create increments; the account tag in the id is
-   * what keeps two concurrent creates apart (see `account_tag`).
-   */
-  next_id: {  };
+  headers: Record<string, number>;
   /**
    * comment_id → comment. Each is owned by its author, who alone edits it;
    * the folder's moderators (its founder, who created this context) may
    * also remove any. Every node enforces both.
    */
   comments: Record<string, Comment>;
-  /**
-   * Comment-id allocator (`cmt-<n>-<account tag>`).
-   */
-  next_comment_id: {  };
 }
 
 export interface Event_BlockChanged {
@@ -251,6 +251,16 @@ export interface Event_TitleChanged {
   doc: string;
 }
 
+/**
+ * A run of character ids, mirroring `IdRange`, which has no `AbiType`.
+ * `replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.
+ */
+export interface Run {
+  replica: string;
+  counter: number;
+  len: number;
+}
+
 export interface Span {
   text: string;
   attributes: Record<string, string>;
@@ -271,6 +281,18 @@ export interface TitleApplied {
    * Where `anchor` sits in `text`.
    */
   anchor_pos: number | null;
+  /**
+   * The id of each character of `text`.
+   */
+  ids: Run[];
+}
+
+/**
+ * The title with the id of each of its characters, in order.
+ */
+export interface TitleState {
+  text: string;
+  ids: Run[];
 }
 
 
@@ -395,6 +417,9 @@ export class DocsClient {
   /**
    * comment_count
    *
+   * Comments held by the account their id names, on a doc that is still listed;
+   * `len` would count planted ones and a deleted doc's too.
+   *
    * @intent read_only
    */
   public async commentCount(): Promise<number> {
@@ -409,8 +434,8 @@ export class DocsClient {
    * convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
    * one-tap `migrate_my_entries` actually re-stamped it.
    *
-   * The entry of the account holding the comment (the lowest, if several
-   * do), read by name, so it answers the same on every node: a key-only
+   * The entry of the account the comment's id names, read by name, so it
+   * answers the same on every node: a key-only
    * `entry_schema_version` reads the caller's own entry only.
    *
    * @intent read_only
@@ -573,6 +598,18 @@ export class DocsClient {
   }
 
   /**
+   * get_title_state
+   *
+   * The title and its character ids, read together so they line up.
+   *
+   * @intent read_only
+   */
+  public async getTitleState(params: { doc: string }): Promise<TitleState> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_title_state', argsJson: params });
+    return response as TitleState;
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -614,6 +651,8 @@ export class DocsClient {
 
   /**
    * list_docs
+   *
+   * The docs whose creator's header lives, body or not.
    *
    * @intent read_only
    */

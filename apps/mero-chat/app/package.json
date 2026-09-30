@@ -70,6 +70,7 @@
     "zustand": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@eslint/js": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "catalog:",

@@ -225,6 +225,28 @@ steps:
     statements:
       - 'json_equal({{title_after_suffix}}, {"output": "core draft"})'
 
+  - name: The title reads back with an id for each of its characters
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_title_state
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+    outputs:
+      title_state: result
+      title_state_ids: result.output.ids
+
+  - name: Assert the title state
+    type: json_assert
+    statements:
+      - 'json_subset({{title_state}}, {"output": {"text": "core draft"}})'
+
+  - name: Assert the title carries ids
+    type: assert
+    statements:
+      - 'is_set({{title_state_ids}})'
+
   - name: Alice takes the suffix back
     type: call
     node: drive-node-1
@@ -260,7 +282,7 @@ steps:
   - name: Assert the refusal hands back the title unchanged
     type: json_assert
     statements:
-      - 'json_equal({{refused_title}}, {"output": {"applied": false, "token": null, "text": "core", "anchor": null, "anchor_pos": null}})'
+      - 'json_subset({{refused_title}}, {"output": {"applied": false, "token": null, "text": "core", "anchor": null, "anchor_pos": null}})'
 
   - name: A title write diffed against the current title applies
     type: call
@@ -303,7 +325,7 @@ steps:
   - name: Assert the refusal hands back where the anchor sits now
     type: json_assert
     statements:
-      - 'json_equal({{anchored_title}}, {"output": {"applied": false, "token": null, "text": "core!", "anchor": "{{guarded_title_anchor}}", "anchor_pos": 5}})'
+      - 'json_subset({{anchored_title}}, {"output": {"applied": false, "token": null, "text": "core!", "anchor": "{{guarded_title_anchor}}", "anchor_pos": 5}})'
 
   - name: Alice undoes the guarded title write
     type: call
@@ -440,7 +462,7 @@ steps:
   - name: Assert the block renders its kind, depth and text
     type: json_assert
     statements:
-      - 'json_equal({{one_block}}, {"output": {"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]}})'
+      - 'json_subset({{one_block}}, {"output": {"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]}})'
 
   - name: Read the whole document
     type: call
@@ -452,11 +474,12 @@ steps:
       doc: '{{body_doc}}'
     outputs:
       whole_document: result
+      first_block: result.output.0
 
   - name: Assert the whole document is that one block
     type: json_assert
     statements:
-      - 'json_equal({{whole_document}}, {"output": [{"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]}]})'
+      - 'json_subset({{first_block}}, {"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]})'
 
   - name: Alice bolds the word
     type: call
@@ -731,7 +754,7 @@ steps:
   - name: Assert the refusal hands back the block unchanged
     type: json_assert
     statements:
-      - 'json_equal({{refused_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox"}], "anchor": null, "anchor_pos": null}})'
+      - 'json_subset({{refused_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox"}], "anchor": null, "anchor_pos": null}})'
 
   - name: A body write diffed against the current text applies
     type: call
@@ -776,7 +799,7 @@ steps:
   - name: Assert the refusal hands back where the anchor sits now
     type: json_assert
     statements:
-      - 'json_equal({{anchored_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox!"}], "anchor": "{{guarded_anchor}}", "anchor_pos": 4}})'
+      - 'json_subset({{anchored_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox!"}], "anchor": "{{guarded_anchor}}", "anchor_pos": 4}})'
 
   - name: Alice undoes the guarded write
     type: call

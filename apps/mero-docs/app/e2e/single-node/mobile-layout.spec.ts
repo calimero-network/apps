@@ -78,7 +78,9 @@ test.describe('Mobile layout (single-node)', () => {
     await expect(drawer).toBeHidden();
   });
 
-  test('workspace settings fit without horizontal scroll', async ({ alice }) => {
+  test('workspace settings fit without horizontal scroll', async ({
+    alice,
+  }) => {
     await alice.openSettings();
     await expectNoHorizontalScroll(alice.page);
   });

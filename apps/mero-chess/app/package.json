@@ -28,6 +28,7 @@
     "@calimero-network/mero-icons": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "catalog:",

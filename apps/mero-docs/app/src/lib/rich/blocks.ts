@@ -2,7 +2,7 @@
 // A block the editor just created has no backend id, so calls naming it carry a
 // placeholder the caller swaps for the id insert_block or split_block returned.
 
-import { diffSpans, type AttrSpan, type Change } from './delta';
+import { diffSpans, type AttrSpan, type Change, type IdRun } from './delta';
 
 /** One block as the editor holds it; `id` is the editor's own, not the backend's. */
 export interface EditorBlock {
@@ -11,6 +11,8 @@ export interface EditorBlock {
   depth: number;
   attrs: Record<string, string>;
   inline: AttrSpan[];
+  /** The node's id for each character of `inline`, when it was read from the node. */
+  ids?: IdRun[];
 }
 
 export type BlockCall =

@@ -26,9 +26,9 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.page.goto(docPath);
 
-    await expect(
-      bob.page.getByText('This document is in Finance'),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(bob.page.getByText('This document is in Finance')).toBeVisible(
+      { timeout: 30_000 },
+    );
     await expect(
       bob.page.getByText(
         'Finance is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.',
@@ -88,8 +88,8 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
 
     await link.click();
     await expect.poll(() => pathOf(bob.page)).toBe(ledgerPath);
-    await expect(
-      bob.page.getByText('This document is in Finance'),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(bob.page.getByText('This document is in Finance')).toBeVisible(
+      { timeout: 30_000 },
+    );
   });
 });

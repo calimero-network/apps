@@ -123,7 +123,7 @@ const WATCHDOG_POLL_MS = 2_000;
  *  `useRegistryAdmin` directly). `useRegistryAdmin()` now just reads
  *  this slice from context. */
 export interface RegistryAdminSlice {
-  /** Registry owner identity, or `null` when unclaimed. */
+  /** Registry owner identity, or `null` until it has been read. */
   owner: string | null;
   managers: string[];
   /** Current identity is owner OR manager - gates writing folder roles /
@@ -135,9 +135,6 @@ export interface RegistryAdminSlice {
   error: Error | null;
   addManager: (member: string) => Promise<void>;
   removeManager: (member: string) => Promise<void>;
-  /** Claim the owner slot for the current identity (no-op if already
-   *  owned by this identity; errors if a different key owns it). */
-  claimOwner: () => Promise<void>;
   refetch: () => void;
 }
 
@@ -663,8 +660,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     // The admin-membership check below needs the caller's verified
     // namespace identity. Wait for it. Without this guard, `selfIdentity`
     // could be `null` and the check would silently fall through to
-    // "not admin" (callerIsNsAdmin = false), leaving a legitimate
-    // admin's registry unclaimed.
+    // "not admin" (callerIsNsAdmin = false), and a legitimate admin's
+    // workspace would never get its registry.
     if (!selfIdentity) return;
     if (lazyCreateRef.current === selectedNsId) return;
     lazyCreateRef.current = selectedNsId;
@@ -672,19 +669,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     const callerIdentity = selfIdentity;
     (async () => {
       try {
-        // (2) Admin only. Read the roster BEFORE creating, not after: the old
-        // code created unconditionally and only gated `claimOwner` on admin,
-        // so a non-admin member of a mid-replication namespace still minted a
-        // registry - it just did not claim it.
+        // (2) Admin only. Read the roster BEFORE creating: a non-admin member
+        // of a mid-replication namespace must not mint a registry.
         let callerIsNsAdmin = false;
         try {
-          const raw = (await mero.admin.listGroupMembers(
-            healingNsId,
-          )) as unknown as {
-            members?: Array<{ identity: string; role?: string }>;
-            data?: Array<{ identity: string; role?: string }>;
-          };
-          const membersList = raw.members ?? raw.data ?? [];
+          const { members: membersList } =
+            await mero.admin.listGroupMembers(healingNsId);
           callerIsNsAdmin =
             membersList.find((m) => m.identity === callerIdentity)?.role ===
             'Admin';
@@ -714,8 +704,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           name: REGISTRY_CONTEXT_ALIAS,
         });
         // The registry's owner is whoever creates its context - fixed in the
-        // contract's `init`, where nobody can change it afterwards (see
-        // logic/crates/registry/src/permissions.rs::claim_owner_inner). That
+        // contract's `init`, where nobody can change it afterwards. That
         // is why only a core namespace-admin may create it (checked above):
         // creating it IS taking ownership. We mirror useMemberCaps's admin
         // check inline (we can't call useMemberCaps here - it consumes
@@ -729,11 +718,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // `createContext` mint or pick a different one than the
         // identity that ranks as Admin in the namespace.
         if (reg?.contextId) {
-          // `claim_owner` only confirms the ownership `init` recorded: it
-          // succeeds for the creator and is refused for anyone else.
-          await new RegistryClient(mero, reg.contextId)
-            .claimOwner()
-            .catch(() => {});
           // Pin it immediately. This is what stops any OTHER node reaching the
           // "absent" branch for this namespace: the pin replicates, and a node
           // that holds a pin it cannot resolve waits instead of minting.
@@ -848,15 +832,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     },
     [registryClient],
   );
-  const claimRegistryOwner = useCallback(async () => {
-    if (!registryClient) return;
-    await registryClient.claimOwner();
-    setRegAdminTick((t) => t + 1);
-  }, [registryClient]);
-
   const registryAdmin = useMemo<RegistryAdminSlice>(() => {
     // ⚠️ Both sides of this comparison must be ACCOUNTS. `getOwner()` returns
-    // whatever `claim_owner` stored, which the contract derives from
+    // the owner `init` recorded, which the contract derives from
     // `env::account_id()` - it used to derive it from `env::device_id()`, and
     // an account never equals a device id, so this was permanently false and
     // the real owner's own client hid every admin control from them. Two
@@ -875,7 +853,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       error: regAdminError,
       addManager,
       removeManager,
-      claimOwner: claimRegistryOwner,
       refetch: refetchRegAdmin,
     };
   }, [
@@ -886,7 +863,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     regAdminError,
     addManager,
     removeManager,
-    claimRegistryOwner,
     refetchRegAdmin,
   ]);
 
@@ -968,12 +944,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // --- Alias lookup (per-folder getGroupInfo) ---
   //
-  // `listSubgroups` is broken upstream (mero-js unwraps `.data` from a
-  // response whose actual wire shape is `{subgroups: [...]}`) so we
-  // can't read folder names from the subgroup list. `getGroupInfo`
-  // IS correctly shaped (`{data: {..., metadata}}`) - unwrap works,
-  // and the human-readable name lives at `metadata.name`. We fan out
-  // one getGroupInfo per folder and cache by id.
+  // The human-readable name lives at `metadata.name` on `getGroupInfo`. We
+  // fan out one getGroupInfo per folder and cache by id.
   //
   // `aliasRevision` bumps on refetch() so rename flows re-fetch even
   // though the folder id set hasn't changed.
@@ -1094,9 +1066,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // --- Merge admin subgroups with registry metadata ---
   // Registry is the source of truth for existence + tree shape;
-  // aliases come from the per-folder getGroupInfo cache above. The
-  // `subgroups` list (from mero-react) is unreliable upstream but
-  // included as a secondary alias source when it happens to work.
+  // aliases come from the per-folder getGroupInfo cache above, with the
+  // `subgroups` list (from mero-react) as a secondary alias source.
   const folders = useMemo<MergedFolder[]>(() => {
     if (!rootGroupId) return [];
     const admin: AdminSubgroup[] = regFolders.map((f) => {
@@ -1237,33 +1208,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // root group. This is the convention the rest of the hook
         // relies on: contexts[0] === Registry context. Hard failure -
         // without a Registry context the workspace is unusable.
-        const reg = await mero.admin.createContext({
+        await mero.admin.createContext({
           applicationId,
           groupId: ns.namespaceId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
           name: REGISTRY_CONTEXT_ALIAS,
         });
-        // Step 4 - confirm the registry's owner. The contract records its
-        // creator as the owner in `init`, so this cannot change who owns it;
-        // it only surfaces a mismatch early. `createContext` returns
-        // `{ contextId, memberPublicKey }` (see mero-js admin-types
-        // `CreateContextResponseData`).
-        //
-        // Best-effort: we DON'T abort the create here; see Fix D in the
-        // code-review notes.
-        if (reg?.contextId && reg?.memberPublicKey) {
-          try {
-            await new RegistryClient(mero, reg.contextId).claimOwner();
-          } catch (e) {
-            console.warn(
-              '[useDriveWorkspace] claimOwner failed during ' +
-                'createWorkspace; registry left unclaimed. Re-run via ' +
-                'the workspace settings "Claim ownership" button.',
-              e,
-            );
-          }
-        }
         createdNsId.current = ns.namespaceId;
         await refetchNamespaces();
         userCleared.current = false;

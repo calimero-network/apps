@@ -10,9 +10,10 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pipeToLog } from "@calimero-apps/e2e-node";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(__dirname, "..");
@@ -142,9 +143,7 @@ export default async function globalSetup() {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ...AUTH_ENV },
   });
-  const log = createWriteStream(path.join(DATA_DIR, `${NODE_NAME}.log`));
-  proc.stdout?.pipe(log);
-  proc.stderr?.pipe(log);
+  pipeToLog(proc, path.join(DATA_DIR, `${NODE_NAME}.log`));
   if (proc.pid) pids.push(proc.pid);
 
   await waitForHealth(NODE_URL);

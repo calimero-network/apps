@@ -2,7 +2,7 @@
  * Playwright global teardown: stops all merod nodes, cleans up data.
  */
 import { existsSync, readFileSync } from 'fs';
-import { execSync } from 'child_process';
+import { removeDataDir, stopNodes } from '@calimero-apps/e2e-node';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -13,23 +13,17 @@ const STATE_FILE = path.resolve(DATA_DIR, 'pw-state.json');
 export default async function globalTeardown() {
   if (!existsSync(STATE_FILE)) return;
 
-  let spawnedAny = false;
+  let pids: number[] = [];
   try {
-    const state = JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
-    for (const pid of state.pids || []) {
-      spawnedAny = true;
-      console.log(`Stopping merod (PID ${pid})...`);
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch { /* already dead */ }
-    }
-    if (spawnedAny) await new Promise((r) => setTimeout(r, 2000));
+    pids = JSON.parse(readFileSync(STATE_FILE, 'utf-8')).pids || [];
   } catch { /* state file corrupted */ }
+  for (const pid of pids) console.log(`Stopping merod (PID ${pid})...`);
+  await stopNodes(pids);
 
   // Only wipe data when we spawned nodes ourselves. Leave reused dev nodes alone.
   // Set KEEP_DATA=1 to preserve logs/config for debugging.
-  if (spawnedAny && existsSync(DATA_DIR) && !process.env['KEEP_DATA']) {
-    execSync(`rm -rf "${DATA_DIR}"`);
+  if (pids.length && existsSync(DATA_DIR) && !process.env['KEEP_DATA']) {
+    removeDataDir(DATA_DIR);
     console.log('All nodes stopped, data cleaned');
   } else {
     console.log('Leaving data dir intact');

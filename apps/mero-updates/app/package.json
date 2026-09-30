@@ -40,6 +40,7 @@
     "react-router-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "catalog:",
     "@playwright/test": "catalog:",

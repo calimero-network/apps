@@ -23,7 +23,10 @@ test.describe('Folder CRUD (single-node)', () => {
     // asserts the creator can create + see a Restricted folder; the
     // distinction-by-state is covered in the two-node
     // restricted-folder-invite spec.
-    await alice.createFolder({ name: 'Restricted A', visibility: 'Restricted' });
+    await alice.createFolder({
+      name: 'Restricted A',
+      visibility: 'Restricted',
+    });
     await alice.tree.expectFolderVisible('Restricted A');
   });
 
