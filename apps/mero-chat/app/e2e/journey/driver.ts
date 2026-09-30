@@ -117,9 +117,36 @@ async function typeAndSend(page: Page, text: string): Promise<void> {
   await expect(messageRow(page, text).first()).toBeVisible({ timeout: 30_000 });
 }
 
-async function openMessageMenu(row: Locator, item: string): Promise<void> {
-  await row.hover();
-  await row.getByTestId("message-action-2").first().click();
+async function dismissToasts(page: Page): Promise<void> {
+  const close = page.getByRole("button", { name: "Dismiss notification" });
+  for (let i = 0; i < 10; i++) {
+    if ((await close.count()) === 0) return;
+    await close
+      .first()
+      .click({ timeout: 2_000 })
+      .catch(() => undefined);
+    await page.waitForTimeout(350);
+  }
+}
+
+async function clickInRow(page: Page, row: Locator, target: Locator): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await dismissToasts(page);
+        await row.hover();
+        return target.click({ timeout: 5_000 }).then(
+          () => true,
+          () => false,
+        );
+      },
+      { timeout: 60_000, intervals: [1_000, 2_000, 3_000] },
+    )
+    .toBe(true);
+}
+
+async function openMessageMenu(page: Page, row: Locator, item: string): Promise<void> {
+  await clickInRow(page, row, row.getByTestId("message-action-2").first());
   await row.getByText(item, { exact: true }).click();
 }
 
@@ -191,8 +218,7 @@ const react: Feature = {
     reacted[actor.name] = target;
     await inChannel(actor);
     const row = messageRow(actor.page, target).first();
-    await row.hover();
-    await row.getByTestId("react-👍").first().click();
+    await clickInRow(actor.page, row, row.getByTestId("react-👍").first());
     await expect(row.getByTestId("message-reaction").filter({ hasText: "👍" })).toBeVisible({ timeout: 30_000 });
   },
   async seen(actor, by) {
@@ -214,7 +240,7 @@ const editMessage: Feature = {
     const text = `${actor.name} edited ${actor.run} ${stamp()}`;
     await inChannel(actor);
     const row = messageRow(page, old).first();
-    await openMessageMenu(row, "Edit message");
+    await openMessageMenu(page, row, "Edit message");
     const editor = page.getByTestId("message-editor").locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 30_000 });
     await editor.click();
@@ -243,7 +269,7 @@ const deleteMessage: Feature = {
     deleted[actor.name] = text;
     await inChannel(actor);
     await typeAndSend(page, text);
-    await openMessageMenu(messageRow(page, text).first(), "Delete message");
+    await openMessageMenu(page, messageRow(page, text).first(), "Delete message");
     await expect(messageRow(page, text)).toHaveCount(0, { timeout: 30_000 });
     await expect(page.getByText("This message has been deleted.").first()).toBeVisible({ timeout: 30_000 });
   },

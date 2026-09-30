@@ -25,11 +25,20 @@ function latest(name: string): string {
   return title;
 }
 
-async function waitForCalendar(page: Page): Promise<void> {
+function username(actor: Actor): string {
+  return `${actor.name}-${actor.run}`;
+}
+
+function peerOf(actor: Actor): string {
+  return `${actor.name === "alice" ? "bob" : "alice"}-${actor.run}`;
+}
+
+async function waitForCalendar(actor: Actor): Promise<void> {
+  const page = actor.page;
   await expect(page.getByTestId("add-event-btn")).toBeVisible({ timeout: 60_000 });
   const modal = page.getByTestId("username-modal");
   if (await modal.isVisible()) {
-    await page.getByTestId("username-input").fill(`user-${Date.now().toString(36)}`);
+    await page.getByTestId("username-input").fill(username(actor));
     await page.getByTestId("username-submit").click();
     await expect(modal).toBeHidden({ timeout: 15_000 });
   }
@@ -64,13 +73,14 @@ async function openEventPopup(page: Page, title: string): Promise<void> {
   await chip(page, title).first().click();
 }
 
-async function eventually(page: Page, check: () => Promise<boolean>): Promise<void> {
+async function eventually(actor: Actor, check: () => Promise<boolean>): Promise<void> {
+  const page = actor.page;
   await expect
     .poll(
       async () => {
         if (await check()) return true;
         await page.reload();
-        await waitForCalendar(page);
+        await waitForCalendar(actor);
         return check();
       },
       { timeout: SYNC, intervals: [3_000, 5_000, 8_000] },
@@ -80,19 +90,38 @@ async function eventually(page: Page, check: () => Promise<boolean>): Promise<vo
 
 async function createEvent(actor: Actor): Promise<void> {
   const page = actor.page;
-  await waitForCalendar(page);
+  await waitForCalendar(actor);
   const title = nextTitle(actor, "event");
   (events[actor.name] ??= []).push(title);
   await page.getByTestId("add-event-btn").click();
   await page.getByPlaceholder("Title", { exact: true }).fill(title);
+  await addPeer(page, peerOf(actor));
   await page.getByTestId("event-submit").click();
   await expect(page.getByTestId("event-submit")).toBeHidden({ timeout: 30_000 });
   await expect(chip(page, title)).toBeVisible({ timeout: 30_000 });
+  await expect(chip(page, title).first()).toHaveAttribute("data-private", "false");
+}
+
+async function addPeer(page: Page, name: string): Promise<void> {
+  const search = page.getByTestId("peer-search");
+  const option = page.getByRole("listitem").filter({ hasText: name });
+  await expect
+    .poll(
+      async () => {
+        await search.fill("");
+        await search.fill(name);
+        return option.count();
+      },
+      { timeout: SYNC, intervals: [1_000, 2_000, 3_000] },
+    )
+    .toBeGreaterThan(0);
+  await option.first().click();
+  await expect(search).toHaveAttribute("placeholder", "Add another…", { timeout: 10_000 });
 }
 
 async function seeLatest(actor: Actor, by: Actor): Promise<void> {
   const title = latest(by.name);
-  await eventually(actor.page, async () => (await chip(actor.page, title).count()) > 0);
+  await eventually(actor, async () => (await chip(actor.page, title).count()) > 0);
 }
 
 const createFeature: Feature = {
@@ -105,7 +134,7 @@ const editFeature: Feature = {
   name: "edit my event's title",
   async do(actor: Actor) {
     const page = actor.page;
-    await waitForCalendar(page);
+    await waitForCalendar(actor);
     const list = events[actor.name];
     const old = latest(actor.name);
     const title = nextTitle(actor, "edited");
@@ -123,7 +152,7 @@ const editFeature: Feature = {
     const title = latest(by.name);
     const old = removed[by.name] ?? "";
     await eventually(
-      actor.page,
+      actor,
       async () => (await chip(actor.page, title).count()) > 0 && (await chip(actor.page, old).count()) === 0,
     );
   },
@@ -133,7 +162,7 @@ const deleteFeature: Feature = {
   name: "delete my event",
   async do(actor: Actor) {
     const page = actor.page;
-    await waitForCalendar(page);
+    await waitForCalendar(actor);
     const title = latest(actor.name);
     await openEventPopup(page, title);
     await page.getByTestId("popup-delete").click();
@@ -144,7 +173,7 @@ const deleteFeature: Feature = {
   async seen(actor: Actor, by: Actor) {
     const title = removed[by.name];
     if (!title) throw new Error(`${by.name} has not deleted anything`);
-    await eventually(actor.page, async () => (await chip(actor.page, title).count()) === 0);
+    await eventually(actor, async () => (await chip(actor.page, title).count()) === 0);
   },
 };
 
@@ -180,7 +209,7 @@ export const driver: AppDriver = {
     await goTeam(page);
     await page.getByTestId("new-calendar-input").fill(name);
     await page.getByTestId("create-calendar-btn").click();
-    await waitForCalendar(page);
+    await waitForCalendar(actor);
   },
 
   async openSpace(actor, name) {
@@ -200,7 +229,7 @@ export const driver: AppDriver = {
       )
       .toBe(true);
     await card.first().click();
-    await waitForCalendar(page);
+    await waitForCalendar(actor);
   },
 
   async invite(actor) {
@@ -228,7 +257,7 @@ export const driver: AppDriver = {
   },
 
   async afterReload(actor) {
-    await waitForCalendar(actor.page);
+    await waitForCalendar(actor);
   },
 
   features: [createFeature, editFeature, deleteFeature, createAgainFeature],
