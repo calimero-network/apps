@@ -431,6 +431,14 @@ jobs:
       - name: Assert every create_mesh is preceded by a settle
         run: python3 scripts/tests/mesh-settle-test.py
 
+      # Retrying anything but a joining-step failure hides real defects and can
+      # burn the whole job budget on a deterministic one.
+      - name: Assert the e2e retry only covers joining-step failures
+        run: python3 scripts/tests/e2e-retry-decision-test.py
+
+      - name: Assert the e2e matrix lists every scenario the job globs
+        run: python3 scripts/tests/e2e-matrix-test.py
+
       # A lockfile inside a workspace member installs nothing (pnpm resolves
       # from the root) but Dependabot scans it, so it generates security alerts
       # forever. Two of them accounted for 176 of 182 open alerts, including all
