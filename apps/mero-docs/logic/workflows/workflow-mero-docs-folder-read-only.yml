@@ -152,6 +152,10 @@ steps:
     outputs:
       bob_account: memberAccount
 
+  - name: Wait before Carol joins
+    type: wait
+    seconds: 5
+
   - name: Carol joins the namespace
     type: join_namespace
     node: curo-node-3
