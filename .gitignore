@@ -57,6 +57,7 @@ playwright-report/
 e2e-artifacts/
 # Node home + logs the browser e2e global-setup creates.
 .playwright-data/
+.journey-data/
 blob-report/
 
 # OS

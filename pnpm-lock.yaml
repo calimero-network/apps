@@ -2202,6 +2202,9 @@ importers:
 
   packages/e2e-node:
     devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1

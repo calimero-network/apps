@@ -58,6 +58,7 @@ jobs:
       # `apps` as {app, shard} pairs: an app in BROWSER_SHARDS runs its browser
       # e2e split across that many runners.
       browser_matrix: ${{ steps.set.outputs.browser_matrix }}
+      journey_matrix: ${{ steps.journey.outputs.matrix }}
       logic: ${{ steps.filter.outputs.logic }}
       # pnpm workspace dirs the frontend job typechecks/tests/builds, or
       # ["*"] for all of them. Frontend-only apps (no crate) appear here and
@@ -300,6 +301,23 @@ jobs:
           fi
           echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
           echo "contract_workflows=$(python3 scripts/e2e-matrix.py <<<"$contract_apps")" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the journey matrix
+        id: journey
+        env:
+          APPS: ${{ steps.set.outputs.apps }}
+        run: |
+          set -euo pipefail
+          pin=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
+          desktop=$(curl -fsSL --retry 5 --retry-all-errors https://raw.githubusercontent.com/calimero-network/tauri-app/master/merod-config.json | jq -r .version || true)
+          legs=$(jq -nc --arg pin "$pin" --arg desktop "$desktop" \
+            '[{leg: "pin", merod: $pin}] + (if ($desktop != "" and $desktop != "null" and $desktop != $pin) then [{leg: "desktop", merod: $desktop}] else [] end)')
+          with_journey=$(jq -r '.[]' <<<"$APPS" | while read -r app; do
+            if [ -f "apps/$app/app/playwright.journey.config.ts" ]; then echo "$app"; fi
+          done | jq -Rsc 'split("\n") | map(select(length > 0))')
+          matrix=$(jq -c --argjson legs "$legs" '[.[] as $app | $legs[] | . + {app: $app}]' <<<"$with_journey")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "::notice::journey: pin $pin, desktop ${desktop:-unknown}; $matrix"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -830,6 +848,75 @@ jobs:
             apps/${{ matrix.app }}/app/playwright-report
             apps/${{ matrix.app }}/app/test-results
             apps/${{ matrix.app }}/app/.playwright-data/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  journey:
+    name: Journey (${{ matrix.app }} on ${{ matrix.leg }} ${{ matrix.merod }})
+    needs: [changes, wasm]
+    if: needs.changes.outputs.journey_matrix != '[]' && needs.changes.outputs.journey_matrix != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.journey_matrix != '[]' && needs.changes.outputs.journey_matrix || '[{"app":"none","leg":"none","merod":""}]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpk-${{ matrix.app }}-${{ github.sha }}
+          path: bundle
+
+      - name: Verify the bundle arrived
+        run: |
+          set -euo pipefail
+          mpk=$(find "$PWD/bundle" -name '*.mpk' -print -quit)
+          if [ -z "$mpk" ]; then
+            echo "::error::no .mpk in the downloaded artifact"
+            ls -la bundle || true
+            exit 1
+          fi
+          echo "JOURNEY_MPK=$mpk" >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/setup-merod
+        with:
+          version: ${{ matrix.merod }}
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: apps/${{ matrix.app }}/app
+
+      - name: Run the journey
+        working-directory: apps/${{ matrix.app }}/app
+        env:
+          JOURNEY_APP: ${{ matrix.app }}
+          JOURNEY_MEROD_LABEL: ${{ matrix.leg }} ${{ matrix.merod }}
+          JOURNEY_DATA_DIR: ${{ runner.temp }}/journey
+        run: npx playwright test -c playwright.journey.config.ts
+
+      - name: Upload the report and node logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-${{ matrix.app }}-${{ matrix.leg }}-${{ github.sha }}
+          path: |
+            apps/${{ matrix.app }}/app/playwright-report/journey
+            apps/${{ matrix.app }}/app/test-results/journey
+            ${{ runner.temp }}/journey/*.log
+            ${{ runner.temp }}/journey/rig.json
           retention-days: 7
           if-no-files-found: ignore
 

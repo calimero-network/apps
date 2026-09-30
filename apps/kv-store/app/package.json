@@ -11,7 +11,8 @@
     "test": "vitest run",
     "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name KvStoreClient --import-path @calimero-network/mero-js",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",
