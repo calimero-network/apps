@@ -245,8 +245,8 @@ const editMessage: Feature = {
     await expect(editor).toBeVisible({ timeout: 30_000 });
     await editor.click();
     await page.keyboard.press("ControlOrMeta+A");
-    await page.keyboard.press("Backspace");
     await page.keyboard.type(text);
+    await expect(editor).toHaveText(text, { timeout: 10_000 });
     await page.keyboard.press("Enter");
     sent[actor.name] = text;
     await expect(messageRow(page, text).first()).toBeVisible({ timeout: 30_000 });

@@ -70,7 +70,7 @@ async function goTeam(page: Page): Promise<void> {
 }
 
 async function openEventPopup(page: Page, title: string): Promise<void> {
-  await chip(page, title).first().click();
+  await chip(page, title).first().click({ position: { x: 6, y: 6 } });
 }
 
 async function eventually(actor: Actor, check: () => Promise<boolean>): Promise<void> {
