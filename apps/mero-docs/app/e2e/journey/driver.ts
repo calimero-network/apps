@@ -1,6 +1,11 @@
-import { expect, type Locator, type Page } from "@playwright/test";
-import { defaultLogin, type Actor, type AppDriver, type Feature } from "@calimero-apps/e2e-node/journey";
-import { WorkspaceDriver } from "../fixtures/workspace";
+import { expect, type Locator, type Page } from '@playwright/test';
+import {
+  defaultLogin,
+  type Actor,
+  type AppDriver,
+  type Feature,
+} from '@calimero-apps/e2e-node/journey';
+import { WorkspaceDriver } from '../fixtures/workspace';
 
 const SYNC = 90_000;
 
@@ -14,15 +19,23 @@ function firstFolder(actor: Actor): string {
 
 async function waitForShell(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/app/, { timeout: 60_000 });
-  await expect(page.getByTestId("workspace-switcher")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('workspace-switcher')).toBeVisible({
+    timeout: 60_000,
+  });
 }
 
-async function eventually(page: Page, target: () => Locator, refresh: () => Promise<void>): Promise<void> {
+async function eventually(
+  page: Page,
+  target: () => Locator,
+  refresh: () => Promise<void>,
+): Promise<void> {
   const deadline = Date.now() + SYNC;
   for (;;) {
     const left = deadline - Date.now();
     try {
-      await expect(target().first()).toBeVisible({ timeout: Math.max(1_000, Math.min(20_000, left)) });
+      await expect(target().first()).toBeVisible({
+        timeout: Math.max(1_000, Math.min(20_000, left)),
+      });
       return;
     } catch (e) {
       if (Date.now() >= deadline) throw e;
@@ -35,7 +48,11 @@ async function eventually(page: Page, target: () => Locator, refresh: () => Prom
 
 async function openFolder(actor: Actor, name: string): Promise<void> {
   const w = ws(actor);
-  await eventually(actor.page, () => w.tree.folderRow(name), async () => undefined);
+  await eventually(
+    actor.page,
+    () => w.tree.folderRow(name),
+    async () => undefined,
+  );
   await w.tree.openFolder(name);
   await w.restrictedCard.joinIfPrompted(name, { timeout: SYNC });
 }
@@ -55,7 +72,7 @@ const docs: Record<string, string> = {};
 let docCount = 0;
 
 const createDoc: Feature = {
-  name: "create a document in a shared folder",
+  name: 'create a document in a shared folder',
   async do(actor) {
     const title = `doc-${actor.name}-${actor.run}-${++docCount}`;
     docs[actor.name] = title;
@@ -78,7 +95,7 @@ const createDoc: Feature = {
 const bodies: Record<string, { title: string; text: string }> = {};
 
 const writeBody: Feature = {
-  name: "write text into a document",
+  name: 'write text into a document',
   async do(actor) {
     const title = docs[actor.name];
     if (!title) throw new Error(`${actor.name} has no document to write in`);
@@ -100,7 +117,7 @@ const writeBody: Feature = {
 const tags: Record<string, { title: string; tag: string }> = {};
 
 const tagDoc: Feature = {
-  name: "tag a document",
+  name: 'tag a document',
   async do(actor) {
     const title = docs[actor.name];
     if (!title) throw new Error(`${actor.name} has no document to tag`);
@@ -123,7 +140,7 @@ const tagDoc: Feature = {
 };
 
 export const driver: AppDriver = {
-  app: "mero-docs",
+  app: 'mero-docs',
 
   async login(actor) {
     await defaultLogin(actor);
@@ -137,7 +154,7 @@ export const driver: AppDriver = {
 
   async createSpace(actor, name) {
     const w = ws(actor);
-    await w.createFolder({ name, visibility: "Open" });
+    await w.createFolder({ name, visibility: 'Open' });
     await w.tree.openFolder(name);
   },
 
@@ -155,9 +172,11 @@ export const driver: AppDriver = {
 
   async acceptInvite(actor, link) {
     const page = actor.page;
-    const url = new URL(link, "http://placeholder");
+    const url = new URL(link, 'http://placeholder');
     await page.goto(`/${url.search}${url.hash}`);
-    const accept = page.getByRole("button", { name: /^(Accept & join|Open workspace)$/ });
+    const accept = page.getByRole('button', {
+      name: /^(Accept & join|Open workspace)$/,
+    });
     await expect(accept).toBeVisible({ timeout: 60_000 });
     await accept.click();
     await expect(page).toHaveURL(/\/app/, { timeout: SYNC });

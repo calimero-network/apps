@@ -7,6 +7,7 @@ let teamId = "";
 let counter = 0;
 const events: Record<string, string[]> = {};
 const removed: Record<string, string> = {};
+const spaceOf: Record<string, string> = {};
 
 function nextTitle(actor: Actor, kind: string): string {
   counter += 1;
@@ -175,6 +176,7 @@ export const driver: AppDriver = {
 
   async createSpace(actor, name) {
     const page = actor.page;
+    spaceOf[actor.name] = name;
     await goTeam(page);
     await page.getByTestId("new-calendar-input").fill(name);
     await page.getByTestId("create-calendar-btn").click();
@@ -183,6 +185,7 @@ export const driver: AppDriver = {
 
   async openSpace(actor, name) {
     const page = actor.page;
+    spaceOf[actor.name] = name;
     await goTeam(page);
     const card = page.locator('[data-testid^="calendar-card-"]', { hasText: name });
     await expect
@@ -207,7 +210,10 @@ export const driver: AppDriver = {
     await page.getByRole("button", { name: "Invite", exact: true }).click();
     const code = page.locator(`[data-testid="copy-invite"]`).locator("xpath=..").locator("code");
     await expect(code).toBeVisible({ timeout: 30_000 });
-    return (await code.getAttribute("title")) ?? "";
+    const link = (await code.getAttribute("title")) ?? "";
+    const space = spaceOf[actor.name];
+    if (space) await driver.openSpace!(actor, space);
+    return link;
   },
 
   async acceptInvite(actor, link) {

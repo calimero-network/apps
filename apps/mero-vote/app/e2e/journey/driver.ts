@@ -115,7 +115,7 @@ const createPoll: Feature = {
     const t = title();
     await eventually(page, null, async () => {
       const row = pollRow(page, t);
-      return (await row.count()) > 0 && (await row.first().innerText()).includes("Voting");
+      return (await row.count()) > 0 && /voting/i.test(await row.first().innerText());
     });
   },
 };

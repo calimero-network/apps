@@ -39,7 +39,9 @@ async function seeEntry(page: Page, key: string, value: string | null): Promise<
     .toBe(true);
 }
 
-const written: Record<string, { key: string; value: string }> = {};
+type Entry = { key: string; value: string };
+const written: Record<string, Entry> = {};
+const overwritten: Record<string, Entry> = {};
 
 const setKey: Feature = {
   name: "set a key",
@@ -57,17 +59,15 @@ const setKey: Feature = {
 };
 
 const overwriteKey: Feature = {
-  name: "overwrite the other person's key",
+  name: "overwrite a shared key",
   async do(actor: Actor) {
-    const other = actor.name === "alice" ? "bob" : "alice";
-    const target = written[other] ?? written[actor.name];
-    if (!target) throw new Error("no key to overwrite");
+    const key = `shared-${actor.run}`;
     const value = `over-${actor.name}-${Date.now().toString(36)}`;
-    written[actor.name] = { key: target.key, value };
-    await setEntry(actor.page, target.key, value);
+    overwritten[actor.name] = { key, value };
+    await setEntry(actor.page, key, value);
   },
   async seen(actor: Actor, by: Actor) {
-    const w = written[by.name];
+    const w = overwritten[by.name];
     if (!w) throw new Error(`${by.name} has not written anything yet`);
     await seeEntry(actor.page, w.key, w.value);
   },
@@ -77,7 +77,7 @@ const removeKey: Feature = {
   name: "remove a key",
   oneWay: true,
   async do(actor: Actor) {
-    const w = written[actor.name];
+    const w = overwritten[actor.name];
     if (!w) throw new Error("nothing to remove");
     const remove = card(actor.page, "Remove");
     await remove.getByLabel("remove key", { exact: true }).fill(w.key);
@@ -85,7 +85,7 @@ const removeKey: Feature = {
     await seeEntry(actor.page, w.key, null);
   },
   async seen(actor: Actor, by: Actor) {
-    const w = written[by.name];
+    const w = overwritten[by.name];
     if (!w) throw new Error(`${by.name} has not removed anything`);
     await seeEntry(actor.page, w.key, null);
   },

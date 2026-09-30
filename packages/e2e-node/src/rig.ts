@@ -298,13 +298,34 @@ export function readRigState(dataDir: string): RigState {
   return JSON.parse(readFileSync(rigStatePath(dataDir), "utf8")) as RigState;
 }
 
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startUntilHealthy(state: RigState, node: RigNode, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    node.pid = spawnNode(state.merod, node);
+    writeRigState(state);
+    while (Date.now() < deadline && isAlive(node.pid)) {
+      if (await healthy(node.url)) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error(`${node.name} did not come back healthy within ${timeoutMs}ms; see ${node.log}`);
+}
+
 export async function restartNode(state: RigState, index: number): Promise<RigNode> {
   const node = state.nodes[index];
   if (!node) throw new Error(`no node ${index} in the rig`);
   await stopNodes([node.pid]);
-  node.pid = spawnNode(state.merod, node);
-  writeRigState(state);
-  await waitFor(`${node.name} healthy after restart`, () => healthy(node.url), 60_000);
+  await startUntilHealthy(state, node, 90_000);
   node.adminToken = await mintAdminToken(node.url);
   writeRigState(state);
   if (state.nodes.length > 1) {
