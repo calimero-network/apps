@@ -178,7 +178,7 @@ export async function createGroup(
   const body = await adminFetch(`/admin-api/namespaces/${namespaceId}/groups`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(groupName ? { groupName } : {}),
+    body: JSON.stringify(groupName ? { groupName, visibility: "open" } : { visibility: "open" }),
   }) as { data?: { groupId?: string } };
   const groupId = body?.data?.groupId;
   if (!groupId) throw new Error(`createGroup: no groupId in response: ${JSON.stringify(body)}`);
