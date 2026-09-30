@@ -130,6 +130,16 @@ describe('useMemberCaps', () => {
     expect(result.current.denied).toBe(false);
   });
 
+  it('drops the last caps once core no longer finds the member', async () => {
+    getCaps.mockResolvedValue({ capabilities: 5 });
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.caps).toBe(5));
+    getCaps.mockRejectedValue(new HTTPError(404, '', '/groups/g1/members/bob/capabilities', new Headers()));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.caps).toBe(0);
+  });
+
   it('keeps the last good caps when a re-read fails for another reason', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     getCaps.mockResolvedValue({ capabilities: 5 });

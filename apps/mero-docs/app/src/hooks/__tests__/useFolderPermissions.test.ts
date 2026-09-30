@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { HTTPError } from '@calimero-network/mero-js';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
 import type { Role } from '../../generated/registry/RegistryClient';
@@ -168,6 +169,17 @@ describe('useFolderPermissions', () => {
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-x'));
     await waitFor(() => expect(result.current.error).toBe(boom));
     expect(result.current.canManageGroup).toBe(false);
+  });
+
+  it('reports a member core no longer finds in the folder as removed, without retrying', async () => {
+    getMemberCapsMock.mockRejectedValue(
+      new HTTPError(404, '', '/groups/folder-1/members/bob/capabilities', new Headers()),
+    );
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(result.current.removed).toBe(true));
+    expect(getMemberCapsMock).toHaveBeenCalledTimes(1);
+    expect(result.current.denied).toBe(false);
+    expect(result.current.isMember).toBe(false);
   });
 
   it('caps-fetch error → isMember false (NOT writable on error)', async () => {
