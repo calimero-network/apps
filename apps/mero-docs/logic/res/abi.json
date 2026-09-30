@@ -363,7 +363,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "Hex account of whoever created the doc, from `origins`' owner stamp."
+          "doc": "Hex account of whoever created the doc, from its header's owner stamp."
         },
         {
           "name": "updated_by",
@@ -452,7 +452,7 @@
     },
     "DocsState": {
       "kind": "record",
-      "doc": "`docs` + their `origins` + moderated `comments`.",
+      "doc": "`docs` + their `headers` + moderated `comments`.",
       "fields": [
         {
           "name": "docs",
@@ -466,10 +466,10 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<counter>-<account tag>` and assigned by `create_doc`."
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`."
         },
         {
-          "name": "origins",
+          "name": "headers",
           "type": {
             "kind": "map",
             "key": {
@@ -480,16 +480,7 @@
             },
             "crdt_type": "authored_map"
           },
-          "doc": "doc_id → created_at, written once by the doc's creator. Its owner\nstamp is who created the doc, and nobody can rewrite either."
-        },
-        {
-          "name": "next_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Id allocator. Every create increments; the account tag in the id is\nwhat keeps two concurrent creates apart (see `account_tag`)."
+          "doc": "doc_id → created_at, filed by the doc's creator, whose owner stamp it\ncarries. A doc is listed while that entry lives; only its creator or a\nmoderator (the founder) may remove it, and every node enforces that."
         },
         {
           "name": "comments",
@@ -504,15 +495,6 @@
             "crdt_type": "authored_map"
           },
           "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
-        },
-        {
-          "name": "next_comment_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          },
-          "doc": "Comment-id allocator (`cmt-<n>-<account tag>`)."
         }
       ]
     },
@@ -1023,6 +1005,7 @@
     },
     {
       "name": "comment_count",
+      "doc": "Comments held by the account their id names, on a doc that is still listed;\n`len` would count planted ones and a deleted doc's too.",
       "params": [],
       "returns": {
         "kind": "u64"
@@ -1031,7 +1014,7 @@
     },
     {
       "name": "comment_schema_version",
-      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account holding the comment (the lowest, if several\ndo), read by name, so it answers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
+      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account the comment's id names, read by name, so it\nanswers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
       "params": [
         {
           "name": "id",
@@ -1397,6 +1380,7 @@
     },
     {
       "name": "list_docs",
+      "doc": "The docs whose creator's header lives, body or not.",
       "params": [
         {
           "name": "include_archived",

@@ -1,0 +1,202 @@
+name: Mero Docs - two devices of one account each create a doc offline
+description: >
+  Alice's laptop (node 1) holds her account root; her phone (node 2) is paired
+  onto the same account. Each creates a doc while the other is stopped, and
+  each device mints its own id. Each doc must keep its own id and title
+  after they meet again.
+
+e2e_mode: true
+
+# Pinned per node: the count form lets --e2e-mode allocate ports dynamically,
+# and a later start_node reconnects on base_port.
+nodes:
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.62
+  s1-dev-1:
+    port: 4020
+    rpc_port: 4021
+  s1-dev-2:
+    port: 4022
+    rpc_port: 4023
+
+steps:
+  - name: Install the bundle on the laptop
+    type: install_application
+    node: s1-dev-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install the bundle on the phone
+    type: install_application
+    node: s1-dev-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: The laptop creates the namespace
+    type: create_namespace
+    node: s1-dev-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: The laptop creates a Docs context
+    type: create_context
+    node: s1-dev-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      laptop_key: memberPublicKey
+
+  - name: What the laptop speaks as
+    type: node_identity
+    node: s1-dev-1
+    outputs:
+      alice_account: accountId
+      alice_device: deviceId
+      alice_root: accountRootPublicKey
+      account_ns: accountNamespaceId
+
+  - name: Pair the phone onto Alice's account
+    type: account_pair
+    node: s1-dev-2
+    holder: s1-dev-1
+    root_key: '{{alice_root}}'
+    account_namespace: '{{account_ns}}'
+    namespaces:
+      - '{{namespace_id}}'
+    applications:
+      - '{{app_id}}'
+    await_self: true
+
+  - name: What the phone speaks as
+    type: node_identity
+    node: s1-dev-2
+    outputs:
+      phone_account: accountId
+      phone_device: deviceId
+
+  - name: The phone is a second device of Alice's account
+    type: json_assert
+    statements:
+      - 'json_equal({{phone_account}}, {{alice_account}})'
+      - 'json_not_equal({{phone_device}}, {{alice_device}})'
+
+  - name: Wait for the pairing to settle
+    type: wait
+    seconds: 10
+
+  - name: The phone joins the Docs context
+    type: join_context
+    node: s1-dev-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      phone_key: memberPublicKey
+
+  - name: Sync the Docs context
+    type: wait_for_sync
+    nodes: [s1-dev-1, s1-dev-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Stop the phone
+    type: stop_node
+    nodes: [s1-dev-2]
+
+  - name: The laptop creates a doc
+    type: call
+    node: s1-dev-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{laptop_key}}'
+    args:
+      title: Laptop
+    outputs:
+      laptop_doc: result.output
+
+  - name: Stop the laptop
+    type: stop_node
+    nodes: [s1-dev-1]
+
+  - name: Start the phone alone
+    type: start_node
+    nodes: [s1-dev-2]
+
+  - name: Wait for the phone to come up
+    type: wait
+    seconds: 10
+
+  - name: The phone creates a doc
+    type: call
+    node: s1-dev-2
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{phone_key}}'
+    args:
+      title: Phone
+    outputs:
+      phone_doc: result.output
+
+  - name: Start the laptop again
+    type: start_node
+    nodes: [s1-dev-1]
+
+  - name: Wait for the devices to find each other
+    type: wait
+    seconds: 15
+
+  - name: Sync after the partition
+    type: wait_for_sync
+    nodes: [s1-dev-1, s1-dev-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 60
+
+  - name: The laptop lists its docs
+    type: call
+    node: s1-dev-1
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{laptop_key}}'
+    args:
+      include_archived: true
+    outputs:
+      laptop_docs: result.output
+
+  - name: The phone lists its docs
+    type: call
+    node: s1-dev-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{phone_key}}'
+    args:
+      include_archived: true
+    outputs:
+      phone_docs: result.output
+
+  - name: The two creates minted two ids
+    type: json_assert
+    statements:
+      - 'json_not_equal({{laptop_doc}}, {{phone_doc}})'
+
+  - name: Both devices converged
+    type: json_assert
+    statements:
+      - 'json_equal({{laptop_docs}}, {{phone_docs}})'
+
+  # `LaptopPhone` would satisfy a plain `contains`: each title must be a whole one.
+  - name: Both docs survived whole on both devices
+    type: assert
+    statements:
+      - 'regex({{laptop_docs}}, title.{4}Laptop\W\W)'
+      - 'regex({{laptop_docs}}, title.{4}Phone\W\W)'
+      - 'regex({{phone_docs}}, title.{4}Laptop\W\W)'
+      - 'regex({{phone_docs}}, title.{4}Phone\W\W)'
+
+stop_all_nodes: false
