@@ -256,8 +256,8 @@ importers:
   apps/delegated-execution/app:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: ^22.1.0
-        version: 22.1.0
+        specifier: ^22.7.0
+        version: 22.7.0
       '@phala/dcap-qvl':
         specifier: 0.5.3
         version: 0.5.3
@@ -3014,8 +3014,8 @@ packages:
     resolution: {integrity: sha512-3jMkRWtgnXQo2g+RKlZ866Csx6sboywqvALaw2wpkzwZqipcFYmyw/M4yMU7lVtolZTSnEFGyGBxR2vxlKDyaQ==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-js@22.1.0':
-    resolution: {integrity: sha512-j5btngyj6nls+3FK4C9/aurVW2cXntEnc3SVbcp9y7+JDZL/nfL0oa+9XgSelniWD3JYEpliLRD3N2jMzxePVA==}
+  '@calimero-network/mero-js@22.7.0':
+    resolution: {integrity: sha512-OlGQBxNYvV653h/Z4gzP+10DfwRAqs7xHgrgD9VeulgW6Qok2vUwtdp7TmIccdEj68nPAe9I/7Hwd0TBe5fOvQ==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-platform-react@0.1.0':
@@ -10218,7 +10218,7 @@ snapshots:
 
   '@calimero-network/mero-js@21.4.1': {}
 
-  '@calimero-network/mero-js@22.1.0': {}
+  '@calimero-network/mero-js@22.7.0': {}
 
   '@calimero-network/mero-platform-react@0.1.0(react@19.2.8)':
     dependencies:
