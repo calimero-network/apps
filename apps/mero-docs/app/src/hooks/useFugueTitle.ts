@@ -9,7 +9,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { diffText, insertTextAt, type Change } from '@/lib/rich/delta';
+import { diffText, diffTextByIds, insertTextAt, type Change, type IdRun } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
 import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/rich/ot';
@@ -20,6 +20,7 @@ import type { Change as WireChange, DocsClient } from '@/generated/docs/DocsClie
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
+import { useStreamReconnect } from './useStreamReconnect';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
@@ -70,6 +71,8 @@ export function useFugueTitle({
   const inputRef = useRef<HTMLInputElement | null>(null);
   // The title as the node last reported it, and the input's current value.
   const serverRef = useRef('');
+  // The id of each character of serverRef, when the node's answer carried them.
+  const serverIdsRef = useRef<IdRun[] | null>(null);
   const localRef = useRef('');
   const loadedRef = useRef(false);
   const dirtyRef = useRef(false);
@@ -119,12 +122,16 @@ export function useFugueTitle({
     flushSync(() => showTitle(after));
   }, []);
 
-  /** A peer moved the title from the node's last known value to `remote`. */
+  /** A peer moved the title from the node's last known value to `remote`: by character id where both carry ids. */
   const rebase = useCallback(
-    (remote: string) => {
-      const remoteChange = diffText(serverRef.current, remote, { keepShared: true });
+    (remote: string, ids: IdRun[]) => {
+      const baseIds = serverIdsRef.current;
+      const remoteChange =
+        (baseIds && diffTextByIds(serverRef.current, baseIds, remote, ids)) ||
+        diffText(serverRef.current, remote, { keepShared: true });
       const incoming = transform(pending(), remoteChange, true);
       serverRef.current = remote;
+      serverIdsRef.current = ids;
       if (anchorRef.current) anchorRef.current.pos = transformPosition(remoteChange, anchorRef.current.pos);
       if (incoming.length > 0) show(applyText(localRef.current, incoming), (at) => transformPosition(incoming, at));
     },
@@ -133,11 +140,12 @@ export function useFugueTitle({
 
   /** A refused write whose edit is one insert at the anchor, replayed where the anchor now sits. */
   const rebaseAtAnchor = useCallback(
-    (remote: string, at: number): boolean => {
+    (remote: string, ids: IdRun[], at: number): boolean => {
       const typed = typedAtAnchor();
       if (!typed) return false;
       const moved = moveInserts(typed, at);
       serverRef.current = remote;
+      serverIdsRef.current = ids;
       show(applyText(remote, moved.ops), () => moved.end);
       return true;
     },
@@ -165,11 +173,12 @@ export function useFugueTitle({
         if (openGroupRef.current) openGroupRef.current.push(result.token);
         else historyRef.current.record((openGroupRef.current = [result.token]));
         serverRef.current = applyText(base, ops);
+        serverIdsRef.current = null;
       } else {
         dirtyRef.current = true;
       }
-      if (result.applied || result.anchor_pos === null || !rebaseAtAnchor(result.text, result.anchor_pos)) {
-        rebase(result.text);
+      if (result.applied || result.anchor_pos === null || !rebaseAtAnchor(result.text, result.ids, result.anchor_pos)) {
+        rebase(result.text, result.ids);
       }
       anchorRef.current =
         result.anchor !== null && result.anchor_pos !== null ? { token: result.anchor, pos: result.anchor_pos } : null;
@@ -194,16 +203,17 @@ export function useFugueTitle({
   const refresh = useCallback(async () => {
     if (!client || !docId) return;
     try {
-      const remote = await client.getTitle({ doc: docId });
+      const { text: remote, ids } = await client.getTitleState({ doc: docId });
       if (!loadedRef.current) {
         loadedRef.current = true;
         serverRef.current = remote;
+        serverIdsRef.current = ids;
         localRef.current = remote;
         showTitle(remote);
         setLoaded(true);
         return;
       }
-      rebase(remote);
+      rebase(remote, ids);
     } catch (cause) {
       setError(asError(cause));
     }
@@ -233,6 +243,7 @@ export function useFugueTitle({
     openGroupRef.current = null;
     anchorRef.current = null;
     serverRef.current = '';
+    serverIdsRef.current = null;
     localRef.current = '';
     loadedRef.current = false;
     setLoaded(false);
@@ -320,6 +331,13 @@ export function useFugueTitle({
     [docId, drain],
   );
   useSubscription(contextIds, handleEvent);
+
+  // Nothing replays the events missed while the stream was down.
+  useStreamReconnect(() => {
+    if (!docId) return;
+    staleRef.current = true;
+    void drainRef.current?.();
+  });
 
   // A node restart drops the event stream, so a peer's title edit arrives on
   // no event; an idle re-read is what closes that window.

@@ -23,7 +23,9 @@ let handlers = new Set<(event: unknown) => void>(); // every subscriber, each on
 let deliver: ((event: unknown) => void) | undefined;
 // Stable identity: useDocs memoizes its client, and a fresh one per render
 // would re-run every hook effect that keys on it.
-const client = { getDocument, getTitle };
+// A test sets the title through `getTitle`; the read the editor makes answers it without ids.
+const getTitleState = async (params: unknown) => ({ text: await getTitle(params), ids: [] });
+const client = { getDocument, getTitleState };
 // The folder's docs-context resolution, as useDocs reports it.
 let contextState: {
   contextId: string | null;

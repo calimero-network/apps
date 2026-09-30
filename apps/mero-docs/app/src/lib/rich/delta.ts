@@ -148,6 +148,60 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
     tail += 1;
   }
 
+  const middle = [before.slice(head, before.length - tail), after.slice(head, after.length - tail)] as const;
+  const steps = keepShared ? align(...middle) : replaceAll(...middle);
+  const kept = (count: number) => Array<Step>(count).fill('=');
+  return opsFor(before, after, [...kept(head), ...steps, ...kept(tail)]);
+}
+
+/** One run of character ids, as the node reads them. */
+export interface IdRun {
+  replica: string;
+  counter: number;
+  len: number;
+}
+
+/** Each character's id as one comparable key, in order. */
+function charKeys(runs: IdRun[]): string[] {
+  return runs.flatMap((run) => Array.from({ length: run.len }, (_, i) => `${run.replica}:${run.counter + i}`));
+}
+
+/**
+ * The change turning `prev` into `next`, read off their character ids, so
+ * identical letters from different writers are never mistaken for each other.
+ * Null when the ids do not line up with the text; the caller diffs the text.
+ */
+export function diffSpansByIds(prev: AttrSpan[], prevIds: IdRun[], next: AttrSpan[], nextIds: IdRun[]): Change[] | null {
+  const before = toChars(prev);
+  const after = toChars(next);
+  const was = charKeys(prevIds);
+  const now = charKeys(nextIds);
+  if (was.length !== before.length || now.length !== after.length) return null;
+  const kept = new Set(now);
+  const had = new Set(was);
+  const steps: Step[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < was.length || j < now.length) {
+    if (i < was.length && !kept.has(was[i])) {
+      steps.push('-');
+      i += 1;
+    } else if (j < now.length && !had.has(now[j])) {
+      steps.push('+');
+      j += 1;
+    } else if (was[i] === now[j]) {
+      steps.push('=');
+      i += 1;
+      j += 1;
+    } else {
+      return null; // shared characters reordered, which the CRDT never does
+    }
+  }
+  return opsFor(before, after, steps);
+}
+
+/** The change list an edit script over `before` and `after` spells. */
+function opsFor(before: AttrChar[], after: AttrChar[], steps: Step[]): Change[] {
   const ops: Change[] = [];
   let openKey: string | null = null; // serialized delta of the retain ops end on
   const pushRetain = (count: number, delta: AttrDelta) => {
@@ -184,12 +238,8 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
     }
   };
 
-  pushRetainRange(0, head, 0);
-
-  const middle = [before.slice(head, before.length - tail), after.slice(head, after.length - tail)] as const;
-  const steps = keepShared ? align(...middle) : replaceAll(...middle);
-  let was = head;
-  let now = head;
+  let was = 0;
+  let now = 0;
   for (let k = 0; k < steps.length; ) {
     let end = k;
     while (end < steps.length && steps[end] === steps[k]) end += 1;
@@ -207,12 +257,6 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
     }
     k = end;
   }
-
-  pushRetainRange(
-    before.length - tail,
-    before.length,
-    before.length - after.length,
-  );
 
   // A trailing plain retain names no change past the last one.
   while (ops.length > 0) {
@@ -246,6 +290,12 @@ const withoutAttrs = (ops: Change[]): Change[] => ops.map((op) => ('insert' in o
 /** The change list for plain text, which the title API takes without attributes. */
 export function diffText(prev: string, next: string, options: DiffOptions = {}): Change[] {
   return withoutAttrs(diffSpans(plainText(prev), plainText(next), options));
+}
+
+/** {@link diffSpansByIds} for plain text. */
+export function diffTextByIds(prev: string, prevIds: IdRun[], next: string, nextIds: IdRun[]): Change[] | null {
+  const ops = diffSpansByIds(plainText(prev), prevIds, plainText(next), nextIds);
+  return ops && withoutAttrs(ops);
 }
 
 /** {@link insertAt} for plain text. */

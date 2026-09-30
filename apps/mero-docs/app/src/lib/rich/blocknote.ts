@@ -2,7 +2,7 @@
 // with a depth and string attrs. This is the only place that translation
 // happens, so the diff and the render can never disagree about the shape.
 
-import { inlineToSpans, spansToInline, type AttrSpan } from './delta';
+import { inlineToSpans, spansToInline, type AttrSpan, type IdRun } from './delta';
 import type { EditorBlock } from './blocks';
 import type { InlineContent } from './delta';
 
@@ -22,6 +22,7 @@ export interface BackendBlock {
   depth: number;
   attrs: Record<string, string>;
   spans: { text: string; attributes?: Record<string, string> }[];
+  ids?: IdRun[];
 }
 
 // BlockNote writes this for a prop the user never set, and the backend should
@@ -104,6 +105,7 @@ export function backendBlocks(rows: BackendBlock[]): EditorBlock[] {
     depth: row.depth,
     attrs: { ...row.attrs },
     inline: backendSpans(row.spans),
+    ...(row.ids ? { ids: row.ids } : {}),
   }));
 }
 

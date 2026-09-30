@@ -39,7 +39,7 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::fugue_text::{Anchor, Bias, TextOp, Undo};
+use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, TextOp, Undo};
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
     BlockId, BlockView, Counter, Expand, FugueText, IndexedMap, LwwRegister, MarkId, MarkSchema,
@@ -93,18 +93,50 @@ pub struct Block {
     pub depth: u8,
     pub attrs: BTreeMap<String, String>,
     pub spans: Vec<Span>,
+    /// The id of each character of `spans`, in order.
+    pub ids: Vec<Run>,
 }
 
 impl Block {
-    fn new(view: BlockView) -> app::Result<Self> {
+    fn new(view: BlockView, body: &Body) -> app::Result<Self> {
         Ok(Self {
             id: encode_token(&view.id)?,
+            ids: runs(body.block_body(view.id)?.visible_ids()?),
             kind: view.kind,
             depth: view.depth,
             attrs: view.attrs,
             spans: view.spans,
         })
     }
+}
+
+/// A run of character ids, mirroring `IdRange`, which has no `AbiType`.
+/// `replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Run {
+    pub replica: String,
+    pub counter: u32,
+    pub len: u32,
+}
+
+fn runs(ranges: Vec<IdRange>) -> Vec<Run> {
+    ranges
+        .into_iter()
+        .map(|range| Run {
+            replica: range.start.0.to_string(),
+            counter: range.start.1,
+            len: range.len,
+        })
+        .collect()
+}
+
+/// The title with the id of each of its characters, in order.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TitleState {
+    pub text: String,
+    pub ids: Vec<Run>,
 }
 
 /// What `apply_delta_on` did. The block's spans come back either way, so a
@@ -119,6 +151,8 @@ pub struct Applied {
     pub anchor: Option<String>,
     /// Where `anchor` sits in `spans`.
     pub anchor_pos: Option<usize>,
+    /// The id of each character of `spans`, so a refused write rebases by identity.
+    pub ids: Vec<Run>,
 }
 
 /// What `title_apply_delta_on` did; the title comes back either way.
@@ -132,6 +166,8 @@ pub struct TitleApplied {
     pub anchor: Option<String>,
     /// Where `anchor` sits in `text`.
     pub anchor_pos: Option<usize>,
+    /// The id of each character of `text`.
+    pub ids: Vec<Run>,
 }
 
 /// One step of an attributed editor change, mirroring `DeltaOp`, which has no
@@ -500,6 +536,16 @@ impl DocsState {
         Ok(self.read(&doc)?.title.get_text()?)
     }
 
+    /// The title and its character ids, read together so they line up.
+    #[app::view]
+    pub fn get_title_state(&self, doc: String) -> app::Result<TitleState> {
+        let title = &self.read(&doc)?.title;
+        Ok(TitleState {
+            text: title.get_text()?,
+            ids: runs(title.visible_ids()?),
+        })
+    }
+
     /// One editor transaction on the title, returning an opaque token
     /// `title_undo` takes.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
@@ -534,6 +580,7 @@ impl DocsState {
                 text: current,
                 anchor: anchor_pos.and(anchor),
                 anchor_pos,
+                ids: runs(title.visible_ids()?),
             });
         }
         let end = edit_end(&ops);
@@ -545,6 +592,7 @@ impl DocsState {
             text: title.get_text()?,
             anchor: Some(encode_token(&title.anchor_at(end, Bias::After)?)?),
             anchor_pos: Some(end),
+            ids: runs(title.visible_ids()?),
         })
     }
 
@@ -745,6 +793,7 @@ impl DocsState {
                 spans,
                 anchor: anchor_pos.and(anchor),
                 anchor_pos,
+                ids: runs(body.visible_ids()?),
             });
         }
         let end = edit_end(&ops);
@@ -756,6 +805,7 @@ impl DocsState {
             spans: body.to_delta()?,
             anchor: Some(encode_token(&body.anchor_at(end, Bias::After)?)?),
             anchor_pos: Some(end),
+            ids: runs(body.visible_ids()?),
         })
     }
 
@@ -794,20 +844,18 @@ impl DocsState {
 
     #[app::view]
     pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
-        self.read(&doc)?
-            .body
-            .blocks()?
+        let body = &self.read(&doc)?.body;
+        body.blocks()?
             .into_iter()
-            .map(Block::new)
+            .map(|view| Block::new(view, body))
             .collect()
     }
 
     #[app::view]
     pub fn get_block(&self, doc: String, block: String) -> app::Result<Option<Block>> {
-        self.read(&doc)?
-            .body
-            .block(decode_token(&block)?)?
-            .map(Block::new)
+        let body = &self.read(&doc)?.body;
+        body.block(decode_token(&block)?)?
+            .map(|view| Block::new(view, body))
             .transpose()
     }
 
@@ -1688,6 +1736,79 @@ mod tests {
         assert_eq!(refused.spans[0].text, "The fox.");
         assert_eq!(digest(&app), "paragraph/0{:The fox.};");
         assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
+    }
+
+    /// Each run as the character ids it names, in order.
+    fn char_ids(runs: &[Run]) -> Vec<(String, u32)> {
+        runs.iter()
+            .flat_map(|run| (0..run.len).map(move |i| (run.replica.clone(), run.counter + i)))
+            .collect()
+    }
+
+    #[test]
+    fn a_block_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let mine = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    String::new(),
+                    vec![insert("aa")],
+                    None,
+                )
+            })
+            .unwrap();
+        let before = char_ids(&mine.ids);
+        assert_eq!(before.len(), 2);
+        // A peer types an identical `a` between ours; the guard refuses the stale write.
+        let _peer = app
+            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(1), insert("a")]))
+            .unwrap();
+        let refused = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    "aa".to_owned(),
+                    vec![insert("b")],
+                    None,
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        let after = char_ids(&refused.ids);
+        assert_eq!(after.len(), 3);
+        assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
+        assert!(!before.contains(&after[1]));
+        let read = app
+            .view(|s| s.get_block(DOC.to_owned(), block.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(char_ids(&read.ids), after);
+        let whole = app.view(|s| s.get_document(DOC.to_owned())).unwrap();
+        assert_eq!(char_ids(&whole[0].ids), after);
+    }
+
+    #[test]
+    fn a_title_read_names_every_character_by_an_id_a_peer_insert_leaves_alone() {
+        let mut app = host("aa");
+        let before = char_ids(&app.view(|s| s.get_title_state(DOC.to_owned())).unwrap().ids);
+        let _peer = app
+            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(1), insert("a")]))
+            .unwrap();
+        let refused = app
+            .call(|s| {
+                s.title_apply_delta_on(DOC.to_owned(), "aa".to_owned(), vec![insert("b")], None)
+            })
+            .unwrap();
+        let after = char_ids(&refused.ids);
+        assert_eq!(refused.text, "aaa");
+        assert_eq!(after.len(), 3);
+        assert_eq!((&after[0], &after[2]), (&before[0], &before[1]));
+        let state = app.view(|s| s.get_title_state(DOC.to_owned())).unwrap();
+        assert_eq!((state.text.as_str(), char_ids(&state.ids)), ("aaa", after));
     }
 
     #[test]

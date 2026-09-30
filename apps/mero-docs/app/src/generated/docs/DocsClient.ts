@@ -22,6 +22,10 @@ export interface Applied {
    * Where `anchor` sits in `spans`.
    */
   anchor_pos: number | null;
+  /**
+   * The id of each character of `spans`, so a refused write rebases by identity.
+   */
+  ids: Run[];
 }
 
 /**
@@ -34,6 +38,10 @@ export interface Block {
   depth: number;
   attrs: Record<string, string>;
   spans: Span[];
+  /**
+   * The id of each character of `spans`, in order.
+   */
+  ids: Run[];
 }
 
 export interface BlockView {
@@ -251,6 +259,16 @@ export interface Event_TitleChanged {
   doc: string;
 }
 
+/**
+ * A run of character ids, mirroring `IdRange`, which has no `AbiType`.
+ * `replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.
+ */
+export interface Run {
+  replica: string;
+  counter: number;
+  len: number;
+}
+
 export interface Span {
   text: string;
   attributes: Record<string, string>;
@@ -271,6 +289,18 @@ export interface TitleApplied {
    * Where `anchor` sits in `text`.
    */
   anchor_pos: number | null;
+  /**
+   * The id of each character of `text`.
+   */
+  ids: Run[];
+}
+
+/**
+ * The title with the id of each of its characters, in order.
+ */
+export interface TitleState {
+  text: string;
+  ids: Run[];
 }
 
 
@@ -570,6 +600,18 @@ export class DocsClient {
   public async getTitle(params: { doc: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_title', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * get_title_state
+   *
+   * The title and its character ids, read together so they line up.
+   *
+   * @intent read_only
+   */
+  public async getTitleState(params: { doc: string }): Promise<TitleState> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_title_state', argsJson: params });
+    return response as TitleState;
   }
 
   /**

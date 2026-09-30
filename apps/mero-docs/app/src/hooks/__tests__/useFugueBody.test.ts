@@ -58,6 +58,10 @@ const row = (id: string, text: string, kind = 'paragraph', attrs = {}) => ({
 
 const spans = (text: string) => (text ? [{ text }] : []);
 
+/** One run per writer, `len` characters from `counter`. */
+const run = (replica: string, counter: number, len = 1) => ({ replica, counter, len });
+const withIds = <T extends object>(value: T, ids: ReturnType<typeof run>[]) => ({ ...value, ids });
+
 /** An in-memory BlockNote stand-in that reports every change like the shell does. */
 class FakeEditor implements BodyEditor {
   document: BnBlock[] = [];
@@ -120,7 +124,7 @@ type FakeClient = Record<string, Mock>;
 function fakeClient(document: ReturnType<typeof row>[]): FakeClient {
   return {
     getDocument: vi.fn().mockResolvedValue(document),
-    getBlockDelta: vi.fn(async ({ block }: { block: string }) => document.find((r) => r.id === block)?.spans ?? []),
+    getBlock: vi.fn(async ({ block }: { block: string }) => document.find((r) => r.id === block) ?? null),
     applyDeltaOn: vi.fn(),
     insertBlock: vi.fn().mockResolvedValue('blk-new'),
     splitBlock: vi.fn().mockResolvedValue('blk-split'),
@@ -145,6 +149,7 @@ const applied = (
   spans: spans(text),
   anchor,
   anchor_pos,
+  ids: [],
 });
 const refused = (
   text: string,
@@ -156,6 +161,7 @@ const refused = (
   spans: spans(text),
   anchor,
   anchor_pos,
+  ids: [],
 });
 
 const peerEvent = (doc: string, kind = 'TextChanged', block = 'blk-1') => ({
@@ -275,6 +281,30 @@ describe('useFugueBody', () => {
     },
   );
 
+  // A write the node answers with an error it may not repeat (a contract error
+  // arrives with no HTTP status) was resent at once, re-read and resent again,
+  // hundreds of times a second, for as long as the node kept answering the same.
+  it('backs off an edit whose write keeps failing instead of resending it at once', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.getDocument.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve([row('blk-1', 'The fox.')]), 10)),
+    );
+    client.applyDeltaOn.mockRejectedValue(new Error('unknown block'));
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. ab');
+    await settle(900);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    // The re-read still runs, so the page shows what the node holds.
+    expect(client.getDocument.mock.calls.length).toBeGreaterThan(1);
+
+    await settle(1_000);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
+    expect(editor.textOf('blk-1')).toBe('The fox. ab');
+  });
+
   it('rebases a refused write onto the peer text and resends it', async () => {
     const client = fakeClient([row('blk-1', 'The fox.')]);
     client.applyDeltaOn
@@ -383,7 +413,7 @@ describe('useFugueBody', () => {
     await mount(client, editor);
     editor.type('blk-1', 'b1a1');
     await settle();
-    client.getBlockDelta.mockResolvedValue(spans('cb1a1a1'));
+    client.getBlock.mockResolvedValue(row('blk-1', 'cb1a1a1'));
     act(() => deliver?.(peerEvent(DOC)));
     await settle();
 
@@ -431,11 +461,11 @@ describe('useFugueBody', () => {
     await mount(client, editor);
 
     const read = deferred<unknown>();
-    client.getBlockDelta.mockReturnValueOnce(read.promise);
+    client.getBlock.mockReturnValueOnce(read.promise);
     act(() => deliver?.(peerEvent(DOC)));
     await settle(100);
     editor.type('blk-1', 'The fox. ab');
-    await act(async () => read.resolve(spans('bob The fox.')));
+    await act(async () => read.resolve(row('blk-1', 'bob The fox.')));
     await settle();
 
     expect(editor.textOf('blk-1')).toBe('bob The fox. ab');
@@ -795,18 +825,75 @@ describe('useFugueBody', () => {
     });
   });
 
+  describe('rebase by character id', () => {
+    // A peer typed an `a` before the two this user typed between: read as text,
+    // it lands after them and the user's `X` ends up after the wrong `a`.
+    it("keeps a refused keystroke between its own letters when a peer typed an identical one", async () => {
+      const client = fakeClient([withIds(row('blk-1', 'aa'), [run('1', 1, 2)])]);
+      client.applyDeltaOn
+        .mockResolvedValueOnce(withIds(refused('aaa'), [run('2', 1), run('1', 1, 2)]))
+        .mockResolvedValueOnce(applied('aaXa'));
+      const editor = new FakeEditor();
+      await mount(client, editor);
+
+      editor.type('blk-1', 'aXa');
+      await settle();
+
+      expect(editor.textOf('blk-1')).toBe('aaXa');
+      expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+        doc: DOC,
+        block: 'blk-1',
+        base: 'aaa',
+        ops: [{ retain: 2 }, { insert: 'X', attributes: {} }],
+        anchor: null,
+      });
+    });
+
+    it("places a peer's identical letter by id on a text event, around a pending keystroke", async () => {
+      const client = fakeClient([withIds(row('blk-1', 'aa'), [run('1', 1, 2)])]);
+      client.applyDeltaOn.mockResolvedValue(applied('aaXa'));
+      const editor = new FakeEditor();
+      await mount(client, editor);
+
+      const read = deferred<unknown>();
+      client.getBlock.mockReturnValueOnce(read.promise);
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle(100);
+      editor.type('blk-1', 'aXa');
+      await act(async () => read.resolve(withIds(row('blk-1', 'aaa'), [run('2', 1), run('1', 1, 2)])));
+      await settle();
+
+      expect(editor.textOf('blk-1')).toBe('aaXa');
+      expect(client.applyDeltaOn).toHaveBeenCalledWith(
+        expect.objectContaining({ base: 'aaa', ops: [{ retain: 2 }, { insert: 'X', attributes: {} }] }),
+      );
+    });
+
+    it('reads the whole document when the block a text event names is gone', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      await mount(client, new FakeEditor());
+      client.getDocument.mockClear();
+      client.getBlock.mockResolvedValue(null);
+
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle();
+
+      expect(client.getDocument).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('event reads', () => {
     it('re-reads only the changed block on a text event', async () => {
       const client = fakeClient([row('blk-1', 'hello'), row('blk-2', 'other')]);
       const editor = new FakeEditor();
       await mount(client, editor);
       client.getDocument.mockClear();
-      client.getBlockDelta.mockResolvedValue(spans('hello there'));
+      client.getBlock.mockResolvedValue(row('blk-1', 'hello there'));
 
       act(() => deliver?.(peerEvent(DOC)));
       await settle();
 
-      expect(client.getBlockDelta.mock.calls).toEqual([[{ doc: DOC, block: 'blk-1' }]]);
+      expect(client.getBlock.mock.calls).toEqual([[{ doc: DOC, block: 'blk-1' }]]);
       expect(client.getDocument).not.toHaveBeenCalled();
       expect(editor.textOf('blk-1')).toBe('hello there');
     });
@@ -820,7 +907,7 @@ describe('useFugueBody', () => {
       act(() => deliver?.(peerEvent(DOC)));
       await settle();
 
-      expect(client.getBlockDelta).toHaveBeenCalledTimes(1);
+      expect(client.getBlock).toHaveBeenCalledTimes(1);
     });
 
     it.each(['BlockInserted', 'BlockMoved', 'BlockDeleted', 'BlockChanged'])(
@@ -834,7 +921,7 @@ describe('useFugueBody', () => {
         await settle();
 
         expect(client.getDocument).toHaveBeenCalledTimes(1);
-        expect(client.getBlockDelta).not.toHaveBeenCalled();
+        expect(client.getBlock).not.toHaveBeenCalled();
       },
     );
 
@@ -847,7 +934,7 @@ describe('useFugueBody', () => {
       await settle();
 
       expect(client.getDocument).toHaveBeenCalledTimes(1);
-      expect(client.getBlockDelta).not.toHaveBeenCalled();
+      expect(client.getBlock).not.toHaveBeenCalled();
     });
 
     it('reads the whole document when the block read fails', async () => {
@@ -855,7 +942,7 @@ describe('useFugueBody', () => {
       const editor = new FakeEditor();
       await mount(client, editor);
       client.getDocument.mockClear();
-      client.getBlockDelta.mockRejectedValue(new Error('no such block'));
+      client.getBlock.mockRejectedValue(new Error('no such block'));
       client.getDocument.mockResolvedValue([row('blk-1', 'hello again')]);
 
       act(() => deliver?.(peerEvent(DOC)));
