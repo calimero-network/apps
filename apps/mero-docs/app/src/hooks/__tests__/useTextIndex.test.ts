@@ -13,6 +13,10 @@ type Event = { contextId: string; type: string; data: unknown };
 
 const getDocument =
   vi.fn<(contextId: string, doc: string) => Promise<BackendBlock[]>>();
+const getBlockDelta =
+  vi.fn<
+    (contextId: string, doc: string, block: string) => Promise<BackendBlock['spans']>
+  >();
 let subscribed: { ids: string[]; handler: (e: Event) => void } | null = null;
 const mero = {};
 
@@ -30,6 +34,9 @@ vi.mock('@/generated/docs/DocsClient', () => ({
     ) {}
     getDocument({ doc }: { doc: string }) {
       return getDocument(this.contextId, doc);
+    }
+    getBlockDelta({ doc, block }: { doc: string; block: string }) {
+      return getBlockDelta(this.contextId, doc, block);
     }
   },
 }));
@@ -114,6 +121,7 @@ function textOf(
 beforeEach(() => {
   vi.useFakeTimers();
   getDocument.mockReset();
+  getBlockDelta.mockReset();
   subscribed = null;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -217,7 +225,7 @@ describe('useTextIndex', () => {
         subscribed!.handler({
           contextId: 'c-f1',
           type: 'StateMutation',
-          data: { BlockChanged: { doc: 'a' } },
+          data: { BlockChanged: { doc: 'a', block: 'b1' } },
         });
       }
       // Titles live in the list, not the text index.
@@ -235,10 +243,85 @@ describe('useTextIndex', () => {
     expect(textOf(result, 'f1/b')).toBe('v1 b');
   });
 
+  describe('text events', () => {
+    const event = (kind: string, doc: string, block = 'b1') =>
+      subscribed!.handler({
+        contextId: 'c-f1',
+        type: 'StateMutation',
+        data: { [kind]: { doc, block } },
+      });
+
+    async function loaded() {
+      getDocument.mockImplementation((_ctx, doc) =>
+        Promise.resolve(blocks(`v1 ${doc}`)),
+      );
+      const view = renderHook(() =>
+        useTextIndex(input([row('f1', 'a')], { f1: 'ready' })),
+      );
+      await settle();
+      getDocument.mockClear();
+      return view;
+    }
+
+    it('reads only the changed block, once the burst settles', async () => {
+      const { result } = await loaded();
+      getBlockDelta.mockResolvedValue([{ text: 'v2 a' }]);
+
+      act(() => {
+        event('TextChanged', 'a');
+        event('MarkApplied', 'a');
+        event('TextChanged', 'a');
+      });
+      await settle(1_500);
+
+      expect(getBlockDelta.mock.calls).toEqual([['c-f1', 'a', 'b1']]);
+      expect(getDocument).not.toHaveBeenCalled();
+      expect(textOf(result, 'f1/a')).toBe('v2 a');
+    });
+
+    it('reads the whole doc when a structural event joins the burst', async () => {
+      const { result } = await loaded();
+      getDocument.mockResolvedValue(blocks('v2 a'));
+
+      act(() => {
+        event('TextChanged', 'a');
+        event('BlockInserted', 'a', 'b2');
+      });
+      await settle(1_500);
+
+      expect(getDocument).toHaveBeenCalledTimes(1);
+      expect(getBlockDelta).not.toHaveBeenCalled();
+      expect(textOf(result, 'f1/a')).toBe('v2 a');
+    });
+
+    it('reads the whole doc for a block it does not hold', async () => {
+      await loaded();
+      getDocument.mockResolvedValue(blocks('v2 a'));
+
+      act(() => event('TextChanged', 'a', 'b9'));
+      await settle(1_500);
+
+      expect(getDocument).toHaveBeenCalledTimes(1);
+      expect(getBlockDelta).not.toHaveBeenCalled();
+    });
+
+    it('reads the whole doc when the block read fails', async () => {
+      const { result } = await loaded();
+      getBlockDelta.mockRejectedValue(new Error('gone'));
+      getDocument.mockResolvedValue(blocks('v2 a'));
+
+      act(() => event('TextChanged', 'a'));
+      await settle(1_500);
+
+      expect(getDocument).toHaveBeenCalledTimes(1);
+      expect(textOf(result, 'f1/a')).toBe('v2 a');
+    });
+  });
+
   it('reads a doc again when an event lands while it is being read', async () => {
     const first = deferred<BackendBlock[]>();
     getDocument.mockImplementationOnce(() => first.promise);
-    getDocument.mockImplementation(() => Promise.resolve(blocks('fresh')));
+    getBlockDelta.mockResolvedValue([{ text: 'fresh' }]);
     const { result } = renderHook(() =>
       useTextIndex(input([row('f1', 'a')], { f1: 'ready' })),
     );
@@ -247,13 +330,14 @@ describe('useTextIndex', () => {
       subscribed!.handler({
         contextId: 'c-f1',
         type: 'StateMutation',
-        data: { TextChanged: { doc: 'a' } },
+        data: { TextChanged: { doc: 'a', block: 'b1' } },
       }),
     );
     await settle(1_500);
     first.resolve(blocks('stale'));
     await settle();
-    expect(getDocument).toHaveBeenCalledTimes(2);
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getBlockDelta).toHaveBeenCalledTimes(1);
     expect(textOf(result, 'f1/a')).toBe('fresh');
   });
 
