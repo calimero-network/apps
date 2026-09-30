@@ -29,7 +29,7 @@ export default function GameBoard({ size, board, label, pendingShot }: GameBoard
   };
 
   return (
-    <div className="board-container game-board">
+    <div className="board-container game-board" data-testid="own-board">
       <div className="board-label">{label}</div>
       <div className="board-grid-wrapper">
         <div className="coord-row">

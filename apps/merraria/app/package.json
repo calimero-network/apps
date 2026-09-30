@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test --project=mocked",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",
@@ -25,6 +26,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@playwright/test": "catalog:",
     "@types/node": "^24.13.3",
     "@types/react": "catalog:",

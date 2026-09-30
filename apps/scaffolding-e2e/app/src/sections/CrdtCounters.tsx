@@ -68,7 +68,7 @@ export function CrdtCounters() {
             <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>
               G-Counter <code style={{ fontSize: 10 }}>{gKey || "(no key)"}</code>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "var(--color-brand-600)" }}>
+            <div data-testid="live-g-counter" style={{ fontSize: 28, fontWeight: 700, color: "var(--color-brand-600)" }}>
               {liveG ?? "—"}
             </div>
           </div>

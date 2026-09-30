@@ -179,6 +179,7 @@ const ChannelList = memo(function ChannelList(props: ChannelListProps) {
           return (
             <ChannelListItem
               key={channel.contextId}
+              data-testid="channel-item"
               selected={isSelected}
               $isCollapsed={isCollapsed}
               $hasUnread={showBadge}

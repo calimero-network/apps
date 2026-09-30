@@ -236,7 +236,7 @@ function MessageEditor({
   };
 
   return (
-    <MessageEditorWrapper>
+    <MessageEditorWrapper data-testid="message-editor">
       {openEmojisPopup && (
         <EmojiSelectorPopup
           onClose={() => setOpenEmojisPopup(false)}

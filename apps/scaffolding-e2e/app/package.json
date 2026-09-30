@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "test:all": "vitest run && playwright test --config=playwright.mocked.config.ts",
-    "test:e2e:ci": "playwright test --config=playwright.mocked.config.ts"
+    "test:e2e:ci": "playwright test --config=playwright.mocked.config.ts",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-network/mero-js": "catalog:",
@@ -30,6 +31,7 @@
     "react-router-dom": "^7.6.2"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
