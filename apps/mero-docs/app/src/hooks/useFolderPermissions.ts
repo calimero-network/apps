@@ -32,8 +32,7 @@
 // case there's no Role to wait on and we fall back to membership). A
 // still-loading role, a role-fetch error, or a definitively-`Viewer`
 // role all keep `canEditDocs` false, and so does core ReadOnly on the
-// folder: core discards those writes while reporting success, so the UI
-// must never offer one.
+// folder: core refuses those writes, so the UI must never offer one.
 //
 // TODO(perf): split a lightweight `useFolderCaps(folderId)` that skips
 // `useFolderRole` (and the registry Role read it does), for
@@ -158,8 +157,8 @@ export function useFolderPermissions(
     isAdmin ||
     (hasDeleteCap && (registryAvailable ? role === 'Manager' : true));
 
-  // Doc editing - CONSERVATIVE. Core refuses a ReadOnly member's writes
-  // but reports success, so an offered edit would look saved. Therefore:
+  // Doc editing - CONSERVATIVE. Core refuses a ReadOnly member's writes,
+  // so an offered edit could only be typed and then lost. Therefore:
   //   - `isAdmin`                       → always.
   //   - core ReadOnly on the folder      → never.
   //   - a folder member, registry exists → only once `useFolderRole`

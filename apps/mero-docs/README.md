@@ -140,7 +140,7 @@ One layer sits on top: the per-folder **document role** (`Viewer` / `Editor` / `
 The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
 A Restricted sub-folder someone was invited to directly keeps the role its admin gave them.
 Core reads only the direct row of each folder's group, so a member who only inherits an Open folder gets a direct `ReadOnly` row there.
-While the member holds those rows, nodes discard their writes to those folders' docs, comments included; the calls still return success.
+While the member holds those rows, nodes refuse their writes to those folders' docs, comments included, with a `ReadOnlyWriteRefused` error; an editor page that still offered the edit drops it and shows the node's text.
 Read only lasts while the member stays in the folder: someone who leaves and comes back through a fresh invite is a normal member again.
 Setting them back to Editor or Manager ends Read only across the same sub-folders; each sub-folder goes back to Editor, since the role a member held there before Read only is not recorded.
 The rows Read only wrote in Open sub-folders stay as direct Member rows after that, so restricting such a folder or making the person a Guest leaves them in with write access; remove them from the folder to take it away (the Make restricted confirmation names them).

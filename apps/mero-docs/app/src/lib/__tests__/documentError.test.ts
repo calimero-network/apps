@@ -1,8 +1,9 @@
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
 import {
   DOC_NOT_FOUND,
   DOC_NO_ACCESS,
+  DOC_READ_ONLY,
   DOC_TOO_LARGE,
   DOC_UNREACHABLE,
   documentLoadErrorMessage,
@@ -50,6 +51,11 @@ describe('documentSaveErrorMessage', () => {
   it('tells a lapsed session apart from lost access', () => {
     expect(documentSaveErrorMessage(httpError(401))).toMatch(/sign in/i);
     expect(documentSaveErrorMessage(httpError(403))).toMatch(/can't edit/i);
+  });
+
+  it("says a Read only member's change was not kept", () => {
+    const refused = new RpcError(-1, 'ReadOnlyWriteRefused', {}, 'ReadOnlyWriteRefused');
+    expect(documentSaveErrorMessage(refused)).toBe(DOC_READ_ONLY);
   });
 
   it('falls back to plain copy', () => {
