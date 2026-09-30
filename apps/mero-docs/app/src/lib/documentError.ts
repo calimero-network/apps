@@ -1,4 +1,4 @@
-import { classifyError } from '@calimero-network/mero-js';
+import { classifyError, RpcError } from '@calimero-network/mero-js';
 
 // What to tell a person when a document fails to open or to save. The raw
 // error ("FunctionCallError", "HTTP 413 Payload Too Large: …") is detail for
@@ -44,8 +44,16 @@ export function documentLoadErrorMessage(err: unknown): string {
   return "Couldn't open this document. Try refreshing the page.";
 }
 
+export const DOC_READ_ONLY = "You can only read this document, so your change wasn't kept.";
+
+/** Core's typed answer to any state write by a ReadOnly member of the folder. */
+export function isReadOnlyRefusal(err: unknown): boolean {
+  return err instanceof RpcError && err.type === 'ReadOnlyWriteRefused';
+}
+
 /** Copy for an edit the node refused to save. */
 export function documentSaveErrorMessage(err: unknown): string {
+  if (isReadOnlyRefusal(err)) return DOC_READ_ONLY;
   const { kind } = classifyError(err);
   // The node caps a request body; one edit carrying a huge paste goes over it,
   // and sending the same edit again gets the same answer.

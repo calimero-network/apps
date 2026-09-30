@@ -10,12 +10,23 @@
 // registry.setVisibility - the registry no longer carries this field.
 
 import React, { useState } from 'react';
-import { useSetSubgroupVisibility } from '@calimero-network/mero-react';
+import {
+  useMero,
+  useSetSubgroupVisibility,
+} from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { inheritReadOnlyDown } from '@/lib/applyFolderRole';
+import { openConnected } from '@/utils/ancestry';
+import { CAPABILITIES, hasCap } from '@/constants/config';
+import { FolderId } from '@/generated/registry/RegistryClient';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+
+const READ_ONLY_NOT_CARRIED =
+  "Opened, but the parent folder's Read only members could not be made Read only here.";
 
 interface Props {
   folderId: string;
@@ -28,7 +39,14 @@ interface Props {
 }
 
 export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
-  const { namespaceId, refetch } = useDriveWorkspace();
+  const {
+    namespaceId,
+    refetch,
+    folders,
+    registryClient,
+    namespaceMemberNames,
+  } = useDriveWorkspace();
+  const { mero } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const confirm = useConfirm();
@@ -36,7 +54,32 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
 
   if (!perms.canManageVisibility || !current) return null;
 
-  const next: 'Open' | 'Restricted' = current === 'Open' ? 'Restricted' : 'Open';
+  const next: 'Open' | 'Restricted' =
+    current === 'Open' ? 'Restricted' : 'Open';
+
+  // A role set in this folder or its Open sub-folders left a direct row there,
+  // which outlasts the switch; the grant's join bit shows the row is direct.
+  const keptNote = async (): Promise<string> => {
+    if (!mero || !registryClient) return '';
+    const kept = new Set<string>();
+    for (const id of [folderId, ...openConnected(folders, folderId).open]) {
+      for (const { member } of await registryClient.listFolderRoles({
+        folder_id: FolderId(id),
+      })) {
+        const { capabilities } = await mero.admin.getMemberCapabilities(
+          id,
+          member,
+        );
+        if (hasCap(capabilities ?? 0, CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS))
+          kept.add(member);
+      }
+    }
+    if (kept.size === 0) return '';
+    const names = [...kept].map(
+      (m) => namespaceMemberNames[m] || UNNAMED_MEMBER_LABEL,
+    );
+    return ` ${names.join(', ')} ${names.length === 1 ? 'keeps' : 'keep'} access, because a role was set for them here.`;
+  };
 
   const onToggle = async () => {
     // Restricting revokes everyone who only had inherited access; opening takes nothing away.
@@ -44,7 +87,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       next === 'Restricted' &&
       !(await confirm({
         title: 'Make this folder restricted?',
-        body: 'Workspace members you have not added will lose access to this folder and its subfolders.',
+        body: `Workspace members you have not added will lose access to this folder and its subfolders.${await keptNote()}`,
         confirmLabel: 'Make restricted',
         destructive: true,
       }))
@@ -62,7 +105,18 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       await setSubgroupVisibility(folderId, {
         subgroupVisibility: next.toLowerCase(),
       });
+      const parent = folders.find((f) => f.id === folderId)?.parent_id;
+      const failed =
+        next === 'Open' && parent && mero && registryClient
+          ? await inheritReadOnlyDown(
+              { admin: mero.admin, registry: registryClient },
+              folders,
+              folderId,
+              parent,
+            )
+          : [];
       await refetch();
+      if (failed.length > 0) onError?.(new Error(READ_ONLY_NOT_CARRIED));
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       onError?.(err);

@@ -43,12 +43,17 @@ const ADMIN_CAPS_BITMASK = 0xffffffff >>> 0;
 
 const RETRY_DELAYS_MS = [0, 500, 1500, 3500];
 
+const LOADING = { caps: null, isAdmin: false, isReadOnly: false, error: null, denied: false };
+
 export interface MemberCapsState {
   caps: number | null;
   /** True when the caller is a core group-admin on this group - bypasses
    *  the capability bitmask entirely (mirrors the server's
    *  `is_group_admin_or_has_capability`). */
   isAdmin: boolean;
+  /** True when the caller is core ReadOnly on this group: core discards
+   *  every state write they make in its contexts. */
+  isReadOnly: boolean;
   error: Error | null;
   /** `error` is the non-member refusal outlasting every retry. */
   denied: boolean;
@@ -100,12 +105,7 @@ export function useMemberCaps(
   const { selfIdentity, registryContextId } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
-  const [state, setState] = useState<Omit<MemberCapsState, 'refetch'>>({
-    caps: null,
-    isAdmin: false,
-    error: null,
-    denied: false,
-  });
+  const [state, setState] = useState<Omit<MemberCapsState, 'refetch'>>(LOADING);
   const stateRef = useRef(state);
   stateRef.current = state;
   const [tick, setTick] = useState(0);
@@ -123,7 +123,7 @@ export function useMemberCaps(
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
       lastIdsRef.current = null;
-      setState({ caps: null, isAdmin: false, error: null, denied: false });
+      setState(LOADING);
       return;
     }
     const signal = { aborted: false };
@@ -133,7 +133,7 @@ export function useMemberCaps(
       lastIdsRef.current.memberId !== memberId;
     lastIdsRef.current = { groupId, memberId };
     if (idsChanged) {
-      setState({ caps: null, isAdmin: false, error: null, denied: false });
+      setState(LOADING);
     }
 
     (async () => {
@@ -168,6 +168,7 @@ export function useMemberCaps(
                   : {
                       caps: ADMIN_CAPS_BITMASK,
                       isAdmin: true,
+                      isReadOnly: false,
                       error: null,
                       denied: false,
                     },
@@ -191,6 +192,7 @@ export function useMemberCaps(
           );
           if (signal.aborted) return;
           const caps = result.capabilities ?? 0;
+          const isReadOnly = me?.role === 'ReadOnly';
           // Diff-guard: an SSE-triggered refetch (tick bump) that
           // resolves to the same caps/isAdmin/error must not replace
           // `state` with a new-but-equal object - a fresh object
@@ -199,9 +201,12 @@ export function useMemberCaps(
           // event (e.g. a doc autosave). Returning `prev` when nothing
           // changed lets React skip the re-render.
           setState((prev) =>
-            prev.caps === caps && prev.isAdmin === false && prev.error === null
+            prev.caps === caps &&
+            prev.isAdmin === false &&
+            prev.isReadOnly === isReadOnly &&
+            prev.error === null
               ? prev
-              : { caps, isAdmin: false, error: null, denied: false },
+              : { caps, isAdmin: false, isReadOnly, error: null, denied: false },
           );
           return;
         } catch (err) {
@@ -223,7 +228,7 @@ export function useMemberCaps(
         );
         return;
       }
-      setState({ caps: 0, isAdmin: false, error: finalErr, denied: refused });
+      setState({ ...LOADING, caps: 0, error: finalErr, denied: refused });
     })();
 
     return () => {

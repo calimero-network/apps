@@ -1,15 +1,15 @@
 // One member row inside FolderSharingPanel: name, one RoleSelect bound to
-// the member's (registry Role, folder caps), and an optional remove button.
-// Picking a role writes BOTH setFolderRole and the folder caps (see
-// FOLDER_ROLE_GRANTS). A core Admin or ReadOnly role on the folder overrides
-// both on the server, so that row shows it and cannot be changed here.
+// the member's (core role, registry Role, folder caps), and an optional remove
+// button. Picking a role writes all three (see FOLDER_ROLE_GRANTS), the core
+// role first because it is the one core enforces. A core Admin (the folder's
+// owner) or a TEE node shows as such and cannot be changed here.
 //
 // Permission-gating lives on the parent panel; this component trusts
 // `canManage` for "is the dropdown / remove button interactive".
 
 import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { useGroupCapabilities } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -20,18 +20,18 @@ import { RoleSelect } from './RoleSelect';
 import {
   describeRoleChange,
   folderRoleOf,
-  FOLDER_ROLE_GRANTS,
   FOLDER_ROLES,
+  isTeeRole,
   parseGroupRole,
   roleDisplayLabel,
   type FolderAccessRole,
 } from '@/lib/roles';
-// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point -
-// this fleet has had folder ids, context ids and account ids all be bare 64-hex
-// strings that type-check in each other's slots.
-import { FolderId } from '@/generated/registry/RegistryClient';
+import { applyAcross, applyFolderGrant, coreRoleIn } from '@/lib/applyFolderRole';
+import { folderNames } from '@/lib/folderLabel';
+import { openConnected } from '@/utils/ancestry';
 import type { Role } from '@/generated/registry/RegistryClient';
+
+const PARENT_READ_ONLY = 'Read only here comes from a parent folder. Change it there.'; // no row here to change
 
 interface Props {
   folderId: string;
@@ -63,7 +63,8 @@ export function FolderMemberRoleRow({
   onRemove,
   removing,
 }: Props) {
-  const { registryClient, registryContextId, namespaceId } =
+  const { mero } = useMero();
+  const { registryClient, registryContextId, namespaceId, folders } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
   const { name, settled } = useMemberName(namespaceId, identity);
@@ -93,11 +94,49 @@ export function FolderMemberRoleRow({
     caps.loading || caps.error ? null : (caps.capabilities ?? null),
   );
 
-  const onRoleChange = async (next: FolderAccessRole) => {
-    if (!registryClient) {
+  const applyRole = async (next: FolderAccessRole) => {
+    if (!registryClient || !mero) {
       setUpdateError('Workspace not ready');
       return;
     }
+    // `identity` is the member's account, which is what core keys group rows by.
+    const writer = { admin: mero.admin, registry: registryClient };
+    const readOnly = next === 'ReadOnly';
+    setUpdating(true);
+    setUpdateError(null);
+    try {
+      // A parent's Read only covers this Open folder, row here or not.
+      const here = folders.find((f) => f.id === folderId);
+      const underReadOnly =
+        !readOnly &&
+        here?.visibility === 'Open' &&
+        !!here.parent_id &&
+        (await coreRoleIn(writer, here.parent_id, identity)) === 'ReadOnly';
+      if (underReadOnly || !(await applyFolderGrant(writer, folderId, identity, next, core))) {
+        setUpdateError(PARENT_READ_ONLY);
+        return;
+      }
+      // Read only covers the Open sub-folders reached through this one, so its
+      // start and its end carry down (also when only the registry still says it).
+      if (readOnly || core === 'ReadOnly' || registryRole === 'Viewer') {
+        const { open, unknown } = openConnected(folders, folderId);
+        const failed = [...unknown, ...(await applyAcross(writer, open, identity, readOnly))];
+        if (failed.length > 0) setUpdateError(subtreeFailure(failed));
+      }
+      await caps.refetch();
+      onAfterRoleChange?.();
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setUpdateError(`Role update failed: ${err.message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const subtreeFailure = (failed: string[]) =>
+    `Role set here, but not in ${folderNames(folders, failed)}. Ask the owner of each to set it.`;
+
+  const onRoleChange = async (next: FolderAccessRole) => {
     if (!current) return;
     const ok = await confirm({
       title: label
@@ -107,32 +146,11 @@ export function FolderMemberRoleRow({
       confirmLabel: 'Change role',
       destructive: true,
     });
-    if (!ok) return;
-    const grant = FOLDER_ROLE_GRANTS[next];
-    setUpdating(true);
-    setUpdateError(null);
-    try {
-      await registryClient.setFolderRole({
-        folder_id: FolderId(folderId),
-        member: identity,
-        role: grant.role,
-      });
-      await caps.setCapabilities(grant.folderCaps);
-      // `useGroupCapabilities.setCapabilities` resolves with the new
-      // bitmask but mero-react does NOT necessarily update the hook's
-      // own `capabilities` state until the next read - and the
-      // RoleSelect's current role derives from that value.
-      // Explicitly refetching keeps the dropdown label honest after
-      // the write lands.
-      await caps.refetch();
-      onAfterRoleChange?.();
-    } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setUpdateError(err.message);
-    } finally {
-      setUpdating(false);
-    }
+    if (ok) await applyRole(next);
   };
+
+  // A Viewer row written before Read only also set the core role.
+  const unenforced = canManage && core === 'Member' && registryRole === 'Viewer';
 
   return (
     <li className="px-4 py-2 text-sm">
@@ -153,7 +171,7 @@ export function FolderMemberRoleRow({
             onChange={(next) => {
               void onRoleChange(next);
             }}
-            disabled={!canManage || updating || core !== 'Member'}
+            disabled={!canManage || updating || core === 'Admin' || isTeeRole(core)}
             ariaLabel={label ? `Role for ${label}` : 'Member role'}
           />
           {onRemove && canManage ? (
@@ -172,9 +190,23 @@ export function FolderMemberRoleRow({
           )}
         </div>
       </div>
+      {unenforced && (
+        <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          Read only, but not enforced.
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            disabled={updating}
+            onClick={() => void applyRole('ReadOnly')}
+          >
+            Enforce
+          </Button>
+        </p>
+      )}
       {updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
-          Role update failed: {updateError}
+          {updateError}
         </p>
       )}
       {caps.error && !updateError && (

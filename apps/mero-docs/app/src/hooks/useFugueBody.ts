@@ -33,6 +33,7 @@ import { diffSpans, diffSpansByIds, insertAt, spansToInline, type AttrSpan, type
 import { parseRichEvents } from '@/lib/rich/events';
 import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
+import { isReadOnlyRefusal } from '@/lib/documentError';
 import {
   blockGeometry,
   type DocNode,
@@ -503,6 +504,16 @@ export function useFugueBody({
   );
   const refresh = useCallback(() => refreshWith(new Set()), [refreshWith]);
 
+  /** Replaces the editor's unsent edits with the node's document. */
+  const discardUnsent = useCallback(async () => {
+    if (!client || !docId) return;
+    const remote = backendBlocks(await client.getDocument({ doc: docId }));
+    dirtyRef.current = false;
+    resyncRef.current = false;
+    replaceChanged(remote);
+    serverRef.current = remote;
+  }, [client, docId, replaceChanged]);
+
   /** Re-reads just the blocks a peer's text event named; anything it cannot place falls back to a whole read. */
   const refreshBlocks = useCallback(
     async (blocks: Set<string>) => {
@@ -637,6 +648,13 @@ export function useFugueBody({
       resetRetry();
       return true;
     } catch (cause) {
+      if (isReadOnlyRefusal(cause)) {
+        // No resend can land, so the edit goes and the node's text comes back.
+        await discardUnsent();
+        setError(asError(cause));
+        setStatus('error');
+        return true;
+      }
       dirtyRef.current = true;
       // Calls that did land left the node ahead of what we hold; read before resending.
       if (progress.done > 0) resyncRef.current = true;
