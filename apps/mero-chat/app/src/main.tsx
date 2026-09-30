@@ -173,7 +173,8 @@ const CALIMERO_APP_ID_KEY = "calimero-application-id";
 function getUrlApplicationId(): string {
   const fromSearch = new URLSearchParams(window.location.search).get("app-id")?.trim();
   if (fromSearch) return fromSearch;
-  return new URLSearchParams(window.location.hash.slice(1)).get("app-id")?.trim() || "";
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  return hash.get("app-id")?.trim() || hash.get("application_id")?.trim() || "";
 }
 
 const urlApplicationId = getUrlApplicationId();
