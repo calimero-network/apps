@@ -25,6 +25,8 @@ describe('appPath and parseAppPath', () => {
     { ws: 'ws1', folder: 'f1' },
     { ws: 'ws1', folder: 'f1', doc: 'doc-3' },
     { ws: 'ws1', folder: 'f1', doc: 'doc-3', block: 'blk-9' },
+    // `doc-<nonce>-<account>-<device tag>`, as the docs contract mints it.
+    { ws: 'ws1', folder: 'f1', doc: `doc-f465b9a16a9e786e-${'a1'.repeat(32)}-edededed` },
     // Ids are opaque, so reserved characters must survive as one segment.
     { ws: 'a/b', folder: 'c d', doc: 'e#f?g', block: 'h&i=j' },
   ];
