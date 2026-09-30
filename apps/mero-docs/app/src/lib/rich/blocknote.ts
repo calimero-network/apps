@@ -75,18 +75,20 @@ const sameBlock = (a: BlockNoteBlock, b: BlockNoteBlock): boolean =>
   JSON.stringify(fromBlockNote([a])) === JSON.stringify(fromBlockNote([b]));
 
 /** The top-level blocks `target` changes, with the unchanged ones at both ends
- *  trimmed off, so a replace leaves those blocks and their undo history alone. */
+ *  trimmed off, so a replace leaves those blocks and their undo history alone.
+ *  `same` decides which blocks are unchanged. */
 export function changedRange(
   current: BlockNoteBlock[],
   target: BlockNoteBlock[],
+  same: (a: BlockNoteBlock, b: BlockNoteBlock) => boolean = sameBlock,
 ): { at: number; remove: BlockNoteBlock[]; insert: BlockNoteBlock[] } {
   let head = 0;
-  while (head < current.length && head < target.length && sameBlock(current[head], target[head])) head += 1;
+  while (head < current.length && head < target.length && same(current[head], target[head])) head += 1;
   let tail = 0;
   while (
     tail < current.length - head &&
     tail < target.length - head &&
-    sameBlock(current[current.length - 1 - tail], target[target.length - 1 - tail])
+    same(current[current.length - 1 - tail], target[target.length - 1 - tail])
   ) {
     tail += 1;
   }

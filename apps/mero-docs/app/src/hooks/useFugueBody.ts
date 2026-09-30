@@ -145,6 +145,12 @@ const withoutDefaults = (block: EditorBlock): EditorBlock => {
   return { ...block, attrs };
 };
 
+/** Whether two editor blocks hold the same thing once defaults are left out:
+ *  one built from the node lacks the defaults the editor filled in. */
+const sameBlock = (a: BlockNoteBlock, b: BlockNoteBlock): boolean =>
+  JSON.stringify(fromBlockNote([a]).map(withoutDefaults)) ===
+  JSON.stringify(fromBlockNote([b]).map(withoutDefaults));
+
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
@@ -431,7 +437,7 @@ export function useFugueBody({
       }
       const target = toBlockNote(remote.map((block) => ({ ...block, id: editorIdOf(block.id) })));
       asPeer((peer) => {
-        const { at, remove, insert } = changedRange(peer.document, target);
+        const { at, remove, insert } = changedRange(peer.document, target, sameBlock);
         const ids = remove.map((block) => block.id);
         const nodes = insert as unknown as Record<string, unknown>[];
         if (ids.length > 0) peer.replaceBlocks(ids, nodes);
