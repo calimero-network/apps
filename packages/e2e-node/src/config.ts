@@ -28,7 +28,7 @@ export function journeyConfig(opts: JourneyConfigOptions): PlaywrightTestConfig 
     fullyParallel: false,
     workers: 1,
     forbidOnly: ci,
-    retries: ci ? 1 : 0,
+    retries: 0,
     timeout: 15 * 60_000,
     expect: { timeout: 20_000 },
     globalSetup: path.join(HERE, "global-setup.ts"),

@@ -33,14 +33,18 @@ async function eventually(page: Page, target: () => Locator, ready: () => Promis
     .toBe(true);
 }
 
+function allForumsButton(page: Page): Locator {
+  return page.getByRole("button", { name: /^(←\s*)?All forums$/ });
+}
+
 async function toFeed(page: Page): Promise<void> {
-  const back = page.getByRole("link", { name: "Back to the feed", exact: true });
+  const back = page.getByRole("link", { name: /^(←\s*)?Back to the feed$/ });
   if (await back.isVisible().catch(() => false)) await back.click();
-  await expect(page.getByRole("button", { name: "All forums", exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(allForumsButton(page)).toBeVisible({ timeout: 30_000 });
 }
 
 async function readyFeed(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "All forums", exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(allForumsButton(page)).toBeVisible({ timeout: 30_000 });
 }
 
 async function readyPost(page: Page, title: string): Promise<void> {
@@ -68,9 +72,9 @@ function commentRow(page: Page, body: string): Locator {
 }
 
 async function toForumList(page: Page): Promise<void> {
-  const back = page.getByRole("link", { name: "Back to the feed", exact: true });
+  const back = page.getByRole("link", { name: /^(←\s*)?Back to the feed$/ });
   if (await back.isVisible().catch(() => false)) await back.click();
-  const allForums = page.getByRole("button", { name: "All forums", exact: true });
+  const allForums = allForumsButton(page);
   if (await allForums.isVisible().catch(() => false)) await allForums.click();
   await waitForForumList(page);
 }

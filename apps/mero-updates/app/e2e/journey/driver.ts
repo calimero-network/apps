@@ -55,7 +55,7 @@ async function readyUpdates(page: Page): Promise<void> {
 }
 
 async function toAudienceList(page: Page): Promise<void> {
-  const back = page.getByRole("button", { name: "Audiences", exact: true });
+  const back = page.getByRole("button", { name: /^(←\s*)?Audiences$/ });
   if (await back.isVisible().catch(() => false)) await back.click();
   await readyAudienceList(page);
 }

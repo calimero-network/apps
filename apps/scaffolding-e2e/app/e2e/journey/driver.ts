@@ -180,10 +180,11 @@ export const driver: AppDriver = {
   async invite(actor) {
     const page = actor.page;
     await page.getByRole("button", { name: "Generate Invitation", exact: true }).click();
-    const copy = page.getByRole("button", { name: /Copy Compact|Copied/ });
+    const copy = page.getByRole("button", { name: "Copy Compact", exact: true });
     await expect(copy).toBeVisible({ timeout: 30_000 });
     await copy.click();
-    await expect(page.getByRole("button", { name: /Copied/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: /✓ Generate Namespace Invitation/ })).toBeVisible({ timeout: 10_000 });
+    await expect.poll(async () => (await readClipboard(page)).trim().length, { timeout: 10_000 }).toBeGreaterThan(20);
     const invitation = (await readClipboard(page)).trim();
     await page.reload();
     await waitForContext(page);
@@ -207,7 +208,7 @@ export const driver: AppDriver = {
       async () => {
         if (await joinNs.isEnabled().catch(() => false)) await joinNs.click();
       },
-      page.getByText("Successfully joined the namespace"),
+      page.getByRole("button", { name: /^✓ Join Namespace/ }),
       "joining the namespace",
     );
     await page.getByPlaceholder("Context ID (hex)").fill(invite.contextId);
@@ -217,7 +218,7 @@ export const driver: AppDriver = {
       async () => {
         if (await joinCtx.isEnabled().catch(() => false)) await joinCtx.click();
       },
-      page.getByText("Joined and active."),
+      page.getByRole("button", { name: /^✓ Join Context/ }),
       "joining the context",
     );
     await page.reload();

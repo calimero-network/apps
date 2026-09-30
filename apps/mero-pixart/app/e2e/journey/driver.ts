@@ -324,7 +324,7 @@ const deleteImage: Feature = {
     if (!img) throw new Error("no image to delete");
     await ensureEditor(actor);
     await layerRow(page, img.id).click();
-    await page.getByRole("button", { name: "Delete layer", exact: true }).click();
+    await layerRow(page, img.id).getByRole("button", { name: "Delete layer", exact: true }).click();
     await expect(layerRow(page, img.id)).toHaveCount(0, { timeout: 30_000 });
   },
   async seen(actor, by) {

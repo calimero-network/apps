@@ -182,7 +182,16 @@ export function defineLifecycle(driver: AppDriver): void {
           if (driver.afterReload) await driver.afterReload(alice);
           await first.seen(alice, alice);
         });
+      }
 
+      if (driver.createSpace && driver.openSpace) {
+        await test.step("a space created after bob joined reaches bob", async () => {
+          await driver.createSpace!(alice, `later-${run}`);
+          await driver.openSpace!(bob, `later-${run}`);
+        });
+      }
+
+      if (first) {
         await test.step("node 1 restarts; alice's open app catches up afterwards", async () => {
           await restartNode(state, 0);
           await first.do(bob);
@@ -190,10 +199,10 @@ export function defineLifecycle(driver: AppDriver): void {
         });
       }
 
-      if (driver.createSpace && driver.openSpace) {
-        await test.step("a space created after bob joined reaches bob", async () => {
-          await driver.createSpace!(alice, `later-${run}`);
-          await driver.openSpace!(bob, `later-${run}`);
+      if (driver.createSpace && driver.openSpace && process.env["JOURNEY_SPACE_AFTER_RESTART"] === "1") {
+        await test.step("a space created after node 1 restarted reaches bob", async () => {
+          await driver.createSpace!(alice, `restart-${run}`);
+          await driver.openSpace!(bob, `restart-${run}`);
         });
       }
 

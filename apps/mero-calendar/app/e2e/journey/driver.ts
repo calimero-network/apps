@@ -211,6 +211,9 @@ export const driver: AppDriver = {
     const code = page.locator(`[data-testid="copy-invite"]`).locator("xpath=..").locator("code");
     await expect(code).toBeVisible({ timeout: 30_000 });
     const link = (await code.getAttribute("title")) ?? "";
+    const box = page.getByTestId("copy-invite").locator("xpath=..");
+    await box.getByRole("button", { name: "✕", exact: true }).click();
+    await expect(page.getByTestId("copy-invite")).toBeHidden({ timeout: 10_000 });
     const space = spaceOf[actor.name];
     if (space) await driver.openSpace!(actor, space);
     return link;

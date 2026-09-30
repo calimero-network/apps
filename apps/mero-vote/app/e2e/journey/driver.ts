@@ -55,7 +55,13 @@ async function eventually(page: Page, title: string | null, check: () => Promise
           if ((await pollRow(page, title).count()) === 0) return false;
           await openPoll(page, title);
         }
-        return check();
+        return expect
+          .poll(check, { timeout: 5_000, intervals: [250, 500, 1_000] })
+          .toBe(true)
+          .then(
+            () => true,
+            () => false,
+          );
       },
       { timeout: SYNC, intervals: [2_000, 3_000, 5_000] },
     )
