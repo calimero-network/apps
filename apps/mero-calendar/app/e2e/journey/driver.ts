@@ -95,6 +95,10 @@ async function createEvent(actor: Actor): Promise<void> {
   (events[actor.name] ??= []).push(title);
   await page.getByTestId("add-event-btn").click();
   await page.getByPlaceholder("Title", { exact: true }).fill(title);
+  const [start, end] = actor.name === "alice" ? ["09:00", "10:00"] : ["13:00", "14:00"];
+  const times = page.locator('input[type="time"]');
+  await times.nth(0).fill(start);
+  await times.nth(1).fill(end);
   await addPeer(page, peerOf(actor));
   await page.getByTestId("event-submit").click();
   await expect(page.getByTestId("event-submit")).toBeHidden({ timeout: 30_000 });
