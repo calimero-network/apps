@@ -978,6 +978,17 @@ export class SettingsDriver {
     return url;
   }
 
+  // A workspace role from the members panel, confirmed; Settings must be open.
+  async setMemberRole(label: string, role: string): Promise<void> {
+    const select = this.page.getByRole('combobox', {
+      name: `Role for ${label}`,
+    });
+    await expect(select).toBeEnabled({ timeout: 30_000 });
+    await select.selectOption(role);
+    await this.page.getByRole('button', { name: 'Change role' }).click();
+    await expect(select).toHaveValue(role, { timeout: 30_000 });
+  }
+
   // Presence dot on a row of the namespace members panel; Settings must be open.
   async expectMemberPresence(
     label: string,

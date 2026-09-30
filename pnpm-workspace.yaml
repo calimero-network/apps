@@ -36,7 +36,9 @@ catalog:
   # @calimero-apps/invite used to keep its own copy of, and `classifyError`.
   # The two majors in between removed `getCertificate` and changed TEE image
   # trust; no app on the catalog used either (delegated-execution pins its own).
-  "@calimero-network/mero-js": ^21.4.0
+  # 21.4.1 signs namespace ops at schema 11. Not 22 yet: mero-react 9.2.0
+  # depends on mero-js ^21.3.0, so 22 here installs a second, type-incompatible copy.
+  "@calimero-network/mero-js": ^21.4.1
   # mero-react 9.2.0 (#77): the join hooks report why a join failed, and
   # useRedeemInvitation. It depends on mero-js ^21.3.0, so it moves with it.
   "@calimero-network/mero-react": ^9.2.0

@@ -51,7 +51,6 @@
   "mero-docs": [
     "comment_schema_version",
     "delete_comment",
-    "edit_comment",
     "list_comments"
   ],
   "mero-forum": [
