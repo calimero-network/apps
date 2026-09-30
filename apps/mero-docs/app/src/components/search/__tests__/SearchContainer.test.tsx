@@ -6,7 +6,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { FolderIndexStatus } from '@/hooks/useWorkspaceIndex';
 import type { TextIndex } from '@/hooks/useTextIndex';
 import type { RecentDoc } from '@/hooks/useRecentDocs';
-import type { Block } from '@/generated/docs/DocsClient';
+import type { Block, DocsClient } from '@/generated/docs/DocsClient';
 import { docTextFromBlocks, searchText } from '@/lib/search/docText';
 import {
   rowKey,
@@ -25,7 +25,8 @@ const index = {
   rows: [] as IndexRow[],
   folders: [] as FolderInfo[],
   folderStatus: {} as Record<string, FolderIndexStatus>,
-  contextOf: () => undefined,
+  contextOf: (_id: string): string | undefined => undefined,
+  clientOf: (_id: string): DocsClient | undefined => undefined,
   refetchFolder: () => {},
 };
 let textIndex: TextIndex;
@@ -167,6 +168,8 @@ beforeEach(() => {
     failed: [],
   };
   vi.mocked(searchText).mockClear();
+  index.contextOf = () => undefined;
+  index.clientOf = () => undefined;
   presence = new Map([['f1/d2', [{ id: 'bob', name: 'Bob', colour: '#f00' }]]]);
 });
 
@@ -514,5 +517,88 @@ describe('SearchContainer opening', () => {
     );
     expect(location).toBe('/app/w?node=2');
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('SearchContainer with the node index', () => {
+  /** A docs client whose `search_docs` answers `hits`, or fails with `error`. */
+  function indexed(
+    hits: { id: string; snippet: string; score?: number }[] | Error,
+  ) {
+    const searchDocs = vi.fn(async () => {
+      if (hits instanceof Error) throw hits;
+      return {
+        hits: hits.map((h) => ({
+          title: '',
+          score: 1,
+          archived: false,
+          ...h,
+        })),
+        total: hits.length,
+        next_cursor: null,
+      };
+    });
+    return { searchDocs } as unknown as DocsClient;
+  }
+
+  it("lists a folder's matches from its index, docs never read here included", async () => {
+    const f2 = indexed([{ id: 'd3', snippet: 'the <b>zebra</b> crossing' }]);
+    index.contextOf = (id) => `ctx-${id}`;
+    index.clientOf = (id) => (id === 'f2' ? f2 : indexed([]));
+    mount();
+    await type('zebra');
+    const found = await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    expect(found.textContent).toContain('API spec v2');
+    expect(marks(found)).toEqual(['zebra']);
+    expect(vi.mocked(f2.searchDocs)).toHaveBeenLastCalledWith({
+      query: 'zebra',
+      include_archived: false,
+      cursor: null,
+      limit: 20,
+    });
+    await userEvent.keyboard('{Enter}');
+    expect(location).toBe('/app/w/f/f2/d/d3?node=2');
+  });
+
+  it('opens an index match at its block when the doc is read here', async () => {
+    textIndex = {
+      ...textIndex,
+      texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'zebra crossing'])),
+    };
+    const f2 = indexed([{ id: 'd3', snippet: '<b>zebra</b> crossing' }]);
+    index.contextOf = (id) => `ctx-${id}`;
+    index.clientOf = (id) => (id === 'f2' ? f2 : indexed([]));
+    mount();
+    await type('zebra');
+    const found = await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findAllByRole('option');
+    // One row per doc: the index answered f2, so its text is not scanned too.
+    expect(found).toHaveLength(1);
+    await userEvent.keyboard('{Enter}');
+    expect(location).toBe('/app/w/f/f2/d/d3?node=2#b=p1');
+  });
+
+  it('scans the text read here for a folder whose node runs with search off', async () => {
+    textIndex = {
+      ...textIndex,
+      texts: texts(text('f2', 'd3', ['p1', 'paragraph', 'zebra crossing'])),
+    };
+    const off = indexed(
+      Object.assign(new Error('FunctionCallError'), {
+        data: 'search_query is only available in a view (#[app::view]) on a node with search',
+      }),
+    );
+    index.contextOf = (id) => `ctx-${id}`;
+    index.clientOf = () => off;
+    mount();
+    await type('zebra');
+    const found = await within(
+      await screen.findByRole('group', { name: 'In document text' }),
+    ).findByRole('option');
+    expect(found.textContent).toContain('API spec v2');
+    expect(marks(found)).toEqual(['zebra']);
   });
 });

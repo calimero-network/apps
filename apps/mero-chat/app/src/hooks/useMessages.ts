@@ -7,6 +7,7 @@ import {
   failPage,
   hasMore,
   isMissingMethod,
+  isSearchOff,
   legacyPage,
   mapConcurrent,
   nextToFetch,
@@ -354,6 +355,22 @@ export function useMessages() {
           );
           if (response.data) return applyPage(state, response.data);
           const message = response.error?.message ?? "Search failed";
+          if (isSearchOff(message)) {
+            // A node running with search off: the same page, by walking the channel.
+            const scanned = await withTimeout(
+              api.searchMessagesScan({
+                query,
+                cursor: state.cursor,
+                limit: SEARCH_PAGE_SIZE,
+                contextId,
+                executorPublicKey,
+              }),
+              SEARCH_TIMEOUT_MS,
+            );
+            return scanned.data
+              ? applyPage(state, scanned.data)
+              : failPage(state, scanned.error?.message ?? "Search failed");
+          }
           if (!isMissingMethod(message)) return failPage(state, message);
           // An app version from before `search_messages`: its one page.
           const legacy = await withTimeout(

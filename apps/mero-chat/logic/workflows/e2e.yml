@@ -407,6 +407,64 @@ steps:
     check_interval: 2
     trigger_sync: true
 
+  # ── Full-text search, from the node's index ──────────────────────────────
+  # Alice's node never ran Carol's write: its index holds the message because
+  # sync applied it. The indexer commits every 250 ms.
+  - name: Let Node 1's indexer catch up
+    type: wait
+    seconds: 3
+
+  - name: Alice searches Carol's message through the index
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: search_messages
+    args:
+      query: "CAROL-UNIQUE"
+      cursor: null
+      limit: 10
+    outputs:
+      carol_hit_id: result.output.hits.0.id
+      carol_hit_snippet: result.output.hits.0.snippet
+      carol_hit_index: result.output.hits.0.index
+
+  - name: Alice asks where the hit sits, to open it there
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: message_position
+    args:
+      message_id: "{{carol_hit_id}}"
+    outputs:
+      carol_position: result.output
+
+  - name: The scan answers the same question without the index
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: search_messages_scan
+    args:
+      query: "carol-unique"
+      cursor: null
+      limit: 10
+    outputs:
+      carol_scan_id: result.output.hits.0.id
+
+  - name: Assert the index found Carol's message, and where it is
+    type: assert
+    statements:
+      - "contains({{carol_hit_snippet}}, 'carol-unique-keyword')"
+      - "equal({{carol_hit_id}}, {{carol_scan_id}})"
+
+  - name: Assert an index hit carries no position, and message_position gives it
+    type: json_assert
+    statements:
+      - "json_equal({{carol_hit_index}}, null)"
+      - "json_not_equal({{carol_position}}, null)"
+
   # ── Cross-Node Message Verification ───────────────────────────────────────
   - name: Get Messages from Node 1
     type: call

@@ -877,13 +877,13 @@ test.describe("error guards", () => {
 // presence moved to ephemeral state — useEphemeralPresence.ts. Calling them is
 // `method "heartbeat" not found`.)
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. search_messages
+// 10. search_messages (the node's index) and search_messages_scan (the walk)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface SearchHitOut {
   id: string;
   parent_message_id: string | null;
-  index: number;
+  index: number | null;
   timestamp: number;
   anchor_timestamp: number;
   sender: string;
@@ -925,12 +925,12 @@ test.describe("search_messages", () => {
     expect(result.next_cursor === null || typeof result.next_cursor === "string").toBe(true);
   });
 
-  test("search_messages finds a seeded message, folded and marked", async () => {
+  test("search_messages_scan finds a seeded message, folded and marked", async () => {
     const marker = `search-${Date.now()}`;
     await seedMessage(`<p>Café ${marker}</p>`);
 
     const client = makeClient();
-    const result = await client.call<SearchPageOut>("search_messages", {
+    const result = await client.call<SearchPageOut>("search_messages_scan", {
       query: `cafe ${marker}`.toUpperCase(),
       cursor: null,
       limit: 50,
@@ -954,7 +954,7 @@ test.describe("search_messages", () => {
     expect(result.hits).toHaveLength(0);
   });
 
-  test("search_messages pages by cursor, newest first, without repeats", async () => {
+  test("search_messages_scan pages by cursor, newest first, without repeats", async () => {
     const tag = `search-page-${Date.now()}`;
     for (let i = 0; i < 4; i++) {
       await seedMessage(`${tag}-${i}`);
@@ -964,7 +964,7 @@ test.describe("search_messages", () => {
     const seen: SearchHitOut[] = [];
     let cursor: string | null = null;
     for (let pages = 0; pages < 50; pages++) {
-      const page: SearchPageOut = await client.call<SearchPageOut>("search_messages", {
+      const page: SearchPageOut = await client.call<SearchPageOut>("search_messages_scan", {
         query: tag,
         cursor,
         limit: 2,
@@ -978,14 +978,82 @@ test.describe("search_messages", () => {
     expect(new Set(seen.map((h) => h.id)).size).toBe(seen.length);
   });
 
-  test("search_messages refuses a malformed cursor", async () => {
+  test("both searches refuse a malformed cursor", async () => {
     const client = makeClient();
-    const { ok } = await client.tryCall("search_messages", {
-      query: "x",
-      cursor: "not-a-cursor",
+    for (const method of ["search_messages", "search_messages_scan"]) {
+      const { ok } = await client.tryCall(method, {
+        query: "x",
+        cursor: "not-a-cursor",
+        limit: 1,
+      });
+      expect(ok, method).toBe(false);
+    }
+  });
+
+  /** `search_messages` until `found` holds of a page: the index lags a write by a commit. */
+  async function searchIndex(
+    query: string,
+    found: (page: SearchPageOut) => boolean,
+    cursor: string | null = null,
+    limit = 50,
+  ): Promise<SearchPageOut> {
+    const client = makeClient();
+    let page: SearchPageOut | null = null;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      page = await client.call<SearchPageOut>("search_messages", { query, cursor, limit });
+      if (found(page)) return page;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error(`the index never answered ${query}: ${JSON.stringify(page)}`);
+  }
+
+  test("search_messages finds a sent message through the node's index", async () => {
+    // One word, so it is a single token however the index splits text.
+    const marker = `zq${Date.now()}`;
+    const sent = await seedMessage(`<p>Café <b>${marker}</b></p>`);
+
+    const result = await searchIndex(marker.toUpperCase(), (p) =>
+      p.hits.some((h) => h.id === sent.id),
+    );
+    const hit = result.hits.find((h) => h.id === sent.id)!;
+    expect(hit.snippet).toBe(`Café ${marker}`);
+    expect(hit.snippet.slice(hit.match_start, hit.match_end)).toBe(marker);
+    expect(hit.parent_message_id).toBeNull();
+    // The index does not walk the channel: the position is asked on open.
+    expect(hit.index).toBeNull();
+    const client = makeClient();
+    const position = await client.call<number | null>("message_position", {
+      message_id: sent.id,
+    });
+    expect(typeof position).toBe("number");
+    const around = await client.call<{ messages: MessageOut[] }>("get_messages_from", {
+      start: position,
       limit: 1,
     });
-    expect(ok).toBe(false);
+    expect(around.messages.map((m) => m.id)).toContain(sent.id);
+  });
+
+  test("search_messages lists the newest first and pages without repeats", async () => {
+    const tag = `zp${Date.now()}`;
+    for (let i = 0; i < 4; i++) {
+      await seedMessage(`${tag} n${i}`);
+      // Distinct seconds, since that is what the order is by.
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+    await searchIndex(tag, (p) => p.hits.length === 4);
+
+    const seen: SearchHitOut[] = [];
+    let cursor: string | null = null;
+    for (let pages = 0; pages < 10; pages++) {
+      const page = await searchIndex(tag, () => true, cursor, 2);
+      expect(page.hits.length).toBeLessThanOrEqual(2);
+      seen.push(...page.hits);
+      cursor = page.next_cursor;
+      if (!cursor) break;
+    }
+    expect(seen.map((h) => h.snippet)).toEqual([3, 2, 1, 0].map((i) => `${tag} n${i}`));
+    expect(new Set(seen.map((h) => h.id)).size).toBe(seen.length);
   });
 });
 

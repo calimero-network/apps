@@ -1,7 +1,9 @@
 /**
  * Searching every channel and DM at once, a page at a time.
  *
- * Each context answers `search_messages` newest first with an opaque cursor,
+ * Each context answers `search_messages` (the node's full-text index, or
+ * `search_messages_scan` on a node running with search off) newest first
+ * with an opaque cursor,
  * so the merge is a k-way merge over streams that arrive in pages. The one
  * subtlety is when a hit may be SHOWN: a context that has more pages can
  * still produce a hit newer than one already fetched from another context.
@@ -47,9 +49,14 @@ export interface SearchResult {
   key: string;
   id: string;
   contextId: string;
+  /** The identity the search ran as in that context. */
+  executorPublicKey: string;
   contextLabel: string;
   parentMessageId?: string;
-  /** Position of the top-level message: what a permalink needs; -1 if unknown. */
+  /**
+   * Position of the top-level message: what a permalink needs; -1 if the
+   * search did not say (the index-backed one never does: `messagePosition`).
+   */
   index: number;
   /** The id of the message at `index`: the hit, or a reply's parent. */
   indexMessageId: string;
@@ -87,9 +94,10 @@ function toResult(context: SearchContext, hit: SearchHit): SearchResult {
     key: `${context.contextId}:${hit.id}`,
     id: hit.id,
     contextId: context.contextId,
+    executorPublicKey: context.executorPublicKey,
     contextLabel: context.label,
     parentMessageId: hit.parent_message_id ?? undefined,
-    index: hit.index,
+    index: hit.index ?? -1,
     indexMessageId: hit.parent_message_id ?? hit.id,
     timestamp: hit.timestamp * 1000,
     anchorTimestamp: hit.anchor_timestamp * 1000,
@@ -212,9 +220,42 @@ export async function mapConcurrent<T, R>(
   return out;
 }
 
+/**
+ * Where to open `result`: its position when the search gave one, else the
+ * one `message_position` gives, else `null` (open the conversation only).
+ */
+export async function resultPosition(
+  result: SearchResult,
+  lookup: (props: {
+    messageId: string;
+    contextId: string;
+    executorPublicKey: string;
+  }) => Promise<ResponseData<number | null>>,
+): Promise<number | null> {
+  if (result.index >= 0) return result.index;
+  try {
+    const { data } = await lookup({
+      messageId: result.indexMessageId,
+      contextId: result.contextId,
+      executorPublicKey: result.executorPublicKey,
+    });
+    return typeof data === "number" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether an error says the context's app has no `search_messages` yet. */
 export function isMissingMethod(message: string | undefined): boolean {
   return !!message && /search_messages\W+not found|MethodNotFound/i.test(message);
+}
+
+/**
+ * Whether an error says the node answering has no full-text index: it runs
+ * with search off. `search_messages_scan` answers the same question there.
+ */
+export function isSearchOff(message: string | undefined): boolean {
+  return !!message && /on a node with search|search needs a node/i.test(message);
 }
 
 /**

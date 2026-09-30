@@ -694,7 +694,8 @@
           "type": {
             "kind": "u64"
           },
-          "doc": "Position of the top-level message: the hit itself, or a reply's\nparent. What a permalink to the conversation is made of."
+          "nullable": true,
+          "doc": "Position of the top-level message: the hit itself, or a reply's\nparent. What a permalink to the conversation is made of. `None` from\nthe index-backed search, which does not walk the channel: ask\n`message_position` for it when the hit is opened."
         },
         {
           "name": "timestamp",
@@ -707,7 +708,7 @@
           "type": {
             "kind": "u64"
           },
-          "doc": "The timestamp the hit is ranked by: its own for a top-level message,\nits parent's for a reply, which is listed with its thread."
+          "doc": "The timestamp the hit is ranked by. The index ranks every message by\nits own; the scan fallback ranks a reply by its parent's, listing it\nwith its thread."
         },
         {
           "name": "sender",
@@ -1177,6 +1178,22 @@
       "intent": "read_only"
     },
     {
+      "name": "message_position",
+      "doc": "The position of the top-level message `message_id` in the channel, for\nopening a search hit where it was said (`get_messages_from`). A reply\nhas none: open its parent's. Costs a read of the channel's list of\nmessages, as a positional read does.",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u64"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "save_draft",
       "doc": "Save a draft for the calling user in the given channel.\nPassing an empty string is equivalent to deleting the draft.",
       "params": [
@@ -1200,7 +1217,37 @@
     },
     {
       "name": "search_messages",
-      "doc": "Messages whose text contains `query`, newest first, a bounded amount of\nwork per call.\n\nText is compared as a reader sees it (markup dropped, entities decoded)\nand folded for case, accents and width as mero-docs folds it, so \"cafe\"\nfinds \"Café\". Deleted and staff-removed messages are never returned.\n\nThe channel is walked by position from the newest message down, each\ntop-level message followed by the replies in its thread, so a reply is\nlisted with its thread and ranked by `anchor_timestamp`. A call stops at\n`limit` hits (default 20, at most 50) or once it has read\n`MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever\ncomes first, and returns a `next_cursor` to continue from; a page can\ntherefore hold fewer hits than `limit`, even none, and still not be the\nlast. A common term in a huge channel costs a page, never the channel.",
+      "doc": "Messages whose text contains `query`, newest first, answered from the\nnode's full-text index: a page costs the same however long the channel\nis.\n\nText is matched as a reader sees it (markup dropped, entities decoded),\nfolded for case and accents, so \"cafe\" finds \"Café\". A query of three\ncharacters or more matches anywhere in a word; a shorter one matches\nthe start of a word. Deleted and staff-removed messages are never\nreturned. Top-level messages and thread replies are ranked together by\ntheir own timestamp.\n\nA page holds at most `limit` hits (default 20, at most 50), fewer when\na hit the index still holds is gone from state or removed; `next_cursor`\ncontinues it. Hits carry no `index`: open one with `message_position`.\n\nOn a node running with search off the index is not there and this\nfails; `search_messages_scan` answers the same question by walking the\nchannel.",
+      "params": [
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "SearchPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "search_messages_scan",
+      "doc": "`search_messages` without the index: walks the channel, a bounded\namount of work per call. For a node running with search off.\n\nText is compared as a reader sees it (markup dropped, entities decoded)\nand folded for case, accents and width as mero-docs folds it, so \"cafe\"\nfinds \"Café\". Deleted and staff-removed messages are never returned.\n\nThe channel is walked by position from the newest message down, each\ntop-level message followed by the replies in its thread, so a reply is\nlisted with its thread and ranked by `anchor_timestamp`. A call stops at\n`limit` hits (default 20, at most 50) or once it has read\n`MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever\ncomes first, and returns a `next_cursor` to continue from; a page can\ntherefore hold fewer hits than `limit`, even none, and still not be the\nlast. A common term in a huge channel costs a page, never the channel.",
       "params": [
         {
           "name": "query",

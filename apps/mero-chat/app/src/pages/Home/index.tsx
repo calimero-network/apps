@@ -31,9 +31,10 @@ import { useChatMembers } from "../../hooks/useChatMembers";
 import { useChannelMembers } from "../../hooks/useChannelMembers";
 import { useGroupMembers } from "../../hooks/useGroupMembers";
 import { useMessages } from "../../hooks/useMessages";
-import type {
-  SearchContext,
-  SearchResult,
+import {
+  resultPosition,
+  type SearchContext,
+  type SearchResult,
 } from "../../hooks/messageSearch";
 import { useThreadMessages } from "../../hooks/useThreadMessages";
 import { useWebSocket, useWebSocketEvents } from "../../contexts/WebSocketContext";
@@ -417,11 +418,15 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
    * permalink takes. A result with no position just opens the conversation.
    */
   const handleResultClick = useCallback(
-    (result: SearchResult) => {
+    async (result: SearchResult) => {
       const { contextId } = result;
+      const api = new ClientApiDataSource();
+      const index = await resultPosition(result, (props) =>
+        api.messagePosition(props),
+      );
       pendingLinkRef.current =
-        result.index >= 0
-          ? { contextId, index: result.index, messageId: result.indexMessageId }
+        index !== null
+          ? { contextId, index, messageId: result.indexMessageId }
           : null;
       if (activeChatRef.current?.contextId === contextId) {
         // Already open: reload the list so it consumes the link.

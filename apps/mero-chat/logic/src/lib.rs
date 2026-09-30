@@ -1,5 +1,6 @@
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::search::{Query, SearchCollection};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env, AccountId, BlobId};
 use calimero_storage::address::Id;
@@ -159,7 +160,7 @@ fn page_window(total: usize, limit: Option<usize>, offset: Option<usize>) -> (Ra
 fn search_hit(
     message: &Message,
     parent: Option<&str>,
-    index: usize,
+    index: Option<usize>,
     anchor_timestamp: u64,
     sender: UserId,
     found: search::Snippet,
@@ -167,7 +168,7 @@ fn search_hit(
     SearchHit {
         id: message.id.get().clone(),
         parent_message_id: parent.map(str::to_owned),
-        index: index as u64,
+        index: index.map(|i| i as u64),
         timestamp: *message.timestamp,
         anchor_timestamp,
         sender,
@@ -394,10 +395,16 @@ const ROLE_MOD: &str = "mod";
 // `RekeyTarget` impl that used to be hand-written after the merge, field by
 // field under `field_child_id(parent_id, "<field name>")` — the same child ids,
 // so nothing moves in storage.
+//
+// Searchable: the node's full-text index holds each message's text as a reader
+// sees it (markup dropped, trigrams for substring search) and its timestamp to
+// rank by. A deleted message is not in it.
 #[app::mergeable]
-#[derive(BorshDeserialize, BorshSerialize, AbiType)]
+#[derive(BorshDeserialize, BorshSerialize, AbiType, app::Searchable)]
 #[borsh(crate = "calimero_sdk::borsh")]
+#[search(index_if = Message::is_indexed)]
 pub struct Message {
+    #[search(number)]
     pub timestamp: LwwRegister<u64>,
     /// Whoever the writing node SAID sent it, echoed back to that sender. A
     /// patched node can put anyone here, so no read trusts it: views take the
@@ -408,9 +415,19 @@ pub struct Message {
     pub files: Vector<Attachment>,
     pub images: Vector<Attachment>,
     pub id: LwwRegister<MessageId>,
+    #[search(text, infix, with = search::indexed_text)]
     pub text: LwwRegister<String>,
     pub edited_on: Option<LwwRegister<u64>>,
     pub deleted: Option<LwwRegister<bool>>,
+}
+
+impl Message {
+    /// Whether the message is in the search index: a deleted one is not.
+    /// (A staff removal lives in `hidden`, outside the message, and is
+    /// filtered when a hit is read back.)
+    fn is_indexed(&self) -> bool {
+        !self.deleted.as_ref().is_some_and(|flag| **flag)
+    }
 }
 
 impl MergeableTrait for Message {
@@ -622,11 +639,14 @@ pub struct SearchHit {
     /// Set for a thread reply: the top-level message it replies to.
     pub parent_message_id: Option<MessageId>,
     /// Position of the top-level message: the hit itself, or a reply's
-    /// parent. What a permalink to the conversation is made of.
-    pub index: u64,
+    /// parent. What a permalink to the conversation is made of. `None` from
+    /// the index-backed search, which does not walk the channel: ask
+    /// `message_position` for it when the hit is opened.
+    pub index: Option<u64>,
     pub timestamp: u64,
-    /// The timestamp the hit is ranked by: its own for a top-level message,
-    /// its parent's for a reply, which is listed with its thread.
+    /// The timestamp the hit is ranked by. The index ranks every message by
+    /// its own; the scan fallback ranks a reply by its parent's, listing it
+    /// with its thread.
     pub anchor_timestamp: u64,
     /// From the entry's owner stamp, never the message's own field.
     pub sender: UserId,
@@ -774,6 +794,15 @@ pub struct MeroChat {
     // own keys" describes the API, not the storage — the bytes replicated to
     // everyone regardless.
 }
+
+// One index over both places a message lives: top-level messages and thread
+// replies, ranked together newest first.
+app::search_indexes!(MeroChat {
+    "messages" (version = 1) => messages | threads,
+});
+
+/// The index `search_messages` queries.
+const SEARCH_INDEX: &str = "messages";
 
 #[app::logic]
 impl MeroChat {
@@ -1420,8 +1449,115 @@ impl MeroChat {
         Ok(self.messages.len().unwrap_or(0) as u64)
     }
 
-    /// Messages whose text contains `query`, newest first, a bounded amount of
-    /// work per call.
+    /// Messages whose text contains `query`, newest first, answered from the
+    /// node's full-text index: a page costs the same however long the channel
+    /// is.
+    ///
+    /// Text is matched as a reader sees it (markup dropped, entities decoded),
+    /// folded for case and accents, so "cafe" finds "Café". A query of three
+    /// characters or more matches anywhere in a word; a shorter one matches
+    /// the start of a word. Deleted and staff-removed messages are never
+    /// returned. Top-level messages and thread replies are ranked together by
+    /// their own timestamp.
+    ///
+    /// A page holds at most `limit` hits (default 20, at most 50), fewer when
+    /// a hit the index still holds is gone from state or removed; `next_cursor`
+    /// continues it. Hits carry no `index`: open one with `message_position`.
+    ///
+    /// On a node running with search off the index is not there and this
+    /// fails; `search_messages_scan` answers the same question by walking the
+    /// channel.
+    #[app::view]
+    pub fn search_messages(
+        &self,
+        query: String,
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> app::Result<SearchPage> {
+        if query.len() > MAX_SEARCH_TERM_LEN {
+            app::bail!(
+                "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
+                query.len()
+            );
+        }
+        let needle = search::fold_query(&query);
+        let limit = limit
+            .unwrap_or(DEFAULT_SEARCH_LIMIT)
+            .clamp(1, MAX_SEARCH_LIMIT);
+        let mut page = SearchPage {
+            hits: Vec::new(),
+            next_cursor: None,
+            frontier_timestamp: None,
+        };
+        if needle.is_empty() {
+            return Ok(page);
+        }
+        let offset = match cursor {
+            None => 0,
+            Some(raw) => raw
+                .parse::<u32>()
+                .map_err(|_| app::err!("Invalid search cursor"))?,
+        };
+        let query = if needle.chars().count() >= 3 {
+            Query::substring(needle.clone())
+        } else {
+            Query::prefix(needle.clone())
+        };
+        let response = query
+            .newest_first("timestamp")
+            .cursor(offset)
+            .limit(limit as u32)
+            .run(SEARCH_INDEX)
+            .map_err(|e| app::err!("{e}"))?;
+        for found in &response.hits {
+            let (message, parent, sender) =
+                if let Some((entry, message)) = self.messages.search_entry(found.id)? {
+                    let sender = self
+                        .messages
+                        .owner_of_id(Id::from(entry))?
+                        .map_or(UserId::new([0; 32]), user_of);
+                    (message, None, sender)
+                } else if let Some((key, reply)) = self.threads.search_entry(found.id)? {
+                    let sender = self.thread_sender(&key, &reply);
+                    let parent = key.split(KEY_SEP).next().unwrap_or_default().to_owned();
+                    (reply, Some(parent), sender)
+                } else {
+                    // Gone from state since the index saw it.
+                    continue;
+                };
+            if self.is_deleted(&message) {
+                continue;
+            }
+            let at = *message.timestamp;
+            page.frontier_timestamp = Some(page.frontier_timestamp.map_or(at, |f| f.min(at)));
+            let snippet = search::snippet(&search::plain_text(message.text.get()), &needle);
+            page.hits.push(search_hit(
+                &message,
+                parent.as_deref(),
+                None,
+                at,
+                sender,
+                snippet,
+            ));
+        }
+        page.next_cursor = response.next_cursor.map(|next| next.to_string());
+        Ok(page)
+    }
+
+    /// The position of the top-level message `message_id` in the channel, for
+    /// opening a search hit where it was said (`get_messages_from`). A reply
+    /// has none: open its parent's. Costs a read of the channel's list of
+    /// messages, as a positional read does.
+    #[app::view]
+    pub fn message_position(&self, message_id: MessageId) -> app::Result<Option<u64>> {
+        let Some(entry) = self.entry_of(&message_id)? else {
+            return Ok(None);
+        };
+        Ok(self.messages.position_of_id(entry)?.map(|p| p as u64))
+    }
+
+    /// `search_messages` without the index: walks the channel, a bounded
+    /// amount of work per call. For a node running with search off.
     ///
     /// Text is compared as a reader sees it (markup dropped, entities decoded)
     /// and folded for case, accents and width as mero-docs folds it, so "cafe"
@@ -1436,7 +1572,7 @@ impl MeroChat {
     /// therefore hold fewer hits than `limit`, even none, and still not be the
     /// last. A common term in a huge channel costs a page, never the channel.
     #[app::view]
-    pub fn search_messages(
+    pub fn search_messages_scan(
         &self,
         query: String,
         cursor: Option<String>,
@@ -1493,8 +1629,14 @@ impl MeroChat {
                                 .messages
                                 .owner_of(at.index)?
                                 .map_or(UserId::new([0; 32]), user_of);
-                            page.hits
-                                .push(search_hit(&message, None, at.index, anchor, sender, found));
+                            page.hits.push(search_hit(
+                                &message,
+                                None,
+                                Some(at.index),
+                                anchor,
+                                sender,
+                                found,
+                            ));
                         }
                         None
                     }
@@ -1514,7 +1656,7 @@ impl MeroChat {
                         page.hits.push(search_hit(
                             &reply,
                             Some(parent),
-                            at.index,
+                            Some(at.index),
                             anchor,
                             sender,
                             found,
@@ -2382,7 +2524,7 @@ mod tests {
         let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
 
         assert!(
-            app.view(|s| s.search_messages(huge.clone(), None, None))
+            app.view(|s| s.search_messages_scan(huge.clone(), None, None))
                 .is_err(),
             "search_messages accepted an oversized term",
         );
@@ -2411,14 +2553,14 @@ mod tests {
         .unwrap();
 
         let found = app
-            .view(|s| s.search_messages("merger".to_owned(), None, None))
+            .view(|s| s.search_messages_scan("merger".to_owned(), None, None))
             .expect("search");
         assert_eq!(found.hits.len(), 1);
 
         // Exactly at the limit is accepted; the ceiling is inclusive.
         let at_limit = "y".repeat(MAX_SEARCH_TERM_LEN);
         assert!(app
-            .view(|s| s.search_messages(at_limit, None, None))
+            .view(|s| s.search_messages_scan(at_limit, None, None))
             .is_ok());
     }
 
@@ -3272,7 +3414,7 @@ mod tests {
         let mut pages = 0;
         loop {
             let page = app
-                .view(|s| s.search_messages(query.to_owned(), cursor.clone(), Some(limit)))
+                .view(|s| s.search_messages_scan(query.to_owned(), cursor.clone(), Some(limit)))
                 .expect("search");
             pages += 1;
             assert!(
@@ -3289,6 +3431,50 @@ mod tests {
     }
 
     #[test]
+    fn a_hit_is_opened_at_the_position_message_position_names() {
+        let mut app = new_chat();
+        let first = send_at(&mut app, USER, "one", 1);
+        let second = send_at(&mut app, MODR, "two", 2);
+        let reply = reply_at(&mut app, USER, &first, "a reply", 3);
+        let at = |app: &TestHost<MeroChat>, id: &str| {
+            app.view(|s| s.message_position(id.to_owned()))
+                .expect("position")
+        };
+        assert_eq!(at(&app, &first), Some(0));
+        assert_eq!(at(&app, &second), Some(1));
+        assert_eq!(at(&app, &reply), None, "a reply opens at its parent's");
+        assert_eq!(at(&app, "no-such-message"), None);
+        let window = app
+            .view(|s| s.get_messages_from(1, Some(1)))
+            .expect("window");
+        assert_eq!(
+            window.messages[0].id, second,
+            "the position reads the same message back"
+        );
+    }
+
+    #[test]
+    fn the_index_backed_search_checks_its_input_before_asking_the_node() {
+        let app = new_chat();
+        let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
+        assert!(app.view(|s| s.search_messages(huge, None, None)).is_err());
+        let empty = app
+            .view(|s| s.search_messages("   ".to_owned(), None, None))
+            .expect("an empty query asks nothing");
+        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
+        assert!(app
+            .view(|s| s.search_messages("x".to_owned(), Some("not a cursor".to_owned()), None))
+            .is_err());
+        // Without a node there is no index to ask: the error says so, and the
+        // scan answers instead.
+        let err = app
+            .view(|s| s.search_messages("hello".to_owned(), None, None))
+            .err()
+            .expect("no index here");
+        assert!(format!("{err:?}").contains("needs a node"), "{err:?}");
+    }
+
+    #[test]
     fn search_is_newest_first_and_lists_a_reply_with_its_thread() {
         let mut app = new_chat();
         let first = send_at(&mut app, USER, "needle one", 1);
@@ -3298,7 +3484,7 @@ mod tests {
         let own = reply_at(&mut app, USER, &last, "needle again", 5);
 
         let page = app
-            .view(|s| s.search_messages("NEEDLE".to_owned(), None, None))
+            .view(|s| s.search_messages_scan("NEEDLE".to_owned(), None, None))
             .unwrap();
         let ids: Vec<&str> = page.hits.iter().map(|h| h.id.as_str()).collect();
         assert_eq!(
@@ -3313,7 +3499,11 @@ mod tests {
 
         let reply = &page.hits[2];
         assert_eq!(reply.parent_message_id.as_deref(), Some(quiet.as_str()));
-        assert_eq!(reply.index, 1, "a reply carries its parent's position");
+        assert_eq!(
+            reply.index,
+            Some(1),
+            "a reply carries its parent's position"
+        );
         assert_eq!((reply.timestamp, reply.anchor_timestamp), (4, 2));
         assert_eq!(reply.sender, UserId::new(MODR), "from the owner stamp");
         assert_eq!(page.hits[0].sender, UserId::new(MODR));
@@ -3341,7 +3531,7 @@ mod tests {
         }
 
         let whole = app
-            .view(|s| s.search_messages("needle".to_owned(), None, Some(MAX_SEARCH_LIMIT)))
+            .view(|s| s.search_messages_scan("needle".to_owned(), None, Some(MAX_SEARCH_LIMIT)))
             .unwrap();
         assert_eq!(whole.hits.len(), 12 + 3 * 5);
         assert!(whole.next_cursor.is_none());
@@ -3360,11 +3550,13 @@ mod tests {
         // A message sent after the first page is newer than the walk: the
         // cursor goes on from where it was, and the new message is not in it.
         let first = app
-            .view(|s| s.search_messages("needle".to_owned(), None, Some(3)))
+            .view(|s| s.search_messages_scan("needle".to_owned(), None, Some(3)))
             .unwrap();
         send_at(&mut app, USER, "needle late", 999);
         let next = app
-            .view(|s| s.search_messages("needle".to_owned(), first.next_cursor.clone(), Some(3)))
+            .view(|s| {
+                s.search_messages_scan("needle".to_owned(), first.next_cursor.clone(), Some(3))
+            })
             .unwrap();
         assert_eq!(next.hits[0].id, whole.hits[3].id);
     }
@@ -3418,7 +3610,7 @@ mod tests {
         );
 
         let found = app
-            .view(|s| s.search_messages("cafe".to_owned(), None, None))
+            .view(|s| s.search_messages_scan("cafe".to_owned(), None, None))
             .unwrap();
         assert_eq!(found.hits.len(), 1);
         let hit = &found.hits[0];
@@ -3429,7 +3621,7 @@ mod tests {
 
         for query in ["files", "  CAFÉ  ", "the caf"] {
             assert_eq!(
-                app.view(|s| s.search_messages(query.to_owned(), None, None))
+                app.view(|s| s.search_messages_scan(query.to_owned(), None, None))
                     .unwrap()
                     .hits
                     .len(),
@@ -3440,7 +3632,7 @@ mod tests {
         // Markup is not text.
         for query in ["strong", "<p>", "amp"] {
             assert!(
-                app.view(|s| s.search_messages(query.to_owned(), None, None))
+                app.view(|s| s.search_messages_scan(query.to_owned(), None, None))
                     .unwrap()
                     .hits
                     .is_empty(),
@@ -3455,20 +3647,24 @@ mod tests {
         send_at(&mut app, USER, "hello", 1);
 
         let empty = app
-            .view(|s| s.search_messages("   ".to_owned(), None, None))
+            .view(|s| s.search_messages_scan("   ".to_owned(), None, None))
             .unwrap();
         assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
 
         for cursor in ["nope", "5", "-1", "0:bad"] {
             assert!(
-                app.view(|s| s.search_messages("hello".to_owned(), Some(cursor.to_owned()), None))
-                    .is_err(),
+                app.view(|s| s.search_messages_scan(
+                    "hello".to_owned(),
+                    Some(cursor.to_owned()),
+                    None
+                ))
+                .is_err(),
                 "cursor {cursor:?} was accepted"
             );
         }
         // A limit of 0 still makes progress; one past the ceiling is clamped.
         let one = app
-            .view(|s| s.search_messages("hello".to_owned(), None, Some(0)))
+            .view(|s| s.search_messages_scan("hello".to_owned(), None, Some(0)))
             .unwrap();
         assert_eq!(one.hits.len(), 1);
     }
@@ -3489,7 +3685,7 @@ mod tests {
         let per_call = MAX_SEARCH_BYTES.div_ceil(MAX_MESSAGE_LEN);
 
         let first = app
-            .view(|s| s.search_messages("needle".to_owned(), None, None))
+            .view(|s| s.search_messages_scan("needle".to_owned(), None, None))
             .unwrap();
         assert!(first.hits.is_empty());
         let cursor = super::search::Cursor::decode(first.next_cursor.as_deref().unwrap()).unwrap();
@@ -3524,7 +3720,8 @@ mod tests {
             s.get_messages(Some(id.clone()), None, None, None).unwrap();
             s.get_messages_from(0, None).unwrap();
             s.get_message_count().unwrap();
-            s.search_messages("hello".to_owned(), None, None).unwrap();
+            s.search_messages_scan("hello".to_owned(), None, None)
+                .unwrap();
         });
     }
 }

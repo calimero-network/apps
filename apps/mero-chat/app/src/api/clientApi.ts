@@ -102,8 +102,12 @@ export interface SearchHit {
   id: string;
   /** Set for a thread reply: the top-level message it replies to. */
   parent_message_id?: string | null;
-  /** Position of the top-level message (a reply's parent). */
-  index: number;
+  /**
+   * Position of the top-level message (a reply's parent). `null` from the
+   * index-backed search, which does not walk the channel: ask
+   * `message_position` for it when the hit is opened.
+   */
+  index: number | null;
   /** Seconds, as the contract stores them. */
   timestamp: number;
   /** What the hit is ranked by: its own timestamp, or its parent's for a reply. */
@@ -120,8 +124,15 @@ export interface SearchPage {
   hits: SearchHit[];
   /** `null` once the walk reached the oldest message. */
   next_cursor?: string | null;
-  /** Oldest top-level timestamp the call read; later pages rank at or below it. */
+  /** Oldest timestamp the call ranked; later pages rank at or below it. */
   frontier_timestamp?: number | null;
+}
+
+/** `message_position`: where a top-level message sits in its channel. */
+export interface MessagePositionProps {
+  messageId: string;
+  contextId: string;
+  executorPublicKey: string;
 }
 
 /**
@@ -376,6 +387,9 @@ export enum ClientMethod {
   GET_UNREAD_COUNT = "get_unread_count",
   GET_UNREAD_MENTIONS = "get_unread_mentions",
   SEARCH_MESSAGES = "search_messages",
+  // The same page without the node's index, for a node running with search off.
+  SEARCH_MESSAGES_SCAN = "search_messages_scan",
+  MESSAGE_POSITION = "message_position",
   // Pre-`search_messages` contracts only; see `searchAllMessages`.
   SEARCH_ALL_MESSAGES = "search_all_messages",
   // Per-user per-channel drafts (WASM-backed, effectively private).
@@ -431,6 +445,8 @@ export interface ClientApi {
   /** Channel length. One row read — no message bodies cross the wire. */
   getMessageCount(props: GetMessageCountProps): ApiResponse<number>;
   searchMessages(props: SearchMessagesProps): ApiResponse<SearchPage>;
+  searchMessagesScan(props: SearchMessagesProps): ApiResponse<SearchPage>;
+  messagePosition(props: MessagePositionProps): ApiResponse<number | null>;
   searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;

@@ -144,6 +144,9 @@ export interface DocDto {
  * `tags` need: a nested collection stored under a value type that is not a
  * registered `RekeyTarget` keeps a per-replica random storage id and never
  * converges.
+ *
+ * `Searchable`: the node's full-text index holds each doc's title (weighted
+ * double) and body text, formatting left out; `search_docs` queries it.
  */
 export interface DocRecord {
   title: {  };
@@ -155,6 +158,36 @@ export interface DocRecord {
   archived: boolean;
   updated_at: number;
   updated_by: string;
+}
+
+/**
+ * One document `search_docs` found.
+ */
+export interface DocSearchHit {
+  id: string;
+  title: string;
+  /**
+   * A fragment of the title or body around the match, the matched words
+   * wrapped in `<b>`; empty when there is none to show.
+   */
+  snippet: string;
+  score: number;
+  archived: boolean;
+}
+
+/**
+ * A page of `search_docs`.
+ */
+export interface DocSearchPage {
+  hits: DocSearchHit[];
+  /**
+   * Documents the index matched in all.
+   */
+  total: number;
+  /**
+   * Pass back as `cursor` for the next page; `None` on the last.
+   */
+  next_cursor: number | null;
 }
 
 /**
@@ -730,6 +763,28 @@ export class DocsClient {
   public async resolveIds(params: { doc: string; block: string; anchors: string[] }): Promise<number[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'resolve_ids', argsJson: params });
     return response as number[];
+  }
+
+  /**
+   * search_docs
+   *
+   * The docs whose title or body match `query`, best match first: words
+   * match as typed or as a prefix of a longer word, so a query can be
+   * typed as-you-go. The title counts double.
+   *
+   * Only docs the list shows are returned: an archived one only with
+   * `include_archived`, never one whose header is gone. A page holds at
+   * most `limit` hits (default 20, at most 100); `next_cursor` continues
+   * it. The index lives on each node and lags an edit by up to a second.
+   *
+   * On a node running with search off the index is not there and this
+   * fails: the client falls back to reading the docs itself.
+   *
+   * @intent read_only
+   */
+  public async searchDocs(params: { query: string; include_archived: boolean; cursor: number | null; limit: number | null }): Promise<DocSearchPage> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_docs', argsJson: params });
+    return response as DocSearchPage;
   }
 
   /**
