@@ -166,7 +166,9 @@ export function invitationFromRaw(raw: string): string | null {
   } catch {
     /* not a query string — fall through to the bare-token reading */
   }
-  return direct.includes("=") || direct.includes("?") ? null : direct;
+  if (direct.includes("=") || direct.includes("?")) return null;
+  if (direct.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(direct)) return null;
+  return direct;
 }
 
 /** The current URL with the invitation parameter removed. */

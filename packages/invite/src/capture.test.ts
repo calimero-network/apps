@@ -60,6 +60,13 @@ describe("invitation capture", () => {
     expect(seen).toEqual([]);
   });
 
+  it("delivers nothing when the app opens on a deep path with no invitation", () => {
+    openAt("/teams");
+    const seen: string[] = [];
+    onInvitation((i) => seen.push(i.token));
+    expect(seen).toEqual([]);
+  });
+
   // An unacked intent replays on every load by design, so a transient failure is
   // retried. Without a ceiling a permanent one is retried forever, and every
   // node restart re-fires a link that was already used.
