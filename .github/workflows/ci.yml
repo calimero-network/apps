@@ -53,7 +53,7 @@ jobs:
       # producer of the artifacts BOTH it and `browser` download, and `browser`
       # runs over `apps` — see the note on the wasm job's matrix.
       contract_apps: ${{ steps.set.outputs.contract_apps }}
-      # `contract_apps` as {app, workflow} pairs: one e2e runner per scenario.
+      # `contract_apps` as one entry per scenario, with its time budget.
       contract_workflows: ${{ steps.set.outputs.contract_workflows }}
       # `apps` as {app, shard} pairs: an app in BROWSER_SHARDS runs its browser
       # e2e split across that many runners.
@@ -299,7 +299,7 @@ jobs:
             echo "::notice::merobox apps: $contract_apps"
           fi
           echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
-          echo "contract_workflows=$(bash scripts/app-packages.sh workflows <<<"$contract_apps")" >> "$GITHUB_OUTPUT"
+          echo "contract_workflows=$(python3 scripts/e2e-matrix.py <<<"$contract_apps")" >> "$GITHUB_OUTPUT"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -941,7 +941,7 @@ jobs:
     # and starts two merod containers.
     if: needs.changes.outputs.contract_workflows != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 25 # one scenario with retries, not the whole app
+    timeout-minutes: ${{ matrix.timeout_minutes }} # one scenario, sized by scripts/e2e-matrix.py
     strategy:
       fail-fast: false
       # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
@@ -949,7 +949,7 @@ jobs:
       # `none` keeps the name resolvable; this job's `if` gates on the same
       # `!= '[]'`, so the leg is skipped and simply reads "… (none / none)".
       matrix:
-        include: ${{ fromJSON(needs.changes.outputs.contract_workflows != '[]' && needs.changes.outputs.contract_workflows || '[{"app":"none","workflow":"none"}]') }}
+        include: ${{ fromJSON(needs.changes.outputs.contract_workflows != '[]' && needs.changes.outputs.contract_workflows || '[{"app":"none","workflow":"none","attempt_minutes":1,"timeout_minutes":5}]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1074,7 +1074,7 @@ jobs:
         working-directory: apps/${{ matrix.app }}/logic
         env:
           WORKFLOW: workflows/${{ matrix.workflow }}.yml
-          ATTEMPT_TIMEOUT: 10m # a healthy scenario takes minutes; a hung one must not eat the job budget
+          ATTEMPT_TIMEOUT: ${{ matrix.attempt_minutes }}m
         run: |
           log=$(mktemp)
 
