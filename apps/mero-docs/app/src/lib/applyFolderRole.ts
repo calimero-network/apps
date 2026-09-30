@@ -2,8 +2,8 @@
 // folder's whole subtree: Read only on a folder covers every sub-folder the
 // member reaches, and core reads only the direct row of each folder's group.
 
-import { HTTPError } from '@calimero-network/mero-js';
-import { FolderId, type Role } from '@/generated/registry/RegistryClient';
+import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
+import { FolderId, type RegistryClient } from '@/generated/registry/RegistryClient';
 import {
   FOLDER_ROLE_GRANTS,
   isTeeRole,
@@ -11,41 +11,18 @@ import {
   type FolderAccessRole,
   type GroupRole,
 } from './roles';
-import { listMembers } from './groupMembers';
+import { openConnected, type OpenFolder } from '@/utils/ancestry';
 
 export interface FolderRoleWriter {
-  admin: {
-    listGroupMembers(groupId: string): Promise<unknown>;
-    updateMemberRole(
-      groupId: string,
-      identity: string,
-      request: { role: GroupRole },
-    ): Promise<void>;
-    addGroupMembers(
-      groupId: string,
-      request: { members: { identity: string; role: GroupRole }[] },
-    ): Promise<void>;
-    setMemberCapabilities(
-      groupId: string,
-      identity: string,
-      request: { capabilities: number },
-    ): Promise<void>;
-    getMemberCapabilities(
-      groupId: string,
-      member: string,
-    ): Promise<{ capabilities?: number }>;
-  };
-  registry: {
-    setFolderRole(params: {
-      folder_id: FolderId;
-      member: string;
-      role: Role;
-    }): Promise<void>;
-    getFolderRole(params: {
-      folder_id: FolderId;
-      member: string;
-    }): Promise<Role>;
-  };
+  admin: Pick<
+    AdminApiClient,
+    | 'listGroupMembers'
+    | 'updateMemberRole'
+    | 'addGroupMembers'
+    | 'setMemberCapabilities'
+    | 'getMemberCapabilities'
+  >;
+  registry: Pick<RegistryClient, 'setFolderRole' | 'getFolderRole'>;
 }
 
 /** `account`'s role in the folder's effective member list, or null if absent. */
@@ -54,7 +31,7 @@ export async function coreRoleIn(
   folder: string,
   account: string,
 ): Promise<GroupRole | null> {
-  const row = (await listMembers(writer.admin, folder)).find(
+  const row = (await writer.admin.listGroupMembers(folder)).members.find(
     (m) => m.identity === account,
   );
   return row ? parseGroupRole(row.role) : null;
@@ -140,6 +117,16 @@ export async function applyAcross(
   return failed;
 }
 
+async function readOnlyIn(
+  admin: FolderRoleWriter['admin'],
+  parent: string,
+): Promise<string[]> {
+  const { members } = await admin.listGroupMembers(parent);
+  return members
+    .filter((m) => parseGroupRole(m.role) === 'ReadOnly')
+    .map((m) => m.identity);
+}
+
 /** A folder takes Read only from its parent: every member core ReadOnly in
  *  `parent` who reaches `folder` is made Read only there too. */
 export async function inheritReadOnly(
@@ -147,14 +134,31 @@ export async function inheritReadOnly(
   parent: string,
   folder: string,
 ): Promise<string[]> {
-  const readOnly = (await listMembers(writer.admin, parent))
-    .filter((m) => parseGroupRole(m.role) === 'ReadOnly')
-    .map((m) => m.identity);
+  const readOnly = await readOnlyIn(writer.admin, parent);
   const failed: string[] = [];
   for (const account of readOnly) {
     if (await holdsReadOnly(writer, folder, account)) continue;
     if ((await applyAcross(writer, [folder], account, true)).length > 0)
       failed.push(account);
+  }
+  return failed;
+}
+
+/** Opening `folder` also opens the way to its Open sub-folders, so `folder` and
+ *  each of them, parents first, takes Read only from the folder above it.
+ *  Returns the accounts it could not change, and the sub-folders of unknown visibility. */
+export async function inheritReadOnlyDown(
+  writer: FolderRoleWriter,
+  folders: OpenFolder[],
+  folder: string,
+  parent: string,
+): Promise<string[]> {
+  const { open, unknown } = openConnected(folders, folder);
+  const failed = [...unknown];
+  for (const id of [folder, ...open]) {
+    const above =
+      id === folder ? parent : folders.find((f) => f.id === id)?.parent_id;
+    if (above) failed.push(...(await inheritReadOnly(writer, above, id)));
   }
   return failed;
 }
@@ -189,9 +193,10 @@ export async function readOnlyRowsBeforeOpen(
   parent: string,
   folder: string,
 ): Promise<void> {
-  const readOnly = (await listMembers(writer.admin, parent))
-    .filter((m) => parseGroupRole(m.role) === 'ReadOnly')
-    .map((m) => ({ identity: m.identity, role: 'ReadOnly' as const }));
+  const readOnly = (await readOnlyIn(writer.admin, parent)).map((identity) => ({
+    identity,
+    role: 'ReadOnly' as const,
+  }));
   if (readOnly.length === 0) return;
   await writer.admin.addGroupMembers(folder, { members: readOnly });
   for (const { identity } of readOnly) {

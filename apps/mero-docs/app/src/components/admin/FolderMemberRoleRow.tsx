@@ -27,8 +27,8 @@ import {
   type FolderAccessRole,
 } from '@/lib/roles';
 import { applyAcross, applyFolderGrant, coreRoleIn } from '@/lib/applyFolderRole';
-import { folderLabel } from '@/lib/folderLabel';
-import { openConnected } from '@/lib/openFolderRemoval';
+import { folderNames } from '@/lib/folderLabel';
+import { openConnected } from '@/utils/ancestry';
 import type { Role } from '@/generated/registry/RegistryClient';
 
 const PARENT_READ_ONLY = 'Read only here comes from a parent folder. Change it there.'; // no row here to change
@@ -134,9 +134,7 @@ export function FolderMemberRoleRow({
   };
 
   const subtreeFailure = (failed: string[]) =>
-    `Role set here, but not in ${failed
-      .map((id) => folderLabel(folders.find((f) => f.id === id)?.alias))
-      .join(', ')}. Ask the owner of each to set it.`;
+    `Role set here, but not in ${folderNames(folders, failed)}. Ask the owner of each to set it.`;
 
   const onRoleChange = async (next: FolderAccessRole) => {
     if (!current) return;

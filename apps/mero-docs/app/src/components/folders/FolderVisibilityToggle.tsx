@@ -19,8 +19,8 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
-import { inheritReadOnly, type FolderRoleWriter } from '@/lib/applyFolderRole';
-import { openConnected } from '@/lib/openFolderRemoval';
+import { inheritReadOnlyDown } from '@/lib/applyFolderRole';
+import { openConnected } from '@/utils/ancestry';
 import { CAPABILITIES, hasCap } from '@/constants/config';
 import { FolderId } from '@/generated/registry/RegistryClient';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
@@ -56,22 +56,6 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
 
   const next: 'Open' | 'Restricted' =
     current === 'Open' ? 'Restricted' : 'Open';
-
-  // Opened, the folder also opens the way to its own Open sub-folders, so each
-  // one, parents first, takes Read only from the folder above it.
-  const carryReadOnlyDown = async (
-    writer: FolderRoleWriter,
-    parent: string,
-  ) => {
-    const { open, unknown } = openConnected(folders, folderId);
-    const failed: string[] = [...unknown];
-    for (const id of [folderId, ...open]) {
-      const above =
-        id === folderId ? parent : folders.find((f) => f.id === id)?.parent_id;
-      if (above) failed.push(...(await inheritReadOnly(writer, above, id)));
-    }
-    return failed;
-  };
 
   // A role set in this folder or its Open sub-folders left a direct row there,
   // which outlasts the switch; the grant's join bit shows the row is direct.
@@ -124,8 +108,10 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       const parent = folders.find((f) => f.id === folderId)?.parent_id;
       const failed =
         next === 'Open' && parent && mero && registryClient
-          ? await carryReadOnlyDown(
+          ? await inheritReadOnlyDown(
               { admin: mero.admin, registry: registryClient },
+              folders,
+              folderId,
               parent,
             )
           : [];

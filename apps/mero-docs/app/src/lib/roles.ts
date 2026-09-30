@@ -35,6 +35,8 @@ import type { Role } from '@/generated/registry/RegistryClient';
 /** Core group role. The server's vocabulary, spelled as the server spells it. */
 export type GroupRole = 'Admin' | 'Member' | 'ReadOnly' | 'ReadOnlyTee' | 'RelayTee';
 
+const JOIN = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
+
 export const GROUP_ROLES: readonly GroupRole[] = [
   'Admin',
   'Member',
@@ -128,13 +130,13 @@ export const FOLDER_ROLE_GRANTS: Record<
   Manager: {
     coreRole: 'Member',
     role: 'Manager',
-    folderCaps: MANAGER_FOLDER_CAPS | CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+    folderCaps: MANAGER_FOLDER_CAPS | JOIN,
   },
-  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS },
+  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: JOIN },
   ReadOnly: {
     coreRole: 'ReadOnly',
     role: 'Viewer',
-    folderCaps: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+    folderCaps: JOIN,
   },
 };
 
@@ -149,6 +151,12 @@ export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole
   return match ?? 'Custom';
 }
 
+// Roles that core alone decides, whatever the registry or caps say.
+function coreOnlyRole(coreRole: GroupRole): 'Owner' | 'Tee' | null {
+  if (coreRole === 'Admin') return 'Owner';
+  return isTeeRole(coreRole) ? 'Tee' : null;
+}
+
 /** A folder member's role. A core Admin is the folder's Owner, whatever the
  *  other fields say, because core bypasses them. */
 export function folderRoleOf(
@@ -156,22 +164,22 @@ export function folderRoleOf(
   registryRole: Role | null,
   folderCaps: number | null,
 ): ShownRole | null {
-  if (coreRole === 'Admin') return 'Owner';
-  if (isTeeRole(coreRole)) return 'Tee';
+  const fixed = coreOnlyRole(coreRole);
+  if (fixed) return fixed;
   if (registryRole === null || folderCaps === null) return null;
   const match = FOLDER_ROLES.find(
     (r) =>
       FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
       FOLDER_ROLE_GRANTS[r].role === registryRole &&
-      FOLDER_ROLE_GRANTS[r].folderCaps === (folderCaps | CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS),
+      FOLDER_ROLE_GRANTS[r].folderCaps === (folderCaps | JOIN),
   );
   return match ?? 'Custom';
 }
 
 /** A folder member's role when only the registry Role is known, not the caps. */
 export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
-  if (coreRole === 'Admin') return 'Owner';
-  if (isTeeRole(coreRole)) return 'Tee';
+  const fixed = coreOnlyRole(coreRole);
+  if (fixed) return fixed;
   return (
     FOLDER_ROLES.find(
       (r) =>

@@ -228,13 +228,7 @@ export function useMemberCaps(
         );
         return;
       }
-      setState({
-        caps: 0,
-        isAdmin: false,
-        isReadOnly: false,
-        error: finalErr,
-        denied: refused,
-      });
+      setState({ ...LOADING, caps: 0, error: finalErr, denied: refused });
     })();
 
     return () => {

@@ -1,3 +1,4 @@
+import type { AdminApiClient } from '@calimero-network/mero-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { removeFromFolders } from '../removeFromFolders';
 
@@ -14,6 +15,7 @@ const admin = {
     direct.delete(g);
   }),
 };
+const api = admin as unknown as AdminApiClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,7 +32,7 @@ describe('removeFromFolders', () => {
       { id: 'b', parent_id: null },
       { id: 'c', parent_id: null },
     ];
-    expect(await removeFromFolders(admin, folders, BOB)).toEqual([]);
+    expect(await removeFromFolders(api, folders, BOB)).toEqual([]);
     expect(admin.removeGroupMembers.mock.calls).toEqual([
       ['a', { members: [BOB] }],
       ['c', { members: [BOB] }],
@@ -45,7 +47,7 @@ describe('removeFromFolders', () => {
       { id: 'child', parent_id: 'parent' },
       { id: 'parent', parent_id: null },
     ];
-    await removeFromFolders(admin, folders, BOB);
+    await removeFromFolders(api, folders, BOB);
     expect(admin.removeGroupMembers.mock.calls).toEqual([['parent', { members: [BOB] }]]);
   });
 
@@ -56,7 +58,7 @@ describe('removeFromFolders', () => {
       { id: 'a', parent_id: null },
       { id: 'c', parent_id: null },
     ];
-    expect(await removeFromFolders(admin, folders, BOB)).toEqual(['a']);
+    expect(await removeFromFolders(api, folders, BOB)).toEqual(['a']);
     expect(admin.removeGroupMembers).toHaveBeenCalledWith('c', { members: [BOB] });
   });
 });

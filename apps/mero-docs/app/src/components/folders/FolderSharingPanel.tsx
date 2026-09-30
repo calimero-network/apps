@@ -45,7 +45,7 @@ import {
   roleDisplayLabel,
 } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
-import { folderLabel } from '@/lib/folderLabel';
+import { folderLabel, folderNames } from '@/lib/folderLabel';
 import { inheritReadOnly } from '@/lib/applyFolderRole';
 import { clearOpenSubtree, removedFrom, restoreTo } from '@/lib/openFolderRemoval';
 
@@ -236,8 +236,7 @@ export function FolderSharingPanel({ folderId }: Props) {
       if (id !== selfIdentity) {
         const failed = await clearOpenSubtree(mero.admin, folders, folderId, id);
         if (failed.length > 0) {
-          const names = failed.map((f) => folderLabel(folders.find((x) => x.id === f)?.alias));
-          setRemoveError({ identity: id, message: `still in ${names.join(', ')}` });
+          setRemoveError({ identity: id, message: `still in ${folderNames(folders, failed)}` });
         }
         void refreshRemoved();
       }

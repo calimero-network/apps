@@ -15,7 +15,7 @@ import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { namespaceLabel } from '@/lib/namespaceLabel';
-import { folderLabel } from '@/lib/folderLabel';
+import { folderNames } from '@/lib/folderLabel';
 import { removeFromFolders } from '@/lib/removeFromFolders';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
@@ -91,9 +91,8 @@ export function NamespaceMembersPanel() {
       if (identity === selfIdentity) return;
       const failed = await removeFromFolders(mero.admin, folders, identity);
       if (failed.length > 0) {
-        const names = failed.map((id) => folderLabel(folders.find((f) => f.id === id)?.alias));
         setRemoveError(
-          `Removed ${label} from the workspace, but not from ${names.join(', ')}. Ask the owner of each to remove them.`,
+          `Removed ${label} from the workspace, but not from ${folderNames(folders, failed)}. Ask the owner of each to remove them.`,
         );
       }
     } catch (e: unknown) {

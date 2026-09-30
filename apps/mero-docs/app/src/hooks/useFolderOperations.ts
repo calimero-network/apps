@@ -100,6 +100,9 @@ export function useFolderOperations(
       // A leaked docs context with no registry entry is the artifact
       // nothing else can recover, so rolling back the context on later
       // failures is the most valuable of the three.
+      const writer = { admin: mero.admin, registry: registryClient };
+      const openChild =
+        input.parentGroupId !== rootGroupId && input.visibility === 'Open';
       let createdGroupId: string | null = null;
       let createdContextId: string | null = null;
       let registryEntryCreated = false;
@@ -136,8 +139,8 @@ export function useFolderOperations(
           await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
         }
 
-        if (input.parentGroupId !== rootGroupId && input.visibility === 'Open') {
-          await readOnlyRowsBeforeOpen({ admin: mero.admin, registry: registryClient }, input.parentGroupId, newId);
+        if (openChild) {
+          await readOnlyRowsBeforeOpen(writer, input.parentGroupId, newId);
         }
 
         // Core expects lowercase `"open"` / `"restricted"`; see
@@ -236,8 +239,7 @@ export function useFolderOperations(
             failedMembers = input.members;
           }
         }
-        if (input.parentGroupId !== rootGroupId && input.visibility === 'Open') {
-          const writer = { admin: mero.admin, registry: registryClient };
+        if (openChild) {
           await inheritReadOnly(writer, input.parentGroupId, createdGroupId)
             .then((failed) => failed.length > 0 && toast.error(READ_ONLY_NOT_CARRIED))
             .catch((e) => {

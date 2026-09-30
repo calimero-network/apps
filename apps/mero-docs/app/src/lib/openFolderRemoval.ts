@@ -3,55 +3,21 @@
 // direct row there (left by Read only) survives outright. From an Open
 // folder, core records the removal as a ban that only an admin add lifts.
 
+import type { AdminApiClient } from '@calimero-network/mero-js';
 import { CAPABILITIES, hasCap } from '@/constants/config';
 import {
   applyAcross,
   coreRoleIn,
   type FolderRoleWriter,
 } from './applyFolderRole';
-import { listMembers } from './groupMembers';
+import { removeWhereListed } from './removeFromFolders';
+import { openConnected, type OpenFolder } from '@/utils/ancestry';
 import { isTeeRole, parseGroupRole } from './roles';
 
-interface OpenFolder {
-  id: string;
-  parent_id: string | null;
-  visibility?: 'Open' | 'Restricted';
-}
-
-interface Admin {
-  listGroupMembers(groupId: string): Promise<unknown>;
-  removeGroupMembers(
-    groupId: string,
-    request: { members: string[] },
-  ): Promise<void>;
-  getMemberCapabilities(
-    groupId: string,
-    member: string,
-  ): Promise<{ capabilities?: number }>;
-}
-
-/** The Open sub-folders reached through `folder`, parents first; a Restricted
- *  sub-folder walls off everything below it. `unknown` are sub-folders whose
- *  visibility is not loaded (or failed to load), which callers must report. */
-export function openConnected(
-  folders: OpenFolder[],
-  folder: string,
-): { open: string[]; unknown: string[] } {
-  const open: string[] = [];
-  const unknown: string[] = [];
-  const queue = [folder];
-  while (queue.length > 0) {
-    const parent = queue.shift();
-    for (const f of folders) {
-      if (f.parent_id !== parent || open.includes(f.id)) continue;
-      if (f.visibility === undefined) unknown.push(f.id);
-      if (f.visibility !== 'Open') continue;
-      open.push(f.id);
-      queue.push(f.id);
-    }
-  }
-  return { open, unknown };
-}
+type Admin = Pick<
+  AdminApiClient,
+  'listGroupMembers' | 'removeGroupMembers' | 'getMemberCapabilities'
+>;
 
 /** After a removal from `folder`, takes `account` out of each Open sub-folder
  *  reached through it that still lists them. Returns those it could not. */
@@ -62,18 +28,7 @@ export async function clearOpenSubtree(
   account: string,
 ): Promise<string[]> {
   const { open, unknown } = openConnected(folders, folder);
-  const failed = [...unknown];
-  for (const id of open) {
-    try {
-      if ((await listMembers(admin, id)).some((m) => m.identity === account)) {
-        await admin.removeGroupMembers(id, { members: [account] });
-      }
-    } catch (e: unknown) {
-      console.warn('[clearOpenSubtree] not removed', id, e);
-      failed.push(id);
-    }
-  }
-  return failed;
+  return [...unknown, ...(await removeWhereListed(admin, open, account))];
 }
 
 /** Parent members who could join the Open `folder` but are not in it: removed.
@@ -85,10 +40,10 @@ export async function removedFrom(
   folder: string,
 ): Promise<string[]> {
   const inFolder = new Set(
-    (await listMembers(admin, folder)).map((m) => m.identity),
+    (await admin.listGroupMembers(folder)).members.map((m) => m.identity),
   );
   const removed: string[] = [];
-  for (const m of await listMembers(admin, parent)) {
+  for (const m of (await admin.listGroupMembers(parent)).members) {
     const role = parseGroupRole(m.role);
     if (inFolder.has(m.identity) || role === 'Admin' || isTeeRole(role))
       continue;

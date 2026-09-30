@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HTTPError } from '@calimero-network/mero-js';
+import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
 import { clearOpenSubtree, removedFrom, restoreTo } from '../openFolderRemoval';
 import type { FolderRoleWriter } from '../applyFolderRole';
 import { CAPABILITIES } from '@/constants/config';
@@ -28,6 +28,7 @@ const admin = {
   setMemberCapabilities: vi.fn(async () => {}),
   getMemberCapabilities: vi.fn(async (_g: string, m: string) => ({ capabilities: caps[m] ?? 0 })),
 };
+const api = admin as unknown as AdminApiClient;
 const registry = {
   setFolderRole: vi.fn(async () => {}),
   getFolderRole: vi.fn(async () => 'Editor' as const),
@@ -45,13 +46,13 @@ describe('clearOpenSubtree', () => {
   // this folder, and stop where a Restricted folder walls them off.
   it('removes the person from the Open sub-folders reached through this folder only', async () => {
     lists = { g2: [{ identity: BOB }], h: [{ identity: BOB }], h2: [{ identity: BOB }] };
-    expect(await clearOpenSubtree(admin, folders, 'g', BOB)).toEqual([]);
+    expect(await clearOpenSubtree(api, folders, 'g', BOB)).toEqual([]);
     expect(admin.removeGroupMembers.mock.calls).toEqual([['g2', { members: [BOB] }]]);
   });
 
   it('reaches the Open sub-folders of a Restricted folder', async () => {
     lists = { h2: [{ identity: BOB }] };
-    await clearOpenSubtree(admin, folders, 'h', BOB);
+    await clearOpenSubtree(api, folders, 'h', BOB);
     expect(admin.removeGroupMembers.mock.calls).toEqual([['h2', { members: [BOB] }]]);
   });
 });
@@ -60,7 +61,7 @@ describe('clearOpenSubtree with unread folders', () => {
   // Visibility is unknown until the folder's info loads, or after it failed.
   it('names a sub-folder whose visibility it does not know, instead of skipping it', async () => {
     const unread = [...folders, { id: 'u', parent_id: 'g', visibility: undefined }];
-    expect(await clearOpenSubtree(admin, unread, 'g', BOB)).toEqual(['u']);
+    expect(await clearOpenSubtree(api, unread, 'g', BOB)).toEqual(['u']);
   });
 });
 
@@ -76,7 +77,7 @@ describe('removedFrom', () => {
       g: [{ identity: CAROL, role: 'Member' }],
     };
     caps = { [BOB]: JOIN, [CAROL]: JOIN, [TEE]: JOIN };
-    expect(await removedFrom(admin, 'root', 'g')).toEqual([BOB]);
+    expect(await removedFrom(api, 'root', 'g')).toEqual([BOB]);
   });
 });
 
