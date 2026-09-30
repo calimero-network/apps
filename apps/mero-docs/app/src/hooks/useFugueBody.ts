@@ -646,7 +646,7 @@ export function useFugueBody({
       if (classifyError(cause).retryable) scheduleRetry();
       return true;
     }
-  }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
+  }, [backendIdOf, client, discardUnsent, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
 
   const drain = useCallback(async () => {
     if (inFlightRef.current) return;
