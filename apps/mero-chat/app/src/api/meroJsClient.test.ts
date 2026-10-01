@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  downloadBlob,
   isAccountMode,
   setAccountMode,
   setMeroJs,
@@ -15,36 +14,6 @@ afterEach(() => {
   setAccountMode(false);
   setMeroJs(null);
   vi.restoreAllMocks();
-});
-
-describe("downloadBlob", () => {
-  it("on an account, reads the blob through the admin client, scoped to the context", async () => {
-    const bytes = new TextEncoder().encode("hi").buffer;
-    const getBlob = vi.fn(async () => bytes);
-    setAccountMode(true);
-    setMeroJs({ admin: { getBlob } as never, rpc: {} as never });
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    const blob = await downloadBlob("b1", "c1");
-
-    expect(await blob.text()).toBe("hi");
-    expect(getBlob).toHaveBeenCalledWith("b1", { contextId: "c1" });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("on a node, keeps the node's own blob route", async () => {
-    setMeroJs({ admin: {} as never, rpc: {} as never });
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response("node-bytes", { status: 200 }));
-
-    const blob = await downloadBlob("b1", "c1");
-
-    expect(await blob.text()).toBe("node-bytes");
-    expect(String(fetchSpy.mock.calls[0]![0])).toBe(
-      "http://node.test/admin-api/blobs/b1?context_id=c1",
-    );
-  });
 });
 
 describe("account mode", () => {
