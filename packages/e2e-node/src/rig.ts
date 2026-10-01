@@ -332,7 +332,11 @@ export function meshTotals(log: string, from = 0): number[] {
 export async function restartNode(state: RigState, index: number): Promise<RigNode> {
   const node = state.nodes[index];
   if (!node) throw new Error(`no node ${index} in the rig`);
-  const meshBefore = meshTotals(node.log).at(-1) ?? 0;
+  const awaitMesh = state.nodes.length > 1 && process.env["JOURNEY_WRITE_BEFORE_MESH"] !== "1";
+  const meshBefore = awaitMesh
+    ? await waitFor(`${node.name} logged a gossip mesh summary`, async () => meshTotals(node.log).at(-1), 45_000, 1_000)
+        .catch(() => 0)
+    : 0;
   const logOffset = existsSync(node.log) ? statSync(node.log).size : 0;
   await stopNodes([node.pid]);
   await startUntilHealthy(state, node, 90_000);
@@ -340,7 +344,7 @@ export async function restartNode(state: RigState, index: number): Promise<RigNo
   writeRigState(state);
   if (state.nodes.length > 1) {
     await waitFor(`${node.name} reconnected to a peer`, async () => (await peerCount(node)) > 0, 60_000);
-    if (meshBefore > 0 && process.env["JOURNEY_WRITE_BEFORE_MESH"] !== "1") {
+    if (meshBefore > 0) {
       await waitFor(
         `${node.name}'s gossip mesh back to ${meshBefore} peer slot(s)`,
         async () => meshTotals(node.log, logOffset).some((n) => n >= meshBefore),
