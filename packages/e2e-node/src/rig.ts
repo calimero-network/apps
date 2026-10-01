@@ -84,7 +84,7 @@ function nodeEnv(): NodeJS.ProcessEnv {
   delete env["MERO_AUTH_ADMIN_PASSWORD"];
   return {
     ...env,
-    RUST_LOG: process.env["JOURNEY_RUST_LOG"] ?? "merod=info,calimero_=info",
+    RUST_LOG: process.env["JOURNEY_RUST_LOG"] ?? "merod=info,calimero_=info,calimero_node::manager::startup=debug",
   };
 }
 
@@ -321,15 +321,33 @@ async function startUntilHealthy(state: RigState, node: RigNode, timeoutMs: numb
   throw new Error(`${node.name} did not come back healthy within ${timeoutMs}ms; see ${node.log}`);
 }
 
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+export function meshTotals(log: string, from = 0): number[] {
+  if (!existsSync(log)) return [];
+  const text = readFileSync(log).subarray(from).toString("utf8").replace(ANSI, "");
+  return [...text.matchAll(/gossipsub mesh summary.*?total_mesh_peers=(\d+)/g)].map((m) => Number(m[1]));
+}
+
 export async function restartNode(state: RigState, index: number): Promise<RigNode> {
   const node = state.nodes[index];
   if (!node) throw new Error(`no node ${index} in the rig`);
+  const meshBefore = meshTotals(node.log).at(-1) ?? 0;
+  const logOffset = existsSync(node.log) ? statSync(node.log).size : 0;
   await stopNodes([node.pid]);
   await startUntilHealthy(state, node, 90_000);
   node.adminToken = await mintAdminToken(node.url);
   writeRigState(state);
   if (state.nodes.length > 1) {
     await waitFor(`${node.name} reconnected to a peer`, async () => (await peerCount(node)) > 0, 60_000);
+    if (meshBefore > 0 && process.env["JOURNEY_WRITE_BEFORE_MESH"] !== "1") {
+      await waitFor(
+        `${node.name}'s gossip mesh back to ${meshBefore} peer slot(s)`,
+        async () => meshTotals(node.log, logOffset).some((n) => n >= meshBefore),
+        120_000,
+        1_000,
+      );
+    }
   }
   return node;
 }
