@@ -12,9 +12,9 @@ RELEASE=0.11.0-rc.69
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
 #   shasum -a 256 cargo-mero_<target>.tar.gz
-CHECKSUM_aarch64_apple_darwin=1b835481c0e46a0c83966429b59bd33b8f063b6f9b87265e4aa09ea8bcbcfbf9
-CHECKSUM_aarch64_unknown_linux_gnu=2643c6d2cae820084d5f233bf9edea932efb32174c8e5310977f7a58e395a68f
-CHECKSUM_x86_64_unknown_linux_gnu=c686841e3f3e39e835518e8e4bd0e6ba49d67e10c619512327a2fa548d6be2ce
+CHECKSUM_aarch64_apple_darwin=15476d2a59df4e4b07a706183911da5c255ae7a56ae85f7094cf72ef5815547e
+CHECKSUM_aarch64_unknown_linux_gnu=5a72bdfe212de58df07a020391edf92074f76c1426adfd6d1894347979e7046c
+CHECKSUM_x86_64_unknown_linux_gnu=37707e99c6938cd80157d2204890883fe07cc343d03ddf062e05e5b25ede5249
 
 # The CI action needs this value for its cache key; it asks rather than
 # grepping this file, so reformatting the line above cannot silently break it.
