@@ -425,7 +425,7 @@ impl MeroPassApp {
         if allowed {
             Ok(())
         } else {
-            app::bail!("{what}")
+            app::bail!("{what}");
         }
     }
 
@@ -584,7 +584,9 @@ impl MeroPassApp {
                     self.roles.revoke_admin(&who)?;
                 }
             }
-            other => app::bail!("unknown role '{other}': expected admin, editor or viewer"),
+            other => {
+                app::bail!("unknown role '{other}': expected admin, editor or viewer");
+            }
         }
         // An explicit role is an explicit re-admission.
         let removed_key = format!("{ADMIN_REMOVED}{account}");
