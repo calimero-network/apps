@@ -46,6 +46,8 @@ with tempfile.TemporaryDirectory() as d:
     assert by_name["fuzzy"]["attempt_minutes"] == 30 and by_name["fuzzy"]["timeout_minutes"] == 45, by_name
 
 real = {(e["app"], e["workflow"]): e for e in got}
-assert real[("scaffolding-e2e", "fuzzy-test")]["attempt_minutes"] == 25, "fuzzy-test.yml duration changed or is not read"
+# The fuzzy soak lives in workflows/soak/ and runs nightly (soak.yml), never per PR.
+assert ROOT.joinpath("apps/scaffolding-e2e/logic/workflows/soak/fuzzy-test.yml").is_file(), "the soak scenario moved"
+assert ("scaffolding-e2e", "fuzzy-test") not in real, "a soak/ scenario leaked into the per-PR matrix"
 
 print(f"ok: {len(got)} scenarios across {len(apps)} apps")
