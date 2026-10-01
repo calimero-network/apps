@@ -23,7 +23,7 @@ e2e_mode: true
 # allocate ports dynamically, and a later start_node reconnects on base_port.
 nodes:
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.68
   tags-node-1:
     port: 3930
     rpc_port: 3931
