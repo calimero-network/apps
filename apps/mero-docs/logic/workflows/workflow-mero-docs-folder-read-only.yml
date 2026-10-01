@@ -22,7 +22,7 @@ e2e_mode: true
 nodes:
   count: 3
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.69
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.71
   prefix: curo-node
   base_port: 4040
   base_rpc_port: 4044
