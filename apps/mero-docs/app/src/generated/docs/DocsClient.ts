@@ -743,7 +743,7 @@ export class DocsClient {
    * Add the first block with `insert_block`.
    * Not idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.
    *
-   * @param params.title The document title, plain text.
+   * @param params.title The document title, plain text, at most 1024 characters.
    * @returns The new document's id, an opaque string the other methods take as `doc` or `id`.
    *
    * @intent mutating
@@ -825,7 +825,7 @@ export class DocsClient {
    * Character-level title edits go through `title_apply_delta`.
    *
    * @param params.id The document id.
-   * @param params.title The new title, plain text.
+   * @param params.title The new title, plain text, at most 1024 characters.
    *
    * @intent mutating
    */
@@ -1272,6 +1272,7 @@ export class DocsClient {
    * `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
    * Text after the last step is kept.
    * The title carries no formatting, so a step with non-null `attributes` is refused.
+   * A transaction that leaves the title longer than 1024 characters is refused.
    * Positions count Unicode scalar values, not bytes or UTF-16 units.
    *
    * @param params.doc The document id.

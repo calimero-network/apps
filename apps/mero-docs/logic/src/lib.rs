@@ -53,6 +53,8 @@ use mero_docs_types::{is_valid_tag_key, DriveError};
 pub mod events;
 use events::Event;
 
+const MAX_TITLE_LEN: usize = 1024; // Unicode scalar values; the web app sets no title limit
+
 // ---------------------------------------------------------------------------
 // Mark schema
 // ---------------------------------------------------------------------------
@@ -259,6 +261,26 @@ fn edit_end(ops: &[Change]) -> usize {
             Change::Delete { .. } => 0,
         })
         .sum()
+}
+
+/// Refuses a value of `len` that exceeds `max`.
+fn ensure_len(what: &str, len: usize, max: usize) -> Result<(), DriveError> {
+    if len > max {
+        return Err(DriveError::Invalid(format!(
+            "{what} too long: {len} characters, limit is {max}"
+        )));
+    }
+    Ok(())
+}
+
+/// The length a text of `current` characters has once `ops` are applied.
+fn len_after(current: usize, ops: &[Change]) -> usize {
+    let (added, removed) = ops.iter().fold((0, 0), |(added, removed), op| match op {
+        Change::Insert { insert, .. } => (added + insert.chars().count(), removed),
+        Change::Delete { delete } => (added, removed + delete),
+        Change::Retain { .. } => (added, removed),
+    });
+    (current + added).saturating_sub(removed)
 }
 
 /// Whether an anchored write is an insert right where its anchor sits. A client's
@@ -568,7 +590,7 @@ impl DocsState {
     ///
     /// # Arguments
     ///
-    /// * `title` - The document title, plain text.
+    /// * `title` - The document title, plain text, at most 1024 characters.
     ///
     /// # Returns
     ///
@@ -583,6 +605,7 @@ impl DocsState {
         let id = mint_id("doc");
 
         let now = storage_env::time_now();
+        ensure_len("title", title.chars().count(), MAX_TITLE_LEN)?;
         let mut title_text = FugueText::new();
         let _minted = title_text
             .insert_str(0, &title)
@@ -734,7 +757,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `id` - The document id.
-    /// * `title` - The new title, plain text.
+    /// * `title` - The new title, plain text, at most 1024 characters.
     pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
         let len = self.read(&id)?.title.len()?;
         let ops = vec![
@@ -788,6 +811,7 @@ impl DocsState {
     /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
     /// Text after the last step is kept.
     /// The title carries no formatting, so a step with non-null `attributes` is refused.
+    /// A transaction that leaves the title longer than 1024 characters is refused.
     /// Positions count Unicode scalar values, not bytes or UTF-16 units.
     ///
     /// # Arguments
@@ -799,11 +823,14 @@ impl DocsState {
     ///
     /// An opaque undo token.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
+        let title = &mut self.write(&doc)?.title;
+        ensure_len("title", len_after(title.len()?, &ops), MAX_TITLE_LEN)
+            .map_err(DriveError::into_app)?;
         let ops: Vec<TextOp> = ops
             .into_iter()
             .map(Change::into_text_op)
             .collect::<app::Result<_>>()?;
-        let steps = self.write(&doc)?.title.apply_delta(&ops)?;
+        let steps = title.apply_delta(&ops)?;
         app::emit!(Event::TitleChanged { doc: &doc });
         encode_token(&steps)
     }
@@ -2206,6 +2233,24 @@ mod tests {
         let mut app = host("old");
         app.call(|s| s.edit_doc(doc(), "new".to_owned())).unwrap();
         assert_eq!(title(&app), "new");
+    }
+
+    #[test]
+    fn a_title_longer_than_the_cap_is_refused() {
+        let at_cap = "\u{e9}".repeat(MAX_TITLE_LEN);
+        let over = format!("{at_cap}x");
+        let mut app = host(&at_cap);
+        assert!(app.call(|s| s.create_doc(over.clone())).is_err());
+        assert!(app.call(|s| s.edit_doc(doc(), over.clone())).is_err());
+        let grow = || vec![retain(MAX_TITLE_LEN), insert("x")];
+        assert!(app.call(|s| s.title_apply_delta(doc(), grow())).is_err());
+        let on = app.call(|s| s.title_apply_delta_on(doc(), at_cap.clone(), grow(), None));
+        assert!(on.is_err());
+        assert_eq!(title(&app), at_cap);
+        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
+        app.call(|s| s.title_apply_delta(doc(), swap)).unwrap();
+        app.call(|s| s.edit_doc(doc(), over[2..].to_owned()))
+            .unwrap();
     }
 
     // ---- body ------------------------------------------------------------
