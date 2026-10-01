@@ -62,5 +62,7 @@ test('idle workspace refetches once per sync', async ({ alice, bob }) => {
     .poll(() => requestsPerSync(log).syncs, { timeout: SYNC_DEADLINE_MS })
     .toBeGreaterThanOrEqual(MIN_SYNCS);
 
-  expect(requestsPerSync(log).perSync).toBeLessThanOrEqual(MAX_REQUESTS_PER_SYNC);
+  expect(requestsPerSync(log).perSync).toBeLessThanOrEqual(
+    MAX_REQUESTS_PER_SYNC,
+  );
 });

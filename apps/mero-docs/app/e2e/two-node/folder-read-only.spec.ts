@@ -6,6 +6,7 @@ import type { Page, Route } from '@playwright/test';
 import { expect, test } from '../fixtures/two-user';
 import { getEnv } from '../fixtures/env';
 import type { WorkspaceDriver } from '../fixtures/workspace';
+import { DOC_READ_ONLY } from '../../src/lib/documentError';
 import { parseAppPath } from '../../src/lib/routes';
 
 const SYNC_MS = 60_000; // a write or a role change crossing to the other node
@@ -147,6 +148,9 @@ test.describe('Folder Read only (two-node)', () => {
     await bob.page.locator('.ProseMirror').first().getByText('before').click();
     await bob.page.keyboard.press('End');
     await bob.page.keyboard.type(' phantom');
+    await expect(bob.page.getByText(DOC_READ_ONLY)).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(bob.page.locator('.ProseMirror').first()).not.toContainText(
       'phantom',
       { timeout: 30_000 },
