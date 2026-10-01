@@ -3278,7 +3278,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn two_devices_of_one_account_create_two_docs() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (laptop, phone) = (script.founder(), script.founder());
         assert_eq!(script.account(laptop), script.account(phone));
         let on_laptop = script
@@ -3367,7 +3367,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn two_devices_of_one_account_add_two_comments() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (laptop, phone) = (script.founder(), script.founder());
         let mut doc = String::new();
         let created = script
@@ -3406,7 +3406,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn a_direct_body_delete_by_a_non_creator_leaves_the_doc_listed() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (alice, bob) = (script.member(), script.member());
         let mut id = String::new();
         let created = script
@@ -3462,7 +3462,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn a_forged_updated_at_does_not_pin_a_doc_to_the_top() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (alice, mallory) = (script.member(), script.member());
         let mut a = String::new();
         let mut b = String::new();
