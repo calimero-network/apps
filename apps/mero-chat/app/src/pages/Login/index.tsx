@@ -163,7 +163,11 @@ function SignInPopup({ onClose }: { onClose: () => void }) {
           gap: 16,
         }}
       >
-        <ConnectButtonAccount />
+        {/* Unset in every deployed build (the hosted wallet). A local rig
+            points it at a local wallet, where a new passkey is a new account. */}
+        <ConnectButtonAccount
+          defaults={import.meta.env.VITE_WALLET_URL ? { walletUrl: import.meta.env.VITE_WALLET_URL } : undefined}
+        />
         <button type="button" className="cal-lp-btn cal-lp-btn--ghost" onClick={onClose}>
           Cancel
         </button>
