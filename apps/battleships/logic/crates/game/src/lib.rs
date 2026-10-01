@@ -882,7 +882,7 @@ impl GameState {
         }
         app::bail!(GameError::Invalid(
             "could not find a free slot to write to".into()
-        ))
+        ));
     }
 }
 

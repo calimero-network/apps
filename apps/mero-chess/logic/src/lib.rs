@@ -927,7 +927,7 @@ impl MeroChess {
         let reason = match game.replay.claimable() {
             Some(ClaimableDraw::ThreefoldRepetition) => "threefold",
             Some(ClaimableDraw::FiftyMove) => "fiftyMove",
-            None => app::bail!("there is no draw to claim in this position"),
+            None => return Err(app::err!("there is no draw to claim in this position")),
         };
         self.end_game(game, "1/2-1/2", reason, &id, now)
     }
@@ -1408,7 +1408,7 @@ impl MeroChess {
                 return Ok(key);
             }
         }
-        app::bail!("could not find a free slot to write to")
+        Err(app::err!("could not find a free slot to write to"))
     }
 
     /// Which SEAT holds `color` in game `index`.
@@ -1622,7 +1622,7 @@ fn normalize_seat(seat: &str) -> app::Result<&'static str> {
     match seat.trim().to_ascii_lowercase().as_str() {
         SEAT_WHITE => Ok(SEAT_WHITE),
         SEAT_BLACK => Ok(SEAT_BLACK),
-        _ => app::bail!("a seat is either `white` or `black`"),
+        _ => Err(app::err!("a seat is either `white` or `black`")),
     }
 }
 
