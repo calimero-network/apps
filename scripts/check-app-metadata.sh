@@ -141,7 +141,9 @@ fi
 echo "workspace merod image: $want_image"
 
 shopt -s nullglob
-for f in apps/*/logic/workflows/*.yml; do
+# soak/ too: soak.yml runs those nightly, so a stale pin there would go
+# unnoticed until it fails a nightly nobody is watching.
+for f in apps/*/logic/workflows/*.yml apps/*/logic/workflows/soak/*.yml; do
   while read -r img; do
     if [[ "$img" != "$want_image" ]]; then
       echo "::error file=$f::runs $img, workspace declares $want_image"
