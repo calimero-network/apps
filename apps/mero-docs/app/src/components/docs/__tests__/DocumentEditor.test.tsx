@@ -20,6 +20,7 @@ const unarchive = vi.fn();
 let lgUp = true; // Details docks from Tailwind lg; every smaller query matches
 let canEditDocs = true;
 let canManageTags = true;
+let online = true;
 let handlers = new Set<(event: unknown) => void>(); // every subscriber, each once
 let deliver: ((event: unknown) => void) | undefined;
 // Stable identity: useDocs memoizes its client, and a fresh one per render
@@ -89,7 +90,7 @@ vi.mock('../DocDetails', () => ({
     </div>
   ),
 }));
-vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
+vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => online }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs }),
 }));
@@ -230,6 +231,7 @@ beforeEach(() => {
   deliver = undefined;
   canEditDocs = true;
   canManageTags = true;
+  online = true;
   lgUp = true;
   localStorage.clear();
   archive.mockResolvedValue(undefined);
@@ -557,6 +559,19 @@ describe('DocumentEditor', () => {
       await waitFor(() => expect(getDoc).toHaveBeenCalledTimes(2));
       expect(screen.getByTestId('doc-tags').textContent).toContain('q3');
       expect(screen.queryByText("Couldn't load document")).toBeNull();
+    });
+  });
+
+  describe('while the node is offline', () => {
+    it('offers no tag, archive or delete write, which would fail', async () => {
+      online = false;
+      render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />,
+      );
+      const row = await screen.findByTestId('doc-tags');
+      expect(row.getAttribute('data-can-edit')).toBe('false');
+      expect(screen.queryByText('Archive')).toBeNull();
+      expect(screen.queryByText('Delete')).toBeNull();
     });
   });
 

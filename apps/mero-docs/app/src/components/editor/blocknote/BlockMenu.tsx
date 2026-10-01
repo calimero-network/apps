@@ -1,7 +1,6 @@
 // The block drag-handle menu: Copy link to section first, then BlockNote's own items.
 
 import { createContext, useContext } from 'react';
-import { Link } from 'lucide-react';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 import {
   BlockColorsItem,
@@ -47,7 +46,6 @@ function CopySectionLinkItem() {
   return (
     <Components.Generic.Menu.Item
       className="bn-menu-item"
-      icon={<Link className="h-4 w-4" />}
       onClick={
         confirmed ? () => links.copy(block.id, sectionName(block)) : undefined
       }

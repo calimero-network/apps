@@ -114,7 +114,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
               style={{
                 width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch`,
               }}
-              className="max-w-full text-ellipsis bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
+              className="max-w-full text-ellipsis bg-transparent rounded px-2 py-1 text-left text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
             <TitleCursors
               carets={title.carets}
@@ -125,7 +125,9 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         ) : (
           <span className="text-sm font-medium flex min-w-0 items-center gap-1.5 text-foreground">
             <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">{documentName}</span>
+            <span className="truncate border border-transparent px-2 py-1">
+              {documentName}
+            </span>
           </span>
         )}
       </div>

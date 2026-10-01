@@ -215,7 +215,7 @@ html .bn-container[data-color-scheme='dark'] {
   left: -1px;
   padding: 0 0.25rem;
   border-radius: 0.25rem;
-  color: #fff;
+  color: #000;
   font-size: 0.625rem;
   line-height: 1.15em;
   white-space: nowrap;
