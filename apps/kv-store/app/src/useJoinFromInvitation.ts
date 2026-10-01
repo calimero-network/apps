@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDeepLink } from "@calimero-network/mero-platform-react";
 import type { DeepLinkIntent } from "@calimero-network/mero-platform";
-import { setContextId, useMero } from "@calimero-network/mero-react";
+import { setContextId, useJoinInvitation, useMero } from "@calimero-network/mero-react";
 import {
   describeInviteFailure,
   redeemInvitation,
@@ -61,7 +61,10 @@ export function useJoinFromInvitation(): {
   /** Refuse one, and stop being asked. */
   declineJoin: () => void;
 } {
-  const { isAuthenticated, mero } = useMero();
+  const { isAuthenticated } = useMero();
+  // The join and the membership check for whichever connection this is: a
+  // node joins on itself, an account through the admitter the invitation names.
+  const { invitationRedeemer } = useJoinInvitation();
 
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
@@ -85,29 +88,14 @@ export function useJoinFromInvitation(): {
     attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
-      // The admin client directly, not `useJoinNamespace` / `useJoinContext`:
-      // those hooks catch a failed request and resolve `null`, so a refused
-      // join looked exactly like a successful one. `join` has to throw, with
-      // the node's HTTP status on the error, for the outcome to say why.
-      const redeemer: InviteRedeemer = {
-        join: async (namespaceId) => {
-          if (!mero) throw new Error("Not connected to a node.");
-          await mero.admin.joinNamespace(namespaceId, {
-            invitation: held.payload.invitation,
-          });
-          await mero.admin.joinContext(held.payload.contextId);
-        },
-        memberships: async () => {
-          if (!mero) throw new Error("Not connected to a node.");
-          // rc.25 renamed `groupId` -> `namespaceId`; read both (see ContextPicker).
-          const namespaces = (await mero.admin.listNamespaces()) as Array<{
-            namespaceId?: string;
-            groupId?: string;
-            id?: string;
-          }>;
-          return namespaces.map((n) => n.namespaceId ?? n.groupId ?? n.id ?? "");
-        },
-      };
+      // From mero-react, so a node and an account redeem the same way. Its
+      // `join` throws on a refusal, with the HTTP status on the error, for the
+      // outcome to say why.
+      const redeemer: InviteRedeemer = invitationRedeemer({
+        namespaceId: held.payload.namespaceId,
+        contextId: held.payload.contextId,
+        invitation: held.payload.invitation,
+      });
       // `already-member` is the same success as `joined`: a link followed
       // twice, or a join the proxy gave up on that landed anyway. A namespace
       // member follows its contexts by default (core auto-follow), so the
@@ -146,7 +134,7 @@ export function useJoinFromInvitation(): {
     } finally {
       running.current = false;
     }
-  }, [mero]);
+  }, [invitationRedeemer]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or

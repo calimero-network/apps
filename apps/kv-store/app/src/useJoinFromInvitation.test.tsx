@@ -13,9 +13,24 @@ const admin = {
 };
 const setContextId = vi.fn();
 
+// `useJoinInvitation`'s redeemer as mero-react builds it for a node login: join
+// the namespace then the context on the node, and read its namespaces back.
+type JoinInput = { namespaceId: string; contextId: string; invitation: unknown };
 vi.mock("@calimero-network/mero-react", () => ({
   useMero: () => ({ isAuthenticated: true, mero: { admin } }),
   setContextId: (id: string) => setContextId(id),
+  useJoinInvitation: () => ({
+    invitationRedeemer: (input: JoinInput) => ({
+      join: async () => {
+        await admin.joinNamespace(input.namespaceId, { invitation: input.invitation });
+        await admin.joinContext(input.contextId);
+      },
+      memberships: async () =>
+        ((await admin.listNamespaces()) as Array<{ namespaceId?: string; groupId?: string; id?: string }>).map(
+          (n) => n.namespaceId ?? n.groupId ?? n.id ?? "",
+        ),
+    }),
+  }),
 }));
 
 // Capture the deep-link handler so a test can deliver a link the way the

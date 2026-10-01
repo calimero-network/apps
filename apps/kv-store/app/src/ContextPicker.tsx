@@ -4,6 +4,7 @@ import {
   useApplicationContexts,
   useCreateContext,
   useCreateNamespace,
+  useMero,
   useNamespacesForApplication,
 } from "@calimero-network/mero-react";
 
@@ -34,6 +35,10 @@ function shortId(id: string) {
 }
 
 export function ContextPicker({ applicationId }: { applicationId: string | null }) {
+  // Asks what this connection may do, not which transport it runs on: an
+  // account on a relay can create contexts in its namespaces but cannot found
+  // a namespace; a node login can do both.
+  const { can } = useMero();
   const {
     contexts: reportedContexts,
     loading,
@@ -67,7 +72,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId);
   const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
+  // `createContext` resolves to null on failure and keeps the reason in `error`.
+  const { createContext, error: createError } = useCreateContext();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -114,7 +120,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       // `createNamespaceInvitation` a subgroup id and fail confusingly.
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      // Null means the create failed; the hook holds why (`createError`, shown below).
+      if (!newContextId) return;
       select(newContextId);
     } catch (e) {
       // Surfaced rather than swallowed on purpose: a bare 500 from
@@ -139,7 +146,8 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       if (!namespaceId) throw new Error("namespace created but no id came back");
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      // Null means the create failed; the hook holds why (`createError`, shown below).
+      if (!newContextId) return;
       select(newContextId);
     } catch (e) {
       setFailed(e instanceof Error ? e.message : String(e));
@@ -171,7 +179,11 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
 
         {!loading && applicationId && contexts.length === 0 && (
-          <p className="empty">No contexts for this application on this node yet.</p>
+          <p className="empty">
+            {!can.createNamespace
+              ? "Your account is in no context of this app yet. Join one with an invitation below, or add one to a namespace you are in."
+              : "No contexts for this application on this node yet."}
+          </p>
         )}
 
         {contexts.length > 0 && (
@@ -202,9 +214,11 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
             context to yet. The two-step controls below are for everything after
             that.
           */}
-          <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
-            {busy === "both" ? "Creating…" : "Create namespace + context"}
-          </button>
+          {can.createNamespace && (
+            <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
+              {busy === "both" ? "Creating…" : "Create namespace + context"}
+            </button>
+          )}
           <button
             className="ghost"
             onClick={() => {
@@ -224,8 +238,10 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         )}
         {note && <p className="empty" style={{ marginTop: 12 }}>{note}</p>}
         {failed && <pre className="err">{failed}</pre>}
+        {!failed && createError && <pre className="err">{createError.message}</pre>}
       </div>
 
+      {can.createContext && (
       <div className="card">
         <h2>Namespaces</h2>
         <p className="empty" style={{ marginBottom: 14 }}>
@@ -272,16 +288,19 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
           </table>
         )}
 
-        <div className="row" style={{ marginTop: 16 }}>
-          <button
-            className="ghost"
-            onClick={makeNamespace}
-            disabled={busy !== null || !applicationId}
-          >
-            {busy === "namespace" ? "Creating…" : "Create namespace"}
-          </button>
-        </div>
+        {can.createNamespace && (
+          <div className="row" style={{ marginTop: 16 }}>
+            <button
+              className="ghost"
+              onClick={makeNamespace}
+              disabled={busy !== null || !applicationId}
+            >
+              {busy === "namespace" ? "Creating…" : "Create namespace"}
+            </button>
+          </div>
+        )}
       </div>
+      )}
     </>
   );
 }

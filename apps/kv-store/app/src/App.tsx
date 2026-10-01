@@ -1,4 +1,4 @@
-import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import { ConnectButtonAccount, clearContextId, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
@@ -6,7 +6,8 @@ import { KvPanel } from "./KvPanel";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 
 export function App() {
-  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  const { isAuthenticated, isLoading, can, applicationId, contextId, nodeUrl, logout } =
+    useMero();
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
@@ -48,10 +49,15 @@ export function App() {
             The login modal discovers nodes on the usual local ports and accepts
             a URL directly.
           </p>
-          <ConnectButton />
+          <ConnectButtonAccount />
         </div>
       ) : !contextId ? (
         <>
+          {/*
+            For an account, the picker lists the contexts it belongs to (through
+            its device-certificate session) and hides creation; joining a new one
+            is the invitation box below.
+          */}
           <ContextPicker applicationId={applicationId} />
           <JoinCard
             state={joinState}
@@ -94,7 +100,8 @@ export function App() {
             </div>
           </div>
           <KvPanel contextId={contextId} />
-          <InviteCard contextId={contextId} />
+          {/* Minting an invitation is a node's own operation today. */}
+          {can.invite && <InviteCard contextId={contextId} />}
         </>
       )}
 
