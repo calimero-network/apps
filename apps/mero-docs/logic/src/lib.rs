@@ -317,14 +317,15 @@ fn digest_block(view: &BlockView, out: &mut String) {
 
 /// Per-document record.
 ///
-/// The derive supplies the deterministic re-key cascade `title`, `body` and
-/// `tags` need: a nested collection stored under a value type that is not a
+/// `#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`
+/// and `tags` need: a nested collection stored under a value type that is not a
 /// registered `RekeyTarget` keeps a per-replica random storage id and never
 /// converges.
 ///
 /// `Searchable`: the node's full-text index holds each doc's title (weighted
 /// double) and body text, formatting left out; `search_docs` queries it.
-#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Searchable)]
+#[app::mergeable(id = "mero_docs::DocRecord")]
+#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Searchable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
     /// The title, plain text.
@@ -341,6 +342,17 @@ pub struct DocRecord {
     pub updated_at: LwwRegister<u64>,
     /// Hex account id of the last editor, advanced with `updated_at`.
     pub updated_by: LwwRegister<String>,
+}
+
+// Dispatched, so each register merges alone: as one last-write-wins record, an
+// edit undid a concurrent archive. The collections sync as their own entities.
+impl Mergeable for DocRecord {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        <LwwRegister<bool> as Mergeable>::merge(&mut self.archived, &other.archived)?;
+        <LwwRegister<u64> as Mergeable>::merge(&mut self.updated_at, &other.updated_at)?;
+        <LwwRegister<String> as Mergeable>::merge(&mut self.updated_by, &other.updated_by)?;
+        Ok(())
+    }
 }
 
 /// Flat projection of a `DocRecord` for list / get APIs. The body is read
@@ -3224,52 +3236,38 @@ mod tests {
         assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
     }
 
-    // ---- struct-level DocRecord::merge ------------------------------------
-    //
-    // Pin the derived Mergeable so a future refactor cannot silently break sync
-    // for one field. Explicit zero-HLC baselines on `a` make `b`'s real-clock
-    // writes win the tie-break regardless of test-parallelism HLC collisions.
+    // ---- a doc record merges field by field --------------------------------
 
-    use calimero_storage::logical_clock::HybridTimestamp;
-
-    fn zero_lww<T>(v: T) -> LwwRegister<T> {
-        LwwRegister::new_with_metadata(v, HybridTimestamp::zero())
-    }
-
-    fn stub_record() -> DocRecord {
-        DocRecord {
-            title: FugueText::new(),
-            body: Body::new(),
-            tags: UnorderedSet::new(),
-            archived: zero_lww(false),
-            updated_at: zero_lww(0),
-            updated_by: zero_lww(String::new()),
-        }
+    /// A Script whose collection entries reach the app's merges, as a node's
+    /// module load registers them; `Script::new` clears that registry.
+    fn docs_script() -> calimero_storage::testing::Script<DocsState> {
+        let script = calimero_storage::testing::Script::new(DocsState::init);
+        DocsState::__calimero_register_rekey();
+        script
     }
 
     #[test]
-    fn doc_record_merge_takes_the_later_metadata() {
-        let mut a = stub_record();
-        let mut b = stub_record();
-        b.archived = LwwRegister::new(true);
-        b.updated_at = LwwRegister::new(7);
-        b.updated_by = LwwRegister::new("b0".to_owned());
-        <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert!(*a.archived.get());
-        assert_eq!(*a.updated_at.get(), 7);
-        assert_eq!(a.updated_by.get(), "b0");
-    }
-
-    #[test]
-    fn doc_record_merge_is_idempotent() {
-        let mut working = stub_record();
-        working.updated_at = LwwRegister::new(3);
-        let mut snapshot = stub_record();
-        snapshot.updated_at = LwwRegister::new(3);
-        <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        assert_eq!(*working.updated_at.get(), 3);
-        assert!(!*working.archived.get());
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn an_archive_survives_a_concurrent_title_edit() {
+        let mut script = docs_script();
+        let (alice, bob) = (script.member(), script.member());
+        let mut id = String::new();
+        let created = script
+            .run(alice, |s| id = s.create_doc_inner("draft".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.deliver(bob, created), 0);
+        let _archived = script
+            .run(alice, |s| s.set_archived_inner(id.clone(), true).unwrap())
+            .unwrap();
+        let _renamed = script
+            .run(bob, |s| s.edit_doc(id.clone(), "final".into()).unwrap())
+            .unwrap();
+        let orders = script.assert_every_order_converges(|s| {
+            let doc = s.get_doc(id.clone()).unwrap();
+            doc.archived && doc.title == "final"
+        });
+        assert_eq!(orders, 2);
     }
 
     // ---- a doc id is its creator's alone ---------------------------------

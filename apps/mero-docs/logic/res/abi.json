@@ -409,7 +409,7 @@
     },
     "DocRecord": {
       "kind": "record",
-      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.\n\n`Searchable`: the node's full-text index holds each doc's title (weighted\ndouble) and body text, formatting left out; `search_docs` queries it.",
+      "doc": "Per-document record.\n\n`#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`\nand `tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.\n\n`Searchable`: the node's full-text index holds each doc's title (weighted\ndouble) and body text, formatting left out; `search_docs` queries it.",
       "fields": [
         {
           "name": "title",
