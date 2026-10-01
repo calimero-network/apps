@@ -548,7 +548,9 @@ export class DocListDriver {
     });
   }
 
+  // A doc a peer made reaches this node on a sync, later than a click's own timeout.
   async clickDoc(title: string): Promise<void> {
+    await this.expectDocVisible(title, { timeout: 60_000 });
     await this.docRow(title).first().click();
   }
 }

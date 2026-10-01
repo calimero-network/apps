@@ -29,6 +29,20 @@ describe('EditorStatusBar connection state', () => {
   });
 });
 
+describe('EditorStatusBar read only', () => {
+  it('says Read only instead of Saved when the member cannot edit', () => {
+    render(<EditorStatusBar {...baseProps} readOnly />);
+    expect(screen.getByText('Read only')).toBeTruthy();
+    expect(screen.queryByText('Saved')).toBeNull();
+  });
+
+  it('still reports Offline for a read only member', () => {
+    render(<EditorStatusBar {...baseProps} readOnly isOffline />);
+    expect(screen.getByText('Offline')).toBeTruthy();
+    expect(screen.queryByText('Read only')).toBeNull();
+  });
+});
+
 describe('EditorStatusBar counts', () => {
   it('uses the singular for a count of one', () => {
     render(<EditorStatusBar {...baseProps} wordCount={1} charCount={1} />);

@@ -396,7 +396,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           <div ref={scrollRef} className="flex-1 overflow-y-auto bg-card">
             <div
               data-testid="doc-editor"
-              className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
+              className="max-w-4xl mx-auto px-12 py-6 md:px-16 lg:px-24"
             >
               {tags}
               <SectionLinksContext.Provider value={sectionLinks ?? null}>
@@ -444,6 +444,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
             lastSavedAt={lastSavedAt}
             isAppReady={isAppReady}
             isOffline={isOffline}
+            readOnly={readOnly}
           />
         </div>
       </div>

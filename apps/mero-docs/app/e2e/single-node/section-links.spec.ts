@@ -69,6 +69,10 @@ test.describe('Section links (single-node)', () => {
   }) => {
     const { page, editor } = alice;
     const link = await editor.copySectionLink('Milestones');
+    // A reload before the save lands opens a shorter document, which cannot scroll the block to the top.
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     await page.goto(homePathOf(page));
     await expect(page.getByTestId('workspace-switcher')).toContainText(
       'Section Links WS',
@@ -79,14 +83,14 @@ test.describe('Section links (single-node)', () => {
 
     await page.goto(link);
 
+    // The wash lasts 1.6 s and starts with the banner, so it is checked first.
+    await expect(editor.block('Milestones')).toHaveClass(/section-wash/, {
+      timeout: 30_000,
+    });
     const banner = page
       .getByRole('status')
       .filter({ hasText: 'Opened from a link to' });
-    await expect(banner).toHaveText('Opened from a link to Milestones', {
-      timeout: 30_000,
-    });
-    // The wash lasts 1.6 s, so it is checked before anything slower.
-    await expect(editor.block('Milestones')).toHaveClass(/section-wash/);
+    await expect(banner).toHaveText('Opened from a link to Milestones');
     await expect
       .poll(() => editor.offsetInScroller('Milestones'))
       .toBeGreaterThanOrEqual(0);

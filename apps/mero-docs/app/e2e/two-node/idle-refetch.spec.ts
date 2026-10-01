@@ -4,9 +4,9 @@
 import type { Page, Request } from '@playwright/test';
 import { test, expect } from '../fixtures/two-user';
 
-const IDLE_MS = 60_000; // about six of core's 10 s interval syncs
+const SYNC_DEADLINE_MS = 120_000; // core's 10 s interval sync can skip a beat on a loaded machine
 const MAX_REQUESTS_PER_SYNC = 36; // midway between 31 per sync (one refetch per run) and 42 (one per sync phase)
-const MIN_SYNCS = 3; // the window must hold whole sync runs, or the ratio proves nothing
+const MIN_SYNCS = 4; // enough whole sync runs, or the ratio proves nothing
 
 /** The app method of a JSON-RPC `execute` call, or null for any other request. */
 function rpcMethod(req: Request): string | null {
@@ -47,7 +47,7 @@ function requestsPerSync(log: boolean[]): { syncs: number; perSync: number } {
 }
 
 test('idle workspace refetches once per sync', async ({ alice, bob }) => {
-  test.setTimeout(IDLE_MS + 120_000);
+  test.setTimeout(SYNC_DEADLINE_MS + 120_000);
   await alice.goToWorkspace();
   await alice.createNamespace('Idle WS');
   await alice.createFolder({ name: 'Specs', visibility: 'Open' });
@@ -58,9 +58,9 @@ test('idle workspace refetches once per sync', async ({ alice, bob }) => {
 
   // Settings stays open: its member rows are the hooks that refetch per event.
   const log = recordNodeRequests(alice.page);
-  await alice.page.waitForTimeout(IDLE_MS);
+  await expect
+    .poll(() => requestsPerSync(log).syncs, { timeout: SYNC_DEADLINE_MS })
+    .toBeGreaterThanOrEqual(MIN_SYNCS);
 
-  const { syncs, perSync } = requestsPerSync(log);
-  expect(syncs).toBeGreaterThanOrEqual(MIN_SYNCS);
-  expect(perSync).toBeLessThanOrEqual(MAX_REQUESTS_PER_SYNC);
+  expect(requestsPerSync(log).perSync).toBeLessThanOrEqual(MAX_REQUESTS_PER_SYNC);
 });
