@@ -55,6 +55,11 @@ export function setMeroJs(instance: ChatClient | null): void {
   _instance = instance;
 }
 
+/** Whether the provider has handed over a client; an account with no relay yet has none. */
+export function hasMeroJs(): boolean {
+  return _instance !== null;
+}
+
 export function getMeroJs(): ChatClient {
   if (!_instance) {
     // MeroProvider hands us the instance as soon as it has a node URL; a null

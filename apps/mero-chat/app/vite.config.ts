@@ -4,6 +4,12 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vite.dev/config/
 export default defineConfig({
+  // mero-react is linked from a local checkout with its own node_modules, so
+  // without this the app (and vitest) would load two Reacts and every hook in
+  // mero-react would run against the wrong one.
+  resolve: {
+    dedupe: ["react", "react-dom"],
+  },
   test: {
     environment: "jsdom",
     globals: true,

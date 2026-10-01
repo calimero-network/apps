@@ -54,3 +54,14 @@ describe("account mode", () => {
     expect(isAccountMode()).toBe(true);
   });
 });
+
+describe("hasMeroJs", () => {
+  it("says whether the provider has handed over a client", async () => {
+    const { hasMeroJs, setMeroJs } = await import("./meroJsClient");
+    setMeroJs(null);
+    expect(hasMeroJs()).toBe(false);
+    setMeroJs({ admin: {} as never, rpc: { execute: async () => undefined as never } });
+    expect(hasMeroJs()).toBe(true);
+    setMeroJs(null);
+  });
+});

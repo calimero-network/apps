@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import { getNodeUrl } from "@calimero-network/mero-react";
+import {
+  getNodeUrl,
+  useDelegatedBootstrap,
+  useJoinInvitation,
+  useMero,
+} from "@calimero-network/mero-react";
+import { hasMeroJs } from "../../api/meroJsClient";
+import { invitationNamespaceId, joinAsAccount } from "../../utils/accountJoin";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { getMeroJs } from "../../api/meroJsClient";
 import { log } from "../../utils/logger";
@@ -315,6 +322,9 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
+  const { isDelegated } = useMero();
+  const { credential } = useDelegatedBootstrap();
+  const { invitationRedeemer } = useJoinInvitation();
 
   // The pending deep-link invitation: the decoded JSON payload plus the SDK's
   // ack callback. Sourced from `useDeepLink` below — the platform SDK's durable
@@ -456,6 +466,52 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     setStep("enter-name");
   }, [enterChat]);
 
+  // What follows a workspace join, a node's and an account's alike: remember
+  // who we are in it, name it, and go in (or ask for a name).
+  const afterWorkspaceJoin = useCallback((
+    groupId: string,
+    memberIdentity: string,
+    groupAlias: string | undefined,
+    afterJoin: string | undefined,
+  ) => {
+    setGroupMemberIdentity(groupId, memberIdentity);
+    if (groupAlias?.trim()) {
+      const alias = groupAlias.trim();
+      setStoredGroupAlias(groupId, alias);
+      // Also publish it, so the name is the workspace's rather than this
+      // browser's. Best-effort: a joiner usually lacks CAN_MANAGE_METADATA
+      // and the node refuses, which is fine — the local alias still shows,
+      // and whoever can write it will.
+      void api.current.setGroupMetadata(groupId, alias).catch(() => {});
+    }
+
+    resolvePending();
+
+    // After joining, show the enter-name step for this namespace
+    setSelectedId(groupId);
+    setNamespaces((prev) => {
+      if (prev.find((g) => g.groupId === groupId)) return prev;
+      return [...prev, {
+        groupId,
+        alias: groupAlias?.trim() || afterJoin,
+        appKey: "",
+        targetApplicationId: "",
+        upgradePolicy: "Automatic",
+        createdAt: Math.floor(Date.now() / 1000),
+      }];
+    });
+
+    // If user already has a name (same identity from another workspace), go straight in
+    const existingName = getIdentityDisplayName(memberIdentity) || getMessengerDisplayName();
+    if (existingName) {
+      api.current.setMemberMetadata(groupId, memberIdentity, { name: existingName }).catch(() => {});
+      enterChat(groupId, existingName, memberIdentity);
+      return;
+    }
+
+    setStep("enter-name");
+  }, [enterChat, resolvePending]);
+
   // Process a pending invitation (join namespace → sync → join all contexts)
   const processInvitation = useCallback(async (payload: string, afterJoin?: string) => {
     setStep("invite-join");
@@ -471,6 +527,19 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     try {
       setInviteStatus("Joining namespace…");
+      if (isDelegated && credential) {
+        const joined = await joinAsAccount(parsed, credential.account, invitationRedeemer);
+        if (!joined.ok) {
+          if (!joined.retryable) resolvePending();
+          setError(joined.message);
+          setStep("error");
+          return;
+        }
+        // No `syncGroup`: that is a node mechanic, and the relay that admitted
+        // the account syncs on its own.
+        afterWorkspaceJoin(joined.groupId, joined.memberIdentity, parsed.groupAlias, afterJoin);
+        return;
+      }
       const redeemed = await redeemGroupInvitation(parsed, {
         joinGroup: (request) => api.current.joinGroup(request),
         listNamespaces: () => getMeroJs().admin.listNamespaces(),
@@ -498,52 +567,16 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           )
         ).data?.memberIdentity ||
         "";
-      setGroupMemberIdentity(groupId, memberIdentity);
-      if (parsed.groupAlias?.trim()) {
-        const alias = parsed.groupAlias.trim();
-        setStoredGroupAlias(groupId, alias);
-        // Also publish it, so the name is the workspace's rather than this
-        // browser's. Best-effort: a joiner usually lacks CAN_MANAGE_METADATA
-        // and the node refuses, which is fine — the local alias still shows,
-        // and whoever can write it will.
-        void api.current.setGroupMetadata(groupId, alias).catch(() => {});
-      }
-
       setInviteStatus("Syncing…");
       await api.current.syncGroup(groupId).catch(() => {});
-
-      resolvePending();
-
-      // After joining, show the enter-name step for this namespace
-      setSelectedId(groupId);
-      setNamespaces((prev) => {
-        if (prev.find((g) => g.groupId === groupId)) return prev;
-        return [...prev, {
-          groupId,
-          alias: parsed.groupAlias?.trim() || afterJoin,
-          appKey: "",
-          targetApplicationId: "",
-          upgradePolicy: "Automatic",
-          createdAt: Math.floor(Date.now() / 1000),
-        }];
-      });
-
-      // If user already has a name (same identity from another workspace), go straight in
-      const existingName = getIdentityDisplayName(memberIdentity) || getMessengerDisplayName();
-      if (existingName) {
-        api.current.setMemberMetadata(groupId, memberIdentity, { name: existingName }).catch(() => {});
-        enterChat(groupId, existingName, memberIdentity);
-        return;
-      }
-
-      setStep("enter-name");
+      afterWorkspaceJoin(groupId, memberIdentity, parsed.groupAlias, afterJoin);
     } catch (err) {
       // `redeemGroupInvitation` reports a failed join in its outcome, never by
       // throwing; this is anything else, so keep the invitation.
       setError(err instanceof Error ? err.message : "Failed to process invitation");
       setStep("error");
     }
-  }, [enterChat, resolvePending]);
+  }, [enterChat, resolvePending, afterWorkspaceJoin, isDelegated, credential, invitationRedeemer]);
 
   // Decide what to do with a pending deep-link invitation against the loaded
   // namespaces. Returns true when it takes over the flow (kicks off a join),
@@ -561,11 +594,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     // Only process an invitation for a namespace we're not already in.
     const parsed = parseGroupInvitationPayload(pending.decoded);
     if (parsed) {
-      const inv = parsed.invitation.invitation as unknown as Record<string, unknown>;
-      const rawId = inv.group_id ?? inv.groupId;
-      const invNsId = Array.isArray(rawId)
-        ? (rawId as number[]).map((b) => b.toString(16).padStart(2, "0")).join("")
-        : String(rawId ?? "");
+      const invNsId = invitationNamespaceId(parsed);
       if (invNsId && !groups.find((g) => g.groupId === invNsId)) {
         void processInvitation(pending.decoded);
         return true;
@@ -579,12 +608,21 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
-    if (!getNodeUrl()) return;
+    // An account has no node URL; it reaches its relay through mero-react.
+    if (!isDelegated && !getNodeUrl()) return;
 
     setStep("loading");
     setError("");
 
     let groups: GroupSummary[] = [];
+    // An account holding no relay yet is a member of nothing: no client to ask,
+    // and nothing it could answer. An invitation is the way in.
+    if (isDelegated && !hasMeroJs()) {
+      setNamespaces([]);
+      groupsLoadedRef.current = true;
+      if (!evaluatePending([])) setStep("no-workspace");
+      return;
+    }
     try {
       const res = await api.current.listGroups();
       // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
@@ -629,7 +667,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     const preferred = groups.find((g) => g.groupId === storedId) ?? groups[0];
     setSelectedId(preferred.groupId);
     setStep("select");
-  }, [evaluatePending]);
+  }, [evaluatePending, isDelegated]);
 
   // Capture inbound deep-link invitations via the platform SDK. Fires for an
   // intent buffered before mount (the cold-open invite that survived the
