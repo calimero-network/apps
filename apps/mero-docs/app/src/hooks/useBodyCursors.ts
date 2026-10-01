@@ -43,6 +43,7 @@ export interface UseBodyCursorsOptions {
 
 const SETTLE_MS = 150; // publish once a caret stops moving, not per keystroke
 const RETRY_MS = 400; // the node may not hold the text the caret counts yet
+const MAX_SENDS = 10; // ~4s of retries; a selection change starts over
 
 interface AuthoredSlice {
   author: string;
@@ -126,7 +127,10 @@ export function useBodyCursors({
   useEffect(() => {
     if (!client || !docId || !editor) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const send = (retry: boolean) => {
+    // Retried until the node can place it: a caret in text the node does not
+    // hold yet is refused, and one retry was not enough on a busy node - the
+    // selection then stayed unpublished until the user moved it again.
+    const send = (attempt: number) => {
       const editorId = editor.getTextCursorPosition()?.block?.id;
       if (!editorId) return;
       const geometry = blockGeometry(editor.prosemirrorState.doc, editorId);
@@ -140,13 +144,13 @@ export function useBodyCursors({
           publishRef.current({ blockId, anchor: anchorToken, head: headToken }),
         )
         .catch(() => {
-          if (retry) timer = setTimeout(() => send(false), RETRY_MS);
+          if (attempt + 1 < MAX_SENDS) timer = setTimeout(() => send(attempt + 1), RETRY_MS);
         });
     };
-    send(true);
+    send(0);
     const unsubscribe = editor.onSelectionChange(() => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => send(true), SETTLE_MS);
+      timer = setTimeout(() => send(0), SETTLE_MS);
     });
     return () => {
       if (timer) clearTimeout(timer);

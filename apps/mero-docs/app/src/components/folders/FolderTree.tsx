@@ -12,6 +12,7 @@ import { folderLoadErrorMessage } from '@/lib/folderLoadError';
 import { Button } from '@/components/ui/button';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
+import { NewFolderDialog } from './NewFolderDialog';
 import { NoFoldersState } from './NoFolderStates';
 import { SidebarSectionHeader } from '@/components/workspace/SidebarNav';
 
@@ -105,6 +106,13 @@ export function FolderTree({
   }, [settled, namespaceId]);
   const shown = !!namespaceId && shownFor === namespaceId;
 
+  // The top-level create dialog lives here, not in either button: a fresh
+  // window's first read can come back empty, so the tree swaps the empty state's
+  // button for the header's when the folders land - and a dialog owned by the
+  // unmounted button would vanish under the user's typing.
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const openCreateFolder = useCallback(() => setCreatingFolder(true), []);
+
   // The raw error is implementation detail; keep it in the console and show plain copy.
   useEffect(() => {
     if (error) console.error('Failed to load folders', error);
@@ -163,13 +171,14 @@ export function FolderTree({
               label="New"
               variant="ghost"
               className="h-6 gap-1 rounded-md px-1.5 text-xs [&_svg]:size-[13px]"
+              onOpen={openCreateFolder}
             />
           )
         }
       />
 
       {collapsed ? null : tree.roots.length === 0 ? (
-        <NoFoldersState />
+        <NoFoldersState onCreateFolder={openCreateFolder} />
       ) : (
         <ul className="space-y-px px-2 pb-2">
           {tree.roots.map((n) => (
@@ -187,6 +196,9 @@ export function FolderTree({
             />
           ))}
         </ul>
+      )}
+      {creatingFolder && (
+        <NewFolderDialog parentFolderId={null} onClose={() => setCreatingFolder(false)} />
       )}
     </div>
   );

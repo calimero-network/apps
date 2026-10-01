@@ -27,6 +27,8 @@ interface Props {
   size?: 'sm' | 'default';
   variant?: 'outline' | 'ghost' | 'default';
   className?: string;
+  /** Opens a dialog the caller owns, so it outlives this button's unmount. */
+  onOpen?: () => void;
 }
 
 export function NewFolderButton({
@@ -35,6 +37,7 @@ export function NewFolderButton({
   size = 'sm',
   variant = 'outline',
   className,
+  onOpen,
 }: Props) {
   const { namespaceId, rootGroupId } = useDriveWorkspace();
   const nsPerms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
@@ -59,7 +62,7 @@ export function NewFolderButton({
           variant={variant}
           size={size}
           className={cn('gap-1', className)}
-          onClick={() => setOpen(true)}
+          onClick={() => (onOpen ? onOpen() : setOpen(true))}
         >
           <Plus className="h-3.5 w-3.5" />
           {label}

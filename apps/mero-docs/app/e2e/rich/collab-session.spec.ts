@@ -516,6 +516,18 @@ test('people edit one document live: formatted, restructured, undone, apart, the
           await typeLive(w.page, runs[i]);
         }),
       );
+      // `settle` alone can agree on a moment before a slower window has sent
+      // its last keystrokes. Wait for every typed character first; a run that
+      // never lands still fails here, by count.
+      const typed = runs.join('').length;
+      await expect
+        .poll(
+          async () =>
+            blockText((await blocksOnNode(1, rig.doc))[0]).length -
+            before.length,
+          { message: `round ${round}: every keystroke lands`, timeout: 60_000 },
+        )
+        .toBe(typed);
       await settle(rig.doc, [1, 2, 3]);
       const tail = blockText((await blocksOnNode(1, rig.doc))[0]).slice(
         before.length,
