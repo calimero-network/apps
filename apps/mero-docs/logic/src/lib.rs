@@ -54,6 +54,7 @@ pub mod events;
 use events::Event;
 
 const MAX_TITLE_LEN: usize = 1024; // Unicode scalar values; the web app sets no title limit
+const MAX_COMMENT_LEN: usize = 10_000; // Unicode scalar values; the web app sets no comment limit
 const MAX_BLOCK_TEXT_LEN: usize = 100_000; // Unicode scalar values; the web app sets no block limit
 
 // ---------------------------------------------------------------------------
@@ -1636,7 +1637,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `doc_id` - The id of the document to comment on.
-    /// * `body` - The comment text.
+    /// * `body` - The comment text, at most 10000 characters.
     ///
     /// # Returns
     ///
@@ -1654,6 +1655,7 @@ impl DocsState {
         doc_id: String,
         body: String,
     ) -> Result<String, DriveError> {
+        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
         if self.header_of(&doc_id)?.is_none() {
             return Err(DriveError::NotFound(doc_id));
         }
@@ -1788,7 +1790,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `id` - The comment id.
-    /// * `body` - The new comment text.
+    /// * `body` - The new comment text, at most 10000 characters.
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.edit_comment_inner(id, body)
@@ -1802,6 +1804,7 @@ impl DocsState {
         id: String,
         body: String,
     ) -> Result<(), DriveError> {
+        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
         // The caller's own comment: keys are per owner, and only its author
         // may change a comment.
         let Some(mut c) = self
@@ -3274,6 +3277,24 @@ mod tests {
         assert!(app
             .call_as_account(BOB, BOB, |s| s.delete_doc(id.clone()))
             .is_err());
+    }
+
+    #[test]
+    fn a_comment_over_the_cap_is_refused() {
+        let at_cap = "\u{e9}".repeat(MAX_COMMENT_LEN);
+        let over = format!("{at_cap}x");
+        let mut app = DocsState::init();
+        let doc = app.create_doc_inner("d".into()).unwrap();
+        assert!(matches!(
+            app.add_comment_inner(doc.clone(), over.clone()),
+            Err(DriveError::Invalid(_))
+        ));
+        let id = app.add_comment_inner(doc, at_cap.clone()).unwrap();
+        assert!(matches!(
+            app.edit_comment_inner(id.clone(), over),
+            Err(DriveError::Invalid(_))
+        ));
+        app.edit_comment_inner(id, at_cap).unwrap();
     }
 
     #[test]

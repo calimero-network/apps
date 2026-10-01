@@ -602,7 +602,7 @@ export class DocsClient {
    * Not idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.
    *
    * @param params.doc_id The id of the document to comment on.
-   * @param params.body The comment text.
+   * @param params.body The comment text, at most 10000 characters.
    * @returns The new comment's id.
    *
    * @intent mutating
@@ -810,7 +810,7 @@ export class DocsClient {
    * Only the comment's author may edit it.
    *
    * @param params.id The comment id.
-   * @param params.body The new comment text.
+   * @param params.body The new comment text, at most 10000 characters.
    *
    * @intent mutating
    */

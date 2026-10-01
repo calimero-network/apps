@@ -965,7 +965,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The comment text."
+          "doc": "The comment text, at most 10000 characters."
         }
       ],
       "returns": {
@@ -1262,7 +1262,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The new comment text."
+          "doc": "The new comment text, at most 10000 characters."
         }
       ],
       "returns": {
