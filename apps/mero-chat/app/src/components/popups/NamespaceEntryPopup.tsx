@@ -1,16 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import {
-  getNodeUrl,
-  useDelegatedBootstrap,
-  useJoinInvitation,
-  useMero,
-} from "@calimero-network/mero-react";
-import { hasMeroJs } from "../../api/meroJsClient";
-import { invitationNamespaceId, joinAsAccount } from "../../utils/accountJoin";
+import { useJoinInvitation, useMero } from "@calimero-network/mero-react";
+import { invitationNamespaceId, joinWorkspace } from "../../utils/workspaceJoin";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { getMeroJs } from "../../api/meroJsClient";
 import { log } from "../../utils/logger";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
@@ -31,22 +24,12 @@ import {
 } from "../../utils/messengerName";
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
-import {
-  AppNotInstalledError,
-  installConfiguredApp,
-  resolveInstalledAppId,
-} from "../../utils/installedApps";
 import { ensureNotificationPermission } from "../../utils/notificationPermission";
 import {
   decodeInvitationPayload,
   parseGroupInvitationPayload,
   parseInvitationInput,
 } from "../../utils/invitation";
-import {
-  inviteFailureMessage,
-  redeemGroupInvitation,
-} from "../../utils/redeemInvitation";
-import { shouldRetain } from "@calimero-apps/invite";
 import { useDeepLink } from "@calimero-network/mero-platform-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -62,8 +45,6 @@ type Step =
   | "join-invitation"  // manual invitation paste
   | "create"           // show create workspace form
   | "creating"         // creating namespace
-  | "not-installed"    // configured app missing on the node: offer install
-  | "installing"       // installing the configured app
   | "error";
 
 // ─── Styled components ────────────────────────────────────────────────────────
@@ -322,8 +303,8 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
-  const { isDelegated } = useMero();
-  const { credential } = useDelegatedBootstrap();
+  // The session's admin: the node's own, or the account's. Null until it is up.
+  const { admin } = useMero();
   const { invitationRedeemer } = useJoinInvitation();
 
   // The pending deep-link invitation: the decoded JSON payload plus the SDK's
@@ -527,56 +508,28 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     try {
       setInviteStatus("Joining namespace…");
-      if (isDelegated && credential) {
-        const joined = await joinAsAccount(parsed, credential.account, invitationRedeemer);
-        if (!joined.ok) {
-          if (!joined.retryable) resolvePending();
-          setError(joined.message);
-          setStep("error");
-          return;
-        }
-        // No `syncGroup`: that is a node mechanic, and the relay that admitted
-        // the account syncs on its own.
-        afterWorkspaceJoin(joined.groupId, joined.memberIdentity, parsed.groupAlias, afterJoin);
-        return;
-      }
-      const redeemed = await redeemGroupInvitation(parsed, {
-        joinGroup: (request) => api.current.joinGroup(request),
-        listNamespaces: () => getMeroJs().admin.listNamespaces(),
-      });
-      const { outcome } = redeemed;
-      if (outcome.status === "failed") {
-        // Acked only when no retry can help; a transient failure (no online
-        // member, a timeout) keeps the invitation for the next load.
-        if (!shouldRetain(outcome)) resolvePending();
-        setError(inviteFailureMessage(outcome));
+      const whoAmI = async () => {
+        if (!admin) throw new Error("Not connected yet.");
+        return (await admin.getNodeIdentity()).accountId ?? "";
+      };
+      const joined = await joinWorkspace(parsed, whoAmI, invitationRedeemer);
+      if (!joined.ok) {
+        if (!joined.retryable) resolvePending();
+        setError(joined.message);
         setStep("error");
         return;
       }
-
-      // `already-member` (the request failed but the node lists the namespace)
-      // goes in exactly like a join. Its join never answered, so ask for the
-      // member identity.
-      const groupId = outcome.namespaceId;
-      const memberIdentity =
-        redeemed.memberIdentity ||
-        (
-          await api.current.resolveCurrentMemberIdentity(
-            groupId,
-            getGroupMemberIdentity(groupId),
-          )
-        ).data?.memberIdentity ||
-        "";
+      const { groupId, memberIdentity } = joined;
       setInviteStatus("Syncing…");
       await api.current.syncGroup(groupId).catch(() => {});
       afterWorkspaceJoin(groupId, memberIdentity, parsed.groupAlias, afterJoin);
     } catch (err) {
-      // `redeemGroupInvitation` reports a failed join in its outcome, never by
+      // `joinWorkspace` reports a failed join in its result, never by
       // throwing; this is anything else, so keep the invitation.
       setError(err instanceof Error ? err.message : "Failed to process invitation");
       setStep("error");
     }
-  }, [enterChat, resolvePending, afterWorkspaceJoin, isDelegated, credential, invitationRedeemer]);
+  }, [resolvePending, afterWorkspaceJoin, admin, invitationRedeemer]);
 
   // Decide what to do with a pending deep-link invitation against the loaded
   // namespaces. Returns true when it takes over the flow (kicks off a join),
@@ -608,21 +561,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
-    // An account has no node URL; it reaches its relay through mero-react.
-    if (!isDelegated && !getNodeUrl()) return;
+    if (!admin) return;
 
     setStep("loading");
     setError("");
 
     let groups: GroupSummary[] = [];
-    // An account holding no relay yet is a member of nothing: no client to ask,
-    // and nothing it could answer. An invitation is the way in.
-    if (isDelegated && !hasMeroJs()) {
-      setNamespaces([]);
-      groupsLoadedRef.current = true;
-      if (!evaluatePending([])) setStep("no-workspace");
-      return;
-    }
     try {
       const res = await api.current.listGroups();
       // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
@@ -667,7 +611,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     const preferred = groups.find((g) => g.groupId === storedId) ?? groups[0];
     setSelectedId(preferred.groupId);
     setStep("select");
-  }, [evaluatePending, isDelegated]);
+  }, [evaluatePending, admin]);
 
   // Capture inbound deep-link invitations via the platform SDK. Fires for an
   // intent buffered before mount (the cold-open invite that survived the
@@ -741,7 +685,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     setError("");
 
     try {
-      const appId = await resolveInstalledAppId(getApplicationId());
+      // The configured app: mero-react's admin installs it on a node that lacks
+      // it, and a relay fetches it for an account.
+      const appId = getApplicationId();
       const createRes = await api.current.createGroup({
         applicationId: appId,
         name: trimmedNs,
@@ -784,38 +730,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       setStep("enter-name");
     } catch (err) {
-      if (err instanceof AppNotInstalledError) {
-        setStep("not-installed");
-        return;
-      }
       setError(err instanceof Error ? err.message : "Failed to create namespace");
       setStep("create");
     }
   }, [nsNameInput, namespaces, enterChat]);
-
-  // Install the configured app, then resume the create the user asked for.
-  const handleInstallApp = useCallback(async () => {
-    setStep("installing");
-    setError("");
-    try {
-      const installedId = await installConfiguredApp();
-      const expectedId = getApplicationId();
-      // The id is a hash over the wasm AND its metadata, so a successful
-      // install can still produce a different app than this build targets.
-      if (installedId !== expectedId) {
-        setError(
-          `Installed ${installedId}, but this build expects ${expectedId}. ` +
-            `The published WASM or its metadata differs from what this build was made against.`,
-        );
-        setStep("error");
-        return;
-      }
-      setStep("create");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to install the application");
-      setStep("error");
-    }
-  }, []);
 
   const handleJoinFromCode = useCallback(async () => {
     const raw = joinInviteInput.trim();
@@ -1071,42 +989,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             </Button>
             <Divider />
             <LogoutBtn onClick={onLogout} disabled={step === "creating"}>Disconnect node</LogoutBtn>
-          </>
-        )}
-
-        {/* Configured app missing on the node */}
-        {(step === "not-installed" || step === "installing") && (
-          <>
-            <Header>
-              <Title>Chat isn't installed yet</Title>
-            </Header>
-            <Sub>
-              This node doesn't have the chat application installed. Install it
-              to create your workspace.
-            </Sub>
-            <Button
-              type="button"
-              variant="primary"
-              style={{ width: "100%" }}
-              onClick={handleInstallApp}
-              disabled={step === "installing"}
-            >
-              {step === "installing" ? (
-                <>
-                  <BtnSpinner />
-                  Installing…
-                </>
-              ) : "Install"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
-              onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
-              disabled={step === "installing"}
-            >
-              ← Back
-            </Button>
           </>
         )}
 

@@ -38,7 +38,6 @@ vi.mock("@calimero-network/mero-react", () => ({
 }));
 
 vi.mock("../api/meroJsClient", () => ({
-  isAccountMode: () => false,
   getJwt: () => "test-token",
 }));
 

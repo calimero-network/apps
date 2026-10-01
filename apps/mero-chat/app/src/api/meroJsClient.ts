@@ -55,11 +55,6 @@ export function setMeroJs(instance: ChatClient | null): void {
   _instance = instance;
 }
 
-/** Whether the provider has handed over a client; an account with no relay yet has none. */
-export function hasMeroJs(): boolean {
-  return _instance !== null;
-}
-
 export function getMeroJs(): ChatClient {
   if (!_instance) {
     // MeroProvider hands us the instance as soon as it has a node URL; a null
@@ -71,19 +66,6 @@ export function getMeroJs(): ChatClient {
     );
   }
   return _instance;
-}
-
-// Whether the session is an account (no node, through a relay). Set by
-// MeroJsBridge from `useMero().isDelegated`, read by the few node-only steps
-// that have an account form (blob download, the app-install check).
-let _account = false;
-
-export function setAccountMode(on: boolean): void {
-  _account = on;
-}
-
-export function isAccountMode(): boolean {
-  return _account;
 }
 
 export type LegacyRpcResult<T> =

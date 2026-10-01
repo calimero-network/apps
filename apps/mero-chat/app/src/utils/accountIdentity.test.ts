@@ -16,7 +16,6 @@ vi.mock("@calimero-network/mero-react", () => ({
 }));
 const getNodeIdentity = vi.fn();
 vi.mock("../api/meroJsClient", () => ({
-  isAccountMode: () => false,
   getAuthConfig: () => ({ jwtToken: "t" }),
   getMeroJs: () => ({ admin: { getNodeIdentity } }),
 }));

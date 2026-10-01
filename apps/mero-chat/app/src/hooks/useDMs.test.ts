@@ -45,7 +45,6 @@ vi.mock("../api/dataSource/clientApiDataSource", () => ({
 }));
 
 vi.mock("../api/meroJsClient", () => ({
-  isAccountMode: () => false,
   nodeApi: {
     fetchContextIdentities: mockFetchContextIdentities,
   },

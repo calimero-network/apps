@@ -37,7 +37,6 @@ vi.mock("../../constants/config", () => ({
 }));
 
 vi.mock("../../api/meroJsClient", () => ({
-  isAccountMode: () => false,
   getAuthConfig: vi.fn(),
   nodeApi: {},
 }));
