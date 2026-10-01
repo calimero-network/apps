@@ -3,6 +3,7 @@ import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { useJoinInvitation, useMero } from "@calimero-network/mero-react";
 import { invitationNamespaceId, joinWorkspace } from "../../utils/workspaceJoin";
+import { publishMemberName } from "../../utils/publishMemberName";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { log } from "../../utils/logger";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
@@ -346,22 +347,18 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       // this member with `name: null` and the channel/DM/admin UIs all
       // fall through to displaying the raw identity string.
       if (username) {
-        void api.current
-          .setMemberMetadata(namespaceId, memberIdentity, { name: username })
-          .then((res) => {
-            // Was silently swallowed. That is how this shipped broken: core
-            // rejects a device key with "Invalid account format: expected 64
-            // hex characters", the member stayed nameless, and nothing said so.
-            if (res.error) {
-              log.warn(
-                "NamespaceEntry",
-                `could not publish member name: ${res.error.message}`,
-              );
-            }
-          })
-          .catch((err) => {
-            log.warn("NamespaceEntry", "could not publish member name", err);
-          });
+        // Awaited: the page load below would cancel it in flight.
+        const outcome = await publishMemberName(
+          (g, i, r) => api.current.setMemberMetadata(g, i, r),
+          namespaceId,
+          memberIdentity,
+          username,
+        );
+        // Never silently swallowed: core once rejected a device key here
+        // ("Invalid account format"), the member stayed nameless, and nothing said so.
+        if (outcome !== "ok") {
+          log.warn("NamespaceEntry", `could not publish member name: ${outcome}`);
+        }
       }
     }
     clearStoredSession();
@@ -485,8 +482,8 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     // If user already has a name (same identity from another workspace), go straight in
     const existingName = getIdentityDisplayName(memberIdentity) || getMessengerDisplayName();
     if (existingName) {
-      api.current.setMemberMetadata(groupId, memberIdentity, { name: existingName }).catch(() => {});
-      enterChat(groupId, existingName, memberIdentity);
+      // enterChat publishes the name, and waits for it.
+      void enterChat(groupId, existingName, memberIdentity);
       return;
     }
 
