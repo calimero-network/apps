@@ -656,6 +656,7 @@ export class DocsClient {
    * Text after the last step is kept.
    * A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
    * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   * A transaction that leaves the block's text longer than 100000 characters is refused.
    *
    * @param params.doc The document id.
    * @param params.block The block id.
@@ -1078,6 +1079,7 @@ export class DocsClient {
    * merge_blocks
    *
    * Appends the text of `second` to `first` and removes `second`.
+   * Refused when the joined text would be longer than 100000 characters.
    *
    * @param params.doc The document id.
    * @param params.first The block that keeps its place and receives the text.

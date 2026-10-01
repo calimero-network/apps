@@ -54,6 +54,7 @@ pub mod events;
 use events::Event;
 
 const MAX_TITLE_LEN: usize = 1024; // Unicode scalar values; the web app sets no title limit
+const MAX_BLOCK_TEXT_LEN: usize = 100_000; // Unicode scalar values; the web app sets no block limit
 
 // ---------------------------------------------------------------------------
 // Mark schema
@@ -1112,6 +1113,7 @@ impl DocsState {
     }
 
     /// Appends the text of `second` to `first` and removes `second`.
+    /// Refused when the joined text would be longer than 100000 characters.
     ///
     /// # Arguments
     ///
@@ -1119,8 +1121,11 @@ impl DocsState {
     /// * `first` - The block that keeps its place and receives the text.
     /// * `second` - The block whose text is appended and which is then removed.
     pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
-        let (head, tail) = (decode_token(&first)?, decode_token(&second)?);
-        self.write(&doc)?.body.merge_blocks(head, tail)?;
+        let (head, tail): (BlockId, BlockId) = (decode_token(&first)?, decode_token(&second)?);
+        let body = &mut self.write(&doc)?.body;
+        let joined = body.block_body(head)?.len()? + body.block_body(tail)?.len()?;
+        ensure_len("block text", joined, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
+        body.merge_blocks(head, tail)?;
         app::emit!(Event::BlockChanged {
             doc: &doc,
             block: &first
@@ -1139,6 +1144,7 @@ impl DocsState {
     /// Text after the last step is kept.
     /// A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
     /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    /// A transaction that leaves the block's text longer than 100000 characters is refused.
     ///
     /// # Arguments
     ///
@@ -1155,9 +1161,12 @@ impl DocsState {
         block: String,
         ops: Vec<Change>,
     ) -> app::Result<String> {
-        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
         let id = decode_token(&block)?;
-        let undo = self.write(&doc)?.body.apply_delta(id, &ops)?;
+        let body = &mut self.write(&doc)?.body;
+        let resulting = len_after(body.block_body(id)?.len()?, &ops);
+        ensure_len("block text", resulting, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
+        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
+        let undo = body.apply_delta(id, &ops)?;
         app::emit!(Event::TextChanged {
             doc: &doc,
             block: &block
@@ -2254,6 +2263,29 @@ mod tests {
     }
 
     // ---- body ------------------------------------------------------------
+
+    #[test]
+    fn block_text_over_the_cap_is_refused() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let fill = "\u{e9}".repeat(MAX_BLOCK_TEXT_LEN);
+        let _typed = type_text(&mut app, &block, &fill);
+        let grow = || vec![retain(MAX_BLOCK_TEXT_LEN), insert("x")];
+        let plain = app.call(|s| s.apply_delta(doc(), block.clone(), grow()));
+        assert!(plain.is_err());
+        let on = app.call(|s| s.apply_delta_on(doc(), block.clone(), fill.clone(), grow(), None));
+        assert!(on.is_err());
+        let text = app.view(|s| s.get_text(doc(), block.clone())).unwrap();
+        assert_eq!(text, fill);
+        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
+        app.call(|s| s.apply_delta(doc(), block.clone(), swap))
+            .unwrap();
+        let other = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &other, "x");
+        let merged = app.call(|s| s.merge_blocks(doc(), block.clone(), other.clone()));
+        assert!(merged.is_err());
+        assert_eq!(app.view(|s| s.list_blocks(doc())).unwrap().len(), 2);
+    }
 
     #[test]
     fn apply_delta_renders_into_the_digest() {
