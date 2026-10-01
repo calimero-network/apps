@@ -1540,7 +1540,7 @@ impl MeroVote {
     fn load(&self, poll_id: &str) -> app::Result<(PollDefinition, PollState)> {
         match self.try_load(poll_id)? {
             Some(loaded) => Ok(loaded),
-            None => app::bail!(VoteError::NotFound(poll_id.to_owned())),
+            None => Err(app::err!(VoteError::NotFound(poll_id.to_owned()))),
         }
     }
 

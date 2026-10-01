@@ -241,7 +241,11 @@ impl Change {
                 attributes: None,
             } => TextOp::Insert(insert),
             Self::Delete { delete } => TextOp::Delete(delete),
-            _ => app::bail!("the title carries no formatting: drop `attributes`"),
+            _ => {
+                return Err(app::err!(
+                    "the title carries no formatting: drop `attributes`"
+                ))
+            }
         })
     }
 }
@@ -1938,7 +1942,7 @@ impl DocsState {
     fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
         match self.docs.get(doc)? {
             Some(found) => Ok(found),
-            None => app::bail!("unknown document '{doc}'"),
+            None => Err(app::err!("unknown document '{doc}'")),
         }
     }
 
@@ -1951,7 +1955,7 @@ impl DocsState {
                 found.updated_by.set(caller_account_hex());
                 Ok(found)
             }
-            None => app::bail!("unknown document '{doc}'"),
+            None => Err(app::err!("unknown document '{doc}'")),
         }
     }
 

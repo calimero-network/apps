@@ -726,7 +726,7 @@ impl CalendarState {
         if self.events.entries_at(event_id)?.is_empty() {
             app::bail!(Error::NotFound(event_id.clone()));
         }
-        app::bail!(Error::Forbidden)
+        app::bail!(Error::Forbidden);
     }
 
     fn generate_id(&self) -> String {

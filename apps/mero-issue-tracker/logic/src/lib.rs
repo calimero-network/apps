@@ -1010,7 +1010,7 @@ impl IssueTracker {
         }
         app::bail!(Error::Forbidden(format!(
             "only the author may {action} this comment"
-        )))
+        )));
     }
 
     /// The author of the comment row `c` at `id`: the holder of `id` whose
