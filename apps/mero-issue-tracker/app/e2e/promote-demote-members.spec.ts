@@ -41,6 +41,24 @@ async function listMembers(nodeIndex: number, nsId: string): Promise<GroupMember
   return json?.data?.members ?? json?.members ?? json?.data ?? [];
 }
 
+/** Poll until this node's roster holds at least `count` members, or give up and
+ *  return what it actually holds — so the failure message names the roster. */
+async function waitForMembers(
+  nodeIndex: number,
+  nsId: string,
+  count: number,
+  timeoutMs: number,
+): Promise<GroupMemberRow[]> {
+  const deadline = Date.now() + timeoutMs;
+  let rows: GroupMemberRow[] = [];
+  while (Date.now() < deadline) {
+    rows = await listMembers(nodeIndex, nsId);
+    if (rows.length >= count) return rows;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return rows;
+}
+
 /** Poll until `account` holds `role` on this node, or give up and return what
  *  it actually says — so the failure message names the real value. */
 async function waitForRole(
@@ -119,7 +137,11 @@ test.describe('promote and demote a workspace member', () => {
       // interesting failures here are "the role is not the string we expected"
       // and "the member we are looking for is not in the list" — and neither is
       // diagnosable from a boolean.
-      const roster = await listMembers(0, nsId);
+      //
+      // Polled, not read once: `inviteAndJoin` returns when the JOINER's node is
+      // ready, and node 0 learns of the join a gossip hop later (~150ms on an
+      // idle runner, more on a loaded one). A single read raced that hop.
+      const roster = await waitForMembers(0, nsId, 2, 15_000);
       const rosterText = JSON.stringify(roster);
 
       expect(roster.length, `node 0 roster should hold two members: ${rosterText}`)
