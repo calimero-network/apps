@@ -310,7 +310,12 @@ jobs:
           set -euo pipefail
           pin=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
           desktop=$(curl -fsSL --retry 5 --retry-all-errors https://raw.githubusercontent.com/calimero-network/tauri-app/master/merod-config.json | jq -r .version || true)
-          legs=$(jq -nc --arg pin "$pin" --arg desktop "$desktop" \
+          desktop_leg="$desktop"
+          if [ "$(python3 scripts/merod-older.py "$desktop" "$pin")" = true ]; then
+            echo "::warning::journey: the desktop ships merod $desktop, older than the pin $pin; bundles built against $pin refuse to install on it, so the desktop leg is skipped until tauri-app bumps merod-config.json"
+            desktop_leg=""
+          fi
+          legs=$(jq -nc --arg pin "$pin" --arg desktop "$desktop_leg" \
             '[{leg: "pin", merod: $pin}] + (if ($desktop != "" and $desktop != "null" and $desktop != $pin) then [{leg: "desktop", merod: $desktop}] else [] end)')
           with_journey=$(jq -r '.[]' <<<"$APPS" | while read -r app; do
             if [ -f "apps/$app/app/playwright.journey.config.ts" ]; then echo "$app"; fi
@@ -456,6 +461,9 @@ jobs:
 
       - name: Assert the e2e matrix lists every scenario the job globs
         run: python3 scripts/tests/e2e-matrix-test.py
+
+      - name: Assert the journey skips a desktop merod older than the pin
+        run: python3 scripts/tests/merod-older-test.py
 
       # A lockfile inside a workspace member installs nothing (pnpm resolves
       # from the root) but Dependabot scans it, so it generates security alerts
