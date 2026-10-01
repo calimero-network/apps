@@ -490,6 +490,7 @@ jobs:
       # Core caches the storage root id per process, so a `Script` test cannot share
       # one with `TestHost` tests: they are `#[ignore]`d above and run alone here.
       - run: cargo test -p mero-docs --lib -- --ignored
+      - run: cargo test -p mero-docs-registry --lib -- --ignored
 
   wasm:
     name: Build WASM (${{ matrix.app }})
