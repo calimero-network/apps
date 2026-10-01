@@ -1,3 +1,4 @@
+import { useInvitationHandoff } from "../../hooks/useInvitationHandoff";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppContainer from "../../components/common/AppContainer";
 import { clearNamespaceReady } from "../../utils/session";
@@ -111,6 +112,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   // sidebar keeps showing channels they're no longer a member of (since
   // there's no SSE channel for governance ops yet).
   useNamespaceMembershipWatch();
+  // An invitation opened while in here goes to the workspace picker.
+  useInvitationHandoff();
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
