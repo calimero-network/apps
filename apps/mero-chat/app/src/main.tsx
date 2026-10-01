@@ -235,6 +235,9 @@ function boot() {
           // var is only an override now, never the source.
           packageName={import.meta.env.VITE_APPLICATION_PACKAGE || APP_SLUG}
           registryUrl="https://apps.calimero.network"
+          // Unset in every deployed build (the hosted cloud). A local rig sets
+          // it to a stand-in that knows the rig's namespaces.
+          cloudBaseUrl={import.meta.env.VITE_CLOUD_BASE_URL || undefined}
           // 35s, not MeroProvider's 30s default.
           //
           // This is the client budget for EVERY mero-js call, and the one that
