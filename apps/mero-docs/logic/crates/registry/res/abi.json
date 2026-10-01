@@ -1125,7 +1125,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The display name, 1 to 32 bytes after trimming."
+          "doc": "The display name, 1 to 32 characters after trimming."
         },
         {
           "name": "color",
