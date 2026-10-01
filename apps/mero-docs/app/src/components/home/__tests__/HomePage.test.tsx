@@ -48,6 +48,8 @@ const index = {
   foldersKnown: true,
   folderStatus: {} as Record<string, FolderIndexStatus>,
   contextOf: (id: string) => `ctx-${id}`,
+  // No node index here: the filter reads the texts this device holds.
+  clientOf: (_id: string) => undefined,
   refetchFolder,
 };
 const tags = [

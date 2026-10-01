@@ -10,6 +10,7 @@
  *   - empty query / no contexts clear the search without a call
  *   - errors: every context failing is the error, one of several is a note
  *   - a context whose app predates search_messages falls back
+ *   - a node running with search off reads the same pages by scan
  */
 
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -27,11 +28,13 @@ import { SEARCH_CONCURRENCY, SEARCH_PAGE_SIZE } from "./messageSearch";
 
 const mockSearchMessages = vi.fn();
 const mockSearchAllMessages = vi.fn();
+const mockSearchMessagesScan = vi.fn();
 
 vi.mock("../api/dataSource/clientApiDataSource", () => ({
   ClientApiDataSource: class {
     searchMessages = mockSearchMessages;
     searchAllMessages = mockSearchAllMessages;
+    searchMessagesScan = mockSearchMessagesScan;
   },
 }));
 
@@ -339,5 +342,33 @@ describe("useMessages — searchAllContexts", () => {
     expect(r.index).toBe(7);
     expect(result.current.searchHasMore).toBe(false);
     expect(result.current.searchError).toBeNull();
+  });
+
+  it("reads the same pages by scan where the node runs with search off", async () => {
+    mockSearchMessages.mockResolvedValue({
+      data: null,
+      error: {
+        code: -32000,
+        message:
+          "search_query is only available in a view (#[app::view]) on a node with search",
+      },
+    });
+    mockSearchMessagesScan
+      .mockResolvedValueOnce(page([hit({ id: "new", timestamp: 90 })], "c1"))
+      .mockResolvedValueOnce(page([hit({ id: "old", timestamp: 10 })]));
+    const { result } = renderHook(() => useMessages());
+
+    await act(async () => {
+      await result.current.searchAllContexts([CTX_A], "q");
+    });
+    // The search reads on until it has a page to show, from the scan's cursor.
+    expect(mockSearchMessagesScan).toHaveBeenCalledTimes(2);
+    expect(mockSearchMessagesScan).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "q", cursor: "c1", contextId: CTX_A.contextId }),
+    );
+    expect(result.current.searchResults.map((r) => r.id)).toEqual(["new", "old"]);
+    expect(result.current.searchHasMore).toBe(false);
+    expect(result.current.searchError).toBeNull();
+    expect(mockSearchAllMessages).not.toHaveBeenCalled();
   });
 });

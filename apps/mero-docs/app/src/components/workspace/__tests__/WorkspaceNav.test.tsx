@@ -30,6 +30,9 @@ const index = {
   folders: [{ id: 'f1', name: 'One' }],
   foldersKnown: true,
   folderStatus: { f1: 'ready' } as Record<string, string>,
+  // No node index here: counts come from the texts this device holds.
+  contextOf: (_id: string): string | undefined => undefined,
+  clientOf: (_id: string): undefined => undefined,
 };
 const mentionOf = (docId: string, member = 'me', folderId = 'f1') => ({
   folderId,

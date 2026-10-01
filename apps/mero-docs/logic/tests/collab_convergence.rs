@@ -38,7 +38,7 @@ use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{Mergeable, Root, UnorderedMap, UnorderedSet};
 use calimero_storage::env::{self, RuntimeEnv};
 use calimero_storage::interface::ApplyContext;
-use calimero_storage::store::Key;
+use calimero_storage::store::{Key, KEY_LEN};
 use calimero_storage::{register_crdt_merge_for_test, register_rekey_if_supported};
 use serial_test::serial;
 
@@ -163,7 +163,7 @@ macro_rules! docs_app {
 docs_app!(FixedApp, FixedDoc);
 docs_app!(UnfixedApp, UnfixedDoc);
 
-type Store = Rc<RefCell<HashMap<[u8; 32], Vec<u8>>>>;
+type Store = Rc<RefCell<HashMap<[u8; KEY_LEN], Vec<u8>>>>;
 
 fn env_for(s: &Store, ex: [u8; 32]) -> RuntimeEnv {
     let r = s.clone();

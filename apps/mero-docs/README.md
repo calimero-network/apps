@@ -19,7 +19,7 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
 - **Fine-grained permissions** - per-member capability bitmask (`READ | WRITE | CREATE_GROUP | MANAGE_GROUP | INVITE_MEMBERS | MANAGE_MEMBERS`) layered on top of coarse roles (Admin / Member / ReadOnly)
 - **Member management** - invite, role transitions, per-member capability overrides, namespace-wide defaults
 - **Tags & archive** - tag docs, filter by tag, archive without deleting
-- **Search** - titles, folders, tags and document text from the palette; on Home the same text is a filter (`q=` in the URL) that combines with folder, tag, date, author and Mentioned me, and saved views keep it. Document text is read on this device only, once per version per session, and never written to browser storage (see `app/src/hooks/useTextIndex.ts`)
+- **Search** - titles, folders, tags and document text from the palette; on Home the same text is a filter (`q=` in the URL) that combines with folder, tag, date, author and Mentioned me, and saved views keep it. Document text is searched by each folder's `search_docs`, the node's full-text index of that folder (title and body, best match first, a word as you type it), so every doc is found whether or not this device has opened it (see `app/src/hooks/useDocSearch.ts`). A folder whose node runs with search off is searched from the text this device reads instead, once per version per session and never written to browser storage (see `app/src/hooks/useTextIndex.ts`)
 - **Cross-node sync** - every namespace and folder is a CRDT; writes converge without conflict
 
 ## Prerequisites

@@ -382,7 +382,7 @@
     },
     "DocRecord": {
       "kind": "record",
-      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.\n\n`Searchable`: the node's full-text index holds each doc's title (weighted\ndouble) and body text, formatting left out; `search_docs` queries it.",
       "fields": [
         {
           "name": "title",
@@ -447,6 +447,73 @@
               "kind": "string"
             }
           }
+        }
+      ]
+    },
+    "DocSearchHit": {
+      "kind": "record",
+      "doc": "One document `search_docs` found.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "snippet",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A fragment of the title or body around the match, the matched words\nwrapped in `<b>`; empty when there is none to show."
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "f32"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "DocSearchPage": {
+      "kind": "record",
+      "doc": "A page of `search_docs`.",
+      "fields": [
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "DocSearchHit"
+            }
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Documents the index matched in all."
+        },
+        {
+          "name": "next_cursor",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "Pass back as `cursor` for the next page; `None` on the last."
         }
       ]
     },
@@ -1580,6 +1647,42 @@
         "items": {
           "kind": "u32"
         }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "search_docs",
+      "doc": "The docs whose title or body match `query`, best match first: words\nmatch as typed or as a prefix of a longer word, so a query can be\ntyped as-you-go. The title counts double.\n\nOnly docs the list shows are returned: an archived one only with\n`include_archived`, never one whose header is gone. A page holds at\nmost `limit` hits (default 20, at most 100); `next_cursor` continues\nit. The index lives on each node and lags an edit by up to a second.\n\nOn a node running with search off the index is not there and this\nfails: the client falls back to reading the docs itself.",
+      "params": [
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "include_archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "cursor",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "DocSearchPage"
       },
       "intent": "read_only"
     },

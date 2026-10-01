@@ -32,6 +32,8 @@ import { searchV1 } from '@/lib/search/rank';
 import { sidebarTags, tagCounts } from '@/lib/tags';
 import { plural } from '@/lib/plural';
 import { searchText } from '@/lib/search/docText';
+import { blockOf, matchedInTitle } from '@/lib/search/nodeSearch';
+import { useDocSearch } from '@/hooks/useDocSearch';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 
 import {
@@ -49,6 +51,7 @@ const MENTIONS_QUERY = '@me'; // lists the docs that mention you, instead of a s
 const MENTIONS_TIP = `Type ${MENTIONS_QUERY} for documents that mention you`;
 const NO_MENTIONS = 'No documents mention you yet';
 const HOME_TEXT_ID = 'home:text'; // the palette row that opens Home filtered by the query
+const NO_FOLDERS = new Set<string>();
 
 type Target =
   | { kind: 'doc'; folderId: string; docId: string; block?: string }
@@ -179,6 +182,12 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   const paths = useFolderPaths(folders);
   const [query, setQuery] = React.useState('');
   const textQuery = useDebounced(query, TEXT_DEBOUNCE_MS);
+  // The node's index, per folder; what it does not answer, the text read here does.
+  const nodeQuery = open ? normalizeQuery(textQuery).text : '';
+  const fromIndex = useDocSearch(
+    normalizeQuery(textQuery).tagsOnly ? '' : nodeQuery,
+  );
+  const served = fromIndex.query === nodeQuery ? fromIndex.served : NO_FOLDERS;
 
   const scopeLabel = namespaceLabel(
     namespaces.find((n) => n.namespaceId === namespaceId)?.name,
@@ -332,7 +341,8 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     const warning = coverageWarning(
       named(withStatus('syncing')),
       named(withStatus('error')),
-      named(partlyRead),
+      // A folder its index answered was searched in full, read here or not.
+      named(partlyRead.filter((id) => !served.has(id))),
     );
     return { ...base, warning };
   }, [
@@ -349,13 +359,53 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
     recent,
     paths,
     partlyRead,
+    served,
   ]);
 
-  // Matches inside doc text: a scan of every indexed block, so only once typing pauses.
+  // The texts read here of the folders the index did not answer: all of them
+  // until it answers, and while it cannot.
+  const localTexts = React.useMemo(
+    () =>
+      served.size
+        ? new Map([...texts].filter(([, t]) => !served.has(t.folderId)))
+        : texts,
+    [texts, served],
+  );
+  const localHits = React.useMemo(
+    () =>
+      open && normalizeQuery(textQuery).text
+        ? searchText(textQuery, localTexts)
+        : [],
+    [open, textQuery, localTexts],
+  );
+
+  // Matches inside doc text: the node's index for the folders it answered,
+  // best first; a scan of the blocks read here for the rest, once typing pauses.
   const textHits = React.useMemo(() => {
     const ctx: RowContext = { paths, presence, targets: new Map() };
     if (!open || !normalizeQuery(textQuery).text) return { ...ctx, items: [] };
-    const items = searchText(textQuery, texts).flatMap((hit) => {
+    // Only matches in the text: a title match is under Documents already.
+    const indexed =
+      fromIndex.query === nodeQuery
+        ? fromIndex.hits
+            .filter((hit) => !matchedInTitle(hit))
+            .sort((a, b) => b.score - a.score)
+        : [];
+    const hits = [
+      ...indexed.map((hit) => {
+        const row = rowKey(hit.folderId, hit.docId);
+        const block = blockOf(hit, texts.get(row));
+        return {
+          row,
+          blockId: block?.id,
+          heading: block?.heading,
+          snippet: hit.snippet,
+          ranges: hit.ranges,
+        };
+      }),
+      ...localHits,
+    ];
+    const items = hits.flatMap((hit) => {
       const r = live.get(hit.row);
       if (!r) return [];
       return [
@@ -377,7 +427,17 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
       ];
     });
     return { ...ctx, items };
-  }, [open, textQuery, texts, live, paths, presence]);
+  }, [
+    open,
+    textQuery,
+    nodeQuery,
+    fromIndex,
+    localHits,
+    texts,
+    live,
+    paths,
+    presence,
+  ]);
 
   const groups = React.useMemo(() => {
     const aside = reading ? (
@@ -425,15 +485,7 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
         : [],
     };
     return [...titleGroups, textGroup, filterGroup];
-  }, [
-    titles,
-    textHits,
-    textQuery,
-    query,
-    reading,
-    foldersDone,
-    foldersTotal,
-  ]);
+  }, [titles, textHits, textQuery, query, reading, foldersDone, foldersTotal]);
 
   const routeOf = (t: Target): { route: AppRoute; search?: string } => {
     const ws = namespaceId ?? '';

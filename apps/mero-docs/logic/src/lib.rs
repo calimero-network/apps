@@ -36,6 +36,7 @@ use std::ops::DerefMut;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::search::{Query, SearchCollection};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
@@ -291,10 +292,15 @@ fn digest_block(view: &BlockView, out: &mut String) {
 /// `tags` need: a nested collection stored under a value type that is not a
 /// registered `RekeyTarget` keeps a per-replica random storage id and never
 /// converges.
-#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
+///
+/// `Searchable`: the node's full-text index holds each doc's title (weighted
+/// double) and body text, formatting left out; `search_docs` queries it.
+#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Searchable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
+    #[search(text, weight = 200)]
     pub title: FugueText,
+    #[search(text)]
     pub body: Body,
     /// A set, so two members tagging the same doc at once both keep their tag.
     pub tags: UnorderedSet<String>,
@@ -447,6 +453,40 @@ pub struct DocsState {
     comments: Moderated<IndexedMap<String, Comment>>,
 }
 
+// The folder's documents, searchable by title and body.
+app::search_indexes!(DocsState {
+    "docs" (version = 1) => docs,
+});
+
+/// Hits per `search_docs` page unless the caller asks for fewer.
+const DEFAULT_DOC_SEARCH_LIMIT: u32 = 20;
+/// The longest query `search_docs` takes, in bytes.
+const MAX_DOC_SEARCH_QUERY: usize = 256;
+
+/// One document `search_docs` found.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct DocSearchHit {
+    pub id: String,
+    pub title: String,
+    /// A fragment of the title or body around the match, the matched words
+    /// wrapped in `<b>`; empty when there is none to show.
+    pub snippet: String,
+    pub score: f32,
+    pub archived: bool,
+}
+
+/// A page of `search_docs`.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct DocSearchPage {
+    pub hits: Vec<DocSearchHit>,
+    /// Documents the index matched in all.
+    pub total: u64,
+    /// Pass back as `cursor` for the next page; `None` on the last.
+    pub next_cursor: Option<u32>,
+}
+
 #[app::logic]
 impl DocsState {
     #[app::init]
@@ -528,6 +568,68 @@ impl DocsState {
             );
         }
         Ok(out)
+    }
+
+    /// The docs whose title or body match `query`, best match first: words
+    /// match as typed or as a prefix of a longer word, so a query can be
+    /// typed as-you-go. The title counts double.
+    ///
+    /// Only docs the list shows are returned: an archived one only with
+    /// `include_archived`, never one whose header is gone. A page holds at
+    /// most `limit` hits (default 20, at most 100); `next_cursor` continues
+    /// it. The index lives on each node and lags an edit by up to a second.
+    ///
+    /// On a node running with search off the index is not there and this
+    /// fails: the client falls back to reading the docs itself.
+    #[app::view]
+    pub fn search_docs(
+        &self,
+        query: String,
+        include_archived: bool,
+        cursor: Option<u32>,
+        limit: Option<u32>,
+    ) -> app::Result<DocSearchPage> {
+        if query.len() > MAX_DOC_SEARCH_QUERY {
+            app::bail!(
+                "Search query too long: {} bytes, limit is {MAX_DOC_SEARCH_QUERY}",
+                query.len()
+            );
+        }
+        let mut page = DocSearchPage {
+            hits: Vec::new(),
+            total: 0,
+            next_cursor: None,
+        };
+        if query.trim().is_empty() {
+            return Ok(page);
+        }
+        let query = Query::prefix(query)
+            .cursor(cursor.unwrap_or(0))
+            .limit(limit.unwrap_or(DEFAULT_DOC_SEARCH_LIMIT));
+        let found = self
+            .docs
+            .search("docs", &query)
+            .map_err(|e| app::err!("{e}"))?;
+        for hit in found.hits {
+            let listed = self
+                .header_of(&hit.key)
+                .map_err(|e| app::err!("{e}"))?
+                .is_some();
+            let archived = *hit.value.archived.get();
+            if !listed || (archived && !include_archived) {
+                continue;
+            }
+            page.hits.push(DocSearchHit {
+                title: hit.value.title.get_text()?,
+                id: hit.key,
+                snippet: hit.snippet,
+                score: hit.score,
+                archived,
+            });
+        }
+        page.total = found.total;
+        page.next_cursor = found.next_cursor;
+        Ok(page)
     }
 
     /// Renames a document by replacing the whole title, which is what a rename
@@ -2218,6 +2320,63 @@ mod tests {
         app.create_doc_inner("a".into()).unwrap();
         app.create_doc_inner("b".into()).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 2);
+    }
+
+    /// What the node's indexer reads for a doc: its title and its body as a
+    /// reader sees it, and a body edit names the doc's entry so it is read again.
+    #[test]
+    fn the_index_holds_a_docs_title_and_body_text() {
+        use calimero_sdk::search::{SearchCollection, SearchValue};
+
+        let mut app = DocsState::init();
+        let id = app.create_doc_inner("Quarterly plan".into()).unwrap();
+        let block = app
+            .insert_block(id.clone(), None, "paragraph".into(), 0)
+            .unwrap();
+        let _undo = app
+            .apply_delta(
+                id.clone(),
+                block,
+                vec![Change::Insert {
+                    insert: "the budget is final".into(),
+                    attributes: None,
+                }],
+            )
+            .unwrap();
+        let (ids, next) = app.docs.search_page([0; 32], 10).unwrap();
+        assert_eq!((ids.len(), next), (1, None));
+        let doc = app.docs.search_extract(&ids).unwrap().remove(0).unwrap();
+        let field = |name: &str| {
+            doc.fields
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v.clone())
+        };
+        assert_eq!(
+            field("title"),
+            Some(SearchValue::Str("Quarterly plan".into()))
+        );
+        assert_eq!(
+            field("body"),
+            Some(SearchValue::Str("the budget is final".into()))
+        );
+        let (key, _) = app.docs.search_entry(ids[0]).unwrap().unwrap();
+        assert_eq!(key, id);
+    }
+
+    #[test]
+    fn search_docs_checks_its_input_before_asking_the_node() {
+        let app = DocsState::init();
+        let huge = "x".repeat(MAX_DOC_SEARCH_QUERY + 1);
+        assert!(app.search_docs(huge, false, None, None).is_err());
+        let empty = app
+            .search_docs("  ".into(), false, None, None)
+            .expect("an empty query asks nothing");
+        assert!(empty.hits.is_empty() && empty.next_cursor.is_none());
+        let err = app
+            .search_docs("plan".into(), false, None, None)
+            .expect_err("no index here");
+        assert!(format!("{err:?}").contains("needs a node"), "{err:?}");
     }
 
     #[test]

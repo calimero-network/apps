@@ -4,7 +4,9 @@ import {
   applyPage,
   failPage,
   isMissingMethod,
+  isSearchOff,
   mapConcurrent,
+  resultPosition,
   nextToFetch,
   startSearch,
   threshold,
@@ -117,5 +119,42 @@ describe("messageSearch helpers", () => {
     expect(isMissingMethod("MethodNotFound")).toBe(true);
     expect(isMissingMethod("Search term too long")).toBe(false);
     expect(isMissingMethod(undefined)).toBe(false);
+  });
+
+  it("recognises a node running with search off", () => {
+    expect(
+      isSearchOff(
+        "search_query is only available in a view (#[app::view]) on a node with search",
+      ),
+    ).toBe(true);
+    expect(isSearchOff("full-text search needs a node")).toBe(true);
+    expect(isSearchOff("Search term too long")).toBe(false);
+    expect(isSearchOff(undefined)).toBe(false);
+  });
+
+  it("asks where an index hit sits only when the search did not say", async () => {
+    const [state] = startSearch([ctx("a")]);
+    const page = applyPage(state, {
+      hits: [hit("m", 5, { index: null }), hit("r", 4, { index: 2, parent_message_id: "p" })],
+      next_cursor: null,
+      frontier_timestamp: 4,
+    });
+    const [fromIndex, fromScan] = page.hits;
+    expect(fromIndex.index).toBe(-1);
+    const lookup = vi.fn(async () => ({ data: 7, error: null }));
+    expect(await resultPosition(fromIndex, lookup)).toBe(7);
+    expect(lookup).toHaveBeenCalledWith({
+      messageId: "m",
+      contextId: "a",
+      executorPublicKey: "key-a",
+    });
+    expect(await resultPosition(fromScan, lookup)).toBe(2);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(await resultPosition(fromIndex, async () => ({ data: null, error: null }))).toBeNull();
+    expect(
+      await resultPosition(fromIndex, async () => {
+        throw new Error("offline");
+      }),
+    ).toBeNull();
   });
 });

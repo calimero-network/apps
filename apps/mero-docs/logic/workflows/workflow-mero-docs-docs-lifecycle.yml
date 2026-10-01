@@ -57,7 +57,7 @@ nodes:
   # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
   # discovery changed at the image bump with nothing here changing.
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.69
   docs-node-1:
     port: 3940
     rpc_port: 3941
@@ -249,6 +249,126 @@ steps:
     executor_public_key: '{{bob_key}}'
     args:
       include_archived: false
+
+  # =================================================================
+  # Phase D2: search_docs - the node's full-text index, fed by sync
+  # =================================================================
+  #
+  # Bob's node never ran Alice's writes: its index is built from the deltas
+  # sync applied. The body text lives in a RichDocument nested in the doc's
+  # record, so finding it proves a nested edit re-indexes the doc.
+
+  - name: Alice adds a block to doc_b
+    type: call
+    node: docs-node-1
+    context_id: '{{docs_ctx}}'
+    method: insert_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{doc_b}}'
+      after: null
+      kind: paragraph
+      depth: 0
+    outputs:
+      search_block: result.output
+
+  - name: Alice types into it
+    type: call
+    node: docs-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{doc_b}}'
+      block: '{{search_block}}'
+      ops:
+        - insert: 'oat milk and zucchini'
+
+  - name: Sync the body to Bob
+    type: wait_for_sync
+    nodes: [docs-node-1, docs-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  # The indexer commits every 250 ms; the first search on a context also
+  # builds its index from state.
+  - name: Let Bob's indexer catch up
+    type: wait
+    seconds: 3
+
+  - name: Bob searches a title word as it is being typed
+    type: call
+    node: docs-node-2
+    context_id: '{{docs_ctx}}'
+    method: search_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      query: 'meet'
+      include_archived: false
+      cursor: null
+      limit: null
+    outputs:
+      title_total: result.output.total
+      title_hit: result.output.hits.0.id
+      title_hit_title: result.output.hits.0.title
+
+  - name: Bob searches a word inside a document body
+    type: call
+    node: docs-node-2
+    context_id: '{{docs_ctx}}'
+    method: search_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      query: 'zucchini'
+      include_archived: false
+      cursor: null
+      limit: null
+    outputs:
+      body_total: result.output.total
+      body_hit: result.output.hits.0.id
+      body_snippet: result.output.hits.0.snippet
+
+  - name: Bob searches a word no document holds
+    type: call
+    node: docs-node-2
+    context_id: '{{docs_ctx}}'
+    method: search_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      query: 'xylophone'
+      include_archived: false
+      cursor: null
+      limit: null
+    outputs:
+      no_hits: result.output.hits
+
+  - name: Assert the index found the title and the body, and nothing else
+    type: assert
+    statements:
+      - 'equal({{title_hit}}, {{doc_a}})'
+      - 'equal({{body_hit}}, {{doc_b}})'
+      - "contains({{body_snippet}}, '<b>zucchini</b>')"
+
+  - name: Assert one hit each, and none for a missing word
+    type: json_assert
+    statements:
+      - 'json_equal({{title_total}}, 1)'
+      - 'json_equal({{body_total}}, 1)'
+      - 'json_equal({{title_hit_title}}, "Meeting notes")'
+      - 'json_equal({{no_hits}}, [])'
+
+  - name: Reject a search query over the length cap
+    type: call
+    node: docs-node-2
+    context_id: '{{docs_ctx}}'
+    method: search_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      query: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+      include_archived: false
+      cursor: null
+      limit: null
+    expected_failure: true
 
   # =================================================================
   # Phase E: get_doc - detailed reads, cross-node

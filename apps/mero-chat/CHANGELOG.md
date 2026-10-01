@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Search is `search_messages(query, cursor, limit)`: newest first, a bounded
+- `search_messages` answers from the node's full-text index: every message
+  and reply, newest first, at a cost that does not grow with the channel. Hits
+  carry no position; `message_position` gives it, and the app asks for it when
+  a result is opened. The channel walk is now `search_messages_scan`, which the
+  app calls where the node runs with search off.
+- Search was `search_messages(query, cursor, limit)`: newest first, a bounded
   amount of work per call, slim hits with a snippet, and a cursor for the next
   page. Text is matched as it is shown and folded for case and accents.
   `search_all_messages` is removed; the app falls back to it for contexts still

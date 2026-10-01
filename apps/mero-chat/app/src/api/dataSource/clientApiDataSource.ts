@@ -50,6 +50,7 @@ import {
   type UpdateReactionProps,
   type UserId,
   type SearchAllMessagesProps,
+  type MessagePositionProps,
   type SearchMessagesProps,
   type SearchPage,
 } from "../clientApi";
@@ -657,28 +658,69 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   /**
-   * One page of `search_messages` in one context.
+   * One page of `search_messages` in one context: the node's full-text index.
    *
    * The error keeps whatever the node said, including for a method the
-   * context's app version does not have: the caller tells that case apart
-   * (`isMissingMethod`) to fall back to `search_all_messages`.
+   * context's app version does not have and for a node running with search
+   * off: the caller tells those apart (`isMissingMethod`, `isSearchOff`) to
+   * fall back.
    */
   async searchMessages(props: SearchMessagesProps): ApiResponse<SearchPage> {
+    return this.searchPage(props, ClientMethod.SEARCH_MESSAGES);
+  }
+
+  /** `search_messages_scan`: the same page, read by walking the channel. */
+  async searchMessagesScan(props: SearchMessagesProps): ApiResponse<SearchPage> {
+    return this.searchPage(props, ClientMethod.SEARCH_MESSAGES_SCAN);
+  }
+
+  /** Where a search hit's top-level message sits, to open it there. */
+  async messagePosition(props: MessagePositionProps): ApiResponse<number | null> {
+    return this.contextCall<number | null>(
+      props.contextId,
+      props.executorPublicKey,
+      ClientMethod.MESSAGE_POSITION,
+      { message_id: props.messageId },
+      "messagePosition",
+    );
+  }
+
+  private async searchPage(
+    props: SearchMessagesProps,
+    method: ClientMethod,
+  ): ApiResponse<SearchPage> {
+    return this.contextCall<SearchPage>(
+      props.contextId,
+      props.executorPublicKey,
+      method,
+      {
+        query: props.query,
+        cursor: props.cursor ?? null,
+        limit: props.limit ?? null,
+      },
+      method,
+    );
+  }
+
+  /** One call in a context named by the caller, the node's reason kept on error. */
+  private async contextCall<T>(
+    contextId: string,
+    executorPublicKey: string,
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+    label: string,
+  ): ApiResponse<T> {
     try {
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
-        SearchPage
+        T
       >(
         {
-          contextId: props.contextId,
-          method: ClientMethod.SEARCH_MESSAGES,
-          argsJson: {
-            query: props.query,
-            cursor: props.cursor ?? null,
-            limit: props.limit ?? null,
-          },
-          executorPublicKey: props.executorPublicKey,
+          contextId,
+          method,
+          argsJson,
+          executorPublicKey,
         },
         {
           headers: { "Content-Type": "application/json" },
@@ -696,7 +738,7 @@ export class ClientApiDataSource implements ClientApi {
           error: { code: response.error.code, message },
         };
       }
-      return { data: response?.result.output as SearchPage, error: null };
+      return { data: response?.result.output as T, error: null };
     } catch (error) {
       return {
         error: {
@@ -706,7 +748,7 @@ export class ClientApiDataSource implements ClientApi {
               ? error.message
               : typeof error === "string"
                 ? error
-                : "An unexpected error occurred during searchMessages",
+                : `An unexpected error occurred during ${label}`,
         },
       };
     }

@@ -66,7 +66,22 @@ https://calimero-network.github.io/build/quickstart
 
 ## Search
 
-`search_messages(query, cursor, limit)` walks the channel newest first by
+`search_messages(query, cursor, limit)` asks the node's full-text index of the
+channel (core's per-context search): top-level messages and thread replies,
+newest first by their own timestamp, a substring match from 3 characters (a
+prefix match below that), folded for case and accents. It reads only the page
+of hits, so a query costs the same in a channel of 2,000 messages or 200,000.
+A deleted message leaves the index; a staff-removed one is dropped when its
+hit is read back. Message text is
+editor HTML, so the index holds it as the plain text a reader sees. A hit's
+`index` is `null`: `message_position(message_id)` gives the position to open
+it at, and the app asks when a hit is clicked.
+
+A node running with search off cannot answer from an index, and says so; the
+app then calls `search_messages_scan`, which answers the same question without
+one, as described below.
+
+`search_messages_scan(query, cursor, limit)` walks the channel newest first by
 position, each top-level message followed by its thread, and returns slim hits
 (id, parent id, position, timestamps, sender, a plain-text snippet with the
 match offsets) plus an opaque `next_cursor`. One call stops at `limit` hits
