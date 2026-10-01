@@ -1,62 +1,73 @@
+/* The invitation dialog, as the console's modal: square, a lime rule along
+   the top, a 950 uppercase title, and the link in a key box. */
+
 .dialog {
   /* ⚠️ The `*` reset in index.css zeroes margin, which kills the UA's
      `margin: auto` on a modal dialog and pins it to the top-left. */
   margin: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  border-top: 2px solid var(--accent);
+  border-radius: 0;
   background: var(--surface);
   color: var(--ink);
   padding: 0;
-  width: min(92vw, 520px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14);
+  width: min(92vw, 540px);
+  box-shadow: var(--shadow-float);
 }
 
 .dialog::backdrop {
-  background: rgba(17, 17, 17, 0.32);
+  background: var(--scrim);
 }
 
 .body {
-  padding: 20px;
+  padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 1rem;
 }
 
 .head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 1rem;
 }
 
 .title {
   margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
+  font-size: 1.375rem;
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
   color: var(--ink);
 }
 
 .close {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
   font: inherit;
-  font-size: 1rem;
+  font-size: 14px;
   line-height: 1;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   background: transparent;
-  border: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--radius);
 }
 
 .close:hover {
-  color: var(--ink);
-  background: var(--surface-2);
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }
 
 .scope {
   margin: 0;
-  font-size: 0.8125rem;
-  color: var(--ink-dim);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--ink-2);
 }
 
 /* ONE line, ellipsised. The link is ~380 characters of base58 and wrapping it
@@ -69,22 +80,23 @@
    only way left. */
 .link {
   display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.75rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0;
   line-height: 1.5;
-  color: var(--ink-dim);
-  background: var(--surface-2);
+  color: var(--ink-2);
+  background: var(--sunken);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 9px 12px;
+  border-left: 2px solid var(--accent-text);
+  border-radius: 0;
+  padding: 0.75rem 1rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   user-select: all;
 }
 
-.link[data-full="true"] {
+.link[data-full='true'] {
   white-space: normal;
   overflow-wrap: anywhere;
   color: var(--ink);
@@ -92,30 +104,28 @@
 
 .primary {
   font: inherit;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #fff;
-  background: var(--ink);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius);
-  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: var(--tracking-button);
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  padding: 0.875rem 1.25rem;
   cursor: pointer;
-  transition: background 120ms ease;
+  transition: box-shadow 0.3s ease-out;
 }
 
 .primary:hover {
-  background: var(--ink-2);
-  border-color: var(--ink-2);
-}
-
-.primary:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  box-shadow: var(--shadow-button);
 }
 
 .hint {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 13px;
+  font-weight: 300;
   line-height: 1.5;
   color: var(--ink-dim);
 }
@@ -123,56 +133,66 @@
 .disclosure {
   align-self: flex-start;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   color: var(--accent-text);
   background: transparent;
   border: none;
   padding: 2px 0;
   cursor: pointer;
+}
+.disclosure:hover {
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 0.2em;
 }
 
 .more {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
   border-top: 1px solid var(--border);
-  padding-top: 12px;
+  padding-top: 1rem;
 }
 
 .moreLabel {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  gap: 0.125rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   color: var(--ink);
 }
 
 .moreNote {
-  font-weight: 400;
-  font-size: 0.75rem;
+  font-weight: 300;
+  font-size: 12px;
+  letter-spacing: 0.015em;
+  text-transform: none;
   line-height: 1.45;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .moreRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .moreValue {
   flex: 1;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.6875rem;
-  color: var(--ink-dim);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 7px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  background: var(--sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 0.5rem 0.625rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -180,16 +200,20 @@
 
 .secondary {
   font: inherit;
-  font-size: 0.8125rem;
-  color: var(--ink-dim);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .secondary:hover {
-  background: var(--surface-2);
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }

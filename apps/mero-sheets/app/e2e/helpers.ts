@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -94,4 +94,83 @@ export async function clearAuth(page: Page) {
       ].forEach((k) => localStorage.removeItem(k));
     });
   } catch { /* page may be closed */ }
+}
+
+// ── Seeding: workbooks, cells and members, through the real UI ──────────────
+
+/** The grid cell at a row and column (both from 0). */
+export const cell = (page: Page, row: number, col: number) =>
+  page.locator(`[data-testid="item-cell"][data-row="${row}"][data-col="${col}"]`);
+
+/** Answers the "what should we call you" prompt a new member gets, if shown. */
+export async function chooseNickname(page: Page, name: string) {
+  const nick = page.getByTestId('field-nickname');
+  if (await nick.waitFor({ timeout: 30_000 }).then(() => true, () => false)) {
+    await nick.fill(name);
+    await nick.press('Enter');
+  }
+}
+
+/** Logs in to a node, creates a workbook there and waits for its grid. */
+export async function openNewWorkbook(
+  page: Page,
+  { node = 0, name = 'Test workbook', nickname = 'Owner' }: { node?: number; name?: string; nickname?: string } = {},
+) {
+  await loginViaHash(page, node);
+  await page.getByTestId('field-name').fill(name);
+  await page.getByTestId('action-init_project').click();
+  await chooseNickname(page, nickname);
+  await cell(page, 0, 0).waitFor({ timeout: 60_000 });
+}
+
+/** Selects a cell and types a value or formula into it, as a person would. */
+export async function enterCell(page: Page, row: number, col: number, value: string) {
+  await cell(page, row, col).click();
+  await page.keyboard.type(value);
+  await page.keyboard.press('Enter');
+}
+
+/**
+ * Invites `guest` (logged in to `node`) into the workbook open in `owner`:
+ * the owner copies an invitation link, the guest joins with it and names
+ * themselves, and the call returns once the guest sees the grid.
+ */
+export async function shareWorkbook(
+  owner: Page,
+  guest: Page,
+  { node = 1, nickname = 'Guest' }: { node?: number; nickname?: string } = {},
+) {
+  await owner.getByLabel('Invite collaborators').click();
+  const link = (await owner.getByTestId('invite-link').innerText({ timeout: 60_000 })).trim();
+  await owner.keyboard.press('Escape');
+
+  await loginViaHash(guest, node);
+  await guest.getByText('Join with invitation').click();
+  await guest.getByTestId('field-invitation').fill(link);
+  await guest.getByTestId('action-join-workspace').click();
+  await chooseNickname(guest, nickname);
+  await cell(guest, 0, 0).waitFor({ timeout: 90_000 });
+}
+
+/**
+ * Two members in one workbook, each on their own node: `a` creates it on node
+ * 0 and invites `b`, who joins from node 1. Closes both browsers afterwards.
+ */
+export async function withTwoMembers(
+  browser: Browser,
+  run: (a: Page, b: Page) => Promise<void>,
+  [nameA, nameB]: [string, string] = ['Alice', 'Bob'],
+) {
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  try {
+    const a = await ctxA.newPage();
+    const b = await ctxB.newPage();
+    await openNewWorkbook(a, { nickname: nameA });
+    await shareWorkbook(a, b, { nickname: nameB });
+    await run(a, b);
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
 }

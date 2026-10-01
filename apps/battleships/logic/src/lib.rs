@@ -1,4 +1,27 @@
 //! Lobby service — match directory, player stats, and history.
+//!
+//! ## What holds against a node that does not run this code
+//!
+//! Every member runs their own node, and a patched one skips every check in
+//! these methods. What every node enforces is the storage type:
+//!
+//! * `players` is `UserStorage`: each account writes only its own slot, so
+//!   nobody can repoint another member's account at a key of their choosing.
+//! * `matches` is `Authored`: a match is owned by the member who created it,
+//!   and only they can link its game context.
+//!
+//!   Keys are per owner (core rc.57): another member can file an entry of
+//!   their own under an existing match id, and a key-only `get` reads only the
+//!   CALLER's entry. So every read by id goes through [`LobbyState::match_of`],
+//!   which reads every holder's entry and takes the one whose owner is the
+//!   account that registered the match's `player1` key (the id's prefix),
+//!   falling back to the lowest such holder.
+//! * `results` is `WriteOnce`: a reported result can be neither edited nor
+//!   removed. Which reports COUNT is the reader's question — see
+//!   [`LobbyState::result_of`] — and stats are derived from those, never
+//!   stored, so there is no counter for a member to bump.
+
+use std::collections::BTreeSet;
 
 use battleships_types::{GameError, PublicKey};
 use calimero_sdk::abi::AbiType;
@@ -6,9 +29,8 @@ use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
-use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    Counter, FrozenValue, LwwRegister, Mergeable, UnorderedMap, Vector,
+    Authored, Frozen, IndexedMap, LwwRegister, UnorderedMap, UserStorage, WriteOnce,
 };
 use calimero_storage::env as storage_env;
 
@@ -30,7 +52,21 @@ pub enum MatchStatus {
     Finished,
 }
 
-#[app::mergeable(id = "battleships::MatchSummary")]
+/// A match as its creator recorded it, keyed by match id and owned by them.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct MatchEntry {
+    pub player1: String,
+    pub player2: String,
+    /// The ACCOUNT player 2 registered their key under — what the game
+    /// context checks player 2's rows against.
+    pub player2_account: String,
+    pub context_id: Option<String>,
+    pub created_ms: u64,
+}
+
+/// A match as a client sees it. `status` and `winner` are derived from the
+/// results, never stored.
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -38,109 +74,11 @@ pub struct MatchSummary {
     pub match_id: String,
     pub player1: String,
     pub player2: String,
+    pub player2_account: String,
     pub status: MatchStatus,
     pub context_id: Option<String>,
     pub winner: Option<String>,
     pub created_ms: u64,
-}
-
-impl Mergeable for MatchSummary {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Every field resolves independently by a maximum over a total order,
-        // so the whole merge is commutative, associative and idempotent. The
-        // previous rule was none of those — and from core 0.11.0-rc.32 it
-        // actually runs (`#[app::mergeable]` dispatches it) instead of being
-        // dead code that the storage layer resolved last-write-wins:
-        //
-        //   * `*self = other.clone()` on a rank advance DISCARDED this side's
-        //     `context_id` / `winner`, so a replica that reached Finished
-        //     before learning the context id erased one that already had it.
-        //   * at an equal rank two replicas each holding a DIFFERENT `Some`
-        //     both kept their own, diverging permanently with no error.
-        fn rank(s: &MatchStatus) -> u8 {
-            match s {
-                MatchStatus::Pending => 0,
-                MatchStatus::Active => 1,
-                MatchStatus::Finished => 2,
-            }
-        }
-
-        // A match only ever moves forward: Pending -> Active -> Finished.
-        if rank(&other.status) > rank(&self.status) {
-            self.status = other.status.clone();
-        }
-
-        // `None < Some(_)`, then lexicographic — so "filled in beats empty",
-        // and two differing values settle on the same side for both replicas.
-        fn merge_opt(mine: &mut Option<String>, theirs: &Option<String>) {
-            if theirs > &*mine {
-                *mine = theirs.clone();
-            }
-        }
-        merge_opt(&mut self.context_id, &other.context_id);
-        merge_opt(&mut self.winner, &other.winner);
-
-        // Set-once identity: keep the earliest creation, tie-broken on the ids,
-        // so even a raced initial insert converges rather than each side
-        // keeping its own. Identical in practice — the map key IS the match id.
-        if (
-            other.created_ms,
-            &other.match_id,
-            &other.player1,
-            &other.player2,
-        ) < (
-            self.created_ms,
-            &self.match_id,
-            &self.player1,
-            &self.player2,
-        ) {
-            self.match_id = other.match_id.clone();
-            self.player1 = other.player1.clone();
-            self.player2 = other.player2.clone();
-            self.created_ms = other.created_ms;
-        }
-        Ok(())
-    }
-}
-
-// AbiType because it is a stored map's value type and the ABI is derived from
-// the type system — not because PlayerStats itself crosses the RPC boundary
-// (PlayerStatsView does that).
-#[derive(AbiType, Mergeable, BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct PlayerStats {
-    pub wins: Counter,
-    pub losses: Counter,
-    // games_played is intentionally NOT stored — it's `wins + losses` by
-    // construction (every match increments exactly one), so deriving it in
-    // `to_view` removes a "can these drift?" question from the data model.
-}
-
-impl PlayerStats {
-    // pub(crate) so the wasm-abi emitter — which scans every `pub fn` in the
-    // crate — does NOT expose this as a Calimero method on LobbyClient.
-    pub(crate) fn new(player_key: &str) -> PlayerStats {
-        PlayerStats {
-            wins: Counter::new_with_field_name(&format!("stats:{player_key}:wins")),
-            losses: Counter::new_with_field_name(&format!("stats:{player_key}:losses")),
-        }
-    }
-
-    pub(crate) fn to_view(&self) -> Result<PlayerStatsView, GameError> {
-        let wins = self
-            .wins
-            .value_unsigned()
-            .map_err(|e| GameError::Invalid(format!("wins read: {e}")))?;
-        let losses = self
-            .losses
-            .value_unsigned()
-            .map_err(|e| GameError::Invalid(format!("losses read: {e}")))?;
-        Ok(PlayerStatsView {
-            wins,
-            losses,
-            games_played: wins.saturating_add(losses),
-        })
-    }
 }
 
 /// Flat snapshot of a player's stats — what consumers see over the wire.
@@ -153,12 +91,22 @@ pub struct PlayerStatsView {
     pub games_played: u64,
 }
 
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+/// One reported result, keyed `"<match_id>/<nonce>"`.
+///
+/// Indexed by winner and loser, so a player's stats are two index seeks rather
+/// than a scan of every match, and by match, so the reader can gather every
+/// report of one match.
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct MatchRecord {
+    #[index]
     pub match_id: String,
+    #[index]
     pub winner: String,
+    #[index]
     pub loser: String,
     pub finished_ms: u64,
 }
@@ -188,10 +136,6 @@ pub struct PlayerEntry {
     pub player: String,
 }
 
-// MatchRecord is append-once / immutable per match — it's stored as
-// `FrozenValue<MatchRecord>` inside `history`, which supplies a no-op
-// `Mergeable` impl for free. No hand-rolled merge to own.
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -203,14 +147,9 @@ pub struct PlayerEntry {
 /// CONTEXT MEMBER. The lobby records `player2` from a member key, the game
 /// context is initialised with `{"player1": <memberPublicKey>, "player2": …}`,
 /// and the frontend reads the same id from `/contexts/{id}/identities-owned`.
-/// Resolving the caller to the account instead made every one of those
-/// comparisons fail — `place_ships` answered `{"kind":"Forbidden","data":"not a
-/// player"}` for the actual player — because since rc.27 an account and a device
-/// key are both 64 hex and nothing objects to the wrong one.
 ///
-/// (`UserStorage` is the exception and IS account-keyed since rc.21 — see
-/// `caller_account` in the game crate. A private board belongs to the PERSON; a
-/// player id identifies the context member. Both are true at once.)
+/// (Ownership is the exception: owner stamps and `UserStorage` are keyed by the
+/// ACCOUNT, which is why `register_player` pairs the two.)
 fn from_executor_id() -> Result<PublicKey, GameError> {
     let v = calimero_sdk::env::device_id();
     if v.len() != 32 {
@@ -221,17 +160,13 @@ fn from_executor_id() -> Result<PublicKey, GameError> {
     Ok(PublicKey(arr))
 }
 
-/// The caller's ACCOUNT, hex — the id group membership is keyed by.
-///
-/// Deliberately NOT `from_executor_id`. That one answers "which player is
-/// calling", this one answers "which member row is that". Recording both is the
-/// entire point of `register_player`.
-fn caller_account_hex() -> String {
-    let bytes = calimero_sdk::env::account_id();
-    bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
-        acc.push_str(&format!("{:02x}", b));
-        acc
-    })
+/// A storage failure, as the `GameError` the inner functions return.
+fn storage(e: calimero_storage::collections::StoreError) -> GameError {
+    GameError::Invalid(format!("storage: {e}"))
+}
+
+fn account_hex(bytes: &[u8; 32]) -> String {
+    hex::encode(bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -240,17 +175,16 @@ fn caller_account_hex() -> String {
 
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct LobbyState {
-    created_ms: LwwRegister<u64>,
-    matches: UnorderedMap<String, MatchSummary>,
-    player_stats: UnorderedMap<String, PlayerStats>,
-    history: Vector<FrozenValue<MatchRecord>>,
-    /// account hex -> player key hex, written by each member about itself.
+    created_ms: Frozen<u64>,
+    /// match id -> the match, owned by the member who created it.
+    matches: Authored<UnorderedMap<String, MatchEntry>>,
+    /// `"<match_id>/<nonce>"` -> a result a game context reported.
+    results: WriteOnce<IndexedMap<String, MatchRecord>>,
+    /// account -> the player key that account plays as, written only by it.
     ///
-    /// `LwwRegister` rather than a bare `String` so a member who rejoins with a
-    /// fresh context identity converges on the newer key instead of two
-    /// replicas each keeping their own. A set-once value would pin the stale
-    /// one forever and never error.
-    players: UnorderedMap<String, LwwRegister<String>>,
+    /// `LwwRegister` so a member who rejoins with a fresh context identity
+    /// converges on the newer key.
+    players: UserStorage<LwwRegister<String>>,
 }
 
 #[app::logic]
@@ -258,11 +192,10 @@ impl LobbyState {
     #[app::init]
     pub fn init() -> LobbyState {
         LobbyState {
-            created_ms: LwwRegister::new(storage_env::time_now()),
-            matches: UnorderedMap::new_with_field_name("lobby:matches"),
-            player_stats: UnorderedMap::new_with_field_name("lobby:player_stats"),
-            history: Vector::new_with_field_name("lobby:history"),
-            players: UnorderedMap::new_with_field_name("lobby:players"),
+            created_ms: Frozen::new(storage_env::time_now()),
+            matches: Authored::new(),
+            results: WriteOnce::new(),
+            players: UserStorage::new(),
         }
     }
 
@@ -274,14 +207,8 @@ impl LobbyState {
         let now = storage_env::time_now();
         let mut nonce_bytes = [0u8; 4];
         calimero_sdk::env::random_bytes(&mut nonce_bytes);
-        let nonce_hex = nonce_bytes
-            .iter()
-            .fold(String::with_capacity(8), |mut acc, b| {
-                acc.push_str(&format!("{:02x}", b));
-                acc
-            });
         let id = self
-            .create_match_with_id(&caller_hex, &player2, now, &nonce_hex)
+            .create_match_with_id(&caller_hex, &player2, now, &hex::encode(nonce_bytes))
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::MatchCreated { id: &id });
         app::emit!(Event::MatchListUpdated {});
@@ -310,26 +237,34 @@ impl LobbyState {
         // its caller against a real key.
         PublicKey::from_hex(player2_hex)
             .map_err(|e| GameError::Invalid(format!("player2 is not a valid hex key: {e}")))?;
+        let player2_account = self.account_for(player2_hex)?;
+        if player2_account == account_hex(&calimero_sdk::env::account_id()) {
+            return Err(GameError::Invalid(
+                "cannot create match against self".into(),
+            ));
+        }
         let match_id = format!("{caller_hex}-{now_ms}-{nonce_hex}");
-        let collides = self
+        // Any account's entry, not just the caller's: keys are per owner.
+        if !self
             .matches
-            .contains(&match_id)
-            .map_err(|e| GameError::Invalid(format!("matches.contains failed: {e}")))?;
-        if collides {
+            .entries_at(&match_id)
+            .map_err(storage)?
+            .is_empty()
+        {
             return Err(GameError::MatchIdCollision);
         }
-        let summary = MatchSummary {
-            match_id: match_id.clone(),
-            player1: caller_hex.to_string(),
-            player2: player2_hex.to_string(),
-            status: MatchStatus::Pending,
-            context_id: None,
-            winner: None,
-            created_ms: now_ms,
-        };
         self.matches
-            .insert(match_id.clone(), summary)
-            .map_err(|e| GameError::Invalid(format!("matches.insert failed: {e}")))?;
+            .insert(
+                match_id.clone(),
+                MatchEntry {
+                    player1: caller_hex.to_string(),
+                    player2: player2_hex.to_string(),
+                    player2_account,
+                    context_id: None,
+                    created_ms: now_ms,
+                },
+            )
+            .map_err(storage)?;
         Ok(match_id)
     }
 
@@ -349,29 +284,37 @@ impl LobbyState {
         match_id: &str,
         context_id: &str,
     ) -> Result<(), GameError> {
-        // `get` hands back a `ValueRef`; an owned record is needed to edit and
-        // re-insert. MatchSummary is plain data and derives Clone.
-        let mut summary = (*self
-            .matches
-            .get(&match_id.to_string())
-            .map_err(|e| GameError::Invalid(format!("matches.get failed: {e}")))?
-            .ok_or(GameError::Invalid("unknown match_id".into()))?)
-        .clone();
-        // Only allow the Pending -> Active transition. Re-linking an Active
-        // match silently is redundant; reactivating a Finished match would
-        // corrupt history.
-        if summary.status != MatchStatus::Pending {
+        let match_id = match_id.to_string();
+        // The caller's OWN entry: keys are per owner, and only the creator's
+        // entry is theirs to link.
+        let Some(entry) = self.matches.get(&match_id).map_err(storage)? else {
+            if self.match_of(&match_id)?.is_some() {
+                return Err(GameError::Forbidden(
+                    "only the match's creator links it".into(),
+                ));
+            }
+            return Err(GameError::Invalid("unknown match_id".into()));
+        };
+        // Only the Pending -> Active transition. Re-linking a match would point
+        // it at a different game, whose results would then count for it.
+        if entry.context_id.is_some() {
             return Err(GameError::Invalid("match not in Pending state".into()));
         }
-        summary.status = MatchStatus::Active;
-        summary.context_id = Some(context_id.to_string());
+        // Storage refuses anyone but the creator; saying so here is kinder.
+        if !self.matches.owned_by_me(&match_id).map_err(storage)? {
+            return Err(GameError::Forbidden(
+                "only the match's creator links it".into(),
+            ));
+        }
         self.matches
-            .insert(match_id.to_string(), summary)
-            .map_err(|e| GameError::Invalid(format!("matches.insert failed: {e}")))?;
+            .modify(&match_id, |entry| {
+                entry.context_id = Some(context_id.to_string());
+            })
+            .map_err(storage)?;
         Ok(())
     }
 
-    /// Record that this caller's account plays as this caller's player key.
+    /// Record the caller's own account -> player key pairing.
     ///
     /// Called when a member opens the lobby. Idempotent: re-registering the
     /// same pair is a no-op write, and it is cheap enough to call on every
@@ -379,85 +322,87 @@ impl LobbyState {
     /// this method existed.
     ///
     /// This is the ONLY way the other nodes ever learn the pairing — see
-    /// `PlayerEntry`. Without it a three-player lobby shows every row as
-    /// "hasn't opened the lobby yet" on every node, including the creator's,
-    /// which holds all the keys but cannot say whose they are.
+    /// `PlayerEntry`. The slot is the caller's own, so nobody else can write it.
     pub fn register_player(&mut self) -> app::Result<String> {
-        let player = from_executor_id().map_err(|e| AppError::msg(e.to_string()))?;
-        let account = caller_account_hex();
-        let (player_hex, changed) = self
-            .register_player_with(&account, &player.to_hex())
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        if changed {
+        let player_hex = from_executor_id()
+            .map_err(|e| AppError::msg(e.to_string()))?
+            .to_hex();
+        let unchanged = self
+            .players
+            .get()?
+            .is_some_and(|registered| *registered.get() == player_hex);
+        if !unchanged {
+            let _previous = self.players.insert(LwwRegister::new(player_hex.clone()))?;
             app::emit!(Event::PlayersUpdated {});
         }
         Ok(player_hex)
     }
 
-    /// Testable inner: the ids explicitly, no host calls and no event emits.
-    ///
-    /// Returns the key recorded and whether this call changed anything, so the
-    /// caller only emits when a write actually happened.
-    pub(crate) fn register_player_with(
-        &mut self,
-        account: &str,
-        player_hex: &str,
-    ) -> Result<(String, bool), GameError> {
-        let existing = self
-            .players
-            .get(account)
-            .map_err(|e| GameError::Invalid(format!("players.get: {e}")))?;
-        if existing.as_ref().map(|r| r.get().as_str()) == Some(player_hex) {
-            return Ok((player_hex.to_string(), false));
-        }
-        self.players
-            .insert(
-                account.to_string(),
-                LwwRegister::new(player_hex.to_string()),
-            )
-            .map_err(|e| GameError::Invalid(format!("players.insert: {e}")))?;
-        Ok((player_hex.to_string(), true))
-    }
-
-    /// Every member who has opened the lobby, as account -> player key.
+    /// Every account -> player key pairing recorded so far.
     pub fn get_players(&self) -> app::Result<Vec<PlayerEntry>> {
-        let entries = self
+        Ok(self
             .players
-            .entries()
-            .map_err(|e| AppError::msg(format!("players.entries: {e}")))?;
-        Ok(entries
+            .entries()?
             .map(|(account, key)| PlayerEntry {
-                account,
+                account: account_hex(account.as_bytes()),
                 player: key.get().clone(),
             })
             .collect())
     }
 
     pub fn get_matches(&self) -> app::Result<Vec<MatchSummary>> {
-        let entries = self
-            .matches
-            .entries()
-            .map_err(|e| AppError::msg(format!("matches.entries: {e}")))?;
-        Ok(entries.map(|(_, v)| v).collect())
-    }
-
-    pub fn get_player_stats(&self, player: String) -> app::Result<Option<PlayerStatsView>> {
-        let stats = self
-            .player_stats
-            .get(&player)
-            .map_err(|e| AppError::msg(format!("player_stats.get: {e}")))?;
-        match stats {
-            Some(s) => Ok(Some(s.to_view().map_err(|e| AppError::msg(e.to_string()))?)),
-            None => Ok(None),
+        let mut out = Vec::new();
+        for match_id in self.match_ids()? {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
+                continue;
+            };
+            let result = self.result_of(&match_id, &creator, &entry)?;
+            out.push(MatchSummary {
+                status: match (&result, &entry.context_id) {
+                    (Some(_), _) => MatchStatus::Finished,
+                    (None, Some(_)) => MatchStatus::Active,
+                    (None, None) => MatchStatus::Pending,
+                },
+                winner: result.map(|r| r.winner),
+                match_id,
+                player1: entry.player1,
+                player2: entry.player2,
+                player2_account: entry.player2_account,
+                context_id: entry.context_id,
+                created_ms: entry.created_ms,
+            });
         }
+        Ok(out)
     }
 
+    /// A player's record, derived from the results: two index seeks, then one
+    /// check per match that the result counts.
+    pub fn get_player_stats(&self, player: String) -> app::Result<Option<PlayerStatsView>> {
+        let wins = self.counted(&player, "winner")?;
+        let losses = self.counted(&player, "loser")?;
+        if wins == 0 && losses == 0 {
+            return Ok(None);
+        }
+        Ok(Some(PlayerStatsView {
+            wins,
+            losses,
+            games_played: wins.saturating_add(losses),
+        }))
+    }
+
+    /// Every finished match, oldest first — one result per match.
     pub fn get_history(&self) -> app::Result<Vec<MatchRecord>> {
-        let iter = self
-            .history
-            .iter()
-            .map_err(|e| AppError::msg(format!("history.iter: {e}")))?;
-        Ok(iter.map(|f| f.0).collect())
+        let mut out = Vec::new();
+        for match_id in self.match_ids()? {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
+                continue;
+            };
+            if let Some(record) = self.result_of(&match_id, &creator, &entry)? {
+                out.push(record);
+            }
+        }
+        out.sort_by(|a, b| (a.finished_ms, &a.match_id).cmp(&(b.finished_ms, &b.match_id)));
+        Ok(out)
     }
 
     /// Recorded by the game context when a match ends.
@@ -467,10 +412,9 @@ impl LobbyState {
     /// the node rejects the dispatch as "not an xcall entry point" — which is
     /// how a finished match silently recorded no winner, no history and no
     /// stats. `from_same_app` narrows callers to contexts running this same
-    /// application id, enforced by the node: the lobby and the game are two
-    /// services of one bundle, so nothing else has any business reporting a
-    /// result. That is stronger than checking `env::xcall_origin()` here,
-    /// because it does not depend on this method remembering to.
+    /// application id, enforced by the node — but ANY such context, including
+    /// one a member creates to report a match it is not, so the method also
+    /// checks the call came from THIS match's game context.
     #[app::xcall(from_same_app)]
     pub fn on_match_finished(
         &mut self,
@@ -478,8 +422,9 @@ impl LobbyState {
         winner: String,
         loser: String,
     ) -> app::Result<()> {
+        let origin = calimero_sdk::env::xcall_origin();
         let now = storage_env::time_now();
-        self.on_match_finished_inner(&match_id, &winner, &loser, now)
+        self.on_match_finished_inner(&match_id, &winner, &loser, origin, now)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::MatchListUpdated {});
         app::emit!(Event::PlayerStatsUpdated {});
@@ -491,566 +436,467 @@ impl LobbyState {
         match_id: &str,
         winner: &str,
         loser: &str,
+        origin: Option<[u8; 32]>,
         finished_ms: u64,
     ) -> Result<(), GameError> {
-        // Direct map lookup. The game context now receives the lobby-issued
-        // match_id at init time and echoes it back here, so the
-        // resolve-by-context-id fallback the previous version needed is gone.
-        // `get` hands back a `ValueRef`; an owned record is needed to edit and
-        // re-insert. MatchSummary is plain data and derives Clone.
-        let mut summary = (*self
-            .matches
-            .get(&match_id.to_string())
-            .map_err(|e| GameError::Invalid(format!("matches.get failed: {e}")))?
-            .ok_or(GameError::Invalid("unknown match_id".into()))?)
-        .clone();
+        let id = match_id.to_string();
+        let (creator, entry) = self
+            .match_of(&id)?
+            .ok_or(GameError::Invalid("unknown match_id".into()))?;
+        let from_its_game = entry
+            .context_id
+            .as_deref()
+            .and_then(|ctx| hex::decode(ctx).ok())
+            .zip(origin)
+            .is_some_and(|(linked, origin)| linked == origin);
+        if !from_its_game {
+            return Err(GameError::Forbidden(
+                "a result is reported only by the match's own game context".into(),
+            ));
+        }
+        if !Self::are_the_players(&entry, winner, loser) {
+            return Err(GameError::Invalid(
+                "winner and loser must be the match's two players".into(),
+            ));
+        }
         // Idempotent on purpose. xcall dispatch is fire-and-forget, and both
-        // players' replicas can resolve the same final shot, so this may be
-        // delivered more than once for one match. Re-running it would push a
-        // duplicate `history` row and bump BOTH players' win/loss counters a
-        // second time — corruption that no error would announce.
-        if matches!(summary.status, MatchStatus::Finished) {
+        // players' nodes can report the same decision, so this may be
+        // delivered more than once. A repeat writes nothing; and even two
+        // rows for one match count once, because stats are derived per match.
+        if self
+            .result_of(&id, &creator, &entry)?
+            .is_some_and(|known| known.winner == winner)
+        {
             return Ok(());
         }
-
-        summary.status = MatchStatus::Finished;
-        summary.winner = Some(winner.to_string());
-        self.matches
-            .insert(match_id.to_string(), summary)
-            .map_err(|e| GameError::Invalid(format!("matches.insert failed: {e}")))?;
-
-        self.history
-            .push(FrozenValue::from(MatchRecord {
-                match_id: match_id.to_string(),
-                winner: winner.to_string(),
-                loser: loser.to_string(),
-                finished_ms,
-            }))
-            .map_err(|e| GameError::Invalid(format!("history.push failed: {e}")))?;
-
-        bump_stats(&mut self.player_stats, winner, true)?;
-        bump_stats(&mut self.player_stats, loser, false)?;
+        let key = (0..16u64)
+            .map(|offset| format!("{match_id}/{}", finished_ms.saturating_add(offset)))
+            .find(|key| !self.results.contains(key).unwrap_or(true))
+            .ok_or(GameError::Invalid(
+                "could not find a free slot to write to".into(),
+            ))?;
+        self.results
+            .insert(
+                key,
+                MatchRecord {
+                    match_id: match_id.to_string(),
+                    winner: winner.to_string(),
+                    loser: loser.to_string(),
+                    finished_ms,
+                },
+            )
+            .map_err(storage)?;
         Ok(())
     }
 }
 
-fn bump_stats(
-    stats_map: &mut UnorderedMap<String, PlayerStats>,
-    player_key: &str,
-    is_winner: bool,
-) -> Result<(), GameError> {
-    // `entry(…).or_insert_with(…)`, which the SDK calls "the blessed path for
-    // in-place mutation of nested CRDT values": the guard re-persists the value
-    // when it drops, so there is no get → modify → re-insert dance.
-    //
-    // Neither alternative works here, and the reasons are worth keeping:
-    //   • `get()` hands back a `ValueRef`, which is read-only — no DerefMut.
-    //   • cloning out and re-inserting is impossible because `Counter` is
-    //     deliberately NOT `Clone`. That is the SDK preventing a real bug: two
-    //     copies of one counter's per-replica state would double-count on merge.
-    // The entry API also re-keys a freshly-built value under this entry's
-    // deterministic id, so a row first created independently on two nodes still
-    // converges instead of carrying two random internal ids.
-    fn bump(stats: &mut PlayerStats, is_winner: bool) -> Result<(), GameError> {
-        if is_winner {
-            stats
-                .wins
-                .increment()
-                .map_err(|e| GameError::Invalid(format!("wins.increment failed: {e}")))
-        } else {
-            stats
-                .losses
-                .increment()
-                .map_err(|e| GameError::Invalid(format!("losses.increment failed: {e}")))
+impl LobbyState {
+    /// Every match id, once: `entries()` lists a key once per account holding
+    /// it.
+    fn match_ids(&self) -> Result<BTreeSet<String>, GameError> {
+        Ok(self
+            .matches
+            .entries()
+            .map_err(storage)?
+            .map(|(match_id, _)| match_id)
+            .collect())
+    }
+
+    /// The match at `match_id` and its creator's account (hex).
+    ///
+    /// Keys are per owner, so several accounts can hold an entry at one id.
+    /// The genuine one names the id's prefix as `player1`, and is owned by the
+    /// account that registered that player key; failing a registration, the
+    /// lowest account whose entry names the prefix. The same pick on every
+    /// node.
+    fn match_of(&self, match_id: &String) -> Result<Option<(String, MatchEntry)>, GameError> {
+        let Some((prefix, _)) = match_id.split_once('-') else {
+            return Ok(None);
+        };
+        let mut holders: Vec<(String, MatchEntry)> = self
+            .matches
+            .entries_at(match_id)
+            .map_err(storage)?
+            .into_iter()
+            .filter(|(_, entry)| entry.player1 == prefix)
+            .map(|(owner, entry)| (account_hex(owner.as_bytes()), entry))
+            .collect();
+        holders.sort_by(|a, b| a.0.cmp(&b.0));
+        let registered = self.account_for(prefix).ok();
+        if let Some(i) = holders
+            .iter()
+            .position(|(owner, _)| Some(owner) == registered.as_ref())
+        {
+            return Ok(Some(holders.swap_remove(i)));
+        }
+        Ok(holders.into_iter().next())
+    }
+
+    /// The account that registered `player` as its key — exactly one, or the
+    /// match cannot say whose rows player 2's are.
+    fn account_for(&self, player: &str) -> Result<String, GameError> {
+        let accounts: Vec<String> = self
+            .players
+            .entries()
+            .map_err(storage)?
+            .filter(|(_, key)| key.get().eq_ignore_ascii_case(player))
+            .map(|(account, _)| account_hex(account.as_bytes()))
+            .collect();
+        match accounts.as_slice() {
+            [one] => Ok(one.clone()),
+            [] => Err(GameError::Invalid(
+                "that player has not opened the lobby yet".into(),
+            )),
+            _ => Err(GameError::Invalid(
+                "more than one member has registered that player key".into(),
+            )),
         }
     }
 
-    let mut slot = stats_map
-        .entry(player_key.to_string())
-        .map_err(|e| GameError::Invalid(format!("stats.entry failed: {e}")))?
-        .or_insert_with(|| PlayerStats::new(player_key))
-        .map_err(|e| GameError::Invalid(format!("stats.or_insert_with failed: {e}")))?;
-    bump(&mut slot, is_winner)?;
-    Ok(())
+    fn are_the_players(entry: &MatchEntry, winner: &str, loser: &str) -> bool {
+        winner != loser
+            && [winner, loser]
+                .iter()
+                .all(|p| *p == entry.player1 || *p == entry.player2)
+    }
+
+    /// The result of a match, if one counts.
+    ///
+    /// A report counts only if it names the match's two players and was
+    /// written by one of them — the creator (the entry's owner stamp) or the
+    /// player 2 account the entry recorded — which is who a game context's
+    /// report runs as. The result stands only if every counting report agrees
+    /// on the winner: a player who files a contrary report can dispute a
+    /// result, but never take it.
+    ///
+    /// Keys are per owner, so both players' nodes can file a report under the
+    /// same key. Each key the index names is read once, with every holder's
+    /// entry at it and that holder's account.
+    fn result_of(
+        &self,
+        match_id: &String,
+        creator: &str,
+        entry: &MatchEntry,
+    ) -> Result<Option<MatchRecord>, GameError> {
+        let keys: BTreeSet<String> = self
+            .results
+            .query("match_id")
+            .eq(match_id.as_str())
+            .keys()
+            .map_err(storage)?
+            .into_iter()
+            .collect();
+        let mut counting: Vec<MatchRecord> = Vec::new();
+        for key in keys {
+            for (owner, record) in self.results.entries_at(&key).map_err(storage)? {
+                if record.match_id != *match_id {
+                    continue;
+                }
+                let author = account_hex(owner.as_bytes());
+                let by_a_player = author == creator || author == entry.player2_account;
+                if by_a_player && Self::are_the_players(entry, &record.winner, &record.loser) {
+                    counting.push(record);
+                }
+            }
+        }
+        let winners: BTreeSet<&str> = counting.iter().map(|r| r.winner.as_str()).collect();
+        if winners.len() != 1 {
+            return Ok(None);
+        }
+        Ok(counting.into_iter().min_by_key(|r| r.finished_ms))
+    }
+
+    /// How many matches `player` is the counted `side` ("winner" / "loser") of.
+    fn counted(&self, player: &str, side: &str) -> app::Result<u64> {
+        let matches: BTreeSet<String> = self
+            .results
+            .query(side)
+            .eq(player)
+            .entries()?
+            .into_iter()
+            .map(|(_, record)| record.match_id)
+            .collect();
+        let mut count = 0u64;
+        for match_id in matches {
+            let Some((creator, entry)) = self.match_of(&match_id)? else {
+                continue;
+            };
+            let counts = self
+                .result_of(&match_id, &creator, &entry)?
+                .is_some_and(|r| {
+                    if side == "winner" {
+                        r.winner == player
+                    } else {
+                        r.loser == player
+                    }
+                });
+            count += u64::from(counts);
+        }
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use calimero_sdk::testing::TestHost;
+
     use super::*;
-    use battleships_types::GameError;
 
-    #[test]
-    fn player_stats_counters_start_at_zero() {
-        let stats = PlayerStats::new("alice_hex");
-        assert_eq!(stats.wins.value_unsigned().unwrap(), 0);
-        assert_eq!(stats.losses.value_unsigned().unwrap(), 0);
-        assert_eq!(stats.to_view().unwrap().games_played, 0);
+    const ALICE: [u8; 32] = [0xA1; 32];
+    const ALICE_KEY: [u8; 32] = [0xA2; 32];
+    const BOB: [u8; 32] = [0xB0; 32];
+    const BOB_KEY: [u8; 32] = [0xB2; 32];
+    const CAROL: [u8; 32] = [0xC0; 32];
+    const CAROL_KEY: [u8; 32] = [0xC2; 32];
+    const GAME_CTX: [u8; 32] = [0x6A; 32];
+
+    /// A lobby where Alice and Bob have each registered their player key.
+    fn lobby() -> TestHost<LobbyState> {
+        let mut app = TestHost::new(LobbyState::init);
+        for (account, key) in [(ALICE, ALICE_KEY), (BOB, BOB_KEY)] {
+            app.call_as_account(account, key, |s| s.register_player())
+                .expect("register");
+        }
+        app
+    }
+
+    /// Alice challenges Bob and links the game context.
+    fn linked() -> (TestHost<LobbyState>, String) {
+        let mut app = lobby();
+        let id = app
+            .call_as_account(ALICE, ALICE_KEY, |s| s.create_match(hex::encode(BOB_KEY)))
+            .expect("create");
+        app.call_as_account(ALICE, ALICE_KEY, |s| {
+            s.set_match_context_id(id.clone(), hex::encode(GAME_CTX))
+        })
+        .expect("link");
+        (app, id)
+    }
+
+    fn report(
+        app: &mut TestHost<LobbyState>,
+        account: [u8; 32],
+        id: &str,
+        winner: [u8; 32],
+        loser: [u8; 32],
+        origin: Option<[u8; 32]>,
+    ) -> Result<(), GameError> {
+        let (winner, loser) = (hex::encode(winner), hex::encode(loser));
+        app.call_as_account(account, account, |s| {
+            s.on_match_finished_inner(id, &winner, &loser, origin, 1_000)
+        })
+    }
+
+    fn summary(app: &TestHost<LobbyState>, id: &str) -> MatchSummary {
+        app.view(|s| s.get_matches())
+            .expect("matches")
+            .into_iter()
+            .find(|m| m.match_id == id)
+            .expect("match")
     }
 
     #[test]
-    fn player_stats_increments_accumulate() {
-        let mut stats = PlayerStats::new("alice_hex");
-        stats.wins.increment().unwrap();
-        stats.losses.increment().unwrap();
-        stats.losses.increment().unwrap();
-        assert_eq!(stats.wins.value_unsigned().unwrap(), 1);
-        assert_eq!(stats.losses.value_unsigned().unwrap(), 2);
-        // games_played is derived as wins + losses in the view.
-        assert_eq!(stats.to_view().unwrap().games_played, 3);
+    fn create_match_records_both_players_and_player_twos_account() {
+        let (app, id) = linked();
+        assert!(id.starts_with(&hex::encode(ALICE_KEY)));
+        let m = summary(&app, &id);
+        assert_eq!(m.player1, hex::encode(ALICE_KEY));
+        assert_eq!(m.player2, hex::encode(BOB_KEY));
+        assert_eq!(m.player2_account, hex::encode(BOB));
+        assert_eq!(m.status, MatchStatus::Active);
+        assert_eq!(m.context_id, Some(hex::encode(GAME_CTX)));
     }
 
     #[test]
-    fn register_player_records_account_to_player_key() {
-        let mut state = LobbyState::init();
-        let account = hex::encode([9u8; 32]);
-        let player = hex::encode([1u8; 32]);
-
-        let (recorded, changed) = state.register_player_with(&account, &player).unwrap();
-        assert_eq!(recorded, player);
-        assert!(changed, "first registration is a write");
-
-        let players = state.get_players().unwrap();
-        assert_eq!(players.len(), 1);
-        assert_eq!(players[0].account, account);
-        assert_eq!(players[0].player, player);
-    }
-
-    #[test]
-    fn register_player_is_idempotent_and_reports_no_change() {
-        // Called on every lobby open, so the repeat has to be free AND has to
-        // report that nothing changed — otherwise every open emits an event and
-        // every peer refetches for nothing.
-        let mut state = LobbyState::init();
-        let account = hex::encode([9u8; 32]);
-        let player = hex::encode([1u8; 32]);
-
-        assert!(state.register_player_with(&account, &player).unwrap().1);
+    fn create_match_rejects_self_malformed_and_unregistered_opponents() {
+        let mut app = lobby();
+        let mut create =
+            |player2: String| app.call_as_account(ALICE, ALICE_KEY, |s| s.create_match(player2));
+        assert!(create(hex::encode(ALICE_KEY)).is_err(), "self");
+        assert!(create("zzzz-not-hex-zzzz".into()).is_err(), "malformed");
         assert!(
-            !state.register_player_with(&account, &player).unwrap().1,
-            "re-registering the same pair must not write"
+            create(hex::encode(CAROL_KEY)).is_err(),
+            "never opened the lobby"
         );
-        assert_eq!(state.get_players().unwrap().len(), 1);
     }
 
     #[test]
-    fn register_player_replaces_a_rotated_key_for_the_same_account() {
-        // A member who rejoins gets a FRESH context identity. The account is
-        // stable, so the map must follow the new key rather than pin the stale
-        // one — which a set-once value would have done, silently.
-        let mut state = LobbyState::init();
-        let account = hex::encode([9u8; 32]);
-        let old_key = hex::encode([1u8; 32]);
-        let new_key = hex::encode([2u8; 32]);
-
-        state.register_player_with(&account, &old_key).unwrap();
-        let (_, changed) = state.register_player_with(&account, &new_key).unwrap();
-        assert!(changed);
-
-        let players = state.get_players().unwrap();
-        assert_eq!(
-            players.len(),
-            1,
-            "same account must not create a second row"
-        );
-        assert_eq!(players[0].player, new_key);
+    fn a_player_key_two_accounts_claim_is_not_matched_to_either() {
+        let mut app = lobby();
+        // Carol registers Bob's key as hers: she can write only her OWN slot,
+        // but that slot can say anything.
+        app.call_as_account(CAROL, BOB_KEY, |s| s.register_player())
+            .expect("carol registers");
+        assert!(app
+            .call_as_account(ALICE, ALICE_KEY, |s| s.create_match(hex::encode(BOB_KEY)))
+            .is_err());
     }
 
     #[test]
-    fn register_player_keeps_one_row_per_account_for_three_members() {
-        // The case that was broken: three members, each registering itself.
-        // Every node must end up able to name all three player keys.
-        let mut state = LobbyState::init();
-        let accounts = [
-            hex::encode([7u8; 32]),
-            hex::encode([8u8; 32]),
-            hex::encode([9u8; 32]),
-        ];
-        let keys = [
-            hex::encode([1u8; 32]),
-            hex::encode([2u8; 32]),
-            hex::encode([3u8; 32]),
-        ];
-        for (a, k) in accounts.iter().zip(keys.iter()) {
-            state.register_player_with(a, k).unwrap();
-        }
-
-        let players = state.get_players().unwrap();
+    fn a_member_can_only_register_their_own_key() {
+        let mut app = lobby();
+        // Carol, from her own device, can rewrite only her own slot — Bob's
+        // pairing is his.
+        app.call_as_account(CAROL, CAROL_KEY, |s| s.register_player())
+            .expect("carol registers");
+        let players = app.view(|s| s.get_players()).expect("players");
+        let bob = players
+            .iter()
+            .find(|p| p.account == hex::encode(BOB))
+            .expect("bob");
+        assert_eq!(bob.player, hex::encode(BOB_KEY));
         assert_eq!(players.len(), 3);
-        for (a, k) in accounts.iter().zip(keys.iter()) {
-            let found = players
-                .iter()
-                .find(|p| &p.account == a)
-                .expect("account recorded");
-            assert_eq!(&found.player, k);
-        }
     }
 
     #[test]
-    fn get_players_is_empty_before_anyone_opens_the_lobby() {
-        let state = LobbyState::init();
-        assert!(state.get_players().unwrap().is_empty());
+    fn only_the_creator_links_a_match_and_only_once() {
+        let mut app = lobby();
+        let id = app
+            .call_as_account(ALICE, ALICE_KEY, |s| s.create_match(hex::encode(BOB_KEY)))
+            .expect("create");
+        assert!(app
+            .call_as_account(BOB, BOB_KEY, |s| s
+                .set_match_context_id(id.clone(), "ab".into()))
+            .is_err());
+        app.call_as_account(ALICE, ALICE_KEY, |s| {
+            s.set_match_context_id(id.clone(), hex::encode(GAME_CTX))
+        })
+        .expect("link");
+        assert!(app
+            .call_as_account(ALICE, ALICE_KEY, |s| s
+                .set_match_context_id(id.clone(), "cd".into()))
+            .is_err());
+    }
+
+    /// Keys are per owner: Carol can file an entry of her own under Alice's
+    /// match id. It is a separate entry and never read as the match.
+    #[test]
+    fn an_entry_filed_under_someone_elses_match_id_is_never_the_match() {
+        let (mut app, id) = linked();
+        app.call_as_account(CAROL, CAROL_KEY, |s| {
+            s.matches.insert(
+                id.clone(),
+                MatchEntry {
+                    player1: hex::encode(ALICE_KEY),
+                    player2: hex::encode(CAROL_KEY),
+                    player2_account: hex::encode(CAROL),
+                    context_id: Some(hex::encode([0x99; 32])),
+                    created_ms: 0,
+                },
+            )
+        })
+        .expect("her own entry");
+        let listed = app.view(|s| s.get_matches()).expect("matches");
+        assert_eq!(listed.len(), 1, "one match, however many hold its id");
+        let m = summary(&app, &id);
+        assert_eq!(m.player2, hex::encode(BOB_KEY));
+        assert_eq!(m.context_id, Some(hex::encode(GAME_CTX)));
+        // Bob's report is read against Alice's entry, from another account.
+        report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("bob's node");
+        assert_eq!(summary(&app, &id).winner, Some(hex::encode(BOB_KEY)));
+    }
+
+    #[test]
+    fn a_result_counts_once_and_only_from_the_matchs_own_game() {
+        let (mut app, id) = linked();
+        // Not from this match's game context, or from no context at all.
+        assert!(report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some([0x99; 32])).is_err());
+        assert!(report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, None).is_err());
+        // Not naming the match's players.
+        assert!(report(&mut app, BOB, &id, CAROL_KEY, ALICE_KEY, Some(GAME_CTX)).is_err());
+
+        report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("bob's node");
+        report(&mut app, ALICE, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("alice's node");
+
+        let m = summary(&app, &id);
+        assert_eq!(m.status, MatchStatus::Finished);
+        assert_eq!(m.winner, Some(hex::encode(BOB_KEY)));
+        let bob = app
+            .view(|s| s.get_player_stats(hex::encode(BOB_KEY)))
+            .expect("stats")
+            .expect("bob has played");
+        assert_eq!((bob.wins, bob.losses, bob.games_played), (1, 0, 1));
+        let alice = app
+            .view(|s| s.get_player_stats(hex::encode(ALICE_KEY)))
+            .expect("stats")
+            .expect("alice has played");
+        assert_eq!((alice.wins, alice.losses), (0, 1));
+        assert_eq!(app.view(|s| s.get_history()).expect("history").len(), 1);
+    }
+
+    #[test]
+    fn a_report_written_by_someone_outside_the_match_does_not_count() {
+        let (mut app, id) = linked();
+        // Carol writes a result row straight into the map, around the xcall.
+        app.call_as_account(CAROL, CAROL_KEY, |s| {
+            s.results
+                .insert(
+                    format!("{id}/1"),
+                    MatchRecord {
+                        match_id: id.clone(),
+                        winner: hex::encode(ALICE_KEY),
+                        loser: hex::encode(BOB_KEY),
+                        finished_ms: 1,
+                    },
+                )
+                .expect("her own row");
+        });
+        assert_eq!(summary(&app, &id).status, MatchStatus::Active);
+        assert!(app
+            .view(|s| s.get_player_stats(hex::encode(ALICE_KEY)))
+            .expect("stats")
+            .is_none());
+    }
+
+    #[test]
+    fn a_contrary_report_disputes_a_result_but_cannot_take_it() {
+        let (mut app, id) = linked();
+        report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("bob wins");
+        // Alice, around the contract, files the opposite result.
+        app.call_as_account(ALICE, ALICE_KEY, |s| {
+            s.results
+                .insert(
+                    format!("{id}/2"),
+                    MatchRecord {
+                        match_id: id.clone(),
+                        winner: hex::encode(ALICE_KEY),
+                        loser: hex::encode(BOB_KEY),
+                        finished_ms: 2,
+                    },
+                )
+                .expect("her own row");
+        });
+        let m = summary(&app, &id);
+        assert_eq!(m.winner, None);
+        assert!(app
+            .view(|s| s.get_player_stats(hex::encode(ALICE_KEY)))
+            .expect("stats")
+            .is_none());
+    }
+
+    #[test]
+    fn a_result_cannot_be_rewritten() {
+        let (mut app, id) = linked();
+        report(&mut app, BOB, &id, BOB_KEY, ALICE_KEY, Some(GAME_CTX)).expect("bob wins");
+        let key = app.view(|s| s.results.entries().expect("rows").next().expect("row").0);
+        let rewritten = app.call_as_account(BOB, BOB, |s| {
+            s.results.insert(
+                key.clone(),
+                MatchRecord {
+                    match_id: id.clone(),
+                    winner: hex::encode(ALICE_KEY),
+                    loser: hex::encode(BOB_KEY),
+                    finished_ms: 3,
+                },
+            )
+        });
+        assert!(rewritten.is_err());
+        assert_eq!(summary(&app, &id).winner, Some(hex::encode(BOB_KEY)));
     }
 
     #[test]
     fn init_populates_created_ms() {
-        let state = LobbyState::init();
-        assert!(*state.created_ms.get() > 0);
-    }
-
-    #[test]
-    fn create_match_uses_creator_ts_nonce_id() {
-        // The match_id format is `{creator_hex}-{ts}-{nonce_hex}` —
-        // creator key + lobby clock + 32-bit random nonce. Player2's key
-        // is no longer in the id (the lobby summary keeps it separately).
-        let mut state = LobbyState::init();
-        let caller_hex = hex::encode([1u8; 32]);
-        let player2_hex = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&caller_hex, &player2_hex, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-        assert_eq!(id, format!("{caller_hex}-1700000000000-deadbeef"));
-        assert!(
-            !id.contains(&player2_hex),
-            "player2 should not be in the match-id"
-        );
-        let summary = state.matches.get(&id).unwrap().unwrap();
-        assert_eq!(summary.player2, player2_hex);
-    }
-
-    #[test]
-    fn create_match_rejects_nonce_collision_defensive() {
-        // Same (creator, ts, nonce_hex) tuple should be rejected. With a
-        // 32-bit random nonce in the real path this is astronomically unlikely,
-        // but the defensive guard remains.
-        let mut state = LobbyState::init();
-        let a = hex::encode([1u8; 32]);
-        let b = hex::encode([2u8; 32]);
-        let ts = 1_700_000_000_000u64;
-        let _ = state.create_match_with_id(&a, &b, ts, "abcd1234").unwrap();
-        let err = state
-            .create_match_with_id(&a, &b, ts, "abcd1234")
-            .unwrap_err();
-        assert!(matches!(err, GameError::MatchIdCollision));
-    }
-
-    #[test]
-    fn set_match_context_id_promotes_to_active() {
-        let mut state = LobbyState::init();
-        let a = hex::encode([1u8; 32]);
-        let b = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&a, &b, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-        state.set_match_context_id_inner(&id, "ctx_abc").unwrap();
-        let summary = state.matches.get(&id).unwrap().unwrap();
-        assert!(matches!(summary.status, MatchStatus::Active));
-        assert_eq!(summary.context_id.as_deref(), Some("ctx_abc"));
-    }
-
-    #[test]
-    fn on_match_finished_records_winner_and_increments_counters() {
-        let mut state = LobbyState::init();
-        let winner = hex::encode([1u8; 32]);
-        let loser = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&winner, &loser, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-        state
-            .on_match_finished_inner(&id, &winner, &loser, 1_700_000_000_999)
-            .unwrap();
-
-        let summary = state.matches.get(&id).unwrap().unwrap();
-        assert!(matches!(summary.status, MatchStatus::Finished));
-        assert_eq!(summary.winner.as_deref(), Some(winner.as_str()));
-
-        let winner_view = state
-            .player_stats
-            .get(&winner)
-            .unwrap()
-            .unwrap()
-            .to_view()
-            .unwrap();
-        assert_eq!(winner_view.wins, 1);
-        assert_eq!(winner_view.losses, 0);
-        assert_eq!(winner_view.games_played, 1); // derived: 1 + 0
-
-        let loser_view = state
-            .player_stats
-            .get(&loser)
-            .unwrap()
-            .unwrap()
-            .to_view()
-            .unwrap();
-        assert_eq!(loser_view.wins, 0);
-        assert_eq!(loser_view.losses, 1);
-        assert_eq!(loser_view.games_played, 1); // derived: 0 + 1
-
-        assert_eq!(state.history.len().unwrap(), 1);
-    }
-
-    /// xcall dispatch is fire-and-forget and both players' replicas can resolve
-    /// the same final shot, so `on_match_finished` must survive being delivered
-    /// twice. Before the guard the second delivery pushed a duplicate history
-    /// row and bumped BOTH players' counters again — corruption that no error
-    /// would announce.
-    #[test]
-    fn on_match_finished_is_idempotent() {
-        let mut state = LobbyState::init();
-        let winner = hex::encode([1u8; 32]);
-        let loser = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&winner, &loser, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-
-        for _ in 0..3 {
-            state
-                .on_match_finished_inner(&id, &winner, &loser, 1_700_000_000_999)
-                .unwrap();
-        }
-
-        let summary = state.matches.get(&id).unwrap().unwrap();
-        assert!(matches!(summary.status, MatchStatus::Finished));
-        assert_eq!(summary.winner.as_deref(), Some(winner.as_str()));
-
-        // One row, one win, one loss — not three of each.
-        assert_eq!(state.history.len().unwrap(), 1);
-
-        let winner_view = state
-            .player_stats
-            .get(&winner)
-            .unwrap()
-            .unwrap()
-            .to_view()
-            .unwrap();
-        assert_eq!(winner_view.wins, 1);
-        assert_eq!(winner_view.losses, 0);
-
-        let loser_view = state
-            .player_stats
-            .get(&loser)
-            .unwrap()
-            .unwrap()
-            .to_view()
-            .unwrap();
-        assert_eq!(loser_view.wins, 0);
-        assert_eq!(loser_view.losses, 1);
-    }
-
-    #[test]
-    fn create_match_rejects_self_match() {
-        let mut state = LobbyState::init();
-        let a = hex::encode([1u8; 32]);
-        let err = state
-            .create_match_with_id(&a, &a, 1_700_000_000_000, "deadbeef")
-            .unwrap_err();
-        assert!(matches!(err, GameError::Invalid(_)));
-    }
-
-    #[test]
-    fn create_match_rejects_non_base58_player2() {
-        let mut state = LobbyState::init();
-        let a = hex::encode([1u8; 32]);
-        let err = state
-            .create_match_with_id(&a, "!!!not-base58!!!", 1_700_000_000_000, "deadbeef")
-            .unwrap_err();
-        assert!(matches!(err, GameError::Invalid(_)));
-    }
-
-    #[test]
-    fn set_match_context_id_rejects_non_pending_transition() {
-        let mut state = LobbyState::init();
-        let a = hex::encode([1u8; 32]);
-        let b = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&a, &b, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-        state.set_match_context_id_inner(&id, "ctx_abc").unwrap();
-        let err = state
-            .set_match_context_id_inner(&id, "ctx_xyz")
-            .unwrap_err();
-        assert!(matches!(err, GameError::Invalid(_)));
-    }
-
-    #[test]
-    fn on_match_finished_rejects_unknown_match_id() {
-        // The lobby-issued id is now passed into game::init and echoed back
-        // in the on_match_finished xcall, so an unknown id is a real error
-        // instead of being silently resolved via a context-id reverse scan.
-        let mut state = LobbyState::init();
-        let winner = hex::encode([1u8; 32]);
-        let loser = hex::encode([2u8; 32]);
-        let err = state
-            .on_match_finished_inner("does-not-exist", &winner, &loser, 1_700_000_000_999)
-            .unwrap_err();
-        assert!(matches!(err, GameError::Invalid(_)));
-    }
-
-    #[test]
-    fn set_match_context_id_rejects_finished_match() {
-        let mut state = LobbyState::init();
-        let winner = hex::encode([1u8; 32]);
-        let loser = hex::encode([2u8; 32]);
-        let id = state
-            .create_match_with_id(&winner, &loser, 1_700_000_000_000, "deadbeef")
-            .unwrap();
-        state
-            .on_match_finished_inner(&id, &winner, &loser, 1_700_000_000_999)
-            .unwrap();
-        let err = state
-            .set_match_context_id_inner(&id, "ctx_abc")
-            .unwrap_err();
-        assert!(matches!(err, GameError::Invalid(_)));
-    }
-
-    // ------------------------------------------------------------------
-    // CRDT merge tests.
-    //
-    // These exercise the hand-rolled `Mergeable` impl on `MatchSummary` —
-    // the last remaining place we own the lattice-correctness proof
-    // ourselves. `MatchRecord` is now `FrozenValue<MatchRecord>` in the
-    // history vector, so its merge is an SDK-provided no-op (no tests
-    // needed — frozen values cannot disagree by construction).
-    //
-    // What we explicitly do NOT cover here (would need a multi-actor
-    // test harness, not yet exposed by Calimero for unit tests):
-    //   - Counter merge across replicas with distinct executor identities.
-    //   - UnorderedMap<[u8;1], LwwRegister<u8>> divergence on the same
-    //     key from two nodes (per-cell LWW resolution).
-    //   - GameState LwwRegister merges (these ride on the SDK's
-    //     well-tested derive impl; not our code under test).
-    // Those are exercised end-to-end by the merobox workflow.
-    // ------------------------------------------------------------------
-
-    fn sample_summary(
-        match_id: &str,
-        status: MatchStatus,
-        ctx: Option<&str>,
-        winner: Option<&str>,
-    ) -> MatchSummary {
-        MatchSummary {
-            match_id: match_id.to_string(),
-            player1: "p1".into(),
-            player2: "p2".into(),
-            status,
-            context_id: ctx.map(str::to_string),
-            winner: winner.map(str::to_string),
-            created_ms: 1_700_000_000_000,
-        }
-    }
-
-    #[test]
-    fn merge_match_summary_advances_status_pending_to_active() {
-        let mut a = sample_summary("m-1", MatchStatus::Pending, None, None);
-        let b = sample_summary("m-1", MatchStatus::Active, Some("ctx-from-b"), None);
-        a.merge(&b).unwrap();
-        assert!(matches!(a.status, MatchStatus::Active));
-        assert_eq!(a.context_id.as_deref(), Some("ctx-from-b"));
-    }
-
-    #[test]
-    fn merge_match_summary_advances_status_pending_to_finished() {
-        let mut a = sample_summary("m-1", MatchStatus::Pending, None, None);
-        let b = sample_summary("m-1", MatchStatus::Finished, None, Some("p1"));
-        a.merge(&b).unwrap();
-        assert!(matches!(a.status, MatchStatus::Finished));
-        assert_eq!(a.winner.as_deref(), Some("p1"));
-    }
-
-    #[test]
-    fn merge_match_summary_carries_context_id_when_self_is_none() {
-        let mut a = sample_summary("m-1", MatchStatus::Active, None, None);
-        let b = sample_summary("m-1", MatchStatus::Active, Some("ctx-b"), None);
-        a.merge(&b).unwrap();
-        assert_eq!(a.context_id.as_deref(), Some("ctx-b"));
-    }
-
-    #[test]
-    fn merge_match_summary_carries_winner_when_self_is_none() {
-        let mut a = sample_summary("m-1", MatchStatus::Finished, None, None);
-        let b = sample_summary("m-1", MatchStatus::Finished, None, Some("p2"));
-        a.merge(&b).unwrap();
-        assert_eq!(a.winner.as_deref(), Some("p2"));
-    }
-
-    #[test]
-    fn merge_match_summary_is_idempotent() {
-        let a_orig = sample_summary("m-1", MatchStatus::Active, Some("ctx"), None);
-        let mut a = a_orig.clone();
-        a.merge(&a_orig).unwrap();
-        assert!(matches!(a.status, MatchStatus::Active));
-        assert_eq!(a.context_id.as_deref(), Some("ctx"));
-        assert_eq!(a.winner, None);
-        assert_eq!(a.match_id, a_orig.match_id);
-    }
-
-    #[test]
-    fn merge_match_summary_equal_rank_different_winner_is_commutative() {
-        // This used to pin the OPPOSITE — "self-wins, merge(a,b) != merge(b,a),
-        // a CRDT lattice violation, acknowledged" — as a deliberate known
-        // limitation awaiting review point 1. core 0.11.0-rc.32 (core#3807)
-        // forced the issue: `#[app::mergeable]` makes this rule DISPATCHED, so
-        // it now actually runs at every merge point instead of being dead code
-        // the storage layer resolved last-write-wins. A non-commutative rule
-        // that really runs leaves the two replicas divergent permanently.
-        //
-        // The fix is a total order (`None < Some(_)`, then lexicographic), so
-        // both sides elect the same winner regardless of merge direction.
-        let mut left = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
-        let right = sample_summary("m-1", MatchStatus::Finished, None, Some("bob"));
-        left.merge(&right).unwrap();
-
-        let mut other = sample_summary("m-1", MatchStatus::Finished, None, Some("bob"));
-        let left2 = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
-        other.merge(&left2).unwrap();
-
-        assert_eq!(
-            left.winner, other.winner,
-            "merge must be commutative: both directions have to converge on one winner"
-        );
-        assert_eq!(
-            left.winner.as_deref(),
-            Some("bob"),
-            "the total order picks the lexicographic max, so `bob` wins either way"
-        );
-    }
-
-    #[test]
-    fn merge_match_summary_rank_advance_keeps_both_sides_fields() {
-        // The old rule replaced the whole record on a rank advance, so a
-        // Finished summary that had not yet learned the context id ERASED one
-        // that had. Each field now resolves on its own.
-        let mut active_with_ctx = sample_summary("m-1", MatchStatus::Active, Some("ctx-42"), None);
-        let finished_no_ctx = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
-        active_with_ctx.merge(&finished_no_ctx).unwrap();
-
-        assert!(matches!(active_with_ctx.status, MatchStatus::Finished));
-        assert_eq!(
-            active_with_ctx.context_id.as_deref(),
-            Some("ctx-42"),
-            "advancing the stage must not discard a context id this side already had"
-        );
-        assert_eq!(active_with_ctx.winner.as_deref(), Some("alice"));
-    }
-
-    #[test]
-    fn merge_match_summary_is_associative() {
-        // Three concurrent views of one match, merged in two different orders.
-        let a = sample_summary("m-1", MatchStatus::Active, Some("ctx"), None);
-        let b = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
-        let c = sample_summary("m-1", MatchStatus::Finished, Some("ctx-b"), Some("bob"));
-
-        let mut left = a.clone();
-        left.merge(&b).unwrap();
-        left.merge(&c).unwrap();
-
-        let mut right = b.clone();
-        right.merge(&c).unwrap();
-        let mut right_all = a.clone();
-        right_all.merge(&right).unwrap();
-
-        assert_eq!(left.context_id, right_all.context_id);
-        assert_eq!(left.winner, right_all.winner);
-        assert!(matches!(left.status, MatchStatus::Finished));
-        assert!(matches!(right_all.status, MatchStatus::Finished));
+        let app = TestHost::new(LobbyState::init);
+        assert!(app.view(|s| *s.created_ms.get().expect("created")) > 0);
     }
 }

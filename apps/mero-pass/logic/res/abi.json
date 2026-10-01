@@ -3,13 +3,8 @@
   "types": {
     "AuditLogEntry": {
       "kind": "record",
+      "doc": "One line of the activity trail. Who wrote it is the slot's owner stamp,\nnot a field: an author can claim anything in their own entry.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "action",
           "type": {
@@ -17,16 +12,18 @@
           }
         },
         {
-          "name": "details",
+          "name": "target",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The object acted on: a secret id, an account, a device fingerprint.\nNever a secret's name — names are ciphertext, and a trail that echoed\nthem in the clear would undo the encryption."
         },
         {
-          "name": "user_public_key",
+          "name": "device",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The author's node device, as the author's node reported it."
         },
         {
           "name": "timestamp",
@@ -36,53 +33,265 @@
         }
       ]
     },
-    "Event_SecretAdded": {
+    "AuditView": {
       "kind": "record",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "action",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "redacted",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "True when the author blanked this entry. The slot stays, so a redaction\nis itself visible in the trail."
+        }
+      ]
+    },
+    "DeviceKey": {
+      "kind": "record",
+      "doc": "A device public key the vault key may be wrapped to.\n\nStored in an [`AuthoredMap`], so only the account that registered it can\nremove it. Its account is the entry's owner stamp, which every node\nverifies — never a field in the value, which a modified node could fill\nwith anyone's account to be handed the vault key in their name.\n\nKeys are per owner (core rc.57): two accounts registering one fingerprint\nhold two entries, each read with its own account (`entries_with_owners`).\nA key-only `owner_of` would only ever name the caller.",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Base64 of the raw (uncompressed) P-256 ECDH public key."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`browser` for a browser's device key; `recovery` for an account's\noffline recovery key, whose private half exists only on paper."
+        },
+        {
+          "name": "node_device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DeviceView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "revoked",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Event_SecretChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
           "type": {
             "kind": "string"
           }
         }
       ]
     },
-    "Event_SecretDeleted": {
+    "KeyWrap": {
       "kind": "record",
+      "doc": "The vault key, wrapped to one device key by one wrapper.\n\nKeyed by `recipient:key_id:nonce` in an authored map: the random nonce\nmeans nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped\nit. A forged wrap is detectable anyway — the recipient checks that the\nunwrapped key hashes to `key_id` — but it must not be able to displace a\ngenuine one, nor make a device look approved (see `wrapped_pairs`).",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "key_id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON."
+        },
+        {
+          "name": "wrapped_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "KeyWrapInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
           "type": {
             "kind": "string"
           }
         }
       ]
     },
-    "Event_SecretUpdated": {
+    "KeyWrapView": {
       "kind": "record",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "key_id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "recipient",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MemberView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`admin`, `editor` or `viewer`; `pending` for an account that has\nregistered a device but was never given a role; `removed` for one an\nadmin removed, which clients must not auto-admit."
+        },
+        {
+          "name": "devices",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -95,6 +304,288 @@
           "type": {
             "kind": "record",
             "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The vault's human name as created, readable by every member on every\nnode. The frontend also writes it to the subgroup's metadata, for\nmembers who have not entered the vault yet; this copy (or a rename in\n`settings`) is the authoritative one."
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "secrets",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Secret"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Revision"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "`secret_id/rev_id` → superseded value, so a secret's history is one\nprefix read."
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`."
+        },
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Editor-writable settings: the vault's name after a rename."
+        },
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DeviceKey"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Device fingerprint → public key. Any member may register their own."
+        },
+        {
+          "name": "key_wraps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "KeyWrap"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`recipient:key_id:nonce` → wrapped vault key."
+        },
+        {
+          "name": "audit",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AuditLogEntry"
+            },
+            "crdt_type": "authored_vector"
+          },
+          "doc": "Append-only. Entries can be blanked only by their own author, and a\nblanked slot stays visible as a redaction."
+        }
+      ]
+    },
+    "Revision": {
+      "kind": "record",
+      "doc": "A superseded field value. Written once, never edited.",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The field that changed; `name` and `tags` use those reserved names."
+        },
+        {
+          "name": "previous",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The value it held before, still encrypted (under whichever vault key it\nwas written with — the envelope names its key)."
+        },
+        {
+          "name": "replaced_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replaced_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "RevisionView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "previous",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "replaced_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replaced_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Secret": {
+      "kind": "record",
+      "doc": "One secret, as independent registers rather than one record.\n\nField-level registers are the point: Alice fixing the URL while Bob rotates\nthe password are writes to two different registers, so BOTH survive the\nmerge. A single last-writer-wins record would keep one edit and silently\ndiscard the other. Within one field, last writer wins by HLC — there is no\nmeaningful way to merge two different passwords.",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Cleartext kind — `login`, `totp`, … — so the UI can pick an icon."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Encrypted display name."
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Encrypted tag list (one envelope over a JSON array)."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Field name (`password`, `url`, …) → encrypted value."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "string"
@@ -102,38 +593,63 @@
           }
         },
         {
-          "name": "secrets",
+          "name": "updated_at",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "SecretItem"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         },
         {
-          "name": "audit_logs",
+          "name": "updated_by",
           "type": {
-            "kind": "map",
-            "key": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
               "kind": "string"
-            },
-            "value": {
-              "$ref": "AuditLogEntry"
-            },
-            "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "trashed",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Tombstone. Trashing is a flag rather than a `remove`, because the map is\nadd-wins: a hard remove loses to a concurrent edit and the secret comes\nback. The flag resolves edit-vs-trash by HLC instead."
+        },
+        {
+          "name": "trashed_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         }
       ]
     },
-    "SecretItem": {
+    "SecretView": {
       "kind": "record",
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
           "type": {
             "kind": "string"
           }
@@ -145,22 +661,19 @@
           }
         },
         {
-          "name": "secret_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
               "kind": "string"
             }
           }
@@ -172,19 +685,66 @@
           }
         },
         {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "updated_at",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "version",
+          "name": "updated_by",
           "type": {
-            "kind": "u64"
+            "kind": "string"
           }
         },
         {
-          "name": "created_by",
+          "name": "trashed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "trashed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "VaultInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "current_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_role",
           "type": {
             "kind": "string"
           }
@@ -194,8 +754,40 @@
   },
   "methods": [
     {
-      "name": "add_secret",
+      "name": "add_key_wraps",
+      "doc": "Store wraps of a vault key. Any member holding the key may wrap it to\nany registered, unrevoked device — that is how a newcomer or a new\ndevice gets in without the creator being online.",
       "params": [
+        {
+          "name": "wraps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "KeyWrapInput"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_secret",
+      "doc": "Add a secret under an id the CLIENT chose.\n\nClient-chosen because the id is bound into every field's ciphertext as\nassociated data, which is what stops a member from pasting one secret's\npassword envelope into another secret: the id has to exist before the\nencryption does. It is 16 random bytes like before, and an id that is\nalready taken is refused rather than upserted.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
         {
           "name": "name",
           "type": {
@@ -203,22 +795,19 @@
           }
         },
         {
-          "name": "secret_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
               "kind": "string"
             }
           }
@@ -230,27 +819,13 @@
       "intent": "mutating"
     },
     {
-      "name": "delete_secret",
-      "params": [
-        {
-          "name": "secret_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "get_audit_logs",
+      "doc": "The trail, newest first.\nThe trail, newest first. Each line's account is its slot's owner\nstamp, so nobody can write a line in someone else's name.",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "AuditLogEntry"
+          "$ref": "AuditView"
         }
       },
       "intent": "read_only"
@@ -259,37 +834,20 @@
       "name": "get_secret",
       "params": [
         {
-          "name": "secret_id",
+          "name": "id",
           "type": {
             "kind": "string"
           }
         }
       ],
       "returns": {
-        "$ref": "SecretItem"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_secrets_by_tag",
-      "params": [
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "SecretItem"
-        }
+        "$ref": "SecretView"
       },
       "intent": "read_only"
     },
     {
       "name": "init",
+      "doc": "`name` arrives as the JSON `initializationParams` of `createContext`.\nThe creator is the vault's first admin.",
       "params": [
         {
           "name": "name",
@@ -303,18 +861,129 @@
       }
     },
     {
-      "name": "list_secrets",
+      "name": "key_wraps_for",
+      "doc": "Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner\nstamp.",
+      "params": [
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "KeyWrapView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_devices",
+      "doc": "Every registered device, with the account that registered it read\nfrom the entry's owner stamp. Clients decide whom to wrap the vault key\nto by this account, so it must be one nobody can claim for someone else.",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "SecretItem"
+          "$ref": "DeviceView"
         }
       },
       "intent": "read_only"
     },
     {
+      "name": "list_members",
+      "doc": "Everyone this vault knows about: each role holder, plus every account\nthat registered a device without being given a role (`pending`).",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_secrets",
+      "doc": "Every secret, trashed ones included — the client splits them. Search\nand filtering happen in the browser, after decryption: the contract\nholds ciphertext and has nothing to match against.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SecretView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "purge_secret",
+      "doc": "Delete a trashed secret and its history for good. Admin only — this is\nthe one operation that needs DELETE on the guarded store.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "register_device",
+      "doc": "Register this browser's public key so the vault key can be wrapped to\nit. `fingerprint` must be the hex SHA-256 of the raw key; the client\nderives both, and the contract checks the shape, not the hash (a wrong\nfingerprint only hurts the registrant: nothing wrapped to it opens).",
+      "params": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_member",
+      "doc": "Remove an account from the vault: drop every role and revoke every\ndevice it registered. The caller must then rotate the vault key (the\nclient does, via `rotate_key`) so nothing written afterwards is\nreadable with the key the removed account already holds.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "rename_vault",
+      "doc": "Rename the vault. Editors and admins — the name lives in a guarded\nstore, so a pending or removed member's rename is refused everywhere;\nconcurrent renames resolve by last writer.",
       "params": [
         {
           "name": "name",
@@ -329,10 +998,58 @@
       "intent": "mutating"
     },
     {
-      "name": "search_secrets",
+      "name": "restore_secret",
       "params": [
         {
-          "name": "query",
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "revoke_device",
+      "doc": "Revoke a device. Your own device you may always revoke; anyone else's\nneeds an admin. Follow with `rotate_key`.",
+      "params": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rotate_key",
+      "doc": "Make `key_id` the key new writes use. The first call bootstraps the\nvault; every later one is a rotation, and both are admin only.\n\nThe caller must have stored wraps of the new key before calling this,\nor members would be told to write with a key they cannot open.",
+      "params": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "secret_history",
+      "doc": "Superseded values of one secret, newest first.",
+      "params": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }
@@ -341,16 +1058,71 @@
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "SecretItem"
+          "$ref": "RevisionView"
         }
       },
       "intent": "read_only"
     },
     {
-      "name": "update_secret",
+      "name": "set_default_role",
+      "doc": "The role newcomers are admitted with.",
       "params": [
         {
-          "name": "secret_id",
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_role",
+      "doc": "Give `account` a role: `admin`, `editor` or `viewer`. Admin only.\n\nWrites the registry AND re-projects it onto the guarded stores, so the\nlabel and what peers enforce cannot disagree.",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "trash_secret",
+      "doc": "Move a secret to the trash. Recoverable until an admin purges it.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_secret",
+      "doc": "Change some of a secret's fields. Only what is passed is touched, so\ntwo members editing different fields concurrently both keep their edit.\nAn empty string clears a field. Every superseded value is kept in the\nhistory, still encrypted.\n\n`rekey` marks a re-encryption under a rotated key: the plaintext did not\nchange, so nothing is added to the history.",
+      "params": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }
@@ -359,21 +1131,32 @@
           "name": "name",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
+          },
+          "nullable": true
         },
         {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
               "kind": "string"
             }
+          }
+        },
+        {
+          "name": "rekey",
+          "type": {
+            "kind": "bool"
           }
         }
       ],
@@ -381,6 +1164,14 @@
         "kind": "unit"
       },
       "intent": "mutating"
+    },
+    {
+      "name": "vault_info",
+      "params": [],
+      "returns": {
+        "$ref": "VaultInfo"
+      },
+      "intent": "read_only"
     },
     {
       "name": "vault_name",
@@ -389,26 +1180,35 @@
         "kind": "string"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "wrapped_pairs",
+      "doc": "Which `key_id:recipient` pairs already have a wrap from a member who\nholds a role, so a key holder only wraps what is missing.\n\nClients also treat a device in this list as approved, so a wrap from\nanyone else — a pending or removed account, which never held the key,\nwriting a garbage wrap to its own device — must not count.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [
     {
-      "name": "SecretAdded",
+      "name": "KeysChanged"
+    },
+    {
+      "name": "MembersChanged"
+    },
+    {
+      "name": "SecretChanged",
       "payload": {
-        "$ref": "Event_SecretAdded"
+        "$ref": "Event_SecretChanged"
       }
     },
     {
-      "name": "SecretDeleted",
-      "payload": {
-        "$ref": "Event_SecretDeleted"
-      }
-    },
-    {
-      "name": "SecretUpdated",
-      "payload": {
-        "$ref": "Event_SecretUpdated"
-      }
+      "name": "VaultRenamed"
     }
   ],
   "state_root": "MeroPassApp",

@@ -89,9 +89,19 @@ fragment propagates.
 | `encode_frame(raw, width, height, track, now) -> seq` | mutation | **Task-3 core.** Encode raw luma in WASM, chunk, store, prune, emit `FramePosted`. |
 | `get_frame(after_seq) -> DecodedFrame[]` | view | Reassemble chunks + decode in WASM. |
 | `frame_checksum(seq) -> u64?` | view | FNV-1a over the decoded pixels, computed in WASM. Two nodes agreeing on it **is** the C1 bit-identity proof; `null` = frame not live. |
-| `prune_frames(before_seq)` | mutation | Explicit reaper (also inline in `encode_frame`). |
+| `prune_frames(before_seq)` | mutation | Explicit reaper (also inline in `encode_frame`); reaches only the caller's own frames. |
 | `get_stats() -> StreamStats` | view | §4 instrumentation: live fragments, next/oldest seq, pruned count. |
 | `rename_stream(name)` | mutation | Owner-only. |
+
+> **Who can write what.** Every node enforces it, not just the API: a member
+> row, a sender's cursor, its chunks and its fragments are owned by the account
+> that wrote them (`Authored` / `Moderated`), so nobody else can rewrite or
+> delete them, and reads drop any chunk or fragment planted under another
+> sender's id. Only the stream's creator (the `chunks` moderator) sweeps a
+> departed sender's buffer. The init name is `Frozen`. Still open: approach 3's
+> global `next_seq` is shared, so a member's patched node can stall that probe
+> path for everyone, and a device id registered first by another account cannot
+> be used by its real owner.
 
 > **Timestamp units.** `encode_frame`'s `now` is unix **milliseconds**; every
 > other `now` is **seconds**. Fragments are the one thing whose timestamp gets
@@ -277,3 +287,21 @@ frontend. The contract pins `calimero-*` to the core release **tag**
 them together. (Not `branch = "master"`: that rides unreleased protocol work
 against a released node. Not `tag = "latest"` either: core has no such tag, so it
 resolves only from a warm cargo cache and fails on CI.)
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+A member row is keyed by DEVICE. **Semantic change:** a device used to belong to the
+first account that joined with it (the key was taken). Now a second account can file a
+row of its own under someone else's device, so `account_of` reads the row across owners:
+a device held by exactly one account speaks for it, and a device claimed by several
+speaks for **nobody** — a claimant can never post as someone else, at the cost that a
+patched node can silence a device it claims. `join` still refuses a device another
+account holds. A sender's chunks, fragments and cursor are read as that account's own
+entries (`get_by` / `entries_with_owners`), and the moderator's sweep of a departed sender
+removes their chunks with `remove_by`. Test:
+`a_device_row_belongs_to_the_account_that_joined_with_it`.

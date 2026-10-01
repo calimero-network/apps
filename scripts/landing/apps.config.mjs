@@ -1,5 +1,5 @@
 /**
- * Per-app landing content for all fourteen user-facing apps.
+ * Per-app landing content for all fifteen user-facing apps.
  *
  * This is the ONLY place app-specific copy lives. `generate.mjs` renders each
  * entry into `apps/<app>/app/src/pages/landing/landing.config.ts` next to a
@@ -34,6 +34,11 @@
  * `kv-store`      contract/test fixture, no user-facing frontend.
  * `scaffolding-e2e`  e2e harness app, same.
  *
+ * `mero-pass`     has its own hand-owned landing (`src/pages/landing/`), built
+ *                 in the calimero.network language the Calimero landing,
+ *                 Cloud, the App Registry and the desktop app share. Its
+ *                 contract lives in its own `tests/marketing-landing.spec.ts`.
+ *
  * `mero-blocks` and `merraria` ARE included, but they need one extra piece.
  * Neither is a React app — both boot from `src/main.ts` with no `.tsx` — and
  * their `Landing` (`src/ui/landing.ts`) is an imperative launcher resolving a
@@ -49,6 +54,40 @@ import { DOCS } from './docs.config.mjs';
 
 /** @type {Record<string, import('./types.js').AppLanding>} */
 export const APPS = {
+  'mero-chess': {
+    e2eDir: 'e2e',
+    availability: 'web+desktop',
+    trust: ['No game server', 'Rules run in the contract', 'No accounts'],
+    explainer: [
+      'Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players\u2019 own nodes — so a game is a thing the two of you have, not a row in somebody else\u2019s database.',
+      'The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the node would refuse — and why a modified client cannot cheat.',
+    ],
+    features: [
+      { icon: 'CloudX', title: 'No game server', body: 'A table is a context. Two nodes hold the same move list and nobody hosts a game.' },
+      { icon: 'LockCheck', title: 'The contract is the referee', body: 'Every rule is enforced inside the WASM contract, on both players\u2019 nodes. A client that asks for an illegal move is simply told no.' },
+      { icon: 'Target', title: 'Moves, never a board', body: 'State is the move list keyed by ply. Two people moving at once resolve to one move — the same one on every node.' },
+      { icon: 'ArrowUpRight', title: 'Results nobody writes down', body: 'Checkmate, stalemate and the repetition rules are derived from the moves, so the result cannot disagree with the game.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link opens the table. No sign-up, no account, no email address — and whoever opens it can play or watch.' },
+    ],
+    faq: [
+      {
+        q: 'Can my opponent cheat with a modified client?',
+        a: 'No. Nothing about the game is decided in the browser: every move is validated by the contract running on your node as well as theirs, and a move your node rejects never becomes part of the game.',
+      },
+      {
+        q: 'What happens if we both move at the same time?',
+        a: 'Only one of you can take that ply. Moves are keyed by ply number and merge to a single winner by a rule every node applies identically, so the two boards agree — the move that lost simply never happened.',
+      },
+      {
+        q: 'Is there a clock?',
+        a: 'No. Games here are correspondence-paced: the table keeps the move list and the players\u2019 presence, and there is no time control to run out of while your laptop is shut.',
+      },
+      {
+        q: 'Can other people watch?',
+        a: 'Yes. Anyone in the namespace can open the table; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.',
+      },
+    ],
+  },
   battleships: {
     e2eDir: 'e2e',
     availability: 'web+desktop',
@@ -129,11 +168,107 @@ export const APPS = {
     ],
   },
 
+  'mero-chat': {
+    e2eDir: 'e2e',
+    // Its icons live under /icons/; there is no /favicon.svg or /icon-512.png.
+    markSrc: '/icons/icon-192x192.png',
+    iconSrc: '/icons/icon-512x512.png',
+    availability: 'web+desktop',
+    trust: ['Channels, threads and DMs', 'No central server', 'Messages on your nodes'],
+    explainer: [
+      'Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is where it lives: every channel is a Calimero context on your own nodes and the nodes of the people you invite, not on a vendor’s servers.',
+      'Nobody in the middle can read, mine or lose your conversations. There is no seat to pay for when someone joins, and nothing to export if you ever leave, because the history is already yours.',
+    ],
+    features: [
+      { icon: 'MessageBubble', title: 'Channels and threads', body: 'Public and private channels, with threaded replies so a side conversation never buries the main one.' },
+      { icon: 'Lock', title: 'Private by construction', body: 'A private channel is its own restricted group. Only its members’ nodes hold the messages, and there is no server copy to leak.' },
+      { icon: 'Heart', title: 'Reactions, edits and mentions', body: 'React with any emoji, edit or delete your own messages, and @mention a teammate to get their attention.' },
+      { icon: 'CloudUpload', title: 'Files and images', body: 'Attach files and images to any message. They are stored as blobs on the nodes in the channel, not on a CDN.' },
+      { icon: 'Zap', title: 'Live, peer to peer', body: 'See who is typing and watch messages arrive as they are sent, synced node to node with no server deciding the order.' },
+      { icon: 'ShieldCheck', title: 'Real moderation', body: 'Admin, moderator, member and banned roles, enforced when changes merge — not just hidden in the interface.' },
+    ],
+    overview: {
+      headline: 'Team chat that lives on your nodes, not someone else’s servers.',
+      // Recorded from the real app by `pnpm landing:media` in apps/mero-chat/app,
+      // against an invented node (e2e/media) — the pages, composer and thread
+      // panel are production code. The chapter times match CHAPTERS in
+      // e2e/media/record.mjs.
+      showcase: {
+        heading: 'A launch, planned in one channel',
+        sub: 'Recorded from the real app — the composer, the thread panel and the reactions are the ones you get.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a channel', body: 'The team’s launch channel, with mentions, reactions and a busy thread.' },
+            { at: 3, title: 'Send a message', body: 'Type and press Enter. It is written to your node and sent to everyone in the channel.' },
+            { at: 8, title: 'Reply in a thread', body: 'Open the thread and answer there, so the channel stays readable.' },
+            { at: 14, title: 'React', body: 'A thumbs-up says it faster. Reactions sync like everything else.' },
+            { at: 18, title: 'Direct messages', body: 'Switch to a DM and see Theo typing, live, from his own node.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'Team chat, without the landlord',
+        sub: 'Everything you expect from a team chat. The difference is who holds the conversation.',
+        themLabel: 'A typical cloud team chat',
+        rows: [
+          { label: 'Where messages live', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people in the channel' },
+          { label: 'Who can read them', them: 'The vendor, and whoever it grants access', us: 'Only the members of that channel' },
+          { label: 'Adding a teammate', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Message history', them: 'Limited or paywalled on cheaper plans', us: 'All of it, kept on your node' },
+          { label: 'If the vendor goes away', them: 'Your history may go with it', us: 'Your node still has every channel' },
+        ],
+      },
+      collaboration: {
+        heading: 'How a channel stays in sync',
+        sub: 'Each channel is its own context, replicated across the nodes of its members. Messages, threads and reactions merge without a server deciding the order.',
+        points: [
+          { title: 'Every channel is its own context', body: 'Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel is only on its members’ nodes.' },
+          { title: 'Threads are kept apart', body: 'Replies live beside the message they answer, so a long thread never crowds the channel.' },
+          { title: 'Typing stays out of history', body: '“Is typing” travels as presence, so it shows live and never ends up in the record.' },
+          { title: 'Drafts never leave your node', body: 'An unsent message is kept locally and is never synced to anyone.' },
+        ],
+        roles: [
+          { name: 'Admin', can: 'Grants and revokes roles, deletes any message and edits the channel info.' },
+          { name: 'Moderator', can: 'Deletes any message and bans disruptive members.' },
+          { name: 'Member', can: 'Reads and writes, and edits or deletes their own messages.' },
+          { name: 'Banned', can: 'Can no longer post in the channel.' },
+        ],
+        rolesNote: 'Roles are checked when changes merge, not only hidden in the interface — a delete from someone without the right is refused, wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for conversations that are nobody else’s business',
+        items: [
+          { label: 'Startups & product teams', title: 'Plan the roadmap without handing it to a vendor', body: 'Launch plans, hiring and customer feedback stay on your team’s own nodes.', uses: ['Private channels', 'Threads', 'File sharing'] },
+          { label: 'Communities & DAOs', title: 'A place to talk that the community owns', body: 'No platform that can change the rules, read the members or shut the server down.', uses: ['Invite links', 'Moderator roles', 'Open source'] },
+          { label: 'Regulated & public sector', title: 'Real-time chat on infrastructure you control', body: 'For finance, health and government teams whose conversations cannot sit on a third party’s cloud.', uses: ['Self-hosted nodes', 'Roles enforced at merge', 'Works offline'] },
+          { label: 'Friends & families', title: 'Group chat without an advertiser in the room', body: 'Share photos and plans in a space where nobody is mining the conversation.', uses: ['Direct messages', 'Images', 'Reactions'] },
+        ],
+      },
+      openSource: {
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps && pnpm install',
+          'cargo mero build -p mero-chat',
+          'pnpm -F mero-chat dev   # app on :5173',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first workspace',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you talk to.',
+      },
+    },
+  },
+
   'mero-design': {
     displayName: 'Mero Design',
     e2eDir: 'e2e',
     availability: 'web+desktop',
-    trust: ['Infinite canvas', 'Real-time sync', 'Files on your nodes'],
+    trust: ['Live collaboration', 'Infinite canvas', 'Files on your nodes'],
     explainer: [
       'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.',
       'There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.',
@@ -144,31 +279,141 @@ export const APPS = {
       { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs on your node, not on a CDN.' },
       { icon: 'FileText', title: 'Text with font controls', body: 'Real text elements with family, size and weight, not shapes that happen to look like words.' },
       { icon: 'Download', title: 'Export to PNG or SVG', body: 'Your work leaves in a format anything can open. No lock-in on the way out.' },
-      { icon: 'Refresh', title: 'Real-time sync', body: 'Changes stream to every member over SSE. No central server arbitrating who edited what.' },
+      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.' },
     ],
+    overview: {
+      // Same line calimero.network uses for design, so the two pages agree.
+      headline: 'Your canvas. Your pixels. Your nodes.',
+      // Recorded from the real app by `pnpm landing:media` in apps/mero-design/app.
+      // The chapter times match CHAPTERS in e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'From a note to a new design, together',
+        sub: 'Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a board', body: 'The design is on your node, and Ada from your team is already in it.' },
+            { at: 3, title: 'Leave a note', body: 'Drop a sticky note where the feedback belongs.' },
+            { at: 9, title: 'Point at it', body: 'Draw an arrow — it docks to the button it is about.' },
+            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle.' },
+            { at: 19, title: 'Present it', body: 'Hit Present. Ada’s change is already in the slide.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'The design tool, without the landlord',
+        sub: 'Everything you expect from a collaborative canvas. The difference is who holds the file.',
+        themLabel: 'A typical cloud design tool',
+        rows: [
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Working offline', them: 'Usually needs a connection', us: 'Full editing; changes merge when you reconnect' },
+          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'Your node still has every board' },
+        ],
+      },
+      collaboration: {
+        heading: 'Live collaboration, with no server in the middle',
+        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.',
+        points: [
+          { title: 'Every element is its own record', body: 'Two people editing different shapes never queue behind each other.' },
+          { title: 'Every property is its own value', body: 'One person moves a shape while another recolours it, and both changes land.' },
+          { title: 'Presence stays out of the file', body: 'Cursors travel separately, so they can never rewrite the artwork.' },
+          { title: 'Offline is a normal state', body: 'Keep drawing with no network. Your node merges the changes when it reaches a peer again.' },
+        ],
+        roles: [
+          { name: 'Owner', can: 'Names the board, grants and revokes roles, and can hand ownership on.' },
+          { name: 'Editor', can: 'Draws, moves and edits elements, and comments.' },
+          { name: 'Viewer', can: 'Follows the board live without changing it.' },
+        ],
+        rolesNote: 'Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for teams whose designs are nobody else’s business',
+        items: [
+          {
+            label: 'Product teams',
+            title: 'Design the roadmap without handing it to a vendor',
+            body: 'Unreleased screens and flows stay on your team’s own nodes until the day you ship them.',
+            uses: ['UI screens', 'Design systems', 'HTML handoff'],
+          },
+          {
+            label: 'Agencies & freelancers',
+            title: 'Client work that stays between you and the client',
+            body: 'Invite the client straight into the board: no extra seat to pay for, and nothing on a third party’s cloud.',
+            uses: ['Client reviews', 'Sticky-note feedback', 'Presenting from the board'],
+          },
+          {
+            label: 'Regulated & public sector',
+            title: 'Live collaboration on infrastructure you already control',
+            body: 'For finance, health and government work that cannot leave your own servers, without giving up working together in real time.',
+            uses: ['Self-hosted nodes', 'Owner, editor and viewer roles', 'Works offline'],
+          },
+          {
+            label: 'Open-source communities',
+            title: 'A design space the community owns',
+            body: 'No seats and no vendor terms that can change under you. If the tool is missing something, fork it and add it.',
+            uses: ['Free for everyone', 'MIT licensed', 'Fork and customise'],
+          },
+        ],
+      },
+      openSource: {
+        license: 'MIT',
+        // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
+        // (two nodes, invite, then the app), not the frontend alone.
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps/apps/mero-design',
+          'make setup   # check tools, build, install',
+          'make dev     # 2 local nodes + app on :5173',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first board',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you design with.',
+      },
+    },
   },
 
-  'mero-drive': {
+  'mero-docs': {
     markSrc: '/icons/icon.svg',
     // Nested, because this app's playwright config gives its node-free specs
     // their own project globbed as `**/landing/**` — a spec written beside that
     // directory rather than inside it is collected by no project and never runs.
     e2eDir: 'e2e/landing',
     availability: 'web+desktop',
-    trust: ['Folders are contexts', 'Rich-text editing', 'Private by default'],
+    trust: ['Folders have their own members', 'Rich-text editing', 'Private by default'],
     explainer: [
-      'A document workspace — folders, rich-text documents, and the tags you need to find them again six months later. Built as a multi-service bundle: a registry service holds the folder tree for a namespace, and each folder is its own context holding its documents.',
+      'A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder keeps its own documents, separate from the rest of the workspace.',
       'That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.',
     ],
     features: [
-      { icon: 'Folder', title: 'Folders are contexts', body: 'Each folder’s documents live in their own context, so access is per folder rather than all-or-nothing.' },
+      { icon: 'Folder', title: 'Folders have their own members', body: 'Each folder’s documents live separately, so access is per folder rather than all-or-nothing.' },
       { icon: 'FileText', title: 'Rich-text documents', body: 'A real editor with formatting, headings and lists, syncing as you type.' },
       { icon: 'Table', title: 'Tags and archive', body: 'Organise by tag and retire what is finished without deleting anything.' },
-      { icon: 'Shield', title: 'Namespace-scoped', body: 'The workspace is a namespace you control. Membership is how access works.' },
+      { icon: 'Shield', title: 'You control the workspace', body: 'You decide who is a member. Membership is how access works.' },
       { icon: 'Eye', title: 'Per-folder visibility', body: 'Decide what is shared and what stays yours, folder by folder.' },
     ],
   },
 
+  'mero-updates': {
+    e2eDir: 'tests',
+    availability: 'web+desktop',
+    trust: ['Investors are the membership', 'Drafts never leave your node', 'No send list to leak'],
+    explainer: [
+      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in a Calimero context the company and its investors share, replicated between their own nodes.',
+      'And it is two-way by design: investors react, reply, offer help on an ask in one click and ask the team questions of their own. The team sees who read what, accepts offers, and thanks contributors in the next update.',
+    ],
+    features: [
+      { icon: 'FileText', title: 'Updates with structure', body: 'Templates, categories, TL;DR, KPI tiles with the change since last time, and asks — never retype last month’s numbers.' },
+      { icon: 'MessageCircle', title: 'Two-way by default', body: 'Reactions, threaded replies, investor questions, and “I can help” on every ask.' },
+      { icon: 'LineChart', title: 'KPIs and engagement', body: 'Every metric as a trend, and a per-investor read list for the follow-ups that matter.' },
+      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of a context. There is no platform holding your cap table’s inbox.' },
+    ],
+  },
   'mero-forum': {
     e2eDir: 'tests',
     availability: 'web+desktop',
@@ -182,6 +427,27 @@ export const APPS = {
       { icon: 'Shield', title: 'Members are the namespace', body: 'Invite-only by construction. There is no public firehose and no lurking stranger.' },
       { icon: 'CloudX', title: 'No platform in the middle', body: 'Nothing ranks your feed, nothing advertises against it, and no account is required.' },
       { icon: 'Refresh', title: 'Real-time', body: 'New posts and replies appear as peers sync, without a refresh button.' },
+    ],
+  },
+
+  'mero-crm': {
+    displayName: 'Mero CRM',
+    e2eDir: 'e2e',
+    // Same light/dark key as the app shell, so the landing choice carries through sign-in.
+    themeStorageKey: 'app:theme',
+    availability: 'web+desktop',
+    trust: ['Pipeline on your nodes', 'Built-in deal assistant', 'No per-seat vendor'],
+    explainer: [
+      'A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.',
+      'The pipeline lives in a Calimero context your team shares, replicated between your own nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor holding a copy of it.',
+    ],
+    features: [
+      { icon: 'Target', title: 'Visual pipeline', body: 'Drag deals between stages, or onto Won and Lost. Every column shows its count, value and weighted forecast.' },
+      { icon: 'Zap', title: 'Deal assistant', body: 'A health score for every deal, the next best step in one click, a follow-up email draft, and a ready prompt for your AI.' },
+      { icon: 'Clock', title: 'Never miss a follow-up', body: 'Calls, meetings, tasks and deadlines, grouped by overdue, today and upcoming. Idle deals are flagged as rotting.' },
+      { icon: 'Refresh', title: 'Automations', body: 'When a deal enters a stage, the follow-up is scheduled for its owner automatically.' },
+      { icon: 'BarChart', title: 'Insights', body: 'Open and weighted pipeline, win rate, sales cycle, forecast by close month, and why deals are lost.' },
+      { icon: 'Shield', title: 'Your customers stay yours', body: 'The pipeline replicates between your team’s nodes. There is no vendor database to breach or to price you out of.' },
     ],
   },
 
@@ -206,24 +472,6 @@ export const APPS = {
   },
 
 
-  'mero-pass': {
-    displayName: 'Mero Pass',
-    e2eDir: 'tests',
-    availability: 'web+desktop',
-    trust: ['Vault on your nodes', 'Five secret types', 'No vendor to breach'],
-    explainer: [
-      'A secret manager for a team, where the vault sits on your own nodes rather than in a company whose breach notification you will read about later. You create a vault, invite the people who need it, and the contents replicate only between their nodes and yours.',
-      'It handles the five things teams actually share: logins, notes, one-time-password seeds, SSH keys, and free-form secrets — with roles, so not everyone who can read a vault can change who else does.',
-    ],
-    features: [
-      { icon: 'LockBox', title: 'Vaults with roles', body: 'Owner, admin and member. Reading a vault and controlling its membership are different powers.' },
-      { icon: 'LockStar', title: 'Five secret types', body: 'Logins with URLs, secure notes, TOTP seeds, SSH keypairs, and free-form entries.' },
-      { icon: 'Clock', title: 'TOTP codes', body: 'Time-based one-time passwords generated locally from a seed that never leaves your nodes.' },
-      { icon: 'ShieldCheck', title: 'Share with members', body: 'Scoped to the people you invited. Revoking access is something you do, not request.' },
-      { icon: 'CloudX', title: 'No vendor to breach', body: 'There is no central vault to attack, because there is no central vault.' },
-    ],
-  },
-
   'mero-pixart': {
     displayName: 'Mero PixArt',
     e2eDir: 'e2e',
@@ -241,6 +489,103 @@ export const APPS = {
       { icon: 'Cube3D', title: 'Free transform', body: 'Move, scale, rotate, shear, mirror, and a corner-pin warp for perspective.' },
       { icon: 'Circle', title: 'Paint tools', body: 'Brush, eraser, bucket fill and eyedropper, each re-rendering the layer to a new blob.' },
     ],
+    overview: {
+      headline: 'Your images. Your layers. Your nodes.',
+      // Recorded from the real editor by `pnpm landing:media` in
+      // apps/mero-pixart/app, against the mocked node the `mocked` Playwright
+      // project uses (no merod). The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A launch poster, edited in layers',
+        sub: 'Recorded from the real editor on the bundled Aurora Edition project: 23 layers in six folders, all drawn by the app’s own compositor.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a project', body: 'A finished poster on your node, in folders, with Ada from your team already in it.' },
+            { at: 3.5, title: 'Adjust, non-destructively', body: 'Swing the backdrop’s hue and saturation. They are stored as settings, so the pixels underneath never change.' },
+            { at: 8.5, title: 'Change a blend mode', body: 'Set the brightest ribbon to Multiply and it sinks into the night sky, then back to Screen.' },
+            { at: 12, title: 'Hide a whole folder', body: 'One eye hides the product card and everything in it. Nothing is deleted.' },
+            { at: 15.5, title: 'Paint on a new layer', body: 'Add a raster layer and draw a stroke. It lands on that layer alone.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'An image editor, without the landlord',
+        sub: 'Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.',
+        themLabel: 'A typical cloud image editor',
+        rows: [
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs on your node' },
+          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Getting your work out', them: 'Often a proprietary format', us: 'Export PNG, JPEG or SVG whenever you want' },
+        ],
+      },
+      collaboration: {
+        heading: 'Several people, one image, no server in the middle',
+        sub: 'Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.',
+        points: [
+          { title: 'Every layer is its own record', body: 'Two people working on different layers never queue behind each other.' },
+          { title: 'Pixels, mask, transform and adjustments are separate', body: 'One person paints on a layer while another moves it or tunes its curves, and both changes land.' },
+          { title: 'Adjustments are settings, not pixels', body: 'They are applied when the image is drawn, so undoing a change never needs the original back from anyone.' },
+          { title: 'Presence stays out of the file', body: 'Cursors travel separately from the document, so they can never touch the artwork.' },
+        ],
+        roles: [
+          { name: 'Owner', can: 'Names the document, sets its size and background, grants and revokes the editor role, and can hand ownership on.' },
+          { name: 'Editor', can: 'Adds, paints, transforms, adjusts and deletes layers.' },
+          { name: 'Viewer', can: 'Watches the image change without being able to change it.' },
+        ],
+        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for images that are nobody else’s business',
+        items: [
+          {
+            label: 'Design & marketing teams',
+            title: 'Campaign artwork that stays off a vendor’s cloud until launch day',
+            body: 'Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.',
+            uses: ['Layer folders', 'Blend modes', 'PNG and JPEG export'],
+          },
+          {
+            label: 'Photographers & retouchers',
+            title: 'Non-destructive edits you can revisit a week later',
+            body: 'Curves, exposure and masks are stored as settings, so a client’s change of mind is a slider, not a redo.',
+            uses: ['Curves', 'Paintable masks', 'Adjustments'],
+          },
+          {
+            label: 'Agencies & freelancers',
+            title: 'Client work shared with the client, and nobody else',
+            body: 'Invite the client as a viewer to watch the image take shape, or as an editor to work on it with you.',
+            uses: ['Owner, editor and viewer roles', 'Live cursors', 'Invite links'],
+          },
+          {
+            label: 'Open-source communities',
+            title: 'An image editor the community owns',
+            body: 'No seats and no terms that can change under you. If a tool is missing, fork it and add it.',
+            uses: ['Free for everyone', 'MIT or Apache-2.0', 'Fork and customise'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits. The Makefile's own
+        // targets: `setup` checks prerequisites and builds, `dev` starts two
+        // local nodes, invites the second and serves the app on :5176.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps/apps/mero-pixart',
+          'make setup   # check tools, build logic, install app deps',
+          'make dev     # 2 local nodes + app on :5176',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first image',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you make things with.',
+      },
+    },
   },
 
   'mero-sheets': {
@@ -250,19 +595,110 @@ export const APPS = {
     // same key so the choice carries through sign-in instead of resetting.
     themeStorageKey: 'app:theme',
     availability: 'web+desktop',
-    trust: ['Live cursors', 'Formulas recompute for all peers', 'Sheet on your node'],
+    trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [
       'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.',
       'Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.',
     ],
     features: [
       { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
-      { icon: 'Zap', title: 'Live cursors', body: 'Every collaborator in their own colour, so you can see who is about to overwrite what.' },
+      { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
       { icon: 'BarChart', title: 'Formulas that always compute', body: 'SUM, AVERAGE, MIN, MAX, COUNT and IF, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
       { icon: 'FileText', title: 'Formula autocomplete', body: 'With a built-in function reference, so you do not have to remember the argument order.' },
       { icon: 'Download', title: 'Download your data', body: 'Export whenever you want. Nothing here is designed to keep your numbers hostage.' },
     ],
+    overview: {
+      headline: 'The spreadsheet your team actually owns.',
+      // Recorded from the real app on a real node by `pnpm landing:media` in
+      // apps/mero-sheets/app. The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A budget, filled in together',
+        sub: 'Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a workbook', body: 'A Q3 budget on your node, with Ada from your team already in it.' },
+            { at: 3, title: 'Type a number', body: 'Fill in a cell and every total that reads it recomputes.' },
+            { at: 8, title: 'Write a formula', body: 'Start typing =AV and autocomplete offers AVERAGE, with its arguments.' },
+            { at: 14.5, title: 'Ada edits, live', body: 'Her cursor walks up to Wages, her number lands, and the totals update on your screen.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'A spreadsheet, without the landlord',
+        sub: 'Everything you expect from a shared spreadsheet. The difference is who holds the numbers.',
+        themLabel: 'A typical cloud spreadsheet',
+        rows: [
+          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the workbook’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Formulas', them: 'Computed on their servers', us: 'Stored raw and recomputed on every peer, so nobody sees a stale total' },
+          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'Your node still has every workbook, and you can download it any time' },
+        ],
+      },
+      collaboration: {
+        heading: 'Live collaboration, cell by cell',
+        sub: 'Everyone in a workbook sees each other’s cursors and edits as they happen, and two people can work in it at the same moment without either losing work — because of how a sheet is stored.',
+        points: [
+          { title: 'Every cell is its own record', body: 'Two people typing in different cells never queue behind each other.' },
+          { title: 'Value, formula and format are separate', body: 'Formatting a cell never fights with someone typing in it.' },
+          { title: 'Formulas recompute on every peer', body: 'Change a number and every total that reads it updates on everyone’s screen, from the raw formula.' },
+          { title: 'Cursors in colour', body: 'See who is where, in their own colour. Presence is kept out of the data.' },
+        ],
+      },
+      audiences: {
+        heading: 'Made for numbers that are nobody else’s business',
+        items: [
+          {
+            label: 'Finance & operations',
+            title: 'Budgets and forecasts that never leave your nodes',
+            body: 'Plan the quarter together, live, without the figures sitting on a third party’s servers.',
+            uses: ['Budgets', 'Forecasts', 'CSV export'],
+          },
+          {
+            label: 'Founders & small teams',
+            title: 'Metrics and cap tables, shared only with who you choose',
+            body: 'Invite a co-founder, an accountant or an investor into one workbook, and nobody else.',
+            uses: ['KPI trackers', 'Cap tables', 'Multiple sheet tabs'],
+          },
+          {
+            label: 'Research & classrooms',
+            title: 'Collect data together, in the same sheet, at the same time',
+            body: 'Everyone types into their own rows while the totals update for the whole group.',
+            uses: ['Shared data entry', 'Live cursors', 'SUM, AVERAGE, COUNT'],
+          },
+          {
+            label: 'Regulated & public sector',
+            title: 'Live collaboration on infrastructure you already control',
+            body: 'For finance, health and government data that cannot leave your own servers, without giving up working together in real time.',
+            uses: ['Self-hosted nodes', 'Works offline', 'No third-party cloud'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits (the app README still
+        // says TBD). Commands run and checked: without the app's wasm-rustflags
+        // the build fails in wasm-opt on `i64.trunc_sat_f64_s` (see ci.yml);
+        // the dev server uses the app's own vite port.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps && pnpm install',
+          'export RUSTFLAGS="$(cat apps/mero-sheets/logic/wasm-rustflags)"',
+          'cargo mero build -p mero-sheets',
+          'pnpm -F mero-sheets dev   # app on :5185',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first workbook',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you work with.',
+      },
+    },
   },
 
   'mero-sign': {

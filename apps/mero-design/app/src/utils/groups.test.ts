@@ -165,3 +165,20 @@ describe("grouping", () => {
     expect(uniqueGroupName(siblingGroupNames(elements, "screen"))).toBe("Group 2");
   });
 });
+
+describe("plan2: names for the new kinds", () => {
+  const e = (over: Partial<Element>): Element => ({
+    id: "x", data: { kind: "rect" }, x: 0, y: 0, width: 1, height: 1, rotation: 0, fill: "", stroke: "",
+    strokeWidth: 0, opacity: 100, layerIndex: 0, createdBy: "", createdAt: 0, updatedAt: 0, ...over,
+  } as Element);
+
+  it("an empty sticky / box and a shape path get a readable name", () => {
+    expect(derivedName(e({ data: { kind: "text", content: "" }, box: "sticky" }))).toBe("sticky note");
+    expect(derivedName(e({ data: { kind: "text", content: "" }, box: "box" }))).toBe("box");
+    expect(derivedName(e({ data: { kind: "path", points: "" }, shape: "cloud" }))).toBe("cloud");
+  });
+
+  it("a box with words is named by its words", () => {
+    expect(derivedName(e({ data: { kind: "text", content: "Login flow" }, box: "box" }))).toBe("Login flow");
+  });
+});

@@ -1,0 +1,998 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "DrawOffer": {
+      "kind": "record",
+      "doc": "A draw offer, or an answer to one, keyed `\"<account>/<game>/<nonce>\"`.\n\n`ply` is what makes it expire: an offer is good only for the position it was\nmade in, exactly as at a board, so a move made after it silently voids it.",
+      "fields": [
+        {
+          "name": "declined",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Set when this row REFUSES the opponent's offer rather than making one.\nOnly an entry's owner may write it, so a refusal cannot close the\nofferer's row; it is recorded here and the reader reads the pair."
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Ending": {
+      "kind": "record",
+      "doc": "A game ended by a PERSON, keyed `\"<account>/<game>/<nonce>\"`.\n\nBoard endings (checkmate, stalemate, dead position, fivefold, seventy-five\nmoves) are derived from the move list and never stored.",
+      "fields": [
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`1-0`, `0-1` or `1/2-1/2`."
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`resignation`, `agreement`, `threefold`, `fiftyMove`."
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The ply the game stood at when this was written.\n\nLoad-bearing, not bookkeeping: the reader re-checks the ending against\nthe position at this ply, and a valid one ENDS the game here — a move\nwritten at this ply afterwards cannot un-resign anybody."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_DrawDeclined": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DrawOffered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GameEnded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GameStarted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_Moved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Seated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Vacated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "GameRecord": {
+      "kind": "record",
+      "doc": "A claim that this player started a rematch, keyed `\"<account>/<game>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "GameSummary": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`1-0`, `0-1`, `1/2-1/2`, or `*` while it is still being played."
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "plies",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "white",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member who had White in that game."
+        },
+        {
+          "name": "black",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroChess": {
+      "kind": "record",
+      "doc": "Every map a player writes is owned and every key names its author, so a\nmember can only ever write rows about themselves — and, outside presence,\nnever change or remove one. Both are enforced by core at apply time, not by\nthis code. The reader elects and re-derives; see the module docs for why\nthat split is the whole security model.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Fixed when the table is created: nobody can relabel it or move the\ndate game 0 began."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            }
+          },
+          "doc": "One slot per account — only that account writes it, and nobody can\nfile rows under anyone else's name to crowd it."
+        },
+        {
+          "name": "seat_claims",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Seat"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<nonce>\"` -> one person's claim on that chair."
+        },
+        {
+          "name": "vacated",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<claim nonce>/<nonce>\"` -> when that claim was given\nup. Honoured only for a claimant who never acted at the table."
+        },
+        {
+          "name": "games",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "GameRecord"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> a claim that this player started game."
+        },
+        {
+          "name": "moves",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MoveRecord"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<game>/<ply>/<nonce>\"` -> the move that player wrote there."
+        },
+        {
+          "name": "endings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Ending"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> how that player says the game ended."
+        },
+        {
+          "name": "draw_offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DrawOffer"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<game>/<nonce>\"` -> that player's offers and refusals."
+        }
+      ]
+    },
+    "MoveRecord": {
+      "kind": "record",
+      "doc": "One played move, keyed `\"<account>/<game>/<ply>/<nonce>\"`.\n\nThe game, the ply and the author come from the key and core's owner stamp;\nthe SAN comes from the replay. What is left is what only the mover knows.",
+      "fields": [
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The move, and the only thing here a reader cannot work out for itself."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When its author says they played it. Display only: nothing is ordered\nby it, because its author could set it to anything."
+        },
+        {
+          "name": "opponent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member the mover saw in the other chair.\n\nLoad-bearing: it is how a player's own, unforgeable rows vouch for who\nthey were playing, which is what locks the chairs once a game is under\nway — see [`MeroChess::chairs`]."
+        }
+      ]
+    },
+    "MoveView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "doc": "A person's presence row — the one thing they keep RE-stating, so it lives in\ntheir own [`UserStorage`] slot and resolves to the newest copy.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PlayerView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`white`, `black` or `\"\"` — this player's colour in the CURRENT game."
+        }
+      ]
+    },
+    "Seat": {
+      "kind": "record",
+      "doc": "One person's claim on one chair, keyed `\"<seat>/<account>/<nonce>\"`.\n\nWhose claim WINS is the reader's question (see [`MeroChess::chairs`]); the\nrow carries no member id, because the owner stamp already says who wrote it.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SeatView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`white` or `black` — which chair this is, i.e. its colour in game 0."
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member holding it, or `\"\"` when the chair is free."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TableView": {
+      "kind": "record",
+      "doc": "Everything a client needs to draw the table, in one call.\n\nDeliberately ONE view rather than a dozen getters. Every field here is\nderived from the same replay of the move list, so serving them separately\nwould replay the game once per call and — worse — let a client paint a board\nfrom one moment next to a status from another.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Index of the game being played now."
+        },
+        {
+          "name": "fen",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The position after every move that has been played, as a FEN."
+        },
+        {
+          "name": "side_to_move",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`white` or `black`."
+        },
+        {
+          "name": "moves",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MoveView"
+            }
+          }
+        },
+        {
+          "name": "legal_moves",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Every legal move in this position, in UCI, sorted.\n\nThe contract is the only implementation of the rules in this app: a\nclient highlights squares from this list rather than shipping a second\nengine that could disagree with it."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`awaitingPlayers`, `inProgress` or `finished`."
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`1-0`, `0-1`, `1/2-1/2`, or `*` while the game is unfinished."
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why it ended: `checkmate`, `stalemate`, `insufficientMaterial`,\n`fivefold`, `seventyFiveMove`, `resignation`, `agreement`, `threefold`,\n`fiftyMove`, `equivocation` (a player wrote two different moves at one\nply, and lost for it) — or `\"\"`."
+        },
+        {
+          "name": "check",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "claimable_draw",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`threefold`, `fiftyMove` or `\"\"` — a draw the side to move may claim."
+        },
+        {
+          "name": "white",
+          "type": {
+            "$ref": "SeatView"
+          }
+        },
+        {
+          "name": "black",
+          "type": {
+            "$ref": "SeatView"
+          }
+        },
+        {
+          "name": "me",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The caller's own id, as the contract sees it. Never trust a client to\ntell you who it is; this is what it actually was."
+        },
+        {
+          "name": "my_color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The caller's colour in this game, or `\"\"` for a spectator."
+        },
+        {
+          "name": "my_turn",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "draw_offer_from",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member whose draw offer is standing in this position, or `\"\"`."
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PlayerView"
+            }
+          }
+        },
+        {
+          "name": "games_played",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How many games this table has started, including the current one."
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "accept_draw",
+      "doc": "Accept the opponent's standing offer.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "claim_draw",
+      "doc": "Claim the draw the position allows — threefold repetition or the\nfifty-move rule. Both are claims under the rules of chess, so neither\nends a game on its own.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "decline_draw",
+      "doc": "Refuse the opponent's standing offer. (A move refuses it too.)",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "heartbeat",
+      "doc": "Presence only — no event, so a heartbeat does not wake every client.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "history",
+      "doc": "Every game this table has played, oldest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "GameSummary"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "doc": "Announce yourself at the table, or refresh your presence and name.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "offer_draw",
+      "doc": "Offer a draw in the current position. The offer stands until the\nposition changes.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "play",
+      "doc": "Play a move, in UCI (`e2e4`, `e7e8q`). Returns its SAN.\n\nEvery refusal here is a refusal the client could have predicted from\n`table()`: it holds the legal moves, whose turn it is, and whether the\ngame is over. The checks exist because a client is not the authority on\nany of that — this is.",
+      "params": [
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rematch",
+      "doc": "Start the next game. Colours swap, so the player who had Black has\nWhite. Only allowed once the current game is finished.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "resign",
+      "doc": "Resign the current game. Only a seated player can, and only while it is\nstill being played.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "sit",
+      "doc": "Take the `white` or `black` chair, if it is free.\n\nThe seat name is the colour you hold in the FIRST game; colours swap on\nevery rematch.",
+      "params": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "stand",
+      "doc": "Give up your chair — allowed only before you have played at this table.\nA chair you have played from is the table's record of who played; the\nway out of a game is `resign`.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "table",
+      "doc": "The whole table in one call — see [`TableView`].",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TableView"
+      },
+      "intent": "read_only"
+    }
+  ],
+  "events": [
+    {
+      "name": "DrawDeclined",
+      "payload": {
+        "$ref": "Event_DrawDeclined"
+      }
+    },
+    {
+      "name": "DrawOffered",
+      "payload": {
+        "$ref": "Event_DrawOffered"
+      }
+    },
+    {
+      "name": "GameEnded",
+      "payload": {
+        "$ref": "Event_GameEnded"
+      }
+    },
+    {
+      "name": "GameStarted",
+      "payload": {
+        "$ref": "Event_GameStarted"
+      }
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "Moved",
+      "payload": {
+        "$ref": "Event_Moved"
+      }
+    },
+    {
+      "name": "PlayerJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "Seated",
+      "payload": {
+        "$ref": "Event_Seated"
+      }
+    },
+    {
+      "name": "Vacated",
+      "payload": {
+        "$ref": "Event_Vacated"
+      }
+    }
+  ],
+  "state_root": "MeroChess",
+  "state_version": 1
+}

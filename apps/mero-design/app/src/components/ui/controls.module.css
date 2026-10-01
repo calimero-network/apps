@@ -15,16 +15,20 @@
 .kit {
   /* Tokens live on the panel root so every control below matches. */
   --c-bg: #ffffff;
-  --c-bg-sunken: #f2f2f4;
-  --c-border: #dcdce2;
-  --c-border-strong: #c3c3cc;
-  --c-text: #1f2024;
-  --c-text-dim: #85858f;
+  --c-bg-sunken: #f4f4f6;
+  --c-border: #e3e3e8;
+  --c-border-strong: #c9c9d2;
+  --c-text: #1b1c20;
+  --c-text-dim: #7c7d88;
   --c-accent: #2563eb;
-  --c-accent-soft: #e8efff;
+  --c-accent-soft: #e6eeff;
   --c-danger: #dc2626;
-  --c-radius: 6px;
-  --c-height: 26px;
+  --c-radius: 7px;
+  --c-height: 28px;
+  font-family: "Inter", "Inter var", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
 }
 
 /* ── Field row ────────────────────────────────────────────────────── */
@@ -47,10 +51,8 @@
   min-width: 0;
 }
 .fieldStack > .fieldLabel {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 /* ── Number field ─────────────────────────────────────────────────── */
@@ -452,3 +454,57 @@
 .iconButtonActive { border-color: var(--c-accent); color: var(--c-accent); background: var(--c-accent-soft); }
 .iconButtonDanger { color: var(--c-danger); }
 .iconButtonDanger:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
+
+/* ── Quick pickers (Pickers.tsx) ──────────────────────────────────── */
+.swatchRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(16, 18, 27, 0.14);
+  transition: transform 0.1s, box-shadow 0.12s;
+}
+.swatch:hover:not(:disabled) { transform: translateY(-1px); }
+.swatch:disabled { opacity: 0.45; cursor: not-allowed; }
+.swatchLarge { width: 24px; height: 24px; border-radius: 7px; }
+.swatchActive {
+  box-shadow: 0 0 0 2px var(--c-bg), 0 0 0 4px var(--c-accent);
+}
+.swatch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--c-bg), 0 0 0 4px var(--c-accent-soft); }
+
+.styleGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  padding: 2px;
+  background: var(--c-bg-sunken);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+}
+.styleOption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--c-text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.styleOption:hover:not(.styleOptionActive):not(:disabled) { color: var(--c-text); }
+.styleOption:disabled { opacity: 0.45; cursor: not-allowed; }
+.styleOptionActive {
+  background: var(--c-bg);
+  color: var(--c-accent);
+  box-shadow: 0 1px 2px rgba(16, 18, 27, 0.12);
+}

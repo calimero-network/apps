@@ -68,7 +68,7 @@ def run():
         # computed_value is a string like "70").
         got = None
         for cell in (cells or []):
-            if cell.get("row") == lr and cell.get("col") == lc:
+            if b.cell_pos(cell) == (lr, lc):
                 got = cell.get("computed_value")
                 break
         correct = False

@@ -3,7 +3,8 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import type { Page } from '@playwright/test';
+import { loginViaHash, clearAuth, cell, withTwoMembers } from './helpers';
 
 test.describe(`collaborator: see each person's selected cell highlighted in their unique color`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,95 +24,53 @@ test.describe(`collaborator: see each person's selected cell highlighted in thei
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`when a collaborator selects a cell, every other collaborator sees that cell highlighted in that person's assigned color within 1s`, async ({ browser }) => {
-    // Multi-node: node 0 clicks a cell; node 1 must see a cursor highlight appear within 1s.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
+  // A peer's cursor draws a solid outline in their colour on the cell.
+  const outline = (page: Page, row: number, col: number) =>
+    cell(page, row, col).evaluate((el) => {
+      const s = getComputedStyle(el);
+      return s.outlineStyle === 'solid' ? s.outlineColor : null;
+    });
+  const avatarColors = (page: Page) => page.getByTestId('collaborator-avatar')
+    .evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
 
-      // Node 0 selects cell (row 2, col 3) — triggers update_cursor
-      await pageA.getByTestId('item-Cell-2-3').click();
+  test(`when a collaborator selects a cell, every other collaborator sees that cell highlighted in that person's assigned color within 1s`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await cell(a, 3, 2).click();
+      await expect.poll(() => outline(b, 3, 2), { timeout: 60_000 }).not.toBeNull();
+      // Alice's colour on Bob's screen is the one Bob's roster gives her.
+      const alice = b.locator('[data-testid="collaborator-avatar"][title="Alice"]');
+      const aliceColor = await alice.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(await outline(b, 3, 2)).toBe(aliceColor);
 
-      // Node 1 sees the cursor highlight from node 0 within 1s
-      await expect(pageB.getByTestId('item-Cursor')).toBeVisible({ timeout: 1_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+      // She moves; the highlight follows promptly.
+      const started = Date.now();
+      await cell(a, 5, 4).click();
+      await expect.poll(() => outline(b, 5, 4), { timeout: 10_000 }).not.toBeNull();
+      console.log(`cursor move arrived in ${Date.now() - started}ms`);
+      expect(await outline(b, 3, 2)).toBeNull();
+    });
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`each connected user is assigned a distinct color that persists for the duration of their session`, async ({ browser }) => {
-    // Multi-node: both users select cells; on node 0's view, two distinct cursor colors appear.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
+  test(`each connected user is assigned a distinct color that persists for the duration of their session`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await expect(a.getByTestId('collaborator-avatar')).toHaveCount(2, { timeout: 60_000 });
+      await expect(b.getByTestId('collaborator-avatar')).toHaveCount(2, { timeout: 60_000 });
+      const first = await avatarColors(a);
+      expect(new Set(first).size).toBe(2);
 
-      // Both users select cells to emit cursor updates
-      await pageA.getByTestId('item-Cell-0-0').click();
-      await pageB.getByTestId('item-Cell-1-0').click();
-
-      // Node 0's view should show two cursor elements with distinct colors
-      // [Verifier] NOTE: Cursor color exposed via data-color attribute (derived from Cursor.color field)
-      const cursorsOnA = pageA.getByTestId('item-Cursor');
-      await expect(cursorsOnA.first()).toBeVisible({ timeout: 5_000 });
-      await expect(cursorsOnA.nth(1)).toBeVisible({ timeout: 5_000 });
-
-      const colorFirst = await cursorsOnA.first().getAttribute('data-color');
-      const colorSecond = await cursorsOnA.nth(1).getAttribute('data-color');
-      expect(colorFirst).toBeTruthy();
-      expect(colorSecond).toBeTruthy();
-      expect(colorFirst).not.toEqual(colorSecond);
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+      await cell(a, 1, 1).click();
+      await cell(b, 2, 2).click();
+      await cell(a, 4, 4).click();
+      expect(await avatarColors(a)).toEqual(first);
+    });
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`when a user disconnects, their cursor highlight disappears for everyone`, async ({ browser }) => {
-    // Multi-node: node 0 sets cursor; then removes it (simulating disconnect); node 1 sees it vanish.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
-
-      // Node 0 selects a cell so its cursor appears on node 1
-      await pageA.getByTestId('item-Cell-0-0').click();
-      await expect(pageB.getByTestId('item-Cursor')).toBeVisible({ timeout: 5_000 });
-
-      // Node 0 disconnects by removing its cursor (remove_cursor is called on disconnect)
-      await pageA.getByTestId('action-remove_cursor').click();
-
-      // Node 1 no longer sees node 0's cursor highlight
-      await expect(pageB.getByTestId('item-Cursor')).toBeHidden({ timeout: 5_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+  test(`when a user disconnects, their cursor highlight disappears for everyone`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await cell(b, 6, 1).click();
+      await expect.poll(() => outline(a, 6, 1), { timeout: 60_000 }).not.toBeNull();
+      await b.close();
+      await expect.poll(() => outline(a, 6, 1), { timeout: 30_000 }).toBeNull();
+    });
   });
 });

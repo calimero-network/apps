@@ -1,0 +1,1989 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Applied": {
+      "kind": "record",
+      "doc": "What `apply_delta_on` did. The block's spans come back either way, so a\nrefused write hands the client exactly the state it has to rebase onto.",
+      "fields": [
+        {
+          "name": "applied",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The gap after this write's last change, or on a refusal the anchor sent."
+        },
+        {
+          "name": "anchor_pos",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "Where `anchor` sits in `spans`."
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `spans`, so a refused write rebases by identity."
+        }
+      ]
+    },
+    "Block": {
+      "kind": "record",
+      "doc": "One rendered block, mirroring `BlockView` so its id is the same bs58 token\nevery other method takes and returns.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attrs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `spans`, in order."
+        }
+      ]
+    },
+    "BlockView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "tuple",
+            "elements": [
+              {
+                "kind": "u64"
+              },
+              {
+                "kind": "u32"
+              }
+            ]
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attrs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        }
+      ]
+    },
+    "Change": {
+      "kind": "variant",
+      "doc": "One step of an attributed editor change, mirroring `DeltaOp`, which has no\n`AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.",
+      "variants": [
+        {
+          "name": "Retain",
+          "payload": {
+            "$ref": "Change_Retain"
+          }
+        },
+        {
+          "name": "Insert",
+          "payload": {
+            "$ref": "Change_Insert"
+          }
+        },
+        {
+          "name": "Delete",
+          "payload": {
+            "$ref": "Change_Delete"
+          }
+        }
+      ],
+      "untagged": true
+    },
+    "Change_Delete": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delete",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Change_Insert": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "insert",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Change_Retain": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "retain",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions - the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
+      "fields": [
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Which doc this annotates. Immutable after create. Indexed, so one doc's\ncomments are a seek rather than a walk of the folder's."
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Immutable after create."
+        }
+      ]
+    },
+    "CommentDto": {
+      "kind": "record",
+      "doc": "Flat projection of a `Comment` for list / get APIs.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex account of the comment's author, from its owner stamp."
+        },
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DocDto": {
+      "kind": "record",
+      "doc": "Flat projection of a `DocRecord` for list / get APIs. The body is read\nthrough `get_document` / `get_block_delta`, never flattened into a string.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Keys only, sorted; the registry maps each to a name and colour."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex account of whoever created the doc, from its header's owner stamp."
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "can_delete",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the caller may delete it: the same rule `delete_doc` enforces."
+        }
+      ]
+    },
+    "DocRecord": {
+      "kind": "record",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "fugue_text"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BlockView"
+            }
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            },
+            "crdt_type": "unordered_set"
+          },
+          "doc": "A set, so two members tagging the same doc at once both keep their tag."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "DocsState": {
+      "kind": "record",
+      "doc": "`docs` + their `headers` + moderated `comments`.",
+      "fields": [
+        {
+          "name": "docs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DocRecord"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`."
+        },
+        {
+          "name": "headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "doc_id → created_at, filed by the doc's creator, whose owner stamp it\ncarries. A doc is listed while that entry lives; only its creator or a\nmoderator (the founder) may remove it, and every node enforces that."
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
+        }
+      ]
+    },
+    "Event_BlockChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockInserted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockMoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentEdited": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocArchived": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocEdited": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocTagsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DocUnarchived": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MarkApplied": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mark_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TextChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TitleChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Run": {
+      "kind": "record",
+      "doc": "A run of character ids, mirroring `IdRange`, which has no `AbiType`.\n`replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.",
+      "fields": [
+        {
+          "name": "replica",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "counter",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "len",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "TitleApplied": {
+      "kind": "record",
+      "doc": "What `title_apply_delta_on` did; the title comes back either way.",
+      "fields": [
+        {
+          "name": "applied",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The gap after this write's last change, or on a refusal the anchor sent."
+        },
+        {
+          "name": "anchor_pos",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "Where `anchor` sits in `text`."
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          },
+          "doc": "The id of each character of `text`."
+        }
+      ]
+    },
+    "TitleState": {
+      "kind": "record",
+      "doc": "The title with the id of each of its characters, in order.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_tag",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "anchor_at",
+      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "before",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "apply_delta",
+      "doc": "One editor transaction, text and formatting together, returning an\nopaque token `undo` takes.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_delta_on",
+      "doc": "`apply_delta`, but only onto the text the caller diffed against, since a position\ncounted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "Applied"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "archive_doc",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "comment_count",
+      "doc": "Comments held by the account their id names, on a doc that is still listed;\n`len` would count planted ones and a deleted doc's too.",
+      "params": [],
+      "returns": {
+        "kind": "u64"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "comment_schema_version",
+      "doc": "The comment's stored per-entry `schema_version` - `Some(1)` before\nconvert, `Some(2)` after the owner re-signs. Lets the e2e assert that a\none-tap `migrate_my_entries` actually re-stamped it.\n\nThe entry of the account the comment's id names, read by name, so it\nanswers the same on every node: a key-only\n`entry_schema_version` reads the caller's own entry only.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "create_doc",
+      "doc": "Creates a document and seeds its title. The body starts empty; a client\nadds the first block with `insert_block`.",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_doc",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_doc",
+      "doc": "Renames a document by replacing the whole title, which is what a rename\nbox does. Character-level edits go through `title_apply_delta`.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Block"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_block_delta",
+      "doc": "One block's rendered spans: the read a binding does on every keystroke.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Span"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "CommentDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_doc",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "DocDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_document",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Block"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_state_digest",
+      "doc": "The ordered body as one canonical line, so replicas are compared exactly\nby one value. Block ids are excluded because they carry the minting\nreplica, which no two nodes agree on.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_text",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_title",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_title_state",
+      "doc": "The title and its character ids, read together so they line up.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TitleState"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "insert_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "list_blocks",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_comments",
+      "doc": "One doc's comments: an index seek, not a walk of every comment.",
+      "params": [
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CommentDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_docs",
+      "doc": "The docs whose creator's header lives, body or not.",
+      "params": [
+        {
+          "name": "include_archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DocDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "mark",
+      "doc": "Set `key` over visible positions `[start, end)`. `null` is a no-op result\nwhen every character already resolves to that value.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "merge_blocks",
+      "doc": "Append `second`'s body to `first` and tombstone `second`.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "first",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "second",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "move_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "passage_count",
+      "doc": "How many times `needle` appears contiguously in a block's text, which is\nan exact claim about interleaving that `contains` cannot make.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "needle",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "remove_tag",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "resolve_ids",
+      "doc": "Where anchors sit in THIS replica's block, one tree rebuild for the lot.\n`null` is an anchor this replica cannot place yet.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u32"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "set_attr",
+      "doc": "`value: null` removes the attribute.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_depth",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_kind",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "split_block",
+      "doc": "Split at visible position `at`, returning the new block's id.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_anchor_at",
+      "doc": "A cursor for the gap at `position`, as an opaque token any member resolves.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "before",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "title_apply_delta",
+      "doc": "One editor transaction on the title, returning an opaque token\n`title_undo` takes.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_apply_delta_on",
+      "doc": "`title_apply_delta`, but only onto the title the caller diffed against and, with an\n`anchor`, only as an insert where that anchor sits; a refusal places the anchor.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "TitleApplied"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_resolve",
+      "doc": "Where anchors sit in THIS replica's title. `null` is an anchor this\nreplica cannot place yet.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u32"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "title_undo",
+      "doc": "Takes a whole title transaction back, returning a token that redoes it.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unarchive_doc",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "undo",
+      "doc": "Take a whole transaction back, returning a token that redoes it.",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "BlockChanged",
+      "payload": {
+        "$ref": "Event_BlockChanged"
+      },
+      "doc": "Kind, depth or an attribute changed; re-read the block."
+    },
+    {
+      "name": "BlockDeleted",
+      "payload": {
+        "$ref": "Event_BlockDeleted"
+      }
+    },
+    {
+      "name": "BlockInserted",
+      "payload": {
+        "$ref": "Event_BlockInserted"
+      }
+    },
+    {
+      "name": "BlockMoved",
+      "payload": {
+        "$ref": "Event_BlockMoved"
+      }
+    },
+    {
+      "name": "CommentAdded",
+      "payload": {
+        "$ref": "Event_CommentAdded"
+      }
+    },
+    {
+      "name": "CommentDeleted",
+      "payload": {
+        "$ref": "Event_CommentDeleted"
+      }
+    },
+    {
+      "name": "CommentEdited",
+      "payload": {
+        "$ref": "Event_CommentEdited"
+      }
+    },
+    {
+      "name": "DocArchived",
+      "payload": {
+        "$ref": "Event_DocArchived"
+      }
+    },
+    {
+      "name": "DocCreated",
+      "payload": {
+        "$ref": "Event_DocCreated"
+      }
+    },
+    {
+      "name": "DocDeleted",
+      "payload": {
+        "$ref": "Event_DocDeleted"
+      }
+    },
+    {
+      "name": "DocEdited",
+      "payload": {
+        "$ref": "Event_DocEdited"
+      }
+    },
+    {
+      "name": "DocTagsChanged",
+      "payload": {
+        "$ref": "Event_DocTagsChanged"
+      }
+    },
+    {
+      "name": "DocUnarchived",
+      "payload": {
+        "$ref": "Event_DocUnarchived"
+      }
+    },
+    {
+      "name": "MarkApplied",
+      "payload": {
+        "$ref": "Event_MarkApplied"
+      }
+    },
+    {
+      "name": "TextChanged",
+      "payload": {
+        "$ref": "Event_TextChanged"
+      }
+    },
+    {
+      "name": "TitleChanged",
+      "payload": {
+        "$ref": "Event_TitleChanged"
+      }
+    }
+  ],
+  "state_root": "DocsState",
+  "state_version": 1
+}

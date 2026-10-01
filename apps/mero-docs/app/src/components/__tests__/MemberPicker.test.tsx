@@ -1,0 +1,176 @@
+import React, { useState } from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
+import { MemberPicker } from '../common/MemberPicker';
+
+const members = [
+  {
+    identity: 'alice-pubkey-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    role: 'Member',
+  },
+  {
+    identity: 'bob-pubkey-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    role: 'Member',
+  },
+  {
+    identity: 'cathy-pubkey-cccccccccccccccccccccccccccccccccc',
+    role: 'Member',
+  },
+];
+const useGroupMembersMock = vi.fn();
+vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
+  useGroupMembers: (...a: unknown[]) => useGroupMembersMock(...a),
+}));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: (_ns: string, mid: string) => ({
+    name: mid.startsWith('alice') ? 'Alice' : null,
+    loading: false,
+    error: null,
+    setName: async () => {},
+    refetch: async () => {},
+  }),
+}));
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    rootGroupId: 'root',
+    selfIdentity: 'self',
+    namespaceMemberNames: {},
+  }),
+}));
+
+beforeEach(() =>
+  useGroupMembersMock.mockReturnValue({
+    members,
+    selfIdentity: 'self',
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+);
+
+describe('MemberPicker', () => {
+  it('renders nothing in the dropdown until input is focused', () => {
+    const onSelect = vi.fn();
+    render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('shows all members when focused with empty query', () => {
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+  });
+
+  it('filters by display name (case-insensitive)', () => {
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'ali' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByText('Alice')).toBeTruthy();
+  });
+
+  it('filters by pubkey prefix', () => {
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'bob-pubkey' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+  });
+
+  it('matches name words in any order, and typos only when nothing matches exactly', () => {
+    useGroupMembersMock.mockReturnValue({
+      members: [
+        { ...members[0], name: 'Alice Liddell' },
+        { ...members[1], name: 'Alex' },
+      ],
+      selfIdentity: 'self',
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'liddell alice' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.change(input, { target: { value: 'alcie' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.change(input, { target: { value: 'alex' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+  });
+
+  it('excludes identities passed in `exclude`', () => {
+    render(
+      <MemberPicker
+        namespaceId="ns"
+        exclude={[members[0].identity]}
+        onSelect={vi.fn()}
+      />,
+    );
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
+  it('clicking an option calls onSelect with the identity and closes the dropdown', () => {
+    const onSelect = vi.fn();
+    render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);
+    fireEvent.focus(screen.getByRole('combobox'));
+    // We use onMouseDown (not onClick) on the option button so it fires
+    // before the input's blur tears down the dropdown.
+    fireEvent.mouseDown(screen.getByText('Alice'));
+    expect(onSelect).toHaveBeenCalledWith(members[0].identity);
+  });
+
+  it('never shows an unnamed member by their raw key as visible text', () => {
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    fireEvent.focus(screen.getByRole('combobox'));
+    // bob and cathy have no display name; the row must read
+    // "Unnamed member", not their identity.
+    expect(screen.getAllByText('Unnamed member')).toHaveLength(2);
+    expect(screen.queryByText(/bob-pubkey/)).toBeNull();
+    expect(screen.queryByText(/cathy-pubkey/)).toBeNull();
+  });
+
+  it('Escape inside a dialog closes only the suggestion list, then the dialog', async () => {
+    const user = userEvent.setup();
+    function InDialog() {
+      const [open, setOpen] = useState(true);
+      return (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent aria-describedby={undefined}>
+            <DialogTitle>New folder</DialogTitle>
+            <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    render(<InDialog />);
+    const input = screen.getByRole('combobox');
+    await user.click(input);
+    await user.keyboard('ali');
+    expect(screen.getByRole('listbox')).toBeTruthy();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('ali');
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('accepts a free-form pubkey paste via Enter when no option matches', () => {
+    const onSelect = vi.fn();
+    render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    const paste = 'unknown-pubkey-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';
+    fireEvent.change(input, { target: { value: paste } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith(paste);
+  });
+});

@@ -50,7 +50,10 @@ vi.mock('../../hooks/useApplicationId', () => ({
 
 const listTeams = vi.fn(async () => [] as unknown[]);
 
-vi.mock('../../lib/vaults', () => ({
+vi.mock('../../lib/vaults', async (importOriginal) => ({
+  // The real class, so the hook's `instanceof` sees what `acceptInvite` throws.
+  InviteRedeemError: (await importOriginal<typeof import('../../lib/vaults')>())
+    .InviteRedeemError,
   listTeams: (...a: unknown[]) => listTeams(...(a as [])),
   listVaults: vi.fn(async () => []),
   createTeam: vi.fn(),
@@ -151,6 +154,28 @@ describe('the join field', () => {
     );
     // And it does NOT move you: landing somewhere new after a failed join is
     // how "did that work?" becomes unanswerable.
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("says why the node refused, in the team's terms", async () => {
+    const { InviteRedeemError } = await import('../../lib/vaults');
+    redeemInvite.mockRejectedValue(
+      new InviteRedeemError({
+        status: 'failed',
+        namespaceId: 'ns-1',
+        message: 'invitation for group ab expired at 1700000000',
+        reason: 'expired',
+        retryable: false,
+      }),
+    );
+    renderPage();
+    fireEvent.change(await screen.findByTestId('join-code'), {
+      target: { value: CODE },
+    });
+    fireEvent.click(screen.getByTestId('join-submit'));
+    expect(await screen.findByTestId('join-error')).toHaveTextContent(
+      'This invitation has expired. Ask for a new link.',
+    );
     expect(navigate).not.toHaveBeenCalled();
   });
 

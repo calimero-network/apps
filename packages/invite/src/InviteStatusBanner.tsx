@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { describeInviteFailure } from "./redeem";
 import type { InviteState } from "./useInviteRedemption";
 
 export interface InviteStatusBannerProps {
@@ -55,7 +56,7 @@ export function InviteStatusBanner({
           ? `Joined ${named}. Syncing…`
           : state.stage === "already-member"
             ? `You are already in ${named}.`
-            : state.message;
+            : (describeInviteFailure(state.reason, noun) ?? state.message);
 
   return (
     <div

@@ -10,6 +10,7 @@ A collaborative design tool built on the Calimero p2p network. Think Figma — b
 - Text elements with font controls
 - Multi-member projects — invite teammates via Calimero group invitations
 - Export canvas to PNG or SVG
+- Screens + presentation mode (Figma-style "Present") — see below
 - Real-time sync via SSE (no central server)
 - White-label landing page with team (namespace) selector
 
@@ -59,9 +60,75 @@ make stop        # tear everything down
 | `make workflows` | merobox workflow tests |
 | `make clean` | Remove all build artifacts |
 
+## Landing page media
+
+The landing page's two clips — the hero loop (`app/public/landing/hero.webm`)
+and the chaptered demo (`demo.webm`), each with a poster — are recorded from the
+real editor against the mocked node the e2e specs use. The teammate in them is
+driven through the app's own SSE event path, not drawn on:
+
+```bash
+cd app && pnpm landing:media
+```
+
+The chapter times shown beside the clip live in `scripts/landing/apps.config.mjs`
+at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+
+## Screens and presenting
+
+A **screen** is one slide: a rectangle whose layer name sits in the top-level
+`screen` group (`screen/01 Sign in`). Its area is the slide — everything painted
+inside it is shown, clipped at its edge, exactly like a Figma frame.
+
+- **Make one:** select the layers that belong together, open the **Screens** tab
+  and choose **Create screen from selection**. A backdrop sized to the selection
+  is added behind it. Select a single rectangle instead and that rectangle
+  becomes the screen.
+- **Present:** **▶ Present** in the toolbar (or the Screens tab) plays the
+  screens, starting from the one the selection is on.
+- **Order:** screens play in reading order — left to right, then top to bottom —
+  until you **drag them into a different order** in the Screens tab (or use
+  *Move up / Move down* in a row's ⋯ menu, or Alt+↑/↓ on a focused row). A
+  reordered screen carries its place on the end of its name
+  (`screen/Pricing @3`); the suffix is hidden in the UI and survives a rename.
+- **Navigate:** → / Space / PageDown forward, ← / Shift+Space / PageUp back,
+  Home / End, F for full screen, Esc to leave. **All screens** shows a filmstrip.
+- **Long screens scroll:** a screen much taller than the window is shown at a
+  readable width and scrolls; Space pages through it before moving on. Zoom
+  can also be set to *Fill width* or *100%*.
+
+Screens ride the element `label` like groups do, so there is no contract change:
+every member sees the same screens and the same order, and the web design
+starter (whose five screens were already labelled this way) presents out of the
+box.
+
+## Starter projects
+
+**Options → Starter projects** loads one into the board (an admin action; an
+occupied board asks once before it is replaced):
+
+- **Web design** — five app screens and a design system (`scripts/build-starter.mjs`).
+- **Presentation** — an 8-slide deck about Calimero, one of them a tall
+  scrolling screen; press **▶ Present** (`scripts/build-starter-presentation.mjs`).
+
+`pnpm starter` regenerates both into `app/src/starter/`. The
+presentation reads the live board, so a teammate's edit lands on the slide
+being shown.
+
 ## Data Model
 
 Each **Project** is a Calimero context inside a **Team** (namespace/group). Members are invited the same way as in other Calimero apps. The canvas state (elements, layers, blobs) is stored in the WASM logic and synced across all member nodes via the Calimero p2p layer.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+`get_cursors` labels each pointer with its entry's own owner (`entries_with_owners`); a
+key-only `owner_of` would only ever name the caller, so every other member's pointer
+would have been dropped.
 
 ## License
 

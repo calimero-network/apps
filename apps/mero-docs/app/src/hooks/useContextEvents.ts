@@ -1,0 +1,168 @@
+// Subscribe to merod SSE events for one or more contexts and invoke
+// `onChange` whenever any event arrives. Drives live-refresh across
+// the app surface (workspace switcher, folder tree, members panels,
+// doc body, etc.) without polling.
+//
+// `useSubscription` from mero-react opens one EventSource per
+// distinct contextId set, internally keyed on `JSON.stringify`, and
+// fans events to all handlers. Multiple components subscribing to
+// the same id set share a single connection - the dedupe happens at
+// that layer, so this hook does not memoise the array itself; it
+// just normalises and sorts the input so a re-render with the same
+// content produces the same stringified key.
+//
+// Handler stability: pass a stable `onChange` (wrapped in
+// `useCallback`) - mero-react reads the callback via ref so a fresh
+// arrow each render does NOT disconnect the SSE socket, but the
+// caller should still keep handler identity stable so the
+// per-subscriber bookkeeping doesn't churn.
+
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import {
+  useSubscription,
+  type SseEventData,
+  type SubscriptionEventData,
+} from '@calimero-network/mero-react';
+import { parseSyncStatusEvent } from './useSyncStatus';
+import { useStreamReconnect } from './useStreamReconnect';
+
+/**
+ * Narrow a subscription event to the CONTEXT family.
+ *
+ * mero-react widened the `useSubscription` callback to a union: context events
+ * plus the group-keyed membership and migration families, and those two carry
+ * a `groupId` and no `contextId` at all. Reading `event.contextId` off the
+ * union is how a filter silently starts comparing `undefined` - so this tests
+ * for the field the filter actually needs, and anything without it is simply
+ * not a context event.
+ */
+export function isContextEvent(
+  event: SubscriptionEventData,
+): event is SseEventData {
+  return (
+    !!event &&
+    typeof (event as SseEventData).contextId === 'string' &&
+    (event as SseEventData).contextId.length > 0
+  );
+}
+
+/** Normalise a context-id input (single id, array, or nullable) into a
+ *  sorted, de-nulled string[]. Shared with useSyncStatus so both feed
+ *  mero-react's per-id-set `useSubscription` an identical, stable key. */
+export function normalizeContextIds(
+  contextIds:
+    | ReadonlyArray<string | null | undefined>
+    | string
+    | null
+    | undefined,
+): string[] {
+  const ids: string[] = [];
+  if (typeof contextIds === 'string') {
+    if (contextIds.length > 0) ids.push(contextIds);
+  } else if (Array.isArray(contextIds)) {
+    for (const c of contextIds) {
+      if (typeof c === 'string' && c.length > 0) ids.push(c);
+    }
+  }
+  ids.sort();
+  return ids;
+}
+
+export interface UseContextEventsOptions {
+  /**
+   * When true, `onChange` fires ONLY for events whose `event.contextId`
+   * is one of `contextIds`. Default false (legacy behaviour: fire on
+   * every delivered event, regardless of which context mutated).
+   *
+   * Use this for consumers that genuinely only care about *their own*
+   * contexts' state mutations - most notably the workspace hook, which
+   * only needs the registry context's dings and should ignore docs-box
+   * dings from an open editor (otherwise every autosave triggers a full
+   * workspace refetch + getGroupInfo fan-out).
+   *
+   * Caps and metadata change without a context event; their consumers
+   * subscribe strictly to the registry context, whose sync run is the tick.
+   */
+  strict?: boolean;
+  /**
+   * Coalesce bursts: when > 0, `onChange` fires once `debounceMs` after the
+   * LAST event in a burst, instead of once per event, so a batch of
+   * registry ops costs one refetch. Trailing-edge only (a settled burst
+   * still triggers exactly one refetch).
+   */
+  debounceMs?: number;
+}
+
+export function useContextEvents(
+  contextIds:
+    | ReadonlyArray<string | null | undefined>
+    | string
+    | null
+    | undefined,
+  // Names the context that fired; none after a reconnect or a debounced burst.
+  onChange: (contextId?: string) => void,
+  options?: UseContextEventsOptions,
+): void {
+  // Computing on every render is cheap (≤ a handful of strings) and lets
+  // mero-react's JSON.stringify dedupe inside useSubscription do its job
+  // without a redundant local memo layer.
+  const ids = normalizeContextIds(contextIds);
+
+  const strict = options?.strict ?? false;
+  const debounceMs = options?.debounceMs ?? 0;
+  // Stable, comparable key for the id set - context ids are hex
+  // so a comma separator never collides. Used as the callback dep
+  // (the `ids` array is a fresh reference each render) and to rebuild
+  // the allow-set inside the handler without capturing the array.
+  const idsKey = ids.join(',');
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  // A pending fire belongs to the ids it was armed for: drop it when they change
+  // (another workspace's event must not refetch this one) and on unmount.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+    },
+    [idsKey],
+  );
+
+  const handler = useCallback(
+    (event: SubscriptionEventData) => {
+      // Presence is transient and changes no state, so it must not trigger refetches.
+      if (!isContextEvent(event) || event.type === 'Ephemeral') return;
+      if (strict) {
+        const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
+        if (!allowed.includes(event.contextId)) return;
+      }
+      // A sync run reports an in-progress phase, then one terminal phase; only the
+      // terminal one counts, even a failed run, since governance arrives by gossip.
+      const sync = parseSyncStatusEvent(event);
+      if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
+        return;
+      if (debounceMs <= 0) {
+        onChange(event.contextId);
+        return;
+      }
+      if (timerRef.current) clearTimeout(timerRef.current);
+      // The latest onChange: one captured at the event may belong to a workspace since left.
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        onChangeRef.current();
+      }, debounceMs);
+    },
+    [onChange, strict, idsKey, debounceMs],
+  );
+
+  useSubscription(ids, handler);
+
+  // Every consumer here refetches on `onChange`, so a reconnect is one more
+  // reason to: nothing replays what changed while the stream was down.
+  useStreamReconnect(() => {
+    if (idsKey.length > 0) onChangeRef.current();
+  });
+}

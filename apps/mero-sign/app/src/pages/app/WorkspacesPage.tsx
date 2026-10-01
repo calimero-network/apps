@@ -16,7 +16,7 @@ import { encodeInvite } from '../../lib/inviteCodec';
 import { invitationUrl } from '../../lib/inviteLink';
 import { adminApi, apiClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import { redeemInvitation } from '../../api/invitationJoin';
+import { joinWorkspaceFromInvitation } from '../../api/invitationJoin';
 import styles from './AgreementsPage.module.css';
 
 // ── The workspace picker ─────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ import styles from './AgreementsPage.module.css';
 // A namespace is therefore required. Given that, it is worth making it mean
 // something rather than minting a hidden one per agreement — and the fleet
 // already has the shape: mero-pass (team → vault), mero-forum (space → forum),
-// mero-drive (workspace → folder).
+// mero-docs (workspace → folder).
 //
 //   WORKSPACE  — the people. You invite people HERE. This screen.
 //   AGREEMENT  — one document set, inside a workspace. The next screen.
@@ -201,7 +201,7 @@ export default function WorkspacesPage() {
     setJoining(true);
     setBanner(null);
     try {
-      const result = await redeemInvitation(raw, app);
+      const result = await joinWorkspaceFromInvitation(raw, app);
       setJoinCode('');
       if (result.contextId) {
         navigate(`/agreements/${result.contextId}`);

@@ -1,4 +1,5 @@
 import { rpcCall } from "../api/rpc";
+import { addElements, deleteElements } from "../api/elementBatch";
 import { saveText } from "./saveFile";
 import type { CanvasComment, Element } from "../types";
 
@@ -49,7 +50,16 @@ export async function importProject(
   contextId: string,
   snapshot: ProjectSnapshot,
 ): Promise<void> {
-  await rpcCall(contextId, "clear_elements", {}).catch(() => {});
+  // Replace the board's elements with the snapshot's. `clear_elements` did this
+  // in one call and ran out of gas on any board past ~130 elements — the import
+  // then drew the file on top of the old board. Now: delete only what the file
+  // does not have, in batches sized to the board, and write the rest over the
+  // top (an `add_elements` with an existing id overwrites it in place).
+  const existing = await rpcCall<Element[] | null>(contextId, "get_elements", {}).catch(() => null);
+  const current = Array.isArray(existing) ? existing : [];
+  const keep = new Set(snapshot.elements.map((el) => el.id));
+  const stale = current.map((el) => el.id).filter((id) => !keep.has(id));
+  await deleteElements(contextId, stale, current.length, () => {});
   await rpcCall(contextId, "clear_comments", {}).catch(() => {});
 
   if (snapshot.boardName) {
@@ -59,9 +69,7 @@ export async function importProject(
     }).catch(() => {});
   }
 
-  for (const el of snapshot.elements) {
-    await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
-  }
+  await addElements(contextId, snapshot.elements, () => {});
 
   // On import, comment/reply authorship is re-attributed to the importer
   // (the signer) — author is no longer client-supplied.

@@ -1,0 +1,136 @@
+import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
+import { ContextPicker } from "./ContextPicker";
+import { InviteCard } from "./InviteCard";
+import { JoinCard } from "./JoinCard";
+import { useJoinFromInvitation } from "./useJoinFromInvitation";
+import { VotePanel } from "./VotePanel";
+
+export function App() {
+  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  // Mounted at the root, unconditionally: an invitation captured before login
+  // has to be redeemed as soon as the session exists, which means this cannot
+  // live inside a branch that only renders once a context is chosen.
+  const {
+    state: joinState,
+    redeemPasted,
+    confirmJoin,
+    declineJoin,
+  } = useJoinFromInvitation();
+
+  // Drop the stored context and re-render at the picker. A reload rather than
+  // local state, for the same reason `ContextPicker.select` reloads: the
+  // provider reads the stored context on mount, so reloading is what makes the
+  // provider and the UI agree instead of duplicating that logic here.
+  function switchContext() {
+    clearContextId();
+    window.location.reload();
+  }
+
+  return (
+    <div className="wrap">
+      <header>
+        <h1>Mero Vote</h1>
+        <p className="sub">
+          Private polls with verifiable tallies. Ballots are encrypted in your
+          browser and proven well-formed in zero knowledge; every member
+          re-counts the same frozen ballot box, and no node — yours included —
+          ever sees a vote.
+        </p>
+      </header>
+
+      {isLoading ? (
+        <div className="card">
+          <p className="empty">Connecting…</p>
+        </div>
+      ) : !isAuthenticated ? (
+        <div className="card">
+          <h2>Connect a node</h2>
+          <p className="empty" style={{ marginBottom: 14 }}>
+            The login modal discovers nodes on the usual local ports and accepts
+            a URL directly.
+          </p>
+          <ConnectButton />
+        </div>
+      ) : !contextId ? (
+        <>
+          <ContextPicker applicationId={applicationId} />
+          <JoinCard
+            state={joinState}
+            onSubmit={redeemPasted}
+            onConfirm={confirmJoin}
+            onDecline={declineJoin}
+          />
+        </>
+      ) : (
+        <>
+          {/*
+            A link can arrive while a context is already open, and the prompt has
+            to be reachable then too — otherwise an invitation received mid-session
+            waits silently until the user happens to log out.
+          */}
+          {joinState.status !== "idle" && (
+            <JoinCard
+              state={joinState}
+              onSubmit={redeemPasted}
+              onConfirm={confirmJoin}
+              onDecline={declineJoin}
+            />
+          )}
+          <div className="card context-bar">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span className="empty">
+                Context <code className="mono">{contextId}</code>
+              </span>
+              {/*
+                The only way back. Selecting a context used to be a ONE-WAY door:
+                `setContextId` is written to storage and the app then renders the
+                panel forever, so the picker was unreachable without clearing
+                site data or logging out. A node routinely holds several
+                contexts, and comparing two of them is the normal way to watch
+                a CRDT converge.
+              */}
+              <button className="ghost" onClick={switchContext}>
+                Change context
+              </button>
+            </div>
+          </div>
+          <VotePanel contextId={contextId} />
+          <InviteCard contextId={contextId} />
+        </>
+      )}
+
+      {isAuthenticated && (
+        <div className="card">
+          <h2>Session</h2>
+          <table>
+            <tbody>
+              <tr>
+                <th>node</th>
+                <td className="mono">{nodeUrl ?? "—"}</td>
+              </tr>
+              <tr>
+                <th>application</th>
+                <td className="mono">{applicationId ?? "—"}</td>
+              </tr>
+              <tr>
+                <th>context</th>
+                <td className="mono">{contextId ?? "not selected"}</td>
+              </tr>
+            </tbody>
+          </table>
+          {/*
+            No inactivity logout anywhere in this app. A session ends when the
+            user ends it — being idle overnight is normal use, and it costs
+            nothing in exposure since the refresh token already lives in the
+            same localStorage as the access token.
+          */}
+          <div className="row" style={{ marginTop: 14 }}>
+            <button className="ghost" onClick={logout}>
+              Log out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

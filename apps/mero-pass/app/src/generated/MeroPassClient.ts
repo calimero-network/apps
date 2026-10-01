@@ -6,54 +6,257 @@ import {
 
 // Generated types
 
+/**
+ * One line of the activity trail. Who wrote it is the slot's owner stamp,
+ * not a field: an author can claim anything in their own entry.
+ */
 export interface AuditLogEntry {
-  id: string;
   action: string;
-  details: string;
-  user_public_key: string;
+  /**
+   * The object acted on: a secret id, an account, a device fingerprint.
+   * Never a secret's name — names are ciphertext, and a trail that echoed
+   * them in the clear would undo the encryption.
+   */
+  target: string;
+  /**
+   * The author's node device, as the author's node reported it.
+   */
+  device: string;
   timestamp: number;
 }
 
-export interface Event_SecretAdded {
-  secret_id: string;
-  name: string;
+export interface AuditView {
+  action: string;
+  target: string;
+  account: string;
+  device: string;
+  timestamp: number;
+  /**
+   * True when the author blanked this entry. The slot stays, so a redaction
+   * is itself visible in the trail.
+   */
+  redacted: boolean;
 }
 
-export interface Event_SecretDeleted {
-  secret_id: string;
-  name: string;
+/**
+ * A device public key the vault key may be wrapped to.
+ *
+ * Stored in an [`AuthoredMap`], so only the account that registered it can
+ * remove it. Its account is the entry's owner stamp, which every node
+ * verifies — never a field in the value, which a modified node could fill
+ * with anyone's account to be handed the vault key in their name.
+ *
+ * Keys are per owner (core rc.57): two accounts registering one fingerprint
+ * hold two entries, each read with its own account (`entries_with_owners`).
+ * A key-only `owner_of` would only ever name the caller.
+ */
+export interface DeviceKey {
+  /**
+   * Base64 of the raw (uncompressed) P-256 ECDH public key.
+   */
+  public_key: string;
+  label: string;
+  /**
+   * `browser` for a browser's device key; `recovery` for an account's
+   * offline recovery key, whose private half exists only on paper.
+   */
+  kind: string;
+  node_device: string;
+  added_at: number;
 }
 
-export interface Event_SecretUpdated {
+export interface DeviceView {
+  fingerprint: string;
+  public_key: string;
+  label: string;
+  kind: string;
+  account: string;
+  added_at: number;
+  revoked: boolean;
+}
+
+export interface Event_SecretChanged {
   secret_id: string;
-  name: string;
+}
+
+/**
+ * The vault key, wrapped to one device key by one wrapper.
+ *
+ * Keyed by `recipient:key_id:nonce` in an authored map: the random nonce
+ * means nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped
+ * it. A forged wrap is detectable anyway — the recipient checks that the
+ * unwrapped key hashes to `key_id` — but it must not be able to displace a
+ * genuine one, nor make a device look approved (see `wrapped_pairs`).
+ */
+export interface KeyWrap {
+  key_id: string;
+  recipient: string;
+  wrapper: string;
+  /**
+   * ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON.
+   */
+  envelope: string;
+  wrapped_at: number;
+}
+
+export interface KeyWrapInput {
+  key_id: string;
+  recipient: string;
+  wrapper: string;
+  envelope: string;
+}
+
+export interface KeyWrapView {
+  key_id: string;
+  recipient: string;
+  wrapper: string;
+  envelope: string;
+  wrapped_by: string;
+}
+
+export interface MemberView {
+  account: string;
+  /**
+   * `admin`, `editor` or `viewer`; `pending` for an account that has
+   * registered a device but was never given a role; `removed` for one an
+   * admin removed, which clients must not auto-admit.
+   */
+  role: string;
+  devices: number;
 }
 
 export interface MeroPassApp {
+  /**
+   * The vault's human name as created, readable by every member on every
+   * node. The frontend also writes it to the subgroup's metadata, for
+   * members who have not entered the vault yet; this copy (or a rename in
+   * `settings`) is the authoritative one.
+   */
   vault_name: string;
-  secrets: Record<string, SecretItem>;
-  audit_logs: Record<string, AuditLogEntry>;
+  roles: Record<string, boolean>;
+  secrets: Record<string, Secret>;
+  /**
+   * `secret_id/rev_id` → superseded value, so a secret's history is one
+   * prefix read.
+   */
+  history: Record<string, Revision>;
+  /**
+   * Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`.
+   */
+  admin: Record<string, string>;
+  /**
+   * Editor-writable settings: the vault's name after a rename.
+   */
+  settings: Record<string, string>;
+  /**
+   * Device fingerprint → public key. Any member may register their own.
+   */
+  devices: Record<string, DeviceKey>;
+  /**
+   * `recipient:key_id:nonce` → wrapped vault key.
+   */
+  key_wraps: Record<string, KeyWrap>;
+  /**
+   * Append-only. Entries can be blanked only by their own author, and a
+   * blanked slot stays visible as a redaction.
+   */
+  audit: AuditLogEntry[];
 }
 
-export interface SecretItem {
-  id: string;
-  name: string;
-  secret_type: string;
-  data: string;
-  tags: string[];
-  created_at: number;
-  updated_at: number;
-  version: number;
-  created_by: string;
+/**
+ * A superseded field value. Written once, never edited.
+ */
+export interface Revision {
+  /**
+   * The field that changed; `name` and `tags` use those reserved names.
+   */
+  field: string;
+  /**
+   * The value it held before, still encrypted (under whichever vault key it
+   * was written with — the envelope names its key).
+   */
+  previous: string;
+  replaced_at: number;
+  replaced_by: string;
 }
+
+export interface RevisionView {
+  field: string;
+  previous: string;
+  replaced_at: number;
+  replaced_by: string;
+}
+
+/**
+ * One secret, as independent registers rather than one record.
+ *
+ * Field-level registers are the point: Alice fixing the URL while Bob rotates
+ * the password are writes to two different registers, so BOTH survive the
+ * merge. A single last-writer-wins record would keep one edit and silently
+ * discard the other. Within one field, last writer wins by HLC — there is no
+ * meaningful way to merge two different passwords.
+ */
+export interface Secret {
+  /**
+   * Cleartext kind — `login`, `totp`, … — so the UI can pick an icon.
+   */
+  kind: string;
+  /**
+   * Encrypted display name.
+   */
+  name: string;
+  /**
+   * Encrypted tag list (one envelope over a JSON array).
+   */
+  tags: string;
+  /**
+   * Field name (`password`, `url`, …) → encrypted value.
+   */
+  fields: Record<string, string>;
+  created_at: number;
+  created_by: string;
+  updated_at: number;
+  updated_by: string;
+  /**
+   * Tombstone. Trashing is a flag rather than a `remove`, because the map is
+   * add-wins: a hard remove loses to a concurrent edit and the secret comes
+   * back. The flag resolves edit-vs-trash by HLC instead.
+   */
+  trashed: boolean;
+  trashed_at: number;
+}
+
+export interface SecretView {
+  id: string;
+  kind: string;
+  name: string;
+  tags: string;
+  fields: Record<string, string>;
+  created_at: number;
+  created_by: string;
+  updated_at: number;
+  updated_by: string;
+  trashed: boolean;
+  trashed_at: number;
+}
+
+export interface VaultInfo {
+  name: string;
+  current_key: string;
+  default_role: string;
+  my_account: string;
+  my_role: string;
+}
+
 
 
 
 
 export type AbiEvent =
-  | { name: "SecretAdded"; payload: Event_SecretAdded }
-  | { name: "SecretDeleted"; payload: Event_SecretDeleted }
-  | { name: "SecretUpdated"; payload: Event_SecretUpdated }
+  | { name: "KeysChanged" }
+  | { name: "MembersChanged" }
+  | { name: "SecretChanged"; payload: Event_SecretChanged }
+  | { name: "VaultRenamed" }
 ;
 
 
@@ -67,33 +270,49 @@ export class MeroPassClient {
   }
 
   /**
-   * add_secret
+   * add_key_wraps
+   *
+   * Store wraps of a vault key. Any member holding the key may wrap it to
+   * any registered, unrevoked device — that is how a newcomer or a new
+   * device gets in without the creator being online.
    *
    * @intent mutating
    */
-  public async addSecret(params: { name: string; secret_type: string; data: string; tags: string[] }): Promise<string> {
+  public async addKeyWraps(params: { wraps: KeyWrapInput[] }): Promise<number> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_key_wraps', argsJson: params });
+    return response as number;
+  }
+
+  /**
+   * add_secret
+   *
+   * Add a secret under an id the CLIENT chose.
+   *
+   * Client-chosen because the id is bound into every field's ciphertext as
+   * associated data, which is what stops a member from pasting one secret's
+   * password envelope into another secret: the id has to exist before the
+   * encryption does. It is 16 random bytes like before, and an id that is
+   * already taken is refused rather than upserted.
+   *
+   * @intent mutating
+   */
+  public async addSecret(params: { id: string; kind: string; name: string; tags: string; fields: Record<string, string> }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_secret', argsJson: params });
     return response as string;
   }
 
   /**
-   * delete_secret
-   *
-   * @intent mutating
-   */
-  public async deleteSecret(params: { secret_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_secret', argsJson: params });
-    return response as void;
-  }
-
-  /**
    * get_audit_logs
+   *
+   * The trail, newest first.
+   * The trail, newest first. Each line's account is its slot's owner
+   * stamp, so nobody can write a line in someone else's name.
    *
    * @intent read_only
    */
-  public async getAuditLogs(): Promise<AuditLogEntry[]> {
+  public async getAuditLogs(): Promise<AuditView[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_audit_logs', argsJson: {} });
-    return response as AuditLogEntry[];
+    return response as AuditView[];
   }
 
   /**
@@ -101,23 +320,16 @@ export class MeroPassClient {
    *
    * @intent read_only
    */
-  public async getSecret(params: { secret_id: string }): Promise<SecretItem> {
+  public async getSecret(params: { id: string }): Promise<SecretView> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secret', argsJson: params });
-    return response as SecretItem;
-  }
-
-  /**
-   * get_secrets_by_tag
-   *
-   * @intent read_only
-   */
-  public async getSecretsByTag(params: { tag: string }): Promise<SecretItem[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secrets_by_tag', argsJson: params });
-    return response as SecretItem[];
+    return response as SecretView;
   }
 
   /**
    * init
+   *
+   * `name` arrives as the JSON `initializationParams` of `createContext`.
+   * The creator is the vault's first admin.
    */
   public async init(params: { name: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params });
@@ -125,17 +337,108 @@ export class MeroPassClient {
   }
 
   /**
-   * list_secrets
+   * key_wraps_for
+   *
+   * Every wrap addressed to `recipient`. `wrapped_by` is the entry's owner
+   * stamp.
    *
    * @intent read_only
    */
-  public async listSecrets(): Promise<SecretItem[]> {
+  public async keyWrapsFor(params: { recipient: string }): Promise<KeyWrapView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'key_wraps_for', argsJson: params });
+    return response as KeyWrapView[];
+  }
+
+  /**
+   * list_devices
+   *
+   * Every registered device, with the account that registered it read
+   * from the entry's owner stamp. Clients decide whom to wrap the vault key
+   * to by this account, so it must be one nobody can claim for someone else.
+   *
+   * @intent read_only
+   */
+  public async listDevices(): Promise<DeviceView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_devices', argsJson: {} });
+    return response as DeviceView[];
+  }
+
+  /**
+   * list_members
+   *
+   * Everyone this vault knows about: each role holder, plus every account
+   * that registered a device without being given a role (`pending`).
+   *
+   * @intent read_only
+   */
+  public async listMembers(): Promise<MemberView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_members', argsJson: {} });
+    return response as MemberView[];
+  }
+
+  /**
+   * list_secrets
+   *
+   * Every secret, trashed ones included — the client splits them. Search
+   * and filtering happen in the browser, after decryption: the contract
+   * holds ciphertext and has nothing to match against.
+   *
+   * @intent read_only
+   */
+  public async listSecrets(): Promise<SecretView[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_secrets', argsJson: {} });
-    return response as SecretItem[];
+    return response as SecretView[];
+  }
+
+  /**
+   * purge_secret
+   *
+   * Delete a trashed secret and its history for good. Admin only — this is
+   * the one operation that needs DELETE on the guarded store.
+   *
+   * @intent mutating
+   */
+  public async purgeSecret(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'purge_secret', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * register_device
+   *
+   * Register this browser's public key so the vault key can be wrapped to
+   * it. `fingerprint` must be the hex SHA-256 of the raw key; the client
+   * derives both, and the contract checks the shape, not the hash (a wrong
+   * fingerprint only hurts the registrant: nothing wrapped to it opens).
+   *
+   * @intent mutating
+   */
+  public async registerDevice(params: { fingerprint: string; public_key: string; label: string; kind: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_device', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_member
+   *
+   * Remove an account from the vault: drop every role and revoke every
+   * device it registered. The caller must then rotate the vault key (the
+   * client does, via `rotate_key`) so nothing written afterwards is
+   * readable with the key the removed account already holds.
+   *
+   * @intent mutating
+   */
+  public async removeMember(params: { account: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_member', argsJson: params });
+    return response as void;
   }
 
   /**
    * rename_vault
+   *
+   * Rename the vault. Editors and admins — the name lives in a guarded
+   * store, so a pending or removed member's rename is refused everywhere;
+   * concurrent renames resolve by last writer.
    *
    * @intent mutating
    */
@@ -145,23 +448,121 @@ export class MeroPassClient {
   }
 
   /**
-   * search_secrets
+   * restore_secret
+   *
+   * @intent mutating
+   */
+  public async restoreSecret(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'restore_secret', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * revoke_device
+   *
+   * Revoke a device. Your own device you may always revoke; anyone else's
+   * needs an admin. Follow with `rotate_key`.
+   *
+   * @intent mutating
+   */
+  public async revokeDevice(params: { fingerprint: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'revoke_device', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * rotate_key
+   *
+   * Make `key_id` the key new writes use. The first call bootstraps the
+   * vault; every later one is a rotation, and both are admin only.
+   *
+   * The caller must have stored wraps of the new key before calling this,
+   * or members would be told to write with a key they cannot open.
+   *
+   * @intent mutating
+   */
+  public async rotateKey(params: { key_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rotate_key', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * secret_history
+   *
+   * Superseded values of one secret, newest first.
    *
    * @intent read_only
    */
-  public async searchSecrets(params: { query: string }): Promise<SecretItem[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_secrets', argsJson: params });
-    return response as SecretItem[];
+  public async secretHistory(params: { id: string }): Promise<RevisionView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'secret_history', argsJson: params });
+    return response as RevisionView[];
+  }
+
+  /**
+   * set_default_role
+   *
+   * The role newcomers are admitted with.
+   *
+   * @intent mutating
+   */
+  public async setDefaultRole(params: { role: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_default_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_role
+   *
+   * Give `account` a role: `admin`, `editor` or `viewer`. Admin only.
+   *
+   * Writes the registry AND re-projects it onto the guarded stores, so the
+   * label and what peers enforce cannot disagree.
+   *
+   * @intent mutating
+   */
+  public async setRole(params: { account: string; role: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * trash_secret
+   *
+   * Move a secret to the trash. Recoverable until an admin purges it.
+   *
+   * @intent mutating
+   */
+  public async trashSecret(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'trash_secret', argsJson: params });
+    return response as void;
   }
 
   /**
    * update_secret
    *
+   * Change some of a secret's fields. Only what is passed is touched, so
+   * two members editing different fields concurrently both keep their edit.
+   * An empty string clears a field. Every superseded value is kept in the
+   * history, still encrypted.
+   *
+   * `rekey` marks a re-encryption under a rotated key: the plaintext did not
+   * change, so nothing is added to the history.
+   *
    * @intent mutating
    */
-  public async updateSecret(params: { secret_id: string; name: string; data: string; tags: string[] }): Promise<void> {
+  public async updateSecret(params: { id: string; name: string | null; tags: string | null; fields: Record<string, string>; rekey: boolean }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_secret', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * vault_info
+   *
+   * @intent read_only
+   */
+  public async vaultInfo(): Promise<VaultInfo> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vault_info', argsJson: {} });
+    return response as VaultInfo;
   }
 
   /**
@@ -172,6 +573,23 @@ export class MeroPassClient {
   public async vaultName(): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vault_name', argsJson: {} });
     return response as string;
+  }
+
+  /**
+   * wrapped_pairs
+   *
+   * Which `key_id:recipient` pairs already have a wrap from a member who
+   * holds a role, so a key holder only wraps what is missing.
+   *
+   * Clients also treat a device in this list as approved, so a wrap from
+   * anyone else — a pending or removed account, which never held the key,
+   * writing a garbage wrap to its own device — must not count.
+   *
+   * @intent read_only
+   */
+  public async wrappedPairs(): Promise<string[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'wrapped_pairs', argsJson: {} });
+    return response as string[];
   }
 
 }

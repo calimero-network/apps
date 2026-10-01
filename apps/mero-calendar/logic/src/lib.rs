@@ -3,13 +3,21 @@
 //! State is split in two:
 //!
 //! - **Shared events** (`#[app::state]`, synced across the context): calendar
-//!   entries owned by one member and optionally shared with peers. Reads are
-//!   gated so a member only ever sees events they own or are invited to.
+//!   entries owned by one member and optionally shared with peers. Only the
+//!   owner can edit or delete one, and every node enforces that: `events` is an
+//!   `Authored` map, so a patched node cannot rewrite someone else's event.
 //! - **Private events** (`#[app::private]`, node-local, never replicated): a
 //!   member's personal entries that never leave their own node.
 //!
+//! ⚠️ A shared event is NOT private to its owner and peers. `get_events` lists
+//! only the events the caller owns or is invited to, but that is a view filter:
+//! every shared event replicates to every member of the context, and any member
+//! can read all of them from their own node's storage. What is confidential is
+//! only what stays in `#[app::private]` storage.
+//!
 //! Members carry a human-readable `username` (last-writer-wins on a dedicated
-//! clock) so the UI can render names instead of raw public keys.
+//! clock) so the UI can render names instead of raw public keys. Each member's
+//! entry is their own `UserStorage` slot, so nobody can rename anyone else.
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -18,9 +26,13 @@ use std::cmp::Ordering;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env};
+use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{Mergeable as MergeableTrait, UnorderedMap};
+use std::collections::BTreeMap;
+
+use calimero_storage::collections::{
+    Authored, IndexValue, IndexedMap, Mergeable as MergeableTrait, UnorderedMap, UserStorage,
+};
 use thiserror::Error;
 use types::id;
 mod types;
@@ -30,6 +42,21 @@ mod types;
 // bound for 32 bytes; hex is exactly 2 per byte. `Id::SIZE_GUARD` fails the
 // build if these disagree, so this cannot drift silently.
 id::define!(pub UserId<32, 64>);
+
+/// The account a member id names.
+fn account_of(user: &UserId) -> AccountId {
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(user.as_ref());
+    AccountId::from(bytes)
+}
+
+/// An id is its bytes in an index, so `owner` and `peers` can be seeked.
+impl IndexValue for UserId {
+    fn encode_index(&self, out: &mut Vec<Vec<u8>>) {
+        let bytes: &[u8; 32] = (**self).as_ref();
+        bytes.encode_index(out);
+    }
+}
 
 #[app::event]
 pub enum Event {
@@ -79,10 +106,10 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
     }
 }
 
-/// A context member with a human-readable display name. Keyed by the base58
-/// public key (matches the identity the frontend reads from
-/// `/contexts/{id}/identities-owned`), so the UI can resolve `owner`/`peers`
-/// public keys to names.
+/// A context member with a human-readable display name, in the member's own
+/// `UserStorage` slot (keyed by ACCOUNT), so the UI can resolve `owner`/`peers`
+/// to names. `id` is filled from the slot's key on read, never trusted from
+/// the stored value.
 #[app::mergeable(id = "mero_calendar::Member")]
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -117,18 +144,26 @@ impl MergeableTrait for Member {
 
 // ── Shared event state (synced) ───────────────────────────────────────────────
 
+/// One shared event. Its real owner is the entry's owner stamp; `owner` here is
+/// only the key of the `owner` index, and a row whose field disagrees with the
+/// stamp — what a patched node would write — is dropped on read.
 #[app::mergeable(id = "mero_calendar::CalendarEventState")]
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
+#[derive(
+    Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CalendarEventState {
     title: String,
     description: String,
+    #[index]
     owner: UserId,
     start: String,
     end: String,
     event_type: String,
     color: String,
+    /// One `peers` index row per invitee.
+    #[index]
     peers: Vec<UserId>,
     created_at: u64,
     updated_at: u64,
@@ -163,10 +198,11 @@ pub struct PrivateEventState {
 
 #[app::state(emits = Event)]
 pub struct CalendarState {
-    /// Key is the event id; the value is the shared event.
-    events: UnorderedMap<String, CalendarEventState>,
-    /// Context members keyed by base58 public key → display name.
-    members: UnorderedMap<String, Member>,
+    /// Key is the event id; the value is the shared event, owned by the
+    /// account that created it. Only that account edits or deletes it.
+    events: Authored<IndexedMap<String, CalendarEventState>>,
+    /// Each member's display name, in their own slot.
+    members: UserStorage<Member>,
 }
 
 /// Node-local private state — NOT synchronised across the network. A member's
@@ -247,8 +283,8 @@ impl CalendarState {
     #[app::init]
     pub fn init() -> CalendarState {
         CalendarState {
-            events: UnorderedMap::new(),
-            members: UnorderedMap::new(),
+            events: Authored::new(),
+            members: UserStorage::new(),
         }
     }
 
@@ -303,11 +339,10 @@ impl CalendarState {
         }
 
         let member_id = Self::caller_id();
-        if self.members.contains(&member_id)? {
-            if let Some(mut existing) = self.members.get_mut(&member_id)? {
-                existing.username = username;
-                existing.username_updated_at = timestamp;
-            }
+        if let Some(mut existing) = self.members.get()? {
+            existing.username = username;
+            existing.username_updated_at = timestamp;
+            let _ = self.members.insert(existing)?;
             app::emit!(Event::MemberUsernameUpdated(member_id));
         } else {
             let member = Member {
@@ -316,7 +351,7 @@ impl CalendarState {
                 joined_at: timestamp,
                 username_updated_at: timestamp,
             };
-            self.members.insert(member_id.clone(), member)?;
+            let _ = self.members.insert(member)?;
             app::emit!(Event::MemberJoined(member_id));
         }
         Ok(())
@@ -324,7 +359,9 @@ impl CalendarState {
 
     pub fn get_members(&self) -> app::Result<Vec<Member>> {
         let mut members = Vec::new();
-        for (_, member) in self.members.entries()? {
+        for (account, mut member) in self.members.entries()? {
+            // The slot's key is the member; the stored `id` is just bytes.
+            member.id = UserId::new(*account.as_bytes()).to_string();
             members.push(member);
         }
         Ok(members)
@@ -332,20 +369,44 @@ impl CalendarState {
 
     // ── Shared events ─────────────────────────────────────────────────────────
 
+    /// The shared events the caller owns or is invited to — two seeks, on the
+    /// `owner` and `peers` indexes.
+    ///
+    /// This is a view filter, not access control: every member's node holds
+    /// every shared event. See the module docs.
     pub fn get_events(&self) -> app::Result<Vec<CalendarEvent>> {
         let caller = Self::caller();
 
-        let mut events = Vec::new();
-        for (id, event) in self.events.entries()? {
-            // Only surface events the caller owns or is invited to.
-            if event.owner != caller && !event.peers.contains(&caller) {
+        // Keyed by (id, claimed owner): keys are per owner, so two accounts'
+        // rows can share an id, and a map keyed by id alone would keep one.
+        let mut found = BTreeMap::new();
+        for (id, event) in self.events.query("owner").eq(&caller).entries()? {
+            let _ = found.insert((id, event.owner), ());
+        }
+        for (id, event) in self.events.query("peers").eq(&caller).entries()? {
+            let _ = found.insert((id, event.owner), ());
+        }
+
+        let mut events = Vec::with_capacity(found.len());
+        for ((id, owner), ()) in found {
+            // The owner is the stamp. The row shown is the claimed owner's OWN
+            // entry at the id, read by name, and only if it names them: a row
+            // claiming an owner it was not written by is a forgery, and is not
+            // shown as anyone's.
+            let Some(event) = self.events.get_by(&account_of(&owner), &id)? else {
+                continue;
+            };
+            if owner != event.owner {
+                continue;
+            }
+            if owner != caller && !event.peers.contains(&caller) {
                 continue;
             }
             events.push(CalendarEvent {
                 id,
                 title: event.title,
                 description: event.description,
-                owner: event.owner,
+                owner,
                 start: event.start,
                 end: event.end,
                 event_type: event.event_type,
@@ -421,9 +482,12 @@ impl CalendarState {
     /// making the UI report the event as private, which is worse than saying
     /// plainly that sharing is one-way.
     ///
-    /// Removing peers still does the useful part: `get_events` gates reads on
-    /// owner-or-peer, so a removed peer stops SEEING it. It just cannot unsee
-    /// what already synced.
+    /// Removing peers changes the audience, not who holds it: `get_events`
+    /// lists an event only to its owner and peers, so it drops out of a
+    /// removed peer's calendar — but that is a view filter, and every member's
+    /// node still holds the event.
+    ///
+    /// Only the owner may update it; every node refuses anyone else's edit.
     pub fn update_event(
         &mut self,
         event_id: String,
@@ -432,37 +496,32 @@ impl CalendarState {
     ) -> app::Result<String> {
         app::log!("Updating calendar event {} with {:?}", event_id, event_data);
 
-        let Some(mut event) = self.events.get_mut(&event_id)? else {
-            app::bail!(Error::NotFound(event_id));
-        };
+        self.require_owner(&event_id)?;
 
-        if event.owner != Self::caller() {
-            app::bail!(Error::Forbidden);
-        }
-
-        if let Some(data) = event_data.title {
-            event.title = data;
-        }
-        if let Some(data) = event_data.description {
-            event.description = data;
-        }
-        if let Some(data) = event_data.start {
-            event.start = data;
-        }
-        if let Some(data) = event_data.end {
-            event.end = data;
-        }
-        if let Some(data) = event_data.event_type {
-            event.event_type = data;
-        }
-        if let Some(data) = event_data.color {
-            event.color = data;
-        }
-        if let Some(data) = event_data.peers {
-            event.peers = data;
-        }
-        event.updated_at = timestamp;
-        drop(event);
+        self.events.modify(&event_id, |event| {
+            if let Some(data) = event_data.title {
+                event.title = data;
+            }
+            if let Some(data) = event_data.description {
+                event.description = data;
+            }
+            if let Some(data) = event_data.start {
+                event.start = data;
+            }
+            if let Some(data) = event_data.end {
+                event.end = data;
+            }
+            if let Some(data) = event_data.event_type {
+                event.event_type = data;
+            }
+            if let Some(data) = event_data.color {
+                event.color = data;
+            }
+            if let Some(data) = event_data.peers {
+                event.peers = data;
+            }
+            event.updated_at = timestamp;
+        })?;
 
         app::emit!(Event::CalendarEventEdited(event_id.clone()));
 
@@ -472,15 +531,7 @@ impl CalendarState {
     pub fn delete_event(&mut self, event_id: String) -> app::Result<String> {
         app::log!("Deleting calendar event {}", event_id);
 
-        let Some(event) = self.events.get(&event_id)? else {
-            app::bail!(Error::NotFound(event_id));
-        };
-
-        let owner = event.owner;
-        drop(event);
-        if owner != Self::caller() {
-            app::bail!(Error::Forbidden);
-        }
+        self.require_owner(&event_id)?;
 
         if self.events.remove(&event_id)?.is_none() {
             app::bail!(Error::NotFound(event_id));
@@ -662,6 +713,21 @@ impl CalendarState {
     }
 
     // ── Internal ────────────────────────────────────────────────────────────────
+
+    /// A readable error for what storage refuses anyway: only the owner may
+    /// change or remove an event.
+    ///
+    /// Keys are per owner, so `owned_by_me` asks whether the CALLER holds an
+    /// event at the id; `entries_at` whether anyone does.
+    fn require_owner(&self, event_id: &String) -> app::Result<()> {
+        if self.events.owned_by_me(event_id)? {
+            return Ok(());
+        }
+        if self.events.entries_at(event_id)?.is_empty() {
+            app::bail!(Error::NotFound(event_id.clone()));
+        }
+        app::bail!(Error::Forbidden)
+    }
 
     fn generate_id(&self) -> String {
         let mut buffer = [0u8; 16];
@@ -1027,5 +1093,133 @@ mod tests {
 
         app.call(|s| s.delete_private_event(pid.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_private_events()).unwrap().len(), 0);
+    }
+
+    // ── what every node enforces ─────────────────────────────────────────────
+    //
+    // These write straight into the collections, the way a patched node that
+    // skips every method check would, and assert that storage still refuses.
+
+    #[test]
+    fn another_account_cannot_rewrite_or_remove_an_event_in_storage() {
+        let mut app = new_app();
+        let id = app
+            .call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
+        // Even an invited peer: being on the guest list is not ownership.
+        assert!(app
+            .call_as_account(OTHER, OTHER_DEVICE, |s| {
+                s.events.modify(&id, |e| e.title = "Hijacked".to_owned())
+            })
+            .is_err());
+        // Keys are per owner: OTHER's key-only remove names OTHER's own entry
+        // at the id, and there is none.
+        assert!(app
+            .call_as_account(OTHER, OTHER_DEVICE, |s| s.events.remove(&id))
+            .unwrap()
+            .is_none());
+        assert!(app
+            .call_as_account(OTHER, OTHER_DEVICE, |s| s.delete_event(id.clone()))
+            .is_err());
+        let events = app.view(|s| s.get_events()).unwrap();
+        assert_eq!(events[0].title, "Standup");
+    }
+
+    /// The `owner` field is only an index key. A row a patched node writes
+    /// claiming someone else as owner is not shown as theirs.
+    #[test]
+    fn a_forged_owner_field_is_not_believed() {
+        let mut app = new_app();
+        let me = UserId::new(app.account_id());
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| {
+            s.events.insert(
+                "forged".to_owned(),
+                CalendarEventState {
+                    title: "Fake meeting".to_owned(),
+                    description: String::new(),
+                    owner: me,
+                    start: String::new(),
+                    end: String::new(),
+                    event_type: "event".to_owned(),
+                    color: String::new(),
+                    peers: vec![UserId::new(THIRD)],
+                    created_at: 1,
+                    updated_at: 1,
+                },
+            )
+        })
+        .unwrap();
+        assert!(app.view(|s| s.get_events()).unwrap().is_empty());
+        assert!(app
+            .call_as_account(THIRD, THIRD_DEVICE, |s| s.get_events())
+            .unwrap()
+            .is_empty());
+        // Nor does the field make it mine to delete: the gate is the stamp.
+        assert!(app.call(|s| s.delete_event("forged".to_owned())).is_err());
+    }
+
+    /// Keys are per owner: OTHER can file an event of their own under an id
+    /// I already hold. They are two events, each shown with its own owner,
+    /// and neither account can change the other's.
+    #[test]
+    fn one_event_id_two_owners_are_two_events() {
+        let mut app = new_app();
+        let me = UserId::new(app.account_id());
+        let id = app
+            .call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| {
+            s.events.insert(
+                id.clone(),
+                CalendarEventState {
+                    title: "Other's".to_owned(),
+                    description: String::new(),
+                    owner: UserId::new(OTHER),
+                    start: String::new(),
+                    end: String::new(),
+                    event_type: "event".to_owned(),
+                    color: String::new(),
+                    peers: vec![me],
+                    created_at: 1,
+                    updated_at: 1,
+                },
+            )
+        })
+        .unwrap();
+        let mut seen: Vec<(String, UserId)> = app
+            .view(|s| s.get_events())
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.title, e.owner))
+            .collect();
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec![
+                ("Other's".to_owned(), UserId::new(OTHER)),
+                ("Standup".to_owned(), me)
+            ]
+        );
+        // Each deletes only their own.
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| s.delete_event(id.clone()))
+            .unwrap();
+        let left = app.view(|s| s.get_events()).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].owner, me);
+    }
+
+    #[test]
+    fn nobody_can_rename_another_member() {
+        let mut app = new_app();
+        app.call(|s| s.set_username("alice".to_owned(), 1)).unwrap();
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| {
+            s.set_username("alice".to_owned(), 9)
+        })
+        .unwrap();
+        let members = app.view(|s| s.get_members()).unwrap();
+        let me = UserId::new(app.account_id()).to_string();
+        let mine = members.iter().find(|m| m.id == me).unwrap();
+        assert_eq!(mine.username_updated_at, 1, "only my own slot is mine");
+        assert_eq!(members.len(), 2);
     }
 }

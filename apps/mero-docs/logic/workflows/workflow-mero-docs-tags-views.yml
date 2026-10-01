@@ -1,0 +1,724 @@
+name: Mero Docs E2E - Tags and Saved Views
+description: >
+  The registry's workspace tags and saved views, driven by two real nodes
+  (Alice and Bob) sharing one Registry context:
+
+    set_tag / delete_tag / list_tags
+    save_view / delete_view / list_views
+
+  A tag or view written on one node is read on the other. Two nodes that
+  create the same tag key while partitioned converge to one record whose
+  colour is the later write. Deleting a tag keeps its row, marked deleted,
+  on both nodes, and a rename made on a partitioned node never revives it.
+  Every validation error is hit once, and each is shown to have written
+  nothing.
+
+force_pull_image: true
+
+# Required: without it the nodes dial the public boot node instead of each
+# other. See workflow-mero-docs-docs-lifecycle.yml.
+e2e_mode: true
+
+# Defined individually so every port is pinned: the count form lets --e2e-mode
+# allocate ports dynamically, and a later start_node reconnects on base_port.
+nodes:
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
+  tags-node-1:
+    port: 3930
+    rpc_port: 3931
+  tags-node-2:
+    port: 3932
+    rpc_port: 3933
+
+steps:
+  # =================================================================
+  # Phase A: Bootstrap - namespace, Registry context, Bob joins
+  # =================================================================
+
+  - name: Install bundle on Node 1
+    type: install_application
+    node: tags-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install bundle on Node 2
+    type: install_application
+    node: tags-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  # merobox waits for health, which is not the same as ready.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: tags-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the per-namespace Registry context
+    type: create_context
+    node: tags-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      reg_ctx: contextId
+      alice_key: memberPublicKey
+
+  # Alice's account id as the contract derives it, which is what a saved
+  # view records as its creator.
+  - name: Alice reads her account id
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: get_owner
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      alice_hex: result.output
+
+  - name: Create namespace invitation for Bob
+    type: create_namespace_invitation
+    node: tags-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for namespace gossip to reach Node 2
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: tags-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+
+  - name: Bob joins the Registry context
+    type: join_context
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Sync Registry context across nodes
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  # =================================================================
+  # Phase B: Empty state
+  # =================================================================
+
+  - name: Bob lists tags on a new workspace
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_empty: result
+
+  - name: Bob lists views on a new workspace
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_views
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      views_empty: result
+
+  - name: Assert both lists are empty
+    type: json_assert
+    statements:
+      - 'json_equal({{tags_empty}}, {"output": []})'
+      - 'json_equal({{views_empty}}, {"output": []})'
+
+  # =================================================================
+  # Phase C: Two nodes create the same tag while partitioned
+  #
+  # Each side writes while the other is stopped: a real partition, since
+  # gossip would otherwise deliver Alice's record before Bob's call.
+  # =================================================================
+
+  - name: Stop Bob's node
+    type: stop_node
+    nodes: [tags-node-2]
+
+  - name: Alice creates tag q3-plan while Bob is offline
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: q3-plan
+      name: Q3 plan
+      color: '#00aa66'
+
+  - name: Stop Alice's node
+    type: stop_node
+    nodes: [tags-node-1]
+
+  - name: Start Bob's node alone
+    type: start_node
+    nodes: [tags-node-2]
+
+  - name: Bob lists tags before writing
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_bob_offline: result
+
+  - name: Assert Bob has not seen Alice's tag
+    type: json_assert
+    statements:
+      - 'json_equal({{tags_bob_offline}}, {"output": []})'
+
+  - name: Bob creates tag q3-plan with another colour while Alice is offline
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{bob_key}}'
+    args:
+      key: q3-plan
+      name: Q3 plan
+      color: '#2266dd'
+
+  - name: Start Alice's node again
+    type: start_node
+    nodes: [tags-node-1]
+
+  - name: Wait for the nodes to find each other
+    type: wait
+    seconds: 15
+
+  - name: Sync the partitioned tag writes
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 180
+    trigger_sync: true
+
+  - name: Alice lists tags after the partition
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_q3_alice: result.output
+
+  - name: Bob lists tags after the partition
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_q3_bob: result.output
+
+  # One record, not two, and Bob's later colour wins.
+  - name: Assert both nodes hold one q3-plan record with the later colour
+    type: json_assert
+    statements:
+      - 'json_equal({{tags_q3_alice}}, [{"key": "q3-plan", "name": "Q3 plan", "color": "#2266dd", "deleted": false}])'
+      - 'json_equal({{tags_q3_bob}}, [{"key": "q3-plan", "name": "Q3 plan", "color": "#2266dd", "deleted": false}])'
+
+  # =================================================================
+  # Phase D: Create on one node, rename on the other, delete
+  # =================================================================
+
+  - name: Alice creates tag launch
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: launch
+      name: Launch
+      color: '#ff0000'
+
+  - name: Sync the new tag to Bob
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Bob lists tags
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_launch_bob: result.output
+
+  - name: Assert Bob sees Alice's tag
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_launch_bob}}, [{"key": "launch", "name": "Launch", "color": "#ff0000", "deleted": false}])'
+
+  - name: Bob renames tag launch
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{bob_key}}'
+    args:
+      key: launch
+      name: Launch v2
+      color: '#ff0000'
+
+  - name: Sync the rename to Alice
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Alice lists tags
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_renamed_alice: result.output
+
+  - name: Assert Alice sees Bob's rename
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_renamed_alice}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": false}])'
+
+  - name: Alice deletes tag launch
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: delete_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: launch
+
+  - name: Sync the delete to Bob
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Alice lists tags after the delete
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_deleted_alice: result.output
+
+  - name: Bob lists tags after the delete
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_deleted_bob: result.output
+
+  # The row stays, marked deleted, so a stale doc key is never shown again.
+  - name: Assert both nodes keep the deleted row
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_deleted_alice}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": true}])'
+      - 'json_subset({{tags_deleted_bob}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": true}])'
+
+  # =================================================================
+  # Phase E: A rename on a partitioned node races a delete
+  #
+  # Bob renames and recolours a tag Alice deleted while he was offline.
+  # The delete wins on both nodes; Bob's name and colour are kept.
+  # =================================================================
+
+  - name: Alice creates tag roadmap
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: roadmap
+      name: Roadmap
+      color: '#ffaa00'
+
+  - name: Sync tag roadmap to Bob
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Bob lists tags before the partition
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_roadmap_bob: result.output
+
+  - name: Assert Bob sees tag roadmap live
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_roadmap_bob}}, [{"key": "roadmap", "name": "Roadmap", "color": "#ffaa00", "deleted": false}])'
+
+  - name: Stop Bob's node before the delete
+    type: stop_node
+    nodes: [tags-node-2]
+
+  - name: Alice deletes tag roadmap while Bob is offline
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: delete_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: roadmap
+
+  - name: Stop Alice's node after the delete
+    type: stop_node
+    nodes: [tags-node-1]
+
+  - name: Start Bob's node alone again
+    type: start_node
+    nodes: [tags-node-2]
+
+  - name: Bob lists tags without Alice's delete
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_roadmap_bob_offline: result.output
+
+  - name: Assert Bob has not seen the delete
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_roadmap_bob_offline}}, [{"key": "roadmap", "name": "Roadmap", "color": "#ffaa00", "deleted": false}])'
+
+  - name: Bob renames and recolours tag roadmap while Alice is offline
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{bob_key}}'
+    args:
+      key: roadmap
+      name: Roadmap v2
+      color: '#8844cc'
+
+  - name: Start Alice's node after the rename
+    type: start_node
+    nodes: [tags-node-1]
+
+  - name: Wait for the nodes to find each other again
+    type: wait
+    seconds: 15
+
+  - name: Sync the racing rename and delete
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 180
+    trigger_sync: true
+
+  - name: Alice lists tags after the race
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_race_alice: result.output
+
+  - name: Bob lists tags after the race
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      tags_race_bob: result.output
+
+  - name: Assert both nodes keep roadmap deleted with Bob's name and colour
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_race_alice}}, [{"key": "roadmap", "name": "Roadmap v2", "color": "#8844cc", "deleted": true}])'
+      - 'json_subset({{tags_race_bob}}, [{"key": "roadmap", "name": "Roadmap v2", "color": "#8844cc", "deleted": true}])'
+
+  # =================================================================
+  # Phase F: Tag validation
+  #
+  # core returns an app error as a byte array, so `expected_error` cannot
+  # pin the wording; the list read after the rejections shows none landed.
+  # =================================================================
+
+  - name: Reject set_tag with an uppercase key
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: Probe
+      name: Probe
+      color: '#ff0000'
+    expected_failure: true
+
+  - name: Reject set_tag with an empty name
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: probe
+      name: '   '
+      color: '#ff0000'
+    expected_failure: true
+
+  - name: Reject set_tag with a named colour
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: probe
+      name: Probe
+      color: red
+    expected_failure: true
+
+  # Deleted keys are never reused, so set_tag must not undelete one.
+  - name: Reject set_tag on the deleted key launch
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: set_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: launch
+      name: Launch v3
+      color: '#00ff00'
+    expected_failure: true
+
+  - name: Reject delete_tag on a key never set
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: delete_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      key: ghost
+    expected_failure: true
+
+  - name: Alice lists tags after the rejections
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_tags
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      tags_after_rejects: result.output
+
+  - name: Assert no rejected tag was written
+    type: assert
+    statements:
+      - 'not_contains({{tags_after_rejects}}, probe)'
+      - 'not_contains({{tags_after_rejects}}, Probe)'
+      - 'not_contains({{tags_after_rejects}}, ghost)'
+
+  - name: Assert launch is still deleted and unchanged
+    type: json_assert
+    statements:
+      - 'json_subset({{tags_after_rejects}}, [{"key": "launch", "name": "Launch v2", "color": "#ff0000", "deleted": true}])'
+
+  # =================================================================
+  # Phase G: Saved views across nodes
+  # =================================================================
+
+  - name: Alice saves a view
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: save_view
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: v-launch
+      name: Launch docs
+      query: 'tag:launch'
+
+  - name: Sync the view to Bob
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Bob lists views
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: list_views
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      views_bob: result.output
+
+  - name: Assert Bob sees Alice's view, created by Alice
+    type: json_assert
+    statements:
+      - 'json_equal({{views_bob}}, [{"id": "v-launch", "name": "Launch docs", "query": "tag:launch", "created_by": "{{alice_hex}}"}])'
+
+  - name: Bob renames the view and changes its query
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: save_view
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: v-launch
+      name: Launch work
+      query: 'tag:launch tag:q3-plan'
+
+  - name: Sync Bob's edit to Alice
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Alice lists views
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_views
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      views_alice: result.output
+
+  # Bob's save changes the name and query but never the creator.
+  - name: Assert Alice sees Bob's edit and is still the creator
+    type: json_assert
+    statements:
+      - 'json_equal({{views_alice}}, [{"id": "v-launch", "name": "Launch work", "query": "tag:launch tag:q3-plan", "created_by": "{{alice_hex}}"}])'
+
+  - name: Bob deletes the view
+    type: call
+    node: tags-node-2
+    context_id: '{{reg_ctx}}'
+    method: delete_view
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: v-launch
+
+  - name: Sync the view delete to Alice
+    type: wait_for_sync
+    nodes: [tags-node-1, tags-node-2]
+    context_id: '{{reg_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Alice lists views after the delete
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_views
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      views_deleted_alice: result
+
+  - name: Assert the view is gone on Alice's node
+    type: json_assert
+    statements:
+      - 'json_equal({{views_deleted_alice}}, {"output": []})'
+
+  # =================================================================
+  # Phase H: View validation
+  # =================================================================
+
+  - name: Reject save_view with a space in the id
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: save_view
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: probe view
+      name: Probe
+      query: ''
+    expected_failure: true
+
+  - name: Reject save_view with an empty name
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: save_view
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: probe-view
+      name: '   '
+      query: ''
+    expected_failure: true
+
+  - name: Reject save_view with a query over 1000 characters
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: save_view
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: probe-view
+      name: Probe
+      query: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    expected_failure: true
+
+  - name: Reject delete_view on an unknown id
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: delete_view
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: v-launch
+    expected_failure: true
+
+  - name: Alice lists views after the rejections
+    type: call
+    node: tags-node-1
+    context_id: '{{reg_ctx}}'
+    method: list_views
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      views_after_rejects: result
+
+  - name: Assert no rejected view was written
+    type: json_assert
+    statements:
+      - 'json_equal({{views_after_rejects}}, {"output": []})'
+
+# Leave nodes up for the CI log-watcher, as the other scenarios do.
+stop_all_nodes: false

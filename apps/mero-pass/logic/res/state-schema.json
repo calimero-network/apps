@@ -3,13 +3,8 @@
   "types": {
     "AuditLogEntry": {
       "kind": "record",
+      "doc": "One line of the activity trail. Who wrote it is the slot's owner stamp,\nnot a field: an author can claim anything in their own entry.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "action",
           "type": {
@@ -17,19 +12,96 @@
           }
         },
         {
-          "name": "details",
+          "name": "target",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The object acted on: a secret id, an account, a device fingerprint.\nNever a secret's name — names are ciphertext, and a trail that echoed\nthem in the clear would undo the encryption."
         },
         {
-          "name": "user_public_key",
+          "name": "device",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The author's node device, as the author's node reported it."
         },
         {
           "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DeviceKey": {
+      "kind": "record",
+      "doc": "A device public key the vault key may be wrapped to.\n\nStored in an [`AuthoredMap`], so only the account that registered it can\nremove it. Its account is the entry's owner stamp, which every node\nverifies — never a field in the value, which a modified node could fill\nwith anyone's account to be handed the vault key in their name.\n\nKeys are per owner (core rc.57): two accounts registering one fingerprint\nhold two entries, each read with its own account (`entries_with_owners`).\nA key-only `owner_of` would only ever name the caller.",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Base64 of the raw (uncompressed) P-256 ECDH public key."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`browser` for a browser's device key; `recovery` for an account's\noffline recovery key, whose private half exists only on paper."
+        },
+        {
+          "name": "node_device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "KeyWrap": {
+      "kind": "record",
+      "doc": "The vault key, wrapped to one device key by one wrapper.\n\nKeyed by `recipient:key_id:nonce` in an authored map: the random nonce\nmeans nobody can occupy the key a genuine wrap will be written under, and the owner stamp says who wrapped\nit. A forged wrap is detectable anyway — the recipient checks that the\nunwrapped key hashes to `key_id` — but it must not be able to displace a\ngenuine one, nor make a device look approved (see `wrapped_pairs`).",
+      "fields": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "ECIES envelope: ephemeral public key, IV and ciphertext, base64 JSON."
+        },
+        {
+          "name": "wrapped_at",
           "type": {
             "kind": "u64"
           }
@@ -44,6 +116,259 @@
           "type": {
             "kind": "record",
             "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The vault's human name as created, readable by every member on every\nnode. The frontend also writes it to the subgroup's metadata, for\nmembers who have not entered the vault yet; this copy (or a rename in\n`settings`) is the authoritative one."
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "secrets",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Secret"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Revision"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "`secret_id/rev_id` → superseded value, so a secret's history is one\nprefix read."
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Admin-only settings: `default_role`, `current_key`, `revoked:<fp>`."
+        },
+        {
+          "name": "settings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Editor-writable settings: the vault's name after a rename."
+        },
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DeviceKey"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Device fingerprint → public key. Any member may register their own."
+        },
+        {
+          "name": "key_wraps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "KeyWrap"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`recipient:key_id:nonce` → wrapped vault key."
+        },
+        {
+          "name": "audit",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AuditLogEntry"
+            },
+            "crdt_type": "authored_vector"
+          },
+          "doc": "Append-only. Entries can be blanked only by their own author, and a\nblanked slot stays visible as a redaction."
+        }
+      ]
+    },
+    "Revision": {
+      "kind": "record",
+      "doc": "A superseded field value. Written once, never edited.",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The field that changed; `name` and `tags` use those reserved names."
+        },
+        {
+          "name": "previous",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The value it held before, still encrypted (under whichever vault key it\nwas written with — the envelope names its key)."
+        },
+        {
+          "name": "replaced_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replaced_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Secret": {
+      "kind": "record",
+      "doc": "One secret, as independent registers rather than one record.\n\nField-level registers are the point: Alice fixing the URL while Bob rotates\nthe password are writes to two different registers, so BOTH survive the\nmerge. A single last-writer-wins record would keep one edit and silently\ndiscard the other. Within one field, last writer wins by HLC — there is no\nmeaningful way to merge two different passwords.",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Cleartext kind — `login`, `totp`, … — so the UI can pick an icon."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Encrypted display name."
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Encrypted tag list (one envelope over a JSON array)."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Field name (`password`, `url`, …) → encrypted value."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "string"
@@ -51,91 +376,48 @@
           }
         },
         {
-          "name": "secrets",
+          "name": "updated_at",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "SecretItem"
-            },
-            "crdt_type": "unordered_map"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         },
         {
-          "name": "audit_logs",
+          "name": "updated_by",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "AuditLogEntry"
-            },
-            "crdt_type": "unordered_map"
-          }
-        }
-      ]
-    },
-    "SecretItem": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "secret_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tags",
-          "type": {
-            "kind": "list",
-            "items": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
               "kind": "string"
             }
           }
         },
         {
-          "name": "created_at",
+          "name": "trashed",
           "type": {
-            "kind": "u64"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "doc": "Tombstone. Trashing is a flag rather than a `remove`, because the map is\nadd-wins: a hard remove loses to a concurrent edit and the secret comes\nback. The flag resolves edit-vs-trash by HLC instead."
         },
         {
-          "name": "updated_at",
+          "name": "trashed_at",
           "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "version",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         }
       ]

@@ -41,5 +41,9 @@
 # 0.6.75 declares `calimero-client-py>=0.7.0`, so 0.6.75 + 0.6.36 is an
 # unsatisfied requirement pip will resolve away from under the pin. Verified
 # against PyPI metadata, not release dates.
-merobox==0.6.75
-calimero-client-py==0.7.0
+# ⚠️ 0.6.76 + 0.7.1 is the pair REQUIRED once a workflow uses the account_pair
+# fields `account_namespace` / `await_self`: 0.6.75 rejects them in workflow
+# validation. merobox 0.6.76 declares `calimero-client-py>=0.7.1`, so they move
+# TOGETHER. Verified against PyPI metadata.
+merobox==0.6.76
+calimero-client-py==0.7.1

@@ -3,7 +3,6 @@ import {
   APP_SLUG,
   INVITATION_PARAM,
   JOIN_ACTION,
-  LEGACY_INVITE_PARAM,
   invitationDeepLink,
   invitationFromRaw,
   invitationUrl,
@@ -106,14 +105,6 @@ describe('invitationFromRaw', () => {
     ).toBe(CODE);
   });
 
-  it('still reads a hand-rolled ?invite= link', () => {
-    expect(
-      invitationFromRaw(
-        `https://mero-sheets.vercel.app/?${LEGACY_INVITE_PARAM}=${CODE}`,
-      ),
-    ).toBe(CODE);
-  });
-
   it('REFUSES another app’s invitation', () => {
     // Not ours to redeem. Accepting it would push a mero-chat invitation into
     // this app's join flow, to fail somewhere much less obvious.
@@ -153,13 +144,10 @@ describe('invitationFromRaw', () => {
 });
 
 describe('urlWithoutInvitation', () => {
-  it('removes both the current and the legacy parameter', () => {
+  it('removes the invitation parameter', () => {
     expect(urlWithoutInvitation(`https://x.dev/?${INVITATION_PARAM}=${CODE}`)).toBe(
       'https://x.dev/',
     );
-    expect(
-      urlWithoutInvitation(`https://x.dev/?${LEGACY_INVITE_PARAM}=${CODE}`),
-    ).toBe('https://x.dev/');
   });
 
   it('keeps the other parameters', () => {

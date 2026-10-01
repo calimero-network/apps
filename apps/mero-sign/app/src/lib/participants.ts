@@ -44,7 +44,7 @@ export function shortId(value: string): string {
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
-/** Rank, matching `PermissionCell::rank` in the contract. Admin > Sign > Read. */
+/** Rank, matching `rank` in the contract. Admin > Sign > Read. */
 export function rankOf(level: PermissionLevel): number {
   switch (level) {
     case PermissionLevel.Admin:
@@ -65,22 +65,17 @@ export const LEVEL_DESCRIPTIONS: Record<PermissionLevel, string> = {
 };
 
 /**
- * The levels an admin may move someone UP to.
- *
- * Only upward: `set_participant_permission` refuses a demotion, because
- * `PermissionCell` merges by taking the higher rank, so a lowered level is
- * discarded the moment it meets a replica that still holds the old one. A
- * "Demote" button would look like it withdrew authority and would not have.
- * Withdrawing authority converges only through removal.
+ * The levels an admin may move someone to: every level but their current one,
+ * lowest first. Levels are `AccessControl` grants in the contract, which merge
+ * last-writer-wins, so a demotion reaches every node like a promotion. The
+ * contract refuses to demote the last admin.
  */
-export function promotionsFor(current: PermissionLevel): PermissionLevel[] {
-  const rank = rankOf(current);
-  return [PermissionLevel.Sign, PermissionLevel.Admin].filter(
-    (level) => rankOf(level) > rank,
+export function levelChangesFor(current: PermissionLevel): PermissionLevel[] {
+  return [PermissionLevel.Read, PermissionLevel.Sign, PermissionLevel.Admin].filter(
+    (level) => level !== current,
   );
 }
 
-/** Why a demotion is not offered, in words a user can act on. */
 /**
  * The levels an invitation may seat somebody at.
  *
@@ -88,11 +83,7 @@ export function promotionsFor(current: PermissionLevel): PermissionLevel[] {
  * tab once they are in, not something to hand out in the same breath as an
  * invitation.
  *
- * ⚠️ The choice is effectively PERMANENT in the raising direction only — a
- * level can be promoted later but never lowered, because permissions merge by
- * taking the higher rank and a demotion would be discarded on every other node
- * (see `DEMOTION_UNAVAILABLE`). Inviting somebody as a signer cannot be undone
- * except by removing them.
+ * An admin can change the level later, up or down, from the People tab.
  */
 export const INVITABLE_LEVELS: PermissionLevel[] = [
   PermissionLevel.Sign,
@@ -105,11 +96,6 @@ export const INVITE_LEVEL_LABELS: Record<PermissionLevel, string> = {
   [PermissionLevel.Sign]: 'Signer — their signature is required',
   [PermissionLevel.Admin]: 'Admin',
 };
-
-export const DEMOTION_UNAVAILABLE =
-  'Permissions can be raised but not lowered: they merge by taking the higher level, ' +
-  'so a downgrade would apply on your node and nowhere else. Remove the person instead — ' +
-  'removals do reach every node.';
 
 export interface RosterEntry {
   /** The participant's ACCOUNT id, hex. */

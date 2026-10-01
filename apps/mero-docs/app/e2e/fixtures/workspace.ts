@@ -1,0 +1,1045 @@
+// WorkspaceDriver - Page Object wrapping the mero-docs workspace
+// UI surface for e2e tests.
+//
+// The driver gives specs a vocabulary that reads like a user story:
+//   await alice.createNamespace('Project Phoenix');
+//   await alice.createFolder({ name: 'Specs', visibility: 'Open' });
+//   await alice.tree.openFolder('Specs');
+//   await alice.createDoc('Sync Test');
+//
+// rather than bleeding raw locators into every spec. When the UI
+// changes, this file is the single place that needs updating.
+//
+// Convention: every method awaits the post-action settle state before
+// returning, so the next call in a sequence doesn't race the UI.
+
+import type { Page, Locator } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+const FILLER_LINES = 30; // enough text around "Milestones" that it needs a scroll and can reach the top
+export const SECTION_PARAGRAPH =
+  'Pricing follows the model in Pricing notes, and the story lives in the blog'; // longer than a section name
+export const SECTIONS_LAST_LINE = `Closing line ${FILLER_LINES}`; // writeSections' final line, a peer's sync barrier
+const SEARCH_FIELD = 'Search docs, folders and tags'; // the top-bar field's accessible name
+const FOLDER_SYNC_MS = 60_000; // a member who just joined waits for the folder list to sync
+
+export type Visibility = 'Open' | 'Restricted';
+
+export interface CreateFolderOptions {
+  name: string;
+  visibility: Visibility;
+  parent?: string;
+}
+
+interface DriverOptions {
+  label?: string;
+}
+
+export class WorkspaceDriver {
+  readonly page: Page;
+  readonly label: string;
+  readonly tree: FolderTreeDriver;
+  readonly restrictedCard: RestrictedCardDriver;
+  readonly sharing: SharingDriver;
+  readonly docs: DocListDriver;
+  readonly home: HomeDriver;
+  readonly editor: EditorDriver;
+  readonly tags: DocTagsDriver;
+  readonly details: DetailsDriver;
+  readonly settings: SettingsDriver;
+  readonly palette: SearchPaletteDriver;
+
+  constructor(page: Page, opts: DriverOptions = {}) {
+    this.page = page;
+    this.label = opts.label ?? 'user';
+    this.tree = new FolderTreeDriver(page);
+    this.restrictedCard = new RestrictedCardDriver(page);
+    this.sharing = new SharingDriver(page);
+    this.docs = new DocListDriver(page);
+    this.home = new HomeDriver(page);
+    this.editor = new EditorDriver(page);
+    this.tags = new DocTagsDriver(page);
+    this.details = new DetailsDriver(page);
+    this.settings = new SettingsDriver(page);
+    this.palette = new SearchPaletteDriver(page);
+  }
+
+  async goToWorkspace(): Promise<void> {
+    await this.page.goto('/app');
+    // Wait for either the top bar (workspace shell) or a redirect to
+    // landing/login. The Settings button only renders when a
+    // namespace is selected; the NamespaceSwitcher trigger renders as
+    // soon as the shell mounts.
+    await expect(this.page.getByTestId('workspace-switcher')).toBeVisible({
+      timeout: 30_000,
+    });
+  }
+
+  // Private: performs the dialog steps only (no gate dismiss).
+  private async createNamespaceRaw(name: string): Promise<void> {
+    await this.page.getByTestId('workspace-switcher').click();
+    await this.page.getByRole('menuitem', { name: /New workspace/i }).click();
+    // Scope to the creation dialog specifically (the one holding the
+    // "Workspace name" input). The instant Create succeeds, the
+    // DisplayNameGate - also role="dialog" - appears, so an unscoped
+    // getByRole('dialog') matches TWO elements and the toBeHidden below
+    // hits a strict-mode violation. Filtering by the input it contains
+    // pins this to the creation dialog, which has no name input once it
+    // closes (so toBeHidden resolves while the gate is up).
+    const dialog = this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByPlaceholder(/Workspace name/i) });
+    await dialog.getByPlaceholder(/Workspace name/i).fill(name);
+    await dialog.getByRole('button', { name: /^Create$/ }).click();
+    // Creation dialog closes (the name gate may now be showing).
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await expect(this.page.getByTestId('workspace-switcher')).toContainText(
+      name,
+      { timeout: 15_000 },
+    );
+  }
+
+  // Dismiss the required display-name gate by setting a name. The gate
+  // blocks the sidebar + main pane after create/join until a name is set.
+  async dismissNameGate(displayName = this.label): Promise<void> {
+    const gate = this.page.getByRole('dialog', { name: /Set your name/i });
+    await expect(gate).toBeVisible({ timeout: 20_000 });
+    await gate.getByPlaceholder('Your display name').fill(displayName);
+    await gate.getByRole('button', { name: /^Continue$/ }).click();
+    await expect(gate).toBeHidden({ timeout: 20_000 });
+  }
+
+  // Dismiss the gate if it is needed. The gate decides only once the workspace
+  // list includes this workspace and the name read has answered, so wait for
+  // that decision (the gate, or its settled marker) rather than a fixed time.
+  async dismissNameGateIfPresent(displayName = this.label): Promise<void> {
+    const gate = this.page.getByRole('dialog', { name: /Set your name/i });
+    const settled = this.page.getByTestId('name-gate-settled');
+    await expect(gate.or(settled)).toBeAttached({ timeout: 60_000 });
+    if ((await settled.count()) > 0) return;
+    await expect(gate).toBeVisible({ timeout: 10_000 });
+    await gate.getByPlaceholder('Your display name').fill(displayName);
+    await gate.getByRole('button', { name: /^Continue$/ }).click();
+    await expect(gate).toBeHidden({ timeout: 20_000 });
+  }
+
+  async createNamespace(name: string): Promise<void> {
+    await this.createNamespaceRaw(name);
+    await this.dismissNameGate();
+  }
+
+  // Like createNamespace but does NOT dismiss the gate - used by the
+  // gate spec to assert the gate is blocking.
+  async createNamespaceKeepGate(name: string): Promise<void> {
+    await this.createNamespaceRaw(name);
+  }
+
+  // Selects a namespace from the top-bar switcher by its visible name -
+  // switching by id is brittle since ids are minted at runtime.
+  async switchNamespace(name: string): Promise<void> {
+    await this.page.getByTestId('workspace-switcher').click();
+    await this.page
+      .getByRole('menuitemradio')
+      .filter({ has: this.page.getByText(name, { exact: true }) })
+      .click();
+  }
+
+  // Open the invite like the deep-link landing does, accept, land on
+  // /app. Invite URLs are links.calimero.network deep links; the landing
+  // forwards the full query string to the frontend ROOT, where
+  // InviteRedirect funnels it to /join. We reproduce that hand-off
+  // against the local dev server (auth tokens are already injected, so
+  // the page renders the accept CTA directly, no ConnectButton detour).
+  async joinNamespace(inviteUrl: string): Promise<void> {
+    await this.joinNamespaceKeepGate(inviteUrl);
+    await this.dismissNameGateIfPresent();
+  }
+
+  // Like joinNamespace but leaves the name gate up, so a spec can name the
+  // joiner only after peers have already seen them.
+  async joinNamespaceKeepGate(inviteUrl: string): Promise<void> {
+    const parsed = new URL(inviteUrl, 'http://placeholder');
+    await this.page.goto(`/${parsed.search}`);
+    await this.page.getByRole('button', { name: /Accept & join/i }).click();
+    await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
+  }
+
+  // Opens the namespace settings pane.
+  async openSettings(): Promise<void> {
+    await this.page
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    await expect(this.page.getByText(/Your display name/i).first()).toBeVisible(
+      { timeout: 10_000 },
+    );
+  }
+
+  async closeSettings(): Promise<void> {
+    // Settings button is a toggle; clicking again collapses.
+    await this.page
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+  }
+
+  async logout(): Promise<void> {
+    await this.page
+      .getByRole('button', { name: 'Log out', exact: true })
+      .click();
+  }
+
+  // ─── folder creation ───────────────────────────────────────────
+
+  async createFolder(opts: CreateFolderOptions): Promise<void> {
+    if (opts.parent) {
+      // Nested: open parent's "Folder actions" menu and click
+      // "New subfolder". Dialog shape is identical to the
+      // tree-level create.
+      await this.tree.openContextMenu(opts.parent);
+      await this.page.getByRole('menuitem', { name: /New subfolder/i }).click();
+    } else {
+      // Scoped to the FolderTree's <aside>: its header "New", or
+      // "New folder" while the workspace has no folders yet.
+      await this.page
+        .locator('aside')
+        .getByRole('button', { name: /^New( folder)?$/ })
+        .click();
+    }
+    const dialog = this.page.getByRole('dialog');
+    await dialog.getByPlaceholder(/Folder name/i).fill(opts.name);
+    // NewFolderDialog renders visibility as a pair of toggle
+    // BUTTONS, not radios. "Open" is pressed by default; only
+    // click when the caller asked for Restricted.
+    if (opts.visibility === 'Restricted') {
+      await dialog.getByRole('button', { name: /^Restricted/i }).click();
+    }
+    await dialog.getByRole('button', { name: /^Create$/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await this.tree.expectFolderVisible(opts.name);
+  }
+
+  async renameFolder(currentName: string, newName: string): Promise<void> {
+    await this.tree.openContextMenu(currentName);
+    await this.page.getByRole('menuitem', { name: /Rename/i }).click();
+    // FolderTreeItem renders the inline rename input as a plain
+    // <input> with no explicit `type` attribute (defaults to text
+    // per the HTML spec, but `input[type="text"]` CSS selector
+    // requires the literal attribute). The autoFocus + the fact it
+    // appears inside an <aside> li are stable signals.
+    const input = this.page.locator('aside li input:focus').first();
+    await input.fill(newName);
+    await input.press('Enter');
+    await this.tree.expectFolderVisible(newName);
+  }
+
+  async deleteFolder(name: string): Promise<void> {
+    await this.tree.openContextMenu(name);
+    await this.page.getByRole('menuitem', { name: /Delete/i }).click();
+    const confirm = this.page.getByRole('dialog');
+    await confirm.getByRole('button', { name: /Delete|Confirm/i }).click();
+    await expect(confirm).toBeHidden({ timeout: 15_000 });
+    await this.tree.expectFolderHidden(name);
+  }
+
+  // Opens the Info modal for a folder via the ⋯ context menu.
+  async openFolderInfo(folderName: string): Promise<void> {
+    await this.tree.openContextMenu(folderName);
+    await this.page.getByRole('menuitem', { name: /^Info$/ }).click();
+    await expect(
+      this.page.getByRole('dialog', { name: folderName }),
+    ).toBeVisible({ timeout: 15_000 });
+  }
+
+  async closeFolderInfo(): Promise<void> {
+    // Close button inside the Info dialog.
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^Close$/ })
+      .click();
+  }
+
+  async toggleVisibility(folderName: string): Promise<void> {
+    await this.openFolderInfo(folderName);
+    // FolderVisibilityToggle renders a button: "Make restricted" (Open→) or "Make open" (Restricted→).
+    const toggle = this.page
+      .getByRole('dialog', { name: folderName })
+      .getByRole('button', { name: /Make (open|restricted)/i });
+    const restricting = /restricted/i.test((await toggle.textContent()) ?? '');
+    await toggle.click();
+    if (restricting) {
+      // Restricting revokes inherited access, so the app asks first.
+      const confirm = this.page.getByRole('dialog', {
+        name: 'Make this folder restricted?',
+      });
+      await confirm.getByRole('button', { name: 'Make restricted' }).click();
+      await expect(confirm).toBeHidden({ timeout: 15_000 });
+    }
+    await this.closeFolderInfo();
+  }
+
+  // ─── docs ──────────────────────────────────────────────────────
+
+  async createDoc(title: string): Promise<void> {
+    // The list's "New document" button creates a doc named "Untitled" and
+    // opens the editor immediately - there's no create-dialog with a
+    // title input. To get a named doc we click New document, wait for the
+    // editor to mount, rename via the EditorHeader's editable title,
+    // close the editor, and assert the row.
+    //
+    // Scope New document to <main> so we don't match the FolderTree's "New"
+    // (aside) button.
+    await this.page
+      .locator('main')
+      .getByRole('button', { name: /^New document$/ })
+      .click();
+    await this.editor.expectMounted();
+    await this.editor.renameTitle(title);
+    await this.editor.close();
+    await this.docs.expectDocVisible(title);
+  }
+
+  async openDoc(title: string): Promise<void> {
+    await this.docs.clickDoc(title);
+    // The doc open before stays mounted until the route moves, so wait for the move.
+    await expect(this.docs.docRow(title).first()).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await this.editor.expectMounted();
+  }
+
+  // ─── namespace settings helpers ────────────────────────────────
+
+  async setMyDisplayName(name: string): Promise<void> {
+    await this.openSettings();
+    await this.settings.setMyDisplayName(name);
+    await this.closeSettings();
+  }
+}
+
+// ─── sub-drivers ────────────────────────────────────────────────
+
+export class FolderTreeDriver {
+  constructor(private page: Page) {}
+
+  // Every folder row; a Views or Tags row has no Folder actions button.
+  folderRows(): Locator {
+    return this.page.locator('aside li > div').filter({
+      has: this.page.getByRole('button', { name: 'Folder actions' }),
+    });
+  }
+
+  folderRow(name: string): Locator {
+    // Target the row <div> (direct child of <li>), not the <li> itself.
+    // When a folder is expanded, the <li>'s textContent accumulates all
+    // descendant doc/subfolder names - the anchored regex would no longer
+    // match. The row <div> holds only the chevron, icon, name button, and
+    // actions button, so its textContent stays stable regardless of
+    // expansion state.
+    return this.page
+      .locator('aside li > div')
+      .filter({ hasText: new RegExp(`^\\s*${escapeRegex(name)}\\s*$`, 'i') });
+  }
+
+  async expectFolderVisible(name: string, opts: { timeout?: number } = {}) {
+    await expect(this.folderRow(name).first()).toBeVisible({
+      timeout: opts.timeout ?? 30_000,
+    });
+  }
+
+  async expectFolderHidden(name: string, opts: { timeout?: number } = {}) {
+    await expect(this.folderRow(name).first()).toBeHidden({
+      timeout: opts.timeout ?? 15_000,
+    });
+  }
+
+  // Asserts the exact folder rows the rail renders, in order.
+  async expectFolderList(names: string[], opts: { timeout?: number } = {}) {
+    await expect(this.folderRows()).toHaveText(names, {
+      timeout: opts.timeout ?? 15_000,
+    });
+  }
+
+  // Expand a folder so its document leaves render. Selecting (clicking the
+  // row) does NOT expand - expansion is the chevron. No-op if already expanded.
+  async expandFolder(name: string): Promise<void> {
+    const row = this.folderRow(name).first();
+    const expandBtn = row.getByRole('button', { name: 'Expand' });
+    if (await expandBtn.count()) {
+      await expandBtn.click();
+    }
+  }
+
+  // Select a folder AND ensure it is expanded so its doc leaves render.
+  async openFolder(name: string): Promise<void> {
+    const row = this.folderRow(name).first();
+    await expect(row).toBeVisible({ timeout: FOLDER_SYNC_MS });
+    await row.click(); // select → the folder's list in <main>
+    await this.expandFolder(name); // expand → doc leaves in sidebar
+  }
+
+  async openContextMenu(name: string): Promise<void> {
+    // FolderTreeItem renders a 3-dot "Folder actions" button on the
+    // row; clicking it opens the radix DropdownMenu. (Right-click is
+    // NOT bound - the row uses the dropdown trigger pattern, not a
+    // native context menu.)
+    //
+    // FolderVisibilityToggle gates its menuitem on `current !==
+    // undefined`, and `current` is loaded asynchronously by the
+    // parent's per-folder getGroupInfo fetch. If we open the menu
+    // before that resolves the menuitem just isn't rendered (the
+    // menu is a snapshot at open time). So wait for the trigger
+    // button to be ready AND give the menu a brief settle window
+    // - `openFolder` having been called should already have queued
+    // the visibility fetch, this is the courtesy poll.
+    const trigger = this.folderRow(name)
+      .first()
+      .getByRole('button', { name: /Folder actions/i });
+    await expect(trigger).toBeVisible({ timeout: 30_000 });
+    await trigger.click();
+  }
+
+  // Creates an Untitled doc in `name` from the sidebar: the row's hover "+" or the ⋯ menu.
+  async newDocument(name: string, via: 'row' | 'menu'): Promise<void> {
+    if (via === 'menu') {
+      await this.openContextMenu(name);
+      await this.page.getByRole('menuitem', { name: /New document/i }).click();
+      return;
+    }
+    const row = this.folderRow(name).first();
+    await row.hover();
+    await row.getByRole('button', { name: 'New document' }).click();
+  }
+}
+
+export class RestrictedCardDriver {
+  constructor(private page: Page) {}
+
+  async expectAskAdmin(opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.getByRole('heading', { name: /This folder is restricted/i }),
+    ).toBeVisible({ timeout: opts.timeout ?? 30_000 });
+  }
+
+  async expectSyncing(opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.getByRole('heading', { name: /Workspace is still syncing/i }),
+    ).toBeVisible({ timeout: opts.timeout ?? 30_000 });
+  }
+
+  async expectJoinCTA(opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.getByRole('heading', { name: /Join this open folder/i }),
+    ).toBeVisible({ timeout: opts.timeout ?? 30_000 });
+  }
+
+  // Core auto-follow usually joins an inherited Open folder before this card can
+  // render, so click Join only when the card is up, then wait for the folder view.
+  async joinIfPrompted(
+    folderName: string,
+    opts: { timeout?: number } = {},
+  ): Promise<void> {
+    const main = this.page.getByRole('main');
+    // The folder's own list is headed by its name; the card and waits never use h1.
+    const folderView = main.getByRole('heading', {
+      level: 1,
+      name: folderName,
+    });
+    const join = main.getByRole('button', {
+      name: /^(Join folder|Try joining)$/,
+    });
+    const timeout = opts.timeout ?? 60_000;
+    await expect(folderView.or(join)).toBeVisible({ timeout });
+    if (await join.isVisible()) await join.click();
+    await expect(folderView).toBeVisible({ timeout });
+  }
+}
+
+export class SharingDriver {
+  constructor(private page: Page) {}
+
+  // Picks a namespace member by display name in the folder's member picker.
+  async addMember(name: string): Promise<void> {
+    await this.page.getByRole('combobox', { name: /member ID/i }).fill(name);
+    // Scoped to the picker's listbox so no other option on the page can match.
+    await this.page
+      .getByRole('listbox')
+      .getByRole('option', { name: new RegExp(escapeRegex(name), 'i') })
+      .click();
+    await this.page.getByRole('button', { name: /^Add$/ }).click();
+    await expect(this.page.getByText(/^Selected:/)).toBeHidden({
+      timeout: 15_000,
+    });
+  }
+
+  async removeMember(label: string): Promise<void> {
+    const remove = this.page.getByRole('button', {
+      name: new RegExp(`Remove\\s+${escapeRegex(label)}`, 'i'),
+    });
+    await remove.click();
+    const confirm = this.page.getByRole('dialog', { name: 'Remove member?' });
+    await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(confirm).toBeHidden({ timeout: 15_000 });
+    await expect(remove).toHaveCount(0, { timeout: 30_000 });
+  }
+
+  roleSelect(name: string): Locator {
+    return this.page.getByRole('combobox', { name: `Role for ${name}` });
+  }
+
+  // `role` is the option's label as shown, e.g. 'Read only'.
+  async setMemberRole(name: string, role: string): Promise<void> {
+    await this.roleSelect(name).selectOption({ label: role });
+    const confirm = this.page.getByRole('dialog', {
+      name: /^Change .*role to/,
+    });
+    await confirm
+      .getByRole('button', { name: 'Change role', exact: true })
+      .click();
+    await expect(confirm).toBeHidden({ timeout: 15_000 });
+    await expect(this.roleSelect(name).locator('option:checked')).toHaveText(
+      role,
+      {
+        timeout: 30_000,
+      },
+    );
+  }
+
+  async expectMemberVisible(label: string, opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.locator('li').filter({ hasText: label }).first(),
+    ).toBeVisible({ timeout: opts.timeout ?? 30_000 });
+  }
+
+  // Returns the link-invite token via the "Invite to this folder
+  // only" dialog. Uses the navigator.clipboard.readText shim from
+  // tests (Playwright grants clipboard-read by default in Chromium).
+  async copyFolderInvite(): Promise<string> {
+    await this.page
+      .getByRole('button', { name: /Invite to this folder only/i })
+      .click();
+    const dialog = this.page.getByRole('dialog', { name: /Invite to folder/i });
+    await dialog.getByRole('button', { name: /Copy/i }).click();
+    const token = await this.page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    await dialog.getByRole('button', { name: /Close|Done/i }).click();
+    return token;
+  }
+}
+
+export class DocListDriver {
+  constructor(private page: Page) {}
+
+  docRow(title: string): Locator {
+    return this.page
+      .locator('aside li button')
+      .filter({ hasText: new RegExp(`^${escapeRegex(title)}$`) });
+  }
+
+  async expectDocVisible(title: string, opts: { timeout?: number } = {}) {
+    await expect(this.docRow(title).first()).toBeVisible({
+      timeout: opts.timeout ?? 30_000,
+    });
+  }
+
+  async expectDocHidden(title: string, opts: { timeout?: number } = {}) {
+    await expect(this.docRow(title).first()).toBeHidden({
+      timeout: opts.timeout ?? 15_000,
+    });
+  }
+
+  async clickDoc(title: string): Promise<void> {
+    await this.docRow(title).first().click();
+  }
+}
+
+// Home: every readable doc, as the main pane's list of row links.
+export class HomeDriver {
+  constructor(private page: Page) {}
+
+  // The sidebar's Home row is named "Home, <count>".
+  navRow(): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: /^Home, \d+$/ });
+  }
+
+  // The sidebar's Mentions row is named "Mentions", then ", <count>" once every doc is read.
+  mentionsRow(): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('button', { name: /^Mentions(, \d+)?$/ });
+  }
+
+  async open(): Promise<void> {
+    await this.navRow().click();
+    await expect(
+      this.page
+        .getByRole('main')
+        .getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeVisible({ timeout: 15_000 });
+  }
+
+  row(title: string): Locator {
+    return this.page
+      .getByRole('main')
+      .getByRole('link', { name: title, exact: true });
+  }
+
+  async expectTitles(titles: string[], opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.getByRole('main').getByTestId('doc-title'),
+    ).toHaveText(titles, { timeout: opts.timeout ?? 30_000 });
+  }
+
+  // A view and a tag can share a name, so rows are found within their sidebar section.
+  private section(name: 'Views' | 'Tags'): Locator {
+    return this.page
+      .locator('aside')
+      .getByRole('region', { name, exact: true });
+  }
+
+  // A sidebar tag row is named "<tag>, <count>".
+  tagRow(name: string): Locator {
+    return this.section('Tags').getByRole('button', {
+      name: new RegExp(`^${escapeRegex(name)}, \\d+$`),
+    });
+  }
+
+  heading(): Locator {
+    return this.page.getByRole('main').getByRole('heading', { level: 1 });
+  }
+
+  // Exact, since each active chip also has a "Clear <label>" button.
+  chip(name: string): Locator {
+    return this.page
+      .getByRole('main')
+      .getByRole('button', { name, exact: true });
+  }
+
+  // A sidebar view row is named "<name>, <count>" or "<name>, shared with everyone, <count>".
+  viewRow(name: string): Locator {
+    return this.section('Views').getByRole('button', {
+      name: new RegExp(`^${escapeRegex(name)},`),
+    });
+  }
+
+  viewMenuButton(name: string): Locator {
+    return this.section('Views').getByRole('button', {
+      name: `Actions for ${name}`,
+    });
+  }
+
+  saveViewButton(): Locator {
+    return this.page
+      .getByRole('main')
+      .getByRole('button', { name: 'Save view' });
+  }
+}
+
+export class EditorDriver {
+  constructor(private page: Page) {}
+
+  async expectMounted(opts: { timeout?: number } = {}) {
+    // BlockNote renders its ProseMirror surface inside `.bn-container`.
+    // `.first()` guards against the transient aux ProseMirror instances
+    // BlockNote spawns for popups (link edit, etc.).
+    await expect(this.page.locator('.ProseMirror').first()).toBeVisible({
+      timeout: opts.timeout ?? 30_000,
+    });
+  }
+
+  async type(content: string): Promise<void> {
+    const editor = this.page.locator('.ProseMirror').first();
+    await editor.click();
+    // pressSequentially sends real keystrokes through ProseMirror's input
+    // pipeline so BlockNote's onChange (and therefore autosave) fires -
+    // fill() sets the DOM directly and the editor may not observe it.
+    await editor.pressSequentially(content);
+  }
+
+  async expectContent(content: string, opts: { timeout?: number } = {}) {
+    await expect(this.page.locator('.ProseMirror').first()).toContainText(
+      content,
+      { timeout: opts.timeout ?? 30_000 },
+    );
+  }
+
+  // Our own cursor is never rendered, so exactly one label means one peer.
+  async expectPeerCursor(opts: { timeout?: number } = {}) {
+    const label = this.page.locator('.bn-collaboration-cursor__label');
+    await expect(label).toHaveCount(1, { timeout: opts.timeout ?? 30_000 });
+    await expect(label).toHaveText(/\S/);
+  }
+
+  async close(): Promise<void> {
+    await this.page.getByRole('button', { name: /^Back to / }).click();
+  }
+
+  // EditorHeader renders the doc name as a live input, so a rename is a fill.
+  async renameTitle(next: string): Promise<void> {
+    const input = this.page.getByTestId('doc-title-input');
+    await input.fill(next);
+    await input.press('Enter');
+  }
+
+  // EditorHeader renders a 3-dot trigger with an explicit
+  // aria-label="Document actions"; that's the only consumer of
+  // the dropdown so the literal match is safe.
+  async openDeleteConfirm(): Promise<Locator> {
+    await this.page.getByRole('button', { name: /Document actions/i }).click();
+    await this.page.getByRole('menuitem', { name: /Delete Document/i }).click();
+    return this.page.getByRole('dialog', { name: 'Delete document?' });
+  }
+
+  async deleteDocument(): Promise<void> {
+    const confirm = await this.openDeleteConfirm();
+    await confirm.getByRole('button', { name: /^Delete$/ }).click();
+    await expect(confirm).toBeHidden();
+  }
+
+  block(text: string): Locator {
+    return this.page.getByTestId('doc-block').filter({ hasText: text }).first();
+  }
+
+  // BlockNote shows the drag handle beside the hovered block.
+  async openBlockMenu(text: string): Promise<void> {
+    await this.block(text).hover();
+    await this.page.getByRole('button', { name: 'Open block menu' }).click();
+  }
+
+  // A long intro, a "Milestones" heading, a line under it, SECTION_PARAGRAPH, then
+  // closing lines: a block can only scroll to the top with a screen of text below it.
+  async writeSections(): Promise<void> {
+    await this.type('Intro');
+    const lines = [
+      ...Array.from({ length: FILLER_LINES }, (_, i) => `Filler line ${i + 1}`),
+      '# Milestones',
+      'Folder sharing and roles',
+      SECTION_PARAGRAPH,
+      ...Array.from(
+        { length: FILLER_LINES },
+        (_, i) => `Closing line ${i + 1}`,
+      ),
+    ];
+    for (const text of lines) {
+      await this.page.keyboard.press('Enter');
+      await this.page.keyboard.type(text);
+    }
+    await expect(this.block('Milestones').locator('h1')).toBeVisible();
+    await expect(this.block(SECTIONS_LAST_LINE)).toBeVisible();
+  }
+
+  /** A block's top edge relative to the editor's scroll area. */
+  async offsetInScroller(text: string): Promise<number | null> {
+    const scroller = this.page.getByTestId('doc-editor').locator('xpath=..');
+    const [block, area] = await Promise.all([
+      this.block(text).boundingBox(),
+      scroller.boundingBox(),
+    ]);
+    return block && area ? block.y - area.y : null;
+  }
+
+  // A pasted anchor becomes a link mark, as when a user pastes a link copied from a page.
+  async pasteLink(href: string, text: string): Promise<void> {
+    await this.page
+      .locator('.ProseMirror')
+      .first()
+      .evaluate(
+        (el, [url, label]) => {
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.textContent = label;
+          const data = new DataTransfer();
+          data.setData('text/html', anchor.outerHTML);
+          data.setData('text/plain', label);
+          el.dispatchEvent(
+            new ClipboardEvent('paste', {
+              clipboardData: data,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        },
+        [href, text],
+      );
+    await expect(
+      this.page.locator('.ProseMirror a', { hasText: text }),
+    ).toBeVisible();
+  }
+
+  // The item stays disabled ("Saving…") until the node has the block's id.
+  async copySectionLink(text: string): Promise<string> {
+    await this.openBlockMenu(text);
+    const item = this.page.getByRole('menuitem', {
+      name: /Copy link to section/,
+    });
+    await expect(item).toBeEnabled({ timeout: 15_000 });
+    await item.click();
+    return this.page.evaluate(() => navigator.clipboard.readText());
+  }
+
+  // Types @ and a query at the caret, then picks a row of the doc link picker.
+  async linkDoc(query: string, option: string | RegExp): Promise<void> {
+    await this.page.keyboard.type(`@${query}`);
+    await this.linkPicker().getByRole('option', { name: option }).click();
+  }
+
+  linkPicker(): Locator {
+    return this.page.getByRole('listbox', { name: 'Mention or link' });
+  }
+
+  sectionPicker(): Locator {
+    return this.page.getByRole('listbox', { name: 'Link to a section' });
+  }
+
+  slashMenu(): Locator {
+    return this.page.getByRole('listbox', { name: 'Insert' });
+  }
+
+  // A doc link renders as a chip: an ordinary link to an in-app path.
+  docLink(text: string): Locator {
+    return this.page.locator(".bn-editor a[href^='/app/']", { hasText: text });
+  }
+
+  linkCard(): Locator {
+    return this.page.getByTestId('doc-link-card');
+  }
+
+  // Types @ and a query at the caret, then picks a person from the picker's People group.
+  async mention(query: string, name: string | RegExp): Promise<void> {
+    await this.page.keyboard.type(`@${query}`);
+    await this.personOption(name).click();
+  }
+
+  personOption(name: string | RegExp): Locator {
+    return this.linkPicker()
+      .getByRole('group', { name: 'People' })
+      .getByRole('option', { name });
+  }
+
+  // A mention renders as a person chip: an ordinary link to the member's in-app path.
+  mentionChip(text: string): Locator {
+    return this.page.locator(".bn-editor a[href*='/m/']", { hasText: text });
+  }
+
+  memberCard(): Locator {
+    return this.page.getByTestId('member-card');
+  }
+
+  // BlockNote's own toolbar for the link under the caret.
+  linkToolbar(): Locator {
+    return this.page.locator('.bn-link-toolbar');
+  }
+}
+
+// The open document's Details panel (a sheet below md) and its header toggle.
+export class DetailsDriver {
+  constructor(private page: Page) {}
+
+  toggle(): Locator {
+    return this.page.getByRole('button', { name: 'Details', exact: true });
+  }
+
+  panel(): Locator {
+    return this.page
+      .getByRole('complementary')
+      .filter({
+        has: this.page.getByRole('heading', { name: 'Details', exact: true }),
+      })
+      .or(this.page.getByRole('dialog', { name: 'Details' }));
+  }
+
+  async open(): Promise<void> {
+    if ((await this.toggle().getAttribute('aria-pressed')) !== 'true') {
+      await this.toggle().click();
+    }
+    await expect(this.panel()).toBeVisible();
+  }
+
+  // The value beside a label such as "Folder" or "Updated".
+  fact(term: string): Locator {
+    return this.panel()
+      .locator('dt', { hasText: term })
+      .locator('xpath=following-sibling::dd[1]');
+  }
+
+  section(name: 'Linked from' | 'Links to'): Locator {
+    return this.panel().getByRole('region', { name });
+  }
+}
+
+// The open document's tag row and its Add tag popover.
+export class DocTagsDriver {
+  constructor(private page: Page) {}
+
+  row(): Locator {
+    return this.page.getByRole('group', { name: 'Tags' });
+  }
+
+  chip(name: string): Locator {
+    return this.row().getByText(name, { exact: true });
+  }
+
+  input(): Locator {
+    return this.page.getByRole('combobox', { name: 'Tag name' });
+  }
+
+  async openAdd(): Promise<void> {
+    await this.row().getByRole('button', { name: 'Add tag' }).click();
+    await expect(this.input()).toBeFocused();
+  }
+
+  // Picks the existing tag the popover suggests for `query`; its option reads "<name> <n> docs".
+  async add(query: string, name = query): Promise<void> {
+    await this.openAdd();
+    await this.input().fill(query);
+    await this.page
+      .getByRole('option', {
+        name: new RegExp(`^${escapeRegex(name)}\\s*\\d+ docs?$`),
+      })
+      .click();
+    await expect(this.chip(name)).toBeVisible({ timeout: 15_000 });
+  }
+
+  // Creates a new tag, in `colour` when given (a swatch's accessible name).
+  async create(name: string, colour?: string): Promise<void> {
+    await this.openAdd();
+    await this.input().fill(name);
+    if (colour) {
+      await this.page.getByRole('radio', { name: colour }).focus();
+      await this.page.keyboard.press('Space');
+    }
+    await this.page
+      .getByRole('option', { name: `Create tag “${name}”` })
+      .click();
+    await expect(this.chip(name)).toBeVisible({ timeout: 15_000 });
+  }
+
+  async remove(name: string): Promise<void> {
+    await this.row()
+      .getByRole('button', { name: `Remove tag ${name}` })
+      .click();
+    await expect(this.chip(name)).toBeHidden({ timeout: 15_000 });
+  }
+
+  // The colour a chip's dot is painted, as the browser reports it.
+  async dotColour(name: string): Promise<string> {
+    return this.chip(name)
+      .getByTestId('tag-dot')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+  }
+}
+
+export class SettingsDriver {
+  constructor(private page: Page) {}
+
+  async setMyDisplayName(name: string): Promise<void> {
+    const panel = this.page.locator('[data-testid="my-display-name-panel"]');
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    const input = panel.locator('input[type="text"]');
+    await input.fill(name);
+    const saveBtn = panel.getByRole('button', { name: /^Save$/ });
+    // Wait for the actual PUT round-trip to complete before
+    // returning, otherwise a follow-up closeSettings() can unmount
+    // the panel mid-write and the next mount races mero-react's
+    // cache. Wait both for the network response AND for the dirty
+    // flag to clear (Save disables when refetched name === draft).
+    const savePromise = this.page.waitForResponse(
+      (r) =>
+        r.request().method() === 'PUT' &&
+        /\/members\/[^/]+\/metadata$/.test(r.url()) &&
+        r.status() < 400,
+      { timeout: 15_000 },
+    );
+    await saveBtn.click();
+    await savePromise;
+    await expect(saveBtn).toBeDisabled({ timeout: 15_000 });
+    await expect(input).toHaveValue(name, { timeout: 15_000 });
+  }
+
+  // Open the namespace InviteDialog (path: Settings → MembersPanel →
+  // "Invite" button → "Generate invite link" → read input), return
+  // the produced /join URL. Caller responsible for opening Settings
+  // first.
+  async copyNamespaceInvite(): Promise<string> {
+    await this.page.getByRole('button', { name: /^Invite$/ }).click();
+    const dialog = this.page.getByRole('dialog', {
+      name: /Invite to workspace/i,
+    });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await dialog.getByRole('button', { name: /Generate invite link/i }).click();
+    const urlInput = dialog.locator('#invite-url-text');
+    await expect(urlInput).toBeVisible({ timeout: 30_000 });
+    const url = (await urlInput.inputValue()).trim();
+    if (!url) throw new Error('copyNamespaceInvite: dialog produced empty URL');
+    await dialog.getByRole('button', { name: /^Close$/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    return url;
+  }
+
+  // A workspace role from the members panel, confirmed; Settings must be open.
+  async setMemberRole(label: string, role: string): Promise<void> {
+    const select = this.page.getByRole('combobox', {
+      name: `Role for ${label}`,
+    });
+    await expect(select).toBeEnabled({ timeout: 30_000 });
+    await select.selectOption(role);
+    await this.page.getByRole('button', { name: 'Change role' }).click();
+    await expect(select).toHaveValue(role, { timeout: 30_000 });
+  }
+
+  // Presence dot on a row of the namespace members panel; Settings must be open.
+  async expectMemberPresence(
+    label: string,
+    state: 'Here now' | 'Away',
+    opts: { timeout?: number } = {},
+  ): Promise<void> {
+    const row = this.page
+      .getByRole('region', { name: 'Workspace members' })
+      .getByRole('listitem')
+      .filter({ hasText: label });
+    await expect(row.getByRole('img', { name: state })).toBeVisible({
+      timeout: opts.timeout ?? 60_000,
+    });
+  }
+}
+
+// The top-bar search field and the palette it opens.
+export class SearchPaletteDriver {
+  constructor(private page: Page) {}
+
+  field(): Locator {
+    return this.page.getByRole('button', { name: SEARCH_FIELD });
+  }
+
+  dialog(): Locator {
+    return this.page.getByRole('dialog', { name: 'Search' });
+  }
+
+  input(): Locator {
+    return this.dialog().getByRole('textbox', { name: 'Search' });
+  }
+
+  group(name: string): Locator {
+    return this.dialog().getByRole('group', { name });
+  }
+
+  // Opens the palette when it is closed, then replaces the query.
+  async search(text: string): Promise<void> {
+    if (!(await this.dialog().isVisible())) await this.field().click();
+    await this.input().fill(text);
+  }
+}
+
+export function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Radix arms a sheet's outside-click listener a task after opening and drops
+// an earlier click, so a backdrop click waits until the sheet has slid in.
+export async function settled(sheet: Locator): Promise<void> {
+  await sheet.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished)),
+  );
+}

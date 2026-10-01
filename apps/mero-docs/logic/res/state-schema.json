@@ -1,0 +1,233 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "BlockView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "tuple",
+            "elements": [
+              {
+                "kind": "u64"
+              },
+              {
+                "kind": "u32"
+              }
+            ]
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attrs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "doc": "A per-document comment, owned by its author. Stored in an `AuthoredMap`, so\nthe runtime stamps the writer's identity and a per-entry schema version on\ninsert; only the owner can re-sign it (the basis of the migration banner).\n\nThe value type is intentionally STABLE across schema versions - the v1→v2\nmigration bumps the *state* schema and adds a top-level marker, never a\nfield inside `Comment` (changing an authored value type is a content\nrewrite, a different and harder migration class).",
+      "fields": [
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Which doc this annotates. Immutable after create. Indexed, so one doc's\ncomments are a seek rather than a walk of the folder's."
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Immutable after create."
+        }
+      ]
+    },
+    "DocRecord": {
+      "kind": "record",
+      "doc": "Per-document record.\n\nThe derive supplies the deterministic re-key cascade `title`, `body` and\n`tags` need: a nested collection stored under a value type that is not a\nregistered `RekeyTarget` keeps a per-replica random storage id and never\nconverges.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "fugue_text"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BlockView"
+            }
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            },
+            "crdt_type": "unordered_set"
+          },
+          "doc": "A set, so two members tagging the same doc at once both keep their tag."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "DocsState": {
+      "kind": "record",
+      "doc": "`docs` + their `headers` + moderated `comments`.",
+      "fields": [
+        {
+          "name": "docs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DocRecord"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "doc_id → record. Public: collaborative editing. The id is\n`doc-<nonce>-<account>-<device tag>` and assigned by `create_doc`."
+        },
+        {
+          "name": "headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "doc_id → created_at, filed by the doc's creator, whose owner stamp it\ncarries. A doc is listed while that entry lives; only its creator or a\nmoderator (the founder) may remove it, and every node enforces that."
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "comment_id → comment. Each is owned by its author, who alone edits it;\nthe folder's moderators (its founder, who created this context) may\nalso remove any. Every node enforces both."
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "DocsState",
+  "state_version": 1
+}

@@ -5,6 +5,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use calimero_sdk::abi::AbiType;
@@ -13,8 +14,10 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
+    AccessControl, Authored, Frozen, IndexedMap, LwwRegister, Mergeable as MergeableTrait, Ownable,
+    PermissionedStorage, ProtocolAuthorizer, UnorderedMap, UserStorage,
 };
+use calimero_storage::entities::OpMask;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +35,12 @@ type MemberId = String;
 /// document; everyone else is read-only ("viewer"). The document creator is the
 /// sole initial admin and is implicitly an editor + owner.
 const ROLE_EDITOR: &str = "editor";
+
+/// What each role may do to `layers`, projected onto its capability map after
+/// every role change. Editors add, change and remove layers; admins keep full
+/// control. Every node enforces this on apply, so a viewer's forged layer write
+/// is refused everywhere, not only by the fail-fast `require_editor`.
+const LAYER_ROLE_MASKS: &[(&str, OpMask)] = &[(ROLE_EDITOR, OpMask::WRITE.union(OpMask::DELETE))];
 
 // ── Adjustments (non-destructive, applied at composite/render time) ─────────────
 
@@ -142,8 +151,12 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
     }
 }
 
+/// `parent_id` and `layer_index` are indexed, so a group's children and the
+/// top or bottom of the stack are seeks rather than scans.
 #[app::mergeable(id = "mero_pixart::Layer")]
-#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(
+    AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -154,8 +167,10 @@ pub struct Layer {
     pub kind: String,
     /// Parent group layer id (folder nesting); None = top level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[index]
     pub parent_id: Option<String>,
     /// Order within the parent (ascending = bottom→top).
+    #[index]
     pub layer_index: u32,
 
     pub visible: bool,
@@ -272,6 +287,15 @@ pub struct DocumentInfo {
     pub owner: Option<String>,
 }
 
+/// The owner-gated canvas settings: size and background.
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Clone, Debug, Default, PartialEq)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct Canvas {
+    pub width: u32,
+    pub height: u32,
+    pub background: String,
+}
+
 /// A member paired with their effective role, for the settings/members UI.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -299,7 +323,9 @@ pub struct CursorState {
     /// installation, so it is what the map is keyed by.
     pub identity: String,
     /// The member (account) behind that device, so the overlay can label the
-    /// pointer with a username without a second lookup table.
+    /// pointer with a username without a second lookup table. Filled from the
+    /// entry's owner stamp on read, so nobody can put a pointer under someone
+    /// else's name.
     pub account: MemberId,
     pub x: i64,
     pub y: i64,
@@ -337,24 +363,32 @@ pub enum Event {
 pub struct MeroPixArt {
     // Document metadata lives inside `Ownable` so a rename/resize only converges
     // from the owner — a forged delta from a non-owner is rejected at merge, not
-    // merely by the fail-fast API guard.
+    // merely by the fail-fast API guard. EVERYTHING `update_document` changes
+    // lives in one of these cells: a plain field next to them would be writable
+    // by any member, whatever `only_owner()` said first.
     doc_name: Ownable<LwwRegister<String>>,
     doc_description: Ownable<LwwRegister<String>>,
+    /// `None` until the owner first resizes or recolours; `initial_canvas`
+    /// answers until then.
+    canvas: Ownable<LwwRegister<Option<Canvas>>>,
     /// What `init` was given. The `Ownable` cells above cannot be seeded at init
     /// on rc.20 (the value is silently dropped — see `init`), so the opening
-    /// name/description live here and the owner-gated cells take over from the
-    /// first owner edit onwards. Read both through `doc_name_str`.
-    initial_name: LwwRegister<String>,
-    initial_description: LwwRegister<String>,
-    canvas_width: LwwRegister<u32>,
-    canvas_height: LwwRegister<u32>,
-    background: LwwRegister<String>,
+    /// values live here and the owner-gated cells take over from the first
+    /// owner edit onwards. `Frozen`: written once at init, changeable by nobody,
+    /// so a member cannot rename the document by rewriting the fallback. Read
+    /// through `doc_name_str` / `canvas_now`.
+    initial_name: Frozen<String>,
+    initial_description: Frozen<String>,
+    initial_canvas: Frozen<Canvas>,
 
-    layers: UnorderedMap<LayerId, Layer>,
-    members: UnorderedMap<MemberId, Member>,
+    /// Writer-set guarded: only accounts holding a role mask projected from
+    /// `roles` (editors, admins) may write an entry, on every node.
+    layers: PermissionedStorage<IndexedMap<LayerId, Layer>, ProtocolAuthorizer>,
+    /// One slot per account, written only by that account.
+    members: UserStorage<Member>,
     /// Keyed by DEVICE, not by member — see `CursorState`. The only map here
-    /// that is.
-    cursors: UnorderedMap<String, CursorState>,
+    /// that is. Each entry is owned by the account that wrote it.
+    cursors: Authored<UnorderedMap<String, CursorState>>,
 
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
@@ -375,19 +409,20 @@ impl MeroPixArt {
         // through the constructor, but the inserted VALUE never lands — `insert`
         // returns `Ok` and a later read returns `Ok("")`. The opening values go to
         // the plain `initial_*` registers instead; see `doc_name_str`.
-        let doc_name = Ownable::new_owned_by(me);
-        let doc_description = Ownable::new_owned_by(me);
         MeroPixArt {
-            doc_name,
-            doc_description,
-            initial_name: LwwRegister::new(name),
-            initial_description: LwwRegister::new(description),
-            canvas_width: LwwRegister::new(if width == 0 { 1280 } else { width }),
-            canvas_height: LwwRegister::new(if height == 0 { 720 } else { height }),
-            background: LwwRegister::new("#00000000".to_owned()),
-            layers: UnorderedMap::new(),
-            members: UnorderedMap::new(),
-            cursors: UnorderedMap::new(),
+            doc_name: Ownable::new_owned_by(me),
+            doc_description: Ownable::new_owned_by(me),
+            canvas: Ownable::new_owned_by(me),
+            initial_name: Frozen::new(name),
+            initial_description: Frozen::new(description),
+            initial_canvas: Frozen::new(Canvas {
+                width: if width == 0 { 1280 } else { width },
+                height: if height == 0 { 720 } else { height },
+                background: "#00000000".to_owned(),
+            }),
+            layers: PermissionedStorage::new(BTreeSet::from([me]), false),
+            members: UserStorage::new(),
+            cursors: Authored::new(),
             roles: AccessControl::new(me),
         }
     }
@@ -484,7 +519,7 @@ impl MeroPixArt {
             .map(|r| r.get().clone())
             .unwrap_or_default();
         if edited.is_empty() {
-            self.initial_name.get().clone()
+            self.initial_name.get().cloned().unwrap_or_default()
         } else {
             edited
         }
@@ -498,21 +533,34 @@ impl MeroPixArt {
             .map(|r| r.get().clone())
             .unwrap_or_default();
         if edited.is_empty() {
-            self.initial_description.get().clone()
+            self.initial_description.get().cloned().unwrap_or_default()
         } else {
             edited
         }
     }
 
+    /// The canvas as it stands: the owner's last edit, else what `init` set.
+    fn canvas_now(&self) -> Canvas {
+        match self.canvas.get().ok().and_then(|r| r.get().clone()) {
+            Some(canvas) => canvas,
+            None => self.initial_canvas.get().cloned().unwrap_or_default(),
+        }
+    }
+
     pub fn get_document(&self) -> DocumentInfo {
+        let canvas = self.canvas_now();
         DocumentInfo {
             name: self.doc_name_str(),
             description: self.doc_description_str(),
-            width: *self.canvas_width.get(),
-            height: *self.canvas_height.get(),
-            background: self.background.get().clone(),
-            layer_count: self.layers.len().unwrap_or(0) as u32,
-            member_count: self.members.len().unwrap_or(0) as u32,
+            width: canvas.width,
+            height: canvas.height,
+            background: canvas.background,
+            layer_count: self
+                .layers
+                .get()
+                .and_then(|layers| layers.len())
+                .unwrap_or(0) as u32,
+            member_count: self.members.entries().map(Iterator::count).unwrap_or(0) as u32,
             // An account IS a member id now, so this needs no translation.
             owner: self.doc_name.owner().map(|a| a.to_string()),
         }
@@ -535,14 +583,18 @@ impl MeroPixArt {
         if let Some(d) = description {
             self.doc_description.insert(LwwRegister::new(d))?;
         }
-        if let Some(w) = width {
-            self.canvas_width.set(w);
-        }
-        if let Some(h) = height {
-            self.canvas_height.set(h);
-        }
-        if let Some(b) = background {
-            self.background.set(b);
+        if width.is_some() || height.is_some() || background.is_some() {
+            let mut canvas = self.canvas_now();
+            if let Some(w) = width {
+                canvas.width = w;
+            }
+            if let Some(h) = height {
+                canvas.height = h;
+            }
+            if let Some(b) = background {
+                canvas.background = b;
+            }
+            self.canvas.insert(LwwRegister::new(Some(canvas)))?;
         }
         app::emit!(Event::DocumentUpdated());
         Ok(())
@@ -556,12 +608,16 @@ impl MeroPixArt {
         let previous = Self::caller_account();
         self.doc_name.transfer_ownership(owner)?;
         self.doc_description.transfer_ownership(owner)?;
+        self.canvas.transfer_ownership(owner)?;
         if !self.roles.is_admin(&owner) {
             self.roles.grant_admin(owner)?;
         }
         if previous != owner && self.roles.is_admin(&previous) {
             self.roles.revoke_admin(&previous)?;
         }
+        // The previous owner still holds FULL on `layers` until this runs, which
+        // is what lets them hand it over.
+        self.project_layer_roles()?;
         app::emit!(Event::OwnerTransferred(new_owner));
         Ok(())
     }
@@ -571,6 +627,7 @@ impl MeroPixArt {
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
+        self.project_layer_roles()?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
     }
@@ -578,7 +635,16 @@ impl MeroPixArt {
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
         let who = self.require_account(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
+        self.project_layer_roles()?;
         app::emit!(Event::RoleUpdated(member));
+        Ok(())
+    }
+
+    /// Push the current roles onto `layers`' capability map, where every node
+    /// enforces them. Run after every role or admin change.
+    fn project_layer_roles(&mut self) -> app::Result<()> {
+        self.roles
+            .project_onto(LAYER_ROLE_MASKS, &mut self.layers)?;
         Ok(())
     }
 
@@ -602,12 +668,11 @@ impl MeroPixArt {
     pub fn list_roles(&self) -> Vec<MemberRole> {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
-            for (id, _) in entries {
-                let role = match AccountId::from_str(&id) {
-                    Ok(account) => self.role_label(&account),
-                    Err(_) => "viewer".to_string(),
-                };
-                out.push(MemberRole { member: id, role });
+            for (account, _) in entries {
+                out.push(MemberRole {
+                    member: account.to_string(),
+                    role: self.role_label(&account),
+                });
             }
         }
         out
@@ -626,12 +691,13 @@ impl MeroPixArt {
     // ── Members ───────────────────────────────────────────────────────────────
 
     /// Add the caller to the roster. Keyed by account, so opening the document
-    /// on a second machine does not add a second "member".
+    /// on a second machine does not add a second "member". The roster is one
+    /// `UserStorage` slot per account, so nobody can rename anyone else.
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
-        let member_id = Self::caller_id();
-        if self.members.contains(&member_id).unwrap_or(false) {
+        if self.members.contains_current_user().unwrap_or(false) {
             return;
         }
+        let member_id = Self::caller_id();
         let m = Member {
             id: member_id.clone(),
             username,
@@ -639,21 +705,32 @@ impl MeroPixArt {
             joined_at: timestamp,
             username_updated_at: timestamp,
         };
-        let _ = self.members.insert(member_id.clone(), m);
+        let _ = self.members.insert(m);
         app::emit!(Event::MemberJoined(member_id));
     }
 
+    /// Every member, with `id` taken from the slot's account rather than from
+    /// the stored value.
     pub fn get_members(&self) -> Vec<Member> {
-        self.members.entries().unwrap().map(|(_, v)| v).collect()
+        self.members
+            .entries()
+            .map(|entries| {
+                entries
+                    .map(|(account, mut m)| {
+                        m.id = account.to_string();
+                        m
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn update_member_username(&mut self, username: String, timestamp: u64) {
-        let member_id = Self::caller_id();
-        if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
+        if let Ok(Some(mut m)) = self.members.get() {
             m.username = username;
             m.username_updated_at = timestamp;
-            drop(m);
-            app::emit!(Event::MemberUsernameUpdated(member_id));
+            let _ = self.members.insert(m);
+            app::emit!(Event::MemberUsernameUpdated(Self::caller_id()));
         }
     }
 
@@ -670,7 +747,7 @@ impl MeroPixArt {
         if let Some(ref mask) = layer.mask_blob_id {
             Self::announce_blob(mask);
         }
-        let _ = self.layers.insert(id.clone(), layer);
+        let _ = self.layers.get_mut()?.insert(id.clone(), layer)?;
         app::emit!(Event::LayerAdded(id.clone()));
         Ok(id)
     }
@@ -696,7 +773,7 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             if let Some(v) = name {
                 l.name = v;
             }
@@ -737,7 +814,8 @@ impl MeroPixArt {
                 l.fill = v;
             }
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -765,7 +843,7 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             if let Some(v) = rotation {
                 l.rotation = v;
             }
@@ -791,7 +869,8 @@ impl MeroPixArt {
                 l.warp = v;
             }
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -816,10 +895,10 @@ impl MeroPixArt {
                     continue;
                 }
             }
-            if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            let _ = self.layers.get_mut()?.update(&id, |l| {
                 l.parent_id = parent_id;
                 l.updated_at = updated_at;
-            }
+            })?;
         }
         app::emit!(Event::LayersReordered());
         Ok(())
@@ -831,9 +910,9 @@ impl MeroPixArt {
     fn is_descendant_of(&self, candidate: &str, ancestor: &str) -> bool {
         let mut cur = candidate.to_string();
         for _ in 0..64 {
-            let parent = match self.layers.get(&cur) {
-                Ok(Some(l)) => l.parent_id.clone(),
-                _ => return false,
+            let parent = match self.layer_map().and_then(|m| m.get(&cur).ok().flatten()) {
+                Some(l) => l.parent_id.clone(),
+                None => return false,
             };
             match parent {
                 Some(p) if p == ancestor => return true,
@@ -856,12 +935,13 @@ impl MeroPixArt {
     ) -> app::Result<()> {
         self.require_editor()?;
         Self::announce_blob(&blob_id);
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             l.blob_id = blob_id;
             l.width = width;
             l.height = height;
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -878,10 +958,11 @@ impl MeroPixArt {
         if let Some(ref mask) = mask_blob_id {
             Self::announce_blob(mask);
         }
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             l.mask_blob_id = mask_blob_id;
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -902,7 +983,7 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             if let Some(v) = brightness {
                 l.adjustments.brightness = v;
             }
@@ -928,7 +1009,8 @@ impl MeroPixArt {
                 l.adjustments.curves = v;
             }
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -948,7 +1030,7 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             let mut t = l.text.clone().unwrap_or_default();
             if let Some(v) = content {
                 t.content = v;
@@ -973,7 +1055,8 @@ impl MeroPixArt {
             }
             l.text = Some(t);
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayerUpdated(id));
         }
         Ok(())
@@ -981,18 +1064,16 @@ impl MeroPixArt {
 
     pub fn delete_layer(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        // Re-parent / delete orphaned children of a deleted group to top level.
-        let children: Vec<String> = self
-            .layers
-            .entries()
-            .map(|iter| {
-                iter.filter(|(_, l)| l.parent_id.as_deref() == Some(id.as_str()))
-                    .map(|(k, _)| k)
-                    .collect()
-            })
+        // Re-parent orphaned children of a deleted group to top level. A seek
+        // on the `parent_id` index, not a scan of every layer.
+        let children = self
+            .layer_map()
+            .map(|m| m.query("parent_id").eq(id.as_str()).keys())
+            .transpose()?
             .unwrap_or_default();
+        let layers = self.layers.get_mut()?;
         for child in children {
-            if let Ok(Some(mut l)) = self.layers.get_mut(&child) {
+            let _ = layers.update(&child, |l| {
                 l.parent_id = None;
                 // Advance the child's clock, or this write is silently LOST.
                 //
@@ -1010,21 +1091,24 @@ impl MeroPixArt {
                 // A saturating +1 needs no clock source and is monotone, so two
                 // nodes deleting the same group converge on the same result.
                 l.updated_at = l.updated_at.saturating_add(1);
-            }
+            })?;
         }
-        let _ = self.layers.remove(&id);
+        let _ = layers.remove(&id)?;
         app::emit!(Event::LayerDeleted(id));
         Ok(())
     }
 
+    /// Every layer, bottom to top: the `layer_index` index already holds them
+    /// in that order.
     pub fn get_layers(&self) -> Vec<Layer> {
-        let mut layers: Vec<Layer> = self.layers.entries().unwrap().map(|(_, v)| v).collect();
-        layers.sort_by_key(|l| l.layer_index);
-        layers
+        self.layer_map()
+            .and_then(|m| m.query("layer_index").entries().ok())
+            .map(|rows| rows.into_iter().map(|(_, l)| l).collect())
+            .unwrap_or_default()
     }
 
     pub fn get_layer(&self, id: String) -> Option<Layer> {
-        self.layers.get(&id).ok().flatten().map(|v| v.clone())
+        self.layer_map()?.get(&id).ok().flatten().map(|v| v.clone())
     }
 
     /// Move a layer into / out of a group and set its index in one call.
@@ -1036,11 +1120,12 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+        let updated = self.layers.get_mut()?.update(&id, |l| {
             l.parent_id = parent_id;
             l.layer_index = layer_index;
             l.updated_at = updated_at;
-            drop(l);
+        })?;
+        if updated.is_some() {
             app::emit!(Event::LayersReordered());
         }
         Ok(())
@@ -1054,75 +1139,94 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
+        let layers = self.layers.get_mut()?;
         for (id, idx) in order {
-            if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            let _ = layers.update(&id, |l| {
                 l.layer_index = idx;
                 l.updated_at = updated_at;
-            }
+            })?;
         }
         app::emit!(Event::LayersReordered());
         Ok(())
     }
 
+    /// The top of the stack is one seek on the `layer_index` index.
     pub fn bring_to_front(&mut self, id: String, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
         let max_index = self
-            .layers
-            .entries()
-            .unwrap()
-            .map(|(_, v)| v.layer_index)
-            .max()
-            .unwrap_or(0);
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            .layer_map()
+            .map(|m| m.query("layer_index").desc().first())
+            .transpose()?
+            .flatten()
+            .map_or(0, |(_, l)| l.layer_index);
+        let _ = self.layers.get_mut()?.update(&id, |l| {
             l.layer_index = max_index + 1;
             l.updated_at = updated_at;
-        }
+        })?;
         app::emit!(Event::LayersReordered());
         Ok(())
     }
 
+    /// Put a layer below every other one. When the bottom of the stack has room
+    /// (its index is above 0) this writes one layer; only a stack already
+    /// starting at 0 has to shift the others up.
     pub fn send_to_back(&mut self, id: String, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
-        let other_ids: Vec<String> = self
-            .layers
-            .entries()
-            .unwrap()
-            .filter(|(k, _)| *k != id)
-            .map(|(k, _)| k)
-            .collect();
-        for other_id in &other_ids {
-            if let Ok(Some(mut other)) = self.layers.get_mut(other_id) {
-                other.layer_index = other.layer_index.saturating_add(1);
-                // Same reason as the re-parent in `delete_layer`: `Layer`'s
-                // merge is dispatched from core 0.11.0-rc.32, so a write that
-                // does not advance the record's clock loses to the copy already
-                // on disk and the shift is silently dropped — leaving every
-                // sibling's `layer_index` unchanged while this one moves to 0.
-                // `updated_at` belongs to the layer the caller named, so the
-                // siblings advance their own clocks by one instead.
-                other.updated_at = other.updated_at.saturating_add(1);
+        let lowest = self
+            .layer_map()
+            .map(|m| m.query("layer_index").limit(2).entries())
+            .transpose()?
+            .unwrap_or_default()
+            .into_iter()
+            .find(|(k, _)| *k != id)
+            .map(|(_, l)| l.layer_index);
+        let target = match lowest {
+            Some(0) => {
+                let others: Vec<String> = self
+                    .layer_map()
+                    .map(|m| m.query("layer_index").keys())
+                    .transpose()?
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|k| *k != id)
+                    .collect();
+                let layers = self.layers.get_mut()?;
+                for other_id in &others {
+                    let _ = layers.update(other_id, |other| {
+                        other.layer_index = other.layer_index.saturating_add(1);
+                        // Same reason as the re-parent in `delete_layer`: `Layer`'s
+                        // merge is dispatched from core 0.11.0-rc.32, so a write that
+                        // does not advance the record's clock loses to the copy already
+                        // on disk and the shift is silently dropped — leaving every
+                        // sibling's `layer_index` unchanged while this one moves to 0.
+                        // `updated_at` belongs to the layer the caller named, so the
+                        // siblings advance their own clocks by one instead.
+                        other.updated_at = other.updated_at.saturating_add(1);
+                    })?;
+                }
+                0
             }
-        }
-        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            l.layer_index = 0;
+            Some(bottom) => bottom - 1,
+            None => 0,
+        };
+        let _ = self.layers.get_mut()?.update(&id, |l| {
+            l.layer_index = target;
             l.updated_at = updated_at;
-        }
+        })?;
         app::emit!(Event::LayersReordered());
         Ok(())
     }
 
     pub fn clear_layers(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self
-            .layers
-            .entries()
-            .map(|iter| iter.map(|(k, _)| k).collect())
-            .unwrap_or_default();
-        for id in ids {
-            let _ = self.layers.remove(&id);
-        }
+        self.layers.get_mut()?.clear()?;
         app::emit!(Event::LayersReordered());
         Ok(())
+    }
+
+    /// The layer map, for reading. `None` only if storage cannot load it.
+    fn layer_map(&self) -> Option<&IndexedMap<LayerId, Layer>> {
+        self.layers.get().ok()
     }
 
     // ── Cursor tracking ───────────────────────────────────────────────────────
@@ -1141,12 +1245,31 @@ impl MeroPixArt {
             y,
             updated_at,
         };
-        let _ = self.cursors.insert(identity.clone(), cs);
+        // First move inserts, later ones update. Keys are per owner, so this
+        // asks about the caller's own entry, and nobody else's is in the way.
+        let _ = if self.cursors.contains(&identity).unwrap_or(false) {
+            self.cursors.update(&identity, cs)
+        } else {
+            self.cursors.insert(identity.clone(), cs)
+        };
         app::emit!(Event::CursorMoved(identity));
     }
 
+    /// Every pointer, labelled with the account on its owner stamp.
+    ///
+    /// `entries_with_owners`, not a key-only `owner_of`: keys are per owner,
+    /// so `owner_of` would only ever name the caller.
     pub fn get_cursors(&self) -> Vec<CursorState> {
-        self.cursors.entries().unwrap().map(|(_, v)| v).collect()
+        let Ok(entries) = self.cursors.entries_with_owners() else {
+            return Vec::new();
+        };
+        entries
+            .into_iter()
+            .map(|(owner, _, mut cs)| {
+                cs.account = owner.to_string();
+                cs
+            })
+            .collect()
     }
 }
 
@@ -1696,5 +1819,195 @@ mod tests {
         assert_eq!(app.view(|s| s.get_role(other)), "admin");
         assert_eq!(app.view(|s| s.my_role()), "viewer");
         assert!(!app.view(|s| s.can_edit()));
+    }
+
+    // ── what every node enforces ─────────────────────────────────────────────
+    //
+    // These write straight into the collections, the way a patched node that
+    // skips every method check would, and assert that storage still refuses —
+    // or, for `layers`, that the capability map every node checks a layer
+    // write against says so.
+
+    use calimero_storage::collections::Op;
+
+    #[test]
+    fn layer_write_rights_follow_the_roles_on_every_node() {
+        let mut app = new_doc();
+        let bob = AccountId::from(OTHER_ACCOUNT);
+        let can = |app: &TestHost<MeroPixArt>, op| app.view(|s| s.layers.can(&bob, op));
+        assert!(!can(&app, Op::Write), "a viewer holds no layer capability");
+
+        app.call(|s| s.grant_editor(member_id(OTHER_ACCOUNT)))
+            .unwrap();
+        assert!(can(&app, Op::Write) && can(&app, Op::Delete));
+        assert!(!can(&app, Op::Admin), "an editor cannot rotate the writers");
+
+        app.call(|s| s.revoke_editor(member_id(OTHER_ACCOUNT)))
+            .unwrap();
+        assert!(
+            !can(&app, Op::Write),
+            "revoking the role revokes the capability"
+        );
+    }
+
+    #[test]
+    fn a_transfer_moves_layer_admin_to_the_new_owner() {
+        let mut app = new_doc();
+        let me = app.view(|_| MeroPixArt::caller_account());
+        assert!(
+            app.view(|s| s.layers.can(&me, Op::Admin)),
+            "the creator starts with FULL"
+        );
+        app.call(|s| s.transfer_ownership(member_id(OTHER_ACCOUNT)))
+            .unwrap();
+        let bob = AccountId::from(OTHER_ACCOUNT);
+        assert!(app.view(|s| s.layers.can(&bob, Op::Admin)));
+        assert!(!app.view(|s| s.layers.can(&me, Op::Write)));
+    }
+
+    #[test]
+    fn only_the_owner_can_change_the_canvas_even_writing_the_cell_directly() {
+        let mut app = new_doc();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.canvas.insert(LwwRegister::new(
+                Some(Canvas {
+                    width: 1,
+                    height: 1,
+                    background: "#f00".to_owned(),
+                })
+            )))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_document(
+                None,
+                None,
+                None,
+                None,
+                Some("#f00".to_owned())
+            ))
+            .is_err());
+        let doc = app.view(|s| s.get_document());
+        assert_eq!((doc.width, doc.height), (800, 600));
+        assert_eq!(doc.background, "#00000000");
+
+        app.call(|s| s.update_document(None, None, None, None, Some("#fff".to_owned())))
+            .unwrap();
+        let doc = app.view(|s| s.get_document());
+        assert_eq!(doc.background, "#fff");
+        assert_eq!(doc.width, 800, "a partial edit keeps the rest");
+    }
+
+    #[test]
+    fn nobody_renames_another_member() {
+        let mut app = new_doc();
+        app.call(|s| s.join("alice".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.update_member_username("alice".to_owned(), 9)
+        });
+        let members = app.view(|s| s.get_members());
+        let me = app.view(|_| MeroPixArt::caller_id());
+        let mine = members.iter().find(|m| m.id == me).unwrap();
+        assert_eq!(mine.username_updated_at, 1);
+        assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn a_cursor_belongs_to_whoever_wrote_it() {
+        let mut app = new_doc();
+        const LAPTOP: [u8; 32] = [0x01; 32];
+        app.call_as(LAPTOP, |s| s.update_cursor(1, 1, 1));
+        let laptop = String::from(PublicKey::from(LAPTOP));
+
+        let moved = app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.cursors.update(
+                &laptop,
+                CursorState {
+                    identity: laptop.clone(),
+                    account: member_id(OTHER_ACCOUNT),
+                    x: 99,
+                    y: 99,
+                    updated_at: 2,
+                },
+            )
+        });
+        assert!(moved.is_err(), "another account cannot move my pointer");
+
+        // A pointer Bob writes claiming to be mine is labelled as his.
+        let me = app.view(|_| MeroPixArt::caller_id());
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.cursors.insert(
+                "fake".to_owned(),
+                CursorState {
+                    identity: "fake".to_owned(),
+                    account: me,
+                    x: 0,
+                    y: 0,
+                    updated_at: 3,
+                },
+            )
+        })
+        .unwrap();
+        let cursors = app.view(|s| s.get_cursors());
+        let fake = cursors.iter().find(|c| c.identity == "fake").unwrap();
+        assert_eq!(fake.account, member_id(OTHER_ACCOUNT));
+        let mine = cursors.iter().find(|c| c.identity == laptop).unwrap();
+        assert_eq!((mine.x, mine.y), (1, 1));
+    }
+
+    #[test]
+    fn send_to_back_with_room_below_moves_only_that_layer() {
+        let mut app = new_doc();
+        for (id, index) in [("a", 5), ("b", 6), ("c", 7)] {
+            let mut l = sample_layer(id);
+            l.layer_index = index;
+            app.call(|s| s.add_layer(l)).unwrap();
+        }
+        app.call(|s| s.send_to_back("c".to_owned(), 9)).unwrap();
+        let order: Vec<(String, u32)> = app
+            .view(|s| s.get_layers())
+            .into_iter()
+            .map(|l| (l.id, l.layer_index))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                ("c".to_owned(), 4),
+                ("a".to_owned(), 5),
+                ("b".to_owned(), 6)
+            ]
+        );
+        // The others kept their clocks: nothing but `c` was written.
+        assert_eq!(
+            app.view(|s| s.get_layer("a".to_owned()))
+                .unwrap()
+                .updated_at,
+            1
+        );
+
+        app.call(|s| s.bring_to_front("c".to_owned(), 10)).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_layer("c".to_owned()))
+                .unwrap()
+                .layer_index,
+            7
+        );
+    }
+
+    #[test]
+    fn send_to_back_at_zero_still_shifts_the_rest() {
+        let mut app = new_doc();
+        for (id, index) in [("a", 0), ("b", 1)] {
+            let mut l = sample_layer(id);
+            l.layer_index = index;
+            app.call(|s| s.add_layer(l)).unwrap();
+        }
+        app.call(|s| s.send_to_back("b".to_owned(), 9)).unwrap();
+        let order: Vec<String> = app
+            .view(|s| s.get_layers())
+            .into_iter()
+            .map(|l| l.id)
+            .collect();
+        assert_eq!(order, ["b", "a"]);
     }
 }

@@ -1,0 +1,116 @@
+// Rig console: which node this window talks to, an offline switch per node,
+// and a slot the editor work portals its inspector into. App mounts it under
+// import.meta.env.DEV only, so nothing here polls a production build.
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  fetchDevNodes,
+  selectedDevNode,
+  setDevNodeOnline,
+  type DevNode,
+} from './devNode';
+
+/** Portal target for the per-node inspector: title, digest, block rows. */
+export const DEV_INSPECTOR_SLOT = 'dev-inspector';
+
+const POLL_MS = 3000;
+
+export default function DevPanel() {
+  const [nodes, setNodes] = React.useState<DevNode[]>([]);
+  const [busy, setBusy] = React.useState<number | null>(null);
+  // Below md the panel would cover the page, so it starts as a pill; md+ always shows it.
+  const [expanded, setExpanded] = React.useState(false);
+  const selected = selectedDevNode();
+
+  const refresh = React.useCallback(async () => {
+    try {
+      setNodes((await fetchDevNodes()).nodes);
+    } catch {
+      setNodes([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (selected === null) return;
+    void refresh();
+    const timer = setInterval(() => void refresh(), POLL_MS);
+    return () => clearInterval(timer);
+  }, [refresh, selected]);
+
+  // No `?node=`, no panel: it would otherwise sit over the landing page's own
+  // controls in every dev window.
+  if (selected === null || nodes.length === 0) return null;
+
+  const toggle = async (node: DevNode) => {
+    setBusy(node.index);
+    try {
+      await setDevNodeOnline(node.index, !node.online);
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="dev-panel-pill"
+        onClick={() => setExpanded(true)}
+        className={cn(
+          'fixed bottom-4 right-4 z-50 rounded-full border border-border bg-background/95 px-3 py-1 text-xs text-foreground shadow-lg backdrop-blur md:hidden',
+          expanded && 'hidden',
+        )}
+      >
+        Rig - node {selected}
+      </button>
+      <aside
+        data-testid="dev-panel"
+        className={cn(
+          'fixed bottom-14 right-4 z-50 w-64 rounded-lg border border-border bg-background/95 p-3 text-xs shadow-lg backdrop-blur',
+          !expanded && 'max-md:hidden',
+        )}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p data-testid="node-label" className="font-medium text-foreground">
+            Rig - this window is node {selected}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 md:hidden"
+            onClick={() => setExpanded(false)}
+          >
+            Hide
+          </Button>
+        </div>
+        <ul className="space-y-1">
+          {nodes.map((node) => (
+            <li key={node.index} className="flex items-center justify-between gap-2">
+              <span
+                className={node.index === selected ? 'text-foreground' : 'text-muted-foreground'}
+              >
+                node {node.index} {node.state ?? (node.online ? 'online' : 'stopped')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy === node.index}
+                data-testid={`dev-node-${node.index}-toggle`}
+                onClick={() => void toggle(node)}
+              >
+                {node.online ? 'Cut peers' : 'Rejoin peers'}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        <div id={DEV_INSPECTOR_SLOT} className="peer mt-3 border-t border-border pt-2 empty:hidden" />
+        <p className="mt-3 border-t border-border pt-2 text-muted-foreground peer-[&:not(:empty)]:hidden">
+          No inspector mounted - per-node title, document digest and block rows
+          land here.
+        </p>
+      </aside>
+    </>
+  );
+}

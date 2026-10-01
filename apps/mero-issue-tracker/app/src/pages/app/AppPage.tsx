@@ -3,6 +3,7 @@ import { Outlet, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
 import { useToast } from '@calimero-network/mero-ui';
+import { shouldRetain } from '@calimero-apps/invite';
 import { tokens as t } from '../../theme';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useIssues } from '../../hooks/useItems';
@@ -36,10 +37,11 @@ export default function AppPage(): React.ReactElement | null {
 
   // Two different ids, and they are NOT interchangeable since core rc.21.
   //
-  // `currentUser` is the identity writes execute as: the backend stamps
-  // created_by/author with the executor key and enforces delete/edit against
-  // it, so every authorship and "is this mine" gate must use this one.
-  const currentUser = ws.executorPublicKey ?? ws.selfIdentity ?? contextIdentity ?? '';
+  // `currentUser` is who authorship is attributed to: the contract reports
+  // created_by/author as the ACCOUNT on the entry's owner stamp (one person,
+  // any device) and every node enforces edit/delete against it, so every
+  // "is this mine" gate must compare against the account, never the executor key.
+  const currentUser = ws.selfIdentity ?? contextIdentity ?? '';
   // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
   // metadata - the display names behind `aliases` - is stored and keyed by it,
   // so every name lookup must use this one. It used to be safe to resolve a
@@ -70,8 +72,9 @@ export default function AppPage(): React.ReactElement | null {
   //
   // The capture is sticky until acked, so this sees it whenever AppPage mounts,
   // including long after the link was opened. `resolve()` is the ack, called on
-  // a successful join or an explicit cancel and never on a failure — so a
-  // transient error stays retryable across a reload.
+  // a join (or finding we are already a member), a failure no retry can fix, or
+  // an explicit cancel — never on a transient failure, so that one stays
+  // retryable across a reload.
   const pendingInvitation = usePendingInvitation();
   const pendingInvite = pendingInvitation?.token ?? null;
   const forgetPendingInvite = useCallback(() => {
@@ -202,9 +205,17 @@ export default function AppPage(): React.ReactElement | null {
           initialCode={pendingInvite ?? ''}
           autoSubmit={!!pendingInvite}
           onJoin={async (code) => {
-            await ws.join(code);
-            forgetPendingInvite();
-            setShowJoin(false);
+            const outcome = await ws.join(code);
+            // Joined, already in it, or a failure no retry can fix: the invitation
+            // is finished with. A transient failure keeps it for the next load.
+            if (!shouldRetain(outcome)) {
+              // The ack clears the captured link this dialog was open for; keep
+              // it open to say why a final failure failed.
+              if (outcome.status === 'failed') setShowJoin(true);
+              forgetPendingInvite();
+            }
+            if (outcome.status !== 'failed') setShowJoin(false);
+            return outcome;
           }}
           onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
         />

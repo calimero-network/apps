@@ -33,7 +33,7 @@ e2e_mode: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.41
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -184,3 +184,44 @@ steps:
     statements:
       - "contains({{layers}}, 'layer-1')"
       - "contains({{layers}}, 'Background')"
+
+  # ── A viewer cannot write a layer ──────────────────────────────────────────
+  #
+  # Node 2 was never granted `editor`, so it holds no capability on `layers`,
+  # which every node checks on apply. `expected_failure: true` alone can never
+  # fail a call step, so the error is captured and asserted.
+  - name: Node 2 (a viewer) tries to delete Node 1's layer
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: delete_layer
+    args:
+      id: "layer-1"
+    expected_failure: true
+    outputs:
+      viewer_delete_error: error
+
+  - name: Sync after the refused delete
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 reads its layers after the refused delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layers
+    args: {}
+    outputs:
+      layers_after_viewer: result
+
+  - name: Assert the viewer's delete was refused and changed nothing
+    type: assert
+    statements:
+      - "is_set({{viewer_delete_error}})"
+      - "contains({{layers_after_viewer}}, 'layer-1')"

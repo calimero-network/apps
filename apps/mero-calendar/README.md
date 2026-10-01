@@ -7,8 +7,12 @@ your own nodes, shared only with the people you invite.
 - **Teams = namespaces.** A team is a Calimero namespace; everyone in the team
   shares **one** calendar context. Invite teammates with a code, and events sync
   P2P between your nodes.
-- **Shared events** are owner-gated: a member only ever sees events they own or
-  were invited to (as a peer).
+- **Shared events** are owner-gated for writes: only an event's owner can edit
+  or delete it, and every node enforces that. The calendar view lists only the
+  events you own or were invited to (as a peer), but that is a filter, not
+  privacy: every shared event replicates to every member of the team context,
+  and any member can read it from their own node. Anything confidential belongs
+  in a private event.
 - **Private events** use the SDK's `#[app::private]` node-local storage — they
   live only on your node and are **never** replicated to anyone else.
 - **Display names**, light/dark themes, and a refreshed, accessible color palette
@@ -21,9 +25,10 @@ your own nodes, shared only with the people you invite.
 | Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.25` |
 | Frontend ("app") | `app/` | React 19 + Vite 6, `@calimero-network/mero-react` + `mero-js` + `mero-ui` |
 
-The contract keeps shared events in synced CRDT state (`UnorderedMap`), members +
-usernames in synced state, and private events in node-local `#[app::private]`
-storage. The frontend talks to a node over JSON-RPC (`execute`) and subscribes to
+The contract keeps shared events in synced CRDT state (an owner-stamped
+`Authored<IndexedMap>`, indexed by owner and peers), members + usernames in
+per-account `UserStorage` slots, and private events in node-local
+`#[app::private]` storage. The frontend talks to a node over JSON-RPC (`execute`) and subscribes to
 state changes over SSE.
 
 ## Prerequisites
@@ -106,6 +111,19 @@ workflows/            merobox workflow tests (e2e, integration-setup, logic-test
 scripts/              dev-node / dev-node2 / dev-invite / workflows runner
 .github/workflows/    CI (unit + e2e + rust), integration, merobox, release
 ```
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+`get_events` reads each event as its claimed owner's **own** entry (`get_by(owner, id)`)
+and keeps rows apart by `(id, owner)`, so an event two accounts hold at one id is two
+events, each with its owner. `update_event` / `delete_event` act on the caller's own
+event and answer `Forbidden` when only someone else holds the id. Test:
+`one_event_id_two_owners_are_two_events`.
 
 ## License
 

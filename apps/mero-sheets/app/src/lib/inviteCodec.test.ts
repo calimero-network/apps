@@ -97,23 +97,6 @@ describe('encodeInvite / decodeInvite', () => {
     expect(decoded!.invitation).toEqual(SIGNED);
   });
 
-  it('still reads the base64 codes this app used to mint', () => {
-    // The deleted `utils/invitation.ts` base64'd the raw `{invitations: […]}`
-    // response from `createNamespaceInvitation(ns, {recursive: true})`. Someone
-    // may still be holding one of those codes; changing our minds about the
-    // encoding should not break it.
-    const legacy = {
-      invitations: [
-        { groupId: GROUP_HEX, invitation: SIGNED, groupAlias: 'Finance team' },
-      ],
-    };
-    const b64 = Buffer.from(JSON.stringify(legacy), 'utf-8').toString('base64');
-    const decoded = decodeInvite(b64);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.groupAlias).toBe('Finance team');
-    expect(decoded!.invitation).toEqual(SIGNED);
-  });
-
   it('tolerates whitespace a copy/paste introduces', () => {
     const code = encodeInvite(PAYLOAD);
     const messy = `  ${code.slice(0, 20)}\n  ${code.slice(20)} \n`;

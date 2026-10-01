@@ -3,78 +3,91 @@
   "types": {
     "BoardInfo": {
       "kind": "record",
+      "doc": "Board summary: name, description, counts and owner.",
       "fields": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The board's name."
         },
         {
           "name": "description",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The board's description; may be empty."
         },
         {
-          "name": "element_count",
+          "name": "elementCount",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many elements are on the canvas."
         },
         {
-          "name": "member_count",
+          "name": "memberCount",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "How many members have joined."
         },
         {
           "name": "owner",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The owner's member id (account id)."
         }
       ]
     },
     "Comment": {
       "kind": "record",
+      "doc": "A comment pinned at a canvas point, with its replies.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Comment id, chosen by the caller."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Pin position, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Pin position, canvas pixels."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment text."
         },
         {
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "replies",
@@ -83,251 +96,301 @@
             "items": {
               "$ref": "CommentReply"
             }
-          }
+          },
+          "doc": "The thread, oldest first."
         }
       ]
     },
     "CommentReply": {
       "kind": "record",
+      "doc": "A reply in a comment thread.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Reply id, chosen by the caller."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The reply text."
         },
         {
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds; replies are listed in this order."
         }
       ]
     },
     "CursorState": {
       "kind": "record",
+      "doc": "A pointer's last reported position.",
       "fields": [
         {
           "name": "identity",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The device (context identity) this pointer belongs to."
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member id (account) behind that device."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds of the last move."
         }
       ]
     },
     "Element": {
       "kind": "record",
+      "doc": "One element on the canvas.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Chosen by the caller; use a fresh UUID. Writing an existing id replaces that element."
         },
         {
           "name": "data",
           "type": {
             "$ref": "ElementData"
-          }
+          },
+          "doc": "What the element is, tagged by `kind`."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Left edge, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Top edge, canvas pixels."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Width in pixels."
         },
         {
           "name": "height",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Height in pixels."
         },
         {
           "name": "rotation",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "Clockwise rotation in degrees."
         },
         {
           "name": "fill",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Fill colour as a CSS colour (`\"#ef4444\"`, `\"transparent\"`); on a plain text\nelement, the text colour."
         },
         {
           "name": "stroke",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Outline colour as a CSS colour."
         },
         {
-          "name": "stroke_width",
+          "name": "strokeWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Outline width in pixels; 0 for none."
         },
         {
           "name": "opacity",
           "type": {
             "kind": "u32"
-          }
-        },
-        {
-          "name": "layer_index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "shadow_color",
-          "type": {
-            "kind": "string"
           },
-          "nullable": true
+          "doc": "Opacity in percent, 0 to 100."
         },
         {
-          "name": "shadow_offset_x",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "shadow_offset_y",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "shadow_blur",
+          "name": "layerIndex",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "doc": "Paint order; higher paints on top."
+        },
+        {
+          "name": "createdBy",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The creator's member id, set by the contract; the value sent is ignored."
+        },
+        {
+          "name": "createdAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Creation time, unix milliseconds."
+        },
+        {
+          "name": "updatedAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Last change, unix milliseconds. Between concurrent writes to one element the\nlarger value wins, so every write must carry a newer one."
+        },
+        {
+          "name": "shadowColor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Drop shadow colour as a CSS colour; `null` for no shadow."
+        },
+        {
+          "name": "shadowOffsetX",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow horizontal offset in pixels."
+        },
+        {
+          "name": "shadowOffsetY",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow vertical offset in pixels."
+        },
+        {
+          "name": "shadowBlur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow blur radius in pixels; `null` or 0 for no shadow."
         },
         {
           "name": "label",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Layer name, a `/`-separated path: the groups, then the name. May carry client\nextras after a U+001F character; keep them when renaming."
         },
         {
-          "name": "corner_radius",
+          "name": "cornerRadius",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Corner radius in pixels for a `rect`, drawn at most half the shorter side; 0 or\nomitted means square corners."
         }
       ]
     },
     "ElementData": {
       "kind": "variant",
+      "doc": "What an element is, as a JSON object tagged by `kind`: `rect`, `circle`, `line`,\n`arrow`, `path`, `text`, `image` or `svg`, plus that kind's own fields.",
       "variants": [
         {
-          "name": "Rect"
+          "name": "rect",
+          "doc": "A rectangle filling the element's box; `cornerRadius` rounds its corners."
         },
         {
-          "name": "Circle"
+          "name": "circle",
+          "doc": "An ellipse filling the element's box."
         },
         {
-          "name": "Line",
+          "name": "line",
           "payload": {
             "$ref": "ElementData_Line"
-          }
+          },
+          "doc": "A straight line."
         },
         {
-          "name": "Arrow",
+          "name": "arrow",
           "payload": {
             "$ref": "ElementData_Arrow"
-          }
+          },
+          "doc": "A straight line with an arrowhead at its second point."
         },
         {
-          "name": "Path",
+          "name": "path",
           "payload": {
             "$ref": "ElementData_Path"
-          }
+          },
+          "doc": "A freehand stroke or a closed outline."
         },
         {
-          "name": "Text",
+          "name": "text",
           "payload": {
             "$ref": "ElementData_Text"
-          }
+          },
+          "doc": "Text in the element's box."
         },
         {
-          "name": "Image",
+          "name": "image",
           "payload": {
             "$ref": "ElementData_Image"
-          }
+          },
+          "doc": "A raster image stored as a blob on the node."
         },
         {
-          "name": "Svg",
+          "name": "svg",
           "payload": {
             "$ref": "ElementData_Svg"
-          }
+          },
+          "doc": "An SVG image stored as a blob on the node."
         }
-      ]
+      ],
+      "tag": "kind"
     },
     "ElementData_Arrow": {
       "kind": "record",
@@ -336,7 +399,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The two end points, `\"x1,y1 x2,y2\"`, in pixels from the element's `x` and `y`;\nthe arrowhead is at the second."
         }
       ]
     },
@@ -344,22 +408,25 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The image's own width in pixels, before any scaling to the element's box."
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The image's own height in pixels."
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Id of the uploaded blob holding the image; the contract announces it to the\nboard's members so their nodes fetch it."
         }
       ]
     },
@@ -370,7 +437,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The two end points, `\"x1,y1 x2,y2\"`, in pixels from the element's `x` and `y`."
         }
       ]
     },
@@ -381,7 +449,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "SVG path data in pixels from the element's `x` and `y`, e.g. `\"M 0 0 L 40 40 Z\"`."
         }
       ]
     },
@@ -389,22 +458,25 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The SVG's own width in pixels."
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The SVG's own height in pixels."
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Id of the uploaded blob holding the SVG markup; announced like an image's."
         }
       ]
     },
@@ -415,103 +487,236 @@
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The text itself; may be empty."
         },
         {
-          "name": "font_size",
+          "name": "fontSize",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Font size in pixels."
         },
         {
-          "name": "font_family",
+          "name": "fontFamily",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS font family, e.g. `\"sans-serif\"`."
         },
         {
           "name": "bold",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Bold weight."
         },
         {
           "name": "italic",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Italic style."
         },
         {
           "name": "text_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true,
+          "doc": "Horizontal alignment: `\"left\"`, `\"center\"` or `\"right\"`; omitted means left."
         },
         {
           "name": "vertical_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true,
+          "doc": "Vertical alignment inside the box: `\"top\"`, `\"middle\"` or `\"bottom\"`."
         }
       ]
     },
-    "Member": {
+    "ElementPatch": {
       "kind": "record",
+      "doc": "One element's change in an `update_elements` call. Fields match `update_element`'s\narguments; an omitted or `null` field is left unchanged.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The element to change; an unknown id is skipped."
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true,
+          "doc": "New left edge, canvas pixels."
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true,
+          "doc": "New top edge, canvas pixels."
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "New width in pixels."
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "New height in pixels."
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true,
+          "doc": "New rotation in degrees."
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "New fill colour."
+        },
+        {
+          "name": "stroke",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "New outline colour."
+        },
+        {
+          "name": "stroke_width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "New outline width in pixels."
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "New opacity in percent, 0 to 100."
+        },
+        {
+          "name": "corner_radius",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "New corner radius in pixels; 0 squares the corners."
+        }
+      ]
+    },
+    "LabelUpdate": {
+      "kind": "record",
+      "doc": "One element's new label in an `update_element_labels` call.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The element to rename; an unknown id is skipped."
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The new label, as for `update_element_label`; `null` clears it."
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "doc": "A board member: someone who has called `join`.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Member id: the member's account id (64 hex), the id roles and ownership name."
         },
         {
           "name": "username",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Display name the member chose."
         },
         {
           "name": "avatar",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Avatar URL, or `null`."
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the member joined, unix milliseconds from their own clock."
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds of the last profile edit; the newest edit wins."
         }
       ]
     },
     "MemberRole": {
       "kind": "record",
+      "doc": "A member with their effective role.",
       "fields": [
         {
           "name": "member",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Member id (account id)."
         },
         {
           "name": "role",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`\"admin\"`, `\"editor\"` or `\"viewer\"`."
         },
         {
           "name": "account",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "The member's account id; always equal to `member`."
         }
       ]
     },
@@ -555,7 +760,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -566,7 +771,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -575,15 +780,21 @@
         {
           "name": "elements",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Element"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Element"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The canvas. Writer-set guarded: only accounts holding a role mask\nprojected from `roles` (editors, admins) may write an entry, on every\nnode."
         },
         {
           "name": "members",
@@ -594,22 +805,47 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "One slot per account, written only by that account."
         },
         {
           "name": "comments",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Comment"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Comment"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Guarded like `elements`."
+        },
+        {
+          "name": "replies",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "CommentReply"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every reply, keyed `\"<comment>/<created_at:020>/<reply>\"` so one\ncomment's thread is a prefix slice in order. Guarded like `elements`."
         },
         {
           "name": "cursors",
@@ -621,8 +857,9 @@
             "value": {
               "$ref": "CursorState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed by DEVICE: a pointer belongs to a screen. Each entry is owned by\nthe account that wrote it."
         },
         {
           "name": "roles",
@@ -636,25 +873,6 @@
             },
             "crdt_type": "shared_storage"
           }
-        },
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bytes",
-                "size": 32
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
         }
       ]
     }
@@ -662,36 +880,42 @@
   "methods": [
     {
       "name": "add_comment",
+      "doc": "Pin a comment at a canvas point, or replace the comment with the same `id` (its replies\nare kept). Editors only; the author is the caller.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d\",\"x\":120,\"y\":90,\"content\":\"Bigger logo?\",\"created_at\":1727000040000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "a fresh UUID chosen by the caller."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "canvas pixels."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the comment text."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds."
         }
       ],
       "returns": {
@@ -701,45 +925,77 @@
     },
     {
       "name": "add_element",
+      "doc": "Add an element to the canvas, or replace the element with the same `id`. Editors only.\n\nThe caller chooses `id` (a fresh UUID) and `layerIndex` (one above the highest in\n`get_elements` paints on top). `createdBy` is set by the contract. For an `image` or `svg`,\n`blobId` must name a blob already uploaded to the node.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"element\":{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"data\":{\"kind\":\"rect\"},\"x\":40,\"y\":60,\"width\":120,\"height\":80,\"rotation\":0,\"fill\":\"#ef4444\",\"stroke\":\"transparent\",\"strokeWidth\":0,\"opacity\":100,\"layerIndex\":0,\"createdBy\":\"\",\"createdAt\":1727000000000,\"updatedAt\":1727000000000}}\n```",
       "params": [
         {
           "name": "element",
           "type": {
             "$ref": "Element"
-          }
+          },
+          "doc": "the whole element; `null` or omitted optional fields mean none."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The element's id.",
+      "intent": "mutating"
+    },
+    {
+      "name": "add_elements",
+      "doc": "`add_element` for many elements in one call, such as a paste or an import. Editors only.\nEmits one `ElementsAdded` event.\n\n# Errors\nFails, adding nothing, if the caller is not an editor or admin or `elements` holds more\nthan 200 entries.\n\n# Examples\n```json\n{\"elements\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"data\":{\"kind\":\"rect\"},\"x\":40,\"y\":60,\"width\":120,\"height\":80,\"rotation\":0,\"fill\":\"#ef4444\",\"stroke\":\"transparent\",\"strokeWidth\":0,\"opacity\":100,\"layerIndex\":0,\"createdBy\":\"\",\"createdAt\":1727000000000,\"updatedAt\":1727000000000}]}\n```",
+      "params": [
+        {
+          "name": "elements",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Element"
+            }
+          },
+          "doc": "at most 200 elements; an existing id is replaced, as with `add_element`."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "returns_doc": "The elements' ids, in the order given.",
       "intent": "mutating"
     },
     {
       "name": "add_reply",
+      "doc": "Reply to a comment. Editors only; the author is the caller. Does nothing if the comment\ndoes not exist.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"comment_id\":\"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d\",\"reply_id\":\"1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e\",\"content\":\"Agreed\",\"created_at\":1727000050000}\n```",
       "params": [
         {
           "name": "comment_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the comment to answer."
         },
         {
           "name": "reply_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "a fresh UUID chosen by the caller."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the reply text."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds; replies are listed in this order."
         }
       ],
       "returns": {
@@ -749,12 +1005,14 @@
     },
     {
       "name": "bring_to_front",
+      "doc": "Paint an element above every other one. Editors only.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to move."
         }
       ],
       "returns": {
@@ -764,89 +1022,131 @@
     },
     {
       "name": "can_edit",
+      "doc": "Whether the caller may change the canvas and comments.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "bool"
       },
+      "returns_doc": "`true` for an admin or editor, `false` for a viewer.",
       "intent": "read_only"
     },
     {
       "name": "clear_comments",
+      "doc": "Delete every comment and reply on the board, for every member. Admin only. Emits no\nevent, so open clients see it only when they next read comments.\n\n# Errors\nFails if the caller is not an admin.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true,
+      "idempotent": true
     },
     {
       "name": "clear_elements",
+      "doc": "Delete every element on the board, for every member. Admin only. Emits `LayerReordered`.\n\n# Errors\nFails if the caller is not an admin.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_comment",
+      "doc": "Delete a comment and all its replies. Editors only. An unknown id is not an error, and\nstill emits `CommentDeleted`.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d\"}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the comment to delete."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_element",
+      "doc": "Delete an element for every member. Editors only. An unknown id is not an error, and\nstill emits `ElementDeleted`.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to delete."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_elements",
+      "doc": "`delete_element` for many elements in one call. Editors only. Ids already gone are\nfine. Emits one `ElementsDeleted` event.\n\nOn a large board a batch can run out of gas well below 200 ids (roughly 150 on an empty\nboard, 23 at 1000 elements); on that error nothing is deleted, so retry with half as many.\n\n# Errors\nFails, deleting nothing, if the caller is not an editor or admin, `ids` holds more than\n200 entries, or the call runs out of gas.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "at most 200 element ids."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_reply",
+      "doc": "Delete one reply from a comment. Editors only. Does nothing, and emits nothing, if the\nreply is not there.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"comment_id\":\"9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d\",\"reply_id\":\"1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e\"}\n```",
       "params": [
         {
           "name": "comment_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the comment the reply belongs to."
         },
         {
           "name": "reply_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the reply to delete."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true,
+      "idempotent": true
     },
     {
       "name": "get_board",
+      "doc": "The board's name, description, element and member counts, and owner.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "$ref": "BoardInfo"
       },
+      "returns_doc": "The board summary.",
       "intent": "read_only"
     },
     {
       "name": "get_comments",
+      "doc": "Every comment with its replies.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -854,10 +1154,12 @@
           "$ref": "Comment"
         }
       },
+      "returns_doc": "The comments, each with its replies oldest first.",
       "intent": "read_only"
     },
     {
       "name": "get_cursors",
+      "doc": "Every pointer's last reported position.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -865,26 +1167,31 @@
           "$ref": "CursorState"
         }
       },
+      "returns_doc": "One entry per device that has reported a position, labelled with the account that owns it.",
       "intent": "read_only"
     },
     {
       "name": "get_element",
+      "doc": "One element by id.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element id."
         }
       ],
       "returns": {
         "$ref": "Element"
       },
       "returns_nullable": true,
+      "returns_doc": "The element, or `null` if `id` names no element.",
       "intent": "read_only"
     },
     {
       "name": "get_elements",
+      "doc": "Every element on the canvas, in paint order.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -892,10 +1199,36 @@
           "$ref": "Element"
         }
       },
+      "returns_doc": "The elements, lowest `layerIndex` first.",
+      "intent": "read_only"
+    },
+    {
+      "name": "get_elements_by_ids",
+      "doc": "Several elements by id in one read, such as the ids a batch event named. No size cap.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "element ids."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Element"
+        }
+      },
+      "returns_doc": "The elements that exist, in the order asked; unknown ids are left out.",
       "intent": "read_only"
     },
     {
       "name": "get_members",
+      "doc": "Every member who has joined, with username, avatar and join time.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -903,31 +1236,37 @@
           "$ref": "Member"
         }
       },
+      "returns_doc": "One entry per member; `id` is the member id roles and ownership use.",
       "intent": "read_only"
     },
     {
       "name": "get_role",
+      "doc": "A member's effective role.\n\n# Examples\n```json\n{\"member\":\"<member id from get_members>\"}\n```",
       "params": [
         {
           "name": "member",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "a member id (account id). Anything else, or an id with no grant, is a viewer."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "`\"admin\"`, `\"editor\"` or `\"viewer\"`.",
       "intent": "read_only"
     },
     {
       "name": "grant_editor",
+      "doc": "Let a member change the canvas and comments. Admin only.\n\n# Errors\nFails if the caller is not an admin or `member` is not a 64-hex account id.\n\n# Examples\n```json\n{\"member\":\"<member id from get_members>\"}\n```",
       "params": [
         {
           "name": "member",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "their member id (account id), from `get_members` or `list_group_members`; they need not have joined the board yet."
         }
       ],
       "returns": {
@@ -937,18 +1276,21 @@
     },
     {
       "name": "init",
+      "doc": "Create a board owned by the caller. Runs once, when the context is created, with\nthe context's init arguments. The creator becomes the owner and the only admin.\n\n# Examples\n```json\n{\"name\":\"Landing page\",\"description\":\"\"}\n```",
       "params": [
         {
           "name": "name",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the board's name."
         },
         {
           "name": "description",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "free text; may be empty."
         }
       ],
       "returns": {
@@ -957,34 +1299,40 @@
     },
     {
       "name": "join",
+      "doc": "Add the caller to the board's members, so other members see their name. Anyone in the\ncontext may join; joining grants no editing rights. Does nothing, and emits nothing, if\nthe caller's account has already joined (use `update_member_username` to rename).\n\n# Examples\n```json\n{\"username\":\"bot\",\"avatar\":null,\"timestamp\":1727000000000}\n```",
       "params": [
         {
           "name": "username",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "display name shown to other members."
         },
         {
           "name": "avatar",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "avatar URL, or `null`."
         },
         {
           "name": "timestamp",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's clock in unix milliseconds."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "list_roles",
+      "doc": "Every member who has joined, with their effective role.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -992,24 +1340,29 @@
           "$ref": "MemberRole"
         }
       },
+      "returns_doc": "One entry per member.",
       "intent": "read_only"
     },
     {
       "name": "my_role",
+      "doc": "The caller's effective role.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "`\"admin\"`, `\"editor\"` or `\"viewer\"`.",
       "intent": "read_only"
     },
     {
       "name": "revoke_editor",
+      "doc": "Take the editor role away, leaving the member a viewer. Admin only. An admin's own\nadmin role is unaffected.\n\n# Errors\nFails if the caller is not an admin or `member` is not a 64-hex account id.\n\n# Examples\n```json\n{\"member\":\"<member id from get_members>\"}\n```",
       "params": [
         {
           "name": "member",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "their member id (account id)."
         }
       ],
       "returns": {
@@ -1019,12 +1372,14 @@
     },
     {
       "name": "send_to_back",
+      "doc": "Paint an element below every other one. Editors only.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to move."
         }
       ],
       "returns": {
@@ -1034,24 +1389,28 @@
     },
     {
       "name": "set_layer_index",
+      "doc": "Move one element to a position in the paint order and renumber every element from 0,\nso a one-step move survives a sync. Editors only. Does nothing if `id` names no element.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"index\":0,\"updated_at\":1727000020000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to move."
         },
         {
           "name": "index",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "the new position, 0 at the back; larger than the board is clamped to the front."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds, newer than the element's current `updatedAt`."
         }
       ],
       "returns": {
@@ -1061,12 +1420,14 @@
     },
     {
       "name": "transfer_ownership",
+      "doc": "Hand the board to another account: it becomes owner and admin, and the caller stops\nbeing admin (and so loses editing unless also granted editor). Owner only.\n\n# Errors\nFails if the caller is not the owner or `new_owner` is not a 64-hex account id.\n\n# Examples\n```json\n{\"new_owner\":\"<member id from get_members>\"}\n```",
       "params": [
         {
           "name": "new_owner",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the new owner's member id (account id). They need not have joined yet."
         }
       ],
       "returns": {
@@ -1076,20 +1437,23 @@
     },
     {
       "name": "update_board",
+      "doc": "Rename or re-describe the board. Owner only.\n\n# Errors\nFails if the caller is not the owner.\n\n# Examples\n```json\n{\"name\":\"Landing page v2\",\"description\":null}\n```",
       "params": [
         {
           "name": "name",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "the new name, or `null` to keep it. An empty name shows the name the board was created with."
         },
         {
           "name": "description",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "the new description, or `null` to keep it. An empty one shows the description the board was created with."
         }
       ],
       "returns": {
@@ -1099,24 +1463,28 @@
     },
     {
       "name": "update_cursor",
+      "doc": "Report the caller's pointer position to the other members. Open to everyone in the\ncontext, viewers included. One pointer per device.\n\n# Examples\n```json\n{\"x\":200,\"y\":150,\"updated_at\":1727000060000}\n```",
       "params": [
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "canvas pixels."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds."
         }
       ],
       "returns": {
@@ -1126,88 +1494,101 @@
     },
     {
       "name": "update_element",
+      "doc": "Move, resize or restyle an element. Editors only. Does nothing if `id` names no element.\n\nEvery field argument is optional: `null` leaves it unchanged.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"x\":300,\"y\":60,\"width\":null,\"height\":null,\"rotation\":null,\"fill\":\"#22c55e\",\"stroke\":null,\"stroke_width\":null,\"opacity\":null,\"corner_radius\":8,\"updated_at\":1727000010000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to change."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new left edge, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new top edge, canvas pixels."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new width in pixels."
         },
         {
           "name": "height",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new height in pixels."
         },
         {
           "name": "rotation",
           "type": {
             "kind": "i32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new rotation in degrees."
         },
         {
           "name": "fill",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new fill colour."
         },
         {
           "name": "stroke",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new outline colour."
         },
         {
           "name": "stroke_width",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new outline width in pixels."
         },
         {
           "name": "opacity",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new opacity in percent, 0 to 100."
         },
         {
           "name": "corner_radius",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new corner radius in pixels; 0 squares the corners."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds, newer than the element's current `updatedAt`."
         }
       ],
       "returns": {
@@ -1217,25 +1598,83 @@
     },
     {
       "name": "update_element_label",
+      "doc": "Set or clear an element's label (its layer name and group). Editors only. Does nothing\nif `id` names no element.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"label\":\"screen/01 Sign in\",\"updated_at\":1727000030000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to rename."
         },
         {
           "name": "label",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "a `/`-separated path, groups first (`\"topbar/logo\"`); a `rect` labelled `screen/<name>` is a presentation screen. Keep any U+001F suffix the current label carries. `null` clears the label."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds, newer than the element's current `updatedAt`."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_element_labels",
+      "doc": "`update_element_label` for many elements in one call, such as grouping a selection.\nEditors only. Unknown ids are skipped. Emits one `ElementsUpdated` event naming the ids\nthat existed.\n\n# Errors\nFails, changing nothing, if the caller is not an editor or admin or `labels` holds more\nthan 200 entries.\n\n# Examples\n```json\n{\"labels\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"label\":\"topbar/logo\"}],\"updated_at\":1727000030000}\n```",
+      "params": [
+        {
+          "name": "labels",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LabelUpdate"
+            }
+          },
+          "doc": "at most 200; each names an element and its new label, or `null` to clear it."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "unix milliseconds, shared by every label; newer than each element's current `updatedAt`."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_elements",
+      "doc": "`update_element` for many elements in one call, such as a multi-select drag. Editors only.\nUnknown ids are skipped. Emits one `ElementsUpdated` event naming the ids that existed.\n\n# Errors\nFails, changing nothing, if the caller is not an editor or admin or `patches` holds more\nthan 200 entries.\n\n# Examples\n```json\n{\"patches\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"x\":40,\"y\":50}],\"updated_at\":1727000010000}\n```",
+      "params": [
+        {
+          "name": "patches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ElementPatch"
+            }
+          },
+          "doc": "at most 200; each names an element and the fields to change."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "unix milliseconds, shared by every patch; newer than each element's current `updatedAt`."
         }
       ],
       "returns": {
@@ -1245,18 +1684,21 @@
     },
     {
       "name": "update_member_username",
+      "doc": "Rename the caller's own member entry. Does nothing if the caller has not joined.\n\n# Examples\n```json\n{\"username\":\"bot-2\",\"timestamp\":1727000001000}\n```",
       "params": [
         {
           "name": "username",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the new display name."
         },
         {
           "name": "timestamp",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "the caller's clock in unix milliseconds; the newest rename wins."
         }
       ],
       "returns": {
@@ -1266,46 +1708,53 @@
     },
     {
       "name": "update_shadow",
+      "doc": "Set or remove an element's drop shadow. Editors only. Does nothing if `id` names no\nelement. All four shadow fields are replaced; `null` for all four removes the shadow.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"shadow_color\":\"rgba(0,0,0,0.3)\",\"shadow_offset_x\":0,\"shadow_offset_y\":4,\"shadow_blur\":12,\"updated_at\":1727000015000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the element to change."
         },
         {
           "name": "shadow_color",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "a CSS colour, e.g. `\"rgba(0,0,0,0.3)\"`."
         },
         {
           "name": "shadow_offset_x",
           "type": {
             "kind": "i32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "horizontal offset in pixels."
         },
         {
           "name": "shadow_offset_y",
           "type": {
             "kind": "i32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "vertical offset in pixels."
         },
         {
           "name": "shadow_blur",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "blur radius in pixels; 0 draws no shadow."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds, newer than the element's current `updatedAt`."
         }
       ],
       "returns": {
@@ -1315,67 +1764,77 @@
     },
     {
       "name": "update_text_style",
+      "doc": "Change a text element's content or style. Editors only. Does nothing if `id` names no\nelement; on an element that is not text it changes only `updatedAt`.\n\nEvery field argument is optional: `null` leaves it unchanged.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f\",\"content\":\"Hello there\",\"font_family\":null,\"font_size\":32,\"bold\":true,\"italic\":null,\"text_align\":\"center\",\"vertical_align\":null,\"updated_at\":1727000005000}\n```",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "the text element to change."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new text."
         },
         {
           "name": "font_family",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new CSS font family."
         },
         {
           "name": "font_size",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "new font size in pixels."
         },
         {
           "name": "bold",
           "type": {
             "kind": "bool"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "bold on or off."
         },
         {
           "name": "italic",
           "type": {
             "kind": "bool"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "italic on or off."
         },
         {
           "name": "text_align",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`\"left\"`, `\"center\"` or `\"right\"`."
         },
         {
           "name": "vertical_align",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "`\"top\"`, `\"middle\"` or `\"bottom\"`."
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "unix milliseconds, newer than the element's current `updatedAt`."
         }
       ],
       "returns": {
@@ -1386,76 +1845,119 @@
   ],
   "events": [
     {
-      "name": "BoardUpdated"
+      "name": "BoardUpdated",
+      "doc": "The board's name or description changed."
     },
     {
       "name": "CommentAdded",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A comment was added or replaced; the payload is its id."
     },
     {
       "name": "CommentDeleted",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "`delete_comment` ran; the payload is the id it was given."
     },
     {
       "name": "CommentUpdated",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A comment's replies changed; the payload is the comment id."
     },
     {
       "name": "CursorMoved",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A pointer moved; the payload is its device identity."
     },
     {
       "name": "ElementAdded",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "`add_element` stored an element; the payload is its id."
     },
     {
       "name": "ElementDeleted",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "`delete_element` ran; the payload is the id it was given."
     },
     {
       "name": "ElementUpdated",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "One element changed (`update_element`, `update_element_label`,\n`update_text_style`, `update_shadow`); the payload is its id."
     },
     {
-      "name": "LayerReordered"
+      "name": "ElementsAdded",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "`add_elements` stored elements; the payload is every id, in call order."
+    },
+    {
+      "name": "ElementsDeleted",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "`delete_elements` ran; the payload is every id the call named."
+    },
+    {
+      "name": "ElementsUpdated",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "`update_elements` or `update_element_labels` changed elements; the payload is\nevery id that existed (unknown ids are left out)."
+    },
+    {
+      "name": "LayerReordered",
+      "doc": "The layer order changed, or `clear_elements` emptied the canvas; re-read `get_elements`."
     },
     {
       "name": "MemberJoined",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A member joined; the payload is their member id."
     },
     {
       "name": "MemberUsernameUpdated",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A member renamed themselves; the payload is their member id."
     },
     {
       "name": "OwnerTransferred",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "The board changed owner; the payload is the id the caller passed."
     },
     {
       "name": "RoleUpdated",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "A member's editor role was granted or revoked; the payload is the id the caller passed."
     }
   ],
   "state_root": "MeroDesign",

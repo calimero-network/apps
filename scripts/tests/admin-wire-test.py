@@ -73,7 +73,7 @@ check(
     expect_key="applicationId",
 )
 
-# A call that builds the URL from a base variable. mero-drive's reparent is
+# A call that builds the URL from a base variable. mero-docs's reparent is
 # spelled this way, and it was invisible while the matcher required the string
 # to START with a slash — the same blind spot as the literal-route bug, one
 # spelling over.
@@ -157,6 +157,44 @@ check(
     """// historical: this used to send `alias` alongside name
        await adminPost("/admin-api/namespaces", { applicationId: a, name: n });""",
     expect_flagged=False,
+)
+
+# ── whole-body casts: the shape both mero-chat bugs hid behind ───────────────
+def check_cast(label, source, expect_lines):
+    got = chk.scan_casts(source)
+    if len(got) != expect_lines:
+        failures.append(f"{label}: expected {expect_lines} cast finding(s), got lines {got}")
+
+
+check_cast(
+    "`body as unknown as CreateContextRequest` (mero-chat `protocol`)",
+    """const data = await getMeroJs().admin.createContext(
+        body as unknown as CreateContextRequest,
+      );""",
+    1,
+)
+check_cast(
+    "whole-argument `Parameters<…admin…>[0]` (mero-chat `upgradePolicy`)",
+    """await getMeroJs().admin.createNamespace(
+        body as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["createNamespace"]
+        >[0],
+      )""",
+    1,
+)
+check_cast(
+    "a cast on ONE field inside a typed body is allowed",
+    """await admin.joinNamespace(id, {
+        invitation: request.invitation as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["joinNamespace"]
+        >[1]["invitation"],
+      })""",
+    0,
+)
+check_cast(
+    "a typed body with no cast",
+    "const body: CreateContextRequest = { applicationId, groupId };",
+    0,
 )
 
 if failures:

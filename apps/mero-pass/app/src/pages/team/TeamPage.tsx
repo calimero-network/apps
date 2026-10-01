@@ -9,6 +9,8 @@ import { useApplicationId } from '../../hooks/useApplicationId';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
 import { canCreateVault, canInvite } from '../../lib/roles';
 import {
+  DEFAULT_INVITE_SECS,
+  INVITE_VALIDITY,
   createVault,
   displayName,
   enterVaultContext,
@@ -20,6 +22,7 @@ import {
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
 import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
+import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';
 
@@ -58,6 +61,10 @@ export default function TeamPage() {
   const [listedForTeam, setListedForTeam] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [restricted, setRestricted] = useState(false);
+  const [validFor, setValidFor] = useState<number>(DEFAULT_INVITE_SECS);
+  const validLabel =
+    INVITE_VALIDITY.find((v) => v.secs === validFor)?.label ?? '24 hours';
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<{
     code: string;
@@ -89,7 +96,7 @@ export default function TeamPage() {
       setListedForTeam(teamId);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setLoading(false);
     }
@@ -123,17 +130,18 @@ export default function TeamPage() {
     try {
       await createVault(
         mero.admin,
-        { applicationId: appId, namespaceId: teamId, name },
+        { applicationId: appId, namespaceId: teamId, name, restricted },
         setBusy,
       );
       setNewName('');
+      setRestricted(false);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
-  }, [mero, appId, teamId, newName, load]);
+  }, [mero, appId, teamId, newName, restricted, load]);
 
   const open = useCallback(
     async (vault: VaultRow) => {
@@ -145,6 +153,10 @@ export default function TeamPage() {
           {
             vaultId: vault.vaultId,
             contextId: vault.contextId,
+            // Invite-only: this node is either already a direct member (it was
+            // invited to the vault) or will be refused — inheritance cannot
+            // admit anyone to it.
+            direct: vault.restricted,
             // The team this vault belongs to. Inheritance eligibility is
             // decided against the PARENT, so this is the group whose state
             // the retry has to wait for — see `joinVaultWithRetry`.
@@ -154,7 +166,7 @@ export default function TeamPage() {
         );
         navigate(`/vault/${vault.contextId}`);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }
@@ -168,20 +180,20 @@ export default function TeamPage() {
     try {
       const code = await mintTeamInvite(
         mero.admin,
-        { namespaceId: teamId, teamName: heading },
+        { namespaceId: teamId, teamName: heading, validForSecs: validFor },
         setBusy,
       );
       setInvite({
         code,
         scope: `Whole team · ${heading}`,
-        hint: 'Anyone who opens this link can join the team and read every vault in it.',
+        hint: `Anyone who opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
-  }, [mero, teamId, heading]);
+  }, [mero, teamId, heading, validFor, validLabel]);
 
   const inviteToVault = useCallback(
     async (vault: VaultRow) => {
@@ -196,23 +208,28 @@ export default function TeamPage() {
             vaultName: vault.name,
             teamName: heading,
             contextId: vault.contextId,
+            validForSecs: validFor,
+            restricted: vault.restricted,
           },
           setBusy,
         );
         setInvite({
           code,
           scope: `Opens ${vault.name}`,
-          // Said plainly: vault access is INHERITED, so there is no such thing
-          // as a vault-only grant and the UI must not imply one.
-          hint: `This link lands them in “${vault.name}”, but the access it grants is the whole of ${heading} — every vault in the team, including ones added later.`,
+          // Said plainly: an OPEN vault's access is inherited from the team,
+          // so a link to it grants every open vault there. Only an invite-only
+          // vault can be granted on its own.
+          hint: vault.restricted
+            ? `“${vault.name}” is invite-only: this link admits them to it and to ${heading}, but to no other invite-only vault. Valid for ${validLabel}.`
+            : `This link lands them in “${vault.name}”, but the access it grants is the whole of ${heading} — every open vault in the team, including ones added later. Valid for ${validLabel}.`,
         });
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }
     },
-    [mero, teamId, heading],
+    [mero, teamId, heading, validFor, validLabel],
   );
 
   return (
@@ -222,15 +239,31 @@ export default function TeamPage() {
       <main className={styles.mainWide}>
         <div className={styles.titleRow}>
           <div>
+            <p className={styles.eyebrow}>Team</p>
             <h1 className={styles.title} data-testid="team-heading">
               {heading}
             </h1>
             <p className={styles.subtitle}>
-              Every vault here is shared with everyone in this team.
+              Open vaults are shared with everyone in this team; invite-only
+              vaults with the people invited to them.
             </p>
           </div>
           {mayInvite && (
             <div className={styles.titleRowActions}>
+              <select
+                className={styles.input}
+                value={validFor}
+                onChange={(e) => setValidFor(Number(e.target.value))}
+                aria-label="Invitations expire after"
+                title="Invitations expire after"
+                data-testid="invite-validity"
+              >
+                {INVITE_VALIDITY.map((v) => (
+                  <option key={v.secs} value={v.secs}>
+                    Expires in {v.label}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className={styles.btn}
@@ -286,6 +319,15 @@ export default function TeamPage() {
                   onKeyDown={(e) => e.key === 'Enter' && void create()}
                   data-testid="vault-name"
                 />
+                <label className={styles.rowSub}>
+                  <input
+                    type="checkbox"
+                    checked={restricted}
+                    onChange={(e) => setRestricted(e.target.checked)}
+                    data-testid="vault-restricted"
+                  />{' '}
+                  Invite-only
+                </label>
                 <button
                   type="button"
                   className={styles.btn}
@@ -334,6 +376,7 @@ export default function TeamPage() {
                     >
                       <span className={styles.cardName}>{vault.name}</span>
                       <span className={styles.cardSub}>
+                        {vault.restricted ? 'Invite-only · ' : ''}
                         {vault.memberCount} member
                         {vault.memberCount === 1 ? '' : 's'}
                         {vault.contextId

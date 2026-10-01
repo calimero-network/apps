@@ -2,7 +2,8 @@
  * FunctionHelpPanel — slide-out panel listing all supported functions.
  *
  * Opens as a right-side overlay. Lists functions alphabetically with name,
- * syntax, description, and an example. A search box at the top filters the list.
+ * syntax, description, and an example. A search box and category chips at the
+ * top filter the list.
  * Pressing Escape or clicking the backdrop closes it.
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -20,6 +21,8 @@ export default function FunctionHelpPanel({
   onClose,
 }: FunctionHelpPanelProps) {
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
+  const categories = [...new Set(functions.map((f) => f.category))].sort();
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -32,13 +35,12 @@ export default function FunctionHelpPanel({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const filtered = query.trim()
-    ? functions.filter(
-        (f) =>
-          f.name.toLowerCase().includes(query.toLowerCase()) ||
-          f.description.toLowerCase().includes(query.toLowerCase()),
-      )
-    : functions;
+  const q = query.trim().toLowerCase();
+  const filtered = functions.filter(
+    (f) =>
+      (category === null || f.category === category) &&
+      (!q || f.name.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)),
+  );
 
   // Sort alphabetically
   const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
@@ -96,6 +98,23 @@ export default function FunctionHelpPanel({
           )}
         </SearchWrap>
 
+        {/* Categories */}
+        <CategoryRow role="group" aria-label="Filter by category">
+          <Chip type="button" aria-pressed={category === null} onClick={() => setCategory(null)}>
+            All
+          </Chip>
+          {categories.map((c) => (
+            <Chip
+              key={c}
+              type="button"
+              aria-pressed={category === c}
+              onClick={() => setCategory(category === c ? null : c)}
+            >
+              {c}
+            </Chip>
+          ))}
+        </CategoryRow>
+
         {/* Count */}
         <CountLine>
           {sorted.length === functions.length
@@ -104,13 +123,13 @@ export default function FunctionHelpPanel({
         </CountLine>
 
         {/* Function list */}
-        <FnList>
-          {sorted.length === 0 ? (
-            <EmptyState>No functions match "{query}"</EmptyState>
-          ) : (
-            sorted.map((fn) => <FnCard key={fn.name} fn={fn} />)
-          )}
-        </FnList>
+        {sorted.length === 0 ? (
+          <EmptyState>No functions match{query ? ` "${query}"` : ''}</EmptyState>
+        ) : (
+          <FnList aria-label="Functions">
+            {sorted.map((fn) => <FnCard key={fn.name} fn={fn} />)}
+          </FnList>
+        )}
       </Panel>
     </Overlay>
   );
@@ -119,7 +138,10 @@ export default function FunctionHelpPanel({
 function FnCard({ fn }: { fn: FunctionDef }) {
   return (
     <FnItem>
-      <FnName>{fn.name}</FnName>
+      <FnName>
+        {fn.name}
+        <FnCategory>{fn.category}</FnCategory>
+      </FnName>
       <FnSyntax>{fn.syntax}</FnSyntax>
       <FnDesc>{fn.description}</FnDesc>
       <FnExample>
@@ -274,6 +296,40 @@ const ClearBtn = styled.button`
   &:hover { color: ${C.ink}; }
 `;
 
+const CategoryRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid ${C.line};
+`;
+
+const Chip = styled.button`
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid ${C.line};
+  background: ${C.paper};
+  color: ${C.muted};
+  cursor: pointer;
+
+  &:hover { color: ${C.ink}; }
+  &[aria-pressed='true'] {
+    border-color: ${C.green};
+    color: ${C.greenDeep};
+    background: ${C.paper2};
+  }
+`;
+
+const FnCategory = styled.span`
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: ${C.mutedSoft};
+`;
+
 const CountLine = styled.div`
   padding: 6px 18px;
   font-size: 11.5px;
@@ -282,7 +338,9 @@ const CountLine = styled.div`
   flex-shrink: 0;
 `;
 
-const FnList = styled.div`
+const FnList = styled.ul`
+  list-style: none;
+  margin: 0;
   flex: 1;
   overflow-y: auto;
   padding: 8px 0;
@@ -290,7 +348,7 @@ const FnList = styled.div`
   scrollbar-color: ${C.line} transparent;
 `;
 
-const FnItem = styled.div`
+const FnItem = styled.li`
   padding: 14px 18px;
   border-bottom: 1px solid ${C.line};
 
@@ -347,6 +405,7 @@ const FnExample = styled.div`
 `;
 
 const EmptyState = styled.div`
+  flex: 1;
   padding: 40px 18px;
   text-align: center;
   font-size: 14px;

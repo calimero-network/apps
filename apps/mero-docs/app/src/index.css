@@ -1,0 +1,355 @@
+/* Self-hosted, not fetched from fonts.googleapis.com. A remote stylesheet
+   @import blocks rendering until it resolves, which for a local-first app
+   means the UI stalls on every offline load - the one condition this app is
+   built for. It also disclosed every viewer's IP to a third party.
+   Variable builds: one file per family covers all weights we use. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Calimero green on MeroDesign neutrals. --primary (#a5ff11) is a fill only,
+     under --primary-foreground; green text, icons and rings use --primary-ink.
+     The landing hero (.cal-lp-a) follows the landing page's theme, not the app's. */
+  :root,
+  [data-cal-lp-theme='light'] .cal-lp-a {
+    /* Native controls (scrollbars, checkboxes, date pickers) follow the theme instead of staying light. */
+    color-scheme: light;
+
+    --background: 0 0% 98%;
+    --foreground: 0 0% 7%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 7%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+
+    --primary: 83 100% 53%;
+    --primary-foreground: 260 8% 8%;
+    --primary-ink: 82 100% 24%;
+
+    /* The current selection: a lime wash, pre-blended so it stays opaque. */
+    --selected: 83 100% 85%;
+    --selected-foreground: 260 8% 8%;
+
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 20%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 7%;
+
+    --destructive: 6 63% 46%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: var(--primary-ink);
+
+    --radius: 0.5rem;
+
+    /* Custom tokens */
+    --success: var(--primary-ink);
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-ink: 26 90% 37%;
+
+    /* Encryption/Security accent */
+    --secure: 82 100% 19%;
+    --secure-foreground: 0 0% 100%;
+    --secure-muted: 83 100% 91%;
+
+    /* Sync status */
+    --synced: var(--primary);
+    --syncing: 38 92% 50%;
+    --offline: 0 0% 53%;
+  }
+
+  /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
+     ink and fill are the same green. */
+  .dark,
+  [data-cal-lp-theme='dark'] .cal-lp-a {
+    color-scheme: dark;
+
+    --background: 240 7% 6%;
+    --foreground: 0 0% 93%;
+
+    --card: 240 5% 9%;
+    --card-foreground: 0 0% 93%;
+
+    --popover: 240 5% 9%;
+    --popover-foreground: 0 0% 93%;
+
+    --primary: 83 100% 53%;
+    --primary-foreground: 260 8% 8%;
+    --primary-ink: 83 100% 53%;
+
+    --selected: 84 48% 13%;
+    --selected-foreground: 83 100% 88%;
+
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 85%;
+
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 3% 64%;
+
+    --accent: 240 6% 13%;
+    --accent-foreground: 0 0% 93%;
+
+    --destructive: 0 100% 71%;
+    --destructive-foreground: 260 8% 8%;
+
+    --border: 240 5% 17%;
+    --input: 240 5% 17%;
+    --ring: var(--primary-ink);
+
+    /* Custom tokens - dark */
+    --success: var(--primary-ink);
+    --success-foreground: 260 8% 8%;
+    --warning: 38 85% 55%;
+    --warning-foreground: 260 8% 8%;
+    --warning-ink: 43 96% 56%;
+
+    --secure: var(--primary-ink);
+    --secure-foreground: 260 8% 8%;
+    --secure-muted: 85 33% 13%;
+
+    --synced: var(--primary);
+    --syncing: 38 85% 55%;
+    --offline: 240 2% 44%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    accent-color: hsl(var(--primary));
+    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  ::selection {
+    background: hsl(var(--selected));
+  }
+}
+
+@layer components {
+  .security-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+    background: hsl(var(--secure-muted));
+    color: hsl(var(--secure));
+  }
+}
+
+/* ── BlockNote editor theming ──────────────────────────────────────
+   BlockNote ships its own complete styling (@blocknote/mantine/style.css);
+   here we only re-point its CSS custom properties at our design tokens so
+   the editor inherits the green accent + light/dark system. Both
+   data-color-scheme values map to the SAME hsl(var(--token)) - those
+   tokens already flip with the `.dark` class, so the editor follows the
+   app theme automatically. The leading `html` raises specificity above
+   BlockNote's own `.bn-container[data-color-scheme]` rules regardless of
+   stylesheet import order. */
+html .bn-container[data-color-scheme='light'],
+html .bn-container[data-color-scheme='dark'] {
+  --bn-colors-editor-text: hsl(var(--card-foreground));
+  --bn-colors-editor-background: hsl(var(--card));
+  --bn-colors-menu-text: hsl(var(--popover-foreground));
+  --bn-colors-menu-background: hsl(var(--popover));
+  --bn-colors-tooltip-text: hsl(var(--popover-foreground));
+  --bn-colors-tooltip-background: hsl(var(--popover));
+  --bn-colors-hovered-text: hsl(var(--accent-foreground));
+  --bn-colors-hovered-background: hsl(var(--accent));
+  --bn-colors-selected-text: hsl(var(--primary-foreground));
+  --bn-colors-selected-background: hsl(var(--primary));
+  --bn-colors-disabled-text: hsl(var(--muted-foreground));
+  --bn-colors-disabled-background: hsl(var(--muted));
+  --bn-colors-border: hsl(var(--border));
+  --bn-colors-side-menu: hsl(var(--muted-foreground));
+  --bn-border-radius: 0.5rem;
+  --bn-font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+}
+
+/* The editor sits inside the shell's own padded, centered column. */
+.bn-container .bn-editor {
+  background: transparent;
+  padding-inline: 0;
+}
+
+.ProseMirror {
+  outline: none;
+}
+
+/* Remote carets. The name shows when the peer moves, then fades, so a busy
+   document does not turn into a wall of names. */
+.cal-presence-cursor {
+  position: relative;
+  margin-left: -1px;
+  pointer-events: none;
+}
+
+.cal-presence-cursor::after {
+  content: attr(data-name);
+  background-color: var(--presence-colour);
+  position: absolute;
+  top: -1.15em;
+  left: -1px;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 1.15em;
+  white-space: nowrap;
+  animation: cal-presence-flag 3s ease forwards;
+}
+
+@keyframes cal-presence-flag {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A block a section link scrolls to keeps room above it. */
+.bn-block-outer {
+  scroll-margin-top: 24px;
+}
+
+/* A section opened from a link: a brief lime wash that fades out. */
+.section-wash {
+  --section-wash: hsl(var(--primary) / 0.2);
+  border-radius: 6px;
+  margin-inline: -10px;
+  padding-inline: 10px;
+  animation: section-wash 1.6s ease-out forwards;
+}
+
+.dark .section-wash {
+  --section-wash: hsl(var(--primary) / 0.1);
+}
+
+@keyframes section-wash {
+  0%,
+  40% {
+    background-color: var(--section-wash);
+    box-shadow: inset 3px 0 0 hsl(var(--primary));
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+/* Reduced motion: a static outline held for the same time, then gone. */
+@media (prefers-reduced-motion: reduce) {
+  .section-wash {
+    animation: section-wash-outline 1.6s steps(1, end) forwards;
+  }
+}
+
+@keyframes section-wash-outline {
+  0% {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  100% {
+    outline: none;
+  }
+}
+
+/* In-app links are document chips; other links get the link look below, since preflight strips the browser's. */
+.bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.2);
+  --doc-chip-hover: hsl(var(--primary) / 0.32);
+  --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E"); /* lucide file-text, as in the editor header */
+  color: hsl(var(--card-foreground));
+  text-decoration: none;
+  background-color: var(--doc-chip);
+  border-bottom: 1.5px solid hsl(var(--primary));
+  border-radius: 3px 3px 0 0;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  outline: none;
+}
+
+.dark .bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.1);
+  --doc-chip-hover: hsl(var(--primary) / 0.18);
+}
+
+.bn-editor a[href^='/app/']::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background-color: hsl(var(--muted-foreground));
+  -webkit-mask: var(--doc-chip-icon) center / contain no-repeat;
+  mask: var(--doc-chip-icon) center / contain no-repeat;
+}
+
+.bn-editor a[href^='/app/']:hover {
+  background-color: var(--doc-chip-hover);
+}
+
+.bn-editor a[href^='/app/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+/* A member mention is a person chip: a round pill with an avatar icon, set apart from doc chips. */
+.bn-editor a[href^='/app/'][href*='/m/'] {
+  --doc-chip: hsl(var(--secondary));
+  --doc-chip-hover: hsl(var(--accent));
+  --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 20a6 6 0 0 0-12 0'/%3E%3Ccircle cx='12' cy='10' r='4'/%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3C/svg%3E"); /* lucide circle-user-round */
+  border-bottom: none;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px hsl(var(--border));
+  padding: 0 6px 0 3px;
+}
+
+.bn-editor a[href^='/app/'][href*='/m/']::before {
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  vertical-align: -2px;
+}
+
+.bn-editor a[href^='/app/'][href*='/m/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+.bn-editor a:not([href^='/app/']) {
+  color: hsl(var(--primary-ink));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.bn-editor a:not([href^='/app/']):focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}

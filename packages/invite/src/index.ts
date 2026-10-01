@@ -11,8 +11,17 @@ export {
 } from "./capture";
 export type { CapturedInvitation } from "./capture";
 
-export { redeemInvitation, isSettled, shouldRetain } from "./redeem";
-export type { InviteRedeemer, RedeemOutcome } from "./redeem";
+export {
+  redeemInvitation,
+  isSettled,
+  shouldRetain,
+  describeInviteFailure,
+} from "./redeem";
+export type {
+  InviteFailureReason,
+  InviteRedeemer,
+  RedeemOutcome,
+} from "./redeem";
 
 export { useInviteRedemption } from "./useInviteRedemption";
 export type {

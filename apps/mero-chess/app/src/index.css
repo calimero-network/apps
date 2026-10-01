@@ -1,0 +1,326 @@
+:root {
+  --bg: #0b0e14;
+  --surface: #131823;
+  --surface-2: #1b2130;
+  --border: #29313f;
+  --text: #e8ecf4;
+  --text-dim: #93a0b5;
+  --accent: #7dd3fc;
+  --danger: #f87171;
+  --online: #4ade80;
+  /* The board. Warm against the cool chrome, so the pieces are the contrast
+     that matters and the UI around them recedes. */
+  --sq-light: #e9dcc3;
+  --sq-dark: #9a7b56;
+  --sq-last: #b8a44c;
+  --sq-select: #5b9bd5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+}
+
+.wrap { max-width: 1060px; margin: 0 auto; padding: 24px 20px 80px; }
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.brand {
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.brand span { color: var(--accent); margin-right: 6px; }
+.session { display: flex; align-items: center; gap: 10px; }
+.session .mono { font-size: 0.78rem; }
+
+h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+h2 { font-size: 1rem; margin: 0 0 12px; letter-spacing: -0.01em; }
+.sub { color: var(--text-dim); margin: 0 0 28px; font-size: 0.94rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  min-width: 0;
+  flex: 1 1 140px;
+}
+
+button {
+  background: var(--accent);
+  color: #06231f;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+pre {
+  background: #0b1012;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 12px 0 0;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+pre.err { border-color: var(--danger); color: var(--danger); }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.empty { color: var(--text-dim); font-size: 0.88rem; }
+
+/* ── the invite link ──────────────────────────────────────────────────────
+   An invitation payload is a few hundred base58 characters. Rendered as a
+   wrapping <pre> it became a wall of text taller than the rest of the card, so
+   it is one ellipsised line instead.
+
+   `min-width: 0` is the load-bearing part: this sits in a flex row, and a flex
+   ITEM defaults to `min-width: auto`, which refuses to shrink below its content
+   — so `text-overflow: ellipsis` would never trigger and the row would simply
+   overflow. Truncation here is purely visual: textContent is still the whole
+   link, so selecting it or copying it yields the full value. */
+.invite-link {
+  display: block;
+  margin-top: 12px;
+  padding: 9px 11px;
+  background: #0b1012;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── destructive actions ──────────────────────────────────────────────────
+   "Remove all" sits next to Refresh under the entries table, so it needs to
+   read as the dangerous one of the pair without becoming the loudest thing on
+   the page. The armed state is filled; the resting state is only tinted. */
+button.danger {
+  background: var(--danger);
+  color: #2a0b0b;
+}
+button.ghost.danger-text {
+  color: var(--danger);
+}
+button.ghost.danger-text:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+/* ── the context bar ──────────────────────────────────────────────────────
+   Slimmer than a normal card: it is a status strip with one action, not a
+   section, and it should not compete with Write/Read/Remove below it. */
+.card.context-bar {
+  padding: 12px 18px;
+}
+.card.context-bar code {
+  color: var(--text);
+  word-break: break-all;
+}
+
+/* ── the table: board beside the panel ────────────────────────────────────
+   One column on a phone, board-then-panel on anything wider. The board is
+   sized in `min()` rather than a fixed pixel width so it fills a narrow screen
+   and stops growing past the point where a piece is comically large. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .layout { grid-template-columns: min(56vh, 520px) minmax(0, 1fr); }
+}
+.panel { min-width: 0; }
+
+/* ── the board ────────────────────────────────────────────────────────────
+   A plain 8×8 grid of buttons. Buttons, not divs: a square is a control, so it
+   gets keyboard focus, an accessible name ("e4, white knight") and a disabled
+   state for free — and a spectator's board is genuinely inert rather than
+   merely ignoring clicks. */
+.board-wrap { position: relative; }
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  /* A disabled square must not look disabled — most of the board is disabled
+     most of the time, and dimming it would turn the position into soup. */
+  opacity: 1;
+}
+.square:disabled { cursor: default; opacity: 1; }
+.square.light { background: var(--sq-light); }
+.square.dark { background: var(--sq-dark); }
+.square.last::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--sq-last);
+  opacity: 0.35;
+}
+.square.selected { box-shadow: inset 0 0 0 4px var(--sq-select); }
+/* A capture is ringed rather than dotted: a dot under a piece is invisible. */
+.square.capture { box-shadow: inset 0 0 0 4px rgba(248, 113, 113, 0.85); }
+.square .dot {
+  width: 26%;
+  height: 26%;
+  border-radius: 50%;
+  background: rgba(20, 30, 20, 0.35);
+}
+.square:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 1; }
+
+/* Unicode glyphs, not images: they scale to any board size and need no asset
+   pipeline. Both colours are drawn as FILLED glyphs with a contrasting stroke,
+   because the outline ("white") glyphs are nearly invisible on a light square
+   in most system fonts. */
+.piece {
+  font-size: clamp(1.4rem, 7.5vw, 3rem);
+  line-height: 1;
+  user-select: none;
+  position: relative;
+}
+@media (min-width: 900px) {
+  .piece { font-size: min(6.2vh, 3.1rem); }
+}
+.piece.white { color: #fdfdfd; text-shadow: 0 0 1px #111, 0 1px 2px rgba(0, 0, 0, 0.6); }
+.piece.black { color: #14161c; text-shadow: 0 0 1px #e8e8e8, 0 1px 2px rgba(0, 0, 0, 0.35); }
+
+.files {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  text-align: center;
+  padding: 4px 0 0;
+}
+
+/* ── promotion ────────────────────────────────────────────────────────────
+   Over the board rather than beside it: the choice belongs to the move that is
+   half-made, and the board underneath is the context for it. */
+.promotion {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.promotion button { display: flex; align-items: center; gap: 6px; }
+.promotion .piece { font-size: 1.2rem; color: #06231f; text-shadow: none; }
+
+/* ── seats, presence, status ──────────────────────────────────────────────── */
+.status { font-size: 1rem; margin: 0 0 4px; }
+.chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 7px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.chip.white { background: #fdfdfd; }
+.chip.black { background: #14161c; }
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  background: var(--border);
+}
+.dot.online { background: var(--online); }
+
+.offer {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.offer p { margin: 0 0 8px; font-size: 0.9rem; }
+
+/* ── the scoresheet ───────────────────────────────────────────────────────
+   Three columns — number, White, Black — so the moves line up the way they do
+   on paper. A wrapping sentence of SAN is unreadable at a glance, and glancing
+   is the only thing anyone does with a move list mid-game. */
+.scoresheet {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+.scoresheet li {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr 1fr;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.scoresheet li:nth-child(odd) { background: var(--surface-2); }
+.scoresheet .num { color: var(--text-dim); }
+
+.table-page { display: block; }

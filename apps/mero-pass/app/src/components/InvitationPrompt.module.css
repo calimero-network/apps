@@ -2,6 +2,8 @@
  *
  * Mounted at the app level (see the component doc), so it floats above whatever
  * route the link happened to land on rather than living in one page's layout.
+ * Styled as the console's toast: square, a strong line, a lime rule down the
+ * left.
  */
 .wrap {
   position: fixed;
@@ -9,10 +11,10 @@
   left: 0;
   right: 0;
   /* Above the call's own bars, below a modal dialog's top layer. */
-  z-index: 20;
+  z-index: 60;
   display: flex;
   justify-content: center;
-  padding: 12px;
+  padding: 76px 12px 12px;
   pointer-events: none;
 }
 
@@ -20,19 +22,21 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 1rem;
   flex-wrap: wrap;
   max-width: 760px;
-  padding: 12px 16px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14);
-  font-size: 0.94rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent-text);
+  border-radius: 0;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-float);
+  font-size: 14px;
+  animation: mp-slide-in 0.3s ease-out;
 }
 
 .promptError {
-  border-color: var(--danger);
+  border-left-color: var(--danger);
 }
 
 .text {
@@ -40,28 +44,40 @@
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.125rem;
 }
 
 .sub {
-  font-size: 0.85rem;
-  color: var(--ink-dim);
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--ink-2);
+}
+
+.accept,
+.ghost {
+  border-radius: 0;
+  padding: 0.75rem 1.1rem 0.75rem calc(1.1rem + var(--tracking-button));
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--tracking-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    box-shadow 0.3s ease-out,
+    color 0.3s ease-out,
+    border-color 0.3s ease-out;
 }
 
 .accept {
   background: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  color: var(--ink);
-  padding: 8px 18px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
+  color: var(--accent-ink);
 }
 .accept:hover:not(:disabled) {
-  background: var(--ink-2);
+  box-shadow: var(--shadow-button);
 }
 .accept:disabled {
   opacity: 0.5;
@@ -69,17 +85,11 @@
 }
 
 .ghost {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--ink-dim);
-  padding: 8px 14px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--ink-2);
 }
 .ghost:hover:not(:disabled) {
-  background: var(--surface-2);
   color: var(--ink);
+  border-color: var(--ink-dim);
 }

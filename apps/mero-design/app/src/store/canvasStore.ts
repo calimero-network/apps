@@ -5,7 +5,10 @@ import type { Element } from "../types";
 /** How far a pasted batch sits from the one it was copied from. */
 const PASTE_OFFSET = 20;
 
-type Tool = "select" | "hand" | "rect" | "circle" | "line" | "arrow" | "path" | "text" | "image";
+export type Tool =
+  | "select" | "hand"
+  | "rect" | "rounded" | "circle" | "triangle" | "diamond" | "star" | "cloud"
+  | "line" | "arrow" | "path" | "text" | "sticky" | "image";
 export type Background = "#ffffff" | "#808080" | "#111111";
 
 const MAX_HISTORY = 50;
@@ -30,8 +33,22 @@ interface CanvasState {
   elementLabels: Record<string, string>;
   /** Group paths the layers tree is showing collapsed. */
   collapsedGroups: Record<string, boolean>;
+  /**
+   * Presentation mode. `null` when not presenting; otherwise the screen to open
+   * on (`null` start = the first). Here rather than in CanvasPage because both
+   * the toolbar and the Screens tab start it.
+   */
+  presentation: { startId: string | null } | null;
+  /**
+   * The box or sticky whose text is being typed into, if any. In the store so
+   * the inspector's "Add text" and a double-click on the canvas open the same
+   * editor.
+   */
+  editingTextId: string | null;
 
   setTool: (tool: Tool) => void;
+  startTextEdit: (id: string) => void;
+  stopTextEdit: () => void;
   /**
    * Hand control back to the pointer with `id` selected — what should happen
    * the moment an item is put down, and the moment an existing item is clicked
@@ -45,13 +62,19 @@ interface CanvasState {
   toggleSelected: (id: string) => void;
   setElements: (elements: Element[]) => void;
   upsertElement: (element: Element) => void;
+  /** `upsertElement` for a whole selection, as ONE store update (one canvas pass). */
+  upsertElements: (elements: Element[]) => void;
   removeElement: (id: string) => void;
+  /** `removeElement` for a whole selection, as ONE store update. */
+  removeElements: (ids: string[]) => void;
   setBackground: (bg: Background) => void;
   cacheImage: (elementId: string, dataUrl: string) => void;
   setPreviewMode: (v: boolean) => void;
   setElementLabel: (id: string, label: string) => void;
   setElementLabels: (labels: Record<string, string>) => void;
   toggleGroupCollapsed: (path: string) => void;
+  startPresentation: (startId?: string | null) => void;
+  stopPresentation: () => void;
 
   // History
   snapshot: () => void;
@@ -80,7 +103,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   clipboard: [],
   elementLabels: {},
   collapsedGroups: {},
+  presentation: null,
+  editingTextId: null,
 
+  startTextEdit: (id) => set({ editingTextId: id, activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
+  stopTextEdit: () => set({ editingTextId: null }),
   setTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementIds: [] }),
   selectWithPointer: (id) => set({ activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
   selectElement: (id) => set({ selectedElementId: id, selectedElementIds: id ? [id] : [] }),
@@ -115,8 +142,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       return { elements: [...s.elements, element] };
     }),
+  // Per element, a paste of N shapes was N store updates — N re-renders and N
+  // canvas reconciles — each scanning the whole list: O(N²) before a single
+  // request left. These do the whole selection in one pass.
+  upsertElements: (incoming) =>
+    set((s) => {
+      if (incoming.length === 0) return {};
+      const byId = new Map(incoming.map((e) => [e.id, e] as const));
+      const next = s.elements.map((e) => {
+        const replacement = byId.get(e.id);
+        if (!replacement) return e;
+        byId.delete(e.id);
+        return replacement;
+      });
+      // What is left in the map is new — appended in the order it came.
+      // The map holds the LAST copy of each id, so a batch naming one twice
+      // ends with its latest version.
+      for (const e of incoming) {
+        const latest = byId.get(e.id);
+        if (latest) { next.push(latest); byId.delete(e.id); }
+      }
+      return { elements: next };
+    }),
   removeElement: (id) =>
     set((s) => ({ elements: s.elements.filter((e) => e.id !== id) })),
+  removeElements: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return {};
+      const gone = new Set(ids);
+      return { elements: s.elements.filter((e) => !gone.has(e.id)) };
+    }),
   setBackground: (background) => set({ background }),
   cacheImage: (elementId, dataUrl) =>
     set((s) => ({ imageCache: { ...s.imageCache, [elementId]: dataUrl } })),
@@ -167,6 +222,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   toggleGroupCollapsed: (path) =>
     set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [path]: !s.collapsedGroups[path] } })),
+
+  startPresentation: (startId = null) => set({ presentation: { startId } }),
+  stopPresentation: () => set({ presentation: null }),
 
   copyElements: (els) =>
     // Layer order, so a paste rebuilds the stack the way it was copied rather

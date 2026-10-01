@@ -9,7 +9,7 @@ import { GameEvent } from "./events";
 
 export const FLUSH_MS = 150;
 // 500 ms while moving so the live map tracks everyone in near-real-time; the
-// contract's 30 s reap grace gives idle players plenty of headroom at 2 s.
+// contract's 10 s presence TTL gives idle players plenty of headroom at 2 s.
 export const HEARTBEAT_MOVING_MS = 500;
 export const HEARTBEAT_IDLE_MS = 2000;
 export const PLAYERS_POLL_MS = 500;
@@ -145,7 +145,7 @@ export class SyncEngine {
     try {
       await this.exec("leave", { now: nowSecs() });
     } catch {
-      /* leaving best-effort — reap will collect us */
+      /* leaving best-effort — we age out of the presence TTL anyway */
     }
   }
 

@@ -25,7 +25,7 @@ fn cell_updates_converge() {
         let mut s = Spreadsheet::init();
         let _ = s.init_project("Test Project".into());
         let sheet_id = s.create_sheet("Sheet1".into()).unwrap();
-        let _ = s.set_cell(sheet_id, 0, 0, "v0".into());
+        let _ = s.set_cell(sheet_id, "0".into(), "0".into(), "v0".into());
         s
     })
     .replicas(3)
@@ -35,7 +35,7 @@ fn cell_updates_converge() {
     .ops(|s| {
         let sheets = s.list_sheets().unwrap_or_default();
         if let Some(sheet) = sheets.into_iter().next() {
-            let _ = s.set_cell(sheet.id, 0, 0, "v1".into());
+            let _ = s.set_cell(sheet.id, "0".into(), "0".into(), "v1".into());
         }
     })
     .invariant(

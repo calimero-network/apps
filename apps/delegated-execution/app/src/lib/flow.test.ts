@@ -11,8 +11,47 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { claimAccountWithCloud, findAccountRelays, readInvitation } from './flow.js';
+import {
+  CREATION_UNSUPPORTED,
+  claimAccountWithCloud,
+  createContextThroughRelay,
+  describeCreation,
+  explainCreationFailure,
+  findAccountRelays,
+  readInvitation,
+} from './flow.js';
 import type { DeviceIdentity } from './identity.js';
+
+/**
+ * A switch on `RelayClient`, so the creation tests can run against a client
+ * that has the methods the installed mero-js does not — and every other test
+ * keeps the real one. `fake` null means "the real client, unchanged".
+ */
+const relay = vi.hoisted(() => ({
+  fake: null as null | ((config: Record<string, unknown>) => object),
+  configs: [] as Array<Record<string, unknown>>,
+}));
+
+vi.mock('@calimero-network/mero-js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@calimero-network/mero-js')>();
+  class SwitchableRelayClient extends actual.RelayClient {
+    constructor(config: ConstructorParameters<typeof actual.RelayClient>[0]) {
+      super(config);
+      relay.configs.push(config as unknown as Record<string, unknown>);
+      if (relay.fake) {
+        return relay.fake(config as unknown as Record<string, unknown>) as SwitchableRelayClient;
+      }
+    }
+  }
+  return { ...actual, RelayClient: SwitchableRelayClient };
+});
+
+/** Sealing would attest a real relay; a marker is enough to see it was asked for. */
+const sealedFetch = vi.hoisted(() => (() => Promise.reject(new Error('sealed'))) as typeof fetch);
+vi.mock('./sealing.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./sealing.js')>();
+  return { ...actual, sealedRelayFetch: vi.fn(() => sealedFetch) };
+});
 
 const ROOT_SECRET = '5b6b8a1e9f2c47d3a80e6f14c2b9d75380af4e21c6d3b95f7e08a1c4d2f63b97';
 const ACCOUNT_ID = 'ca7645ffd4d0621d00c6c88743aeace5797135ab298c49e77de066206090b778';
@@ -238,5 +277,187 @@ describe('readInvitation', () => {
 
   it('asks for an invitation rather than erroring on an empty box', () => {
     expect(() => readInvitation('   ')).toThrow(/Paste the invitation/);
+  });
+});
+
+/**
+ * Delegated creation, against both the mero-js this app pins — which has no
+ * `describeCreation`/`createContext` — and a client that has them.
+ */
+describe('delegated context creation', () => {
+  const GROUP = '11'.repeat(32);
+  const APP = '44'.repeat(32);
+  const IDENTITY = {
+    accountId: '22'.repeat(32),
+    credential: 'cafe',
+    deviceSecret: '07'.repeat(32),
+    devicePublicKey: 'ea'.repeat(32),
+  } as unknown as DeviceIdentity;
+
+  afterEach(() => {
+    relay.fake = null;
+    relay.configs.length = 0;
+    localStorage.clear();
+  });
+
+  it('says the installed mero-js is too old, before sending anything', async () => {
+    const calls = scriptFetch([]);
+
+    await expect(
+      describeCreation('https://relay.example', GROUP, IDENTITY, { seal: false }),
+    ).rejects.toThrow(CREATION_UNSUPPORTED);
+    await expect(
+      createContextThroughRelay(
+        'https://relay.example',
+        IDENTITY,
+        { groupId: GROUP, applicationId: APP, initArgs: {} },
+        { seal: false },
+      ),
+    ).rejects.toThrow(/predates delegated context creation/);
+    expect(calls).toEqual([]);
+  });
+
+  it('passes the relay, the author and the arguments through', async () => {
+    const describeFn = vi.fn(async () => ({
+      executorAccount: '33'.repeat(32),
+      groupId: GROUP,
+      canCreateOnBehalf: true,
+      authorMayCreate: true,
+    }));
+    const createFn = vi.fn(async () => ({
+      contextId: 'cc'.repeat(32),
+      groupId: GROUP,
+      memberPublicKey: 'dd'.repeat(32),
+    }));
+    relay.fake = () => ({ describeCreation: describeFn, createContext: createFn });
+
+    const described = await describeCreation('https://relay.example/', GROUP, IDENTITY, {
+      seal: false,
+    });
+    expect(described.canCreateOnBehalf).toBe(true);
+    expect(describeFn).toHaveBeenCalledWith(GROUP, { author: IDENTITY.accountId });
+    // The check signs nothing, so it is not handed the device secret.
+    expect(relay.configs[0]).toMatchObject({ relayUrl: 'https://relay.example', deviceSecret: '' });
+    expect(relay.configs[0]?.fetch).toBeUndefined();
+
+    const created = await createContextThroughRelay(
+      'https://relay.example/',
+      IDENTITY,
+      { groupId: GROUP, applicationId: APP, initArgs: { name: 'general' }, name: 'general' },
+      { seal: false },
+    );
+    expect(created.contextId).toBe('cc'.repeat(32));
+    expect(createFn).toHaveBeenCalledWith({
+      groupId: GROUP,
+      applicationId: APP,
+      initArgs: { name: 'general' },
+      name: 'general',
+    });
+    expect(relay.configs[1]).toMatchObject({
+      relayUrl: 'https://relay.example',
+      authorAccount: IDENTITY.accountId,
+      authorProof: IDENTITY.credential,
+      deviceSecret: IDENTITY.deviceSecret,
+    });
+  });
+
+  it('asks about no author when there is no identity', async () => {
+    const describeFn = vi.fn(async () => ({
+      executorAccount: '33'.repeat(32),
+      groupId: GROUP,
+      canCreateOnBehalf: false,
+    }));
+    relay.fake = () => ({ describeCreation: describeFn });
+
+    await describeCreation('https://relay.example', GROUP, null, { seal: false });
+
+    expect(describeFn).toHaveBeenCalledWith(GROUP, {});
+  });
+
+  it('seals both calls when asked, and neither when not', async () => {
+    relay.fake = () => ({
+      describeCreation: async () => ({ executorAccount: 'e', groupId: GROUP, canCreateOnBehalf: true }),
+      createContext: async () => ({ contextId: 'c', groupId: GROUP, memberPublicKey: 'm' }),
+    });
+    const input = { groupId: GROUP, applicationId: APP, initArgs: {} };
+
+    await describeCreation('https://relay.example', GROUP, IDENTITY, { seal: true });
+    await createContextThroughRelay('https://relay.example', IDENTITY, input, { seal: true });
+    await createContextThroughRelay('https://relay.example', IDENTITY, input, { seal: false });
+
+    expect(relay.configs[0]?.fetch).toBe(sealedFetch);
+    expect(relay.configs[1]?.fetch).toBe(sealedFetch);
+    expect(relay.configs[2]?.fetch).toBeUndefined();
+  });
+
+  it('turns a refusal into what to go and do, keeping the relay’s words', async () => {
+    const refusal = Object.assign(new Error('relay refused the intent (HTTP 403)'), {
+      status: 403,
+      reason: `the author (${IDENTITY.accountId}) may not create contexts in group ${GROUP}; it needs CAN_CREATE_CONTEXT or admin`,
+    });
+    relay.fake = () => ({
+      createContext: async () => {
+        throw refusal;
+      },
+    });
+
+    const failure = createContextThroughRelay(
+      'https://relay.example',
+      IDENTITY,
+      { groupId: GROUP, applicationId: APP, initArgs: {} },
+      { seal: false },
+    );
+
+    await expect(failure).rejects.toThrow(/admin of the group has to grant it CAN_CREATE_CONTEXT/);
+    await expect(failure).rejects.toThrow(/the relay said: the author/);
+  });
+});
+
+describe('explainCreationFailure', () => {
+  const refused = (status: number, reason: string) =>
+    Object.assign(new Error(`HTTP ${status}`), { status, reason });
+
+  it('sends a missing create right to a group admin', () => {
+    expect(explainCreationFailure(refused(403, 'author lacks CAN_CREATE_CONTEXT'))).toMatch(
+      /grant it CAN_CREATE_CONTEXT.*needs no create rights/s,
+    );
+  });
+
+  it('sends missing relay standing to RelayTee or CAN_AUTHOR_ON_BEHALF', () => {
+    const text = explainCreationFailure(
+      refused(403, 'the relay (ab) has no standing to act for members of group cd'),
+    );
+    expect(text).toMatch(/RelayTee/);
+    expect(text).toMatch(/CAN_AUTHOR_ON_BEHALF/);
+    expect(text).toMatch(/does not need CAN_CREATE_CONTEXT/);
+  });
+
+  it('names a sealed route the relay will not open', () => {
+    expect(explainCreationFailure(refused(403, 'sealed_route_unguarded'))).toMatch(
+      /does not accept this route sealed/,
+    );
+  });
+
+  it('falls back to membership or a spent warrant for any other 403', () => {
+    expect(explainCreationFailure(refused(403, 'nonce already spent'))).toMatch(
+      /not a member.*sign a fresh one/s,
+    );
+  });
+
+  it('reads 409 as another application and 404 as an unknown group', () => {
+    // HTTPError carries the body as `bodyText`, not `reason`.
+    const conflict = Object.assign(new Error('HTTP 409'), { status: 409, bodyText: 'app mismatch' });
+    expect(explainCreationFailure(conflict)).toMatch(/different application.*sign a new warrant/s);
+    expect(explainCreationFailure(conflict)).toMatch(/app mismatch/);
+    expect(explainCreationFailure(Object.assign(new Error('HTTP 404'), { status: 404 }))).toMatch(
+      /does not know that group/,
+    );
+  });
+
+  it('leaves everything else alone', () => {
+    // A sealing refusal arrives as HTTP 0; the page explains that one itself.
+    expect(explainCreationFailure(Object.assign(new Error('x'), { status: 0 }))).toBeNull();
+    expect(explainCreationFailure(new Error('no status'))).toBeNull();
+    expect(explainCreationFailure('text')).toBeNull();
   });
 });

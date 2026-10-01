@@ -10,8 +10,8 @@
 // Three things are pinned here:
 //   1. the role lands on node 0 (the promoter's own node);
 //   2. the per-member capability OVERRIDE is UNCHANGED by the promotion — the
-//      invariant `apps/mero-drive/logic/workflows/probes/
-//      workflow-mero-drive-members.yml` asserts against live nodes, and the
+//      invariant `apps/mero-docs/logic/workflows/
+//      workflow-mero-docs-members.yml` asserts against live nodes, and the
 //      reason `setRole` must write the role and nothing else. Writing a mask
 //      alongside it would survive a later demote and leave an ex-admin holding
 //      an admin's bits;

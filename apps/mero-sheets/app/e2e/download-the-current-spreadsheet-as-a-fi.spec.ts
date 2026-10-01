@@ -4,7 +4,7 @@
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'fs';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, enterCell, openNewWorkbook } from './helpers';
 
 test.describe(`anyone in the project: download the current spreadsheet as a file`, () => {
   test.beforeEach(async ({ page }) => {
@@ -24,58 +24,41 @@ test.describe(`anyone in the project: download the current spreadsheet as a file
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`clicking download produces a CSV file containing all sheets' data with sheet names as separators`, async ({ page }) => {
-    // Set up a cell value so the CSV has content
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-raw_value').fill('csv-check');
-    await page.getByTestId('action-set_cell').click();
-    await expect(page.getByTestId('item-Cell-0-0')).toContainText('csv-check', { timeout: 5_000 });
+  test(`clicking download produces a CSV file containing all sheets' data with sheet names as separators`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Export me' });
+    await enterCell(page, 0, 0, 'Item');
+    await enterCell(page, 0, 1, 'Cost');
+    await enterCell(page, 1, 0, 'Rent');
+    await enterCell(page, 1, 1, '1200');
 
-    // Intercept the download event triggered by the export_all action
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByTestId('action-export_all').click();
-    const download = await downloadPromise;
+    await page.getByTestId('action-create_sheet').click();
+    await expect(page.getByTestId('item-sheet')).toHaveCount(2);
+    await page.getByTestId('item-sheet').nth(1).click();
+    await enterCell(page, 0, 0, 'second');
 
-    // The suggested filename must end in .csv
-    expect(download.suggestedFilename()).toMatch(/\.csv$/i);
-
-    // The file content must include the cell value entered above
-    const downloadPath = await download.path();
-    if (downloadPath) {
-      const content = readFileSync(downloadPath, 'utf-8');
-      expect(content).toContain('csv-check');
-    }
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('action-export_all').click()]);
+    expect(download.suggestedFilename()).toBe('export-me.csv');
+    const csv = readFileSync((await download.path())!, 'utf-8');
+    const sheetNames = await page.getByTestId('item-sheet').allInnerTexts();
+    expect(csv).toBe([
+      `# ${sheetNames[0].replace('×', '').trim()}`, '"Item","Cost"', '"Rent","1200"', '',
+      `# ${sheetNames[1].replace('×', '').trim()}`, '"second"', '',
+    ].join('\n'));
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`the downloaded file reflects the latest state of every cell at the moment of export`, async ({ page }) => {
-    // Write a cell value, then immediately export — the CSV must contain the latest value.
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-raw_value').fill('export-latest');
-    await page.getByTestId('action-set_cell').click();
-    await expect(page.getByTestId('item-Cell-0-0')).toContainText('export-latest', { timeout: 5_000 });
-
-    // Trigger the download via the export_all action button
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByTestId('action-export_all').click();
-    const download = await downloadPromise;
-
-    // The downloaded CSV must contain the most recently written value
-    const downloadPath = await download.path();
-    if (downloadPath) {
-      const content = readFileSync(downloadPath, 'utf-8');
-      expect(content).toContain('export-latest');
-    }
+  test(`the downloaded file reflects the latest state of every cell at the moment of export`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Latest' });
+    await enterCell(page, 0, 0, '1');
+    await enterCell(page, 0, 1, '=A1+1');
+    const download = async () => {
+      const [d] = await Promise.all([page.waitForEvent('download'), page.getByTestId('action-export_all').click()]);
+      return readFileSync((await d.path())!, 'utf-8');
+    };
+    expect(await download()).toContain('"1","2"');
+    await enterCell(page, 0, 0, '41');
+    await expect(cell(page, 0, 1)).toHaveText('42');
+    const csv = await download();
+    expect(csv).toContain('"41","42"');
+    expect(csv).not.toContain('"1","2"');
   });
 });

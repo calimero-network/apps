@@ -178,7 +178,7 @@ step "Creating room '${ROOM_NAME}'"
 NS_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
   -d "$(jq -n --arg a "$APP_ID" --arg n "$ROOM_NAME" \
-        '{applicationId:$a, upgradePolicy:"LazyOnAccess", alias:$n}')" \
+        '{applicationId:$a, name:$n}')" \
   2>/dev/null) || NS_RES="{}"
 NAMESPACE_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty')
 [ -n "$NAMESPACE_ID" ] || { red "Namespace create failed"; echo "$NS_RES" >&2; exit 1; }

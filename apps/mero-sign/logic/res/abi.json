@@ -1,8 +1,33 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Consents": {
+      "kind": "record",
+      "doc": "One account's consents, in that account's own [`UserStorage`] slot: only\nthey can give (or forge) their consent, and nobody can occupy the entry.",
+      "fields": [
+        {
+          "name": "documents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "ContextDetails": {
       "kind": "record",
+      "doc": "Detailed information about a shared context",
       "fields": [
         {
           "name": "context_id",
@@ -61,6 +86,7 @@
     },
     "ContextMetadata": {
       "kind": "record",
+      "doc": "Metadata for tracking joined shared contexts",
       "fields": [
         {
           "name": "context_id",
@@ -105,6 +131,7 @@
     },
     "DocumentChunk": {
       "kind": "record",
+      "doc": "Document chunk with its embedding",
       "fields": [
         {
           "name": "text",
@@ -137,6 +164,7 @@
     },
     "DocumentInfo": {
       "kind": "record",
+      "doc": "Document information as read: the uploaded document, its current version\n(the last signature's, or the upload's) and its status, derived every read\nfrom the write-once entries.\n\n`embeddings`, `extracted_text` and `chunks` are always `None` in\n`list_documents`, which returns every document; they stay in storage for\n`search_document_by_embedding`.",
       "fields": [
         {
           "name": "id",
@@ -189,6 +217,16 @@
           }
         },
         {
+          "name": "required_signers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
           "name": "embeddings",
           "type": {
             "kind": "list",
@@ -219,6 +257,7 @@
     },
     "DocumentSignature": {
       "kind": "record",
+      "doc": "A signature on a document, as read. `signer` is the entry's owner stamp.",
       "fields": [
         {
           "name": "signer",
@@ -237,6 +276,7 @@
     },
     "DocumentStatus": {
       "kind": "variant",
+      "doc": "Document status, derived from the document's signatures.\n\n`FullySigned` IS TERMINAL. Completion is a fact about the past: the\nsigners a document waits for are fixed when it is uploaded, its signatures\nare written once, and a completed document refuses further signatures. A\nparticipant added later was not party to it; if they need to be, that is a\nnew document.",
       "variants": [
         {
           "name": "Pending"
@@ -251,6 +291,7 @@
     },
     "IdentityMapping": {
       "kind": "record",
+      "doc": "Identity mapping for tracking user identities across contexts",
       "fields": [
         {
           "name": "private_identity",
@@ -458,13 +499,14 @@
     },
     "MeroSignState": {
       "kind": "record",
+      "doc": "Every field that decides who may do what is guarded by a storage type,\nbecause a member running a modified node skips every check in the methods\nbelow and writes plain fields directly:\n\n| field | who may write it, on every node |\n|---|---|\n| `is_private`, `owner`, `context_name` | nobody after `init` (`Frozen`) |\n| `roles` | admins (`AccessControl`'s writer set) |\n| `joined` | each account its own slot (`UserStorage`) |\n| `documents` | anyone adds; nobody edits; admins remove (`ModeratedOnce`) |\n| `document_signatures` | each signer their own; nobody edits or removes (`WriteOnce`) |\n| `consents` | each account its own slot (`UserStorage`) |\n\nThe private-context fields (`signatures`, `joined_contexts`,\n`identity_mappings`) are plain: a private context holds its owner's\naccount alone.",
       "fields": [
         {
           "name": "is_private",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "bool"
             }
@@ -475,7 +517,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "bytes",
               "size": 32
@@ -487,7 +529,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -533,72 +575,21 @@
           }
         },
         {
-          "name": "signature_count",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "participants",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "bytes",
-              "size": 32
-            },
-            "crdt_type": "unordered_set"
-          }
-        },
-        {
-          "name": "documents",
+          "name": "roles",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "DocumentInfo"
+              "kind": "bool"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Admin, signer and viewer grants, and removals."
         },
         {
-          "name": "document_signatures",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "list",
-              "items": {
-                "$ref": "DocumentSignature"
-              },
-              "crdt_type": "vector"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "permissions",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "PermissionCell"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "consents",
+          "name": "joined",
           "type": {
             "kind": "map",
             "key": {
@@ -609,16 +600,57 @@
               "fields": [],
               "crdt_type": "lww_register",
               "inner_type": {
-                "kind": "bool"
+                "kind": "u64"
               }
+            }
+          },
+          "doc": "Accounts that registered themselves through an open invitation: `Sign`\nunless an admin set another level or removed them."
+        },
+        {
+          "name": "documents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
             },
-            "crdt_type": "unordered_map"
+            "value": {
+              "$ref": "StoredDocument"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Moderated by the admins, kept equal to `roles.admins()`."
+        },
+        {
+          "name": "document_signatures",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SignedVersion"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"{document_id}/{signer hex}/{nonce}\"`: a document's signatures are one\nprefix, and the nonce leaves no key for anyone to occupy first."
+        },
+        {
+          "name": "consents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Consents"
+            }
           }
         }
       ]
     },
     "ParticipantInfo": {
       "kind": "record",
+      "doc": "Participant information with permission level",
       "fields": [
         {
           "name": "user_id",
@@ -637,6 +669,7 @@
     },
     "ParticipantRole": {
       "kind": "variant",
+      "doc": "Participant roles in shared contexts",
       "variants": [
         {
           "name": "Owner"
@@ -652,19 +685,9 @@
         }
       ]
     },
-    "PermissionCell": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "level",
-          "type": {
-            "$ref": "PermissionLevel"
-          }
-        }
-      ]
-    },
     "PermissionLevel": {
       "kind": "variant",
+      "doc": "Permission levels for participants",
       "variants": [
         {
           "name": "Read"
@@ -679,6 +702,7 @@
     },
     "SignatureRecord": {
       "kind": "record",
+      "doc": "Signature record - uses LWW based on created_at timestamp",
       "fields": [
         {
           "name": "id",
@@ -712,11 +736,124 @@
           }
         }
       ]
+    },
+    "SignedVersion": {
+      "kind": "record",
+      "doc": "One signature: the signer (the entry's owner stamp) took the version at\n`base_hash`, put their mark on it, and produced the version at `new_hash`,\nstored as `pdf_blob_id`. Written once, so a signature can be neither\nwithdrawn nor edited, and the version it signed stays on record.",
+      "fields": [
+        {
+          "name": "base_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "new_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "signed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StoredDocument": {
+      "kind": "record",
+      "doc": "A document as uploaded. Written once: nobody, the uploader included, can\nchange it afterwards, and only an admin (a moderator of `documents`) can\nremove it. The uploader is the entry's owner stamp.\n\nWhat signing changes is recorded beside it, one write-once\n[`SignedVersion`] per signature, never by rewriting this.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "required_signers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          },
+          "doc": "Who must sign it: every participant holding `Sign` or `Admin` when it\nwas uploaded. Fixed with the document, so completion is a fact about\nthe past — nobody who joins later reopens it."
+        },
+        {
+          "name": "embeddings",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "extracted_text",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "DocumentChunk"
+            }
+          },
+          "nullable": true
+        }
+      ]
     }
   },
   "methods": [
     {
       "name": "add_participant",
+      "doc": "Add participant to shared context (admin only)",
       "params": [
         {
           "name": "user_id_str",
@@ -738,6 +875,7 @@
     },
     {
       "name": "create_signature",
+      "doc": "Create a new signature and store its blob ID",
       "params": [
         {
           "name": "name",
@@ -765,6 +903,7 @@
     },
     {
       "name": "delete_document",
+      "doc": "Delete a document by ID. Admins only: they are the documents'\nmoderators, and every node refuses anyone else's removal.\n\nEvery account's document at the id, each by name (`remove_by`): keys\nare per owner, and a key-only `remove` removes only the caller's own.",
       "params": [
         {
           "name": "document_id",
@@ -780,6 +919,7 @@
     },
     {
       "name": "delete_signature",
+      "doc": "Delete a signature by ID",
       "params": [
         {
           "name": "signature_id",
@@ -795,6 +935,7 @@
     },
     {
       "name": "get_context_details",
+      "doc": "Get detailed information about the shared context",
       "params": [
         {
           "name": "context_id_str",
@@ -810,6 +951,7 @@
     },
     {
       "name": "get_context_id",
+      "doc": "Get current context ID",
       "params": [],
       "returns": {
         "kind": "bytes",
@@ -819,6 +961,7 @@
     },
     {
       "name": "get_document_signatures",
+      "doc": "The signatures on a document, in the order they were applied.",
       "params": [
         {
           "name": "document_id",
@@ -837,6 +980,7 @@
     },
     {
       "name": "get_identity_mapping",
+      "doc": "Get identity mapping for a specific context",
       "params": [
         {
           "name": "context_id_str",
@@ -852,6 +996,7 @@
     },
     {
       "name": "get_shared_identity",
+      "doc": "Get shared identity for a specific context",
       "params": [
         {
           "name": "context_id_str",
@@ -868,6 +1013,7 @@
     },
     {
       "name": "get_user_permission",
+      "doc": "Get user permission level",
       "params": [
         {
           "name": "user_id_str",
@@ -883,6 +1029,7 @@
     },
     {
       "name": "has_consented",
+      "doc": "Check if user has given consent for a document (public API)",
       "params": [
         {
           "name": "user_id_str",
@@ -932,6 +1079,7 @@
     },
     {
       "name": "join_shared_context",
+      "doc": "Join a shared context with identity mapping",
       "params": [
         {
           "name": "context_id_str",
@@ -959,6 +1107,7 @@
     },
     {
       "name": "leave_shared_context",
+      "doc": "Leave a shared context",
       "params": [
         {
           "name": "context_id_str",
@@ -974,6 +1123,7 @@
     },
     {
       "name": "list_documents",
+      "doc": "List all documents, without their search content (see [`DocumentInfo`]).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -985,6 +1135,7 @@
     },
     {
       "name": "list_joined_contexts",
+      "doc": "List all joined contexts",
       "params": [],
       "returns": {
         "kind": "list",
@@ -996,6 +1147,7 @@
     },
     {
       "name": "list_participants",
+      "doc": "List all participants",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1008,6 +1160,7 @@
     },
     {
       "name": "list_signatures",
+      "doc": "Get all signatures",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1019,6 +1172,7 @@
     },
     {
       "name": "mark_participant_signed",
+      "doc": "Confirm the CALLER's signature is on a document.\n\nThe status is derived from the signatures on every read, so there is\nnothing left to recompute; this stays so a client can ask, after\nsigning, whether its signature is the one on the document.",
       "params": [
         {
           "name": "document_id",
@@ -1034,6 +1188,7 @@
     },
     {
       "name": "register_self_as_participant",
+      "doc": "Register self as participant (for users who joined via open invitation)",
       "params": [],
       "returns": {
         "kind": "unit"
@@ -1042,6 +1197,7 @@
     },
     {
       "name": "remove_participant",
+      "doc": "Remove participant from shared context. The removal outranks the\nparticipant's own registration, and is refused for the last admin.",
       "params": [
         {
           "name": "user_id_str",
@@ -1057,6 +1213,7 @@
     },
     {
       "name": "resolve_private_identity",
+      "doc": "Resolve private identity from shared identity",
       "params": [
         {
           "name": "shared_identity_str",
@@ -1097,6 +1254,7 @@
     },
     {
       "name": "set_consent",
+      "doc": "Record the CALLER's consent to sign a document, in their own slot.\n\nConsent is a personal act. Nobody can give it for you, so there is no\nparameter to give — and the slot is yours alone on every node.",
       "params": [
         {
           "name": "document_id",
@@ -1112,6 +1270,7 @@
     },
     {
       "name": "set_participant_permission",
+      "doc": "Change an EXISTING participant's permission level, up or down.\n\n`add_participant` cannot do this: it refuses a user who is already a\nparticipant. Levels live in `AccessControl`, whose grants merge\nlast-writer-wins, so a demotion converges like a promotion. The last\nadmin cannot step down.",
       "params": [
         {
           "name": "user_id_str",
@@ -1133,6 +1292,7 @@
     },
     {
       "name": "sign_document",
+      "doc": "Record the CALLER's signature on a document.\n\nThe signer is the caller's ACCOUNT — a document is signed by a PERSON,\nand one signer on two machines must not read as two signatories — and on\nevery other node it is the signature entry's owner stamp. There is no\nsigner parameter.\n\nA signature is not a field value, it is a whole new PDF: the signer\ndownloads the current version, flattens their mark into it in the\nbrowser, uploads the result as a NEW blob, and records it here as a\nwrite-once [`SignedVersion`] from `base_hash` to `new_hash`. Nothing is\noverwritten: the uploaded document and every signature stay on record,\nand the document's current version is the last one in the chain.\n\n`base_hash` is the hash the signer actually had in front of them. If it\nis not the current version, somebody else signed in the meantime and\nthis PDF lacks their mark — refused, so the signer re-fetches and\nre-signs.\n\n⚠️ `pdf_blob_id_str` must name a blob THIS node holds. The announce below\nfails the whole call otherwise, with\n`blob operations not supported (NodeClient not available)` — a message\nabout the host, not about the blob, which reads like a misconfigured node.",
       "params": [
         {
           "name": "document_id",
@@ -1172,6 +1332,7 @@
     },
     {
       "name": "upload_document",
+      "doc": "Upload a document",
       "params": [
         {
           "name": "name",
@@ -1232,6 +1393,7 @@
     },
     {
       "name": "whoami",
+      "doc": "The caller's ACCOUNT id, as this contract sees it.\n\nExists because the frontend cannot work it out. A device key and an\naccount id have both been 32 raw bytes — 64 hex characters — since core\n0.11.0-rc.27, so the two are indistinguishable by inspection, and this\napp holds a DEVICE key in `localStorage` (`agreementContextUserID`, the\ncontext member public key from the join response) while participants\nare keyed by ACCOUNT. Comparing the two type-checks and silently matches\nnothing, which is how a UI ends up unable to tell an admin that they\nare one.\n\nOne call removes the guess: the contract is the only thing that knows.",
       "params": [],
       "returns": {
         "kind": "bytes",
@@ -1293,7 +1455,8 @@
       "name": "ParticipantPermissionChanged",
       "payload": {
         "$ref": "MeroSignEvent_ParticipantPermissionChanged"
-      }
+      },
+      "doc": "An admin changed an existing participant's permission level."
     },
     {
       "name": "SignatureCreated",

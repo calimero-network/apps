@@ -22,6 +22,7 @@ import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitat
 import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import { INVITER_KEY } from '../../utils/knownPlayers';
+import { lobbyJoinFailureMessage } from '../../utils/redeemLobby';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -610,8 +611,19 @@ export default function MatchPage() {
       // Forbidden) and each player's board lives in `UserStorage`, which is
       // per-identity. So this trades a second lock on the same door for a match
       // result that is recorded by the contract instead of not at all.
+      // The game checks every row player 2 writes against the ACCOUNT the lobby
+      // recorded for their key — so it is read back from the match, not
+      // guessed here.
+      const created = (await lobbyApi.getMatches()).find((m) => m.match_id === id);
+      if (!created) throw new Error('unknown match_id');
       const executorKey = lobby.executorPublicKey ?? contextIdentity;
-      const initParams = JSON.stringify({ player1: executorKey, player2, lobby_context_id: currentContext.contextId, match_id: id });
+      const initParams = JSON.stringify({
+        player1: executorKey,
+        player2,
+        player2_account: created.player2_account,
+        lobby_context_id: currentContext.contextId,
+        match_id: id,
+      });
       const initBytes = Array.from(new TextEncoder().encode(initParams));
 
       const { contextId: newContextId } = await mero.admin.createContext({
@@ -850,8 +862,13 @@ export default function MatchPage() {
     const payloadJson = parseInvitationInput(joinInvitationInput);
     if (!payloadJson) { show({ title: 'That does not look like an invitation link', variant: 'error' }); return; }
     try {
-      const success = await lobby.joinLobby(payloadJson);
-      if (success) { show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput(''); }
+      const outcome = await lobby.joinLobby(payloadJson);
+      if (!outcome) return;
+      // A failed join keeps the pasted code in the field, to retry or correct.
+      if (outcome.status === 'failed') { show({ title: lobbyJoinFailureMessage(outcome), variant: 'error' }); return; }
+      // `already-member` is a join that landed despite a failed request (or a
+      // code pasted twice): the same success.
+      show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput('');
     } catch (e) { show({ title: friendlyContractMessage(e, 'Failed to join'), variant: 'error' }); }
   }, [joinInvitationInput, lobby, show]);
 

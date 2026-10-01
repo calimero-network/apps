@@ -82,6 +82,11 @@ export class KvStoreClient {
   /**
    * get_or_insert
    *
+   * Gets a value, inserting it if it doesn't exist.
+   *
+   * This demonstrates the `entry` API combined with `or_insert`.
+   * We pattern match to check existence for the event, then use the convenience method.
+   *
    * @intent mutating
    */
   public async getOrInsert(params: { key: string; value: string }): Promise<string> {
@@ -149,6 +154,12 @@ export class KvStoreClient {
 
   /**
    * update_if_exists
+   *
+   * Updates a value only if the key already exists, using in-place mutation.
+   *
+   * This demonstrates the `get_mut` API which allows modifying the value
+   * without a read-modify-write cycle. The change is automatically persisted
+   * with a new timestamp when the guard is dropped.
    *
    * @intent mutating
    */

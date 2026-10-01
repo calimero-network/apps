@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "e2e": "playwright test --project=mocked",
     "e2e:ui": "playwright test --ui --project=mocked",
-    "test:all": "vitest run && playwright test --project=mocked"
+    "test:all": "vitest run && playwright test --project=mocked",
+    "landing:media": "playwright test -c playwright.media.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",

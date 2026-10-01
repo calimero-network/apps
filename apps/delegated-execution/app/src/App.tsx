@@ -42,8 +42,11 @@
  *   everyone type a namespace id that was already in the blob beside it.
  * - **3 Pin** — the node's signing key, alone, because it is the only value on
  *   the page that must not be told to you.
- * - **4–6 Session, read, write** — the flow itself.
- * - **7 Cloud** — last and marked optional, because nothing above it depends on
+ * - **4 Session** — where the flow itself begins.
+ * - **5 Create** — optional: a context created through the relay, as the
+ *   author, for an account nobody handed one. Its id feeds 6 and 7.
+ * - **6–7 Read, write** — the rest of the flow.
+ * - **8 Cloud** — last and marked optional, because nothing above it depends on
  *   a cloud login and the README had to spend a paragraph saying so.
  */
 
@@ -53,12 +56,14 @@ import { Out, Provenance, Step, type StepState } from './steps/Step.js';
 import { Strip, type Slot } from './steps/Strip.js';
 import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
-import type { AccountClaimResult, AccountProofResult } from './lib/flow.js';
+import type { AccountClaimResult, AccountProofResult, CreatedContext } from './lib/flow.js';
 import {
   claimAccountWithCloud,
   cloudNamespacesForSession,
   finishCloudLink,
   startCloudLink,
+  createContextThroughRelay,
+  describeCreation,
   describeRelay,
   discoverAdmitter,
   findAccountRelays,
@@ -70,6 +75,7 @@ import {
   writeContext,
 } from './lib/flow.js';
 import { errorText, hostOf, parseJson, pretty, short } from './lib/format.js';
+import { MIN_RELEASE_VERSION, TRUSTED_PROFILE, sealingErrorText } from './lib/sealing.js';
 import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
 import {
   DEFAULT_CLOUD_URL,
@@ -209,7 +215,7 @@ export function App() {
         state: claim === null ? 'none' : claim.linked ? 'ok' : 'warn',
         title:
           claim === null
-            ? 'Optional — step 7. Nothing above it needs a cloud login.'
+            ? 'Optional — step 8. Nothing above it needs a cloud login.'
             : claim.linked
               ? `Linked to ${claim.email}`
               : 'Ownership recorded, but this account is not linked to a cloud login.',
@@ -273,6 +279,13 @@ export function App() {
         session={session}
         enabled={ready.identity && ready.node}
         onSession={setSession}
+      />
+
+      <CreateStep
+        identity={identity}
+        settings={settings}
+        onChange={updateSettings}
+        enabled={ready.identity && (settings.relayUrl !== '' || ready.reach)}
       />
 
       <ReadStep
@@ -530,7 +543,7 @@ function ReachStep({
       setOutcome({
         text:
           `Pointed at ${relay.relayUrl}. This lookup cannot tell you whether that node may ` +
-          'author on your behalf — the cloud is not asked, because it does not decide. Step 6’s ' +
+          'author on your behalf — the cloud is not asked, because it does not decide. Step 7’s ' +
           '“Check first” answers it without spending a warrant nonce.',
         error: false,
       });
@@ -639,7 +652,7 @@ function ReachStep({
         // fold it, which is why the read is what confirms this worked.
         text: published
           ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
-            'the op, so step 5 is what confirms it — a 403 straight after is usually a race, ' +
+            'the op, so step 6 is what confirms it — a 403 straight after is usually a race, ' +
             'not a refusal.'
           : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
             'joined and try another admitter.',
@@ -1111,7 +1124,7 @@ function AccountCloudStep({
 
   return (
     <Step
-      n={7}
+      n={8}
       optional
       title="Connect this account to your cloud"
       state={claimed ? 'done' : 'idle'}
@@ -1353,6 +1366,229 @@ function SessionStep({
 }
 
 /**
+ * Create a context through the relay — the account holds no node, so it cannot
+ * run `context create` itself.
+ *
+ * The author signs a **creation warrant** and the relay spends it. Who is
+ * checked is the part worth getting right on the page, because it is the
+ * opposite of what "the relay creates it" suggests: the relay needs **no**
+ * create rights. Every peer checks the *author's* `CAN_CREATE_CONTEXT` (or
+ * admin), and the relay's *standing* to act for members — a `RelayTee` role or
+ * `CAN_AUTHOR_ON_BEHALF`. `init` runs as the author.
+ *
+ * The one output later panels need is the new context id, so the panel offers
+ * to hand it to them rather than leaving it to be copied into step 6's box.
+ */
+function CreateStep({
+  identity,
+  settings,
+  onChange,
+  enabled,
+}: {
+  identity: DeviceIdentity | null;
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+  enabled: boolean;
+}) {
+  const { outcome, busy, run } = useOutcome();
+  // `null` follows the namespace id from step 2, so a namespace resolved after
+  // this panel mounted still lands here. Typing anything takes over.
+  const [groupOverride, setGroupOverride] = useState<string | null>(null);
+  const groupId = groupOverride ?? settings.namespaceId;
+  const [applicationId, setApplicationId] = useState('');
+  const [name, setName] = useState('');
+  const [initArgs, setInitArgs] = useState('{}');
+  // On by default, as in the write: a relay that cannot attest is refused
+  // rather than handed a warrant in the clear.
+  const [seal, setSeal] = useState(true);
+  const [created, setCreated] = useState<CreatedContext | null>(null);
+
+  /** Run a relay call, naming a sealing failure in terms of what to do. */
+  const relayCall = (fn: () => Promise<string>) =>
+    run(async () => {
+      try {
+        return await fn();
+      } catch (error) {
+        const hint = seal ? sealingErrorText(error) : null;
+        throw hint ? new Error(hint) : error;
+      }
+    });
+
+  // Same resolution as the write: the cloud-resolved relay, else the admitter.
+  const relayUrl = settings.relayUrl || settings.nodeUrl;
+  const groupOk = isHex64(groupId);
+  const inUse = created !== null && settings.contextId === created.contextId;
+
+  return (
+    <Step
+      n={5}
+      title="Create a context through the relay"
+      optional
+      state={created ? 'done' : 'idle'}
+      stateLabel={created ? 'created' : undefined}
+      why={
+        <>
+          Your device signs a <strong>creation warrant</strong> — this group, this
+          application, these exact init arguments, one nonce, an expiry — and the relay
+          creates the context. The relay needs <em>no</em> create rights of its own: peers
+          check that <em>your</em> account holds <code>CAN_CREATE_CONTEXT</code> (or is an
+          admin of the group) and that the relay has standing to act for members — a{' '}
+          <code>RelayTee</code> role or <code>CAN_AUTHOR_ON_BEHALF</code>.{' '}
+          <code>init</code> runs as you. Skip this if you were handed a context id.
+        </>
+      }
+    >
+      <dl className="kv">
+        <dt>relay</dt>
+        <dd>
+          {relayUrl === '' ? (
+            <em>none resolved — run step 2, or set a node URL by hand</em>
+          ) : (
+            relayUrl
+          )}
+        </dd>
+      </dl>
+      <label>
+        Group id — 64 hex; for a namespace, the namespace id
+        <input
+          type="text"
+          value={groupId}
+          placeholder="the namespace id from step 2"
+          onChange={(e) => setGroupOverride(e.target.value.trim().toLowerCase())}
+        />
+      </label>
+      <label>
+        Application id — 64 hex; the application the group was created for
+        <input
+          type="text"
+          value={applicationId}
+          placeholder="the scaffolding-e2e application id"
+          onChange={(e) => setApplicationId(e.target.value.trim().toLowerCase())}
+        />
+      </label>
+      <label>
+        Context name — optional, signed into the warrant
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label>
+        Arguments to <code>init</code> — the exact bytes the warrant will commit to
+        <textarea value={initArgs} onChange={(e) => setInitArgs(e.target.value)} />
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={seal} onChange={(e) => setSeal(e.target.checked)} />
+        <span>
+          <strong>Seal to the relay&rsquo;s TEE</strong>, as the write does: the page verifies
+          the relay&rsquo;s quote against the {TRUSTED_PROFILE} image of the signed mero-tee
+          release it runs ({MIN_RELEASE_VERSION} or newer) and encrypts the warrant and init
+          arguments to the key it binds.
+        </span>
+      </label>
+
+      <div className="row">
+        <button
+          className="secondary"
+          disabled={!enabled || busy || !groupOk}
+          onClick={() =>
+            void relayCall(async () => {
+              const d = await describeCreation(relayUrl, groupId, identity, { seal });
+              const mayCreate =
+                d.authorMayCreate === undefined ? 'not reported' : d.authorMayCreate ? 'yes' : 'NO';
+              const lines = [
+                `executor: ${d.executorAccount}`,
+                `group:    ${d.groupId}`,
+                `relay standing (RelayTee or CAN_AUTHOR_ON_BEHALF): ${d.canCreateOnBehalf ? 'yes' : 'NO'}`,
+                `you may create (CAN_CREATE_CONTEXT or admin):      ${mayCreate}`,
+              ];
+              const fixes: string[] = [];
+              if (!d.canCreateOnBehalf) {
+                fixes.push(
+                  'An admin of the group has to admit this relay as a RelayTee, or grant its\n' +
+                    'account CAN_AUTHOR_ON_BEHALF (bit 9, 512). It needs no create rights.',
+                );
+              }
+              if (d.authorMayCreate === false) {
+                fixes.push(
+                  'An admin of the group has to grant your account CAN_CREATE_CONTEXT, or\n' +
+                    'make it an admin.',
+                );
+              }
+              const verdict =
+                fixes.length === 0 ? 'this relay can create a context for you here.' : 'not yet.';
+              return [verdict, ...lines, ...(fixes.length ? ['', ...fixes] : [])].join('\n');
+            })
+          }
+        >
+          Check first (signs nothing)
+        </button>
+        <button
+          disabled={!enabled || busy || !groupOk || !isHex64(applicationId)}
+          onClick={() =>
+            void relayCall(async () => {
+              if (!identity) throw new Error('no device identity');
+              const parsed = parseJson(initArgs, 'init arguments');
+              if (parsed.error !== null) throw new Error(parsed.error);
+              setCreated(null);
+              const result = await createContextThroughRelay(
+                relayUrl,
+                identity,
+                {
+                  groupId,
+                  applicationId,
+                  initArgs: parsed.value,
+                  ...(name.trim() ? { name: name.trim() } : {}),
+                },
+                { seal },
+              );
+              setCreated(result);
+              return (
+                `created.\ncontext: ${result.contextId}\ngroup:   ${result.groupId}` +
+                `\nrelay's identity in it: ${result.memberPublicKey}` +
+                `\nvia:     ${seal ? 'sealed to the attested TEE' : 'unsealed'}`
+              );
+            })
+          }
+        >
+          Sign a creation warrant and create
+        </button>
+      </div>
+
+      {!enabled && (
+        <p className="aside">
+          Needs an identity from step 1 and a relay from step 2. No session and no pinned key:
+          the warrant, not a token, is what authorises this.
+        </p>
+      )}
+
+      <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
+
+      {created ? (
+        <div className="row">
+          <button
+            className="secondary"
+            disabled={inUse}
+            onClick={() => onChange({ contextId: created.contextId })}
+          >
+            {inUse ? 'Steps 6 and 7 use this context' : 'Use it for the read and write steps'}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="note">
+        <strong>Check first, here too.</strong> When the relay has no standing or your account
+        may not create, the client refuses before signing, so no nonce is spent. The creation
+        warrant draws from the same per-device sequence as the write, and its nonce is spent in
+        the new context.
+      </div>
+    </Step>
+  );
+}
+
+/** A 32-byte id as the relay spells it: 64 lower-case hex. */
+function isHex64(value: string): boolean {
+  return /^[0-9a-f]{64}$/.test(value);
+}
+
+/**
  * Read — and the panel that owns the context id, because this is where it is
  * first used.
  *
@@ -1391,7 +1627,7 @@ function ReadStep({
 
   return (
     <Step
-      n={5}
+      n={6}
       title="Read the context"
       state={enabled ? 'idle' : 'blocked'}
       stateLabel={settings.contextId.trim().length === 64 ? undefined : 'no context yet'}
@@ -1414,7 +1650,7 @@ function ReadStep({
             group, not a context; the cloud lists contexts only for a namespace you{' '}
             <em>own</em>, and a delegated keyholder owns none; and the node&rsquo;s own listing
             needs <code>context:list</code>, which an <code>account_proof</code> session is
-            deliberately not given. Ask whoever invited you.
+            deliberately not given. Ask whoever invited you, or create one in step 5.
           </>
         }
       >
@@ -1471,6 +1707,19 @@ function WriteStep({
 }) {
   const { outcome, busy, run } = useOutcome();
   const [args, setArgs] = useState('{"key": "delegated", "value": "written-from-a-browser"}');
+  // On by default, so a relay that cannot prove what it runs is refused rather
+  // than written to in the clear. Turning it off is a choice the page shows.
+  const [seal, setSeal] = useState(true);
+  /** Run a relay call, naming a sealing failure in terms of what to do. */
+  const relayCall = (fn: () => Promise<string>) =>
+    run(async () => {
+      try {
+        return await fn();
+      } catch (error) {
+        const hint = seal ? sealingErrorText(error) : null;
+        throw hint ? new Error(hint) : error;
+      }
+    });
 
   // The relay the cloud resolved, falling back to the admitter. The fallback is
   // for the manual path — settings typed by hand, or restored from a blob
@@ -1482,7 +1731,7 @@ function WriteStep({
 
   return (
     <Step
-      n={6}
+      n={7}
       title="Write through the relay"
       why={
         <>
@@ -1510,6 +1759,22 @@ function WriteStep({
           )}
         </dd>
       </dl>
+      <label className="check">
+        <input type="checkbox" checked={seal} onChange={(e) => setSeal(e.target.checked)} />
+        <span>
+          <strong>Seal to the relay&rsquo;s TEE.</strong> The page verifies the relay&rsquo;s
+          quote here, against Intel&rsquo;s root and the {TRUSTED_PROFILE} image of the signed
+          mero-tee release it runs ({MIN_RELEASE_VERSION} or newer), and encrypts the warrant
+          and arguments to the key it binds.
+          The relay&rsquo;s TLS terminator, and whoever runs it, reads neither.
+        </span>
+      </label>
+      {!seal && (
+        <div className="note">
+          <strong>Unsealed.</strong> The warrant and arguments reach the relay over plain TLS,
+          readable wherever that TLS ends. Use this for a relay that is not a TEE.
+        </div>
+      )}
       <label>
         Arguments to <code>set</code> — the exact bytes the warrant will commit to
         <textarea value={args} onChange={(e) => setArgs(e.target.value)} />
@@ -1520,10 +1785,11 @@ function WriteStep({
           className="secondary"
           disabled={!enabled || busy}
           onClick={() =>
-            void run(async () => {
-              const described = await describeRelay(writeUrl, settings.contextId);
+            void relayCall(async () => {
+              const described = await describeRelay(writeUrl, settings.contextId, { seal });
+              const via = seal ? `sealed to the attested TEE (${TRUSTED_PROFILE}, mero-tee ${MIN_RELEASE_VERSION} or newer)` : 'unsealed';
               return described.canAuthorOnBehalf
-                ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}`
+                ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\nvia:      ${via}`
                 : `this node may NOT author on your behalf yet.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\n\n` +
                     'An admin of that group has to grant it CAN_AUTHOR_ON_BEHALF (bit 9, 512) —\n' +
                     'meroctl group members set-capabilities, or the default mask at namespace creation.';
@@ -1535,7 +1801,7 @@ function WriteStep({
         <button
           disabled={!enabled || busy}
           onClick={() =>
-            void run(async () => {
+            void relayCall(async () => {
               if (!identity) throw new Error('no device identity');
               const parsed = parseJson(args, 'arguments');
               if (parsed.error !== null) throw new Error(parsed.error);
@@ -1545,8 +1811,12 @@ function WriteStep({
                 settings.contextId,
                 'set',
                 parsed.value,
+                { seal },
               );
-              return `accepted.\nrootHash: ${result.rootHash}\nreturns:  ${pretty(result.returns)}`;
+              return (
+                `accepted.\nrootHash: ${result.rootHash}\nreturns:  ${pretty(result.returns)}` +
+                `\nvia:      ${seal ? 'sealed to the attested TEE' : 'unsealed'}`
+              );
             })
           }
         >

@@ -1,0 +1,699 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Anchor": {
+      "kind": "record",
+      "doc": "A pointer from the context to a public record of the transcript digest.",
+      "fields": [
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "network",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchored_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "BallotPointer": {
+      "kind": "record",
+      "doc": "What a voter's slot holds for a poll: which body is theirs.",
+      "fields": [
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "frozen",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cast_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Closure": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "counted",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CountedBallot"
+            }
+          }
+        },
+        {
+          "name": "closed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Complaint": {
+      "kind": "record",
+      "doc": "\"Dealer X sent me a share that does not match its commitments\", with\nthe ECDH secret for that one share and a DLEQ proof it is genuine.",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    },
+    "CountedBallot": {
+      "kind": "record",
+      "doc": "One ballot the seal commits to count.",
+      "fields": [
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The protocol digest — the voter's receipt."
+        },
+        {
+          "name": "frozen",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Where the body lives in `ballot_bodies`."
+        }
+      ]
+    },
+    "Election": {
+      "kind": "record",
+      "doc": "The key ceremony's outcome, frozen at open.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transport",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Transport keys, in trustee order. Frozen because complaints are\nadjudicated against them."
+        },
+        {
+          "name": "qualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "QualifiedDealing"
+            }
+          },
+          "doc": "Dealings that make up the key, in trustee order."
+        },
+        {
+          "name": "disqualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Dealers left out because a complaint proved they cheated."
+        },
+        {
+          "name": "opened_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberSlot": {
+      "kind": "record",
+      "doc": "What one account may still change. Lives in [`UserStorage`], so only that\naccount can write it — enforced at merge, not just by this contract.\n\nNothing the audit requires to stay put is here: a voter re-pointing their\nballot or a trustee re-publishing a partial after the seal changes no\nverdict. Ceremony material is write-once, in [`MeroVote`].",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "ballots",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "BallotPointer"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "partials",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "StoredPartials"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "MeroVote": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "definitions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PollDefinition"
+            }
+          },
+          "doc": "Immutable definitions; the key is the poll id."
+        },
+        {
+          "name": "polls",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "PollControl"
+              }
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Closing notice and anchor, owned by the creator (checked at merge). Its\nowner stamp must name the definition's `creator`, or the poll is\nignored: the field alone is forgeable."
+        },
+        {
+          "name": "elections",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Election"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "The frozen election, `\"{poll_id}/{nonce}\"`. Only the creator's entries\ncount; two of them is equivocation, and fails the audit."
+        },
+        {
+          "name": "closures",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Closure"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "The seal, keyed and read like `elections`."
+        },
+        {
+          "name": "transport_keys",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TransportKey"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"{poll_id}/{trustee}/{content hash}\"`."
+        },
+        {
+          "name": "dealings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "WireDealing"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"{poll_id}/{dealer}/{content hash}\"`."
+        },
+        {
+          "name": "complaints",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Complaint"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"{poll_id}/{recipient}/{dealer}/{content hash}\"`."
+        },
+        {
+          "name": "ballot_bodies",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StoredBallot"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Ballot bodies by the SHA-256 of their bytes, owned by the voter who\ncast them. The owner stamp is what shows the voter, not the creator,\nmade a counted ballot."
+        },
+        {
+          "name": "slots",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MemberSlot"
+            }
+          },
+          "doc": "One signed slot per account."
+        }
+      ]
+    },
+    "PollControl": {
+      "kind": "record",
+      "doc": "The part of a poll its creator may still change: the closing notice\nand the anchor. Everything else about a poll's lifecycle is written\nonce (see `elections` and `closures` in [`MeroVote`]).",
+      "fields": [
+        {
+          "name": "closing_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true,
+          "doc": "When the close was announced (phase Closing onward)."
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "$ref": "Anchor"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "PollDefinition": {
+      "kind": "record",
+      "doc": "The immutable part of a poll. Stored content-addressed; its SHA-256 IS\nthe poll id, so nothing voters relied on can be edited under them.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "min_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "max_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "trustees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Accounts that hold the decryption key between them, in index order\n(trustee `i` in this list has Shamir index `i + 1`)."
+        },
+        {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How many trustees it takes to decrypt. 1..=trustees.len()."
+        },
+        {
+          "name": "voters",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Accounts allowed to vote. Empty means any member of the context."
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Milliseconds. Also makes two otherwise identical polls distinct."
+        },
+        {
+          "name": "closes_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true,
+          "doc": "Informational deadline in milliseconds. Node clocks are not a\nconsensus source, so closing is an explicit act of the creator."
+        }
+      ]
+    },
+    "QualifiedDealing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealing",
+          "type": {
+            "$ref": "WireDealing"
+          }
+        }
+      ]
+    },
+    "StoredBallot": {
+      "kind": "record",
+      "doc": "A ballot body, content-addressed.",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ballot",
+          "type": {
+            "$ref": "WireBallot"
+          }
+        }
+      ]
+    },
+    "StoredPartials": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WirePartial"
+            }
+          }
+        }
+      ]
+    },
+    "TransportKey": {
+      "kind": "record",
+      "doc": "A trustee's transport key and its proof of knowledge.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    },
+    "WireBallot": {
+      "kind": "record",
+      "doc": "An encrypted ballot exactly as the browser built it.",
+      "fields": [
+        {
+          "name": "choices",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireChoice"
+            }
+          }
+        },
+        {
+          "name": "sum_proof",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireBranch"
+            }
+          }
+        }
+      ]
+    },
+    "WireBranch": {
+      "kind": "record",
+      "doc": "One `(c, z)` pair of a proof, as 64-hex scalars.",
+      "fields": [
+        {
+          "name": "c",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "WireChoice": {
+      "kind": "record",
+      "doc": "One option's ciphertext and its 0-or-1 proof.",
+      "fields": [
+        {
+          "name": "a",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireBranch"
+            }
+          }
+        }
+      ]
+    },
+    "WireDealing": {
+      "kind": "record",
+      "doc": "A trustee's contribution to the distributed key.",
+      "fields": [
+        {
+          "name": "commitments",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "`t` Feldman commitments, constant term first."
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          },
+          "doc": "Proof of knowledge of the constant term."
+        },
+        {
+          "name": "shares",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireEncShare"
+            }
+          },
+          "doc": "One per trustee, in the poll's trustee order."
+        }
+      ]
+    },
+    "WireEncShare": {
+      "kind": "record",
+      "doc": "One share of a dealing, encrypted to its recipient's transport key.",
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "v",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "WirePartial": {
+      "kind": "record",
+      "doc": "A trustee's partial decryption of one option's aggregate.",
+      "fields": [
+        {
+          "name": "d",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroVote",
+  "state_version": 1
+}

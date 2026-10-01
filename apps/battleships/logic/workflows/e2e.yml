@@ -38,7 +38,7 @@ nodes:
   # Distinct per scenario so a local run of both does not contend.
   base_port: 2940
   base_rpc_port: 2840
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.41
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.66
   prefix: calimero-node
 
 steps:
@@ -154,6 +154,25 @@ steps:
   # Phase B: Match Creation
   # ============================================================
 
+  # The lobby records the ACCOUNT behind player 2's key when the match is
+  # created — the game checks every row player 2 writes against it — and only
+  # an account itself can register that pairing, in its own `UserStorage` slot.
+  - name: Node 2 Registers Its Player Key
+    type: call
+    node: calimero-node-2
+    context_id: '{{lobby_ctx_id}}'
+    method: register_player
+    executor_public_key: '{{p2_key}}'
+    args: {}
+
+  - name: Wait for Player Registration Sync
+    type: wait_for_sync
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    context_id: '{{lobby_ctx_id}}'
+    timeout: 30
+
   - name: Node 1 Creates Match in Lobby
     type: call
     node: calimero-node-1
@@ -188,6 +207,12 @@ steps:
     executor_public_key: '{{p1_key}}'
     outputs:
       p1_account: result.output.0.player1
+      p2_account: result.output.0.player2_account
+
+  - name: Assert the lobby recorded player 2's account
+    type: assert
+    statements:
+      - 'is_set({{p2_account}})'
 
   # Negative-path coverage for create_match validation.
   - name: Reject Self-Match Creation
@@ -260,7 +285,7 @@ steps:
     application_id: '{{app_id}}'
     group_id: '{{match_subgroup_id}}'
     service_name: game
-    params: '{"player1":"{{p1_key}}","player2":"{{p2_key}}","lobby_context_id":"{{lobby_ctx_id}}","match_id":"{{match_id}}"}'
+    params: '{"player1":"{{p1_key}}","player2":"{{p2_key}}","player2_account":"{{p2_account}}","lobby_context_id":"{{lobby_ctx_id}}","match_id":"{{match_id}}"}'
     outputs:
       match_ctx_id: contextId
       match_p1_key: memberPublicKey
@@ -642,14 +667,14 @@ steps:
       - 'is_set({{matches_n2}})'
 
   # ============================================================
-  # Phase F: Commitment Scheme — Reveal & Audit
+  # Phase F: Commitment Scheme — no reveal mid-game
   # ============================================================
-  # Both players reveal their pristine boards and the contract recomputes
-  # SHA256(pristine || salt) against the published commitment AND replays
-  # every shot recorded against them against the revealed board. This is
-  # the same audit path exercised at match end on the winning shot.
+  # A reveal publishes `(board, salt)` for EVERY reader to audit, so opening
+  # one mid-game would hand the board to the opponent. The contract refuses it
+  # until the answers end the match; the end-of-match reveals and audit are
+  # asserted in Phase H.
 
-  - name: Player 1 Reveals Board (Audit)
+  - name: Reject Mid-Game Reveal by P1
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -657,15 +682,14 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args:
       match_id: '{{game_match_id}}'
+    expected_failure: true
+    outputs:
+      reveal_err: error
 
-  - name: Player 2 Reveals Board (Audit)
-    type: call
-    node: calimero-node-2
-    context_id: '{{match_ctx_id}}'
-    method: reveal_board
-    executor_public_key: '{{match_p2_key}}'
-    args:
-      match_id: '{{game_match_id}}'
+  - name: Assert rejected — Reject Mid-Game Reveal by P1
+    type: assert
+    statements:
+      - "is_set({{reveal_err}})"
 
   # Reject relinking an already-Active match — set_match_context_id now
   # guards against any non-Pending transition (prevents Finished matches
@@ -693,7 +717,7 @@ steps:
   # ============================================================
   # Rationale: the original Phase D asserted ONE round (1 shot each).
   # This phase plays the match to completion to cover:
-  #   (a) full 17-hit win condition and `winner` LwwRegister transition,
+  #   (a) full 17-hit win condition, and the end-of-match reveal + audit,
   #   (b) Event::Winner / Event::MatchEnded emission and `on_match_finished`
   #       xcall back to the lobby,
   #   (c) MatchSummary.status: Active → Finished convergence across nodes,
@@ -1133,9 +1157,9 @@ steps:
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # Turn 33: P1's 17th hit. This sinks P2's carrier's last cell,
-  # drives `ships_remaining` to 0 on node-2's private board, sets
-  # winner=P1, emits Event::Winner + Event::MatchEnded, and xcalls
+  # Turn 33: P1's 17th hit. Node-2's answer ends the match on the answers,
+  # both boards are revealed and audited, and only then does P1's win count
+  # — emitting Event::Winner + Event::MatchEnded and xcalling
   # `on_match_finished` back to the lobby context.
   - name: Turn 33 — P1 Shot (9,8) [WINNING HIT, sinks P2 carrier]
     type: call
@@ -1150,6 +1174,47 @@ steps:
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
+
+  # The last answer ends the match on the answers alone. Node 2 (the loser)
+  # opens its board as it answers, and asks node 1 to open its own; the win
+  # counts only once node 1's board has passed every reader's audit.
+  - name: Wait for Both Boards to Be Revealed
+    type: wait
+    seconds: 5
+    message: Waiting for the reveal handler to run on node 1
+
+  - name: Sync After Reveals
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Read Winner on Node 1
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: get_winner
+    executor_public_key: '{{match_p1_key}}'
+    args: {}
+    outputs:
+      winner_n1: result
+
+  - name: Read Winner on Node 2
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: get_winner
+    executor_public_key: '{{match_p2_key}}'
+    args: {}
+    outputs:
+      winner_n2: result
+
+  # Both nodes derive the same audited winner from the same rows: P1.
+  - name: Assert P1 Won on Both Nodes
+    type: json_assert
+    statements:
+      - 'json_equal({{winner_n1}}, {"output": "{{p1_key}}"})'
+      - 'json_equal({{winner_n2}}, {"output": "{{p1_key}}"})'
 
   # Give the cross-context xcall (match -> lobby) a beat to apply.
   - name: Wait for on_match_finished xcall Propagation

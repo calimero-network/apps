@@ -1,0 +1,246 @@
+/* Presentation is always dark, whatever the board's theme — the slide is the
+   only bright thing on screen, as in Figma's present view. */
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  color: #f2f2f2;
+  font-family: var(--font);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.title {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counter {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.barRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.barBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.barBtn:hover { background: rgba(255, 255, 255, 0.1); }
+.barBtnActive { background: rgba(255, 255, 255, 0.16); }
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.segment {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.segment:hover { color: #fff; }
+.segmentActive { background: rgba(255, 255, 255, 0.18); color: #fff; }
+
+/* The scroll container. `margin: auto` on the child (not `align-items: center`
+   here) is what centres a small slide without clipping the top of a tall one. */
+.stage {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.slideWrap {
+  margin: auto;
+  flex-shrink: 0;
+}
+
+.stageScrolls .slideWrap {
+  margin-top: 0;
+}
+
+.slide {
+  display: block;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+
+.empty {
+  margin: auto;
+  max-width: 420px;
+  padding: 24px;
+  text-align: center;
+}
+
+.emptyTitle {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.emptyHint {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.emptyBtn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.emptyBtn:hover { background: rgba(255, 255, 255, 0.1); }
+
+.strip {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #181818;
+}
+
+.thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  width: 148px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thumbFrame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88px;
+  border-radius: 6px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+.thumbFrame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.thumb:hover .thumbFrame { outline-color: rgba(255, 255, 255, 0.25); }
+.thumbActive .thumbFrame { outline-color: var(--color-accent); }
+.thumbActive { color: #fff; }
+
+.thumbName {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.navBtn {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.navBtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
+.navBtn:disabled { opacity: 0.3; cursor: default; }
+
+.dots {
+  display: flex;
+  gap: 6px;
+  max-width: 50vw;
+  overflow: hidden;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dotActive { background: #fff; }
+
+@media (max-width: 640px) {
+  .barBtn span { display: none; }
+  .segment { padding: 0 7px; }
+}

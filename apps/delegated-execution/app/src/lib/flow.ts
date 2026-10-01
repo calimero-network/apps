@@ -36,6 +36,7 @@ import {
   type IntentResult,
 } from '@calimero-network/mero-js';
 
+import { sealedRelayFetch } from './sealing.js';
 import {
   chooseAdmitter,
   chooseExecutor,
@@ -166,15 +167,28 @@ export async function writeContext<T = unknown>(
   contextId: string,
   method: string,
   argsJson: unknown,
+  { seal }: RelayTransport,
 ): Promise<IntentResult<T>> {
+  const relayUrl = normaliseUrl(nodeUrl);
   const relay = new RelayClient({
-    relayUrl: normaliseUrl(nodeUrl),
+    relayUrl,
     authorAccount: identity.accountId,
     authorProof: identity.credential,
     deviceSecret: identity.deviceSecret,
     nonces: createLocalStorageNonceSource(nonceStorageKey(identity.devicePublicKey)),
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
   });
   return relay.execute<T>(contextId, method, argsJson);
+}
+
+/**
+ * How relay calls travel. `seal` encrypts them to the relay's attested TEE
+ * (see `lib/sealing.ts`): the relay's TLS terminator, and whoever runs it, sees
+ * neither the warrant nor the arguments. A relay that cannot attest is refused
+ * before anything is sent, rather than written to in the clear.
+ */
+export interface RelayTransport {
+  seal: boolean;
 }
 
 /**
@@ -185,9 +199,13 @@ export async function writeContext<T = unknown>(
  * most common reason a first write fails. The node's own account needs
  * `CAN_AUTHOR_ON_BEHALF` on the owning group — a governance op its admin signs.
  */
-export async function describeRelay(nodeUrl: string, contextId: string) {
+export async function describeRelay(nodeUrl: string, contextId: string, { seal }: RelayTransport) {
+  const relayUrl = normaliseUrl(nodeUrl);
   const relay = new RelayClient({
-    relayUrl: normaliseUrl(nodeUrl),
+    relayUrl,
+    // Sealed like the write, so a check reaches the same attested TD the write
+    // will, and fails the same way if the relay cannot attest.
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
     // `describe` signs nothing and spends nothing, so the author fields are
     // placeholders it never reads. Passing the real ones would suggest this
     // call is about a particular author, and it is not.
@@ -197,6 +215,238 @@ export async function describeRelay(nodeUrl: string, contextId: string) {
     nonces: { next: () => Promise.resolve(0n) },
   });
   return relay.describe(contextId);
+}
+
+/**
+ * What a relay says about creating contexts in a group, before anything is
+ * signed.
+ *
+ * Declared here rather than imported because the mero-js this app pins
+ * predates delegated creation and exports no such type. The shape is the one
+ * `RelayClient.describeCreation` returns in the release that adds it.
+ */
+export interface CreationDescription {
+  /** The account a creation warrant must name as `executor`, hex. */
+  executorAccount: string;
+  /** The group, hex. */
+  groupId: string;
+  /**
+   * Whether the relay has standing to act for members of this group — a
+   * `RelayTee` role or `CAN_AUTHOR_ON_BEHALF`. It needs no create rights of its
+   * own; those are checked on the author.
+   */
+  canCreateOnBehalf: boolean;
+  /** Whether the author may create here. Present only when an author was asked about. */
+  authorMayCreate?: boolean;
+}
+
+/** What to create, as `RelayClient.createContext` takes it. */
+export interface CreateContextRequest {
+  /** The group to create the context in, hex. */
+  groupId: string;
+  /** The application to create it with, hex. */
+  applicationId: string;
+  /** The JSON the app's `init()` receives — run as the author's account. */
+  initArgs: unknown;
+  /** A display name for the context. */
+  name?: string;
+}
+
+/** Where a delegated creation landed. */
+export interface CreatedContext {
+  contextId: string;
+  groupId: string;
+  /** The relay's identity in the new context, hex. */
+  memberPublicKey: string;
+}
+
+/**
+ * The part of `RelayClient` that delegated creation adds, looked up
+ * structurally.
+ *
+ * The installed mero-js is older than those methods, so calling them directly
+ * would not typecheck and would throw `is not a function` at run time. Looking
+ * them up through this type keeps the app building today and makes it work
+ * unchanged once the dependency is bumped — the only thing that changes then is
+ * that the lookup succeeds.
+ */
+type CreationCapable = {
+  describeCreation?: (
+    groupId: string,
+    opts?: { author?: string },
+  ) => Promise<CreationDescription>;
+  createContext?: (input: {
+    groupId: string;
+    applicationId: string;
+    initArgs?: unknown;
+    serviceName?: string;
+    name?: string;
+    seed?: string;
+  }) => Promise<CreatedContext>;
+};
+
+/** Said when the installed mero-js has no delegated creation at all. */
+export const CREATION_UNSUPPORTED =
+  'this build of mero-js predates delegated context creation; upgrade ' +
+  '@calimero-network/mero-js to a release that has RelayClient.createContext';
+
+/** Fetch one of the creation methods off a client, bound, or explain its absence. */
+function creationMethod<K extends keyof CreationCapable>(
+  relay: RelayClient,
+  key: K,
+): NonNullable<CreationCapable[K]> {
+  const fn = (relay as unknown as CreationCapable)[key];
+  if (typeof fn !== 'function') throw new Error(CREATION_UNSUPPORTED);
+  return fn.bind(relay) as NonNullable<CreationCapable[K]>;
+}
+
+/**
+ * Ask the relay whether it can create a context in `groupId`, and — given an
+ * identity — whether this account may.
+ *
+ * Signs nothing and spends nothing. With an identity it answers both
+ * preconditions in one round trip: the relay's *standing* (it needs no create
+ * rights of its own, only a `RelayTee` role or `CAN_AUTHOR_ON_BEHALF`) and the
+ * author's `CAN_CREATE_CONTEXT`.
+ */
+export async function describeCreation(
+  nodeUrl: string,
+  groupId: string,
+  identity: DeviceIdentity | null,
+  { seal }: RelayTransport,
+): Promise<CreationDescription> {
+  const relayUrl = normaliseUrl(nodeUrl);
+  const relay = new RelayClient({
+    relayUrl,
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
+    // Like `describeRelay`, this signs nothing, so the author's secrets are not
+    // handed to it. The account alone is what `?author=` asks about.
+    authorAccount: identity?.accountId ?? '',
+    authorProof: '',
+    deviceSecret: '',
+    nonces: { next: () => Promise.resolve(0n) },
+  });
+  const describe = creationMethod(relay, 'describeCreation');
+  try {
+    return await describe(groupId, identity ? { author: identity.accountId } : {});
+  } catch (error) {
+    throw explained(error);
+  }
+}
+
+/**
+ * Create a context in a group through the relay, as the author.
+ *
+ * The author signs a *creation warrant* — this group, this application, these
+ * exact init arguments, one nonce, an expiry — and the relay creates the
+ * context and runs `init` as the author's account. mero-js checks both
+ * standings first and refuses before a nonce is taken when either is missing.
+ *
+ * The nonce comes from the same per-device source the write uses: the warrant
+ * is spent in the new context's per-device ledger, the one later writes there
+ * draw from.
+ */
+export async function createContextThroughRelay(
+  nodeUrl: string,
+  identity: DeviceIdentity,
+  { groupId, applicationId, initArgs, name }: CreateContextRequest,
+  { seal }: RelayTransport,
+): Promise<CreatedContext> {
+  const relayUrl = normaliseUrl(nodeUrl);
+  const relay = new RelayClient({
+    relayUrl,
+    authorAccount: identity.accountId,
+    authorProof: identity.credential,
+    deviceSecret: identity.deviceSecret,
+    nonces: createLocalStorageNonceSource(nonceStorageKey(identity.devicePublicKey)),
+    ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
+  });
+  const create = creationMethod(relay, 'createContext');
+  try {
+    return await create({ groupId, applicationId, initArgs, ...(name ? { name } : {}) });
+  } catch (error) {
+    throw explained(error);
+  }
+}
+
+/** The operator guidance for `error`, as an Error — or `error` itself when there is none. */
+function explained(error: unknown): unknown {
+  const text = explainCreationFailure(error);
+  return text === null ? error : new Error(text, { cause: error });
+}
+
+/**
+ * Turn a creation refusal into the thing the operator has to go and do.
+ *
+ * Returns `null` for anything that is not a creation refusal — a network
+ * failure, or a sealing refusal, which the page explains on its own — so the
+ * caller can leave those as they are.
+ *
+ * The 403s are told apart by the relay's own wording, because they send a
+ * person to different places: the author's rights are granted by a group
+ * admin, the relay's standing by the same admin but as a different op, and a
+ * spent or expired warrant needs neither — only a fresh signature.
+ */
+export function explainCreationFailure(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const e = error as { status?: unknown; reason?: unknown; bodyText?: unknown; message?: unknown };
+  if (typeof e.status !== 'number') return null;
+  const said =
+    (typeof e.reason === 'string' && e.reason) ||
+    (typeof e.bodyText === 'string' && e.bodyText) ||
+    (typeof e.message === 'string' && e.message) ||
+    '';
+  const detail = said ? `\n\nthe relay said: ${said}` : '';
+
+  switch (e.status) {
+    case 403:
+      if (/sealed_route_unguarded/i.test(said)) {
+        return (
+          'the relay does not accept this route sealed (403). Its proxy only opens sealed ' +
+          'requests for routes merod serves without a credential, and context creation is not ' +
+          'on that list on this relay. Untick sealing, or use a relay whose core lists it.' +
+          detail
+        );
+      }
+      if (/CAN_CREATE_CONTEXT|author[^.;]*(may not|cannot|lacks)[^.;]*create/i.test(said)) {
+        return (
+          'your account may not create contexts in this group (403). An admin of the group ' +
+          'has to grant it CAN_CREATE_CONTEXT, or make it an admin. The relay needs no create ' +
+          'rights of its own; this is checked on you.' +
+          detail
+        );
+      }
+      if (/standing|CAN_AUTHOR_ON_BEHALF|RelayTee|act for members|on behalf/i.test(said)) {
+        return (
+          'this relay has no standing to act for members of the group (403). An admin has to ' +
+          'admit it as a RelayTee, or grant its account CAN_AUTHOR_ON_BEHALF (bit 9, 512). It ' +
+          'does not need CAN_CREATE_CONTEXT.' +
+          detail
+        );
+      }
+      return (
+        'the relay refused the creation (403). Either your account is not a member of the ' +
+        'group or is read-only there, or the warrant was expired or already spent — sign a ' +
+        'fresh one.' +
+        detail
+      );
+    case 409:
+      return (
+        'the group targets a different application (409). Use the application id the group ' +
+        'was created for, then sign a new warrant — the old one names the wrong application ' +
+        'and cannot be reused.' +
+        detail
+      );
+    case 404:
+      return (
+        'this relay does not know that group (404). Check the group id — for a namespace it is ' +
+        'the namespace id — and that this relay has joined it; an unknown application id is ' +
+        'also a 404.' +
+        detail
+      );
+    default:
+      return null;
+  }
 }
 
 /**

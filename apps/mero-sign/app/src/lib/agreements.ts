@@ -25,7 +25,7 @@
 // So the binding is not a nicety to be added later; it is the thing that makes
 // the call legal. Given a namespace is required, it is worth making it mean
 // something, and the fleet already has the shape: mero-pass (team → vault),
-// mero-forum (space → forum), mero-drive (workspace → folder). Same structure
+// mero-forum (space → forum), mero-docs (workspace → folder). Same structure
 // here, so invitations, roles and names behave the way they do everywhere else.
 //
 // ── The two node behaviours this encodes ────────────────────────────────────

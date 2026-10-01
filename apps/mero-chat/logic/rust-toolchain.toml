@@ -1,0 +1,4 @@
+[toolchain]
+channel = "1.89.0"
+# ^~~ keep this in sync with Dockerfile
+components = ["cargo", "clippy"]

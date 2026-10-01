@@ -29,6 +29,68 @@ const OFFLINE = {
 };
 
 export const DOCS = {
+  'mero-chess': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'A game of chess is a Calimero context. There is no server keeping the board: each player\u2019s own node runs the contract, holds the move list, and replicates it to the other. The rules — legal moves, check, mate, the draws — are inside that contract, so the node you are talking to is the referee, and so is theirs.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A club. You create one, invite the people you play with, and every table inside it is open to them without another invitation.' },
+          { term: 'Context', def: 'A table. It holds the seats, the move list and the record of every game played at it — one board, as many games as you like.' },
+          { term: 'Seat', def: 'White or black. The first person to claim a chair holds it; the colours swap on every rematch, the way they do across a real board.' },
+          { term: 'The move list', def: 'The whole of the game state. Nothing stores a board: every reader replays the moves from the starting array, which is why two nodes cannot disagree about the position.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Open a table', body: 'A new table is a context in a namespace you own. Joining someone else\u2019s means opening their invite link.' },
+          { title: 'Take a seat', body: 'Claim white or black and give yourself a name. The game begins when both chairs are taken.' },
+          { title: 'Play', body: 'Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the node would refuse.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Playing with someone else',
+        paragraphs: [
+          'Invitations are links. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining, and whoever opens it can take the free seat or watch.',
+          'The invitation admits someone to the namespace the table lives in, so one link is enough for every table in that namespace — a club rather than a single game.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'The move list, keyed by game and ply. Each entry holds the move in UCI, its notation, who played it and when.',
+          'The two seats, each recording who claimed it and at what moment. First claim wins, and every node resolves that the same way.',
+          'Endings that a PERSON caused: a resignation, an agreed draw, a claimed one. Checkmate, stalemate, a dead position and the repetition rules are derived from the moves instead, so nothing writes them down and nothing can disagree with the board.',
+          'Nothing is private here. Chess is a game of complete information, so everything in the state is meant to be seen by both players.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'Your move is refused', def: 'The contract refuses a move that is not legal, is out of turn, or arrives in a finished game — and it says which. If the board offered the square, your client is reading a position the node has already moved past; it re-reads after every call.' },
+          { term: 'The other player looks offline', def: 'Presence expires after thirty seconds without a call from their node. It means "not heard from", not "gone": their moves still arrive when their node reconnects.' },
+          { term: 'You both moved at once', def: 'Only one of the two can take the ply, and every node picks the same one. The move that lost is simply not in the game — play it again if it is still legal.' },
+          { term: 'The invite link does nothing', def: 'An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A board that is a context', body: 'Two seats and a move list, replicated between the two players\u2019 own nodes. Nothing in the middle, and nothing to host.' },
+      { title: 'The contract knows the rules', body: 'Your client asks for the legal moves rather than working them out, so the squares it offers are the squares the node will accept.' },
+      { title: 'A move replicates', body: 'Moves are keyed by ply. Two players moving in the same instant resolve to one move, the same one on both nodes.' },
+      { title: 'The result is derived', body: 'Nobody writes down "checkmate": both nodes replay the same moves and reach the same verdict, which is what makes it trustworthy without a referee.' },
+    ],
+  },
   battleships: {
     docs: [
       {
@@ -212,6 +274,72 @@ export const DOCS = {
       { title: 'Names, not keys', body: 'Each member carries a username so the calendar reads like a calendar.' },
     ],
   },
+  'mero-chat': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'Mero Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A workspace — the team you invite people into. Joining it is what makes you a member.' },
+          { term: 'Subgroup', def: 'A channel’s membership. A public channel’s subgroup is open, so any workspace member can join; a private one is restricted to the people added to it.' },
+          { term: 'Context', def: 'One channel or one direct message: its messages, threads, reactions, profiles and roles, replicated only to its members’ nodes.' },
+          { term: 'Account', def: 'Who you are across your devices. A message’s sender and a reaction are stamped with your account, which is how your name is shown next to them.' },
+          { term: 'Presence', def: 'Who is here and who is typing. Ephemeral — it is never written into the channel’s history.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop.' },
+          { title: 'Create a workspace', body: 'Name it and pick the name people will see you by. You are its admin.' },
+          { title: 'Create channels', body: 'Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add.' },
+          { title: 'Invite your team', body: 'Share an invite link. Whoever opens it joins the workspace from their own node.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Working together',
+        paragraphs: [
+          'Everyone in a channel can post, react, reply in threads and edit or delete their own messages. Admins and moderators can delete any message and ban a member; only admins grant roles.',
+          'Roles are checked by the contract when changes merge, so a message deleted by someone without the right is refused on every node — not just hidden in one interface.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Messages, in order, each stamped with its sender’s account and a timestamp.',
+          'Thread replies, kept beside the message they answer.',
+          'Reactions: for each message and emoji, the set of accounts that reacted.',
+          'Profiles (display name, avatar), roles and per-member read positions.',
+          'Files and images as blobs on the channel members’ nodes, referenced from the message.',
+          'NOT stored: drafts, which stay on your node and are never synced, and typing, which is presence.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A message you sent is not on their screen yet', def: 'Their node has not synced with a peer since you sent it. It arrives when it does; nothing is lost.' },
+          { term: 'You cannot see a channel', def: 'It is private and you have not been added. Ask a member of it to add you.' },
+          { term: 'Your delete was undone', def: 'You deleted someone else’s message without being an admin or moderator. The contract refused it when it merged.' },
+          { term: 'Creating a channel or workspace fails', def: 'The node may be on an older runtime than the app expects. Update the node, then try again.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'Pick a channel', body: 'Click between #general, #design and the private #leadership — each keeps its own conversation.' },
+      { title: 'Send a message', body: 'Type in the box and press Enter. It lands in the channel straight away.' },
+      { title: 'A teammate answers', body: 'Ada is typing — a moment later her reply arrives from her own node.' },
+      { title: 'React', body: 'Click a reaction under any message to add yours, and again to take it back.' },
+    ],
+  },
+
   'mero-design': {
     docs: [
       {
@@ -268,28 +396,28 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A board with tools', body: 'Frames, shapes and text, each stored as its own record rather than one blob.' },
-      { title: 'Two people editing', body: 'Separate elements mean separate records, so concurrent edits merge instead of overwriting.' },
-      { title: 'Properties change live', body: 'Every mutable field is its own register — moving a shape does not conflict with recolouring it.' },
-      { title: 'Cursors alongside', body: 'Presence rides separately from the document, so it can never rewrite the artwork.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one board', body: 'You and Ada have the same sign-in screen open, each from your own node.' },
+      { title: 'Her note lands live', body: 'Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it.' },
+      { title: 'You change the design', body: 'At the same moment you recolour the Sign in button. Neither of you waits for the other.' },
+      { title: 'She sees it too', body: 'Ada’s cursor comes over to the button. Edits to different things merge instead of colliding.' },
     ],
   },
 
-  'mero-drive': {
+  'mero-docs': {
     docs: [
       {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Drive Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
-          'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are different contexts they were never added to.',
+          'Mero Docs is built folder by folder, and that structure is the product. Your workspace holds the folder tree, and each folder holds its own documents separately.',
+          'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are separate and they were never added to them.',
         ],
         concepts: [
-          { term: 'Namespace', def: 'A workspace. The registry service in it holds the folder tree.' },
-          { term: 'Folder', def: 'A record in the registry, bound once to a context id. The binding never changes after it is made.' },
-          { term: 'Context', def: 'One folder’s documents. Sharing a folder means adding someone to this context.' },
+          { term: 'Workspace', def: 'The workspace you and your members share. It holds the folder tree.' },
+          { term: 'Folder', def: 'A folder in the tree. It holds its own documents, and sharing it gives access to those documents only.' },
           { term: 'Document', def: 'A rich-text document with an id like `doc-3`, allocated by a counter that produces distinct ids even when two people create a document at the same moment.' },
-          { term: 'Owner / manager / folder role', def: 'The registry has one owner and any number of managers who may set roles on any folder. Individual folders can also carry their own per-person roles.' },
+          { term: 'Owner / folder role', def: 'The workspace has one owner, who can let other people set roles on any folder. Individual folders can also carry their own per-person roles.' },
         ],
       },
       {
@@ -297,9 +425,9 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Connect a node', body: 'Press Connect to node and pick your node.' },
-          { title: 'Create a workspace', body: 'The first person to claim it is the registry owner.' },
-          { title: 'Make a folder', body: 'Registering a folder creates its context and binds the two together.' },
-          { title: 'Write', body: 'Documents live in the folder’s context. Editing is collaborative and merges as you type.' },
+          { title: 'Create a workspace', body: 'The first person to claim it is the workspace owner.' },
+          { title: 'Make a folder', body: 'A new folder can be shared on its own right away.' },
+          { title: 'Write', body: 'Documents live inside their folder. Editing is collaborative and merges as you type.' },
         ],
       },
       {
@@ -307,16 +435,85 @@ export const DOCS = {
         heading: 'Sharing a folder, not the workspace',
         paragraphs: [
           'Share at folder level. Someone given one folder gets that folder’s documents replicated to their node and has no copy of anything else in the workspace.',
-          'Managers may set roles on any folder; a folder role applies to that folder alone. Because a folder is a context, a revoked member stops receiving its documents rather than merely losing a menu item.',
+          'The owner, and anyone the owner allows, may set roles on any folder; a folder role applies to that folder alone. Because each folder keeps its own membership, a revoked member stops receiving its documents rather than merely losing a menu item.',
         ],
       },
       {
         id: 'storage',
         heading: 'What is stored, and where',
         bullets: [
-          'Registry: folder records, the folder→context bindings, display order, colours and aliases, the owner and managers, and per-folder roles.',
-          'Each folder’s context: its documents with their tags and archive state, plus comments, each owned by its author.',
+          'Workspace: folder records, display order, colours and aliases, the owner and who may set folder roles, and per-folder roles.',
+          'Each folder: its documents with their tags and archive state, plus comments, each owned by its author.',
           'Document edits are appended as updates, so concurrent typing merges rather than replacing.',
+        ],
+      },
+      {
+        id: 'offline',
+        heading: 'Offline, and what happens when you reconnect',
+        paragraphs: [
+          'Your node holds the whole state, so the app keeps working with no network. Every change is written locally and queued.',
+          'When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.',
+        ],
+      },
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A shared folder is empty for them', def: 'Being in the workspace is not being in the folder. They must be added to that folder itself before its documents replicate.' },
+          { term: 'A folder shows no documents after a move', def: 'Moving a folder changes its place in the tree, not the documents inside it. Reload the tree.' },
+          { term: 'Two documents with the same name', def: 'Ids are allocated by counter and are always distinct; names are not unique by design. Rename one.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A folder’s documents', body: 'What you see belongs to one folder. Other folders in the workspace hold their own documents entirely.' },
+      { title: 'An edit merges', body: 'Edits append as updates, so two people typing in one document converge instead of overwriting.' },
+      { title: 'A file uploads', body: 'Blobs replicate to the members of that folder, and to nobody else in the workspace.' },
+      { title: 'Private by default', body: 'A folder is shared with the people you add to it. Nothing is workspace-wide unless you make it so.' },
+    ],
+  },
+
+  'mero-updates': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        concepts: [
+          { term: 'Company', def: 'A namespace the founder owns. Investors join it from an invitation link.' },
+          { term: 'Audience', def: 'A context inside the company — “All investors”, “Angels”. Its updates, replies and asks replicate between its members’ nodes. Every company member can open every audience, so a confidential group is its own company.' },
+          { term: 'Team', def: 'The creator is admin; admins make co-founders teammates. The role registry is checked at merge, so a reader cannot grant themselves publishing rights.' },
+          { term: 'Update', def: 'A structured post: category, TL;DR, sections, KPIs and asks. Only the team publishes them.' },
+          { term: 'Ask', def: 'A specific request inside an update — an intro, a hire, a customer. Investors answer with one click; accepted offers become contributions the next update thanks.' },
+          { term: 'Question', def: 'A thread any member can open. Answers are visible to the whole audience, so a question is asked once.' },
+          { term: 'Draft', def: 'Kept in the contract’s private storage: node-local, never replicated. An unfinished update does not exist anywhere but the author’s node.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Create your company', body: 'Then an audience inside it, such as “All investors”.' },
+          { title: 'Set it up', body: 'Name the company, pick a cadence and add categories — one click adds a starter set.' },
+          { title: 'Publish and invite', body: 'Write from a template, publish, and share the invitation link with your investors.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Who can see it',
+        paragraphs: [
+          'Members of the company, and nobody else: there is no web view, no forwarded email and no vendor database. Everything except drafts replicates to every member of the audience.',
+          'Some views are team-only — the list of who offered help, the read report — but that is a presentation filter, not encryption. Every member’s node holds the same rows. For something confidential, make a separate company with only the people who should see it.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Updates and questions in one map keyed by id; edits, triage status and deletes merge independently, so answering a question cannot be undone by a typo fix.',
+          'Asks and offers of help, keyed so one person makes one offer per ask.',
+          'Replies, reactions (one per person per emoji) and read receipts (first and latest open).',
+          'Profiles, categories and settings. Drafts only on the author’s own node.',
         ],
       },
       OFFLINE,
@@ -324,20 +521,19 @@ export const DOCS = {
         id: 'trouble',
         heading: 'When something looks wrong',
         concepts: [
-          { term: 'A shared folder is empty for them', def: 'Being in the workspace is not being in the folder. They must be added to that folder’s context before its documents replicate.' },
-          { term: 'A folder shows no documents after a move', def: 'Moving a folder changes its place in the tree, not its context binding, which is fixed once set. Reload the tree.' },
-          { term: 'Two documents with the same name', def: 'Ids are allocated by counter and are always distinct; names are not unique by design. Rename one.' },
+          { term: 'An investor does not see the update', def: 'Updates appear as peers sync. If their node was offline, it catches up on reconnect.' },
+          { term: 'You cannot publish', def: 'Only the team can. An admin makes you a teammate from the People tab.' },
+          { term: 'A read count looks low', def: 'A read is recorded when the member opens the update in the app, not when it arrives on their node.' },
         ],
       },
     ],
     previewSteps: [
-      { title: 'A folder’s documents', body: 'What you see is one context. Other folders in the workspace are other contexts entirely.' },
-      { title: 'An edit merges', body: 'Edits append as updates, so two people typing in one document converge instead of overwriting.' },
-      { title: 'A file uploads', body: 'Blobs replicate to the members of that folder — and to nobody else in the workspace.' },
-      { title: 'Private by default', body: 'A folder is shared with the people you add to it. Nothing is workspace-wide unless you make it so.' },
+      { title: 'An update lands', body: 'Published by the team, replicated to every investor’s node — nothing was emailed.' },
+      { title: 'KPIs with context', body: 'Each tile shows the change since the last report, computed rather than typed.' },
+      { title: 'An investor offers help', body: 'One click on an ask; the founder accepts it and it becomes a contribution.' },
+      { title: 'The conversation goes both ways', body: 'Replies, reactions and questions from investors, visible to the team as they sync.' },
     ],
   },
-
   'mero-forum': {
     docs: [
       {
@@ -394,6 +590,72 @@ export const DOCS = {
       { title: 'A post arrives', body: 'A peer’s new thread appears as the nodes sync — nothing polled a server.' },
       { title: 'A reply nests', body: 'Comments live in one flat map carrying their post id, which is what lets them converge reliably.' },
       { title: 'No ranking', body: 'Order is time, not an algorithm. There is no operator to tune it.' },
+    ],
+  },
+
+  'mero-crm': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'The model is deliberately small: a pipeline of stages, deals moving through them, the people behind the deals, and the activities that move them forward.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'Your sales team. Its members are the people who can see and work the pipelines.' },
+          { term: 'Pipeline', def: 'One sales process — say New business or Renewals — and one Calimero context. It holds its stages, deals, people, activities, notes and automations.' },
+          { term: 'Stage', def: 'A column of the pipeline with a win probability. The probability is what turns a pipeline total into a weighted forecast.' },
+          { term: 'Deal', def: 'An opportunity with a value, an owner, a contact person and an expected close date. Every field is its own register, so two people editing different fields never collide.' },
+          { term: 'Activity', def: 'A call, meeting, task, email or deadline, due on a date. The earliest open one is the deal’s next step.' },
+          { term: 'Rotting', def: 'An open deal nobody has touched for longer than the pipeline allows (14 days by default). It is flagged on the board.' },
+          { term: 'Automation', def: 'A rule of the form “when a deal enters this stage, schedule this activity”. It runs inside the contract, so it fires whoever moves the deal.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Create a workspace and a pipeline', body: 'A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings.' },
+          { title: 'Add your deals', body: 'Press N anywhere. Only a title is required; the value accepts shorthand like 12k.' },
+          { title: 'Work the board', body: 'Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'The deal assistant',
+        paragraphs: [
+          'Every open deal gets a health score from the signals a sales manager checks by eye: is there a next step, is it overdue, has anyone touched the deal lately, has the close date slipped, is there a contact person.',
+          'From those it suggests the next best step for the deal’s stage — a discovery call, a demo, the proposal, the follow-up — and schedules it in one click. It also drafts a stage-appropriate follow-up email.',
+          'The assistant runs in your browser on your own data; nothing is sent anywhere. For open-ended coaching, Copy AI coaching prompt packages the deal’s context for whichever AI assistant you already use.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Stages, deals, people, activities, notes and automations, each in its own map keyed by id, in the pipeline’s context.',
+          'Every mutable field as its own last-writer-wins register; edits only write the fields that changed, so a teammate’s concurrent edit to another field survives.',
+          'Money as whole units of the pipeline currency, never floats, so every node computes identical totals.',
+          'Only a deal’s creator can delete it, and only a note’s author can delete the note — enforced in the contract, not the UI.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A stage will not delete', def: 'It still has open deals. Move them to another stage, or close them, first.' },
+          { term: 'A deal cannot be dragged', def: 'Closed deals leave the board. Reopen it from its page to put it back in the stage it closed from.' },
+          { term: 'A teammate’s move has not shown up', def: 'Their node is behind or offline. The board catches up on sync without any action.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A pipeline of stages', body: 'Five columns, each with its count, value and weighted forecast — replicated to every member, with no server hosting it.' },
+      { title: 'A deal moves', body: 'The stage is one register on the deal. Moving it collides with nothing else on the card.' },
+      { title: 'A follow-up appears', body: 'Entering Proposal fired an automation, and the owner now has “Send the proposal” due tomorrow.' },
+      { title: 'The assistant flags a deal', body: 'No activity in three weeks and a slipped close date: the card is marked rotting, with the next step one click away.' },
     ],
   },
 
@@ -462,65 +724,6 @@ export const DOCS = {
   },
 
 
-  'mero-pass': {
-    docs: [
-      {
-        id: 'concepts',
-        heading: 'The words, and what they mean here',
-        concepts: [
-          { term: 'Namespace', def: 'A vault. You create it and invite the people who should hold its secrets.' },
-          { term: 'Context', def: 'The vault’s contents — the secrets themselves and the audit log.' },
-          { term: 'Secret', def: 'One entry in a map keyed by id. Five kinds: a login, a secure note, a TOTP seed, an SSH key, and free-form.' },
-          { term: 'TOTP', def: 'A time-based one-time-password seed. Codes are generated locally from the seed; no code is ever stored or transmitted.' },
-          { term: 'Audit log', def: 'A record of what happened in the vault, replicated with it, so the history is not something a vendor could withhold.' },
-        ],
-      },
-      {
-        id: 'start',
-        heading: 'Getting started',
-        steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
-          { title: 'Create a vault', body: 'A namespace you own. Nothing in it leaves the members you invite.' },
-          { title: 'Add a secret', body: 'Pick one of the five types. Logins carry a URL; TOTP entries carry a seed and generate codes on your own machine.' },
-          { title: 'Share with the team', body: 'Invite the people who need it. Their node replicates the vault; there is no vendor holding a copy.' },
-        ],
-      },
-      {
-        id: 'sharing',
-        heading: 'Sharing, and taking it back',
-        paragraphs: [
-          'Membership is the access model. Revoking someone stops the vault replicating to them — it is an action you take, not a support request.',
-          'Because there is no central store, there is no central store to breach. The threat model moves from "a vendor is compromised" to "a member’s node is compromised", which is a risk you can see and act on.',
-        ],
-      },
-      {
-        id: 'storage',
-        heading: 'What is stored, and where',
-        bullets: [
-          'Secrets, keyed by id, each with its type, tags and payload.',
-          'An audit log of vault activity.',
-          'Nothing on any server: the vault exists on the nodes of the people you invited, and nowhere else.',
-        ],
-      },
-      OFFLINE,
-      {
-        id: 'trouble',
-        heading: 'When something looks wrong',
-        concepts: [
-          { term: 'A TOTP code is rejected', def: 'Codes are time-based and generated locally. A wrong code almost always means your machine’s clock has drifted.' },
-          { term: 'A teammate cannot see a secret', def: 'They must be a member of that vault. Being in another vault with you grants nothing here.' },
-          { term: 'A secret you deleted is back', def: 'A peer that was offline when you deleted it can resurface its copy on reconnect if it also edited it. Delete it again once both nodes are in sync.' },
-        ],
-      },
-    ],
-    previewSteps: [
-      { title: 'A vault of secrets', body: 'Entries in a context replicated only to the people invited to that vault.' },
-      { title: 'One reveals', body: 'Decryption happens on your machine. Nothing is fetched from a service to show it.' },
-      { title: 'A TOTP ticks', body: 'Generated locally from a stored seed — the code itself is never stored or sent.' },
-      { title: 'A member is added', body: 'Sharing is membership. Revoking it stops replication rather than filing a request.' },
-    ],
-  },
-
   'mero-pixart': {
     docs: [
       {
@@ -577,10 +780,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A layer stack', body: 'Raster, text and fill layers in a tree — each one a separate record in the context.' },
-      { title: 'A stroke is drawn', body: 'Painting writes to that layer’s content field and nothing else on it.' },
-      { title: 'An adjustment applies', body: 'Non-destructive: parameters are stored, the pixels underneath are not rewritten.' },
-      { title: 'A collaborator joins', body: 'Their cursor rides separately from the document, so presence can never damage the art.' },
+      // The hero is interactive (animation.tsx), so these are things to try, in order.
+      { title: 'Paint on the canvas', body: 'Pick a colour and drag, or use the arrow keys and Space. The stroke lands on the layer you have selected.' },
+      { title: 'Ada draws at the same time', body: 'Your teammate paints on her own layer. Neither of you waits for the other, because every layer is a separate record.' },
+      { title: 'Hide a layer', body: 'Each eye hides one layer and leaves the others exactly as they were.' },
+      { title: 'Tune the hue', body: 'The slider is an adjustment on the selected layer: stored as a setting, so Reset brings the original pixels straight back.' },
     ],
   },
 
@@ -640,10 +844,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A filled grid', body: 'Cells are individual records keyed by sheet and coordinate — not one document blob.' },
-      { title: 'Two cursors', body: 'Every collaborator in their own colour, carried as presence beside the data.' },
-      { title: 'A formula recalculates', body: 'The formula is stored raw. Each peer re-evaluates it, so nobody sees a total computed somewhere else.' },
-      { title: 'Edits merge', body: 'Different cells never contend; the same cell converges on the later write.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one workbook', body: 'You and Ada have the same Q3 budget open. Her cursor is on Travel.' },
+      { title: 'You fill in a number', body: 'You type Travel for Q2, and its row and column totals recompute.' },
+      { title: 'She edits at the same time', body: 'Ada walks up to Wages and changes Q3 while you type. Neither waits for the other.' },
+      { title: 'Every total agrees', body: 'Formulas are stored raw and recomputed from the latest cells, so both totals reflect both edits.' },
     ],
   },
 

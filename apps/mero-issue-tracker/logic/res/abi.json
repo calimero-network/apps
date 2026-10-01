@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A discussion entry on an issue. `id`, `issue_id`, `created_at` are\nimmutable; `body` and `edited_at` are LWW registers. The author is the\nentry's owner stamp, and only they may edit or delete it — on every node.\n`thread` is one issue's comments, oldest first.",
       "fields": [
         {
           "name": "id",
@@ -12,12 +13,6 @@
         },
         {
           "name": "issue_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -54,6 +49,7 @@
     },
     "CommentView": {
       "kind": "record",
+      "doc": "A comment as returned to the frontend/scripts.",
       "fields": [
         {
           "name": "id",
@@ -71,7 +67,8 @@
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's account id (64 hex); only this identity may edit or delete."
         },
         {
           "name": "body",
@@ -83,14 +80,16 @@
           "name": "created_at",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "edited_at",
           "type": {
             "kind": "u64"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Unix milliseconds of the last edit, or null."
         }
       ]
     },
@@ -241,24 +240,8 @@
     },
     "Issue": {
       "kind": "record",
+      "doc": "An issue's shared triage state. Every field is a `LwwRegister` so concurrent\nedits converge last-writer-wins. Labels live in a separate index (see\n`IssueTracker`).",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "title",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
         {
           "name": "summary",
           "type": {
@@ -335,23 +318,12 @@
               "kind": "string"
             }
           }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
         }
       ]
     },
     "IssueDetail": {
       "kind": "record",
+      "doc": "A full issue plus its comment thread (named struct — never a tuple return).",
       "fields": [
         {
           "name": "issue",
@@ -370,9 +342,41 @@
         }
       ]
     },
+    "IssueHeader": {
+      "kind": "record",
+      "doc": "Who filed an issue, and what they called it. Set once at creation. The filer\nis the entry's owner stamp, not a field, so nobody can re-attribute an issue.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "IssueTracker": {
       "kind": "record",
       "fields": [
+        {
+          "name": "headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "IssueHeader"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Issue id → header, owned by whoever filed it. An issue exists while its\nheader does."
+        },
         {
           "name": "issues",
           "type": {
@@ -384,7 +388,8 @@
               "$ref": "Issue"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Issue id → triage state. Shared — any teammate may triage."
         },
         {
           "name": "comments",
@@ -396,8 +401,9 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "All comments across all issues, keyed by generated id, each owned by\nits author."
         },
         {
           "name": "labels",
@@ -407,15 +413,11 @@
               "kind": "string"
             },
             "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "u64"
-              }
+              "$ref": "LabelTag"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Key `\"{issue_id}\\u{1}{label}\"` → the label. Concurrent adds of the same\nlabel collapse to one entry (no duplicates); removal is a conflict-free\nkey delete."
         },
         {
           "name": "repo_url",
@@ -426,12 +428,14 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "The GitHub repository URL this context (repo) tracks. Empty until set;\nLWW so concurrent edits from teammates converge last-writer-wins."
         }
       ]
     },
     "IssueView": {
       "kind": "record",
+      "doc": "An issue as returned to the frontend/scripts.",
       "fields": [
         {
           "name": "id",
@@ -473,20 +477,23 @@
           "name": "status",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "One of Open, In progress, Blocked, Done."
         },
         {
           "name": "priority",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "One of low, medium, high, urgent."
         },
         {
           "name": "assignee",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Free text; null when unassigned."
         },
         {
           "name": "labels",
@@ -495,24 +502,67 @@
             "items": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Sorted."
         },
         {
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The creator's account id (64 hex)."
         },
         {
           "name": "created_at",
           "type": {
             "kind": "u64"
+          },
+          "doc": "Unix milliseconds."
+        }
+      ]
+    },
+    "LabelTag": {
+      "kind": "record",
+      "doc": "One label on one issue.",
+      "fields": [
+        {
+          "name": "issue_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         }
       ]
     },
     "RepoInfo": {
       "kind": "record",
+      "doc": "This context's repository metadata. `repo_url` is empty until `set_repo_url`.",
       "fields": [
         {
           "name": "repo_url",
@@ -524,12 +574,14 @@
     },
     "StatusCount": {
       "kind": "record",
+      "doc": "One board column's live count (named struct — never a `(String, u64)` tuple).",
       "fields": [
         {
           "name": "status",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "One of Open, In progress, Blocked, Done."
         },
         {
           "name": "count",
@@ -543,6 +595,7 @@
   "methods": [
     {
       "name": "add_comment",
+      "doc": "Post a comment to an issue's thread and return its id (`comment-<ms>-<8 hex>`).\n\n# Errors\nFails if the issue does not exist or `body` is empty.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"body\":\"Seen again on main.\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -560,10 +613,12 @@
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new comment's id, `comment-<ms>-<8 hex>`.",
       "intent": "mutating"
     },
     {
       "name": "add_label",
+      "doc": "Add a label to an issue. Adding it twice, even concurrently, keeps one.\n\n# Errors\nFails if the issue does not exist or the label is empty or too long.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"label\":\"ci\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -575,52 +630,61 @@
           "name": "label",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "1 to 64 characters."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "create_issue",
+      "doc": "File an issue and return its id (`issue-<ms>-<8 hex>`). New issues start in status `Open`.\n\n# Errors\nFails if a text field is empty, `title` or a label is longer than 64 characters,\nor `priority` is not one of the four values.\n\n# Examples\n```json\n{\"title\":\"Flaky CI\",\"summary\":\"The e2e job fails intermittently.\",\"impact\":\"Merges are blocked.\",\"repro\":\"Re-run the e2e job on main.\",\"resolution_criteria\":\"Ten consecutive green runs.\",\"priority\":\"high\",\"labels\":[\"ci\"]}\n```",
       "params": [
         {
           "name": "title",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "1 to 64 characters."
         },
         {
           "name": "summary",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "what is wrong, in a sentence or two; must not be empty."
         },
         {
           "name": "impact",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "who or what it affects and how badly; must not be empty."
         },
         {
           "name": "repro",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "steps, logs or conditions that trigger it; must not be empty."
         },
         {
           "name": "resolution_criteria",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "what \"fixed\" must satisfy; must not be empty."
         },
         {
           "name": "priority",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`low`, `medium`, `high` or `urgent`."
         },
         {
           "name": "labels",
@@ -630,16 +694,19 @@
               "kind": "string"
             }
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "optional; each 1 to 64 characters."
         }
       ],
       "returns": {
         "kind": "string"
       },
+      "returns_doc": "The new issue's id, `issue-<ms>-<8 hex>`.",
       "intent": "mutating"
     },
     {
       "name": "delete_comment",
+      "doc": "Delete a comment. Only its author may delete it.\n\n# Errors\nFails if the comment does not exist or the caller is not the author.\n\n# Examples\n```json\n{\"comment_id\":\"<comment id>\"}\n```",
       "params": [
         {
           "name": "comment_id",
@@ -651,10 +718,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "delete_issue",
+      "doc": "Delete an issue with its triage state, its labels and the caller's own\ncomments on it. Only the issue's creator may delete it. Comments left by\nother people are not removed, but become unreachable once the issue is\ngone.\n\n# Errors\nFails if the issue does not exist or the caller is not its creator.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -666,10 +735,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true
     },
     {
       "name": "edit_comment",
+      "doc": "Replace a comment's text. Only its author may edit it.\n\n# Errors\nFails if the comment does not exist, `new_body` is empty, or the caller is not the author.\n\n# Examples\n```json\n{\"comment_id\":\"<comment id>\",\"new_body\":\"Seen twice on main.\"}\n```",
       "params": [
         {
           "name": "comment_id",
@@ -687,10 +758,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "get_issue",
+      "doc": "One issue with its comment thread, oldest comment first.\n\n# Errors\nFails if the issue does not exist.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -702,18 +775,22 @@
       "returns": {
         "$ref": "IssueDetail"
       },
+      "returns_doc": "The issue and its comments, oldest comment first.",
       "intent": "read_only"
     },
     {
       "name": "get_repo_info",
+      "doc": "This context's repository URL (`repo_url`), empty until `set_repo_url`.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "$ref": "RepoInfo"
       },
+      "returns_doc": "`{\"repo_url\"}`, empty until set.",
       "intent": "read_only"
     },
     {
       "name": "get_status_counts",
+      "doc": "Issue counts per status, in board column order: Open, In progress, Blocked, Done.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "list",
@@ -721,10 +798,12 @@
           "$ref": "StatusCount"
         }
       },
+      "returns_doc": "Four `{\"status\", \"count\"}` rows in column order.",
       "intent": "read_only"
     },
     {
       "name": "init",
+      "doc": "Create an empty issue board for one repository. Runs once, when the repo's\ncontext is created; takes no arguments.\n\n# Examples\n```json\n{}\n```",
       "params": [],
       "returns": {
         "kind": "unit"
@@ -732,27 +811,31 @@
     },
     {
       "name": "list_issues",
+      "doc": "List issues, oldest first, optionally filtered.\n\n# Examples\n```json\n{\"status\":\"Open\",\"assignee\":null,\"label\":null}\n```",
       "params": [
         {
           "name": "status",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "keep only this exact status, or `null` for all."
         },
         {
           "name": "assignee",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "keep only this exact assignee, or `null` for all."
         },
         {
           "name": "label",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "keep only issues with this label, or `null` for all."
         }
       ],
       "returns": {
@@ -761,10 +844,12 @@
           "$ref": "IssueView"
         }
       },
+      "returns_doc": "The matching issues, oldest first.",
       "intent": "read_only"
     },
     {
       "name": "remove_label",
+      "doc": "Remove a label from an issue; removing one it lacks succeeds.\n\n# Errors\nFails if the issue does not exist.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"label\":\"ci\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -782,10 +867,13 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "destructive": true,
+      "idempotent": true
     },
     {
       "name": "set_assignee",
+      "doc": "Set or clear an issue's assignee.\n\n# Errors\nFails if the issue does not exist.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"assignee\":\"<account id>\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -798,16 +886,19 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "free text, conventionally a workspace member's account id; `null` clears it."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_impact",
+      "doc": "Replace an issue's impact.\n\n# Errors\nFails if the issue does not exist or `impact` is empty.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"impact\":\"Every merge waits for a manual re-run.\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -825,10 +916,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_priority",
+      "doc": "Change an issue's priority.\n\n# Errors\nFails if the issue does not exist or `priority` is not one of the four values.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"priority\":\"urgent\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -840,16 +933,19 @@
           "name": "priority",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "`low`, `medium`, `high` or `urgent`."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_repo_url",
+      "doc": "Set or change the repository URL this context tracks. Any member may call it.\n\n# Errors\nFails if `url` is empty or does not start with `http://` or `https://`.\n\n# Examples\n```json\n{\"url\":\"https://github.com/calimero-network/apps\"}\n```",
       "params": [
         {
           "name": "url",
@@ -861,10 +957,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_repro",
+      "doc": "Replace an issue's reproduction steps.\n\n# Errors\nFails if the issue does not exist or `repro` is empty.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"repro\":\"Run the e2e job three times on main.\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -882,10 +980,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_resolution_criteria",
+      "doc": "Replace an issue's resolution criteria.\n\n# Errors\nFails if the issue does not exist or `resolution_criteria` is empty.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"resolution_criteria\":\"Twenty consecutive green runs.\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -903,10 +1003,12 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_status",
+      "doc": "Move an issue to another status column.\n\n# Errors\nFails if the issue does not exist or `status` is not one of the four values.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"status\":\"In progress\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -918,16 +1020,19 @@
           "name": "status",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "exactly `Open`, `In progress`, `Blocked` or `Done`."
         }
       ],
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     },
     {
       "name": "set_summary",
+      "doc": "Replace an issue's summary.\n\n# Errors\nFails if the issue does not exist or `summary` is empty.\n\n# Examples\n```json\n{\"issue_id\":\"<issue id>\",\"summary\":\"Fails on every third run.\"}\n```",
       "params": [
         {
           "name": "issue_id",
@@ -945,7 +1050,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "idempotent": true
     }
   ],
   "events": [
@@ -953,67 +1059,78 @@
       "name": "CommentAdded",
       "payload": {
         "$ref": "Event_CommentAdded"
-      }
+      },
+      "doc": "A comment was posted to an issue's thread."
     },
     {
       "name": "CommentDeleted",
       "payload": {
         "$ref": "Event_CommentDeleted"
-      }
+      },
+      "doc": "A comment was deleted by its author."
     },
     {
       "name": "CommentEdited",
       "payload": {
         "$ref": "Event_CommentEdited"
-      }
+      },
+      "doc": "A comment was edited by its author."
     },
     {
       "name": "IssueAssigneeChanged",
       "payload": {
         "$ref": "Event_IssueAssigneeChanged"
-      }
+      },
+      "doc": "An issue's assignee changed."
     },
     {
       "name": "IssueCreated",
       "payload": {
         "$ref": "Event_IssueCreated"
-      }
+      },
+      "doc": "A new issue was created on the board."
     },
     {
       "name": "IssueDeleted",
       "payload": {
         "$ref": "Event_IssueDeleted"
-      }
+      },
+      "doc": "An issue was deleted, along with its labels and the deleter's own comments."
     },
     {
       "name": "IssueEdited",
       "payload": {
         "$ref": "Event_IssueEdited"
-      }
+      },
+      "doc": "One of an issue's text sections changed (summary/impact/repro/resolution)."
     },
     {
       "name": "IssueLabelsChanged",
       "payload": {
         "$ref": "Event_IssueLabelsChanged"
-      }
+      },
+      "doc": "A label was added to or removed from an issue."
     },
     {
       "name": "IssuePriorityChanged",
       "payload": {
         "$ref": "Event_IssuePriorityChanged"
-      }
+      },
+      "doc": "An issue's priority changed."
     },
     {
       "name": "IssueStatusChanged",
       "payload": {
         "$ref": "Event_IssueStatusChanged"
-      }
+      },
+      "doc": "An issue's status changed (moved columns)."
     },
     {
       "name": "RepoUrlChanged",
       "payload": {
         "$ref": "Event_RepoUrlChanged"
-      }
+      },
+      "doc": "The repository URL this context tracks was set or changed."
     }
   ],
   "state_root": "IssueTracker",

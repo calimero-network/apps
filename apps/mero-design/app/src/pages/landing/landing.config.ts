@@ -22,7 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
-  trust: ["Infinite canvas", "Real-time sync", "Files on your nodes"],
+  trust: ["Live collaboration", "Infinite canvas", "Files on your nodes"],
   explainer: [
     "A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.",
     "There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.",
@@ -55,10 +55,77 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Refresh,
-      title: "Real-time sync",
-      body: "Changes stream to every member over SSE. No central server arbitrating who edited what.",
+      title: "Live collaboration",
+      body: "See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.",
     },
   ],
+  overview: {
+    headline: "Your canvas. Your pixels. Your nodes.",
+    showcase: {
+      heading: "From a note to a new design, together",
+      sub: "Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.",
+      video: {
+        src: "/landing/demo.webm",
+        poster: "/landing/demo-poster.jpg",
+        chapters: [
+          { at: 0, title: "Open a board", body: "The design is on your node, and Ada from your team is already in it." },
+          { at: 3, title: "Leave a note", body: "Drop a sticky note where the feedback belongs." },
+          { at: 9, title: "Point at it", body: "Draw an arrow — it docks to the button it is about." },
+          { at: 14, title: "Ada changes it, live", body: "Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle." },
+          { at: 19, title: "Present it", body: "Hit Present. Ada’s change is already in the slide." },
+        ],
+      },
+    },
+    comparison: {
+      heading: "The design tool, without the landlord",
+      sub: "Everything you expect from a collaborative canvas. The difference is who holds the file.",
+      themLabel: "A typical cloud design tool",
+      rows: [
+        { label: "Where the file lives", them: "On the vendor’s servers", us: "On your node, and the nodes of the people you invite" },
+        { label: "Who can read it", them: "The vendor, and whoever it grants access", us: "Only members of the board’s namespace" },
+        { label: "Adding a collaborator", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
+        { label: "Working offline", them: "Usually needs a connection", us: "Full editing; changes merge when you reconnect" },
+        { label: "If the vendor goes away", them: "Your files may go with it", us: "Your node still has every board" },
+      ],
+    },
+    collaboration: {
+      heading: "Live collaboration, with no server in the middle",
+      sub: "Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.",
+      points: [
+        { title: "Every element is its own record", body: "Two people editing different shapes never queue behind each other." },
+        { title: "Every property is its own value", body: "One person moves a shape while another recolours it, and both changes land." },
+        { title: "Presence stays out of the file", body: "Cursors travel separately, so they can never rewrite the artwork." },
+        { title: "Offline is a normal state", body: "Keep drawing with no network. Your node merges the changes when it reaches a peer again." },
+      ],
+      roles: [
+        { name: "Owner", can: "Names the board, grants and revokes roles, and can hand ownership on." },
+        { name: "Editor", can: "Draws, moves and edits elements, and comments." },
+        { name: "Viewer", can: "Follows the board live without changing it." },
+      ],
+      rolesNote: "Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.",
+    },
+    audiences: {
+      heading: "Made for teams whose designs are nobody else’s business",
+      items: [
+        { label: "Product teams", title: "Design the roadmap without handing it to a vendor", body: "Unreleased screens and flows stay on your team’s own nodes until the day you ship them.", uses: ["UI screens", "Design systems", "HTML handoff"] },
+        { label: "Agencies & freelancers", title: "Client work that stays between you and the client", body: "Invite the client straight into the board: no extra seat to pay for, and nothing on a third party’s cloud.", uses: ["Client reviews", "Sticky-note feedback", "Presenting from the board"] },
+        { label: "Regulated & public sector", title: "Live collaboration on infrastructure you already control", body: "For finance, health and government work that cannot leave your own servers, without giving up working together in real time.", uses: ["Self-hosted nodes", "Owner, editor and viewer roles", "Works offline"] },
+        { label: "Open-source communities", title: "A design space the community owns", body: "No seats and no vendor terms that can change under you. If the tool is missing something, fork it and add it.", uses: ["Free for everyone", "MIT licensed", "Fork and customise"] },
+      ],
+    },
+    openSource: {
+      license: "MIT",
+      commands: [
+        "# fork calimero-network/apps on GitHub, then",
+        "git clone https://github.com/<you>/apps",
+        "cd apps/apps/mero-design",
+        "make setup   # check tools, build, install",
+        "make dev     # 2 local nodes + app on :5173",
+      ],
+    },
+    alwaysOn: true,
+    closing: { title: "Start your first board", body: "Connect a node, or install the desktop app that bundles one, then invite the people you design with." },
+  },
   animation: Animation,
   docs: [
     {
@@ -122,10 +189,10 @@ export const CONFIG: LandingConfig = {
     },
   ],
   previewSteps: [
-    { title: "A board with tools", body: "Frames, shapes and text, each stored as its own record rather than one blob." },
-    { title: "Two people editing", body: "Separate elements mean separate records, so concurrent edits merge instead of overwriting." },
-    { title: "Properties change live", body: "Every mutable field is its own register — moving a shape does not conflict with recolouring it." },
-    { title: "Cursors alongside", body: "Presence rides separately from the document, so it can never rewrite the artwork." },
+    { title: "Two people, one board", body: "You and Ada have the same sign-in screen open, each from your own node." },
+    { title: "Her note lands live", body: "Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it." },
+    { title: "You change the design", body: "At the same moment you recolour the Sign in button. Neither of you waits for the other." },
+    { title: "She sees it too", body: "Ada’s cursor comes over to the button. Edits to different things merge instead of colliding." },
   ],
   loginPopup: LoginPopup,
 };

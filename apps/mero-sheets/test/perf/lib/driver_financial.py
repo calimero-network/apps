@@ -88,7 +88,7 @@ def run():
         st_r, st_c = g.SUMMARY_TOTAL_CELL
         got = None
         for cell in (summary_cells or []):
-            if cell.get("row") == st_r and cell.get("col") == st_c:
+            if b.cell_pos(cell) == (st_r, st_c):
                 got = cell.get("computed_value")
                 break
         correct = False

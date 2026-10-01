@@ -3,6 +3,12 @@ import { useDeepLink } from "@calimero-network/mero-platform-react";
 import type { DeepLinkIntent } from "@calimero-network/mero-platform";
 import { setContextId, useJoinInvitation, useMero } from "@calimero-network/mero-react";
 import {
+  describeInviteFailure,
+  redeemInvitation,
+  shouldRetain,
+  type InviteRedeemer,
+} from "@calimero-apps/invite";
+import {
   decodeInvitationPayload,
   parseInvitationPayload,
   type KvInvitationPayload,
@@ -41,7 +47,10 @@ export type JoinState =
  *    once `isAuthenticated` flips.
  *
  * The intent is only acked — permanently discarded — on success, or on an error
- * that can never succeed. Everything else keeps it for the next load.
+ * that can never succeed. Everything else keeps it for the next load. Which is
+ * which is decided by @calimero-apps/invite (`redeemInvitation`), which also
+ * treats "the request failed but the namespace is now listed" as success: the
+ * desktop proxy aborts at 30s while a join can take ~95s and land anyway.
  */
 export function useJoinFromInvitation(): {
   state: JoinState;
@@ -53,9 +62,10 @@ export function useJoinFromInvitation(): {
   declineJoin: () => void;
 } {
   const { isAuthenticated } = useMero();
-  // One call whatever the connection: a node joins on itself, an account
-  // through an admitter the invitation names (see mero-react useJoinInvitation).
-  const { joinInvitation } = useJoinInvitation();
+  // The join and the membership check for whichever connection this is: a
+  // node joins on itself, an account through the admitter the invitation names.
+  const { invitationRedeemer } = useJoinInvitation();
+
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
   // retry effect below re-fires whenever `redeem`'s identity changes — which is
@@ -78,37 +88,53 @@ export function useJoinFromInvitation(): {
     attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
-      const outcome = await joinInvitation({
+      // From mero-react, so a node and an account redeem the same way. Its
+      // `join` throws on a refusal, with the HTTP status on the error, for the
+      // outcome to say why.
+      const redeemer: InviteRedeemer = invitationRedeemer({
         namespaceId: held.payload.namespaceId,
         contextId: held.payload.contextId,
         invitation: held.payload.invitation,
       });
-      if (!outcome.ok) {
-        if (outcome.final) {
+      // `already-member` is the same success as `joined`: a link followed
+      // twice, or a join the proxy gave up on that landed anyway. A namespace
+      // member follows its contexts by default (core auto-follow), so the
+      // context is joined even if this attempt never reached that call.
+      const outcome = await redeemInvitation(
+        { namespaceId: held.payload.namespaceId, invitation: held.payload.invitation },
+        redeemer,
+      );
+
+      if (outcome.status === "failed") {
+        if (!shouldRetain(outcome)) {
           // Never going to work — stop asking on every load.
           held.intent.resolve?.();
           pending.current = null;
         }
         setState({
           status: "failed",
-          message: outcome.reason,
-          retryable: !outcome.final,
+          message: describeInviteFailure(outcome.reason, "namespace") ?? outcome.message,
+          retryable: outcome.retryable,
           fromLink: held.fromLink,
         });
         return;
       }
+
       setContextId(held.payload.contextId);
       // Ack FIRST, then reload: a reload before the ack would replay the same
-      // intent forever. The reload lets the provider read the stored context.
+      // intent forever.
       held.intent.resolve?.();
       pending.current = null;
       window.location.reload();
+    } catch (e) {
+      // `redeemInvitation` reports a failed join in its outcome, never by
+      // throwing; this is anything else, so keep the invitation.
+      const message = e instanceof Error ? e.message : String(e);
+      setState({ status: "failed", message, retryable: true, fromLink: held.fromLink });
     } finally {
       running.current = false;
     }
-    // Safe to depend on: `attempted` guards the retry effect, so a changing
-    // identity here cannot restart a failed join.
-  }, [joinInvitation]);
+  }, [invitationRedeemer]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or

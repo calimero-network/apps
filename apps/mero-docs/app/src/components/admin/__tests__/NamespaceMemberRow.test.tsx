@@ -1,0 +1,282 @@
+// Targeted tests for the admin-rename affordance on NamespaceMemberRow.
+// We mock useAdminRenameMember / useMemberDisplayName / useDriveWorkspace
+// at the module level so the test doesn't need a live MeroProvider tree.
+
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { NamespaceMemberRow } from '../NamespaceMemberRow';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+
+const renameToMock = vi.fn();
+const useAdminRenameMemberMock = vi.fn();
+const useMemberDisplayNameMock = vi.fn();
+
+vi.mock('@/hooks/useAdminRenameMember', () => ({
+  useAdminRenameMember: (...args: unknown[]) => useAdminRenameMemberMock(...args),
+  MAX_DISPLAY_NAME_LEN: 64,
+}));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: (...args: unknown[]) => useMemberDisplayNameMock(...args),
+}));
+const addManagerMock = vi.fn().mockResolvedValue(undefined);
+const removeManagerMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    rootGroupId: 'ns',
+    namespaceMemberNames: {},
+    registryAdmin: {
+      isOwner: true,
+      addManager: addManagerMock,
+      removeManager: removeManagerMock,
+    },
+  }),
+}));
+const updateMemberRoleMock = vi.fn().mockResolvedValue(undefined);
+const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
+  useMero: () => ({
+    mero: { admin: { setMemberCapabilities: setMemberCapabilitiesMock } },
+  }),
+  useUpdateMemberRole: () => ({
+    updateMemberRole: updateMemberRoleMock,
+    loading: false,
+    error: null,
+  }),
+  useGroupCapabilities: () => ({
+    capabilities: 1,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+    setCapabilities: vi.fn(),
+  }),
+}));
+vi.mock('@/components/ui/confirm-dialog', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/components/ui/confirm-dialog')
+  >('@/components/ui/confirm-dialog');
+  return { ...actual, useConfirm: () => async () => true };
+});
+
+describe('NamespaceMemberRow admin-rename affordance', () => {
+  beforeEach(() => {
+    renameToMock.mockReset();
+    useAdminRenameMemberMock.mockReset();
+    useMemberDisplayNameMock.mockReset();
+    useMemberDisplayNameMock.mockReturnValue({
+      name: 'Bob',
+      loading: false,
+      error: null,
+      setName: vi.fn(),
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('hides the pencil when canRename is false', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="bob-id"
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.queryByLabelText(/^Rename /)).toBeNull();
+  });
+
+  it('hides the pencil for self rows even when canRename is true', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: true,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="self-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="self-id"
+        role="Member"
+        isSelf={true}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.queryByLabelText(/^Rename /)).toBeNull();
+  });
+
+  it('shows the pencil when canRename is true and row is not self', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: true,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="bob-id"
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByLabelText(/^Rename /)).toBeTruthy();
+  });
+
+  it('clicking the pencil enters edit mode and saving fires renameTo', async () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: true,
+      renameTo: renameToMock,
+    });
+    renameToMock.mockResolvedValue(undefined);
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="bob-id"
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/^Rename /));
+    const input = screen.getByLabelText(/^Rename /) as HTMLInputElement;
+    expect(input.value).toBe('Bob');
+    fireEvent.change(input, { target: { value: 'Alice' } });
+    fireEvent.click(screen.getByLabelText('Save'));
+    // submitRename awaits renameTo + refetchName then exits edit mode.
+    // We don't need to await the promise chain here - the mock fired
+    // synchronously when click handler invoked it; flush microtasks
+    // to let promise resolution settle for any post-assertions.
+    await Promise.resolve();
+    expect(renameToMock).toHaveBeenCalledWith('Alice');
+  });
+
+  it('Escape cancels the edit without firing renameTo', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: true,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="bob-id"
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/^Rename /));
+    const input = screen.getByLabelText(/^Rename /);
+    fireEvent.change(input, { target: { value: 'Alice' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(renameToMock).not.toHaveBeenCalled();
+    // After cancel, the pencil button is back (label points to the
+    // button again, not the input).
+    expect(screen.getByLabelText(/^Rename /).tagName).toBe('BUTTON');
+  });
+
+  it('labels the presence dot in both states, so colour is not the only signal', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    const row = (isPresent: boolean) => (
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Member"
+        actorCaps={null}
+        adminCount={1}
+        label="bob-id"
+        role="Member"
+        isPresent={isPresent}
+        canManage={false}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const { rerender } = render(row(true));
+    expect(screen.getByRole('img', { name: 'Here now' })).toBeTruthy();
+    rerender(row(false));
+    expect(screen.getByRole('img', { name: 'Away' })).toBeTruthy();
+  });
+
+  it('never shows the raw identity as visible text for an unnamed member', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    useMemberDisplayNameMock.mockReturnValue({
+      name: null,
+      loading: false,
+      error: null,
+      setName: vi.fn(),
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id-64charhexlikevalue"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label={UNNAMED_MEMBER_LABEL}
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByText(UNNAMED_MEMBER_LABEL)).toBeTruthy();
+    expect(screen.queryByText(/bob-id-64charhexlikevalue/)).toBeNull();
+  });
+
+  it('keeps the remove slot on a row without remove, so role selects line up', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="owner-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="Owner"
+        role="Admin"
+        isOwner={true}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.queryByLabelText('Remove Owner')).toBeNull();
+    expect(screen.getByTestId('remove-slot')).toBeTruthy();
+  });
+});

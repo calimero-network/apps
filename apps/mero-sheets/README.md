@@ -1,8 +1,9 @@
 # mero-sheets
 
 A collaborative, peer-to-peer spreadsheet built on [Calimero](https://calimero.network).
-Live cursors, multiple sheet tabs, a formula engine (`SUM`/`AVERAGE`/`MIN`/`MAX`/
-`COUNT`, cross-sheet references), formula autocomplete, and CSV download — with
+Live cursors, multiple sheet tabs, a formula engine (94 functions — lookups,
+conditional aggregates, text and dates — plus cross-sheet references), formula
+autocomplete, and CSV download — with
 all data replicated between peers as CRDTs, no central server.
 
 - **Live app:** deployed on Vercel (see the repo's Deployments).
@@ -53,6 +54,34 @@ cd test/perf/lib && python3 -m pytest    # pure perf-generator/bench tests
 
 See [`docs/contributing.md`](docs/contributing.md) for the full build/test
 matrix and [`docs/performance.md`](docs/performance.md) for engine benchmarks.
+
+## Landing page media
+
+The landing page's hero loop and chaptered demo (`app/public/landing/*.webm`,
+each with a poster) are recorded from the real app against a real merod node,
+through the e2e global setup:
+
+```bash
+cd app && pnpm landing:media   # needs merod (MEROD_BINARY) and the built .mpk
+```
+
+The chapter times shown beside the demo live in `scripts/landing/apps.config.mjs`
+at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+- Replying needs a parent comment **any** account holds (`entries_at`), not only one the
+  replier wrote.
+- Comment, attachment and activity authors come from each entry's own owner; a comment
+  or attachment read by id takes the lowest holder's.
+- A link is read as the entry of the lowest holder who may edit.
+- Deleting a comment, removing an attachment and unpublishing a link remove the caller's
+  own entry, or, for an owner (a moderator), every holder's entry with `remove_by`.
 
 ## License
 

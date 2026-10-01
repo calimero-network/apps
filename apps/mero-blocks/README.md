@@ -30,9 +30,11 @@ ever wanted.
    thousands of edits is a few KB of consensus state, and joining costs
    exactly two queries.
 3. **Skew-proof presence.** Heartbeats are silent CRDT writes stamped on a
-   *room clock* (max of caller clock and newest row), with a two-pass
-   mark/grace reap — a machine with a fast or backwards clock can never kill
-   live players (the algorithm battle-tested in mero-meet).
+   *room clock* (max of caller clock and newest row, ignoring rows more than
+   15 minutes ahead of it) — a machine with a fast or backwards clock can
+   never knock live players offline (the algorithm battle-tested in
+   mero-meet). A player who vanishes without `leave` simply ages out of the
+   10 s TTL; nobody writes another player's row.
 4. **Derived state costs nothing.** Lighting (flood-fill sunlight + torch
    light) is recomputed locally from block events; the day/night cycle is a
    pure function of the world's `created_at`. Both are perfectly synchronized
@@ -60,8 +62,11 @@ ever wanted.
 ```
 
 - **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
-  **0.11.0-rc.25** git tags): `overrides: UnorderedMap<"x,y,z",
-  {b, updatedAt}>` with per-key LWW, `players` presence map, room-clock reap.
+  **0.11.0-rc.25** git tags): `meta: Frozen<{name, seed, createdAt}>` (fixed
+  at creation, nobody can change it), `overrides: UnorderedMap<"x,y,z",
+  {b, updatedAt}>` with per-key LWW (public on purpose — anyone may build
+  anywhere), and `players: UserStorage<{devices: Map<deviceId, Player>}>`, so
+  only an account can write its own avatars.
 - **Engine** (`app/src/engine/`, pure TS — unit-testable without a GPU):
   deterministic terrain (value noise + trees + ores), culled chunk mesher with
   per-vertex baked light, Amanatides–Woo raycast, AABB physics, day/night.
@@ -105,7 +110,7 @@ own node.
 |---|---|---|
 | `make unit` (vitest) | 139 | terrain determinism, meshing face counts, lighting flood-fill, raycast, physics, sync batching/echo/reconcile, session/auth/admin parsing |
 | `make e2e` (Playwright, fully mocked node) | 30 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
-| `make logic-test` (cargo, native mock host) | 20 | LWW convergence, bounds, batch caps, clock-skew reap scenarios, rejoin self-heal |
+| `make logic-test` (cargo, native mock host) | 24 | LWW convergence, bounds, batch caps, clock-skew and far-future-stamp scenarios, avatar ownership, frozen world meta, rejoin self-heal |
 
 ## Contract API
 
@@ -116,7 +121,7 @@ own node.
 | `set_blocks` | `edits: [{x,y,z,b}], now` | batched ≤512, LWW per block, emits `BlocksChanged(by)` |
 | `get_overrides` | — | full diff `[{k: "x,y,z", b}]` |
 | `join` / `leave` | `name?, now` | emits `PlayerJoined` / `PlayerLeft` |
-| `heartbeat` | `t: transform, now` | silent presence write + reap pass |
+| `heartbeat` | `t: transform, now` | silent presence write |
 | `get_players` | `now` | roster with `online` liveness |
 
 ## CI / CD

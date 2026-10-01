@@ -1,0 +1,1183 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ContextId": {
+      "kind": "alias",
+      "doc": "Wrapper around a Calimero context id. Same rationale as `FolderId`.",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "Event_FolderAliasChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderColorChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderContextBound": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderParentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderRegistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderRoleChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderSortOrderChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderUnregistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderVisibilityChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ManagerAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ManagerRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TagChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ViewChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FolderDto": {
+      "kind": "record",
+      "doc": "Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "`None` when color is unset / empty."
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          },
+          "nullable": true,
+          "doc": "`None` when no Docs context has been bound to this folder yet."
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "`None` when no registry-side alias is stored (older folders,\nor folders created before the alias field existed). Clients\nfall back to the admin-API alias or a truncated id stub."
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        }
+      ]
+    },
+    "FolderId": {
+      "kind": "alias",
+      "doc": "Wrapper around a folder / group id string. Newtype so the generated TS\nclient surfaces `FolderId` instead of a bare `string`.",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "FolderRecord": {
+      "kind": "record",
+      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.\n\n`Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`\nbecause `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a\ntrait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method\nresolution picks the inherent one from the derive expansion, which then\nfails the macro's `?` - same workaround battleships uses on\n`MatchSummary`.",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Parent folder id, or None for top-level folders. Stored as an\nLWW index; admin-API remains the source of truth for the tree."
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "`#rrggbb` color, or empty string for \"no color\"."
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Display name. Mirrored from admin-API's group alias so namespace\nmembers who can't read the subgroup yet (Restricted folder before\ninvite) can still see folder names. Empty string means \"no\nregistry-side alias - fall back to the admin-API alias or a\ntruncated id stub on the client\"."
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "Visibility"
+            }
+          },
+          "doc": "Inherit = namespace-member cascade descends through this folder.\nRestricted = explicit-invite wall; cascade stops here."
+        }
+      ]
+    },
+    "FolderRoleEntry": {
+      "kind": "record",
+      "doc": "One explicit per-member role row for a folder (what `list_folder_roles`\nreturns). Members not present have the implicit `Editor` role.",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "hex-encoded member public key."
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ]
+    },
+    "RegistryState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folders",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FolderRecord"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both.\n\nKeys are per owner (core rc.57): two accounts registering one id hold\ntwo entries, and a key-only `get`/`contains`/`owner_of` answers for the\nCALLER only. Every read by id goes through `folder_holder`, which takes\nthe entry of the lowest account holding the id, the same pick on every\nnode; `register_folder` refuses an id any account is known to hold."
+        },
+        {
+          "name": "folder_contexts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ContextId"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "folder_id (string) → Docs context id bound to that folder. Written\nonce, by the folder's registrant; nobody can rebind or remove it, so a\nfolder cannot be pointed at someone else's context after the fact.\nA binding counts only while its writer owns the folder (see\n`binding_of`)."
+        },
+        {
+          "name": "sort_order",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "parent_id-or-empty → LWW list of child folder ids in display order.\nDeliberately public: display order is collaborative, and a bad order\nis corrected by the next reorder."
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Hex account of the registry owner: whoever created the registry\ncontext (a namespace admin). Frozen at `init`; nobody can change it."
+        },
+        {
+          "name": "managers",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Hex accounts granted manager rights over the whole registry (may set/\nclear any folder role). Writable by the owner only. The owner is\nimplicitly a manager and is NOT stored here. Value `true` = is a\nmanager, `false` = removed (kept around so the key is never\nCRDT-tombstoned - a `remove` would silently swallow a later re-add)."
+        },
+        {
+          "name": "folder_roles",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "$ref": "Role"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nWritable by the registry admins only (see `sync_admins`)."
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TagRecord"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "tag key → TagRecord. Public, like `sort_order`: any member may name,\nrecolour or delete a tag; which roles may is the app's to gate."
+        },
+        {
+          "name": "views",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ViewRecord"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "saved-view id → ViewRecord. Public for the same reason as `tags`."
+        },
+        {
+          "name": "view_origins",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "saved-view id → created_at, written once by the view's creator. Its\nowner stamp is who created the view, and nobody can rewrite either."
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "doc": "Per-folder collaborator role. Local copy of `mero_docs_types::Role`\n(same variants, same bytes); keep the two definitions in sync.",
+      "variants": [
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Editor"
+        },
+        {
+          "name": "Manager"
+        }
+      ]
+    },
+    "TagDto": {
+      "kind": "record",
+      "doc": "Flat projection of a `TagRecord`. Deleted rows are included so clients\ncan tell a tombstoned key apart from one that was never used.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TagRecord": {
+      "kind": "record",
+      "doc": "Workspace-wide tag: a stable key mapped to a display name and colour.\n`deleted` tombstones the row rather than removing it - see `delete_tag`.\nIt merges by OR, so a delete on any replica is permanent.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "ViewDto": {
+      "kind": "record",
+      "doc": "Flat projection of a `ViewRecord`.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex account of whoever created the view, from `view_origins`' owner stamp."
+        }
+      ]
+    },
+    "ViewRecord": {
+      "kind": "record",
+      "doc": "A workspace-wide saved search. Its creator is not stored here but in\n`view_origins`, where nobody can rewrite it.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Visibility": {
+      "kind": "variant",
+      "doc": "Per-folder cascade flag. `Inherit` = namespace-member cascade descends\nthrough this folder (Open subgroup); `Restricted` = explicit-invite wall,\ncascade stops here. Mirrors the admin-API subgroup_visibility concept but\nis stored in the registry so clients can read it without a per-folder\nadmin-API call.",
+      "variants": [
+        {
+          "name": "Inherit"
+        },
+        {
+          "name": "Restricted"
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "bind_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "clear_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_tag",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_view",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FolderDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ContextId"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folders",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_owner",
+      "doc": "The hex account of the registry owner, fixed when the registry was\ncreated.",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_sort_order",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderId"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_folder_roles",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderRoleEntry"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_managers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_tags",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TagDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_views",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ViewDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "move_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "new_parent",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "register_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "reorder",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "folder_ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "FolderId"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "save_view",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_color",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_folder_alias",
+      "doc": "Update the registry-side alias for a folder. Callers should mirror\nadmin-API's `setGroupAlias` with a call here so namespace members\nwho aren't subgroup members can still see the new name. Empty\nstring clears the registry alias and falls back to whatever the\nclient surfaces (admin API alias if visible, otherwise id stub).",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_tag",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_visibility",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unregister_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "FolderAliasChanged",
+      "payload": {
+        "$ref": "Event_FolderAliasChanged"
+      }
+    },
+    {
+      "name": "FolderColorChanged",
+      "payload": {
+        "$ref": "Event_FolderColorChanged"
+      }
+    },
+    {
+      "name": "FolderContextBound",
+      "payload": {
+        "$ref": "Event_FolderContextBound"
+      }
+    },
+    {
+      "name": "FolderParentChanged",
+      "payload": {
+        "$ref": "Event_FolderParentChanged"
+      }
+    },
+    {
+      "name": "FolderRegistered",
+      "payload": {
+        "$ref": "Event_FolderRegistered"
+      }
+    },
+    {
+      "name": "FolderRoleChanged",
+      "payload": {
+        "$ref": "Event_FolderRoleChanged"
+      },
+      "doc": "A folder's per-member role was set or cleared (UI re-fetches the row)."
+    },
+    {
+      "name": "FolderSortOrderChanged",
+      "payload": {
+        "$ref": "Event_FolderSortOrderChanged"
+      }
+    },
+    {
+      "name": "FolderUnregistered",
+      "payload": {
+        "$ref": "Event_FolderUnregistered"
+      }
+    },
+    {
+      "name": "FolderVisibilityChanged",
+      "payload": {
+        "$ref": "Event_FolderVisibilityChanged"
+      }
+    },
+    {
+      "name": "ManagerAdded",
+      "payload": {
+        "$ref": "Event_ManagerAdded"
+      }
+    },
+    {
+      "name": "ManagerRemoved",
+      "payload": {
+        "$ref": "Event_ManagerRemoved"
+      }
+    },
+    {
+      "name": "TagChanged",
+      "payload": {
+        "$ref": "Event_TagChanged"
+      },
+      "doc": "A tag's name, colour, or tombstone flag changed."
+    },
+    {
+      "name": "ViewChanged",
+      "payload": {
+        "$ref": "Event_ViewChanged"
+      },
+      "doc": "A saved view was created, edited, or deleted."
+    }
+  ],
+  "state_root": "RegistryState",
+  "state_version": 1
+}

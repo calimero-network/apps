@@ -1,6 +1,9 @@
 import axios from "axios";
 import { getNodeUrl, clearAllStorage } from "@calimero-network/mero-react";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
+import { fromWire, metaOf, packLabel, toWire } from "../utils/elementMeta";
+import { useCanvasStore } from "../store/canvasStore";
+import type { Element } from "../types";
 
 interface RpcResponse<T> {
   data: T;
@@ -38,7 +41,62 @@ axios.interceptors.response.use(
   },
 );
 
+/**
+ * Fold the client-side element extras into `label` on the way out.
+ *
+ * Only the two methods that write a label carry them — see
+ * `utils/elementMeta.ts`. A label rename looks the element up in the store so a
+ * rename never strips its dash style or sticky-ness; a caller that is changing
+ * the extras themselves passes the updated element as `__element`, because the
+ * store write it just made may not be the one this reads.
+ */
+export function packArgs(method: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (method === "add_element" && args.element && typeof args.element === "object") {
+    return { ...args, element: toWire(args.element as Element) };
+  }
+  if (method === "add_elements" && Array.isArray(args.elements)) {
+    return { ...args, elements: (args.elements as Element[]).map(toWire) };
+  }
+  if (method === "update_element_label") {
+    const { __element, ...rest } = args as { __element?: Element } & Record<string, unknown>;
+    const source = __element
+      ?? useCanvasStore.getState().elements.find((e) => e.id === rest.id);
+    const label = (rest.label as string | null | undefined) ?? null;
+    return { ...rest, label: source ? packLabel(label, metaOf(source)) : label };
+  }
+  if (method === "update_element_labels" && Array.isArray(args.labels)) {
+    // Same packing as the single rename, one lookup table for the whole batch.
+    const byId = new Map(useCanvasStore.getState().elements.map((e) => [e.id, e] as const));
+    const labels = (args.labels as { id: string; label?: string | null }[]).map(({ id, label }) => {
+      const source = byId.get(id);
+      const plain = label ?? null;
+      return { id, label: source ? packLabel(plain, metaOf(source)) : plain };
+    });
+    return { ...args, labels };
+  }
+  return args;
+}
+
+/** Unpack every element a read returns — the inverse of `packArgs`. */
+export function unpackResult<T>(method: string, value: T): T {
+  if ((method === "get_elements" || method === "get_elements_by_ids") && Array.isArray(value)) {
+    return value.map((el) => fromWire(el as Element)) as T;
+  }
+  if (method === "get_element" && value && typeof value === "object") {
+    return fromWire(value as unknown as Element) as T;
+  }
+  return value;
+}
+
 export async function rpcCall<T>(
+  contextId: string,
+  method: string,
+  args: Record<string, unknown>,
+): Promise<T> {
+  return unpackResult(method, await rawRpcCall<T>(contextId, method, packArgs(method, args)));
+}
+
+async function rawRpcCall<T>(
   contextId: string,
   method: string,
   args: Record<string, unknown>,

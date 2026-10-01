@@ -1,0 +1,7 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Vote logo">
+  <rect width="64" height="64" rx="14" fill="#0f1417"/>
+  <rect x="21" y="8" width="22" height="28" rx="3" fill="#e8f3ee"/>
+  <path d="M26 20 L30.5 24.5 L38 15" fill="none" stroke="#16a34a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="10" y="30" width="44" height="26" rx="5" fill="#4ade80"/>
+  <rect x="17" y="29" width="30" height="5" rx="2.5" fill="#0f1417"/>
+</svg>

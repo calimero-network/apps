@@ -1,0 +1,479 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook } from '@testing-library/react';
+// vi.mock is hoisted above imports, so this import still resolves to
+// the mocked '@calimero-network/mero-react' below.
+import { HTTPError } from '@calimero-network/mero-js';
+import { useFolderOperations } from '../useFolderOperations';
+
+// Capture the mero-react mutation mocks so assertions can read call args.
+const createGroupInNamespace = vi.fn();
+const setSubgroupVisibility = vi.fn();
+const setGroupMetadata = vi.fn();
+const createContext = vi.fn();
+const deleteContext = vi.fn();
+const deleteGroup = vi.fn();
+const addGroupMembers = vi.fn();
+const listGroupMembers = vi.fn();
+const updateMemberRole = vi.fn();
+const setMemberCapabilities = vi.fn();
+
+vi.mock('@calimero-network/mero-react', () => ({
+  useCreateGroupInNamespace: () => ({ createGroupInNamespace }),
+  useCreateContext: () => ({ createContext }),
+  useDeleteContext: () => ({ deleteContext }),
+  useDeleteGroup: () => ({ deleteGroup }),
+  useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
+  // setGroupMetadata / addGroupMembers go through the raw admin client,
+  // so they're mocked on `mero.admin` rather than their own `use*` export.
+  useMero: () => ({
+    nodeUrl: 'http://node',
+    mero: {
+      admin: {
+        setGroupMetadata,
+        addGroupMembers,
+        listGroupMembers,
+        updateMemberRole,
+        setMemberCapabilities,
+        getMemberCapabilities: async () => ({ capabilities: 0 }),
+      },
+    },
+  }),
+}));
+vi.mock('../../api/reparentGroup', () => ({ reparentGroup: vi.fn().mockResolvedValue(undefined) }));
+
+function makeRegistry() {
+  return {
+    registerFolder: vi.fn().mockResolvedValue(undefined),
+    setFolderAlias: vi.fn().mockResolvedValue(undefined),
+    bindFolderContext: vi.fn().mockResolvedValue(undefined),
+    unregisterFolder: vi.fn().mockResolvedValue(undefined),
+    getFolderContext: vi.fn(),
+    getFolders: vi.fn().mockResolvedValue([]),
+    setFolderRole: vi.fn().mockResolvedValue(undefined),
+    getFolderRole: vi.fn().mockResolvedValue('Editor'),
+  } as unknown as Parameters<typeof useFolderOperations>[0];
+}
+
+const ROOT = 'root-group';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  createGroupInNamespace.mockResolvedValue({ groupId: 'new-folder' });
+  setSubgroupVisibility.mockResolvedValue(undefined);
+  setGroupMetadata.mockResolvedValue(undefined);
+  createContext.mockResolvedValue({ contextId: 'docs-ctx' });
+  addGroupMembers.mockResolvedValue(undefined);
+  listGroupMembers.mockResolvedValue({ members: [] });
+  setMemberCapabilities.mockResolvedValue(undefined);
+});
+
+describe('useFolderOperations.create - Read only', () => {
+  it('leaves the members of a new Restricted sub-folder with the role they were added with', async () => {
+    const BOB = 'b'.repeat(64);
+    listGroupMembers.mockImplementation(async () => ({
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    }));
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Private',
+      visibility: 'Restricted',
+      members: [BOB],
+    });
+    expect(updateMemberRole).not.toHaveBeenCalled();
+  });
+
+  // Read only on a folder covers the sub-folders made later, too.
+  it("makes the parent's Read only members Read only in a new sub-folder", async () => {
+    const BOB = 'b'.repeat(64);
+    listGroupMembers.mockImplementation(async () => ({
+      // An Open folder lists an inheritor with the parent row's role.
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    }));
+    updateMemberRole.mockRejectedValue(
+      new HTTPError(404, '', '/groups/new-folder', new Headers()),
+    );
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Notes',
+      visibility: 'Open',
+    });
+    expect(addGroupMembers).toHaveBeenCalledWith('new-folder', {
+      members: [{ identity: BOB, role: 'ReadOnly' }],
+    });
+    // Written while the folder is still Restricted, so it is never Open without them.
+    expect(addGroupMembers.mock.invocationCallOrder[0]).toBeLessThan(
+      setSubgroupVisibility.mock.invocationCallOrder[0],
+    );
+    expect((registry as unknown as { setFolderRole: unknown }).setFolderRole).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_id: 'new-folder', member: BOB, role: 'Viewer' }),
+    );
+  });
+});
+
+describe('useFolderOperations.create - members', () => {
+  it('adds each chosen member (core role "Member") after the folder is bound', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    const outcome = await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Secret',
+      visibility: 'Restricted',
+      members: ['member-a', 'member-b'],
+    });
+    expect(outcome).toEqual([]);
+
+    // Role MUST be the PascalCase core MemberRole variant - lowercase
+    // 'member' is rejected by the server with a deserialize 400.
+    expect(addGroupMembers).toHaveBeenCalledWith('new-folder', {
+      members: [
+        { identity: 'member-a', role: 'Member' },
+        { identity: 'member-b', role: 'Member' },
+      ],
+    });
+    // Ordering: members are added after the context is bound and
+    // before the post-create refetch (so the refreshed list already
+    // reflects the new membership).
+    const bind = registry as unknown as {
+      bindFolderContext: { mock: { invocationCallOrder: number[] } };
+    };
+    expect(bind.bindFolderContext.mock.invocationCallOrder[0]).toBeLessThan(
+      addGroupMembers.mock.invocationCallOrder[0],
+    );
+    expect(addGroupMembers.mock.invocationCallOrder[0]).toBeLessThan(
+      refetch.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('records the name in the registry, so a no-access card can name the folder', async () => {
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Finance',
+      visibility: 'Restricted',
+    });
+    expect(
+      (registry as unknown as { registerFolder: ReturnType<typeof vi.fn> }).registerFolder,
+    ).toHaveBeenCalledWith(expect.objectContaining({ alias: 'Finance' }));
+  });
+
+  it('does not call addGroupMembers when no members are given', async () => {
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(
+        registry,
+        ROOT,
+        'app-1',
+        vi.fn().mockResolvedValue(undefined),
+      ),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Open one',
+      visibility: 'Open',
+    });
+    expect(addGroupMembers).not.toHaveBeenCalled();
+  });
+
+  it('member-add failure is logged but does NOT throw or roll back (so the dialog closes, no duplicate folder)', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    addGroupMembers.mockRejectedValue(new Error('add boom'));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    // create RESOLVES with the folder id even though the member-add
+    // failed - it must not throw, or NewFolderDialog would stay open
+    // with Create re-enabled and the user could create a duplicate.
+    const outcome = await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Secret',
+      visibility: 'Restricted',
+      members: ['member-a'],
+    });
+    // The caller (NewFolderDialog) needs to know which adds failed so
+    // it can tell the user, instead of only logging it.
+    expect(outcome).toEqual(['member-a']);
+
+    // Folder stays put (no rollback), rail is refreshed, and the failure
+    // is surfaced loudly to the console rather than silently swallowed.
+    const reg = registry as unknown as {
+      unregisterFolder: ReturnType<typeof vi.fn>;
+    };
+    expect(reg.unregisterFolder).not.toHaveBeenCalled();
+    expect(deleteContext).not.toHaveBeenCalled();
+    expect(deleteGroup).not.toHaveBeenCalled();
+    expect(refetch).toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+});
+
+describe('useFolderOperations.create - double-submit guard', () => {
+  it('ignores a second create() call while the first is still in flight', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    let resolveGroup!: (v: { groupId: string }) => void;
+    createGroupInNamespace.mockReturnValueOnce(
+      new Promise((r) => {
+        resolveGroup = r;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    const input = {
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Docs',
+      visibility: 'Open' as const,
+    };
+    const p1 = result.current.create(input);
+    const p2 = result.current.create(input);
+
+    expect(createGroupInNamespace).toHaveBeenCalledTimes(1);
+    resolveGroup({ groupId: 'new-folder' });
+    await Promise.all([p1, p2]);
+
+    expect(createGroupInNamespace).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useFolderOperations.rename', () => {
+  it('rejects when the admin call fails, carrying the server message', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    setGroupMetadata.mockRejectedValue(new Error('HTTP 500: group not found'));
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    await expect(result.current.rename('f1', 'New name')).rejects.toThrow(
+      'HTTP 500: group not found',
+    );
+    // A rejected rename must not refresh the (unchanged) folder list.
+    expect(refetch).not.toHaveBeenCalled();
+  });
+
+  it('resolves and refreshes the folder list on success', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(setGroupMetadata).toHaveBeenCalledWith('f1', { name: 'New name' });
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('still renames and refreshes when only the registry name write fails', async () => {
+    const registry = makeRegistry();
+    (registry as unknown as { setFolderAlias: ReturnType<typeof vi.fn> }).setFolderAlias
+      .mockRejectedValue(new Error('registry down'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(refetch).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('renames without a registry client, skipping the registry name', async () => {
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(null, ROOT, 'app-1', refetch),
+    );
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(setGroupMetadata).toHaveBeenCalledWith('f1', { name: 'New name' });
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('mirrors the new name into the registry for members who cannot read the folder', async () => {
+    const registry = makeRegistry();
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.rename('f1', 'New name');
+    expect(
+      (registry as unknown as { setFolderAlias: ReturnType<typeof vi.fn> }).setFolderAlias,
+    ).toHaveBeenCalledWith({ id: 'f1', alias: 'New name' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drift: does a failed create leave the three backends disagreeing?
+//
+// A folder is 7 sequential writes across admin groups, contexts and the
+// registry WASM, with no transaction spanning them. "Drift" is the state where
+// some of those writes survive and others don't, which is what the Reconcile
+// button exists to repair. Nothing has ever demonstrated it: the merobox
+// `reconciliation` workflow manufactures drift by deliberately doing half a
+// write, so it proves the registry can service repair calls, not that the app
+// ever produces the condition.
+//
+// These tests fail each step in turn and check the surviving artifacts.
+// ---------------------------------------------------------------------------
+
+// A real ledger, not a call-count. Counting "the mock was called" is wrong in
+// exactly the cases under test: a rejected create writes nothing, and a
+// rejected rollback deletes nothing. Only successful calls mutate the ledger.
+interface Ledger {
+  groups: Set<string>;
+  contexts: Set<string>;
+  registry: Set<string>;
+}
+
+function wireLedger(
+  registry: {
+    registerFolder: ReturnType<typeof vi.fn>;
+    unregisterFolder: ReturnType<typeof vi.fn>;
+  },
+  failing: string,
+  boom: Error,
+): Ledger {
+  const led: Ledger = { groups: new Set(), contexts: new Set(), registry: new Set() };
+  const step = (name: string, ok: () => void) => async () => {
+    if (name === failing) throw boom;
+    ok();
+  };
+  createGroupInNamespace.mockImplementation(async () => {
+    if (failing === 'createGroupInNamespace') throw boom;
+    led.groups.add('new-folder');
+    return { groupId: 'new-folder' };
+  });
+  createContext.mockImplementation(async () => {
+    if (failing === 'createContext') throw boom;
+    led.contexts.add('docs-ctx');
+    return { contextId: 'docs-ctx' };
+  });
+  setSubgroupVisibility.mockImplementation(step('setSubgroupVisibility', () => {}));
+  setGroupMetadata.mockImplementation(step('setGroupMetadata', () => {}));
+  registry.registerFolder.mockImplementation(
+    step('registerFolder', () => led.registry.add('new-folder')),
+  );
+  (registry as unknown as { bindFolderContext: ReturnType<typeof vi.fn> })
+    .bindFolderContext.mockImplementation(step('bindFolderContext', () => {}));
+  // Rollbacks. `failing` never names one here except in the double-failure test,
+  // which overrides deleteGroup itself.
+  deleteGroup.mockImplementation(async (id: string) => {
+    led.groups.delete(id);
+  });
+  deleteContext.mockImplementation(async (id: string) => {
+    led.contexts.delete(id);
+  });
+  registry.unregisterFolder.mockImplementation(async ({ id }: { id: string }) => {
+    led.registry.delete(id);
+  });
+  return led;
+}
+
+function surviving(led: Ledger) {
+  return {
+    group: led.groups.size > 0,
+    context: led.contexts.size > 0,
+    registry: led.registry.size > 0,
+  };
+}
+
+const CREATE_STEPS = [
+  'createGroupInNamespace',
+  'setSubgroupVisibility',
+  'setGroupMetadata',
+  'createContext',
+  'registerFolder',
+  'bindFolderContext',
+] as const;
+
+describe('useFolderOperations.create - drift on partial failure', () => {
+  it.each(CREATE_STEPS)('rolls back cleanly when %s fails', async (step) => {
+    const registry = makeRegistry() as unknown as {
+      registerFolder: ReturnType<typeof vi.fn>;
+      bindFolderContext: ReturnType<typeof vi.fn>;
+      unregisterFolder: ReturnType<typeof vi.fn>;
+    };
+    const boom = new Error(`${step} boom`);
+    const led = wireLedger(registry, step, boom);
+    const refetch = vi.fn().mockResolvedValue(undefined);
+
+    const { result } = renderHook(() =>
+      useFolderOperations(registry as never, ROOT, 'app-1', refetch),
+    );
+    await expect(
+      result.current.create({
+        namespaceId: 'ns-1',
+        alias: 'Docs',
+        parentGroupId: ROOT,
+        visibility: 'Restricted',
+        members: [],
+      }),
+    ).rejects.toThrow();
+
+    // The invariant: a failed create leaves nothing behind on any backend.
+    // Anything surviving here IS drift, and would need Reconcile to repair.
+    expect(surviving(led)).toEqual({
+      group: false,
+      context: false,
+      registry: false,
+    });
+  });
+
+  // The mechanism by which drift becomes possible: every rollback call is
+  // `.catch()`-ed and logged, so if cleanup ALSO fails the artifact survives
+  // and nothing surfaces. This test asserts that reality rather than wishing
+  // it away - it is the reproducer for the condition Reconcile repairs.
+  it('leaves an orphaned group when the create fails AND its rollback fails', async () => {
+    const registry = makeRegistry() as unknown as {
+      registerFolder: ReturnType<typeof vi.fn>;
+      unregisterFolder: ReturnType<typeof vi.fn>;
+    };
+    const led = wireLedger(registry, 'createContext', new Error('context boom'));
+    // The rollback for the group also fails, and the code swallows that.
+    deleteGroup.mockRejectedValue(new Error('rollback boom'));
+    const refetch = vi.fn().mockResolvedValue(undefined);
+
+    const { result } = renderHook(() =>
+      useFolderOperations(registry as never, ROOT, 'app-1', refetch),
+    );
+    await expect(
+      result.current.create({
+        namespaceId: 'ns-1',
+        alias: 'Docs',
+        parentGroupId: ROOT,
+        visibility: 'Restricted',
+        members: [],
+      }),
+    ).rejects.toThrow();
+
+    // Drift, demonstrated: the admin group exists, the registry knows nothing
+    // about it, and the rollback failure was swallowed.
+    expect(deleteGroup).toHaveBeenCalled();
+    expect(surviving(led).group).toBe(true);
+    expect(surviving(led).registry).toBe(false);
+  });
+});

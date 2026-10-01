@@ -5,6 +5,9 @@ const PORT = Number(process.env.PW_PORT) || 5185;
 
 export default defineConfig({
   testDir: './e2e',
+  // The landing-page recordings live under e2e/media and assert nothing; they
+  // run only through playwright.media.config.ts (`pnpm landing:media`).
+  testIgnore: ['**/media/**'],
   timeout: 240_000,
   expect: { timeout: 30_000 },
   fullyParallel: false,

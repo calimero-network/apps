@@ -1,9 +1,10 @@
 // Generates MeroDesign's icon set into app/public/ with zero dependencies:
 //   favicon.ico (16/32/48 PNG-compressed entries), apple-touch-icon.png,
 //   icon-192.png, icon-512.png.
-// The mark — a blue square with a violet disc laid over it, the shape-overlap
-// figure every vector editor uses — is kept in sync by hand with public/favicon.svg,
-// which is the only asset here that is NOT generated.
+// The mark — a lime vector path between two anchor points, the pen-tool figure
+// every vector editor uses (and, read the other way, two peers joined) — is kept
+// in sync by hand with public/favicon.svg, the only asset here that is NOT
+// generated.
 // Run: node scripts/gen-icons.mjs
 
 import { deflateSync } from "node:zlib";
@@ -118,6 +119,30 @@ const arc = (cx, cy, r, w, half) => {
   };
 };
 
+/** A cubic Bézier stroked at width `w` with round caps: sampled into a
+ *  polyline, then a distance-to-segment test. 64 samples is smooth at 512 px. */
+const bezier = (p0, p1, p2, p3, w) => {
+  const pt = (t) => {
+    const m = 1 - t;
+    return [0, 1].map(
+      (k) => m * m * m * p0[k] + 3 * m * m * t * p1[k] + 3 * m * t * t * p2[k] + t * t * t * p3[k],
+    );
+  };
+  const pts = Array.from({ length: 65 }, (_, i) => pt(i / 64));
+  const r2 = (w / 2) ** 2;
+  return (u, v) => {
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1];
+      const [bx, by] = pts[i];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((u - ax) * dx + (v - ay) * dy) / (dx * dx + dy * dy)));
+      if ((u - ax - t * dx) ** 2 + (v - ay - t * dy) ** 2 <= r2) return true;
+    }
+    return false;
+  };
+};
+
 // ---- paints ----------------------------------------------------------------
 
 const rgb = (h) => [
@@ -210,15 +235,16 @@ function encodeICO(entries) {
 }
 
 // ---- art -------------------------------------------------------------------
-// Square + disc in the app's own accent (--color-accent #0d99ff) and violet.
-// The disc is slightly translucent so the overlap reads as a third colour — the
-// boolean-op figure, at a size where an actual cursor or canvas would be mush.
+// Calimero lime on the near-black green the sibling apps use. The path is
+// drawn first so the two anchor squares sit on top of its ends, the way a
+// selected path looks in the editor.
 
-const BG = "#0e1218";
+const BG = "#0e140f";
 
 function mark(c, fit) {
-  draw(c, rrect(9, 9, 29, 29, 5), solid("#0d99ff"), fit);
-  draw(c, circle(42, 42, 14), solid("#7c3aed", 0.92), fit);
+  draw(c, bezier([14, 48], [20, 20], [40, 44], [50, 16], 6), grad(14, 48, 50, 16, "#93e60c", "#b6ff5e"), fit);
+  draw(c, rrect(9, 43, 10, 10, 2.5), solid("#f5f8f1"), fit);
+  draw(c, rrect(45, 11, 10, 10, 2.5), solid("#f5f8f1"), fit);
 }
 
 // ---- variants --------------------------------------------------------------

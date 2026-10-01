@@ -1,0 +1,702 @@
+/**
+ * Browser UI tests for the chat flow.
+ *
+ * Every action here goes through the actual browser UI — typing in the
+ * ProseMirror editor, clicking buttons, reading the rendered message list.  No direct RPC
+ * calls are made.
+ *
+ * Prerequisites: live nodes must be running.
+ *   pnpm e2e:ui:all   — starts nodes then opens the Playwright UI
+ *   pnpm e2e:nodes    — starts nodes and runs headless
+ *
+ * Tests skip gracefully when E2E env vars are absent.
+ */
+
+import { test, expect, type Page } from "@playwright/test";
+import { getEnv, envAvailable } from "./helpers/rpc-client";
+import { browserAuthAvailable, injectRealTokens } from "./helpers/node-client";
+
+/**
+ * Every test in this file drives the real app in a real browser, so it needs a
+ * session mero-react will actually accept — not just a reachable node.
+ *
+ * `browserAuthAvailable()` is the extra half. The CI job starts its nodes
+ * through merobox in open-auth mode and fabricates a placeholder JWT: enough
+ * for direct admin-API and JSON-RPC calls (the node ignores the header), and
+ * not enough for the app, which bounces straight back to `/login`. See that
+ * function's doc for what it would take to close the gap.
+ *
+ * The skip carries its reason so a skipped run says why, rather than looking
+ * like a suite that passed.
+ */
+function requireEnv() {
+  if (!envAvailable()) {
+    test.skip(true, "No live node configured — run ./scripts/setup-nodes.sh");
+  }
+  if (!browserAuthAvailable()) {
+    test.skip(
+      true,
+      "E2E_BROWSER_AUTH != 1: the node has no embedded auth, so these tokens " +
+        "cannot log the app in. Run ./scripts/setup-nodes.sh to get real ones.",
+    );
+  }
+}
+
+// ── App state injection ───────────────────────────────────────────────────────
+
+async function setupApp(page: Page) {
+  const env = getEnv();
+  // Inject mero-react auth tokens
+  await injectRealTokens(page, {
+    nodeUrl: env.nodeUrl,
+    accessToken: env.accessToken,
+    refreshToken: env.refreshToken,
+  });
+  // Inject workspace state so the app skips the workspace selector
+  await page.addInitScript(
+    ({ groupId, memberKey }) => {
+      // Group selection (app reads from sessionStorage with this key)
+      sessionStorage.setItem("calimero_group_id", groupId);
+      // App.tsx canEnterApp gate: requires this flag set in the same browser
+      // session as the namespace selection. Without it, "/" redirects to /login.
+      sessionStorage.setItem("curb_ns_ready", "1");
+      // Messenger display name
+      localStorage.setItem("chat-username", "Alice");
+      // Member identity for this group (public key used for RPC calls)
+      const identities = JSON.parse(
+        localStorage.getItem("calimero_group_member_identities") ?? "{}",
+      ) as Record<string, string>;
+      identities[groupId] = memberKey;
+      const serialized = JSON.stringify(identities);
+      localStorage.setItem("calimero_group_member_identities", serialized);
+      sessionStorage.setItem("calimero_group_member_identities", serialized);
+      // calimero-client's getExecutorPublicKey() reads "context-identity" (JSON-encoded).
+      // Without this, editable/deletable on messages sent by this user evaluates to false.
+      localStorage.setItem("context-identity", JSON.stringify(memberKey));
+      // Keep session alive
+      localStorage.setItem("sessionLastActivity", Date.now().toString());
+    },
+    { groupId: env.groupId, memberKey: env.memberKey },
+  );
+}
+
+// ── Navigation helpers ────────────────────────────────────────────────────────
+
+async function openChannel(page: Page, channelName = "general") {
+  await page.goto("/");
+  // Wait for the sidebar channel list to load and click the channel
+  const channelItem = page.getByText(channelName).first();
+  await channelItem.waitFor({ timeout: 20_000 });
+  await channelItem.click();
+  // Wait for the main ProseMirror editor to appear (bottom of the chat)
+  await page.locator(".ProseMirror").first().waitFor({ timeout: 15_000 });
+}
+
+// ── Interaction helpers ───────────────────────────────────────────────────────
+
+async function sendMessage(page: Page, text: string) {
+  const editor = page.locator(".ProseMirror").first();
+  await editor.click();
+  await page.keyboard.type(text);
+  await page.keyboard.press("Enter");
+}
+
+/**
+ * The MessageContainer holding `text`: the parent of an actions bar, filtered to
+ * the one containing that message. Every message renders its own
+ * MessageContainer > ActionsContainer pair, grouped or not.
+ *
+ * It used to be `.msg-content` + `xpath=../../..`. Consecutive messages from one
+ * sender are grouped without an avatar, which changes the nesting, so once a new
+ * message joined the group "three levels up" named a different element: the
+ * hover saw the row detach and never found it again.
+ */
+function messageRow(page: Page, text: string) {
+  return page
+    .locator('[id^="actions-container-"]')
+    .locator("xpath=..")
+    .filter({ has: page.locator(".msg-content").filter({ hasText: text }) })
+    .first();
+}
+
+async function waitForMessage(page: Page, text: string) {
+  await expect(
+    page.locator(".msg-content").filter({ hasText: text }).first(),
+  ).toBeVisible({ timeout: 10_000 });
+  // A sent message first renders as an optimistic `temp-…` row, which is
+  // replaced by the real one once the node answers. A hover or click that
+  // lands in between loses its element ("element was detached from the
+  // DOM") — so wait for the row to carry its real id before touching it.
+  await expect(
+    messageRow(page, text)
+      .locator('[id^="actions-container-"]')
+      .first(),
+  ).not.toHaveAttribute("id", /^actions-container-temp-/, { timeout: 15_000 });
+}
+
+/**
+ * Returns the ActionsContainer (actions-container-*) that belongs to the
+ * MessageContainer wrapping the given message text.
+ *
+ * DOM depth from msg-content: msg-content → MessageText → MessageContentContainer → MessageContainer
+ * ActionsContainer is a direct child of MessageContainer.
+ */
+function getMessageActionsBar(page: Page, text: string) {
+  return messageRow(page, text)
+    .locator('[id^="actions-container-"]')
+    .first();
+}
+
+async function hoverMessage(page: Page, text: string) {
+  // Hover the MessageContainer directly — the CSS rule is MessageContainer:hover → ActionsContainer visible.
+  // Hovering a deep child sometimes doesn't reliably trigger :hover on the ancestor in Playwright.
+  await messageRow(page, text)
+    .hover();
+}
+
+async function openActionsMenu(page: Page, text: string) {
+  await hoverMessage(page, text);
+  const actionsBar = getMessageActionsBar(page, text);
+  // Wait for CSS :hover to make the bar visible before clicking.
+  // Use a regular (non-forced) click so Playwright moves the mouse INTO the actionsBar;
+  // force: true dispatches synthetically without moving the mouse, leaving it outside the bar
+  // which immediately fires onMouseLeave and closes the just-opened dropdown.
+  await actionsBar.waitFor({ state: "visible", timeout: 5_000 });
+  // Reaction icons (✅👍😀) render an inner <span>emoji</span>, so .locator("span") sees 9 spans:
+  // nth(0)=✅outer nth(1)=✅inner nth(2)=👍outer nth(3)=👍inner nth(4)=😀outer nth(5)=😀inner
+  // nth(6)=EmojiWink nth(7)=Thread/ChatText nth(8)=ThreeDots  (last 3 use SVG, no inner span)
+  await actionsBar.locator("span").nth(8).click({ timeout: 5_000 });
+}
+
+// ── Send & receive ────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — send message", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("typing a message and pressing Enter sends it", async ({ page }) => {
+    const marker = `ui-send-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+  });
+
+  test("input clears after message is sent", async ({ page }) => {
+    const marker = `ui-clear-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    const content = await page.locator(".ProseMirror").first().textContent();
+    expect(content?.trim()).toBe("");
+  });
+
+  test("sent message shows the sender username", async ({ page }) => {
+    const marker = `ui-sender-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await expect(page.getByText("Alice").first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
+  test("Shift+Enter inserts a newline instead of sending", async ({ page }) => {
+    const editor = page.locator(".ProseMirror").first();
+    await editor.click();
+    await page.keyboard.type("line one");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("line two");
+    // Message should NOT yet be visible as a sent message
+    await expect(page.locator(".msg-content").filter({ hasText: "line one" }))
+      .not.toBeVisible({ timeout: 2_000 })
+      .catch(() => {});
+    // Clear the editor without sending
+    await page.keyboard.press("Escape");
+  });
+});
+
+// ── Actions bar ───────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — message actions bar", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("hovering a message reveals the actions bar", async ({ page }) => {
+    const marker = `ui-hover-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await hoverMessage(page, marker);
+    await expect(getMessageActionsBar(page, marker)).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("three-dots button opens the more-actions dropdown", async ({
+    page,
+  }) => {
+    const marker = `ui-dots-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await openActionsMenu(page, marker);
+    await expect(page.getByText("Edit message").first()).toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(page.getByText("Delete message").first()).toBeVisible({
+      timeout: 3_000,
+    });
+  });
+});
+
+// ── Edit message ──────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — edit message", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("Edit message replaces the text inline", async ({ page }) => {
+    const original = `ui-edit-orig-${Date.now()}`;
+    const edited = `ui-edit-done-${Date.now()}`;
+
+    await sendMessage(page, original);
+    await waitForMessage(page, original);
+    await openActionsMenu(page, original);
+    await page.getByText("Edit message").first().click();
+
+    // The inline edit ProseMirror editor appears pre-filled with the original text;
+    // triple-click selects all content in the editor
+    const editEditor = page
+      .locator(".ProseMirror")
+      .filter({ hasText: original })
+      .first();
+    await editEditor.waitFor({ timeout: 5_000 });
+    await editEditor.click({ clickCount: 3 });
+    await page.keyboard.type(edited);
+    await page.keyboard.press("Enter");
+
+    await waitForMessage(page, edited);
+  });
+
+  test("edited message shows the (edited) marker", async ({ page }) => {
+    const original = `ui-edit-marker-${Date.now()}`;
+    const edited = `ui-edit-marker-done-${Date.now()}`;
+
+    await sendMessage(page, original);
+    await waitForMessage(page, original);
+    await openActionsMenu(page, original);
+    await page.getByText("Edit message").first().click();
+
+    const editEditor = page
+      .locator(".ProseMirror")
+      .filter({ hasText: original })
+      .first();
+    await editEditor.waitFor({ timeout: 5_000 });
+    await editEditor.click({ clickCount: 3 });
+    await page.keyboard.type(edited);
+    await page.keyboard.press("Enter");
+
+    await waitForMessage(page, edited);
+    await expect(page.getByText("(edited)").first()).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+});
+
+// ── Delete message ────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — delete message", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("Delete message removes it from the chat", async ({ page }) => {
+    const marker = `ui-delete-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await openActionsMenu(page, marker);
+    await page.getByText("Delete message").first().click();
+
+    // Message text should no longer be visible
+    await expect(
+      page.locator(".msg-content").filter({ hasText: marker }),
+    ).not.toBeVisible({ timeout: 5_000 });
+  });
+});
+
+// ── Reactions ─────────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — reactions", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("clicking 👍 reaction adds it below the message", async ({ page }) => {
+    const marker = `ui-react-thumbs-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await hoverMessage(page, marker);
+
+    const actionsBar = getMessageActionsBar(page, marker);
+    await actionsBar
+      .getByText("👍")
+      .first()
+      .click({ force: true, timeout: 5_000 });
+
+    // The 👍 emoji should appear as a reaction badge below the message
+    // Badge text is "👍1" (emoji + count); actionsBar button is just "👍" — this is unambiguous
+    await expect(
+      messageRow(page, marker)
+        .getByText("👍1"),
+    ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("clicking the same reaction twice removes it", async ({ page }) => {
+    const marker = `ui-react-toggle-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    // Add ✅ reaction
+    await hoverMessage(page, marker);
+    const actionsBar = getMessageActionsBar(page, marker);
+    await actionsBar
+      .getByText("✅")
+      .first()
+      .click({ force: true, timeout: 5_000 });
+    // Badge text is "✅1" (emoji + count); actionsBar button is just "✅" — this is unambiguous
+    await expect(
+      messageRow(page, marker)
+        .getByText("✅1"),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Click the reaction badge itself to remove — badge is visible and its onClick calls handleReaction
+    // which checks if user already reacted and sets isAdding=false (removes)
+    await messageRow(page, marker)
+      .getByText("✅1")
+      .click();
+    await expect(
+      messageRow(page, marker)
+        .getByText("✅1"),
+    ).not.toBeVisible({ timeout: 5_000 });
+  });
+});
+
+// ── Thread replies ────────────────────────────────────────────────────────────
+
+test.describe("Chat UI — thread replies", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("clicking the thread button opens a thread panel with a second editor", async ({
+    page,
+  }) => {
+    const marker = `ui-thread-open-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+    await hoverMessage(page, marker);
+
+    // Thread button is index 4 (after ✅ 👍 😀 EmojiPicker)
+    await getMessageActionsBar(page, marker)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
+
+    // A second .ProseMirror should appear in the thread panel
+    await expect(page.locator(".ProseMirror").nth(1)).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
+  test("reply sent in thread panel appears in the thread", async ({ page }) => {
+    const parent = `ui-thread-parent-${Date.now()}`;
+    const reply = `ui-thread-reply-${Date.now()}`;
+
+    await sendMessage(page, parent);
+    await waitForMessage(page, parent);
+    await hoverMessage(page, parent);
+
+    await getMessageActionsBar(page, parent)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
+
+    const threadEditor = page.locator(".ProseMirror").nth(1);
+    await threadEditor.waitFor({ timeout: 10_000 });
+    await threadEditor.click();
+    await page.keyboard.type(reply);
+    await page.keyboard.press("Enter");
+
+    await expect(
+      page.locator(".msg-content").filter({ hasText: reply }).first(),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("parent message shows a reply count after a thread reply", async ({
+    page,
+  }) => {
+    const parent = `ui-thread-count-${Date.now()}`;
+    const reply = `ui-thread-count-reply-${Date.now()}`;
+
+    await sendMessage(page, parent);
+    await waitForMessage(page, parent);
+    await hoverMessage(page, parent);
+
+    await getMessageActionsBar(page, parent)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
+
+    const threadEditor = page.locator(".ProseMirror").nth(1);
+    await threadEditor.waitFor({ timeout: 10_000 });
+    await threadEditor.click();
+    await page.keyboard.type(reply);
+    await page.keyboard.press("Enter");
+
+    await expect(
+      page.locator(".msg-content").filter({ hasText: reply }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // "1 reply" or similar text should appear below the parent message
+    await expect(page.getByText(/1 repl/i).first()).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+});
+
+// ── Drag and drop onto the composer ───────────────────────────────────────────
+
+/** A 1×1 transparent PNG: real image bytes, so the node stores a real blob. */
+const PNG_1X1_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+/**
+ * Drop `files` on the composer the way a browser does: dragenter, dragover,
+ * drop, all carrying one DataTransfer. Playwright has no OS-level file drag,
+ * so the events are dispatched with a DataTransfer built in the page.
+ */
+async function dropOnComposer(
+  page: Page,
+  files: { name: string; type: string; base64: string }[],
+) {
+  const dataTransfer = await page.evaluateHandle((specs) => {
+    const dt = new DataTransfer();
+    for (const { name, type, base64 } of specs) {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      dt.items.add(new File([bytes], name, { type }));
+    }
+    return dt;
+  }, files);
+  const composer = page.getByTestId("message-composer");
+  await composer.dispatchEvent("dragenter", { dataTransfer });
+  await composer.dispatchEvent("dragover", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeVisible();
+  await composer.dispatchEvent("drop", { dataTransfer });
+  await expect(page.getByTestId("composer-drop-overlay")).toBeHidden();
+}
+
+test.describe("Chat UI — drag and drop attachments", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("a dropped PNG goes to the image slot and a dropped PDF to the file slot", async ({
+    page,
+  }) => {
+    const stamp = Date.now();
+    const imageName = `drop-${stamp}.png`;
+    const fileName = `drop-${stamp}.pdf`;
+    const pdfBase64 = Buffer.from(`%PDF-1.4\n% drop ${stamp}\n%%EOF\n`).toString("base64");
+
+    await dropOnComposer(page, [
+      { name: imageName, type: "image/png", base64: PNG_1X1_BASE64 },
+      { name: fileName, type: "application/pdf", base64: pdfBase64 },
+    ]);
+
+    // Both previews appear once the node has stored the bytes: the PNG as a
+    // picture, the PDF as a file card. Neither routes through the popup.
+    const composer = page.getByTestId("message-composer");
+    await expect(composer.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(composer.getByTitle(fileName)).toBeVisible({ timeout: 20_000 });
+
+    const marker = `ui-drop-${stamp}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    // The sent message reads the image back from the node by blob id, so this
+    // passes only if the drop uploaded real bytes against the channel.
+    const row = messageRow(page, marker);
+    await expect(row.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(row.getByTitle(fileName)).toBeVisible();
+  });
+
+  test("dragging text over the composer does not show the drop overlay", async ({
+    page,
+  }) => {
+    const dataTransfer = await page.evaluateHandle(() => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "just some text");
+      return dt;
+    });
+    const composer = page.getByTestId("message-composer");
+    await composer.dispatchEvent("dragenter", { dataTransfer });
+    await composer.dispatchEvent("dragover", { dataTransfer });
+    await expect(page.getByTestId("composer-drop-overlay")).toHaveCount(0);
+  });
+});
+
+// ── Attachment-only messages ──────────────────────────────────────────────────
+
+/** A 1×1 transparent PNG: real image bytes, so the node stores a real blob. */
+const ATTACH_PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** Attach `name` through the composer's upload popup, as a user would. */
+async function attachThroughPopup(
+  page: Page,
+  kind: "Image" | "File",
+  file: { name: string; mimeType: string; buffer: Buffer },
+) {
+  await page.getByRole("button", { name: "Attach" }).first().click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByText(`Upload ${kind}`, { exact: true }).click();
+  await (await chooser).setFiles(file);
+}
+
+/** The message row whose attachments include an element titled/named `name`. */
+function rowWithAttachment(page: Page, name: string) {
+  return page
+    .locator('[id^="actions-container-"]')
+    .locator("xpath=..")
+    .filter({
+      has: page.locator(`img[alt="${name}"], [title="${name}"]`),
+    })
+    .first();
+}
+
+test.describe("Chat UI — attachment-only messages", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("an image sends with no text, from the send button", async ({ page }) => {
+    const imageName = `only-image-${Date.now()}.png`;
+    await attachThroughPopup(page, "Image", {
+      name: imageName,
+      mimeType: "image/png",
+      buffer: ATTACH_PNG_1X1,
+    });
+    // The composer preview means the node has stored the bytes.
+    await expect(page.locator(`img[alt="${imageName}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.getByRole("button", { name: "Send message" }).first().click();
+
+    const row = rowWithAttachment(page, imageName);
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    // It left the optimistic `temp-` state, so the node accepted it.
+    await expect(row.locator('[id^="actions-container-"]').first()).not.toHaveAttribute(
+      "id",
+      /^actions-container-temp-/,
+      { timeout: 15_000 },
+    );
+    // And it read the image back from the node by blob id.
+    await expect(row.getByRole("img", { name: imageName })).toBeVisible({
+      timeout: 20_000,
+    });
+    // The composer's preview is cleared after sending: only the sent copy is left.
+    await expect(page.locator(`img[alt="${imageName}"]`)).toHaveCount(1);
+  });
+
+  test("a file sends with no text, by pressing Enter", async ({ page }) => {
+    const fileName = `only-file-${Date.now()}.txt`;
+    await attachThroughPopup(page, "File", {
+      name: fileName,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`attachment-only ${fileName}\n`),
+    });
+    await expect(page.locator(`[title="${fileName}"]`).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.locator(".ProseMirror").first().click();
+    await page.keyboard.press("Enter");
+
+    const row = rowWithAttachment(page, fileName);
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.locator('[id^="actions-container-"]').first()).not.toHaveAttribute(
+      "id",
+      /^actions-container-temp-/,
+      { timeout: 15_000 },
+    );
+  });
+
+  test("an empty composer with no attachment still sends nothing", async ({ page }) => {
+    const marker = `ui-empty-${Date.now()}`;
+    await sendMessage(page, marker);
+    await waitForMessage(page, marker);
+
+    await page.getByRole("button", { name: "Send message" }).first().click();
+    await page.waitForTimeout(1_500);
+
+    // Every message renders a `.msg-content`, even one with no text, so a
+    // phantom empty send would become the last one. Counting rows instead is
+    // unreliable: the optimistic row and the node's copy collapse into one,
+    // and the virtualized list shifts.
+    await expect(page.locator(".msg-content").last()).toContainText(marker);
+  });
+
+});
+
+test.describe("Chat UI — a file dropped outside the composer", () => {
+  test.beforeAll(requireEnv);
+  test.beforeEach(async ({ page }) => {
+    await setupApp(page);
+    await openChannel(page);
+  });
+
+  test("is swallowed, so the browser does not open it in place of the app", async ({
+    page,
+  }) => {
+    const url = page.url();
+    // Dispatched on the message list, well away from the composer. The
+    // browser's default for an unhandled file drop is to navigate to the file.
+    const prevented = await page.evaluate(() => {
+      const target =
+        document.querySelector('[id^="actions-container-"]')?.parentElement ??
+        document.body;
+      const dt = new DataTransfer();
+      dt.items.add(new File(["stray"], "stray.txt", { type: "text/plain" }));
+      const over = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt });
+      const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+      target.dispatchEvent(over);
+      target.dispatchEvent(drop);
+      return { over: over.defaultPrevented, drop: drop.defaultPrevented };
+    });
+    expect(prevented).toEqual({ over: true, drop: true });
+    expect(page.url()).toBe(url);
+    // And nothing was attached: that only happens on the composer.
+    await expect(page.locator('[title="stray.txt"]')).toHaveCount(0);
+  });
+});

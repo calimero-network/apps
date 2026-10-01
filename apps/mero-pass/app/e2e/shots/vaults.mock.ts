@@ -199,3 +199,27 @@ export async function acceptInvite() {
 export async function redeemInvite() {
   return { kind: 'team' as const, namespaceId: 'ns-1' };
 }
+
+// ── v2 additions ─────────────────────────────────────────────────────────────
+
+export const INVITE_VALIDITY = [
+  { secs: 60 * 60, label: '1 hour' },
+  { secs: 24 * 60 * 60, label: '24 hours' },
+  { secs: 7 * 24 * 60 * 60, label: '7 days' },
+] as const;
+export const DEFAULT_INVITE_SECS = 24 * 60 * 60;
+
+export async function removeTeamMember() {}
+
+export async function repairCreatorAdmin() {
+  return false;
+}
+
+/** Everyone in the team — the fixture accounts in `session.mock`. */
+export async function vaultAudience() {
+  return new Set(['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]);
+}
+
+export async function migrateDevice() {
+  return 0;
+}

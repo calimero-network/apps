@@ -6,5 +6,5 @@
     "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test", "src/lib"]
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test", "src/lib", "src/lib/fixtures/*.json"]
 }

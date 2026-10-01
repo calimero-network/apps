@@ -1,8 +1,135 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "Cell": {
+    "ActivityData": {
       "kind": "record",
+      "doc": "One entry of the workbook's activity log: what was done, when. Keyed by\n`\"{at:020}|{author}|{nonce}\"`; its author is the entry's owner stamp, and a\n\"since\" query is a seek on the `at` index.",
+      "fields": [
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty for workbook-level actions (a named range)."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`cells`, `rows`, `cols`, `sheet` or `name`."
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How many cells changed; `changes` holds at most [`MAX_LOGGED_CHANGES`]."
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
+    "ActivityEntry": {
+      "kind": "record",
+      "doc": "An activity-log entry, newest first from `get_activity`.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
+    "AlertState": {
+      "kind": "record",
+      "doc": "Which cells of an alert rule met its condition when last checked, so it\ntells only about cells that start meeting it. Keyed by rule id.",
+      "fields": [
+        {
+          "name": "cells",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Attachment": {
+      "kind": "record",
+      "doc": "A live attachment.",
       "fields": [
         {
           "name": "id",
@@ -17,22 +144,338 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AttachmentData": {
+      "kind": "record",
+      "doc": "A file attached to a cell. The bytes are a blob in the node's blob store,\nannounced to this context so members' nodes can fetch it; this is its\nrecord. Keyed by id, owned by whoever attached it (`attachments`).",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AxisData": {
+      "kind": "record",
+      "doc": "One row or column added to a sheet, or one deleted. Keyed by\n`\"{sheet_id}|r|{id}\"` / `\"{sheet_id}|c|{id}\"`; see the recalc crate's\n`layout` module for how entries order a sheet.",
+      "fields": [
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Fractional position: decimal digits, compared as strings."
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AxisEntryView": {
+      "kind": "record",
+      "doc": "One explicit row or column entry of a sheet.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "AxisOp": {
+      "kind": "variant",
+      "doc": "A structural edit: add a row or column at a fractional position, delete\none by id, or restore a deleted one (an undo). Every op is one write,\nhowever many cells the sheet holds.",
+      "variants": [
+        {
+          "name": "InsertRow",
+          "payload": {
+            "$ref": "AxisOp_InsertRow"
+          }
+        },
+        {
+          "name": "InsertCol",
+          "payload": {
+            "$ref": "AxisOp_InsertCol"
+          }
+        },
+        {
+          "name": "DeleteRow",
+          "payload": {
+            "$ref": "AxisOp_DeleteRow"
+          }
+        },
+        {
+          "name": "DeleteCol",
+          "payload": {
+            "$ref": "AxisOp_DeleteCol"
+          }
+        },
+        {
+          "name": "RestoreRow",
+          "payload": {
+            "$ref": "AxisOp_RestoreRow"
+          }
+        },
+        {
+          "name": "RestoreCol",
+          "payload": {
+            "$ref": "AxisOp_RestoreCol"
+          }
+        }
+      ],
+      "tag": "name",
+      "content": "payload"
+    },
+    "AxisOp_DeleteCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_DeleteRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisSize": {
+      "kind": "record",
+      "doc": "A row's or column's size: `axis` is `row` or `col`.",
+      "fields": [
+        {
+          "name": "axis",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
           "type": {
             "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Cell": {
+      "kind": "record",
+      "doc": "A cell, by row and column id. An implicit id is a 0-based position\n(`\"3\"` is the fourth row until rows move); the client places ids with the\nsheet's layout (`get_layouts`).",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
           }
         },
         {
           "name": "raw_value",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "As stored: references name rows and columns by id."
         },
         {
           "name": "computed_value",
@@ -51,17 +494,74 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "last_editor",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Member id of whoever last changed the cell; empty for a cell last\nwritten before the activity log existed."
+        },
+        {
+          "name": "last_edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellChange": {
+      "kind": "record",
+      "doc": "One cell's change within an activity entry: its raw value and format\nbefore and after.",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_format",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
     "CellData": {
       "kind": "record",
+      "doc": "A cell's value, stored in the shared UnorderedMap under\n`\"{sheet_id}|{row_id}|{col_id}\"`. Its format is a separate field\n(`formats`), so a value edit and a format edit never overwrite each other.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Mirrors the map key for ABI convenience."
         },
         {
           "name": "sheet_id",
@@ -70,31 +570,33 @@
           }
         },
         {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
           "name": "raw_value",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "format",
-          "type": {
-            "kind": "string"
-          }
+          },
+          "doc": "Raw user input (may be a formula like `=SUM(A1:A5)`)."
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellMeta": {
+      "kind": "record",
+      "doc": "Who last changed a cell and when, keyed like the cell.",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Member id (`whoami`)."
+        },
+        {
+          "name": "at",
           "type": {
             "kind": "u64"
           }
@@ -122,21 +624,23 @@
             "$ref": "CellOp_Clear"
           }
         }
-      ]
+      ],
+      "tag": "name",
+      "content": "payload"
     },
     "CellOp_Clear": {
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -145,15 +649,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -168,15 +672,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -187,11 +691,205 @@
         }
       ]
     },
-    "Cursor": {
+    "CellStyle": {
       "kind": "record",
+      "doc": "A styled cell.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Chart": {
+      "kind": "record",
+      "doc": "A live chart.",
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ChartData": {
+      "kind": "record",
+      "doc": "A chart of a range, anchored on corner row and column ids. Keyed by id.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`bar` or `line`."
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ChartInput": {
+      "kind": "record",
+      "doc": "A chart as written or read: its range by corner ids, its kind and title.\nThe range's first column labels the points; each other column is a\nseries, named by the first row when that row is text.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "doc": "A live (not deleted) comment.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
           "type": {
             "kind": "string"
           }
@@ -203,27 +901,36 @@
           }
         },
         {
-          "name": "sheet_id",
+          "name": "text",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "row",
+          "name": "mentions",
           "type": {
-            "kind": "u32"
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         },
         {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
+          "name": "parent",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         },
         {
@@ -234,7 +941,109 @@
         }
       ]
     },
-    "CursorData": {
+    "CommentData": {
+      "kind": "record",
+      "doc": "A comment on a cell, or a reply to one. Keyed by comment id, owned by its\nauthor (`comments`). Whether its thread is resolved is kept apart\n(`resolved`), since anyone may resolve and only the author edits.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Member ids named with `@nickname` in the text."
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The comment this replies to; empty for a thread's first comment."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_AlertTriggered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "rule_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AttachmentsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AxesChanged": {
       "kind": "record",
       "fields": [
         {
@@ -244,27 +1053,9 @@
           }
         },
         {
-          "name": "row",
+          "name": "count",
           "type": {
             "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
           }
         }
       ]
@@ -279,15 +1070,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -326,11 +1117,54 @@
         }
       ]
     },
-    "Event_CursorMoved": {
+    "Event_ChartsChanged": {
       "kind": "record",
       "fields": [
         {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Event_CommentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }
@@ -343,11 +1177,11 @@
         }
       ]
     },
-    "Event_CursorRemoved": {
+    "Event_LinkedChanged": {
       "kind": "record",
       "fields": [
         {
-          "name": "author",
+          "name": "sheet_id",
           "type": {
             "kind": "string"
           }
@@ -388,6 +1222,40 @@
         }
       ]
     },
+    "Event_NamedRangesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NoteChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_ProjectInitialized": {
       "kind": "record",
       "fields": [
@@ -399,6 +1267,50 @@
         },
         {
           "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ProtectionsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PublicationsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RolesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RulesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
           "type": {
             "kind": "string"
           }
@@ -450,11 +1362,76 @@
         }
       ]
     },
+    "Event_SheetViewChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_StylesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FormatData": {
+      "kind": "record",
+      "doc": "A cell's display format, kept apart from its value so that formatting a\ncell and typing in it at the same moment both survive. Keyed like the cell.",
+      "fields": [
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty means Automatic, and overrides a format the cell carried from v1."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Founding": {
+      "kind": "record",
+      "doc": "What a workbook is from the moment it exists: its id and creation time,\nfixed in `init` and changeable by nobody (`founding`).",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "FunctionDef": {
       "kind": "record",
       "fields": [
         {
           "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
           "type": {
             "kind": "string"
           }
@@ -479,63 +1456,25 @@
         }
       ]
     },
-    "Member": {
+    "Link": {
       "kind": "record",
+      "doc": "A live incoming link.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Also the linked sheet's id."
         },
         {
-          "name": "nickname",
+          "name": "source_context",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "joined_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "MemberData": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "nickname",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "joined_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "Project": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
+          "name": "source_name",
           "type": {
             "kind": "string"
           }
@@ -547,9 +1486,801 @@
           }
         },
         {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LinkedData": {
+      "kind": "record",
+      "doc": "A range pushed here from another workbook (the receiving side of a link),\nshown as a read-only sheet whose id is the key. Values are row-major.",
+      "fields": [
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
           "name": "created_at",
           "type": {
             "kind": "u64"
+          }
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Removed here: later pushes are ignored."
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Withdrawn by the source."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "doc": "One collaborator, by the name they chose.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Account hex (`whoami`) — the same key `Cursor.author` carries, so a\nroster and the live cursors join on it without a translation step."
+        },
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member's account (hex), as core's group roster names them: the\nsame value as `id`."
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`owner`, `editor`, `commenter` or `viewer`."
+        }
+      ]
+    },
+    "MemberData": {
+      "kind": "record",
+      "doc": "A collaborator's chosen nickname, in their account's own slot (`members`),\nso only they can set it.\n\nThis exists because the only thing the app could previously put next to a\ncursor was a raw 64-hex device key, which answers no question anyone has.\nA nickname has to live HERE and not in `localStorage`: localStorage is\nper-browser, so a name kept there is visible to exactly the one person who\ndoes not need it.",
+      "fields": [
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "First time this member announced themselves. Earliest wins on merge — a\nlater rename must not look like a later arrival."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "NamedRange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A reference in stored form."
+        }
+      ]
+    },
+    "NamedRangeData": {
+      "kind": "record",
+      "doc": "A named range: a name that formulas can use in place of a reference.\nKeyed by the upper-case name; an empty target means deleted (a removed key\nwould tombstone the name and block defining it again).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The name as it was typed, for display."
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A reference in stored form (`[sheet-id]!A1:B9`)."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "NoteChange": {
+      "kind": "variant",
+      "doc": "One step of a note edit, in the Quill delta shape: keep, insert or delete\ncharacters, with formatting on kept or inserted text. Mirrors `DeltaOp`,\nwhich has no `AbiType`.",
+      "variants": [
+        {
+          "name": "Retain",
+          "payload": {
+            "$ref": "NoteChange_Retain"
+          }
+        },
+        {
+          "name": "Insert",
+          "payload": {
+            "$ref": "NoteChange_Insert"
+          }
+        },
+        {
+          "name": "Delete",
+          "payload": {
+            "$ref": "NoteChange_Delete"
+          }
+        }
+      ],
+      "untagged": true
+    },
+    "NoteChange_Delete": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delete",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "NoteChange_Insert": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "insert",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "NoteChange_Retain": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "retain",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "NotedCell": {
+      "kind": "record",
+      "doc": "A cell that has a note, with the start of its text.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "preview",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Project": {
+      "kind": "record",
+      "doc": "The project's own identity, as the UI titles it.\n\n`init_project` has always written `project_name`, and until now NOTHING\ncould read it back — there was no view method over the register at all. That\nis the whole reason the workspace list fell back to names cached in\n`localStorage`, which meant every peer but the creator saw \"Workspace 1\".",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Fixed when the workbook is created."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty until `init_project` runs."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Protection": {
+      "kind": "record",
+      "doc": "A live protected range.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ProtectionData": {
+      "kind": "record",
+      "doc": "A protected range: only owners and the listed editors may change its cells.\nCorners are row and column ids, so the range follows its cells as rows and\ncolumns move; all four empty protects the whole sheet. Keyed by id.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Member ids allowed to edit it besides owners."
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Publication": {
+      "kind": "record",
+      "doc": "A live publication.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "PublicationData": {
+      "kind": "record",
+      "doc": "A range this workbook pushes to another workbook in the workspace (the\nsource side of a link). Keyed by id, owned by whoever linked it.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The receiving workbook's context id, hex."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the linked sheet is called there."
+        }
+      ]
+    },
+    "Rule": {
+      "kind": "record",
+      "doc": "A live rule.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "RuleData": {
+      "kind": "record",
+      "doc": "A conditional format, colour scale or validation over a range, anchored on\ncorner row and column ids like a protected range. Keyed by id.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`format`, `scale` or `validate`."
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StylePair"
+            }
+          },
+          "doc": "The style a matching `format` rule applies, as (field, value) pairs."
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "A `validate` rule that refuses values instead of marking them."
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Who an `alert` rule tells (member ids)."
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleInput": {
+      "kind": "record",
+      "doc": "A rule as written or read: its range by corner ids, and what it does.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`format` (style cells that meet the condition), `scale` (shade numbers\nfrom `args[0]` at the lowest to `args[1]` at the highest), `validate`\n(values must meet the condition) or `alert` (tell `recipients` when a\nvalue starts meeting it)."
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -580,11 +2311,19 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "linked_from",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "For a linked sheet (read-only, pushed from another workbook), that\nworkbook's name; empty otherwise."
         }
       ]
     },
     "SheetData": {
       "kind": "record",
+      "doc": "A sheet tab stored in the shared UnorderedMap.",
       "fields": [
         {
           "name": "id",
@@ -602,7 +2341,8 @@
           "name": "position",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Tab ordering hint (lower = further left)."
         },
         {
           "name": "created_at",
@@ -614,6 +2354,136 @@
           "name": "updated_at",
           "type": {
             "kind": "u64"
+          },
+          "doc": "Timestamp of the last rename — used for LWW name merge."
+        }
+      ]
+    },
+    "SheetLayout": {
+      "kind": "record",
+      "doc": "A sheet's explicit row and column entries. A sheet with none has the\nimplicit layout: row id `k` at row `k`.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        }
+      ]
+    },
+    "SheetView": {
+      "kind": "record",
+      "doc": "A sheet's frozen rows and columns and resized rows and columns.",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "frozen_rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "frozen_cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisSize"
+            }
+          }
+        }
+      ]
+    },
+    "SheetViewData": {
+      "kind": "record",
+      "doc": "How a sheet is shown: its frozen rows and columns. Keyed by sheet id.",
+      "fields": [
+        {
+          "name": "frozen_rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "frozen_cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SizeData": {
+      "kind": "record",
+      "doc": "A resized row or column. Keyed `\"{sheet_id}|r|{id}\"` or `\"{sheet_id}|c|{id}\"`.",
+      "fields": [
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Pixels."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -622,37 +2492,47 @@
       "kind": "record",
       "fields": [
         {
-          "name": "project_id",
+          "name": "founding",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "Founding"
             }
-          }
+          },
+          "doc": "The workbook's id and creation time, fixed in `init`."
         },
         {
           "name": "project_name",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
             }
-          }
+          },
+          "doc": "The workbook's name, set by `init_project`; empty until then. Only\nowners write it."
         },
         {
-          "name": "project_created_at",
+          "name": "acl",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Workbook roles. Its admins are the owners; `viewer` and `commenter`\nare named roles. A member with neither and not an owner is an editor."
         },
         {
           "name": "sheets",
@@ -665,7 +2545,8 @@
               "$ref": "SheetData"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Sheet tabs keyed by sheet id."
         },
         {
           "name": "cells",
@@ -677,21 +2558,9 @@
             "value": {
               "$ref": "CellData"
             },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "cursors",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "CursorData"
-            },
-            "crdt_type": "authored_map"
-          }
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Cell values keyed by `\"{sheet_id}|{row_id}|{col_id}\"`, so one sheet's\ncells are one prefix."
         },
         {
           "name": "members",
@@ -702,8 +2571,362 @@
             },
             "value": {
               "$ref": "MemberData"
+            }
+          },
+          "doc": "Chosen nicknames, one slot per account that only it writes."
+        },
+        {
+          "name": "axes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AxisData"
+            },
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Added and deleted rows and columns, keyed `\"{sheet_id}|r|{id}\"` and\n`\"{sheet_id}|c|{id}\"`."
+        },
+        {
+          "name": "formats",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FormatData"
+            },
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Cell formats, keyed like `cells`."
+        },
+        {
+          "name": "names",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "NamedRangeData"
             },
             "crdt_type": "unordered_map"
+          },
+          "doc": "Named ranges keyed by upper-case name."
+        },
+        {
+          "name": "cell_meta",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CellMeta"
+            },
+            "crdt_type": "sorted_map"
+          },
+          "doc": "Who last changed each cell, keyed like `cells`."
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActivityData"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "The activity log: each entry owned by its author and never changed."
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentData"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Cell comments and replies, keyed by comment id: the author edits and\ndeletes, owners (the moderators) delete."
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Whether a comment's thread is resolved, keyed by comment id. Anyone\nin the workbook may resolve, so it is not part of the comment."
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Span"
+              }
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Cell notes, keyed like `cells`: rich text that merges concurrent edits\ncharacter by character."
+        },
+        {
+          "name": "protections",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "ProtectionData"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Protected ranges, keyed by id. Only owners write them."
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SizeData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Resized rows and columns, keyed like `axes`."
+        },
+        {
+          "name": "views",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SheetViewData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Frozen rows and columns per sheet."
+        },
+        {
+          "name": "styles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StyleData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Cell styles, keyed like `cells`."
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Conditional formats, colour scales and validations, keyed by id."
+        },
+        {
+          "name": "charts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChartData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Charts, keyed by id."
+        },
+        {
+          "name": "attachments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AttachmentData"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Files attached to cells, keyed by id: whoever attached one removes\nit, and owners (the moderators) may."
+        },
+        {
+          "name": "publications",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PublicationData"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Ranges this workbook pushes to others, keyed by id: whoever linked\none stops it, and owners (the moderators) may."
+        },
+        {
+          "name": "linked",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "LinkedData"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Ranges pushed here from other workbooks, keyed by linked sheet id."
+        },
+        {
+          "name": "alert_state",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AlertState"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Alert rules' last matching cells, keyed by rule id."
+        }
+      ]
+    },
+    "StyleData": {
+      "kind": "record",
+      "doc": "A cell's style, one last-writer-wins value per field, so one person\nmaking a cell bold and another colouring it both keep their change.\nKeyed like `cells`.",
+      "fields": [
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleField"
+            }
+          },
+          "doc": "One entry per field, sorted by field. An empty value is a cleared field."
+        }
+      ]
+    },
+    "StyleField": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StyleOp": {
+      "kind": "record",
+      "doc": "One style change: set `field` of a cell to `value` (empty clears it).",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "StylePair": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -711,7 +2934,157 @@
   },
   "methods": [
     {
+      "name": "add_attachment",
+      "doc": "Record a file attached to a cell. Upload the bytes as a blob announced\nto this context first; this stores what the cell shows. Returns its id.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_chart",
+      "doc": "Chart a range. Returns the chart's id.",
+      "params": [
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_comment",
+      "doc": "Comment on a cell, or reply to a comment (`parent`). `@nickname` in the\ntext mentions that member: the `CommentAdded` event carries their ids,\nand their client tells them. Returns the comment id.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_rule",
+      "doc": "Add a conditional format, colour scale or validation. Returns its id.",
+      "params": [
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_axis_ops",
+      "doc": "Insert or delete rows and columns. Each op is one write, whatever the\nsheet holds: cells keep their keys, and formulas that name rows by id\nkeep pointing at the same cells. A deleted row's cells stay stored but\nout of the layout, so references to them read `#REF!`.\n\nThe client picks ids (letters first, never an implicit number) and\npositions (see the recalc crate's `layout`).",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "apply_cell_ops",
+      "doc": "Apply a batch of cell operations to one sheet in a single mutation, with\nONE `CellsChanged` event for the whole batch.\n\nAt most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget\n(1e9 points on 0.11.0-rc.43), and a batch that exhausts it fails as a\nwhole with nothing written. Refusing early says why; callers split\nlarger range ops.",
       "params": [
         {
           "name": "sheet_id",
@@ -735,6 +3108,56 @@
       "intent": "mutating"
     },
     {
+      "name": "apply_private_cell_ops",
+      "doc": "Write cells of a private sheet: the same ops as `apply_cell_ops`.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_style_ops",
+      "doc": "Change cells' styles: bold, italic, underline, strike, wrap (`1`),\ncolor and fill (`#rrggbb`), align (`left`, `center`, `right`); an\nempty value clears the field. Each field merges on its own.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "clear_cell",
       "params": [
         {
@@ -744,20 +3167,36 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ],
       "returns": {
         "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_private_sheet",
+      "doc": "Make a private sheet on this node. Returns its id.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
       },
       "intent": "mutating"
     },
@@ -777,6 +3216,53 @@
       "intent": "mutating"
     },
     {
+      "name": "delete_comment",
+      "doc": "Delete a comment. Its author or an owner may; storage refuses anyone\nelse on every node.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_named_range",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_private_sheet",
+      "doc": "Delete a private sheet and its cells.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_sheet",
       "params": [
         {
@@ -792,7 +3278,92 @@
       "intent": "mutating"
     },
     {
+      "name": "drop_link",
+      "doc": "The source withdrew a link: remove its sheet.",
+      "params": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "publication_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
+    },
+    {
+      "name": "edit_comment",
+      "doc": "Change a comment's text. Only its author may: storage refuses anyone\nelse's edit on every node.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_note",
+      "doc": "Edit a cell's note: one editor transaction (text and formatting) in the\nQuill delta shape, counted against the note as this node holds it.\nConcurrent edits from others merge character by character. Formatting\nkeys are `bold`, `italic`, `underline`, `strike`, `code`, `highlight`\nand `link`.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "NoteChange"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "export_all",
+      "doc": "Returns all sheets (same as list_sheets). The frontend assembles CSV\nby calling get_cells per sheet.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -803,7 +3374,33 @@
       "intent": "read_only"
     },
     {
+      "name": "get_activity",
+      "doc": "Activity since `since` (nanoseconds), newest first, at most `limit`\n(capped at 500) entries: one seek on the `at` index. The author is the\nentry's owner stamp.",
+      "params": [
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ActivityEntry"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_all_cells",
+      "doc": "Every non-blank cell across all sheets, raw and computed: the client's\nwarm store, read in one call.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -814,7 +3411,20 @@
       "intent": "read_only"
     },
     {
+      "name": "get_attachments",
+      "doc": "Every attachment, oldest first. `created_by` is the owner stamp.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Attachment"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_cells",
+      "doc": "One sheet's cells with computed values. Reads and evaluates only the\nsheet and the sheets it transitively references, which gives the same\nvalues as evaluating the whole workbook.",
       "params": [
         {
           "name": "sheet_id",
@@ -832,18 +3442,32 @@
       "intent": "read_only"
     },
     {
-      "name": "get_cursors",
+      "name": "get_charts",
+      "doc": "Every live chart.",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "Cursor"
+          "$ref": "Chart"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_comments",
+      "doc": "Every comment, oldest first. The author is the entry's owner stamp.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Comment"
         }
       },
       "intent": "read_only"
     },
     {
       "name": "get_functions",
+      "doc": "Every formula function, sorted by name.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -854,7 +3478,32 @@
       "intent": "read_only"
     },
     {
+      "name": "get_layouts",
+      "doc": "Every sheet's explicit row and column entries.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SheetLayout"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_links",
+      "doc": "Every live link into this workbook.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Link"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_members",
+      "doc": "Everyone who has ever announced themselves, oldest arrival first.\n\nSorted here rather than in the UI so every peer renders the same order;\nthe map's own iteration order is not a stable thing to show a person.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -865,10 +3514,150 @@
       "intent": "read_only"
     },
     {
+      "name": "get_named_ranges",
+      "doc": "Every defined named range, sorted by name.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NamedRange"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_note",
+      "doc": "A cell's note as formatted runs; empty when it has none.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Span"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_noted_cells",
+      "doc": "Every cell with a non-empty note, with the start of its text.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NotedCell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_cells",
+      "doc": "Every cell of this node's private sheets. `computed_value` is empty:\nthe client evaluates them, with the shared sheets they read.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_sheets",
+      "doc": "This node's private sheets, in the order they were made.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Sheet"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_project",
+      "doc": "The project's id, name and creation time.\n\nNew. `init_project` wrote the name into `project_name` from the first\nversion of this contract and no method ever read it, so the name was\nreplicated to every peer and visible to none of them.\n\nNever 404s: an unnamed project is a real, transient state (a context\nexists the moment it is created, `init_project` lands a round-trip\nlater) and it answers with an empty name so a caller can render a\nplaceholder instead of an error.",
       "params": [],
       "returns": {
         "$ref": "Project"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_protections",
+      "doc": "Every live protected range.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Protection"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_publications",
+      "doc": "Every live link from this workbook: those an editor or owner made.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Publication"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_rules",
+      "doc": "Every live rule.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Rule"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_sheet_views",
+      "doc": "Every sheet's frozen panes and resized rows and columns (sheets with\nneither are left out).",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SheetView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_styles",
+      "doc": "Every styled cell, with its set fields.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CellStyle"
+        }
       },
       "intent": "read_only"
     },
@@ -881,6 +3670,7 @@
     },
     {
       "name": "init_project",
+      "doc": "Name the workbook, once. Owners only; the creator is the first owner.\nReturns the workbook's id, fixed when it was created.",
       "params": [
         {
           "name": "name",
@@ -896,6 +3686,7 @@
     },
     {
       "name": "join",
+      "doc": "Announce this member under a chosen nickname, or rename it.\n\nIdempotent by design — it is called on every open, not only on the first\none, because there is no reliable \"first\" for a replicated context and a\njoin that only registers once leaves anyone whose first attempt failed\npermanently anonymous. `joined_at` is preserved across re-calls so a\nrename does not reorder the roster.",
       "params": [
         {
           "name": "nickname",
@@ -921,8 +3712,264 @@
       "intent": "read_only"
     },
     {
-      "name": "remove_cursor",
-      "params": [],
+      "name": "protect_range",
+      "doc": "Protect a range (corner row and column ids; all four empty for the\nwhole sheet). Only owners and `editors` may then change its cells.\nOwners only. Returns the protection id.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "publish_range",
+      "doc": "Link a range to another workbook (its context id, hex), where it\nappears as a read-only sheet called `name`. Returns the link's id.",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "push_publication",
+      "doc": "Push a link's values again now.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "receive_link",
+      "doc": "Receive a linked range from another workbook running this app. Only\nthe node calls it, from the source's `xcall`; the origin it sets must\nbe the workbook the call says it is from.",
+      "params": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "publication_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
+    },
+    {
+      "name": "remove_attachment",
+      "doc": "Remove an attachment. Whoever attached it, or an owner, may: storage\nrefuses anyone else on every node.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_chart",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_protection",
+      "doc": "Remove a protection. Owners only.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_rule",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rename_private_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
       "returns": {
         "kind": "unit"
       },
@@ -977,15 +4024,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1002,6 +4049,7 @@
     },
     {
       "name": "set_cell_format",
+      "doc": "Set only the display format of a cell, preserving its value. `format`\nis a keyword like \"number\"/\"currency\"/\"percent\"/\"date\" (\"\" = Automatic).",
       "params": [
         {
           "name": "sheet_id",
@@ -1010,15 +4058,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1034,40 +4082,30 @@
       "intent": "mutating"
     },
     {
-      "name": "set_cell_formula",
+      "name": "set_comment_resolved",
+      "doc": "Resolve or reopen a comment thread. Anyone in the workbook may.",
       "params": [
         {
-          "name": "sheet_id",
+          "name": "id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "row",
+          "name": "resolved",
           "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "formula",
-          "type": {
-            "kind": "string"
+            "kind": "bool"
           }
         }
       ],
       "returns": {
-        "kind": "string"
+        "kind": "unit"
       },
       "intent": "mutating"
     },
     {
-      "name": "update_cursor",
+      "name": "set_frozen",
+      "doc": "Freeze the first `rows` rows and `cols` columns of a sheet (0 unfreezes).",
       "params": [
         {
           "name": "sheet_id",
@@ -1076,13 +4114,13 @@
           }
         },
         {
-          "name": "row",
+          "name": "rows",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "col",
+          "name": "cols",
           "type": {
             "kind": "u32"
           }
@@ -1094,7 +4132,184 @@
       "intent": "mutating"
     },
     {
+      "name": "set_named_range",
+      "doc": "Define or redefine a named range. `target` is a reference in stored form.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_role",
+      "doc": "Set a member's workbook role: `owner`, `editor`, `commenter` or\n`viewer`. Owners only.",
+      "params": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_sizes",
+      "doc": "Resize rows and columns (`axis` `row` or `col`, size in pixels).",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisSize"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unlink",
+      "doc": "Remove a linked sheet here; later pushes of it are ignored.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unpublish",
+      "doc": "Stop a link, and remove its sheet from the other workbook. Whoever\nlinked it, or an owner, may: storage refuses anyone else.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_chart",
+      "doc": "Replace a chart's range, kind or title.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_protection",
+      "doc": "Change who may edit a protected range, and its description. Owners only.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_rule",
+      "doc": "Replace a rule.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "whoami",
+      "doc": "The id THIS caller is known by in here — the key its cursor is authored\nby and its roster row is stored under.\n\nExists so the frontend never has to guess which row is \"me\". It had been\ncomparing `Cursor.author` against the context's executor public key,\nwhich is a different value from a different family: a device key and a\ncontext identity are both 64 hex, so the comparison type-checks, returns\nfalse forever, and shows the local user as a stranger in their own\nspreadsheet. Asking the contract costs one read and cannot be wrong.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -1104,70 +4319,172 @@
   ],
   "events": [
     {
+      "name": "AlertTriggered",
+      "payload": {
+        "$ref": "Event_AlertTriggered"
+      },
+      "doc": "Cells in an alert rule's range started meeting its condition."
+    },
+    {
+      "name": "AttachmentsChanged",
+      "payload": {
+        "$ref": "Event_AttachmentsChanged"
+      },
+      "doc": "A file was attached to a cell, or removed."
+    },
+    {
+      "name": "AxesChanged",
+      "payload": {
+        "$ref": "Event_AxesChanged"
+      },
+      "doc": "Rows or columns were inserted or deleted via `apply_axis_ops`."
+    },
+    {
       "name": "CellCleared",
       "payload": {
         "$ref": "Event_CellCleared"
-      }
+      },
+      "doc": "A cell was cleared."
     },
     {
       "name": "CellUpdated",
       "payload": {
         "$ref": "Event_CellUpdated"
-      }
+      },
+      "doc": "A cell's value was set or updated."
     },
     {
       "name": "CellsChanged",
       "payload": {
         "$ref": "Event_CellsChanged"
-      }
+      },
+      "doc": "A batch of cells was applied via `apply_cell_ops`. ONE event per batch\n(not one per cell) so a large batch stays under the runtime's per-commit\nevent cap (`max_events`); subscribers refresh once for the whole apply."
     },
     {
-      "name": "CursorMoved",
+      "name": "ChartsChanged",
       "payload": {
-        "$ref": "Event_CursorMoved"
-      }
+        "$ref": "Event_ChartsChanged"
+      },
+      "doc": "A chart was added, changed or removed."
     },
     {
-      "name": "CursorRemoved",
+      "name": "CommentAdded",
       "payload": {
-        "$ref": "Event_CursorRemoved"
-      }
+        "$ref": "Event_CommentAdded"
+      },
+      "doc": "A comment or reply was added; `mentions` are the member ids it names."
+    },
+    {
+      "name": "CommentChanged",
+      "payload": {
+        "$ref": "Event_CommentChanged"
+      },
+      "doc": "A comment was edited, resolved, reopened or deleted."
+    },
+    {
+      "name": "LinkedChanged",
+      "payload": {
+        "$ref": "Event_LinkedChanged"
+      },
+      "doc": "A linked sheet (pushed from another workbook) arrived, changed or went."
     },
     {
       "name": "MemberJoined",
       "payload": {
         "$ref": "Event_MemberJoined"
-      }
+      },
+      "doc": "A device announced itself under a nickname for the first time."
     },
     {
       "name": "MemberRenamed",
       "payload": {
         "$ref": "Event_MemberRenamed"
-      }
+      },
+      "doc": "A member changed the nickname they are shown under."
+    },
+    {
+      "name": "NamedRangesChanged",
+      "payload": {
+        "$ref": "Event_NamedRangesChanged"
+      },
+      "doc": "A named range was defined, redefined or deleted."
+    },
+    {
+      "name": "NoteChanged",
+      "payload": {
+        "$ref": "Event_NoteChanged"
+      },
+      "doc": "A cell's note was edited."
     },
     {
       "name": "ProjectInitialized",
       "payload": {
         "$ref": "Event_ProjectInitialized"
-      }
+      },
+      "doc": "A new spreadsheet project was initialized."
+    },
+    {
+      "name": "ProtectionsChanged",
+      "payload": {
+        "$ref": "Event_ProtectionsChanged"
+      },
+      "doc": "A protected range was added, changed or removed."
+    },
+    {
+      "name": "PublicationsChanged",
+      "payload": {
+        "$ref": "Event_PublicationsChanged"
+      },
+      "doc": "A link from this workbook was made or stopped."
+    },
+    {
+      "name": "RolesChanged",
+      "payload": {
+        "$ref": "Event_RolesChanged"
+      },
+      "doc": "A member's workbook role changed."
+    },
+    {
+      "name": "RulesChanged",
+      "payload": {
+        "$ref": "Event_RulesChanged"
+      },
+      "doc": "A conditional format, colour scale or validation changed."
     },
     {
       "name": "SheetCreated",
       "payload": {
         "$ref": "Event_SheetCreated"
-      }
+      },
+      "doc": "A new sheet tab was created."
     },
     {
       "name": "SheetDeleted",
       "payload": {
         "$ref": "Event_SheetDeleted"
-      }
+      },
+      "doc": "A sheet (and all its cells) was deleted."
     },
     {
       "name": "SheetRenamed",
       "payload": {
         "$ref": "Event_SheetRenamed"
-      }
+      },
+      "doc": "A sheet was renamed."
+    },
+    {
+      "name": "SheetViewChanged",
+      "payload": {
+        "$ref": "Event_SheetViewChanged"
+      },
+      "doc": "A sheet's frozen panes or row and column sizes changed."
+    },
+    {
+      "name": "StylesChanged",
+      "payload": {
+        "$ref": "Event_StylesChanged"
+      },
+      "doc": "Cells' styles changed."
     }
   ],
   "state_root": "Spreadsheet",

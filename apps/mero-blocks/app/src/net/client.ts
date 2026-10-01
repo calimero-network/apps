@@ -12,6 +12,9 @@ import { ownedContextIdentity } from "./admin";
 import { rpcExecute, RpcTarget } from "./rpc";
 import { decodeSseEvents, GameEvent } from "./events";
 
+/** How long after a reconnect to wait before re-reading the world. */
+const RESYNC_DELAY_MS = 500;
+
 export interface WorldMeta {
   name: string;
   seed: number;
@@ -20,6 +23,7 @@ export interface WorldMeta {
 
 export class GameClient {
   private sse: SseClient | null = null;
+  private resyncTimer: ReturnType<typeof setTimeout> | null = null;
   target: RpcTarget;
 
   constructor() {
@@ -57,7 +61,13 @@ export class GameClient {
     return this.exec<WorldMeta>("world_meta", {});
   }
 
-  subscribe(onEvent: (ev: GameEvent) => void): void {
+  /**
+   * `onReconnect` runs when the stream comes back after a drop (the node was
+   * restarted, the machine slept). SseClient re-subscribes on its own, but
+   * every event from the gap is lost, and blocks are only pulled on an event —
+   * so without a re-read, edits made meanwhile never showed up.
+   */
+  subscribe(onEvent: (ev: GameEvent) => void, onReconnect?: () => void): void {
     const s = getSession();
     if (!s.nodeUrl || !s.contextId) return;
     const contextId = s.contextId;
@@ -90,11 +100,27 @@ export class GameClient {
         clearSession();
       }
     });
+    // Every `connect` after the first is a reconnect. Deferred so the
+    // re-subscribe SseClient sends right after `connect` lands first.
+    let connectedOnce = false;
+    this.sse.on("connect", () => {
+      if (!connectedOnce) {
+        connectedOnce = true;
+        return;
+      }
+      if (this.resyncTimer) clearTimeout(this.resyncTimer);
+      this.resyncTimer = setTimeout(() => {
+        this.resyncTimer = null;
+        onReconnect?.();
+      }, RESYNC_DELAY_MS);
+    });
     this.sse.connect().catch(() => {});
     this.sse.subscribe([contextId]).catch(() => {});
   }
 
   close(): void {
+    if (this.resyncTimer) clearTimeout(this.resyncTimer);
+    this.resyncTimer = null;
     this.sse?.close();
     this.sse = null;
   }

@@ -3,42 +3,49 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A comment pinned at a canvas point, with its replies.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Comment id, chosen by the caller."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Pin position, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Pin position, canvas pixels."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The comment text."
         },
         {
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds."
         },
         {
           "name": "replies",
@@ -47,251 +54,301 @@
             "items": {
               "$ref": "CommentReply"
             }
-          }
+          },
+          "doc": "The thread, oldest first."
         }
       ]
     },
     "CommentReply": {
       "kind": "record",
+      "doc": "A reply in a comment thread.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Reply id, chosen by the caller."
         },
         {
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The reply text."
         },
         {
           "name": "author",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The writer's member id, set by the contract."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds; replies are listed in this order."
         }
       ]
     },
     "CursorState": {
       "kind": "record",
+      "doc": "A pointer's last reported position.",
       "fields": [
         {
           "name": "identity",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The device (context identity) this pointer belongs to."
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member id (account) behind that device."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Canvas pixels."
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds of the last move."
         }
       ]
     },
     "Element": {
       "kind": "record",
+      "doc": "One element on the canvas.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Chosen by the caller; use a fresh UUID. Writing an existing id replaces that element."
         },
         {
           "name": "data",
           "type": {
             "$ref": "ElementData"
-          }
+          },
+          "doc": "What the element is, tagged by `kind`."
         },
         {
           "name": "x",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Left edge, canvas pixels."
         },
         {
           "name": "y",
           "type": {
             "kind": "i64"
-          }
+          },
+          "doc": "Top edge, canvas pixels."
         },
         {
           "name": "width",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Width in pixels."
         },
         {
           "name": "height",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Height in pixels."
         },
         {
           "name": "rotation",
           "type": {
             "kind": "i32"
-          }
+          },
+          "doc": "Clockwise rotation in degrees."
         },
         {
           "name": "fill",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Fill colour as a CSS colour (`\"#ef4444\"`, `\"transparent\"`); on a plain text\nelement, the text colour."
         },
         {
           "name": "stroke",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Outline colour as a CSS colour."
         },
         {
-          "name": "stroke_width",
+          "name": "strokeWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Outline width in pixels; 0 for none."
         },
         {
           "name": "opacity",
           "type": {
             "kind": "u32"
-          }
-        },
-        {
-          "name": "layer_index",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "shadow_color",
-          "type": {
-            "kind": "string"
           },
-          "nullable": true
+          "doc": "Opacity in percent, 0 to 100."
         },
         {
-          "name": "shadow_offset_x",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "shadow_offset_y",
-          "type": {
-            "kind": "i32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "shadow_blur",
+          "name": "layerIndex",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "doc": "Paint order; higher paints on top."
+        },
+        {
+          "name": "createdBy",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The creator's member id, set by the contract; the value sent is ignored."
+        },
+        {
+          "name": "createdAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Creation time, unix milliseconds."
+        },
+        {
+          "name": "updatedAt",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Last change, unix milliseconds. Between concurrent writes to one element the\nlarger value wins, so every write must carry a newer one."
+        },
+        {
+          "name": "shadowColor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Drop shadow colour as a CSS colour; `null` for no shadow."
+        },
+        {
+          "name": "shadowOffsetX",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow horizontal offset in pixels."
+        },
+        {
+          "name": "shadowOffsetY",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow vertical offset in pixels."
+        },
+        {
+          "name": "shadowBlur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true,
+          "doc": "Drop shadow blur radius in pixels; `null` or 0 for no shadow."
         },
         {
           "name": "label",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Layer name, a `/`-separated path: the groups, then the name. May carry client\nextras after a U+001F character; keep them when renaming."
         },
         {
-          "name": "corner_radius",
+          "name": "cornerRadius",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Corner radius in pixels for a `rect`, drawn at most half the shorter side; 0 or\nomitted means square corners."
         }
       ]
     },
     "ElementData": {
       "kind": "variant",
+      "doc": "What an element is, as a JSON object tagged by `kind`: `rect`, `circle`, `line`,\n`arrow`, `path`, `text`, `image` or `svg`, plus that kind's own fields.",
       "variants": [
         {
-          "name": "Rect"
+          "name": "rect",
+          "doc": "A rectangle filling the element's box; `cornerRadius` rounds its corners."
         },
         {
-          "name": "Circle"
+          "name": "circle",
+          "doc": "An ellipse filling the element's box."
         },
         {
-          "name": "Line",
+          "name": "line",
           "payload": {
             "$ref": "ElementData_Line"
-          }
+          },
+          "doc": "A straight line."
         },
         {
-          "name": "Arrow",
+          "name": "arrow",
           "payload": {
             "$ref": "ElementData_Arrow"
-          }
+          },
+          "doc": "A straight line with an arrowhead at its second point."
         },
         {
-          "name": "Path",
+          "name": "path",
           "payload": {
             "$ref": "ElementData_Path"
-          }
+          },
+          "doc": "A freehand stroke or a closed outline."
         },
         {
-          "name": "Text",
+          "name": "text",
           "payload": {
             "$ref": "ElementData_Text"
-          }
+          },
+          "doc": "Text in the element's box."
         },
         {
-          "name": "Image",
+          "name": "image",
           "payload": {
             "$ref": "ElementData_Image"
-          }
+          },
+          "doc": "A raster image stored as a blob on the node."
         },
         {
-          "name": "Svg",
+          "name": "svg",
           "payload": {
             "$ref": "ElementData_Svg"
-          }
+          },
+          "doc": "An SVG image stored as a blob on the node."
         }
-      ]
+      ],
+      "tag": "kind"
     },
     "ElementData_Arrow": {
       "kind": "record",
@@ -300,7 +357,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The two end points, `\"x1,y1 x2,y2\"`, in pixels from the element's `x` and `y`;\nthe arrowhead is at the second."
         }
       ]
     },
@@ -308,22 +366,25 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The image's own width in pixels, before any scaling to the element's box."
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The image's own height in pixels."
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Id of the uploaded blob holding the image; the contract announces it to the\nboard's members so their nodes fetch it."
         }
       ]
     },
@@ -334,7 +395,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The two end points, `\"x1,y1 x2,y2\"`, in pixels from the element's `x` and `y`."
         }
       ]
     },
@@ -345,7 +407,8 @@
           "name": "points",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "SVG path data in pixels from the element's `x` and `y`, e.g. `\"M 0 0 L 40 40 Z\"`."
         }
       ]
     },
@@ -353,22 +416,25 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The SVG's own width in pixels."
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "The SVG's own height in pixels."
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Id of the uploaded blob holding the SVG markup; announced like an image's."
         }
       ]
     },
@@ -379,79 +445,94 @@
           "name": "content",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The text itself; may be empty."
         },
         {
-          "name": "font_size",
+          "name": "fontSize",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "Font size in pixels."
         },
         {
-          "name": "font_family",
+          "name": "fontFamily",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "A CSS font family, e.g. `\"sans-serif\"`."
         },
         {
           "name": "bold",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Bold weight."
         },
         {
           "name": "italic",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "Italic style."
         },
         {
           "name": "text_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true,
+          "doc": "Horizontal alignment: `\"left\"`, `\"center\"` or `\"right\"`; omitted means left."
         },
         {
           "name": "vertical_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true,
+          "doc": "Vertical alignment inside the box: `\"top\"`, `\"middle\"` or `\"bottom\"`."
         }
       ]
     },
     "Member": {
       "kind": "record",
+      "doc": "A board member: someone who has called `join`.",
       "fields": [
         {
           "name": "id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Member id: the member's account id (64 hex), the id roles and ownership name."
         },
         {
           "name": "username",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Display name the member chose."
         },
         {
           "name": "avatar",
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Avatar URL, or `null`."
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "When the member joined, unix milliseconds from their own clock."
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Unix milliseconds of the last profile edit; the newest edit wins."
         }
       ]
     },
@@ -495,7 +576,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -506,7 +587,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -515,15 +596,21 @@
         {
           "name": "elements",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Element"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Element"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The canvas. Writer-set guarded: only accounts holding a role mask\nprojected from `roles` (editors, admins) may write an entry, on every\nnode."
         },
         {
           "name": "members",
@@ -534,22 +621,47 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "One slot per account, written only by that account."
         },
         {
           "name": "comments",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Comment"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Comment"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Guarded like `elements`."
+        },
+        {
+          "name": "replies",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "CommentReply"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every reply, keyed `\"<comment>/<created_at:020>/<reply>\"` so one\ncomment's thread is a prefix slice in order. Guarded like `elements`."
         },
         {
           "name": "cursors",
@@ -561,8 +673,9 @@
             "value": {
               "$ref": "CursorState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed by DEVICE: a pointer belongs to a screen. Each entry is owned by\nthe account that wrote it."
         },
         {
           "name": "roles",
@@ -575,25 +688,6 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
-        },
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bytes",
-                "size": 32
-              }
-            },
-            "crdt_type": "unordered_map"
           }
         }
       ]

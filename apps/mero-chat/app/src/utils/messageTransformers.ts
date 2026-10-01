@@ -1,0 +1,68 @@
+import type {
+  AttachmentResponse,
+  MessageWithReactions,
+} from "../api/clientApi";
+import type { CurbFile, CurbMessage } from "../types/Common";
+import { MessageStatus } from "../types/Common";
+
+function mapAttachmentToCurbFile(attachment: AttachmentResponse): CurbFile {
+  return {
+    name: attachment.name,
+    ipfs_cid: attachment.blob_id,
+    mime_type: attachment.mime_type,
+    size: attachment.size,
+    uploaded_at: attachment.uploaded_at,
+  };
+}
+
+/**
+ * Transforms a MessageWithReactions from the API to a CurbMessage for UI display
+ */
+export function transformMessageToUI(
+  message: MessageWithReactions,
+): CurbMessage {
+  return {
+    id: message.id,
+    index: message.index,
+    text: message.text,
+    nonce: Math.random().toString(36).substring(2, 15),
+    key: message.id,
+    timestamp: message.timestamp * 1000,
+    sender: message.sender,
+    reactions: message.reactions,
+    threadCount: message.thread_count,
+    threadLastTimestamp: message.thread_last_timestamp,
+    editedOn: message.edited_on,
+    mentions: [],
+    files: (message.files ?? []).map(mapAttachmentToCurbFile),
+    images: (message.images ?? []).map(mapAttachmentToCurbFile),
+    editMode: false,
+    status: MessageStatus.sent,
+    deleted: message.deleted,
+    group: message.group,
+    parentMessageId: message.parent_message_id,
+  };
+}
+
+/**
+ * Transforms an array of MessageWithReactions to CurbMessages
+ */
+export function transformMessagesToUI(
+  messages: MessageWithReactions[],
+): CurbMessage[] {
+  return messages.map(transformMessageToUI);
+}
+
+/**
+ * Filters and transforms new messages that don't already exist in the current message list
+ */
+export function getNewMessages(
+  apiMessages: MessageWithReactions[],
+  existingMessages: CurbMessage[],
+): CurbMessage[] {
+  const existingMessageIds = new Set(existingMessages.map((msg) => msg.id));
+
+  return apiMessages
+    .filter((message) => !existingMessageIds.has(message.id))
+    .map(transformMessageToUI);
+}

@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, openNewWorkbook, shareWorkbook } from './helpers';
 
 test.describe(`project owner: create a new spreadsheet project and invite collaborators`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,27 +23,24 @@ test.describe(`project owner: create a new spreadsheet project and invite collab
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`after the owner names the project and confirms, every invited collaborator sees the spreadsheet with a default blank sheet within 5s`, async ({ browser }) => {
-    // Multi-node: node 0 names+inits the project; node 1 (collaborator) must see a sheet tab.
+  test(`after the owner names the project and confirms, every invited collaborator sees the spreadsheet with a default blank sheet within 5s`, async ({ browser }) => {
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
     try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
+      const a = await ctxA.newPage();
+      const b = await ctxB.newPage();
+      await openNewWorkbook(a, { name: 'Team plan', nickname: 'Alice' });
+      await expect(a.getByTestId('item-sheet')).toHaveCount(1);
+      await shareWorkbook(a, b, { nickname: 'Bob' });
 
-      // Owner names the project and confirms
-      await pageA.getByTestId('field-name').fill('Q3 Budget');
-      await pageA.getByTestId('action-init_project').click();
-
-      // Every invited collaborator sees the spreadsheet with a default blank sheet within 5s
-      await expect(pageB.getByTestId('item-Sheet')).toBeVisible({ timeout: 5_000 });
+      await expect(b.getByText('Team plan').first()).toBeVisible();
+      await expect(b.getByTestId('item-sheet')).toHaveCount(1);
+      await expect(b.getByTestId('item-sheet').first()).toHaveText(await a.getByTestId('item-sheet').first().innerText());
+      // Blank: no cell holds anything.
+      await expect(cell(b, 0, 0)).toHaveText('');
+      await expect(b.getByTestId('item-cell').filter({ hasText: /\S/ })).toHaveCount(0);
+      // And the owner sees them arrive.
+      await expect(a.getByTestId('collaborator-avatar')).toHaveCount(2, { timeout: 60_000 });
     } finally {
       await ctxA.close();
       await ctxB.close();

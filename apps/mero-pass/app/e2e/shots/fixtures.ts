@@ -1,7 +1,7 @@
 /** Scenario table for the screenshot harness. Kept in step with e2e/shots.mjs. */
 export type Scenario = {
   id: string;
-  page: 'teams' | 'team' | 'vault' | 'landing';
+  page: 'teams' | 'team' | 'vault' | 'security' | 'landing';
   /** What the fixtures should answer with. */
   variant?: string;
 };
@@ -23,6 +23,12 @@ export const SCENARIOS: Scenario[] = [
   { id: 'vault-empty', page: 'vault', variant: 'empty' },
   { id: 'vault-activity', page: 'vault', variant: 'activity' },
   { id: 'vault-no-identity', page: 'vault', variant: 'noIdentity' },
+  { id: 'vault-approval', page: 'vault', variant: 'approval' },
+  { id: 'vault-waiting', page: 'vault', variant: 'waiting' },
+  { id: 'vault-single-holder', page: 'vault', variant: 'personal' },
+  { id: 'security', page: 'security' },
+  { id: 'teams-light', page: 'teams', variant: 'light' },
+  { id: 'vault-light', page: 'vault', variant: 'light' },
   { id: 'landing', page: 'landing' },
 ];
 

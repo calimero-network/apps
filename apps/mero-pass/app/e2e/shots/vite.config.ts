@@ -17,12 +17,18 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   root: here('.'),
+  // The app's own public dir, so the self-hosted fonts load as they do live.
+  publicDir: here('../../public'),
   base: './',
   plugins: [react()],
   resolve: {
     alias: [
       { find: /.*\/lib\/vaults$/, replacement: here('./vaults.mock.ts') },
       { find: /.*\/lib\/vault$/, replacement: here('./vault.mock.ts') },
+      {
+        find: /.*\/hooks\/useVaultSession$/,
+        replacement: here('./session.mock.ts'),
+      },
       {
         find: /.*\/hooks\/useApplicationId$/,
         replacement: here('./hooks.mock.ts'),

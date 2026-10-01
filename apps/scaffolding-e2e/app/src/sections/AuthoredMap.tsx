@@ -27,6 +27,9 @@ export function AuthoredMap() {
   const [removeKey, setRemoveKey] = useState("");
   const [getKey, setGetKey] = useState("");
   const [ownerKey, setOwnerKey] = useState("");
+  const [byOwner, setByOwner] = useState("");
+  const [byOwnerKey, setByOwnerKey] = useState("");
+  const [ownersKey, setOwnersKey] = useState("");
 
   const insert = useCall();
   const update = useCall();
@@ -34,6 +37,8 @@ export function AuthoredMap() {
   const get = useCall();
   const entries = useCall();
   const getOwner = useCall();
+  const getBy = useCall();
+  const owners = useCall();
   const len = useCall();
 
   return (
@@ -191,6 +196,58 @@ export function AuthoredMap() {
             {getOwner.loading ? "..." : "Execute"}
           </button>
           <ResultBox result={getOwner.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">authored_get_by(owner, key)</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
+            Keys are per owner: this reads the entry the given account holds at the key, whoever is asking.
+          </p>
+          <div className="method-inputs">
+            <input
+              className="form-control"
+              placeholder="owner account id (64 hex)"
+              value={byOwner}
+              onChange={(e) => setByOwner(e.target.value)}
+            />
+            <input
+              className="form-control"
+              placeholder="key"
+              value={byOwnerKey}
+              onChange={(e) => setByOwnerKey(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn-calimero-outline"
+            disabled={getBy.loading}
+            onClick={() => getBy.run(() => api.authoredGetBy(byOwner, byOwnerKey))}
+          >
+            {getBy.loading ? "..." : "Execute"}
+          </button>
+          <ResultBox result={getBy.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">authored_owners(key)</div>
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
+            Every account that holds an entry at this key, lowest first.
+          </p>
+          <div className="method-inputs">
+            <input
+              className="form-control"
+              placeholder="key"
+              value={ownersKey}
+              onChange={(e) => setOwnersKey(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn-calimero-outline"
+            disabled={owners.loading}
+            onClick={() => owners.run(() => api.authoredOwners(ownersKey))}
+          >
+            {owners.loading ? "..." : "Execute"}
+          </button>
+          <ResultBox result={owners.result} />
         </div>
 
         <div className="method-card">

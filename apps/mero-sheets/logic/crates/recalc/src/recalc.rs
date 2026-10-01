@@ -1,6 +1,6 @@
 //! Pure recalculation engine: workbook inputs -> computed values.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::formula;
 
@@ -11,12 +11,12 @@ fn is_formula(raw: &str) -> bool {
     raw.trim_start().starts_with('=')
 }
 
-/// Absolute cell coordinate (0-based row/col).
+/// A cell by sheet, row id and column id (see [`crate::layout`]).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct CellRef {
     pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
+    pub row: String,
+    pub col: String,
 }
 
 pub(crate) fn order(
@@ -69,42 +69,42 @@ pub(crate) fn order(
 /// formula reachable from it. Sheet-level (not cell-level) reachability — a
 /// touched sheet is included in full, so the result is robust to `precedents()`
 /// under-reporting a range/whole-column ref and stays identical to a
-/// whole-workbook evaluation. Terminates: `closure` grows monotonically and is
-/// bounded by the finite set of sheet ids present in `cells`.
-pub fn sheet_closure(cells: &BTreeMap<CellRef, String>, requested_sheet: &str) -> HashSet<String> {
-    // Adjacency: sheet -> the set of sheets its formulas reference. Built in one
-    // pass over the cells (each formula's precedents parsed exactly once).
-    let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
-    for (cell, raw) in cells {
-        if !is_formula(raw) {
-            continue;
-        }
-        let targets = refs.entry(cell.sheet_id.clone()).or_default();
-        for (sid, _row, _col) in formula::precedents(raw, &cell.sheet_id) {
-            targets.insert(sid);
-        }
-    }
-
+/// whole-workbook evaluation.
+///
+/// `raw_values_of` is asked for each sheet's raw inputs once, and only for the
+/// sheets the walk reaches, so a caller can load a sheet's cells when it is
+/// needed instead of reading the whole workbook up front. Terminates:
+/// `closure` grows monotonically and each sheet is loaded at most once.
+pub fn sheet_closure<E>(
+    env: &formula::Env,
+    requested_sheet: &str,
+    mut raw_values_of: impl FnMut(&str) -> Result<Vec<String>, E>,
+) -> Result<HashSet<String>, E> {
     // BFS over the sheet reference graph from the requested sheet. The `closure`
     // set doubles as the visited set, so cross-sheet cycles terminate.
     let mut closure: HashSet<String> = HashSet::new();
     closure.insert(requested_sheet.to_string());
     let mut queue: Vec<String> = vec![requested_sheet.to_string()];
     while let Some(sheet) = queue.pop() {
-        if let Some(targets) = refs.get(&sheet) {
-            for target in targets {
+        for raw in raw_values_of(&sheet)? {
+            if !is_formula(&raw) {
+                continue;
+            }
+            for (target, _row, _col) in formula::precedents_with(&raw, &sheet, env) {
                 if closure.insert(target.clone()) {
-                    queue.push(target.clone());
+                    queue.push(target);
                 }
             }
         }
     }
-    closure
+    Ok(closure)
 }
 
 pub struct WorkbookInputs {
     pub cells: BTreeMap<CellRef, String>,
     pub sheet_ids: HashSet<String>,
+    /// The clock and named ranges formulas see.
+    pub env: formula::Env,
 }
 
 pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
@@ -122,7 +122,7 @@ pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
 
     let precedents_of = |n: &CellRef| -> Vec<CellRef> {
         let raw = inputs.cells.get(n).map(String::as_str).unwrap_or("");
-        formula::precedents(raw, &n.sheet_id)
+        formula::precedents_with(raw, &n.sheet_id, &inputs.env)
             .into_iter()
             .map(|(sheet_id, row, col)| CellRef { sheet_id, row, col })
             .collect()
@@ -143,26 +143,31 @@ pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
         };
         let home = n.sheet_id.clone();
         let bad_sheet = core::cell::Cell::new(false);
-        let value = formula::evaluate(&raw, |sheet, r, c| {
-            let sid = match sheet {
-                Some(id) => {
-                    if inputs.sheet_ids.contains(id) {
-                        id.to_string()
-                    } else {
-                        bad_sheet.set(true);
-                        return None;
+        let value = formula::evaluate_with(
+            &raw,
+            &home,
+            &inputs.env,
+            |sheet: Option<&str>, r: &str, c: &str| {
+                let sid = match sheet {
+                    Some(id) => {
+                        if inputs.sheet_ids.contains(id) {
+                            id.to_string()
+                        } else {
+                            bad_sheet.set(true);
+                            return None;
+                        }
                     }
-                }
-                None => home.clone(),
-            };
-            results
-                .get(&CellRef {
-                    sheet_id: sid,
-                    row: r,
-                    col: c,
-                })
-                .cloned()
-        });
+                    None => home.clone(),
+                };
+                results
+                    .get(&CellRef {
+                        sheet_id: sid,
+                        row: r.to_string(),
+                        col: c.to_string(),
+                    })
+                    .cloned()
+            },
+        );
         let value = if bad_sheet.get() {
             "#REF!".to_string()
         } else {
@@ -181,8 +186,8 @@ mod tests {
     fn cr(sheet: &str, row: u32, col: u32) -> CellRef {
         CellRef {
             sheet_id: sheet.into(),
-            row,
-            col,
+            row: row.to_string(),
+            col: col.to_string(),
         }
     }
 
@@ -191,6 +196,19 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.clone(), v.to_string()))
             .collect()
+    }
+
+    fn closure_of(cells: &BTreeMap<CellRef, String>, sheet: &str) -> HashSet<String> {
+        sheet_closure(&formula::Env::default(), sheet, |s| {
+            Ok::<_, ()>(
+                cells
+                    .iter()
+                    .filter(|(k, _)| k.sheet_id == s)
+                    .map(|(_, v)| v.clone())
+                    .collect(),
+            )
+        })
+        .unwrap()
     }
 
     #[test]
@@ -202,7 +220,7 @@ mod tests {
             (cr("S2", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -211,7 +229,7 @@ mod tests {
     fn closure_includes_directly_referenced_sheet() {
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "5")]);
         assert_eq!(
-            sheet_closure(&cells, "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }
@@ -226,7 +244,7 @@ mod tests {
             (cr("S4", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, "S1"),
+            closure_of(&cells, "S1"),
             ["S1", "S2", "S3"].iter().map(|s| s.to_string()).collect()
         );
     }
@@ -235,7 +253,7 @@ mod tests {
     fn closure_of_sheet_with_no_cells_is_self() {
         let cells = inputs(&[(cr("S2", 0, 0), "9")]);
         assert_eq!(
-            sheet_closure(&cells, "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -245,7 +263,7 @@ mod tests {
         // S1 ↔ S2 mutually reference; closure(S1) must include both and terminate.
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "=[S1]!A1")]);
         assert_eq!(
-            sheet_closure(&cells, "S1"),
+            closure_of(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }
@@ -327,21 +345,22 @@ mod eval_tests {
                     (
                         CellRef {
                             sheet_id: (*s).into(),
-                            row: *r,
-                            col: *c,
+                            row: r.to_string(),
+                            col: c.to_string(),
                         },
                         (*v).into(),
                     )
                 })
                 .collect(),
             sheet_ids: sheets.iter().map(|s| (*s).to_string()).collect(),
+            env: formula::Env::default(),
         }
     }
     fn get(out: &BTreeMap<CellRef, String>, s: &str, r: u32, c: u32) -> String {
         out.get(&CellRef {
             sheet_id: s.into(),
-            row: r,
-            col: c,
+            row: r.to_string(),
+            col: c.to_string(),
         })
         .cloned()
         .unwrap_or_default()

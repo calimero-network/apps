@@ -1,27 +1,62 @@
-/* ── Mero Pass, in MeroDesign's visual language ───────────────────────────────
+/* ── Mero Pass, in the calimero.network design language ──────────────────────
  *
- * The tokens and the resets here are MeroDesign's `src/index.css`, taken rather
- * than re-derived. That distinction is the whole point of this file: the same
- * look was attempted once by re-expressing it in another app's tokens, and it
- * came out reading as the old app with different numbers. Copying the actual
- * values is what produces the same product.
+ * The same system the Calimero landing, Calimero Cloud, the App Registry and
+ * the desktop app share, taken from their CSS rather than re-derived:
  *
- * ONE DELIBERATE SUBSTITUTION: MeroDesign's accent is blue (#0d99ff). Mero Pass
- * uses the Calimero green, and green needs care that blue does not:
+ *   * charcoal first (`#131215`), light opt-in through `<html data-theme>`;
+ *   * Power Grotesk, self-hosted — light (300) body, 950 uppercase headings,
+ *     uppercase tracked labels and buttons;
+ *   * square corners and 1px hairlines (`#282828`), flat surfaces, depth only
+ *     on menus and dialogs;
+ *   * one lime.
  *
- *   --accent (#a5ff11) is a FILL, NEVER AN INK. It measures ~1.2:1 on white.
- *   Anything written ON it must be --accent-ink (#131215), near-black. White on
- *   this green is unreadable — that exact pairing shipped in mero-meet.
+ * ── The lime, by job ─────────────────────────────────────────────────────────
  *
- *   --accent-text (#4e7a00) is the ink for green TEXT on a white surface; it
- *   measures ~5:1, which clears AA for body copy. The fill is never used for
- *   text and the text colour is never used as a fill.
+ *   --accent       the FILL (#a5ff11). Always with --accent-ink (#131215) on
+ *                  top, in both themes.
+ *   --accent-text  lime used as TEXT, an icon or an outline. Lime on charcoal,
+ *                  olive #487800 on paper: lime on white measures ~1.2:1.
  *
- * Green is also used SPARINGLY: the primary action, a focus ring, a success
- * mark. A grid of solid green cards reads as highlighting rather than as a
- * list, so cards stay white on a hairline and the accent marks what is
- * actionable.
+ * The fill is never text and the text colour is never a fill.
+ *
+ * ── Names ────────────────────────────────────────────────────────────────────
+ *
+ * The variable names (`--page`, `--ink`, `--ink-faint`, …) are the ones every
+ * module in this app already reads, so the whole app moves with this file.
+ * What they hold is the shared system's: `--page` is the Cloud's `--bg`,
+ * `--ink-dim` its `--text-muted`, and so on.
  */
+
+@font-face {
+  font-family: 'Power Grotesk';
+  src: url('/fonts/powerGrotesk/PowerGrotesk-Black.woff2') format('woff2');
+  font-weight: 950;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Power Grotesk';
+  src: url('/fonts/powerGrotesk/PowerGrotesk-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Power Grotesk';
+  src: url('/fonts/powerGrotesk/PowerGrotesk-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Power Grotesk';
+  src: url('/fonts/powerGrotesk/PowerGrotesk-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Power Grotesk';
+  src: url('/fonts/powerGrotesk/PowerGrotesk-UltraLight.woff2') format('woff2');
+  font-weight: 200;
+  font-display: swap;
+}
 
 *,
 *::before,
@@ -32,62 +67,129 @@
 }
 
 :root {
-  /* Neutrals — MeroDesign's, unchanged. */
-  --page: #fafafa;
-  --surface: #ffffff;
-  --surface-2: #f5f5f5;
-  --border: #e0e0e0;
-  --border-soft: #e8e8e8;
-  --border-strong: #bbbbbb;
-  --ink: #111111;
-  --ink-2: #333333;
-  --ink-dim: #555555;
-  --ink-faint: #888888;
+  color-scheme: dark;
 
-  /* Calimero green. Read the note above before using either of these. */
+  /* Grounds and lines. */
+  --page: #131215;
+  --surface: #1a191c;
+  --surface-2: #211f23;
+  --sunken: #0f0e11;
+  --border: #282828;
+  --border-soft: #282828;
+  --border-strong: #404040;
+  --grid-line: rgba(252, 252, 252, 0.035);
+  --hover-wash: rgba(252, 252, 252, 0.04);
+
+  /* Ink tiers. */
+  --ink: #fcfcfc;
+  --ink-2: #c8c8c8;
+  --ink-dim: #8e8e8e;
+  --ink-faint: #8e8e8e;
+
+  /* The lime. Read the note above before using either of these. */
   --accent: #a5ff11;
-  --accent-hover: #b6ff3d;
+  --accent-hover: #b8ff4a;
   --accent-ink: #131215;
-  --accent-text: #4e7a00;
-  --accent-soft: rgba(165, 255, 17, 0.18);
+  --accent-text: #a5ff11;
+  --accent-soft: rgba(165, 255, 17, 0.08);
+  --accent-edge: rgba(165, 255, 17, 0.35);
+  --shadow-button: 0 0 20px 0 rgba(165, 255, 17, 0.45);
 
-  --danger: #c0392b;
-  --danger-soft: #fdf3f2;
-  --success: #15803d;
+  --danger: #ff6b6b;
+  --danger-ink: #131215;
+  --danger-soft: rgba(255, 107, 107, 0.1);
+  --danger-edge: rgba(255, 107, 107, 0.35);
+  --success: #5fd68a;
+  --success-soft: rgba(95, 214, 138, 0.1);
+  --warning: #f5b942;
+  --warning-soft: rgba(245, 185, 66, 0.1);
 
-  --radius: 6px;
-  --radius-lg: 8px;
-  --font:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --scrim: rgba(0, 0, 0, 0.72);
+  --shadow-float: 0 24px 48px rgba(0, 0, 0, 0.5);
+  --logo-filter: none;
+
+  --radius: 0;
+  --radius-lg: 0;
+  --font: 'Power Grotesk', arial, helvetica, sans-serif;
+  --mono:
+    'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --tracking-eyebrow: 0.28em;
+  --tracking-label: 0.16em;
+  --tracking-button: 0.15em;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --page: #f5f5f0;
+  --surface: #ffffff;
+  --surface-2: #ebebe4;
+  --sunken: #fafaf7;
+  --border: #dcdcd4;
+  --border-soft: #dcdcd4;
+  --border-strong: #b9b9b0;
+  --grid-line: rgba(19, 18, 21, 0.05);
+  --hover-wash: rgba(19, 18, 21, 0.04);
+
+  --ink: #131215;
+  --ink-2: #36353a;
+  --ink-dim: #5e5e5e;
+  --ink-faint: #6b6b70;
+
+  --accent-text: #487800;
+  --accent-soft: rgba(72, 120, 0, 0.08);
+  --accent-edge: rgba(72, 120, 0, 0.4);
+  --shadow-button: 3px 3px 0 0 #131215;
+
+  --danger: #c62828;
+  --danger-ink: #ffffff;
+  --danger-soft: rgba(198, 40, 40, 0.07);
+  --danger-edge: rgba(198, 40, 40, 0.35);
+  --success: #1b7a3a;
+  --success-soft: rgba(27, 122, 58, 0.08);
+  --warning: #8a5a00;
+  --warning-soft: rgba(138, 90, 0, 0.08);
+
+  --scrim: rgba(19, 18, 21, 0.5);
+  --shadow-float:
+    0 16px 40px rgba(19, 18, 21, 0.12), 0 2px 6px rgba(19, 18, 21, 0.06);
+  --logo-filter: brightness(0) invert(0.08);
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
-html,
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: var(--font);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.015em;
   color: var(--ink);
-  /* Light, explicitly. This file used to declare `color-scheme: light dark`
-     with white-on-#111111, which is why every app screen was dark while the
-     landing page it links from was light — two halves of one product
-     disagreeing about what it is. */
   background: var(--page);
-  color-scheme: light;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+code,
+pre,
+kbd {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
 button {
   font-family: inherit;
+  letter-spacing: inherit;
   cursor: pointer;
 }
 
@@ -95,11 +197,17 @@ input,
 textarea,
 select {
   font-family: inherit;
+  letter-spacing: inherit;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* Keyboard focus, once, in the accent. Removing an outline without replacing it
@@ -108,4 +216,87 @@ a {
 :focus-visible {
   outline: 2px solid var(--accent-text);
   outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+
+@keyframes mp-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── The lockup and the theme toggle, shared by the landing and the app ───── */
+
+.mp-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--ink);
+}
+.mp-wordmark__logo {
+  display: block;
+  line-height: 0;
+}
+.mp-wordmark__logo svg {
+  display: block;
+  width: auto;
+  height: 22px;
+}
+.mp-wordmark--md .mp-wordmark__logo svg {
+  height: 26px;
+}
+.mp-wordmark__product {
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 1px solid var(--border-strong);
+  color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.mp-wordmark--md .mp-wordmark__product {
+  font-size: 14px;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.mp-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--ink-dim);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+.mp-theme-toggle:hover {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }

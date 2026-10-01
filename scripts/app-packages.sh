@@ -53,8 +53,8 @@ case "${1:-}" in
     #     the first). It has no contract to compile, no .mpk to install and no
     #     merod to boot, so the wasm/browser/e2e matrices have nothing to run
     #     for it and skipping it is correct. It is still covered: the `frontend`
-    #     job is workspace-wide (`pnpm -r typecheck/test/build`) and picks it up
-    #     from the pnpm workspace, not from this mapping.
+    #     job takes its dirs from scripts/ci-scope.py (`frontend_dirs`), not
+    #     from this mapping.
     #   * A logic/ that maps to nothing — an app whose Cargo.toml is missing,
     #     unpublished or lacks [package.metadata.calimero]. That one really is
     #     dropped from CI with nothing to notice, which is what the warning is
@@ -67,7 +67,7 @@ case "${1:-}" in
       if [ -d "apps/$orphan/logic" ]; then
         echo "::warning::apps/$orphan has a logic/ but is not a cargo package with [package.metadata.calimero] — not covered by this run" >&2
       else
-        echo "::notice::apps/$orphan is frontend-only (no logic/) — no contract matrix applies; the workspace-wide frontend job covers it" >&2
+        echo "::notice::apps/$orphan is frontend-only (no logic/) — no contract matrix applies; the frontend job covers it (via ci-scope.py frontend_dirs)" >&2
       fi
     done
 

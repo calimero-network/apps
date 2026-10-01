@@ -11,4 +11,10 @@ crate-type = ["rlib"]
 
 # The pure formula engine: no calimero dependency at all, so it is shared by the
 # contract and (via recalc-wasm) the browser.
+#
+# `libm` supplies exp/ln/log10/pow in plain Rust. std's versions come
+# precompiled with the `trunc_sat` opcode that cargo-mero's wasm-opt rejects
+# (see logic/wasm-rustflags), and one implementation compiled with the app's
+# own flags also gives the node, the browser and native tests identical bits.
 [dependencies]
+libm = "0.2"

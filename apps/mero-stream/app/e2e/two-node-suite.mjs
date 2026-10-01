@@ -160,8 +160,9 @@ async function main() {
   scenario(2, "Namespace: create on node1, invite, node2 joins");
   const nsRes = await api(N1, "POST", "/admin-api/namespaces", {
     applicationId: env.DEV_APP_ID,
-    upgradePolicy: "LazyOnAccess",
-    alias: `suite-ns-${Date.now()}`,
+    // core's CreateNamespaceApiRequest is closed: `upgradePolicy`/`alias`
+    // are each a 400. `name` is the display name.
+    name: `suite-ns-${Date.now()}`,
   });
   const namespaceId =
     nsRes.data?.namespaceId ?? nsRes.data?.groupId ?? nsRes.data?.id;

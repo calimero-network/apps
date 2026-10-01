@@ -1,8 +1,33 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Consents": {
+      "kind": "record",
+      "doc": "One account's consents, in that account's own [`UserStorage`] slot: only\nthey can give (or forge) their consent, and nobody can occupy the entry.",
+      "fields": [
+        {
+          "name": "documents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "ContextMetadata": {
       "kind": "record",
+      "doc": "Metadata for tracking joined shared contexts",
       "fields": [
         {
           "name": "context_id",
@@ -47,6 +72,7 @@
     },
     "DocumentChunk": {
       "kind": "record",
+      "doc": "Document chunk with its embedding",
       "fields": [
         {
           "name": "text",
@@ -77,122 +103,9 @@
         }
       ]
     },
-    "DocumentInfo": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "hash",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "uploaded_by",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "uploaded_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "status",
-          "type": {
-            "$ref": "DocumentStatus"
-          }
-        },
-        {
-          "name": "pdf_blob_id",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "size",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "embeddings",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "f32"
-            }
-          },
-          "nullable": true
-        },
-        {
-          "name": "extracted_text",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "chunks",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "DocumentChunk"
-            }
-          },
-          "nullable": true
-        }
-      ]
-    },
-    "DocumentSignature": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "signer",
-          "type": {
-            "kind": "bytes",
-            "size": 32
-          }
-        },
-        {
-          "name": "signed_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "DocumentStatus": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Pending"
-        },
-        {
-          "name": "PartiallySigned"
-        },
-        {
-          "name": "FullySigned"
-        }
-      ]
-    },
     "IdentityMapping": {
       "kind": "record",
+      "doc": "Identity mapping for tracking user identities across contexts",
       "fields": [
         {
           "name": "private_identity",
@@ -225,13 +138,14 @@
     },
     "MeroSignState": {
       "kind": "record",
+      "doc": "Every field that decides who may do what is guarded by a storage type,\nbecause a member running a modified node skips every check in the methods\nbelow and writes plain fields directly:\n\n| field | who may write it, on every node |\n|---|---|\n| `is_private`, `owner`, `context_name` | nobody after `init` (`Frozen`) |\n| `roles` | admins (`AccessControl`'s writer set) |\n| `joined` | each account its own slot (`UserStorage`) |\n| `documents` | anyone adds; nobody edits; admins remove (`ModeratedOnce`) |\n| `document_signatures` | each signer their own; nobody edits or removes (`WriteOnce`) |\n| `consents` | each account its own slot (`UserStorage`) |\n\nThe private-context fields (`signatures`, `joined_contexts`,\n`identity_mappings`) are plain: a private context holds its owner's\naccount alone.",
       "fields": [
         {
           "name": "is_private",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "bool"
             }
@@ -242,7 +156,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "bytes",
               "size": 32
@@ -254,7 +168,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -300,72 +214,21 @@
           }
         },
         {
-          "name": "signature_count",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "participants",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "bytes",
-              "size": 32
-            },
-            "crdt_type": "unordered_set"
-          }
-        },
-        {
-          "name": "documents",
+          "name": "roles",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "DocumentInfo"
+              "kind": "bool"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Admin, signer and viewer grants, and removals."
         },
         {
-          "name": "document_signatures",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "list",
-              "items": {
-                "$ref": "DocumentSignature"
-              },
-              "crdt_type": "vector"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "permissions",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "PermissionCell"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "consents",
+          "name": "joined",
           "type": {
             "kind": "map",
             "key": {
@@ -376,16 +239,57 @@
               "fields": [],
               "crdt_type": "lww_register",
               "inner_type": {
-                "kind": "bool"
+                "kind": "u64"
               }
+            }
+          },
+          "doc": "Accounts that registered themselves through an open invitation: `Sign`\nunless an admin set another level or removed them."
+        },
+        {
+          "name": "documents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
             },
-            "crdt_type": "unordered_map"
+            "value": {
+              "$ref": "StoredDocument"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Moderated by the admins, kept equal to `roles.admins()`."
+        },
+        {
+          "name": "document_signatures",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SignedVersion"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"{document_id}/{signer hex}/{nonce}\"`: a document's signatures are one\nprefix, and the nonce leaves no key for anyone to occupy first."
+        },
+        {
+          "name": "consents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Consents"
+            }
           }
         }
       ]
     },
     "ParticipantRole": {
       "kind": "variant",
+      "doc": "Participant roles in shared contexts",
       "variants": [
         {
           "name": "Owner"
@@ -401,33 +305,9 @@
         }
       ]
     },
-    "PermissionCell": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "level",
-          "type": {
-            "$ref": "PermissionLevel"
-          }
-        }
-      ]
-    },
-    "PermissionLevel": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Read"
-        },
-        {
-          "name": "Sign"
-        },
-        {
-          "name": "Admin"
-        }
-      ]
-    },
     "SignatureRecord": {
       "kind": "record",
+      "doc": "Signature record - uses LWW based on created_at timestamp",
       "fields": [
         {
           "name": "id",
@@ -459,6 +339,118 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "SignedVersion": {
+      "kind": "record",
+      "doc": "One signature: the signer (the entry's owner stamp) took the version at\n`base_hash`, put their mark on it, and produced the version at `new_hash`,\nstored as `pdf_blob_id`. Written once, so a signature can be neither\nwithdrawn nor edited, and the version it signed stays on record.",
+      "fields": [
+        {
+          "name": "base_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "new_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "signed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StoredDocument": {
+      "kind": "record",
+      "doc": "A document as uploaded. Written once: nobody, the uploader included, can\nchange it afterwards, and only an admin (a moderator of `documents`) can\nremove it. The uploader is the entry's owner stamp.\n\nWhat signing changes is recorded beside it, one write-once\n[`SignedVersion`] per signature, never by rewriting this.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "required_signers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          },
+          "doc": "Who must sign it: every participant holding `Sign` or `Admin` when it\nwas uploaded. Fixed with the document, so completion is a fact about\nthe past — nobody who joins later reopens it."
+        },
+        {
+          "name": "embeddings",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "extracted_text",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "DocumentChunk"
+            }
+          },
+          "nullable": true
         }
       ]
     }

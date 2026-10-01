@@ -44,3 +44,22 @@ pnpm dev
 
 For more information how to build app check our docs:
 https://calimero-network.github.io/build/quickstart
+
+## Owned keys are per owner (core 0.11.0-rc.57)
+
+Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Moderated`,
+`ModeratedOnce`) is one namespace per account: two accounts writing one key hold two
+independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
+acts on the CALLER's own entry only. This app was migrated:
+
+Post and comment ids are 16 random bytes, so a second holder of one only exists if a
+patched node copied it. Every read by id (`get_post`, commenting, voting, the paging
+cursors) takes the entry of the **lowest account** holding the id — the same pick on
+every node. A feed row's author is recovered by matching the row against the holders of
+its id. Editing and deleting act on the caller's own post; `moderate_post` and
+`moderate_comment` remove **every** holder's entry at the id with `remove_by` (a key-only
+`remove` would remove only the moderator's own, i.e. nothing).
+
+Votes: a tally reads each distinct key `"<subject>|<account>"` once, as the entry of the
+account the key names (`get_by`), so a row filed under someone else's key never counts
+and a key two accounts hold never counts twice. Test: `a_post_id_two_accounts_hold_is_two_posts`.

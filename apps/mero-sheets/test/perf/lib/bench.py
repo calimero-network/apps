@@ -54,20 +54,35 @@ def timed_execute(client, cid, method, args):
     return _output(res), ms
 
 
-# The node caps events per commit (core runtime `max_events` = 100; the
-# spreadsheet app emits ~1 event per cell op), so an apply_cell_ops batch larger
-# than that fails with "events overflow". Chunk well under the cap.
-APPLY_CHUNK = 40
+# `apply_cell_ops` refuses more than MAX_OPS_PER_APPLY ops (logic/src/lib.rs):
+# one execution's gas budget fits 160 of the costliest cell op.
+APPLY_CHUNK = 100
+
+
+def wire_op(op):
+    """A generator op (flat `{"kind": "Set", "row": 0, "col": 1, ..}`, by
+    position) in the contract's adjacently tagged `CellOp` wire form, by id:
+    `{"name": "Set", "payload": {"row_id": "0", "col_id": "1", ..}}`. The
+    harness never inserts rows, so every id is the legacy one: the position."""
+    payload = {k: v for k, v in op.items() if k not in ("kind", "row", "col")}
+    payload["row_id"] = str(op["row"])
+    payload["col_id"] = str(op["col"])
+    return {"name": op["kind"], "payload": payload}
+
+
+def cell_pos(cell):
+    """A returned cell's (row, col), from its legacy ids."""
+    return int(cell.get("row_id")), int(cell.get("col_id"))
 
 
 def apply_ops(client, cid, sheet_id, ops, chunk_size=APPLY_CHUNK):
-    """Apply ops via apply_cell_ops in commits of <= chunk_size (to stay under the
-    node's per-commit event cap). Total wall-clock summed. Returns (ms, n_chunks)."""
+    """Apply ops via apply_cell_ops in commits of <= chunk_size (the contract
+    refuses larger ones). Total wall-clock summed. Returns (ms, n_chunks)."""
     batches = chunked(ops, chunk_size) if chunk_size and len(ops) > chunk_size else [ops]
     total = 0.0
     for batch in batches:
         _, ms = timed_execute(client, cid, "apply_cell_ops",
-                              {"sheet_id": sheet_id, "ops": batch})
+                              {"sheet_id": sheet_id, "ops": [wire_op(o) for o in batch]})
         total += ms
     return total, len(batches)
 

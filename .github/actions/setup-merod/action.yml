@@ -1,0 +1,84 @@
+name: Set up merod
+description: >
+  Download the merod release the root Cargo.toml pins, from cache when
+  possible, and export its path as MEROD_BINARY.
+
+runs:
+  using: composite
+  steps:
+    # The merod the workspace declares, so the browser runs against the same
+    # release the contract is built for. Read from the merod-image pin rather
+    # than hard-coded, so a core bump stays one edit.
+    - name: Resolve the merod version
+      id: merod
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
+        test -n "$ver"
+        echo "merod $ver"
+        echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+    # ⚠️ CACHED, and that is the actual fix rather than a nicety.
+    #
+    # This job is a MATRIX over every changed app, so a push that touches the
+    # workspace root fans out to ~16 legs — and each one downloaded the SAME
+    # immutable tarball from GitHub releases at the same moment. That is not
+    # just wasteful, it is very likely what provoked the throttling: master
+    # went red on
+    #
+    #     curl: (22) The requested URL returned error: 504     × 6
+    #
+    # in `Browser E2E (mero-sign)`, dying in this step before a single test
+    # ran, and the identical failure took out `mero-pass` on #150 an hour
+    # earlier and `mero-blocks` before that.
+    #
+    # A release asset is immutable for a given tag, so the version IS the
+    # cache key and there is nothing to invalidate. After the first leg warms
+    # it, the other fifteen do no network I/O at all.
+    - name: Cache merod
+      id: merod-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/merod
+        key: merod-${{ runner.os }}-${{ steps.merod.outputs.version }}
+
+    - name: Download merod
+      if: steps.merod-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver='${{ steps.merod.outputs.version }}'
+        url="https://github.com/calimero-network/core/releases/download/${ver}/merod_x86_64-unknown-linux-gnu.tar.gz"
+        # ⚠️ Retried, and PATIENTLY. The previous settings were
+        # `--retry 5 --retry-delay 3`, which gives up after roughly thirty
+        # seconds — measured against the failure above, all six attempts
+        # landed inside 26s and every one got a 504. A releases blip outlasts
+        # that. `--retry-max-time` spreads the attempts over three minutes
+        # instead, which is still far cheaper than a red master.
+        #
+        # `--retry-all-errors` so a connection reset counts as retryable;
+        # plain `--retry` is documented around transient HTTP and timeout
+        # cases only, and `curl: (35) Recv failure` is neither.
+        curl -fsSL --retry 8 --retry-delay 5 --retry-max-time 180 \
+          --retry-all-errors --connect-timeout 20 --max-time 300 \
+          "$url" -o /tmp/merod.tgz
+        mkdir -p "$HOME/.local/merod"
+        tar -xzf /tmp/merod.tgz -C "$HOME/.local/merod"
+
+    - name: Put merod on the path
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Runs on a cache hit too, so `MEROD_BINARY` is set either way — the
+        # download step is skipped when cached, and a variable exported only
+        # there would be empty for fifteen of the sixteen legs.
+        bin=$(find "$HOME/.local/merod" -type f -name merod -print -quit)
+        if [ -z "$bin" ]; then
+          echo "::error::merod is not in ~/.local/merod — the cache restored nothing and the download was skipped"
+          ls -laR "$HOME/.local/merod" || true
+          exit 1
+        fi
+        chmod +x "$bin"
+        "$bin" --version
+        echo "MEROD_BINARY=$bin" >> "$GITHUB_ENV"

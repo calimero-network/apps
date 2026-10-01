@@ -1,0 +1,1445 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Attachment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AttachmentInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AttachmentPublic": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ChannelText": {
+      "kind": "record",
+      "doc": "The channel's name and description, writable by the admins only.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ContextInfo": {
+      "kind": "record",
+      "doc": "Per-context metadata returned by `get_info` / `get_channel_info`.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ContextType": {
+      "kind": "variant",
+      "doc": "\"channel\" or \"dm\", fixed when the context is created.",
+      "variants": [
+        {
+          "name": "Channel"
+        },
+        {
+          "name": "Dm"
+        }
+      ]
+    },
+    "Founding": {
+      "kind": "record",
+      "doc": "What a context is founded with. Frozen in `init`: nobody, the creator\nincluded, can change it afterwards.",
+      "fields": [
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FullMessageResponse": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "total_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MessageWithReactions"
+            }
+          }
+        },
+        {
+          "name": "start_position",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "MeroChat": {
+      "kind": "record",
+      "doc": "One context = one conversation (channel or DM).\nMessages, threads, reactions, profiles, and metadata live here.\n\nEvery field that is not collaborative is held to its writer by storage, on\nevery node, so a patched node cannot get around the checks below by\nskipping them: the checks only make a refused write fail early.",
+      "fields": [
+        {
+          "name": "founding",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "$ref": "Founding"
+            }
+          }
+        },
+        {
+          "name": "info",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "$ref": "ChannelText"
+            }
+          },
+          "doc": "Writers: the admins (kept equal to `roles.admins()`, see `sync_staff`)."
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Message"
+            },
+            "crdt_type": "authored_vector"
+          },
+          "doc": "Top-level messages. Each slot is owned by its sender; the index is the\nstable cursor clients page and resume by."
+        },
+        {
+          "name": "message_ids",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Slot"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Message id -> the `messages` entry holding it, written once by the\nsender. Turns edits, deletes and \"does this message exist\" into one\nlookup instead of a walk of the channel."
+        },
+        {
+          "name": "threads",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Message"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`thread_key(parent, id)` -> reply. The author edits their reply; the\nstaff (the moderators) remove any."
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "unit"
+            },
+            "crdt_type": "authored_sorted_map"
+          },
+          "doc": "`reaction_key(message, emoji, account)` -> nothing: the key is the\nreaction, and the entry is owned by whoever reacted."
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StoredProfile"
+            }
+          },
+          "doc": "One profile per account, written only by that account."
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Per-context moderation roles, backed by a writer-set-guarded registry.\nThe admin tier IS the writer set, so a non-admin's forged `grant`/\n`grant_admin` delta is rejected at merge. `Admin` maps to the admin\ntier; `Mod` to the `\"mod\"` named role; `Banned` lives in `banned`."
+        },
+        {
+          "name": "banned",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Soft-ban exclusion set. Missing/`false` entry = not banned. Kept apart\nfrom `AccessControl` because moderators (not just admins) may ban and\nunban, which its admin-gated `grant` cannot express. Writers: the\nstaff, admins and moderators (see `sync_staff`)."
+        },
+        {
+          "name": "hidden",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "bool"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Top-level messages the staff removed. A message's slot belongs to its\nsender and cannot be rewritten by anyone else, so a removal is recorded\nhere and every read blanks the message. Writers: the staff."
+        },
+        {
+          "name": "read_receipts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "u64"
+              }
+            }
+          },
+          "doc": "Per-account last-read timestamp, written only by that account. Enables\ncross-device unread tracking without localStorage."
+        }
+      ]
+    },
+    "Message": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          },
+          "doc": "Whoever the writing node SAID sent it, echoed back to that sender. A\npatched node can put anyone here, so no read trusts it: views take the\nsender from the entry's owner stamp."
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            },
+            "crdt_type": "unordered_set"
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Attachment"
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Attachment"
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "edited_on",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "MessageSentEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MessageWithReactions": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Position in the channel's append-only vector.\n\nA STABLE cursor, and the reason clients can page and resume without\ngaps: appends land at the end and never renumber what came before, and\na delete keeps its slot (the text is blanked, the entry stays). So an\nindex a client stored two hours ago still names the same message.\n\nCounting a window from the END, which `get_messages` does, has no such\nproperty: every append shifts it and a client paging that way re-reads\nor skips messages. Use `get_messages_from` for anything that resumes."
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentPublic"
+            }
+          }
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentPublic"
+            }
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "edited_on",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "list",
+              "items": {
+                "kind": "bytes",
+                "size": 32
+              }
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "thread_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "thread_last_timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "parent_message_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "doc": "In-context moderation role. Who holds which role is enforced by storage\n(`roles` and `banned` are writer-set guarded). What a ban STOPS is not: every\nstate-mutating method checks the caller is not Banned, but that check runs\non the banned member's own node, so a patched node skips it. Banned users\nstay in the underlying group; removing them for good is a core group kick.\n\n- `User`     default for everyone except the creator\n- `Mod`      can flip a User to Banned (and back)\n- `Admin`    can change anyone's role; creator starts here\n- `Banned`   cannot perform any state-mutating action",
+      "variants": [
+        {
+          "name": "User"
+        },
+        {
+          "name": "Mod"
+        },
+        {
+          "name": "Admin"
+        },
+        {
+          "name": "Banned"
+        }
+      ]
+    },
+    "SearchHit": {
+      "kind": "record",
+      "doc": "One message a search found: enough to list and open it, not the message.\n\nDeliberately slim. Rendering a full message walks its mentions, files,\nimages, reactions and thread; a search used to do that for every hit and\nthen throw away all but one page. A client wanting the whole message reads\nit by `index` (`get_messages_from`), or opens the thread by\n`parent_message_id`.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_message_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Set for a thread reply: the top-level message it replies to."
+        },
+        {
+          "name": "index",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Position of the top-level message: the hit itself, or a reply's\nparent. What a permalink to the conversation is made of."
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "anchor_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The timestamp the hit is ranked by: its own for a top-level message,\nits parent's for a reply, which is listed with its thread."
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          },
+          "doc": "From the entry's owner stamp, never the message's own field."
+        },
+        {
+          "name": "snippet",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Plain text around the first match, not markup."
+        },
+        {
+          "name": "match_start",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The match inside `snippet`, in UTF-16 code units (a JS string index)."
+        },
+        {
+          "name": "match_end",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "SearchPage": {
+      "kind": "record",
+      "doc": "A page of `search_messages`.",
+      "fields": [
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "SearchHit"
+            }
+          }
+        },
+        {
+          "name": "next_cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Opaque; pass it back for the next page. `None` once the walk reached the\noldest message."
+        },
+        {
+          "name": "frontier_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true,
+          "doc": "The oldest timestamp among the top-level messages this call read, or\n`None` if it read none. The walk goes newest first by position, so later\npages rank at or below it (up to clock skew between senders): a client\nmerging several channels can show every hit above it without waiting\nfor more pages."
+        }
+      ]
+    },
+    "Slot": {
+      "kind": "variant",
+      "doc": "Where a message lives: a slot of the channel, or a key of the thread map.",
+      "variants": [
+        {
+          "name": "Channel",
+          "payload": {
+            "kind": "bytes",
+            "size": 32
+          },
+          "doc": "The `messages` entry's id, as bytes."
+        },
+        {
+          "name": "Thread",
+          "payload": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "StoredProfile": {
+      "kind": "record",
+      "doc": "Per-context profile stored in CRDT state.",
+      "fields": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "UserProfile": {
+      "kind": "record",
+      "doc": "Per-context user profile returned by `get_profiles`.",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "delete_draft",
+      "doc": "Delete the calling user's draft for the given channel.",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_message",
+      "doc": "Delete a message. Its sender blanks it in place (the slot and its\nindex stay). The staff remove anyone's: a thread reply is removed from\nthe thread outright, and a top-level message, whose slot only its\nsender can rewrite, is recorded in `hidden` and read back\nblank. Both are enforced by storage, so a member who is neither the\nsender nor staff cannot delete, or undelete, anything.",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_message",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "new_message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "Message"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_channel_info",
+      "doc": "Alias for `get_info` — satisfies frontends that call `get_channel_info`.\nThe legacy `channel` argument is accepted but ignored.",
+      "params": [
+        {
+          "name": "_channel",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "ContextInfo"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_draft",
+      "doc": "Return the calling user's draft for the given channel, or an empty\nstring if none exists.",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_info",
+      "params": [],
+      "returns": {
+        "$ref": "ContextInfo"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_member_role",
+      "doc": "Read the current role of `identity`. Defaults to `User` when the\nidentity has no explicit entry (i.e. anyone who joined and never\nhad their role changed).",
+      "params": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_message_count",
+      "doc": "How many messages the channel holds, without reading any of them.\n\nOne row read — the child trie maintains the count. A client compares it\nwith the highest index it has stored to know whether it is behind, and\nby how much, before deciding what to fetch.",
+      "params": [],
+      "returns": {
+        "kind": "u64"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_messages",
+      "doc": "A page of the channel, or of one thread, counted back from the END:\noffset 0 is the newest page. `search_term` keeps only the messages whose\ntext contains it (see `search_messages` for how text is compared), and\n`total_count` is then the number of matches.\n\nA search here still reads the whole channel, because `total_count`\npromises every match; it builds only the page it returns, though.\nAnything that searches a channel which can grow should use\n`search_messages`, whose cost per call is bounded.",
+      "params": [
+        {
+          "name": "parent_message",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "offset",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "search_term",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FullMessageResponse"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_messages_from",
+      "doc": "Messages by ABSOLUTE position, ascending — the resumable read.\n\n`get_messages` counts its window from the END, so every append shifts\nit: a client that stored an offset and came back later re-reads or skips\nmessages, and the gap is silent. Indices from the START do not move,\nbecause appends land after them and a delete keeps its slot. That makes\n`start` a cursor a client can persist across sessions.\n\nTwo uses, both needed for a chat that survives being closed:\n\n- **Catch up.** A client holding everything through index `n` asks for\n  `n + 1` onward and gets exactly what it missed, however long it was\n  away and whether or not it was subscribed at the time. Live events are\n  an optimisation on top of this, never the only way to learn.\n- **Backfill.** Scrolling up asks for a window ending where the local\n  copy begins.\n\n`total_count` is the channel's length, so a client can tell how far\nbehind it is before fetching anything.",
+      "params": [
+        {
+          "name": "start",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FullMessageResponse"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_profiles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "UserProfile"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_unread_count",
+      "doc": "Count messages newer than the caller's last-read timestamp, excluding\nmessages sent by the caller and soft-deleted messages. Looks at the\nnewest `MAX_UNREAD_SCAN` messages only, so the count saturates there.",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_unread_mentions",
+      "doc": "Count unread messages that mention the caller directly (@username),\nor use a broadcast mention (@everyone / @here). Same window as\n`get_unread_count`.",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "creator_username",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_roles",
+      "doc": "All members with a non-default role (Admin / Mod / Banned). Members with\nthe implicit `User` role are not returned (they're inferred).",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "tuple",
+          "elements": [
+            {
+              "kind": "bytes",
+              "size": 32
+            },
+            {
+              "$ref": "Role"
+            }
+          ]
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "mark_as_read",
+      "doc": "Persist the caller's last-read position. No event is emitted so this\nis a silent CRDT write — it gossips to other nodes but does not trigger\nan SSE notification on any subscriber.",
+      "params": [
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "mark_messages_as_read",
+      "doc": "No-op stub so frontends that call `mark_messages_as_read` don't get\na \"method not found\" error. Read state is tracked client-side only.",
+      "params": [
+        {
+          "name": "_channel",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "save_draft",
+      "doc": "Save a draft for the calling user in the given channel.\nPassing an empty string is equivalent to deleting the draft.",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "search_messages",
+      "doc": "Messages whose text contains `query`, newest first, a bounded amount of\nwork per call.\n\nText is compared as a reader sees it (markup dropped, entities decoded)\nand folded for case, accents and width as mero-docs folds it, so \"cafe\"\nfinds \"Café\". Deleted and staff-removed messages are never returned.\n\nThe channel is walked by position from the newest message down, each\ntop-level message followed by the replies in its thread, so a reply is\nlisted with its thread and ranked by `anchor_timestamp`. A call stops at\n`limit` hits (default 20, at most 50) or once it has read\n`MAX_SEARCH_ROWS` messages or `MAX_SEARCH_BYTES` of text, whichever\ncomes first, and returns a `next_cursor` to continue from; a page can\ntherefore hold fewer hits than `limit`, even none, and still not be the\nlast. A common term in a huge channel costs a page, never the channel.",
+      "params": [
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "SearchPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "send_message",
+      "params": [
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent_message",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentInput"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentInput"
+            }
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "Message"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_member_role",
+      "doc": "Change a member's role. Authorisation:\n- `Admin` may change anyone's role to anything.\n- `Mod`   may only flip a `User` to `Banned` (or back).\n- `User`/`Banned` may not call this.\nAn admin cannot demote themselves below `Admin` (lockout-prevention).\n\nAdmin/Mod grants go through `AccessControl` (admin-gated, rejected at\nmerge if forged). Ban/unban writes `banned`, whose writers are the\nstaff, so a moderator — who is not an admin — can still moderate and a\nmember who is neither cannot ban anyone, however patched their node.",
+      "params": [
+        {
+          "name": "target",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_profile",
+      "doc": "Set or update this user's profile in the current context.\n\nUsername is **write-once** as far as this method goes: once a profile\nexists for an identity, the `username` field is preserved on subsequent\ncalls — only the avatar can be changed. This freezes a member's handle\nto whatever they registered at first profile creation (typically on\njoin), so other members keep seeing a stable identity even if the user\nlater rotates their local `chat-username` from a different device.\n\nThe profile lives in the caller's own `UserStorage` slot, so nobody\nelse can write it — not even first. That is what stops one member\nclaiming another's slot before they do and speaking under their name.\nThe username freeze is the owner's own choice, not something storage\nenforces against them.",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_info",
+      "doc": "Rename the channel or change its description. Admins only: storage\nrefuses anyone outside `info`'s writer set, on every node.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_reaction",
+      "doc": "Add or remove the CALLER's reaction to a message.\n\nReactions are keyed by ACCOUNT, and each is an entry owned by the\naccount that made it: storage refuses anyone else's add in their name\n(the key's account must match the owner stamp to be counted) and any\nremoval but their own. The client resolves accounts to names for\ndisplay.",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "add",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "InfoUpdated"
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "MessageEdited",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "Payload: the id of the message whose TEXT changed.\n\nEditing used to emit `MessageSent`, which is what a brand-new message\nemits. A peer could not tell the two apart, so it announced an edit as\n\"X sent a message\" and refreshed the newest page looking for it — and an\nedit to an older message is not in that page, so the change never\nappeared. Naming the message lets a reader refresh exactly it."
+    },
+    {
+      "name": "MessageSent",
+      "payload": {
+        "$ref": "MessageSentEvent"
+      }
+    },
+    {
+      "name": "MessageSentThread",
+      "payload": {
+        "$ref": "MessageSentEvent"
+      }
+    },
+    {
+      "name": "ProfileUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ReactionUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoleUpdated",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "Payload: target identity (base58) whose role just changed."
+    }
+  ],
+  "state_root": "MeroChat",
+  "state_version": 1
+}

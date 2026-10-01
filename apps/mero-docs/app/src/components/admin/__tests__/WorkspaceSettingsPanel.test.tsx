@@ -1,0 +1,126 @@
+import React from 'react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { WorkspaceSettingsPanel } from '../WorkspaceSettingsPanel';
+
+const OWNER = 'o'.repeat(64);
+const NAMED = 'a'.repeat(64);
+const UNNAMED = 'b'.repeat(64);
+const PICKED = 'c'.repeat(64);
+const SELF = 'd'.repeat(64);
+const answered = { ids: null as Set<string> | null }; // members whose own name read has answered; null = all
+
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    rootGroupId: 'ns',
+    registryClient: {},
+    registryContextId: 'ctx',
+    registryDuplicates: [],
+    // SELF is deliberately stale here vs. the per-member metadata fetch
+    // below, to catch anything that reads this map without also checking
+    // the fresher per-member name (the fresh name must win, as it does
+    // for the visible <MemberLabel>).
+    namespaceMemberNames: { [NAMED]: 'Dana', [PICKED]: 'Carol', [SELF]: 'Old Self Name' },
+  }),
+}));
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: (_ns: unknown, memberId: string | null | undefined) => ({
+    name: memberId === SELF ? 'Fresh Self Name' : null,
+    loaded: !answered.ids || answered.ids.has(memberId ?? ''),
+  }),
+}));
+vi.mock('@/hooks/useNamespacePermissions', () => ({
+  useNamespacePermissions: () => ({ canManageNamespace: true }),
+}));
+const registryAdmin = {
+  owner: OWNER as string | null,
+  isOwner: true,
+  managers: [NAMED, UNNAMED],
+  loading: false,
+  error: null as Error | null,
+};
+vi.mock('@/hooks/useRegistryAdmin', () => ({
+  useRegistryAdmin: () => registryAdmin,
+}));
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  useConfirm: () => async () => false,
+}));
+vi.mock('@/components/common/MemberPicker', () => ({
+  MemberPicker: ({ onSelect }: { onSelect: (id: string) => void }) => (
+    <button type="button" onClick={() => onSelect(PICKED)}>
+      Pick member
+    </button>
+  ),
+}));
+
+describe('WorkspaceSettingsPanel folder role setters', () => {
+  afterEach(() => {
+    registryAdmin.error = null;
+    registryAdmin.owner = OWNER;
+    registryAdmin.managers = [NAMED, UNNAMED];
+    answered.ids = null;
+  });
+
+  it('shows plain copy, not the raw error, when roles fail to load', () => {
+    registryAdmin.error = new Error('registry context has no owned identity');
+    render(<WorkspaceSettingsPanel />);
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe("Couldn't load roles. Try refreshing the page.");
+  });
+
+  it('offers no ownership claim while the owner is still being read', () => {
+    registryAdmin.owner = null;
+    render(<WorkspaceSettingsPanel />);
+    expect(screen.queryByRole('button', { name: /claim ownership/i })).toBeNull();
+    expect(screen.queryByText(/no owner yet/i)).toBeNull();
+  });
+
+  it('names each remove button by display name or the shared fallback', () => {
+    render(<WorkspaceSettingsPanel />);
+    expect(screen.getByRole('button', { name: 'Remove Dana from people who can set folder roles' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Remove Unnamed member from people who can set folder roles' }),
+    ).toBeTruthy();
+  });
+
+  it('never calls a member unnamed while their name loads', () => {
+    answered.ids = new Set([NAMED]);
+    render(<WorkspaceSettingsPanel />);
+    expect(
+      screen.getByRole('button', { name: 'Remove member from people who can set folder roles' }),
+    ).toBeTruthy();
+  });
+
+  it('uses the same remove icon as every other member row, not a bare glyph', () => {
+    render(<WorkspaceSettingsPanel />);
+    const removeButton = screen.getByRole('button', { name: 'Remove Dana from people who can set folder roles' });
+    // The icon carries no accessible role; identifying it requires direct DOM access.
+    // eslint-disable-next-line testing-library/no-node-access
+    expect(removeButton.querySelector('.lucide-trash-2')).toBeTruthy();
+  });
+
+  it('names the remove button by the same fresh name shown on the row', () => {
+    registryAdmin.managers = [NAMED, UNNAMED, SELF];
+    render(<WorkspaceSettingsPanel />);
+    expect(
+      screen.getByRole('button', { name: 'Remove Fresh Self Name from people who can set folder roles' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Fresh Self Name')).toBeTruthy();
+  });
+
+  it('echoes a picked member by name, not by key', () => {
+    render(<WorkspaceSettingsPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pick member' }));
+    expect(screen.getByText('Carol')).toBeTruthy();
+    expect(screen.queryByText(new RegExp(PICKED.slice(0, 16)))).toBeNull();
+  });
+
+  // "Manager" is the member role; this list must not borrow the word.
+  it('describes the list without the word manager', () => {
+    render(<WorkspaceSettingsPanel />);
+    expect(screen.getByText('People who can set folder roles')).toBeTruthy();
+    expect(screen.queryByText(/manager/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /manager/i })).toBeNull();
+  });
+});

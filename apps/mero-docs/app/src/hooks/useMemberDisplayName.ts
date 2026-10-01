@@ -1,0 +1,134 @@
+// Per-(namespace, member) display name backed by core's setMemberMetadata.
+// Returns null when unset; callers render the shared "unnamed member"
+// fallback, never the raw key (see <MemberLabel>).
+//
+// Self-edit is the only mutation surface this hook exposes: the writer
+// methods always target `selfIdentity` and ignore the `memberId` arg, so a
+// component holding a reference to `setName` cannot rename someone else
+// (the server gates that on `CAN_MANAGE_METADATA` anyway, but the hook
+// shouldn't even offer the API - defense-in-depth). Admin "rename any
+// member" is an explicit follow-up surface, not this hook.
+
+import { useCallback, useEffect, useState } from 'react';
+import {
+  useMemberMetadata,
+  useSetMemberMetadata,
+} from '@calimero-network/mero-react';
+import { useContextEvents } from './useContextEvents';
+import { useDriveWorkspace } from './useDriveWorkspace';
+
+/** Display names are stored in core's `MetadataRecord.name` which has no
+ *  server-side max length, so we set our own to match the typical
+ *  username affordance. The HTML input also enforces this with
+ *  `maxLength={64}`; this is the programmatic backstop. */
+export const MAX_DISPLAY_NAME_LEN = 64;
+
+export interface MemberDisplayName {
+  /** Display name or null when none is set. */
+  name: string | null;
+  loading: boolean;
+  /** True once the first read for this member has answered; stays true while
+   *  later refetches run, so a caller can tell "no name" from "not read yet". */
+  loaded: boolean;
+  error: Error | null;
+  /** Sets the current caller's display name in this namespace. Throws if
+   *  trimmed input is empty or the caller's identity isn't resolved yet.
+   *  Always targets `selfIdentity` - see file header.
+   *
+   *  NOTE: There is no `clearName()` here. mero-js's `SetMetadataRequest`
+   *  currently types `name` as `string | undefined`, which means "omit ⇒
+   *  keep current name". The wire protocol supports `null ⇒ clear`, but
+   *  the TS surface needs to land that as `string | null` first. Until
+   *  then, "clear my display name" is a deferred surface. */
+  setName: (name: string) => Promise<void>;
+  /** Re-read this (namespace, member)'s metadata from the server.
+   *  Consumers that mutate the metadata via a *different* surface
+   *  (e.g. `useAdminRenameMember` renaming someone else, then re-
+   *  rendering the row that displays the new name) call this to
+   *  refresh the cached value without remounting. */
+  refetch: () => Promise<void>;
+}
+
+export function useMemberDisplayName(
+  namespaceId: string | null | undefined,
+  memberId: string | null | undefined,
+): MemberDisplayName {
+  const {
+    selfIdentity,
+    registryContextId,
+    refetch: refetchWorkspace,
+  } = useDriveWorkspace();
+  const { metadata, loading, error, refetch } = useMemberMetadata(
+    namespaceId ?? null,
+    memberId ?? null,
+  );
+  const { setMemberMetadata } = useSetMemberMetadata();
+  const loaded = useFirstReadAnswered(
+    `${namespaceId ?? ''}:${memberId ?? ''}`,
+    loading,
+  );
+
+  // Metadata changes without a context event; the registry's sync run is the tick.
+  // With no member there is nothing to refetch, so an idle caller holds no subscription.
+  const onMetadataEvent = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  useContextEvents(memberId ? registryContextId : null, onMetadataEvent, {
+    strict: true,
+  });
+
+  const name = metadata?.name ?? null;
+
+  const setName = useCallback(
+    async (next: string) => {
+      const trimmed = next.trim();
+      if (!trimmed) throw new Error('display name cannot be empty');
+      if (trimmed.length > MAX_DISPLAY_NAME_LEN) {
+        throw new Error(
+          `display name must be ${MAX_DISPLAY_NAME_LEN} characters or fewer`,
+        );
+      }
+      if (!namespaceId) throw new Error('namespaceId required');
+      if (!selfIdentity) throw new Error('self identity not resolved');
+      // setName is a *self*-only operation by contract. Callers must bind
+      // the hook to selfIdentity if they want to write. Avoids the
+      // refetch-vs-write mismatch where the hook is bound to memberId=X
+      // but we write to selfIdentity - refetch() would refresh X's
+      // metadata, leaving the caller's own state stale until next mount.
+      if (memberId && memberId !== selfIdentity) {
+        throw new Error(
+          'setName is self-only: bind useMemberDisplayName to selfIdentity to write',
+        );
+      }
+      await setMemberMetadata(namespaceId, selfIdentity, {
+        name: trimmed,
+        data: {},
+      });
+      // The workspace member rows name us in carets and member lists; without
+      // this they keep the old name until the next sync run.
+      await Promise.all([refetch(), refetchWorkspace()]);
+    },
+    [
+      namespaceId,
+      memberId,
+      selfIdentity,
+      setMemberMetadata,
+      refetch,
+      refetchWorkspace,
+    ],
+  );
+
+  return { name, loading, loaded, error, setName, refetch };
+}
+
+// useMemberMetadata is idle (loading=false, no metadata) until its mount
+// effect issues the read, so `loading` alone cannot mark the first answer.
+function useFirstReadAnswered(key: string, loading: boolean): boolean {
+  const [issuedKey, setIssuedKey] = useState<string | null>(null);
+  const [answeredKey, setAnsweredKey] = useState<string | null>(null);
+  useEffect(() => setIssuedKey(key), [key]);
+  useEffect(() => {
+    if (issuedKey === key && !loading) setAnsweredKey(key);
+  }, [issuedKey, key, loading]);
+  return answeredKey === key;
+}

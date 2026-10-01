@@ -3,12 +3,14 @@
   "types": {
     "ChannelRecord": {
       "kind": "record",
+      "doc": "A channel in the workspace directory: another Calimero **context**, made\ndiscoverable by registering its id here.\n\n`registered_at` exists for the same reason `FileRecord::uploaded_at` does —\n`impl_atomic_lww_leaf!` needs a field to order concurrent writes by, and\nthis is a whole-record value, not a struct of independently mergeable CRDT\nfields. Two members registering the same context id concurrently converge on\nthe later write rather than on a field-by-field mixture of the two.",
       "fields": [
         {
           "name": "context_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The target context, 64 hex characters. The map key as well as a field,\nso a listing needs no zip with its keys."
         },
         {
           "name": "name",
@@ -26,7 +28,8 @@
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The ACCOUNT that registered it, 64 hex. Listings fill it from the\nentry's owner stamp, never from the stored bytes, which the writer\nchose."
         },
         {
           "name": "registered_at",
@@ -55,7 +58,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Public replicated KV map"
         },
         {
           "name": "handler_counter",
@@ -63,7 +67,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Counter for handler executions (CRDT G-Counter - grow only)"
         },
         {
           "name": "user_items_simple",
@@ -80,7 +85,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Simple user-owned data (e.g., profile name)"
         },
         {
           "name": "user_items_nested",
@@ -92,7 +98,8 @@
             "value": {
               "$ref": "NestedMap"
             }
-          }
+          },
+          "doc": "Nested user-owned data (e.g., user's private KV store)"
         },
         {
           "name": "frozen_items",
@@ -104,7 +111,8 @@
             "value": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Content-addressed immutable storage"
         },
         {
           "name": "acl",
@@ -117,7 +125,8 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
+          },
+          "doc": "Named-role registry. Its backing writer set IS the admin tier, so\n\"who may grant a role\" and \"who may rotate the admins\" are the same\nauthenticated question — there is no separate admin bookkeeping to drift."
         },
         {
           "name": "acl_doc",
@@ -133,7 +142,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Capability-guarded document. Its per-account `OpMask` map is PROJECTED\nfrom `acl`'s roles by `acl_project`; it is deliberately not a second\nsource of truth, which is why nothing here writes the map directly."
         },
         {
           "name": "owned_doc",
@@ -149,7 +159,8 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Single-owner cell. `SharedStorage` above is a flat writer SET; this is\nthe degenerate case with one writer plus a real transfer operation, and\n`Ownable` enforces the at-most-one invariant that `SharedStorage` does\nnot."
         },
         {
           "name": "games",
@@ -167,7 +178,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Maps game_id -> SHA256(secret) hex"
         },
         {
           "name": "files",
@@ -180,29 +192,8 @@
               "$ref": "FileRecord"
             },
             "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "file_counter",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "file_owner",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
+          },
+          "doc": "File metadata records"
         },
         {
           "name": "crdt_counters",
@@ -217,7 +208,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of G-Counters (grow-only, concurrent increments should sum)\nCounter<false> = GCounter (default)"
         },
         {
           "name": "crdt_pn_counters",
@@ -232,7 +224,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of PN-Counters (supports decrement, concurrent inc/dec should merge correctly)\nCounter<true> = PNCounter (allows decrement)"
         },
         {
           "name": "crdt_registers",
@@ -250,7 +243,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of LWW registers (latest timestamp wins)"
         },
         {
           "name": "crdt_metadata",
@@ -275,7 +269,8 @@
               "crdt_type": "unordered_map"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Nested maps (field-level merge)"
         },
         {
           "name": "crdt_metrics",
@@ -287,7 +282,8 @@
               "crdt_type": "counter"
             },
             "crdt_type": "vector"
-          }
+          },
+          "doc": "Vector of G-Counters (element-wise merge)"
         },
         {
           "name": "crdt_tags",
@@ -304,7 +300,8 @@
               "crdt_type": "unordered_set"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Map of sets (union merge)"
         },
         {
           "name": "sorted_items",
@@ -322,7 +319,8 @@
               }
             },
             "crdt_type": "sorted_map"
-          }
+          },
+          "doc": "Key-ordered map."
         },
         {
           "name": "sorted_tags",
@@ -332,7 +330,8 @@
               "kind": "string"
             },
             "crdt_type": "sorted_set"
-          }
+          },
+          "doc": "Element-ordered set — the `SortedSet` counterpart of `sorted_items`,\nthrough the same host index path."
         },
         {
           "name": "rga_document",
@@ -340,7 +339,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "replicated_growable_array"
-          }
+          },
+          "doc": "Collaborative text document"
         },
         {
           "name": "rga_edit_count",
@@ -348,7 +348,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Edit count for document (G-Counter)"
         },
         {
           "name": "rga_metadata",
@@ -366,7 +367,8 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Document metadata (title, owner)"
         },
         {
           "name": "authored_items",
@@ -384,7 +386,8 @@
               }
             },
             "crdt_type": "authored_map"
-          }
+          },
+          "doc": "Per-owner keyspace (core rc.57): each account holds its own entry at a\nkey, and only that account edits or removes it."
         },
         {
           "name": "authored_vec",
@@ -399,7 +402,8 @@
               }
             },
             "crdt_type": "authored_vector"
-          }
+          },
+          "doc": "Append-only vector with per-slot ownership; only the pusher can update/tombstone their slot"
         },
         {
           "name": "shared_data",
@@ -415,29 +419,49 @@
                 "kind": "string"
               }
             }
-          }
+          },
+          "doc": "Group-writable single value; writers rotate at runtime"
         },
         {
-          "name": "ws_name",
+          "name": "ws_claim",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "WsClaim"
+              }
             }
-          }
+          },
+          "doc": "Name and admin. Writers are the workspace admins: the context creator\nfirst, then whoever an admin grants `admin`. Every node checks a write\nagainst them, so a patched member cannot claim or rename it."
         },
         {
-          "name": "ws_admin",
+          "name": "ws_roles",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
             }
-          }
+          },
+          "doc": "identity -> role, in a writer-set cell with the same writers as\n`ws_claim`: every entry is guarded by it, so a patched member cannot\ngrant itself `admin` or demote the real one. `LwwRegister` values so\ntwo admins changing one member's role concurrently converge."
         },
         {
           "name": "ws_channels",
@@ -449,8 +473,9 @@
             "value": {
               "$ref": "ChannelRecord"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "context_id -> channel. Keyed by the context id so a re-register of the\nsame context updates rather than duplicates. Each entry is owned by\nthe account that registered it; the workspace admins moderate, so an\nadmin may remove anyone's entry and nobody else may."
         },
         {
           "name": "ws_groups",
@@ -462,26 +487,9 @@
             "value": {
               "$ref": "WsGroupRecord"
             },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "ws_roles",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "string"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "group_id -> group, owned and moderated as `ws_channels`."
         },
         {
           "name": "ws_pings",
@@ -489,7 +497,8 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
-          }
+          },
+          "doc": "Pongs received via `xcall`. Grow-only: a pong is an event that happened,\nand no node can un-happen another node's."
         }
       ]
     },
@@ -686,23 +695,6 @@
       "fields": [
         {
           "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_DocumentCreated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "title",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "owner",
           "type": {
             "kind": "string"
           }
@@ -1241,7 +1233,8 @@
           "type": {
             "kind": "bytes",
             "size": 32
-          }
+          },
+          "doc": "The ACCOUNT whose slot was written — `UserStorage` is keyed by\naccount since rc.21, so a device id here would name a slot nobody\ncan read back."
         },
         {
           "name": "value",
@@ -1270,6 +1263,7 @@
     },
     "FileRecord": {
       "kind": "record",
+      "doc": "File record for blob metadata. Atomic whole-record LWW by `uploaded_at`\n(see `impl_atomic_lww_leaf!`); not a struct of CRDT fields, so no `Mergeable`\nderive.",
       "fields": [
         {
           "name": "id",
@@ -1286,8 +1280,7 @@
         {
           "name": "blob_id",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "kind": "string"
           }
         },
         {
@@ -1318,29 +1311,34 @@
     },
     "Identity": {
       "kind": "record",
+      "doc": "What `whoami` returns — see that method for why both halves exist.",
       "fields": [
         {
           "name": "device_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "This installation, 64 hex characters."
         },
         {
           "name": "account_id",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The person, 64 hex characters. The writer-set key."
         }
       ]
     },
     "MemberRecord": {
       "kind": "record",
+      "doc": "A workspace member and the role the app grants them.",
       "fields": [
         {
           "name": "identity",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Whatever the caller passed to `ws_set_member_role`. Free-form on\npurpose: see `ws_set_member_role` for why this is NOT an `AccountId`."
         },
         {
           "name": "role",
@@ -1352,6 +1350,7 @@
     },
     "NestedMap": {
       "kind": "record",
+      "doc": "Nested map type for user storage.",
       "fields": [
         {
           "name": "map",
@@ -1375,6 +1374,7 @@
     },
     "WorkspaceInfo": {
       "kind": "record",
+      "doc": "Summary of the workspace, for the header card.",
       "fields": [
         {
           "name": "name",
@@ -1386,7 +1386,8 @@
           "name": "admin",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The ACCOUNT that ran `ws_init`, 64 hex."
         },
         {
           "name": "channel_count",
@@ -1408,8 +1409,29 @@
         }
       ]
     },
+    "WsClaim": {
+      "kind": "record",
+      "doc": "The workspace claim: its name and the account that made it. Written once,\nby `ws_init`, into a writer-set cell whose writers are the admins.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty is the \"not claimed\" sentinel — `ws_init` rejects an empty name."
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The account that ran `ws_init`, 64 hex."
+        }
+      ]
+    },
     "WsGroupRecord": {
       "kind": "record",
+      "doc": "A group in the workspace directory — the app-level mirror of a node subgroup.",
       "fields": [
         {
           "name": "group_id",
@@ -1433,7 +1455,8 @@
           "name": "created_by",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "As `ChannelRecord::created_by`: read from the owner stamp."
         },
         {
           "name": "registered_at",
@@ -1447,6 +1470,7 @@
   "methods": [
     {
       "name": "acl_admins",
+      "doc": "Every admin, as 64-hex account ids.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1458,6 +1482,7 @@
     },
     {
       "name": "acl_capabilities",
+      "doc": "The projected map: account -> the operations it may perform on `acl_doc`.\n\nThis, not `acl_members_of`, is what a merge check reads. Comparing the\ntwo is how you see an un-projected grant.",
       "params": [],
       "returns": {
         "kind": "map",
@@ -1483,6 +1508,7 @@
     },
     {
       "name": "acl_doc_set",
+      "doc": "Write the guarded document. Requires `WRITE` in the PROJECTED map.",
       "params": [
         {
           "name": "value",
@@ -1519,6 +1545,7 @@
     },
     {
       "name": "acl_grant_admin",
+      "doc": "Add an admin. Admin-only, and enforced at merge as a writer-set rotation\nrather than by the fail-fast guard alone.",
       "params": [
         {
           "name": "account_hex",
@@ -1555,6 +1582,7 @@
     },
     {
       "name": "acl_is_admin",
+      "doc": "Whether `account_hex` is an admin.",
       "params": [
         {
           "name": "account_hex",
@@ -1588,6 +1616,7 @@
     },
     {
       "name": "acl_my_roles",
+      "doc": "The CALLER's roles, resolved by account.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -1599,6 +1628,7 @@
     },
     {
       "name": "acl_project",
+      "doc": "Push the role registry onto `acl_doc`'s capability map.\n\nMust be re-run after ANY grant, revoke, or admin change: the registry\nwrite and this projection are separate signed actions, and only the map\nis consulted at merge. Admins are always given `FULL` by `project_onto`\nso a projection can never lock them out of the document they administer.",
       "params": [],
       "returns": {
         "kind": "u32"
@@ -1607,6 +1637,7 @@
     },
     {
       "name": "acl_revoke",
+      "doc": "Revoke a role.\n\nA revoke stores `false` rather than deleting the entry, so membership\nstays a plain last-writer-wins boolean with no tombstone — which is why\nre-granting after a revoke converges, unlike the set-tombstone case.",
       "params": [
         {
           "name": "role",
@@ -1628,6 +1659,7 @@
     },
     {
       "name": "acl_revoke_admin",
+      "doc": "Remove an admin.\n\nRemoving yourself is permitted and is not reversible from your side —\nthere is no separate owner above this tier to appeal to. Emptying the set\nentirely would leave the registry unwritable forever, so that is refused.",
       "params": [
         {
           "name": "account_hex",
@@ -1643,6 +1675,7 @@
     },
     {
       "name": "acl_roles",
+      "doc": "The roles this app recognises, and the capability each confers.\n\n`AccessControl` stores a role only as `role\\0member` keys, so it cannot\nenumerate role names — the list is app state, and this method is how a\nclient learns it instead of hard-coding it.",
       "params": [],
       "returns": {
         "kind": "map",
@@ -1752,6 +1785,7 @@
     },
     {
       "name": "authored_get",
+      "doc": "The value at `key` of whoever holds it: the lowest account's, if\nseveral do, the same pick on every node. Keys are per owner, so a\nkey-only `get` would read the CALLER's own entry only.",
       "params": [
         {
           "name": "key",
@@ -1766,7 +1800,30 @@
       "intent": "read_only"
     },
     {
+      "name": "authored_get_by",
+      "doc": "`owner`'s own value at `key` (`owner` is a 64-hex account id).",
+      "params": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "authored_get_owner",
+      "doc": "The account `authored_get` reads `key` from: the lowest holder.",
       "params": [
         {
           "name": "key",
@@ -1810,7 +1867,27 @@
       "intent": "read_only"
     },
     {
+      "name": "authored_owners",
+      "doc": "Every account holding an entry at `key`, ascending.",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "authored_remove",
+      "doc": "Removes the CALLER's own entry at `key`: keys are per owner, so\nanother account's entry at the same key is theirs and stays.",
       "params": [
         {
           "name": "key",
@@ -1963,6 +2040,7 @@
     },
     {
       "name": "clear_with_handler",
+      "doc": "Clear with handler trigger (for testing event-driven handlers)",
       "params": [],
       "returns": {
         "kind": "unit"
@@ -2246,6 +2324,7 @@
     },
     {
       "name": "get_user_simple_for",
+      "doc": "Read another user's slot of `UserStorage`, addressed by ACCOUNT.\n\nTakes the ACCOUNT id, not the device key: rc.21 rekeyed `UserStorage`\nfrom `UnorderedMap<PublicKey, T>` to `UnorderedMap<AccountId, T>`, so a\ndevice key now names a slot nobody writes to and this would answer\n`None` forever rather than failing. Get the value from `whoami`, the\nsame way `shared_add_writer` does.",
       "params": [
         {
           "name": "account_hex",
@@ -2382,6 +2461,7 @@
     },
     {
       "name": "my_account",
+      "doc": "This node's account on its own, hex-encoded.\n\n`whoami` already returns this value as one half of an `Identity`, and a\nmerobox workflow can capture it directly (`result.output.account_id` —\n`sorted-collections.yml` does exactly that), so this method adds no\ncapability. It exists for one reason: **it is the name core's own copy\nof this scaffold uses** (`apps/scaffolding-e2e`).\n\nThe two scaffolds have drifted apart once already. Keeping the account\naccessor spelled the same in both is what lets a scenario written\nagainst one run unchanged against the other, which is the only cheap\ndefence against drifting again.\n\nKeep both names. `whoami` is the better call — one round trip for both\nhalves of an identity — and nothing here should be rewritten to use\nthis one.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -2427,6 +2507,7 @@
     },
     {
       "name": "owned_owner",
+      "doc": "The owner, or `None`.\n\n`Ownable` holds at most one writer by construction. A malformed\nmulti-writer cell answers `None` rather than picking one, so this can\nnever report a non-deterministic owner.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -2450,6 +2531,7 @@
     },
     {
       "name": "owned_transfer",
+      "doc": "Hand ownership to `account_hex`. Owner-only, and one-way: the previous\nowner is no longer a writer once this lands, so there is no undo.",
       "params": [
         {
           "name": "account_hex",
@@ -2510,6 +2592,7 @@
     },
     {
       "name": "remove_with_handler",
+      "doc": "Remove with handler trigger (for testing event-driven handlers)",
       "params": [
         {
           "name": "key",
@@ -2655,6 +2738,7 @@
     },
     {
       "name": "set",
+      "doc": "Basic KV set without handlers",
       "params": [
         {
           "name": "key",
@@ -2760,6 +2844,7 @@
     },
     {
       "name": "set_with_handler",
+      "doc": "KV set with handler triggers (for testing event-driven handlers)",
       "params": [
         {
           "name": "key",
@@ -2804,6 +2889,7 @@
     },
     {
       "name": "shared_get_writers",
+      "doc": "The writer set, as 64-hex-character account ids.\n\nThese are `AccountId`s (people), NOT the device keys the rest of this\ncontract reports — core 0.11 made the account the only authorization\nsubject. `whoami` returns the caller's own, which is what you feed back\ninto `shared_add_writer`.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2838,6 +2924,7 @@
     },
     {
       "name": "shared_rotate_writers",
+      "doc": "Replace the whole writer set in one rotation.\n\n`shared_add_writer` can only ever union a key in, so nothing in this app\ncould REMOVE a writer — which left the interesting half of the writer set\nuntested: retroactive revocation, and two nodes rotating concurrently to\nsets that disagree on membership.\n\nThe caller must be a current writer, and passing a set that excludes\nthemselves is allowed and permanent as far as this method is concerned —\nit is how revocation is tested, and there is no way back in.",
       "params": [
         {
           "name": "account_hexes",
@@ -2886,6 +2973,7 @@
     },
     {
       "name": "sorted_keys",
+      "doc": "All keys in ascending order (index-backed).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -2897,6 +2985,7 @@
     },
     {
       "name": "sorted_last_key",
+      "doc": "The largest key (a reverse seek, not a scan).",
       "params": [],
       "returns": {
         "kind": "string"
@@ -2913,6 +3002,7 @@
     },
     {
       "name": "sorted_range",
+      "doc": "Entries whose keys fall in `[start, end)`, ascending. Half-open, like\nevery Rust range — `end` is NOT returned.",
       "params": [
         {
           "name": "start",
@@ -2976,6 +3066,7 @@
     },
     {
       "name": "sorted_tag_add",
+      "doc": "Insert `tag`; `true` if it was newly added.",
       "params": [
         {
           "name": "tag",
@@ -3006,6 +3097,7 @@
     },
     {
       "name": "sorted_tag_remove",
+      "doc": "Remove `tag`; `true` if it was present.\n\n⚠️ `UnorderedSet` used to never converge on insert-after-remove; that was\nfixed in rc.10, and the sorted variant shares the tombstone machinery.\nThe e2e re-adds a removed tag for exactly that reason.",
       "params": [
         {
           "name": "tag",
@@ -3021,6 +3113,7 @@
     },
     {
       "name": "sorted_tags_all",
+      "doc": "All elements in ascending order (index-backed).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3032,6 +3125,7 @@
     },
     {
       "name": "sorted_tags_last",
+      "doc": "The largest element (a reverse seek).",
       "params": [],
       "returns": {
         "kind": "string"
@@ -3040,6 +3134,7 @@
     },
     {
       "name": "sorted_tags_range",
+      "doc": "Elements in `[start, end)`, ascending.",
       "params": [
         {
           "name": "start",
@@ -3064,6 +3159,7 @@
     },
     {
       "name": "tracing_probe",
+      "doc": "Drives the host-backed `tracing` subscriber, and reports what came back.\n\n`app::log!` reaches the execution outcome on its own. The `tracing`\nmacros do not, unless the SDK's `tracing` feature is on — it installs a\nsubscriber that forwards them to the same host log. That feature is off\nby default because the subscriber costs wasm size, so whether it is\nwired up is a per-app build decision, and this is the call that proves\nthis build made it.\n\nThree things are being tested at once, which is why the KV insert is\nhere and not incidental:\n\n* this crate's own `tracing::info!`/`warn!` arrive;\n* `calimero-storage`'s internal instrumentation arrives too — the insert\n  is what makes the storage crate emit, and it only shows up if the\n  subscriber is process-wide rather than scoped to this crate;\n* `set_log_level` actually retunes the filter at runtime.\n\n⚠️ The SDK's default level is **WARN**, not INFO — deliberately, because\n`calimero_storage` logs routine operations at INFO and an INFO default\nfloods every execution. So at the default level this emits the WARN line\nonly: the info AND debug lines are both filtered out inside the guest and\nnever reach the outcome at all. With `debug = true` the debug line\nappears, and so does the storage crate's own output. That difference is\nthe assertion; a probe that only ever ran at one level could not tell a\nworking filter from a subscriber that was never installed.\n\n⚠️ WHERE THE LINES GO. Not into this call's response. The node collects\nthem into the execution outcome and writes them to ITS OWN log\n(`crates/server/src/execute.rs`: `info!(\"execution log {i}| {}\", log)`);\nthe JSON-RPC reply carries the return value and nothing else. So no RPC\nclient — not the frontend, not merobox's `result.logs` — can observe\nthem. Grep the node's log for `execution log`.",
       "params": [
         {
           "name": "debug",
@@ -3133,6 +3229,7 @@
     },
     {
       "name": "whoami",
+      "doc": "Both halves of the caller's identity, as the rest of this API spells\nthem.\n\ncore 0.11 split one `executor_id` into two things, and app code has to\nknow which one it is holding:\n\n* `device_id` — this installation. The CRDT replica id, and what the\n  node's group-membership listing calls `identity`. 64 hex characters,\n  like every other id since core 0.11.0-rc.27 removed base58.\n* `account_id` — the person. The only authorization subject: the\n  `shared_*` writer set is keyed by it. 64 hex characters.\n\nNothing on the wire maps one to the other, so a writer-set grant cannot\nbe built from a membership listing alone — the account holder has to\nhand over the value this method returns.",
       "params": [],
       "returns": {
         "$ref": "Identity"
@@ -3141,6 +3238,7 @@
     },
     {
       "name": "ws_get_info",
+      "doc": "Name, admin and the three counts behind the header card.\n\nErrors — rather than returning an empty summary — while unclaimed, so a\ncaller cannot mistake \"no workspace here\" for \"an empty workspace\".",
       "params": [],
       "returns": {
         "$ref": "WorkspaceInfo"
@@ -3149,6 +3247,7 @@
     },
     {
       "name": "ws_get_member_role",
+      "doc": "`identity`'s role, or the empty string if they have none.",
       "params": [
         {
           "name": "identity",
@@ -3164,6 +3263,7 @@
     },
     {
       "name": "ws_init",
+      "doc": "Claim the workspace: name it and record the caller as its admin.\n\nOnly a workspace admin may — initially the context creator, the sole\nwriter of `ws_claim` from `init`. A claim by anyone else is refused by\nstorage, on every node, rather than by the check below: \"first caller\nwins\" read off a public register is a race a patched node always wins.\nThere is no transfer — this is a scaffold, and a role-transfer flow\nwould be the interesting part of a different example.",
       "params": [
         {
           "name": "name",
@@ -3179,6 +3279,7 @@
     },
     {
       "name": "ws_list_channels",
+      "doc": "The directory. Readable by anyone the node admitted, member or not —\na listing is how a new member finds out what to join.",
       "params": [],
       "returns": {
         "kind": "list",
@@ -3212,6 +3313,7 @@
     },
     {
       "name": "ws_my_role",
+      "doc": "The CALLER's role, resolved by account. Empty string if they have none —\nincluding the case where a role was granted under their device key\ninstead; see `ws_set_member_role`.",
       "params": [],
       "returns": {
         "kind": "string"
@@ -3220,6 +3322,7 @@
     },
     {
       "name": "ws_ping_channel",
+      "doc": "Ping another context in the directory, via `xcall` to its `ws_pong`.\n\nFire-and-forget by design: `env::xcall` only QUEUES the call, so a\nsuccessful return here means \"queued\", never \"delivered\". Whether the\nnode then dispatches it or denies it is invisible from inside the\ncontract — watch `ws_ping_count` on the target, not the result of this.\n\nThe TYPE is `ContextId`, not `String`, so the SDK does the decode and a\nmalformed id fails at the boundary rather than here. It was called\n`target_context_id_b58` until rc.27 removed base58; the suffix named an\nencoding that no longer exists, and a parameter name is part of the ABI,\nso leaving it would have every caller spell out the wrong one forever.",
       "params": [
         {
           "name": "target_context_id",
@@ -3236,6 +3339,7 @@
     },
     {
       "name": "ws_ping_count",
+      "doc": "Pongs received. The only way to observe that a `ws_ping_channel`\nactually landed.",
       "params": [],
       "returns": {
         "kind": "u64"
@@ -3244,6 +3348,7 @@
     },
     {
       "name": "ws_pong",
+      "doc": "Receive a ping from another context.\n\n`#[app::xcall(from_same_app)]` is the trust boundary and the node\nenforces it: a context running a DIFFERENT application is rejected\nbefore this body runs. The checks below are what is left over for the\napp — rejecting a direct call (which carries no origin) and refusing a\ncaller whose self-reported `from_context` disagrees with the origin the\nnode set.\n\nNot in the frontend's API surface, and it cannot be: a direct call is\nexactly what this rejects.",
       "params": [
         {
           "name": "from_context",
@@ -3262,6 +3367,7 @@
     },
     {
       "name": "ws_register_channel",
+      "doc": "Add a context to the directory, or update the entry for one the caller\nregistered. Any member may register; `read-only` may not (an app-level\ncheck). A context someone else registered is theirs: storage refuses\nthe overwrite, so it can only be removed by them or an admin.",
       "params": [
         {
           "name": "context_id",
@@ -3289,6 +3395,7 @@
     },
     {
       "name": "ws_register_group",
+      "doc": "Add or update a group; ownership as `ws_register_channel`.",
       "params": [
         {
           "name": "group_id",
@@ -3316,6 +3423,7 @@
     },
     {
       "name": "ws_set_member_role",
+      "doc": "Grant `identity` a workspace role. Admin only — and enforced by\nstorage: `ws_roles`' writers are the admins.\n\n`identity` is a free-form `String`, not an `AccountId`, and that is not\nlaziness: the UI grants roles to node identities it read from the admin\nAPI's group-membership listing, which reports DEVICE keys, while\n`caller_account()` is an ACCOUNT. Since rc.27 both render as 64 hex\ncharacters, not even a shape check can tell them apart. Nothing on the\nwire maps one to the other (see `whoami`), so this map has to hold\nwhichever of the two the operator pasted. The consequence is explicit\nrather than hidden:\n**only a role granted under the caller's own `account_id` is a role that\n`ws_my_role` will ever return** — everything else is a directory entry.\nThis is the app-level mirror of the writer-set trap in `shared_*`.\n\nGranting or taking away `admin` also rotates the admin set — the\nwriters of `ws_claim` and `ws_roles`, and both directories' moderators\n— for an identity that parses as an account. That set, not the role\nstring, is what storage enforces.",
       "params": [
         {
           "name": "identity",
@@ -3337,6 +3445,7 @@
     },
     {
       "name": "ws_unregister_channel",
+      "doc": "Remove a channel: its registrant or a workspace admin (a moderator of\nthe directory) may, and storage refuses anyone else.",
       "params": [
         {
           "name": "context_id",
@@ -3419,7 +3528,8 @@
       "name": "CapabilitiesProjected",
       "payload": {
         "$ref": "Event_CapabilitiesProjected"
-      }
+      },
+      "doc": "The role registry was pushed onto `acl_doc`'s capability map. Separate\nfrom the grant events because it is a separate signed action — a grant\nthat has not been projected yet confers nothing on the document."
     },
     {
       "name": "ChannelPinged",
@@ -3441,12 +3551,6 @@
     },
     {
       "name": "Cleared"
-    },
-    {
-      "name": "DocumentCreated",
-      "payload": {
-        "$ref": "Event_DocumentCreated"
-      }
     },
     {
       "name": "FileDeleted",
@@ -3578,7 +3682,8 @@
       "name": "SharedWritersRotated",
       "payload": {
         "$ref": "Event_SharedWritersRotated"
-      }
+      },
+      "doc": "The writer set was REPLACED. Distinct from `SharedWriterAdded` on\npurpose: a rotation can drop writers, and a listener that only ever sees\n\"added\" events would build a set that never shrinks."
     },
     {
       "name": "TagAdded",

@@ -1,6 +1,6 @@
 # Deploying the apps on Vercel
 
-One Vercel project per app, all sixteen configured identically. Everything a
+One Vercel project per app, all seventeen configured identically. Everything a
 project needs is committed — there is **nothing to set in the dashboard beyond
 the Root Directory**, and in particular **no environment variables**.
 
@@ -65,8 +65,8 @@ callback, and it is matched by **exact origin**. If a project is re-linked and
 lands on a different domain (a `-git-` preview URL, a renamed project, a custom
 domain), login breaks with the app looking fine. Repo metadata
 (`[package.metadata.calimero.links] frontend` in `logic/Cargo.toml`) and the
-published registry value currently agree for all sixteen — keep them that way,
-and republish the bundle if a domain changes.
+published registry value currently agree for every app that has a project —
+keep them that way, and republish the bundle if a domain changes.
 
 ## Per-app settings
 
@@ -76,8 +76,11 @@ and republish the bundle if a domain changes.
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
-| `mero-drive` | `mero-drive` | `apps/mero-drive/app` | `dist` | https://mero-drive.vercel.app |
+| `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://mero-chat-pwa.vercel.app |
+| `mero-chess` | `mero-chess` | `apps/mero-chess/app` | `dist` | https://mero-chess.vercel.app ⚠️ not created yet |
+| `mero-docs` | `mero-docs` | `apps/mero-docs/app` | `dist` | https://mero-docs.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
+| `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
 | `mero-stream` | `mero-stream-neon` | `apps/mero-stream/app` | `dist` | https://mero-stream-neon.vercel.app |
@@ -90,9 +93,15 @@ and republish the bundle if a domain changes.
 
 The project names above are inferred from each published `links.frontend` host,
 so they are what the URLs imply rather than what the dashboard says — confirm on
-re-linking. Four do **not** match the directory:
-`kv-store` → `mero-kv-store`, `mero-issue-tracker` → `mero-issue-tracker-app`,
+re-linking. Five do **not** match the directory:
+`kv-store` → `mero-kv-store`, `mero-chat` → `mero-chat-pwa`,
+`mero-issue-tracker` → `mero-issue-tracker-app`,
 `mero-stream` → `mero-stream-neon`, `scaffolding-e2e` → `scaffolding-e2e-application`.
+
+`mero-chat` keeps the project the standalone `mero-chat-pwa` repo deployed:
+its origin is the published `links.frontend` and the login callback's
+registered origin, so the project is relinked (Git repo `apps`, Root Directory
+`apps/mero-chat/app`) rather than recreated.
 
 ### ⚠️ Four Root Directory settings changed
 
@@ -107,11 +116,40 @@ origins (`meropass.vercel.app`, `p2p-sheets.vercel.app`) already returned
 `DEPLOYMENT_NOT_FOUND`, so no project existed to rename. mero-forum is in the
 same position.
 
+`mero-drive` was later renamed to `mero-docs`, and its Vercel project with it:
+the project is `mero-docs` (Root Directory `apps/mero-docs/app`), and
+`mero-drive.vercel.app` redirects to `mero-docs.vercel.app` so old links keep working.
+
+### ⚠️ mero-chess has no project yet
+
+It is the first app written in this repo rather than migrated into it, so
+nothing was ever linked for it. The repo side is complete and CI-checked —
+`apps/mero-chess/app/vercel.json` carries the framework, the `dist` output, the
+SPA rewrite and the cache headers, and the app commits both `packageName` and
+`registryUrl` defaults, so there is nothing to set beyond the two dashboard
+fields every app needs:
+
+1. **New Project** → import `calimero-network/apps`.
+2. **Project Name** `mero-chess` — the name decides the domain, and the domain
+   is the redirect URI (see below), so anything else silently breaks hosted
+   login.
+3. **Root Directory** `apps/mero-chess/app`, with **Include files outside the
+   Root Directory** ON. Leave the build, install and output settings empty:
+   `vercel.json` carries them.
+4. Node ≥ 20 (the root `package.json` `engines`), pnpm from the root
+   `packageManager` field.
+
+**Create it before the bundle is published, not after.** `release.yml` publishes
+on a push to `main` touching `apps/*/logic/**`, and the published bundle carries
+`frontend = "https://mero-chess.vercel.app"` as the origin that authorizes the
+login callback. Publishing first would authorize a `vercel.app` subdomain nobody
+has claimed — and those are first-come.
+
 ## Package ids
 
 The registry package id is what the frontend sends at login. Since the `mero-`
-rename, **every app's package id is `com.calimero.<directory>`** — with one
-exception, noted below:
+rename, **every app's package id is `com.calimero.<directory>`** — with two
+exceptions, noted below:
 
 | app | package |
 |---|---|
@@ -119,8 +157,11 @@ exception, noted below:
 | `kv-store` | `com.calimero.kv-store` |
 | `mero-blocks` | `com.calimero.mero-blocks` |
 | `mero-calendar` | `com.calimero.mero-calendar` |
-| `mero-drive` | `com.calimero.mero-drive-docs` ⚠️ |
+| `mero-chat` | `com.calimero.chat` ⚠️ |
+| `mero-chess` | `com.calimero.mero-chess` |
+| `mero-docs` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
+| `mero-crm` | `com.calimero.mero-crm` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
 | `mero-sign` | `com.calimero.mero-sign` |
 | `mero-stream` | `com.calimero.mero-stream` |
@@ -131,11 +172,16 @@ exception, noted below:
 | `mero-sheets` | `com.calimero.mero-sheets` |
 | `scaffolding-e2e` | `com.calimero.scaffolding-e2e` |
 
-The one exception is **`mero-drive`, which publishes as
-`com.calimero.mero-drive-docs`** — the `-docs` suffix names the primary service
-of a two-service bundle (`docs` + `registry`). It was left alone in the rename
-because it already carries the `mero-` prefix; changing it would orphan its
-published bundles for no naming gain.
+The first is **`mero-docs`, which publishes as
+`com.calimero.mero-drive-docs`**, the id it had as `mero-drive`.
+It was left alone in both renames: a new id is a new registry package, so
+changing it would orphan existing installs and break every shared invite link.
+
+The second is **`mero-chat`, which publishes as `com.calimero.chat`** — the id
+it already held in the registry before it moved here. An ApplicationId is
+hash(package, signer), so renaming the package would strand every installed copy
+and every invite link; the directory (and crate) follow the fleet's naming, the
+id does not.
 
 ⚠️ **The seven package ids renamed in this pass are NEW packages, not renamed
 ones.** The node derives an ApplicationId from `(package, signer)` and the id is

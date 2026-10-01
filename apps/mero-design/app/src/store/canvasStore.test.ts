@@ -94,6 +94,46 @@ describe("canvasStore", () => {
     });
   });
 
+  describe("upsertElements", () => {
+    it("replaces existing elements in place and appends new ones, in order", () => {
+      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b"), makeEl("c")]);
+      useCanvasStore.getState().upsertElements([makeEl("c", { x: 3 }), makeEl("n1"), makeEl("a", { x: 1 }), makeEl("n2")]);
+      const els = useCanvasStore.getState().elements;
+      expect(els.map((e) => e.id)).toEqual(["a", "b", "c", "n1", "n2"]);
+      expect([els[0].x, els[2].x]).toEqual([1, 3]);
+    });
+
+    it("is ONE store update however many elements it carries", () => {
+      useCanvasStore.getState().setElements([]);
+      let updates = 0;
+      const unsub = useCanvasStore.subscribe(() => { updates++; });
+      useCanvasStore.getState().upsertElements(Array.from({ length: 3000 }, (_, i) => makeEl(`p${i}`)));
+      unsub();
+      expect(updates).toBe(1);
+      expect(useCanvasStore.getState().elements).toHaveLength(3000);
+    });
+
+    it("keeps the last copy of a duplicated id", () => {
+      useCanvasStore.getState().setElements([]);
+      useCanvasStore.getState().upsertElements([makeEl("d", { x: 1 }), makeEl("d", { x: 2 })]);
+      const els = useCanvasStore.getState().elements;
+      expect(els).toHaveLength(1);
+      expect(els[0].x).toBe(2);
+    });
+  });
+
+  describe("removeElements", () => {
+    it("removes every id in one update and ignores unknown ones", () => {
+      useCanvasStore.getState().setElements([makeEl("x"), makeEl("y"), makeEl("z")]);
+      let updates = 0;
+      const unsub = useCanvasStore.subscribe(() => { updates++; });
+      useCanvasStore.getState().removeElements(["x", "z", "gone"]);
+      unsub();
+      expect(useCanvasStore.getState().elements.map((e) => e.id)).toEqual(["y"]);
+      expect(updates).toBe(1);
+    });
+  });
+
   describe("removeElement", () => {
     it("removes element by id", () => {
       useCanvasStore.getState().setElements([makeEl("x"), makeEl("y"), makeEl("z")]);

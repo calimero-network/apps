@@ -21,6 +21,8 @@ export function isVersionSkew(message: string): boolean {
   const m = message.toLowerCase();
   return (
     m.includes("method not found") ||
+    // merod 0.11.0-rc.43 names the method: `method "add_elements" not found`.
+    /method\s+"[^"]*"\s+not found/.test(m) ||
     m.includes("unknown method") ||
     m.includes("no method") ||
     m.includes("unknown field") ||

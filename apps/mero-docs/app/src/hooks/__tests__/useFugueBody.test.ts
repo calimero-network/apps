@@ -1,0 +1,1020 @@
+// The body binding against a fake editor and a fake node, so every assertion
+// is the exact call the node receives or the exact text the editor holds.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useCreateBlockNote } from '@blocknote/react';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
+import type { DocsClient } from '@/generated/docs/DocsClient';
+import { useFugueBody, type BodyEditor } from '../useFugueBody';
+import { schema } from '@/components/editor/blocknote/schema';
+
+let deliver: ((event: unknown) => void) | null = null;
+// The shared stream's `connect` listeners, so a test can reopen it.
+const connectHandlers = new Set<() => void>();
+const events = {
+  on: (_: 'connect', h: () => void) => connectHandlers.add(h),
+  off: (_: 'connect', h: () => void) => connectHandlers.delete(h),
+};
+
+vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
+    deliver = handler;
+  },
+  useMero: () => ({ mero: { events } }),
+}));
+
+const DOC = 'doc-1';
+const CTX = 'ctx-1';
+const BLOCKNOTE_DEFAULTS = {
+  textAlignment: 'left',
+  textColor: 'default',
+  backgroundColor: 'default',
+}; // a fresh paragraph's props
+
+interface BnBlock {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+  content: { type: 'text'; text: string; styles: Record<string, unknown> }[];
+  children: BnBlock[];
+}
+
+const bn = (id: string, text: string, type = 'paragraph'): BnBlock => ({
+  id,
+  type,
+  props: {},
+  content: text ? [{ type: 'text', text, styles: {} }] : [],
+  children: [],
+});
+
+const row = (id: string, text: string, kind = 'paragraph', attrs = {}) => ({
+  id,
+  kind,
+  depth: 0,
+  attrs,
+  spans: text ? [{ text }] : [],
+});
+
+const spans = (text: string) => (text ? [{ text }] : []);
+
+/** One run per writer, `len` characters from `counter`. */
+const run = (replica: string, counter: number, len = 1) => ({ replica, counter, len });
+const withIds = <T extends object>(value: T, ids: ReturnType<typeof run>[]) => ({ ...value, ids });
+
+/** An in-memory BlockNote stand-in that reports every change like the shell does. */
+class FakeEditor implements BodyEditor {
+  document: BnBlock[] = [];
+  readonly prosemirrorView = undefined;
+  onChange: () => void = () => {};
+  undo?: () => boolean;
+  redo?: () => boolean;
+
+  textOf(id: string): string {
+    const block = this.document.find((b) => b.id === id);
+    return block ? block.content.map((c) => c.text).join('') : '';
+  }
+
+  type(id: string, text: string): void {
+    const block = this.document.find((b) => b.id === id);
+    if (block) block.content = text ? [{ type: 'text', text, styles: {} }] : [];
+    this.onChange();
+  }
+
+  updateBlock(id: string, update: Record<string, unknown>): void {
+    const block = this.document.find((b) => b.id === id);
+    if (!block) return;
+    if (update.content) block.content = update.content as BnBlock['content'];
+    if (update.type) block.type = update.type as string;
+    if (update.props)
+      block.props = { ...(update.props as Record<string, unknown>) };
+    this.onChange();
+  }
+
+  insertBlocks(
+    blocks: Record<string, unknown>[],
+    reference: string,
+    placement: 'before' | 'after',
+  ): void {
+    const at = this.document.findIndex((b) => b.id === reference);
+    const index = placement === 'after' ? at + 1 : at;
+    this.document.splice(index, 0, ...(blocks as unknown as BnBlock[]));
+    this.onChange();
+  }
+
+  removeBlocks(ids: string[]): void {
+    this.document = this.document.filter((b) => !ids.includes(b.id));
+    this.onChange();
+  }
+
+  replaceBlocks(remove: string[], insert: Record<string, unknown>[]): void {
+    const at = this.document.findIndex((b) => remove.includes(b.id));
+    this.document = this.document.filter((b) => !remove.includes(b.id));
+    this.document.splice(
+      at,
+      0,
+      ...(structuredClone(insert) as unknown as BnBlock[]),
+    );
+    this.onChange();
+  }
+}
+
+type FakeClient = Record<string, Mock>;
+
+function fakeClient(document: ReturnType<typeof row>[]): FakeClient {
+  return {
+    getDocument: vi.fn().mockResolvedValue(document),
+    getBlock: vi.fn(async ({ block }: { block: string }) => document.find((r) => r.id === block) ?? null),
+    applyDeltaOn: vi.fn(),
+    insertBlock: vi.fn().mockResolvedValue('blk-new'),
+    splitBlock: vi.fn().mockResolvedValue('blk-split'),
+    deleteBlock: vi.fn().mockResolvedValue(undefined),
+    mergeBlocks: vi.fn().mockResolvedValue(undefined),
+    moveBlock: vi.fn().mockResolvedValue(undefined),
+    setKind: vi.fn().mockResolvedValue(undefined),
+    setDepth: vi.fn().mockResolvedValue(undefined),
+    setAttr: vi.fn().mockResolvedValue(undefined),
+    undo: vi.fn().mockResolvedValue('redo-1'),
+  };
+}
+
+const applied = (
+  text: string,
+  token = 'tok-1',
+  anchor: string | null = null,
+  anchor_pos: number | null = null,
+) => ({
+  applied: true,
+  token,
+  spans: spans(text),
+  anchor,
+  anchor_pos,
+  ids: [],
+});
+const refused = (
+  text: string,
+  anchor: string | null = null,
+  anchor_pos: number | null = null,
+) => ({
+  applied: false,
+  token: null,
+  spans: spans(text),
+  anchor,
+  anchor_pos,
+  ids: [],
+});
+
+const peerEvent = (doc: string, kind = 'TextChanged', block = 'blk-1') => ({
+  contextId: CTX,
+  type: 'StateMutation',
+  data: {
+    events: [
+      {
+        kind,
+        data: Array.from(
+          new TextEncoder().encode(JSON.stringify({ doc, block })),
+        ),
+      },
+    ],
+  },
+});
+
+const settle = async (ms = 400) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+/** Mounts the hook and applies the first load the way EditorShell would. */
+async function mount(client: FakeClient, editor: FakeEditor) {
+  const view = renderHook(() =>
+    useFugueBody({
+      client: client as unknown as DocsClient,
+      docId: DOC,
+      contextId: CTX,
+      editor,
+    }),
+  );
+  await settle();
+  editor.document = JSON.parse(view.result.current.content ?? '[]');
+  editor.onChange = () => view.result.current.onContentChange('');
+  return view;
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  deliver = null;
+  connectHandlers.clear();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('useFugueBody', () => {
+  it('loads the document once and leaves the loading state', async () => {
+    const editor = new FakeEditor();
+    const { result } = await mount(fakeClient([row('blk-1', 'hello')]), editor);
+    expect(result.current.loading).toBe(false);
+    expect(editor.textOf('blk-1')).toBe('hello');
+  });
+
+  it('sends a typing burst as one delta guarded by the text it was diffed against', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn.mockResolvedValue(applied('The fox. ab'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. a');
+    editor.type('blk-1', 'The fox. ab');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'The fox.',
+      ops: [{ retain: 8 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
+    });
+    await settle();
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+  });
+
+  // The node answers the same edit the same way every time: a 413 (the edit is
+  // over its body limit) or a 403 is not about the moment. Resending it at once
+  // looped for as long as the editor stayed open.
+  it.each([413, 403])(
+    'sends an edit the node refuses with %i once, not in a loop',
+    async (status) => {
+      const client = fakeClient([row('blk-1', 'The fox.')]);
+      client.applyDeltaOn.mockRejectedValue(
+        new HTTPError(
+          status,
+          'Refused',
+          'http://node/jsonrpc',
+          new Headers(),
+          '{"error":"no"}',
+        ),
+      );
+      const editor = new FakeEditor();
+      const { result } = await mount(client, editor);
+
+      editor.type('blk-1', 'The fox. huge paste');
+      await settle();
+      await settle(2000);
+
+      expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+      expect(result.current.status).toBe('error');
+      expect((result.current.error as HTTPError | null)?.status).toBe(status);
+      // The edit is still in the editor, and the next one tries again.
+      expect(editor.textOf('blk-1')).toBe('The fox. huge paste');
+      editor.type('blk-1', 'The fox. small');
+      await settle();
+      expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  // A write the node answers with an error it may not repeat (a contract error
+  // arrives with no HTTP status) was resent at once, re-read and resent again,
+  // hundreds of times a second, for as long as the node kept answering the same.
+  it('backs off an edit whose write keeps failing instead of resending it at once', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.getDocument.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve([row('blk-1', 'The fox.')]), 10)),
+    );
+    client.applyDeltaOn.mockRejectedValue(new Error('unknown block'));
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. ab');
+    await settle(900);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    // The re-read still runs, so the page shows what the node holds.
+    expect(client.getDocument.mock.calls.length).toBeGreaterThan(1);
+
+    await settle(1_000);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
+    expect(editor.textOf('blk-1')).toBe('The fox. ab');
+  });
+
+  // Core refuses every write of a ReadOnly member, so the edit will never land:
+  // resending only loops, and keeping it shows text the node does not hold.
+  it('drops an edit the node refuses as read-only and shows the node text', async () => {
+    const client = fakeClient([row('blk-1', 'before')]);
+    client.applyDeltaOn.mockRejectedValue(
+      new RpcError(-1, 'ReadOnlyWriteRefused', { context_id: CTX }, 'ReadOnlyWriteRefused'),
+    );
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+
+    editor.type('blk-1', 'before phantom');
+    await settle();
+    expect(editor.textOf('blk-1')).toBe('before');
+    expect((result.current.error as RpcError | null)?.type).toBe('ReadOnlyWriteRefused');
+    await settle(20_000);
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rebases a refused write onto the peer text and resends it', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(refused('bob The fox.'))
+      .mockResolvedValueOnce(applied('bob The fox. ab'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. ab');
+    await settle();
+
+    expect(editor.textOf('blk-1')).toBe('bob The fox. ab');
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(2);
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'bob The fox.',
+      ops: [{ retain: 12 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  it('keeps a pending keystroke after its own letter when peers typed on both sides of it', async () => {
+    const client = fakeClient([row('blk-1', 'Shared:a')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(refused('Shared:bac'))
+      .mockResolvedValueOnce(applied('Shared:ba1c'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'Shared:a1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:bac',
+      ops: [{ retain: 9 }, { insert: '1', attributes: {} }],
+      anchor: null,
+    });
+    expect(editor.textOf('blk-1')).toBe('Shared:ba1c');
+  });
+
+  it("puts a refused keystroke right after its writer's own last letter, not after an identical one", async () => {
+    const client = fakeClient([row('blk-1', 'Shared:')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('Shared:a', 'tok-a', 'anc-a', 8))
+      // Peers typed `b3` before the `a` and `3c3` in its gap; the `a` is at 9.
+      .mockResolvedValueOnce(refused('Shared:b3a3c3', 'anc-a', 10))
+      .mockResolvedValueOnce(applied('Shared:b3a33c3', 'tok-b', 'anc-3', 11));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'Shared:a');
+    await settle();
+    editor.type('blk-1', 'Shared:a3');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenNthCalledWith(2, {
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:a',
+      ops: [{ retain: 8 }, { insert: '3', attributes: {} }],
+      anchor: 'anc-a',
+    });
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:b3a3c3',
+      ops: [{ retain: 10 }, { insert: '3', attributes: {} }],
+      anchor: 'anc-a',
+    });
+    expect(editor.textOf('blk-1')).toBe('Shared:b3a33c3');
+  });
+
+  it('keeps sending at its anchor while the keystrokes stay at it', async () => {
+    const client = fakeClient([row('blk-1', 'b')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('ab', 'tok-a', 'anc-a', 1))
+      .mockResolvedValueOnce(applied('abb', 'tok-b', 'anc-b', 2));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'ab');
+    await settle();
+    editor.type('blk-1', 'abb');
+    await settle();
+
+    // A plain diff reads `abb` as a `b` after the peer's `b`, at 2.
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'ab',
+      ops: [{ retain: 1 }, { insert: 'b', attributes: {} }],
+      anchor: 'anc-a',
+    });
+  });
+
+  it('moves typing to where the node puts its anchor when a peer change made the local position drift', async () => {
+    const client = fakeClient([row('blk-1', 'ba1')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('b1a1', 'tok-a', 'anc-1', 2))
+      .mockResolvedValueOnce(refused('cb1a1a1', 'anc-1', 3))
+      .mockResolvedValueOnce(applied('cb1Xa1a1'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'b1a1');
+    await settle();
+    client.getBlock.mockResolvedValue(row('blk-1', 'cb1a1a1'));
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+
+    editor.type('blk-1', 'cb1a1Xa1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'cb1a1a1',
+      ops: [{ retain: 3 }, { insert: 'X', attributes: {} }],
+      anchor: 'anc-1',
+    });
+    expect(editor.textOf('blk-1')).toBe('cb1Xa1a1');
+  });
+
+  it('forgets its anchors once a write changes the block structure', async () => {
+    const client = fakeClient([row('blk-1', 'b')]);
+    client.applyDeltaOn.mockResolvedValueOnce(
+      applied('ab', 'tok-a', 'anc-a', 1),
+    );
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'ab');
+    await settle();
+
+    client.applyDeltaOn.mockResolvedValue(applied('abb'));
+    editor.document.splice(1, 0, bn('new-1', ''));
+    editor.type('blk-1', 'abb');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'ab',
+      ops: [{ retain: 2 }, { insert: 'b', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  it('folds a peer edit into the block without losing a keystroke typed meanwhile', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn.mockResolvedValue(applied('bob The fox. ab'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    const read = deferred<unknown>();
+    client.getBlock.mockReturnValueOnce(read.promise);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle(100);
+    editor.type('blk-1', 'The fox. ab');
+    await act(async () => read.resolve(row('blk-1', 'bob The fox.')));
+    await settle();
+
+    expect(editor.textOf('blk-1')).toBe('bob The fox. ab');
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'bob The fox.',
+      ops: [{ retain: 12 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  it('writes a new block to the id the node minted, and never mints it twice', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    client.applyDeltaOn.mockResolvedValue(applied('hi'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    client.getDocument.mockResolvedValue([
+      row('blk-1', 'a'),
+      row('blk-new', 'hi'),
+    ]);
+    editor.insertBlocks(
+      [bn('local-2', 'hi') as unknown as Record<string, unknown>],
+      'blk-1',
+      'after',
+    );
+    await settle();
+    await settle();
+
+    expect(client.insertBlock).toHaveBeenCalledTimes(1);
+    expect(client.insertBlock).toHaveBeenCalledWith({
+      doc: DOC,
+      after: 'blk-1',
+      kind: 'paragraph',
+      depth: 0,
+    });
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-new',
+      base: '',
+      ops: [{ insert: 'hi', attributes: {} }],
+      anchor: null,
+    });
+    expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a new block only once the node has minted its id', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    const minted = deferred<string>();
+    client.insertBlock.mockReturnValue(minted.promise);
+    client.applyDeltaOn.mockResolvedValue(applied('hi'));
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+    expect(result.current.isConfirmed('blk-1')).toBe(true);
+
+    editor.insertBlocks(
+      [bn('local-2', 'hi') as unknown as Record<string, unknown>],
+      'blk-1',
+      'after',
+    );
+    await settle();
+    expect(result.current.isConfirmed('local-2')).toBe(false);
+    expect(result.current.backendIdOf('local-2')).toBe('local-2');
+
+    client.getDocument.mockResolvedValue([
+      row('blk-1', 'a'),
+      row('blk-new', 'hi'),
+    ]);
+    await act(async () => minted.resolve('blk-new'));
+    await settle();
+    expect(result.current.isConfirmed('local-2')).toBe(true);
+    expect(result.current.backendIdOf('local-2')).toBe('blk-new');
+    // A link to it opened in this session finds the block by the id the DOM still has.
+    expect(result.current.editorIdOf('blk-new')).toBe('local-2');
+  });
+
+  it('turns Enter mid-block into one split and never resends it', async () => {
+    const client = fakeClient([row('blk-1', 'hello world')]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    client.getDocument.mockResolvedValue([
+      row('blk-1', 'hello '),
+      row('blk-split', 'world'),
+    ]);
+    editor.document = [bn('blk-1', 'hello '), bn('local-2', 'world')];
+    editor.onChange();
+    await settle();
+    await settle();
+
+    expect(client.splitBlock).toHaveBeenCalledTimes(1);
+    expect(client.splitBlock).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      at: 6,
+    });
+    expect(client.applyDeltaOn).not.toHaveBeenCalled();
+  });
+
+  it('takes a peer heading change into that block without reverting it or a pending edit', async () => {
+    const client = fakeClient([row('blk-1', 'one'), row('blk-2', 'two')]);
+    client.applyDeltaOn.mockResolvedValue(applied('two!'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    const read = deferred<unknown>();
+    client.getDocument.mockReturnValueOnce(read.promise);
+    act(() => deliver?.(peerEvent(DOC, 'BlockChanged')));
+    await settle(100);
+    editor.type('blk-2', 'two!');
+    await act(async () =>
+      read.resolve([
+        row('blk-1', 'one', 'heading', { level: '1' }),
+        row('blk-2', 'two'),
+      ]),
+    );
+    await settle();
+
+    expect(editor.document.find((b) => b.id === 'blk-1')?.type).toBe('heading');
+    expect(editor.textOf('blk-2')).toBe('two!');
+    expect(client.setKind).not.toHaveBeenCalled();
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-2',
+      base: 'two',
+      ops: [{ retain: 3 }, { insert: '!', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  it('replaces the placeholder block when a peer writes the first block of an empty document', async () => {
+    const client = fakeClient([]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [bn('placeholder', '')];
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'The fox.')]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockInserted')));
+    await settle();
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1']);
+    expect(editor.textOf('blk-1')).toBe('The fox.');
+    expect(client.insertBlock).not.toHaveBeenCalled();
+    expect(client.splitBlock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the caret at the start when a peer's first block replaces the empty paragraph", async () => {
+    const client = fakeClient([]);
+    const editor = renderHook(() => useCreateBlockNote({ schema })).result
+      .current;
+    editor.mount(document.body.appendChild(document.createElement('div')));
+    renderHook(() =>
+      useFugueBody({
+        client: client as unknown as DocsClient,
+        docId: DOC,
+        contextId: CTX,
+        editor: editor as unknown as BodyEditor,
+      }),
+    );
+    await settle();
+    editor.setTextCursorPosition(editor.document[0].id, 'start');
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'The fox.')]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockInserted')));
+    await settle();
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1']);
+    const { selection } = editor.prosemirrorView.state;
+    expect(editor.getTextCursorPosition().block.id).toBe('blk-1');
+    expect(selection.empty).toBe(true);
+    expect(selection.$head.parentOffset).toBe(0);
+  });
+
+  it('never writes the empty block the editor shows for an empty document', async () => {
+    const client = fakeClient([]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle(5_000);
+
+    expect(client.insertBlock).not.toHaveBeenCalled();
+    expect(client.setAttr).not.toHaveBeenCalled();
+  });
+
+  it("writes the empty document's block once the user types into it", async () => {
+    const client = fakeClient([]);
+    client.applyDeltaOn.mockResolvedValue(applied('hi'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle();
+
+    client.getDocument.mockResolvedValue([
+      row('blk-new', 'hi', 'paragraph', { textAlignment: 'left' }),
+    ]);
+    editor.type('placeholder', 'hi');
+    await settle();
+
+    expect(client.insertBlock).toHaveBeenCalledWith({
+      doc: DOC,
+      after: null,
+      kind: 'paragraph',
+      depth: 0,
+    });
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-new',
+      base: '',
+      ops: [{ insert: 'hi', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  it("writes the empty document's block when the user only formats it", async () => {
+    const client = fakeClient([]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [{ ...bn('placeholder', ''), props: BLOCKNOTE_DEFAULTS }];
+    editor.onChange();
+    await settle();
+
+    client.getDocument.mockResolvedValue([
+      row('blk-new', '', 'paragraph', { textAlignment: 'center' }),
+    ]);
+    editor.updateBlock('placeholder', {
+      props: { ...BLOCKNOTE_DEFAULTS, textAlignment: 'center' },
+    });
+    await settle();
+
+    expect(client.insertBlock).toHaveBeenCalledWith({
+      doc: DOC,
+      after: null,
+      kind: 'paragraph',
+      depth: 0,
+    });
+    expect(client.setAttr).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'textAlignment', value: 'center' }),
+    );
+  });
+
+  it("keeps a peer's text that lands while this window changes that block's kind", async () => {
+    const client = fakeClient([row('blk-1', 'one'), row('blk-2', 'two')]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    client.getDocument.mockResolvedValue([
+      row('blk-1', 'one'),
+      row('blk-2', 'two!', 'heading'),
+    ]);
+    editor.updateBlock('blk-2', { type: 'heading' });
+    await settle();
+    await settle();
+
+    expect(client.setKind).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-2',
+      kind: 'heading',
+    });
+    expect(editor.textOf('blk-2')).toBe('two!');
+    expect(client.applyDeltaOn).not.toHaveBeenCalled();
+  });
+
+  it('undoes and redoes through the editor history, not per write', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    const editor = new FakeEditor();
+    editor.undo = vi.fn().mockReturnValue(true);
+    editor.redo = vi.fn().mockReturnValue(true);
+    const { result } = await mount(client, editor);
+
+    act(() => result.current.undo());
+    act(() => result.current.redo());
+
+    expect(editor.undo).toHaveBeenCalledTimes(1);
+    expect(editor.redo).toHaveBeenCalledTimes(1);
+    expect(client.undo).not.toHaveBeenCalled();
+  });
+
+  it("replaces only the blocks a peer's move touched, so the rest keep their undo history", async () => {
+    const rows = [
+      row('blk-1', 'Alpha'),
+      row('blk-2', 'Bravo'),
+      row('blk-3', 'Charlie'),
+      row('blk-4', 'Delta'),
+    ];
+    const client = fakeClient(rows);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([rows[0], rows[1], rows[3], rows[2]]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockMoved')));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual([
+      'blk-1',
+      'blk-2',
+      'blk-4',
+      'blk-3',
+    ]);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toEqual(['blk-3', 'blk-4']);
+  });
+
+  it("keeps a real editor's untouched blocks through a peer's move, defaults and all", async () => {
+    // BlockNote fills in its props' defaults, which the node does not store:
+    // the range a move replaces must still start at the moved blocks.
+    const rows = [
+      row('blk-1', 'Alpha', 'paragraph', { textAlignment: 'left' }),
+      row('blk-2', 'Bravo'),
+      row('blk-3', 'Charlie'),
+      row('blk-4', 'Delta'),
+    ];
+    const client = fakeClient(rows);
+    const editor = renderHook(() => useCreateBlockNote({ schema })).result.current;
+    editor.mount(document.body.appendChild(document.createElement('div')));
+    const view = renderHook(() =>
+      useFugueBody({
+        client: client as unknown as DocsClient,
+        docId: DOC,
+        contextId: CTX,
+        editor: editor as unknown as BodyEditor,
+      }),
+    );
+    await settle();
+    editor.replaceBlocks(editor.document, JSON.parse(view.result.current.content ?? '[]'));
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([rows[0], rows[1], rows[3], rows[2]]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockMoved')));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1', 'blk-2', 'blk-4', 'blk-3']);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toEqual(['blk-3', 'blk-4']);
+  });
+
+  it("inserts a peer's nested block beside the untouched ones instead of rebuilding the document", async () => {
+    const rows = [row('blk-1', 'Alpha'), row('blk-2', 'Bravo')];
+    const client = fakeClient(rows);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([
+      rows[0],
+      rows[1],
+      { ...row('blk-3', 'Echo'), depth: 1 },
+    ]);
+    act(() => deliver?.(peerEvent(DOC, 'BlockInserted')));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1', 'blk-2']);
+    expect(editor.document[1]).toMatchObject({
+      id: 'blk-2',
+      children: [{ id: 'blk-3' }],
+    });
+    expect(replace.mock.calls.map(([remove]) => remove)).toEqual([['blk-2']]);
+  });
+
+  it('ignores an event for another document', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    await mount(client, new FakeEditor());
+    const reads = client.getDocument.mock.calls.length;
+    act(() => deliver?.(peerEvent('other-doc')));
+    await settle();
+    expect(client.getDocument).toHaveBeenCalledTimes(reads);
+  });
+
+  it('sends an edit still inside the debounce window when the editor closes', async () => {
+    const client = fakeClient([row('blk-1', 'The fox.')]);
+    client.applyDeltaOn.mockResolvedValue(applied('The fox. ab'));
+    const editor = new FakeEditor();
+    const { unmount } = await mount(client, editor);
+
+    editor.type('blk-1', 'The fox. ab');
+    unmount();
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'The fox.',
+      ops: [{ retain: 8 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
+    });
+  });
+
+  describe('rebase by character id', () => {
+    // A peer typed an `a` before the two this user typed between: read as text,
+    // it lands after them and the user's `X` ends up after the wrong `a`.
+    it("keeps a refused keystroke between its own letters when a peer typed an identical one", async () => {
+      const client = fakeClient([withIds(row('blk-1', 'aa'), [run('1', 1, 2)])]);
+      client.applyDeltaOn
+        .mockResolvedValueOnce(withIds(refused('aaa'), [run('2', 1), run('1', 1, 2)]))
+        .mockResolvedValueOnce(applied('aaXa'));
+      const editor = new FakeEditor();
+      await mount(client, editor);
+
+      editor.type('blk-1', 'aXa');
+      await settle();
+
+      expect(editor.textOf('blk-1')).toBe('aaXa');
+      expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+        doc: DOC,
+        block: 'blk-1',
+        base: 'aaa',
+        ops: [{ retain: 2 }, { insert: 'X', attributes: {} }],
+        anchor: null,
+      });
+    });
+
+    it("places a peer's identical letter by id on a text event, around a pending keystroke", async () => {
+      const client = fakeClient([withIds(row('blk-1', 'aa'), [run('1', 1, 2)])]);
+      client.applyDeltaOn.mockResolvedValue(applied('aaXa'));
+      const editor = new FakeEditor();
+      await mount(client, editor);
+
+      const read = deferred<unknown>();
+      client.getBlock.mockReturnValueOnce(read.promise);
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle(100);
+      editor.type('blk-1', 'aXa');
+      await act(async () => read.resolve(withIds(row('blk-1', 'aaa'), [run('2', 1), run('1', 1, 2)])));
+      await settle();
+
+      expect(editor.textOf('blk-1')).toBe('aaXa');
+      expect(client.applyDeltaOn).toHaveBeenCalledWith(
+        expect.objectContaining({ base: 'aaa', ops: [{ retain: 2 }, { insert: 'X', attributes: {} }] }),
+      );
+    });
+
+    it('reads the whole document when the block a text event names is gone', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      await mount(client, new FakeEditor());
+      client.getDocument.mockClear();
+      client.getBlock.mockResolvedValue(null);
+
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle();
+
+      expect(client.getDocument).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('event reads', () => {
+    it('re-reads only the changed block on a text event', async () => {
+      const client = fakeClient([row('blk-1', 'hello'), row('blk-2', 'other')]);
+      const editor = new FakeEditor();
+      await mount(client, editor);
+      client.getDocument.mockClear();
+      client.getBlock.mockResolvedValue(row('blk-1', 'hello there'));
+
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle();
+
+      expect(client.getBlock.mock.calls).toEqual([[{ doc: DOC, block: 'blk-1' }]]);
+      expect(client.getDocument).not.toHaveBeenCalled();
+      expect(editor.textOf('blk-1')).toBe('hello there');
+    });
+
+    it('reads a block once for a burst of text and mark events', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      await mount(client, new FakeEditor());
+
+      act(() => deliver?.(peerEvent(DOC)));
+      act(() => deliver?.(peerEvent(DOC, 'MarkApplied')));
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle();
+
+      expect(client.getBlock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['BlockInserted', 'BlockMoved', 'BlockDeleted', 'BlockChanged'])(
+      'reads the whole document on %s',
+      async (kind) => {
+        const client = fakeClient([row('blk-1', 'hello')]);
+        await mount(client, new FakeEditor());
+        client.getDocument.mockClear();
+
+        act(() => deliver?.(peerEvent(DOC, kind)));
+        await settle();
+
+        expect(client.getDocument).toHaveBeenCalledTimes(1);
+        expect(client.getBlock).not.toHaveBeenCalled();
+      },
+    );
+
+    it('reads the whole document for a block it does not hold', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      await mount(client, new FakeEditor());
+      client.getDocument.mockClear();
+
+      act(() => deliver?.(peerEvent(DOC, 'TextChanged', 'blk-new')));
+      await settle();
+
+      expect(client.getDocument).toHaveBeenCalledTimes(1);
+      expect(client.getBlock).not.toHaveBeenCalled();
+    });
+
+    it('reads the whole document when the block read fails', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      const editor = new FakeEditor();
+      await mount(client, editor);
+      client.getDocument.mockClear();
+      client.getBlock.mockRejectedValue(new Error('no such block'));
+      client.getDocument.mockResolvedValue([row('blk-1', 'hello again')]);
+
+      act(() => deliver?.(peerEvent(DOC)));
+      await settle();
+
+      expect(client.getDocument).toHaveBeenCalledTimes(1);
+      expect(editor.textOf('blk-1')).toBe('hello again');
+    });
+
+    it('reads the whole document when the event stream reconnects', async () => {
+      const client = fakeClient([row('blk-1', 'hello')]);
+      const editor = new FakeEditor();
+      await mount(client, editor);
+      client.getDocument.mockClear();
+      client.getDocument.mockResolvedValue([row('blk-1', 'hello missed')]);
+
+      act(() => connectHandlers.forEach((h) => h()));
+      await settle(1000);
+
+      expect(client.getDocument).toHaveBeenCalledTimes(1);
+      expect(editor.textOf('blk-1')).toBe('hello missed');
+    });
+  });
+});

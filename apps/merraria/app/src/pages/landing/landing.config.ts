@@ -94,7 +94,7 @@ export const CONFIG: LandingConfig = {
       bullets: [
         "World name, seed and creation time.",
         "Tile overrides, keyed by coordinate.",
-        "Players and their positions, refreshed by heartbeat and reaped when they leave.",
+        "Players and their positions, refreshed by heartbeat; each player's row is theirs alone to write.",
       ],
     },
     {

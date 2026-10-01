@@ -12,14 +12,47 @@
 //!   referenced its post by that index. Ids are now random bytes from the host.
 //! * **The comment author was a caller-supplied `String`.** Impersonation was
 //!   the interface, not a bug. Identity now comes from the executor.
+//!
+//! # Who may write what — enforced by every node, not by these methods
+//!
+//! A member can run a patched node that skips every check written here, so the
+//! checks only make a refused write fail early. What holds is the storage type:
+//!
+//! * `posts` and `comments` are `Moderated<IndexedMap>`: an entry is owned by the
+//!   account that wrote it, only that account edits or tombstones it, and a
+//!   moderator (the founder, then whoever the moderators appoint) may remove it.
+//!   The author shown is the entry's owner stamp, never a field in the value.
+//! * `votes` and `comment_votes` are `Authored<IndexedMap>`: a vote row is owned
+//!   by its voter. A tally counts a key only as the entry of the account the key
+//!   names, read by name, so a patched node inventing rows under made-up keys,
+//!   or under someone else's key, adds nothing.
+//! * `profiles` is `UserStorage`: one slot per account, written only by it.
+//!
+//! # Keys are per owner (core rc.57)
+//!
+//! Storage keys an owned entry by its owner AND its key, so two accounts
+//! writing one id hold two independent entries, and a key-only `get`,
+//! `contains`, `owner_of` or `remove` acts on the CALLER's entry only. Post
+//! and comment ids are 16 random bytes, so a second holder of an id only
+//! exists if a patched node copied it. Every read by id alone (`get_post`,
+//! `create_comment`, `vote`, `list_comments`, the paging cursors) therefore
+//! reads the entry of the LOWEST account holding that id, the same pick on
+//! every node. A feed row's author is found among its id's holders by the
+//! entry's bytes. Editing and deleting act on the caller's own entry, and a
+//! moderator's removal removes every holder's entry at the id (`remove_by`).
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use std::collections::BTreeSet;
+use std::str::FromStr;
+
 use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{Mergeable, UnorderedMap};
+use calimero_storage::collections::{
+    Authored, Indexed, IndexedMap, Mergeable, Moderated, StoreError, UserStorage,
+};
 
 /// Longest a title may be. Not decoration: a post is replicated to every peer,
 /// so an unbounded field is an unbounded broadcast.
@@ -43,16 +76,21 @@ const DEFAULT_PAGE: usize = 20;
 /// and a tie resolved by "take other" would pick a different winner on each side
 /// and leave the replicas permanently disagreeing. `deleted` is separate — it is
 /// an OR-flag, so a delete can never be undone by a concurrent edit arriving
-/// later. Content LWW plus a monotone tombstone is the whole merge.
+/// later. Content LWW plus a monotone tombstone is the whole merge. Only the
+/// author writes a post (see `MeroForum::posts`), so these conflicts are
+/// between one person's own devices.
+///
+/// There is no author field: the author is the entry's owner stamp, the one
+/// thing a patched node cannot forge. `feed` is the live feed, newest first.
 #[app::mergeable(id = "mero_forum::Post")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
+#[index(feed(deleted, created_at))]
 pub struct Post {
     pub id: String,
-    /// The ACCOUNT that created it — a person, so the same human posting from a
-    /// laptop and a phone is one author and can edit from either.
-    pub author: String,
     pub title: String,
     pub body: String,
     pub created_at: u64,
@@ -75,15 +113,19 @@ impl Mergeable for Post {
     }
 }
 
-/// A reply on a thread. Deliberately flat — one level, no nesting.
+/// A reply on a thread. Deliberately flat — one level, no nesting. Like a post,
+/// its author is the owner stamp. `thread` is one post's live comments, oldest
+/// first, so a page and a count are seeks.
 #[app::mergeable(id = "mero_forum::Comment")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
+#[index(thread(post_id, deleted, created_at))]
 pub struct Comment {
     pub id: String,
     pub post_id: String,
-    pub author: String,
     pub body: String,
     pub created_at: u64,
     pub edited_at: u64,
@@ -106,13 +148,18 @@ impl Mergeable for Comment {
 /// Keyed per ACCOUNT rather than per device, which is what makes "one person,
 /// one vote" true: a bare counter would let the same person vote once from each
 /// machine, and there would be no way to take it back.
+///
+/// The voter is the row's owner stamp, and the row counts only when its key is
+/// `vote_key(post_id, owner)` — see `MeroForum::tally`.
 #[app::mergeable(id = "mero_forum::Vote")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Vote {
+    #[index]
     pub post_id: String,
-    pub voter: String,
     /// +1, -1, or 0 for retracted.
     pub value: i8,
     pub updated_at: u64,
@@ -138,17 +185,18 @@ impl Mergeable for Vote {
 ///
 ///   * `Vote.post_id` holding a comment id would be a lie in the field name,
 ///     and the ABI is a public surface that clients read;
-///   * `tally` already scans the WHOLE vote map once per post, so `list_posts`
-///     is O(posts x votes). Folding comment votes into the same map would make
-///     every post listing pay for every comment vote in the forum, on a page
-///     that never displays one.
+///   * a post's tally reads the `post_id` index; folding comment votes into
+///     the same map would put every comment vote into that index too, on a
+///     page that never displays one.
 #[app::mergeable(id = "mero_forum::CommentVote")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, app::Indexed,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentVote {
+    #[index]
     pub comment_id: String,
-    pub voter: String,
     /// +1, -1, or 0 for retracted.
     pub value: i8,
     pub updated_at: u64,
@@ -176,8 +224,9 @@ impl Mergeable for CommentVote {
 /// (so the field is pre-filled and survives a reload before you ever post), but
 /// the value has to reach the contract for anyone else's feed to render it.
 ///
-/// Keyed by ACCOUNT, matching `Post.author` — so one person is one name across
-/// their laptop and their phone.
+/// One `UserStorage` slot per ACCOUNT, matching a post's owner stamp — so one
+/// person is one name across their laptop and their phone, and only they can
+/// write it.
 ///
 /// This is a claim, not an identity. Names are not unique and are not verified;
 /// the account id remains the only thing that authorises anything, and every
@@ -187,7 +236,6 @@ impl Mergeable for CommentVote {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Profile {
-    pub account: String,
     pub name: String,
     pub updated_at: u64,
 }
@@ -262,19 +310,21 @@ pub struct CommentPage {
 
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct MeroForum {
-    posts: UnorderedMap<String, Post>,
+    /// Post id → post. Its author edits and tombstones it; a moderator removes
+    /// it. The founder is the first moderator.
+    posts: Moderated<IndexedMap<String, Post>>,
     /// Every comment in one map, carrying its `post_id`, rather than a nested
     /// collection per post. A nested CRDT created independently on two nodes
     /// needs deterministic re-keying to converge; one flat map has no such
-    /// hazard, and a forum reads comments by post far less often than it
-    /// replicates them.
-    comments: UnorderedMap<String, Comment>,
-    /// Keyed `"<post_id>|<account>"` — one row per voter per post.
-    votes: UnorderedMap<String, Vote>,
+    /// hazard, and the `thread` index makes one post's comments a seek.
+    comments: Moderated<IndexedMap<String, Comment>>,
+    /// Keyed `"<post_id>|<account>"` — one row per voter per post, owned by the
+    /// voter.
+    votes: Authored<IndexedMap<String, Vote>>,
     /// Keyed `"<comment_id>|<account>"` — one row per voter per comment.
-    comment_votes: UnorderedMap<String, CommentVote>,
-    /// Keyed by ACCOUNT — the display name each person chose.
-    profiles: UnorderedMap<String, Profile>,
+    comment_votes: Authored<IndexedMap<String, CommentVote>>,
+    /// The display name each account chose, in that account's own slot.
+    profiles: UserStorage<Profile>,
 }
 
 #[app::event]
@@ -310,6 +360,35 @@ pub enum Event<'a> {
     ProfileSet {
         account: &'a str,
     },
+    ModeratorsChanged {
+        count: usize,
+    },
+}
+
+/// A storage error, named by the call that raised it.
+fn store_err(what: &'static str) -> impl FnOnce(StoreError) -> AppError {
+    move |e| AppError::msg(format!("{what} failed: {e}"))
+}
+
+/// The entry at one id of the lowest account holding it: the deterministic
+/// pick every node makes when several accounts hold one id.
+fn lowest<V>(holders: Vec<(AccountId, V)>) -> Option<(AccountId, V)> {
+    holders.into_iter().min_by_key(|(owner, _)| *owner)
+}
+
+/// The account, among `holders` of one id, whose entry is `row`.
+///
+/// Keys are per owner, so an index query hands back rows without saying whose
+/// each is. The owner is recovered by matching the row's bytes against every
+/// holder's entry at the id; the lowest matching account if two entries are
+/// byte-identical.
+fn holder_of<V: BorshSerialize>(holders: Vec<(AccountId, V)>, row: &V) -> Option<AccountId> {
+    let row = calimero_sdk::borsh::to_vec(row).ok()?;
+    holders
+        .into_iter()
+        .filter(|(_, held)| calimero_sdk::borsh::to_vec(held).is_ok_and(|bytes| bytes == row))
+        .map(|(owner, _)| owner)
+        .min()
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -319,11 +398,11 @@ impl MeroForum {
     #[app::init]
     pub fn init() -> MeroForum {
         MeroForum {
-            posts: UnorderedMap::new(),
-            comments: UnorderedMap::new(),
-            votes: UnorderedMap::new(),
-            comment_votes: UnorderedMap::new(),
-            profiles: UnorderedMap::new(),
+            posts: Moderated::new(),
+            comments: Moderated::new(),
+            votes: Authored::new(),
+            comment_votes: Authored::new(),
+            profiles: UserStorage::new(),
         }
     }
 
@@ -367,17 +446,42 @@ impl MeroForum {
         Ok(())
     }
 
-    fn load_post(&self, post_id: &str) -> app::Result<Post> {
-        let post = self
-            .posts
-            .get(&post_id.to_string())
-            .map_err(|e| AppError::msg(format!("posts.get failed: {e}")))?
+    /// The post at `post_id` of the lowest account holding one, with that
+    /// account. A key-only `get` would read the caller's own post only.
+    fn post_holder(&self, post_id: &str) -> app::Result<Option<(AccountId, Post)>> {
+        Ok(lowest(
+            self.posts
+                .entries_at(&post_id.to_string())
+                .map_err(store_err("posts.entries_at"))?,
+        ))
+    }
+
+    /// The live post at `post_id`, whoever holds it, with its author.
+    fn load_post(&self, post_id: &str) -> app::Result<(AccountId, Post)> {
+        let (author, post) = self
+            .post_holder(post_id)?
             .ok_or_else(|| AppError::msg(format!("no such post: {post_id}")))?;
-        let post = (*post).clone();
         if post.deleted {
             return Err(AppError::msg(format!("post is deleted: {post_id}")));
         }
-        Ok(post)
+        Ok((author, post))
+    }
+
+    /// The caller's OWN live post at `post_id`, for an edit or a delete. Any
+    /// other account's post at the id is a different entry, which the caller
+    /// could not change anyway.
+    fn load_own_post(&self, post_id: &String, action: &str) -> app::Result<Post> {
+        match self.posts.get(post_id).map_err(store_err("posts.get"))? {
+            Some(post) if post.deleted => Err(AppError::msg(format!("post is deleted: {post_id}"))),
+            Some(post) => Ok(post),
+            None => {
+                // `NoPost` / `deleted` if that is what it is, else not yours.
+                let _ = self.load_post(post_id)?;
+                Err(AppError::msg(format!(
+                    "only the author can {action} this post"
+                )))
+            }
+        }
     }
 
     // ── posts ────────────────────────────────────────────────────────────────
@@ -389,7 +493,6 @@ impl MeroForum {
         let now = env::time_now();
         let post = Post {
             id: Self::fresh_id(),
-            author: Self::caller(),
             title,
             body,
             created_at: now,
@@ -399,7 +502,7 @@ impl MeroForum {
         let id = post.id.clone();
         self.posts
             .insert(id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+            .map_err(store_err("posts.insert"))?;
 
         app::emit!(Event::PostCreated { id: &id });
         Ok(id)
@@ -409,16 +512,15 @@ impl MeroForum {
         Self::check_len("title", &title, MAX_TITLE)?;
         Self::check_len("body", &body, MAX_BODY)?;
 
-        let mut post = self.load_post(&post_id)?;
-        if post.author != Self::caller() {
-            return Err(AppError::msg("only the author can edit this post"));
-        }
-        post.title = title;
-        post.body = body;
-        post.edited_at = env::time_now();
+        let _ = self.load_own_post(&post_id, "edit")?;
+        let now = env::time_now();
         self.posts
-            .insert(post_id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+            .modify(&post_id, |post| {
+                post.title = title;
+                post.body = body;
+                post.edited_at = now;
+            })
+            .map_err(store_err("posts.modify"))?;
 
         app::emit!(Event::PostEdited { id: &post_id });
         Ok(())
@@ -426,40 +528,29 @@ impl MeroForum {
 
     /// Tombstone, not a removal.
     ///
-    /// The row stays so the delete can replicate and so a concurrent edit cannot
-    /// resurrect it. Removing the key would also re-open the insert-after-remove
-    /// pattern that never converges.
+    /// The row stays so the delete can replicate and so a concurrent edit from
+    /// the author's other device cannot resurrect it. Removing the key would
+    /// also re-open the insert-after-remove pattern that never converges. A
+    /// moderator removes instead: see `moderate_post`.
     pub fn delete_post(&mut self, post_id: String) -> app::Result<()> {
-        let mut post = self.load_post(&post_id)?;
-        if post.author != Self::caller() {
-            return Err(AppError::msg("only the author can delete this post"));
-        }
-        post.deleted = true;
-        post.edited_at = env::time_now();
+        let _ = self.load_own_post(&post_id, "delete")?;
+        let now = env::time_now();
         self.posts
-            .insert(post_id.clone(), post)
-            .map_err(|e| AppError::msg(format!("posts.insert failed: {e}")))?;
+            .modify(&post_id, |post| {
+                post.deleted = true;
+                post.edited_at = now;
+            })
+            .map_err(store_err("posts.modify"))?;
 
         app::emit!(Event::PostDeleted { id: &post_id });
         Ok(())
     }
 
     pub fn get_post(&self, post_id: String) -> app::Result<PostView> {
-        let post = self.load_post(&post_id)?;
+        let (author, post) = self.load_post(&post_id)?;
         let me = Self::caller();
         let (score, my_vote) = self.tally(&post_id, &me)?;
-        Ok(PostView {
-            comment_count: self.count_comments(&post_id)?,
-            score,
-            my_vote,
-            id: post.id,
-            author_name: self.name_of(&post.author),
-            author: post.author,
-            title: post.title,
-            body: post.body,
-            created_at: post.created_at,
-            edited_at: post.edited_at,
-        })
+        self.post_view(author.to_string(), post, score, my_vote)
     }
 
     /// One page of the feed.
@@ -471,6 +562,10 @@ impl MeroForum {
     /// peer's post replicates in, so an infinite scroll would skip and repeat
     /// rows. The cursor names the last row seen, so a new arrival above it
     /// cannot disturb the page below.
+    ///
+    /// `"new"` is a seek on the `feed` index and reads only the page (plus any
+    /// posts sharing the cursor's timestamp). `"top"` has to score every live
+    /// post: a converging vote count cannot be an index key.
     pub fn list_posts(
         &self,
         sort: Option<String>,
@@ -479,63 +574,68 @@ impl MeroForum {
     ) -> app::Result<PostPage> {
         let limit = Self::page_size(limit);
         let me = Self::caller();
-        let top = sort.as_deref() == Some("top");
 
-        let mut rows: Vec<(i64, u64, String, Post)> = Vec::new();
-        for (_, post) in self
-            .posts
-            .entries()
-            .map_err(|e| AppError::msg(format!("posts.entries failed: {e}")))?
-        {
-            if post.deleted {
-                continue;
-            }
-            let (score, _) = self.tally(&post.id, &me)?;
-            rows.push((score, post.created_at, post.id.clone(), post));
+        if sort.as_deref() == Some("top") {
+            return self.list_top_posts(cursor, limit, &me);
         }
 
-        // Descending on the sort key, with the id last so the order is TOTAL —
-        // two posts sharing a score and a timestamp must still order the same
-        // way on every replica, or the cursor means different things per node.
-        if top {
-            rows.sort_by(|a, b| (b.0, b.1, &b.2).cmp(&(a.0, a.1, &a.2)));
-        } else {
-            rows.sort_by(|a, b| (b.1, &b.2).cmp(&(a.1, &a.2)));
-        }
-
-        let start = match cursor {
-            None => 0,
-            Some(c) => match rows.iter().position(|r| r.2 == c) {
-                Some(i) => i + 1,
-                // The cursor row was deleted between pages. Starting over beats
-                // silently returning nothing.
-                None => 0,
+        // Newest first; posts sharing a timestamp come in the index's own total
+        // order (by entry id), which every replica shares.
+        let rows = match cursor {
+            None => self
+                .posts
+                .query("feed")
+                .eq(&false)
+                .desc()
+                .limit(limit + 1)
+                .entries(),
+            Some(c) => match self.post_holder(&c)?.map(|(_, post)| post) {
+                // Everything at or below the cursor's timestamp; the rows up to
+                // and including the cursor are skipped below.
+                Some(at) => {
+                    let ties = self
+                        .posts
+                        .query("feed")
+                        .eq(&false)
+                        .eq(&at.created_at)
+                        .count()
+                        .map_err(store_err("posts.query"))?;
+                    self.posts
+                        .query("feed")
+                        .eq(&false)
+                        .range(..=at.created_at)
+                        .desc()
+                        .limit(ties + limit + 1)
+                        .entries()
+                        .map(|rows| {
+                            let after = rows.iter().position(|(id, _)| *id == c);
+                            rows.into_iter().skip(after.map_or(0, |i| i + 1)).collect()
+                        })
+                }
+                // The cursor row is gone. Starting over beats returning nothing.
+                None => self
+                    .posts
+                    .query("feed")
+                    .eq(&false)
+                    .desc()
+                    .limit(limit + 1)
+                    .entries(),
             },
-        };
+        }
+        .map_err(store_err("posts.query"))?;
 
-        let slice = rows.iter().skip(start).take(limit).collect::<Vec<_>>();
-        let next_cursor = if start + slice.len() < rows.len() {
-            slice.last().map(|r| r.2.clone())
+        let has_more = rows.len() > limit;
+        let mut items = Vec::with_capacity(limit);
+        for (id, post) in rows.into_iter().take(limit) {
+            let (score, my_vote) = self.tally(&id, &me)?;
+            let author = self.row_author(&self.posts, &id, &post)?;
+            items.push(self.post_view(author, post, score, my_vote)?);
+        }
+        let next_cursor = if has_more {
+            items.last().map(|p| p.id.clone())
         } else {
             None
         };
-
-        let mut items = Vec::with_capacity(slice.len());
-        for (score, _, id, post) in slice {
-            let (_, my_vote) = self.tally(id, &me)?;
-            items.push(PostView {
-                id: post.id.clone(),
-                author_name: self.name_of(&post.author),
-                author: post.author.clone(),
-                title: post.title.clone(),
-                body: post.body.clone(),
-                created_at: post.created_at,
-                edited_at: post.edited_at,
-                score: *score,
-                comment_count: self.count_comments(id)?,
-                my_vote,
-            });
-        }
         Ok(PostPage { items, next_cursor })
     }
 
@@ -551,7 +651,6 @@ impl MeroForum {
         let comment = Comment {
             id: Self::fresh_id(),
             post_id: post_id.clone(),
-            author: Self::caller(),
             body,
             created_at: now,
             edited_at: now,
@@ -560,7 +659,7 @@ impl MeroForum {
         let id = comment.id.clone();
         self.comments
             .insert(id.clone(), comment)
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+            .map_err(store_err("comments.insert"))?;
 
         app::emit!(Event::CommentCreated {
             post_id: &post_id,
@@ -571,44 +670,42 @@ impl MeroForum {
 
     pub fn edit_comment(&mut self, comment_id: String, body: String) -> app::Result<()> {
         Self::check_len("body", &body, MAX_BODY)?;
-        let mut comment = self.load_comment(&comment_id)?;
-        if comment.author != Self::caller() {
-            return Err(AppError::msg("only the author can edit this comment"));
-        }
-        comment.body = body;
-        comment.edited_at = env::time_now();
-        let post_id = comment.post_id.clone();
+        let comment = self.load_own_comment(&comment_id, "edit")?;
+        let now = env::time_now();
         self.comments
-            .insert(comment_id.clone(), comment)
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+            .modify(&comment_id, |c| {
+                c.body = body;
+                c.edited_at = now;
+            })
+            .map_err(store_err("comments.modify"))?;
 
         app::emit!(Event::CommentEdited {
-            post_id: &post_id,
+            post_id: &comment.post_id,
             id: &comment_id
         });
         Ok(())
     }
 
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
-        let mut comment = self.load_comment(&comment_id)?;
-        if comment.author != Self::caller() {
-            return Err(AppError::msg("only the author can delete this comment"));
-        }
-        comment.deleted = true;
-        comment.edited_at = env::time_now();
-        let post_id = comment.post_id.clone();
+        let comment = self.load_own_comment(&comment_id, "delete")?;
+        let now = env::time_now();
         self.comments
-            .insert(comment_id.clone(), comment)
-            .map_err(|e| AppError::msg(format!("comments.insert failed: {e}")))?;
+            .modify(&comment_id, |c| {
+                c.deleted = true;
+                c.edited_at = now;
+            })
+            .map_err(store_err("comments.modify"))?;
 
         app::emit!(Event::CommentDeleted {
-            post_id: &post_id,
+            post_id: &comment.post_id,
             id: &comment_id
         });
         Ok(())
     }
 
     /// One page of a post's comments, oldest first — a thread reads forwards.
+    ///
+    /// A seek on the `thread` index: other posts' comments are never read.
     pub fn list_comments(
         &self,
         post_id: String,
@@ -617,42 +714,58 @@ impl MeroForum {
     ) -> app::Result<CommentPage> {
         let limit = Self::page_size(limit);
 
-        let mut rows: Vec<Comment> = self
-            .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries failed: {e}")))?
-            .map(|(_, c)| c)
-            .filter(|c| c.post_id == post_id && !c.deleted)
-            .collect();
-        rows.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-
-        let start = match cursor {
-            None => 0,
-            Some(c) => rows.iter().position(|r| r.id == c).map_or(0, |i| i + 1),
+        let thread = |from: Option<u64>, take: usize| {
+            let query = self.comments.query("thread").eq(&post_id).eq(&false);
+            match from {
+                Some(at) => query.range(at..).limit(take).entries(),
+                None => query.limit(take).entries(),
+            }
         };
-        let slice: Vec<&Comment> = rows.iter().skip(start).take(limit).collect();
-        let next_cursor = if start + slice.len() < rows.len() {
-            slice.last().map(|c| c.id.clone())
-        } else {
-            None
-        };
+        let rows = match cursor {
+            None => thread(None, limit + 1),
+            Some(c) => match self.comment_holder(&c)?.map(|(_, comment)| comment) {
+                Some(at) => {
+                    let ties = self
+                        .comments
+                        .query("thread")
+                        .eq(&post_id)
+                        .eq(&false)
+                        .eq(&at.created_at)
+                        .count()
+                        .map_err(store_err("comments.query"))?;
+                    thread(Some(at.created_at), ties + limit + 1).map(|rows| {
+                        let after = rows.iter().position(|(id, _)| *id == c);
+                        rows.into_iter().skip(after.map_or(0, |i| i + 1)).collect()
+                    })
+                }
+                None => thread(None, limit + 1),
+            },
+        }
+        .map_err(store_err("comments.query"))?;
 
+        let has_more = rows.len() > limit;
         let me = Self::caller();
-        let mut items = Vec::with_capacity(slice.len());
-        for c in slice {
-            let (score, my_vote) = self.comment_tally(&c.id, &me)?;
+        let mut items = Vec::with_capacity(limit);
+        for (id, c) in rows.into_iter().take(limit) {
+            let (score, my_vote) = self.comment_tally(&id, &me)?;
+            let author = self.row_author(&self.comments, &id, &c)?;
             items.push(CommentView {
-                id: c.id.clone(),
-                post_id: c.post_id.clone(),
-                author_name: self.name_of(&c.author),
-                author: c.author.clone(),
-                body: c.body.clone(),
+                author_name: self.name_of(&author),
+                author,
+                id,
+                post_id: c.post_id,
+                body: c.body,
                 created_at: c.created_at,
                 edited_at: c.edited_at,
                 score,
                 my_vote,
             });
         }
+        let next_cursor = if has_more {
+            items.last().map(|c| c.id.clone())
+        } else {
+            None
+        };
 
         Ok(CommentPage { items, next_cursor })
     }
@@ -666,19 +779,23 @@ impl MeroForum {
         }
         let _ = self.load_post(&post_id)?;
 
-        let voter = Self::caller();
-        let key = Self::vote_key(&post_id, &voter);
-        self.votes
-            .insert(
-                key,
-                Vote {
-                    post_id: post_id.clone(),
-                    voter,
-                    value,
-                    updated_at: env::time_now(),
-                },
-            )
-            .map_err(|e| AppError::msg(format!("votes.insert failed: {e}")))?;
+        let key = Self::vote_key(&post_id, &Self::caller());
+        let vote = Vote {
+            post_id: post_id.clone(),
+            value,
+            updated_at: env::time_now(),
+        };
+        // Keys are per owner, so this asks about the caller's own row only:
+        // nobody else's row at the key can be in the way.
+        if self.votes.contains(&key).map_err(store_err("votes.get"))? {
+            self.votes
+                .update(&key, vote)
+                .map_err(store_err("votes.update"))?;
+        } else {
+            self.votes
+                .insert(key, vote)
+                .map_err(store_err("votes.insert"))?;
+        }
 
         app::emit!(Event::Voted { post_id: &post_id });
         Ok(())
@@ -696,19 +813,25 @@ impl MeroForum {
         }
         let comment = self.load_comment(&comment_id)?;
 
-        let voter = Self::caller();
-        let key = Self::vote_key(&comment_id, &voter);
-        self.comment_votes
-            .insert(
-                key,
-                CommentVote {
-                    comment_id: comment_id.clone(),
-                    voter,
-                    value,
-                    updated_at: env::time_now(),
-                },
-            )
-            .map_err(|e| AppError::msg(format!("comment_votes.insert failed: {e}")))?;
+        let key = Self::vote_key(&comment_id, &Self::caller());
+        let vote = CommentVote {
+            comment_id: comment_id.clone(),
+            value,
+            updated_at: env::time_now(),
+        };
+        if self
+            .comment_votes
+            .contains(&key)
+            .map_err(store_err("comment_votes.get"))?
+        {
+            self.comment_votes
+                .update(&key, vote)
+                .map_err(store_err("comment_votes.update"))?;
+        } else {
+            self.comment_votes
+                .insert(key, vote)
+                .map_err(store_err("comment_votes.insert"))?;
+        }
 
         app::emit!(Event::CommentVoted {
             post_id: &comment.post_id,
@@ -721,7 +844,7 @@ impl MeroForum {
     ///
     /// No `account` argument, for the same reason `create_post` takes no author:
     /// a caller-supplied identity is an impersonation hole. You can only name
-    /// yourself.
+    /// yourself — and `UserStorage` holds every node to that, not just this one.
     ///
     /// An empty name CLEARS the claim rather than storing a blank, so "I'd
     /// rather be anonymous" is expressible and does not leave a row that
@@ -731,24 +854,22 @@ impl MeroForum {
         let trimmed = name.trim();
 
         if trimmed.is_empty() {
-            self.profiles
-                .remove(&account)
-                .map_err(|e| AppError::msg(format!("profiles.remove failed: {e}")))?;
+            let _ = self
+                .profiles
+                .remove()
+                .map_err(store_err("profiles.remove"))?;
             app::emit!(Event::ProfileSet { account: &account });
             return Ok(());
         }
 
         Self::check_len("nickname", trimmed, MAX_NICKNAME)?;
-        self.profiles
-            .insert(
-                account.clone(),
-                Profile {
-                    account: account.clone(),
-                    name: trimmed.to_owned(),
-                    updated_at: env::time_now(),
-                },
-            )
-            .map_err(|e| AppError::msg(format!("profiles.insert failed: {e}")))?;
+        let _ = self
+            .profiles
+            .insert(Profile {
+                name: trimmed.to_owned(),
+                updated_at: env::time_now(),
+            })
+            .map_err(store_err("profiles.insert"))?;
 
         app::emit!(Event::ProfileSet { account: &account });
         Ok(())
@@ -756,23 +877,102 @@ impl MeroForum {
 
     /// The name this account chose, or "" when it has not chosen one.
     pub fn get_nickname(&self, account: String) -> app::Result<String> {
+        Ok(self.name_of(&account))
+    }
+
+    // ── moderation ───────────────────────────────────────────────────────────
+
+    /// The accounts that may remove any post or comment.
+    pub fn moderators(&self) -> app::Result<Vec<String>> {
         Ok(self
-            .profiles
-            .get(&account)
-            .map_err(|e| AppError::msg(format!("profiles.get failed: {e}")))?
-            .map(|p| p.name.clone())
-            .unwrap_or_default())
+            .posts
+            .moderators()
+            .into_iter()
+            .map(|a| a.to_string())
+            .collect())
+    }
+
+    /// Replace the moderators. Only a current moderator may; every node checks
+    /// it as a writer-set rotation.
+    pub fn set_moderators(&mut self, accounts: Vec<String>) -> app::Result<()> {
+        let mut set = BTreeSet::new();
+        for account in &accounts {
+            let _ = set.insert(
+                AccountId::from_str(account)
+                    .map_err(|_| AppError::msg(format!("not an account id: {account}")))?,
+            );
+        }
+        if set.is_empty() {
+            return Err(AppError::msg("a forum needs at least one moderator"));
+        }
+        self.require_moderator()?;
+        let count = set.len();
+        self.posts
+            .set_moderators(set.clone())
+            .map_err(store_err("posts.set_moderators"))?;
+        self.comments
+            .set_moderators(set)
+            .map_err(store_err("comments.set_moderators"))?;
+        app::emit!(Event::ModeratorsChanged { count });
+        Ok(())
+    }
+
+    /// Remove someone's post as a moderator: every account's post at the id,
+    /// since ids are per owner. The author's own delete is `delete_post`.
+    ///
+    /// `remove_by`, not `remove`: a key-only `remove` removes only the CALLER's
+    /// own entry.
+    pub fn moderate_post(&mut self, post_id: String) -> app::Result<()> {
+        self.require_moderator()?;
+        let holders = self
+            .posts
+            .entries_at(&post_id)
+            .map_err(store_err("posts.entries_at"))?;
+        if holders.is_empty() {
+            return Err(AppError::msg(format!("no such post: {post_id}")));
+        }
+        for (owner, _) in holders {
+            let _ = self
+                .posts
+                .remove_by(&owner, &post_id)
+                .map_err(store_err("posts.remove_by"))?;
+        }
+        app::emit!(Event::PostDeleted { id: &post_id });
+        Ok(())
+    }
+
+    /// Remove someone's comment as a moderator: every account's comment at
+    /// the id, as `moderate_post` does.
+    pub fn moderate_comment(&mut self, comment_id: String) -> app::Result<()> {
+        self.require_moderator()?;
+        let holders = self
+            .comments
+            .entries_at(&comment_id)
+            .map_err(store_err("comments.entries_at"))?;
+        let Some((_, comment)) = lowest(holders.clone()) else {
+            return Err(AppError::msg(format!("no such comment: {comment_id}")));
+        };
+        for (owner, _) in holders {
+            let _ = self
+                .comments
+                .remove_by(&owner, &comment_id)
+                .map_err(store_err("comments.remove_by"))?;
+        }
+        app::emit!(Event::CommentDeleted {
+            post_id: &comment.post_id,
+            id: &comment_id
+        });
+        Ok(())
     }
 
     // ── internal ─────────────────────────────────────────────────────────────
 
     /// One account's display name, or "" — the lookup every view goes through.
     fn name_of(&self, account: &str) -> String {
-        self.profiles
-            .get(&account.to_owned())
+        AccountId::from_str(account)
             .ok()
-            .flatten()
-            .map(|p| p.name.clone())
+            .and_then(|a| self.profiles.get_for_user(&a).ok().flatten())
+            .map(|p| p.name)
             .unwrap_or_default()
     }
 
@@ -784,71 +984,234 @@ impl MeroForum {
         }
     }
 
-    fn load_comment(&self, comment_id: &str) -> app::Result<Comment> {
-        let comment = self
+    fn require_moderator(&self) -> app::Result<()> {
+        if !self.posts.is_moderator(&AccountId::from(env::account_id())) {
+            return Err(AppError::msg("only a moderator can do this"));
+        }
+        Ok(())
+    }
+
+    /// The caller's OWN live comment at `comment_id`; see `load_own_post`.
+    fn load_own_comment(&self, comment_id: &String, action: &str) -> app::Result<Comment> {
+        match self
             .comments
-            .get(&comment_id.to_string())
-            .map_err(|e| AppError::msg(format!("comments.get failed: {e}")))?
+            .get(comment_id)
+            .map_err(store_err("comments.get"))?
+        {
+            Some(comment) if comment.deleted => {
+                Err(AppError::msg(format!("comment is deleted: {comment_id}")))
+            }
+            Some(comment) => Ok(comment),
+            None => {
+                let _ = self.load_comment(comment_id)?;
+                Err(AppError::msg(format!(
+                    "only the author can {action} this comment"
+                )))
+            }
+        }
+    }
+
+    /// A row's owner stamp — its real author, whatever the value says — found
+    /// among the holders of its id. "" if no holder's entry is the row.
+    fn row_author<V>(
+        &self,
+        rows: &Moderated<IndexedMap<String, V>>,
+        id: &String,
+        row: &V,
+    ) -> app::Result<String>
+    where
+        V: BorshSerialize + BorshDeserialize + Indexed + 'static,
+    {
+        let holders = rows.entries_at(id).map_err(store_err("entries_at"))?;
+        Ok(holder_of(holders, row)
+            .map(|a| a.to_string())
+            .unwrap_or_default())
+    }
+
+    fn post_view(
+        &self,
+        author: String,
+        post: Post,
+        score: i64,
+        my_vote: i8,
+    ) -> app::Result<PostView> {
+        Ok(PostView {
+            comment_count: self.count_comments(&post.id)?,
+            author_name: self.name_of(&author),
+            author,
+            score,
+            my_vote,
+            id: post.id,
+            title: post.title,
+            body: post.body,
+            created_at: post.created_at,
+            edited_at: post.edited_at,
+        })
+    }
+
+    /// `"top"`: every live post scored, highest first, with the id last so the
+    /// order is TOTAL — two posts sharing a score and a timestamp must still
+    /// order the same way on every replica, or the cursor means different
+    /// things per node.
+    fn list_top_posts(
+        &self,
+        cursor: Option<String>,
+        limit: usize,
+        me: &str,
+    ) -> app::Result<PostPage> {
+        let mut rows: Vec<(i64, i8, String, Post)> = Vec::new();
+        for (id, post) in self
+            .posts
+            .query("feed")
+            .eq(&false)
+            .entries()
+            .map_err(store_err("posts.query"))?
+        {
+            let (score, my_vote) = self.tally(&id, me)?;
+            let author = self.row_author(&self.posts, &id, &post)?;
+            rows.push((score, my_vote, author, post));
+        }
+        rows.sort_by(|a, b| {
+            (b.0, b.3.created_at, &b.3.id, &b.2).cmp(&(a.0, a.3.created_at, &a.3.id, &a.2))
+        });
+
+        let start = match cursor {
+            None => 0,
+            // A missing cursor row was deleted between pages. Starting over
+            // beats silently returning nothing.
+            Some(c) => rows.iter().position(|r| r.3.id == c).map_or(0, |i| i + 1),
+        };
+        let has_more = start + limit < rows.len();
+        let mut items = Vec::with_capacity(limit);
+        for (score, my_vote, author, post) in rows.into_iter().skip(start).take(limit) {
+            items.push(self.post_view(author, post, score, my_vote)?);
+        }
+        let next_cursor = if has_more {
+            items.last().map(|p| p.id.clone())
+        } else {
+            None
+        };
+        Ok(PostPage { items, next_cursor })
+    }
+
+    /// The comment at `comment_id` of the lowest account holding one; see
+    /// `post_holder`.
+    fn comment_holder(&self, comment_id: &str) -> app::Result<Option<(AccountId, Comment)>> {
+        Ok(lowest(
+            self.comments
+                .entries_at(&comment_id.to_string())
+                .map_err(store_err("comments.entries_at"))?,
+        ))
+    }
+
+    fn load_comment(&self, comment_id: &str) -> app::Result<Comment> {
+        let (_, comment) = self
+            .comment_holder(comment_id)?
             .ok_or_else(|| AppError::msg(format!("no such comment: {comment_id}")))?;
-        let comment = (*comment).clone();
         if comment.deleted {
             return Err(AppError::msg(format!("comment is deleted: {comment_id}")));
         }
         Ok(comment)
     }
 
-    /// `(score, caller's own vote)` for one comment.
-    ///
-    /// Same shape as {@link tally}, over the comment map. Both scan the whole
-    /// map per subject, so a listing is O(rows x votes) — fine at forum scale
-    /// and unchanged from what post voting already did, but it is the first
-    /// thing to index if a thread ever gets big.
+    /// `(score, caller's own vote)` for one comment. Same rule as `tally`.
     fn comment_tally(&self, comment_id: &str, me: &str) -> app::Result<(i64, i8)> {
+        let keys = self
+            .comment_votes
+            .query("comment_id")
+            .eq(comment_id)
+            .keys()
+            .map_err(store_err("comment_votes.query"))?;
         let mut score = 0i64;
         let mut mine = 0i8;
-        for (_, vote) in self
-            .comment_votes
-            .entries()
-            .map_err(|e| AppError::msg(format!("comment_votes.entries failed: {e}")))?
-        {
-            if vote.comment_id != comment_id {
+        for (voter, vote) in Self::genuine_votes(&self.comment_votes, comment_id, keys)? {
+            if vote.comment_id != comment_id || !(-1..=1).contains(&vote.value) {
                 continue;
             }
             score += i64::from(vote.value);
-            if vote.voter == me {
+            if voter == me {
                 mine = vote.value;
             }
         }
         Ok((score, mine))
     }
 
-    /// `(score, caller's own vote)` for one post.
+    /// `(score, caller's own vote)` for one post, from its rows in the
+    /// `post_id` index.
+    ///
+    /// A key counts once, as the entry of the account `vote_key(post_id, _)`
+    /// names, read by name, and only if that is a real vote. A patched node can
+    /// write any row it likes under its own stamp, but only one key names it,
+    /// so it gets one vote; a row it files under someone else's key is its own
+    /// entry there, and is never read.
     fn tally(&self, post_id: &str, me: &str) -> app::Result<(i64, i8)> {
+        let keys = self
+            .votes
+            .query("post_id")
+            .eq(post_id)
+            .keys()
+            .map_err(store_err("votes.query"))?;
         let mut score = 0i64;
         let mut mine = 0i8;
-        for (_, vote) in self
-            .votes
-            .entries()
-            .map_err(|e| AppError::msg(format!("votes.entries failed: {e}")))?
-        {
-            if vote.post_id != post_id {
+        for (voter, vote) in Self::genuine_votes(&self.votes, post_id, keys)? {
+            if vote.post_id != post_id || !(-1..=1).contains(&vote.value) {
                 continue;
             }
             score += i64::from(vote.value);
-            if vote.voter == me {
+            if voter == me {
                 mine = vote.value;
             }
         }
         Ok((score, mine))
+    }
+
+    /// Each distinct key among `keys` that is `vote_key(subject, account)`,
+    /// with `account`'s OWN entry at it.
+    ///
+    /// Keys are per owner: one key appears once per account holding it, so a
+    /// key is read once, and only as the entry of the account it names.
+    fn genuine_votes<V>(
+        rows: &Authored<IndexedMap<String, V>>,
+        subject: &str,
+        keys: Vec<String>,
+    ) -> app::Result<Vec<(String, V)>>
+    where
+        V: BorshSerialize + BorshDeserialize + Indexed + 'static,
+    {
+        let keys: BTreeSet<String> = keys.into_iter().collect();
+        let mut out = Vec::new();
+        for key in keys {
+            let Some(named) = key
+                .strip_prefix(subject)
+                .and_then(|rest| rest.strip_prefix('|'))
+            else {
+                continue;
+            };
+            let Ok(account) = AccountId::from_str(named) else {
+                continue;
+            };
+            let voter = account.to_string();
+            if key != Self::vote_key(subject, &voter) {
+                continue;
+            }
+            if let Some(vote) = rows
+                .get_by(&account, &key)
+                .map_err(store_err("votes.get_by"))?
+            {
+                out.push((voter, vote));
+            }
+        }
+        Ok(out)
     }
 
     fn count_comments(&self, post_id: &str) -> app::Result<u64> {
         let n = self
             .comments
-            .entries()
-            .map_err(|e| AppError::msg(format!("comments.entries failed: {e}")))?
-            .filter(|(_, c)| c.post_id == post_id && !c.deleted)
-            .count();
+            .query("thread")
+            .eq(post_id)
+            .eq(&false)
+            .count()
+            .map_err(store_err("comments.query"))?;
         Ok(n as u64)
     }
 }
@@ -1308,7 +1671,6 @@ mod tests {
     fn a_post(edited_at: u64, title: &str, deleted: bool) -> Post {
         Post {
             id: "same-id".to_owned(),
-            author: "author".to_owned(),
             title: title.to_owned(),
             body: "b".to_owned(),
             created_at: 1,
@@ -1365,5 +1727,255 @@ mod tests {
         left.merge(&right).unwrap();
         assert_eq!(left.title, once.title);
         assert_eq!(left.edited_at, once.edited_at);
+    }
+
+    // ── what every node enforces ─────────────────────────────────────────────
+    //
+    // These write straight into the collections, the way a patched node that
+    // skips every method check would, and assert that storage still refuses.
+
+    fn founder(app: &TestHost<MeroForum>) -> [u8; 32] {
+        let hex = app.view(|s| s.moderators()).unwrap().remove(0);
+        hex::decode(hex).unwrap().try_into().unwrap()
+    }
+
+    #[test]
+    fn another_account_cannot_rewrite_or_remove_a_post_in_storage() {
+        let mut app = new_forum();
+        let id = post(&mut app, "Mine");
+
+        let rewrite = app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.posts.modify(&id, |p| p.title = "Hijacked".to_owned())
+        });
+        assert!(rewrite.is_err(), "only the author edits a post");
+        let tombstone = app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.posts.modify(&id, |p| p.deleted = true)
+        });
+        assert!(tombstone.is_err(), "nor can anyone else tombstone it");
+        // Keys are per owner: Bob's key-only remove names HIS entry at the id,
+        // and he holds none, so it removes nothing.
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.posts.remove(&id))
+            .unwrap()
+            .is_none());
+
+        let view = app.view(|s| s.get_post(id)).unwrap();
+        assert_eq!(view.title, "Mine");
+        assert_eq!(view.author, app.view(|_| MeroForum::caller()));
+    }
+
+    #[test]
+    fn another_account_cannot_rewrite_a_comment_in_storage() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "mine");
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.comments.modify(&c, |c| c.body = "hijacked".to_owned())
+            })
+            .is_err());
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.comments.remove(&c))
+            .unwrap()
+            .is_none());
+        let page = app.view(|s| s.list_comments(p, None, 10)).unwrap();
+        assert_eq!(page.items[0].body, "mine");
+    }
+
+    /// The ballot-stuffing hole: `tally` used to add up every row whose
+    /// `post_id` matched, whatever its key or `voter` field said.
+    #[test]
+    fn forged_vote_rows_do_not_count() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let me = app.view(|_| MeroForum::caller());
+
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            let forged = |value| Vote {
+                post_id: p.clone(),
+                value,
+                updated_at: 1,
+            };
+            // A row under someone else's key, rows under made-up keys, and an
+            // out-of-range value under Bob's own key.
+            s.votes
+                .insert(MeroForum::vote_key(&p, &me), forged(1))
+                .unwrap();
+            for i in 0..5 {
+                s.votes.insert(format!("{p}|sock{i}"), forged(1)).unwrap();
+            }
+            let bob = AccountId::from(BOB_ACCOUNT).to_string();
+            s.votes
+                .insert(MeroForum::vote_key(&p, &bob), forged(100))
+                .unwrap();
+        });
+
+        let view = app.view(|s| s.get_post(p.clone())).unwrap();
+        assert_eq!(view.score, 0, "no forged row counts");
+        assert_eq!(view.my_vote, 0, "Bob's row under my key is not my vote");
+    }
+
+    #[test]
+    fn a_squatted_vote_key_cannot_be_overwritten_by_the_squatter() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        app.call(|s| s.vote(p.clone(), 1)).unwrap();
+        let me = app.view(|_| MeroForum::caller());
+        let flip = app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.votes.update(
+                &MeroForum::vote_key(&p, &me),
+                Vote {
+                    post_id: p.clone(),
+                    value: -1,
+                    updated_at: u64::MAX,
+                },
+            )
+        });
+        assert!(flip.is_err(), "a vote row belongs to its voter");
+        assert_eq!(app.view(|s| s.get_post(p)).unwrap().score, 1);
+    }
+
+    #[test]
+    fn a_nickname_slot_is_written_only_by_its_account() {
+        let mut app = new_forum();
+        app.call(|s| s.set_nickname("ana".to_owned())).unwrap();
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.set_nickname("ana".to_owned())
+        })
+        .unwrap();
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.set_nickname("   ".to_owned())
+        })
+        .unwrap();
+        let me = app.view(|_| MeroForum::caller());
+        assert_eq!(app.view(|s| s.get_nickname(me)).unwrap(), "ana");
+    }
+
+    #[test]
+    fn the_founder_moderates_and_nobody_else_does_until_appointed() {
+        let mut app = new_forum();
+        let founder = founder(&app);
+        let spam = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.create_post("spam".to_owned(), "buy now".to_owned())
+            })
+            .unwrap();
+        let reply = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.create_comment(spam.clone(), "and again".to_owned())
+            })
+            .unwrap();
+
+        // Bob is not a moderator, so he cannot moderate a post of the founder's.
+        let mine = post(&mut app, "mine");
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.moderate_post(mine.clone()))
+            .is_err());
+
+        app.call_as_account(founder, founder, |s| s.moderate_comment(reply.clone()))
+            .unwrap();
+        app.call_as_account(founder, founder, |s| s.moderate_post(spam.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.get_post(spam)).is_err());
+        assert!(app.view(|s| s.get_post(mine.clone())).is_ok());
+
+        // Bob cannot appoint himself; the founder appointing him hands him
+        // the power.
+        let bob = AccountId::from(BOB_ACCOUNT).to_string();
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s
+                .set_moderators(vec![bob.clone()]))
+            .is_err());
+        app.call_as_account(founder, founder, |s| {
+            s.set_moderators(vec![AccountId::from(founder).to_string(), bob.clone()])
+        })
+        .unwrap();
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.moderate_post(mine.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.get_post(mine)).is_err());
+    }
+
+    /// Keys are per owner, so a patched node can file its own post under an
+    /// id someone else already holds. Both entries stand: each feed row names
+    /// its real author, a read by id takes the lowest account's, the author
+    /// edits only their own, and a moderator removes both.
+    #[test]
+    fn a_post_id_two_accounts_hold_is_two_posts() {
+        let mut app = new_forum();
+        let founder = founder(&app);
+        let me = app.view(|_| MeroForum::caller());
+        let id = post(&mut app, "mine");
+        let copy = app.view(|s| s.posts.get(&id).unwrap().unwrap());
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.posts.insert(
+                id.clone(),
+                Post {
+                    title: "bob's".to_owned(),
+                    ..copy
+                },
+            )
+        })
+        .unwrap();
+        assert_eq!(app.view(|s| s.posts.entries_at(&id).unwrap()).len(), 2);
+
+        let bob = AccountId::from(BOB_ACCOUNT).to_string();
+        let feed = app.view(|s| s.list_posts(None, None, 10)).unwrap().items;
+        let mut rows: Vec<(String, String)> =
+            feed.into_iter().map(|p| (p.title, p.author)).collect();
+        rows.sort();
+        let mut want = vec![
+            ("bob's".to_owned(), bob.clone()),
+            ("mine".to_owned(), me.clone()),
+        ];
+        want.sort();
+        assert_eq!(rows, want, "each row names its own author");
+
+        let lowest = std::cmp::min(me.clone(), bob.clone());
+        let read = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.get_post(id.clone()))
+            .unwrap();
+        assert_eq!(read.author, lowest, "the lowest holder, on every node");
+
+        app.call(|s| s.edit_post(id.clone(), "mine, edited".to_owned(), "b".to_owned()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.posts.get_by(&AccountId::from(BOB_ACCOUNT), &id))
+                .unwrap()
+                .unwrap()
+                .title,
+            "bob's",
+            "an edit reaches only the caller's own entry"
+        );
+
+        app.call_as_account(founder, founder, |s| s.moderate_post(id.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.posts.entries_at(&id).unwrap()).is_empty());
+    }
+
+    #[test]
+    fn comments_page_across_a_shared_timestamp() {
+        // The cursor seek has to skip rows sharing the cursor's timestamp; the
+        // mock clock does not advance, so every comment here shares one.
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let mut made = Vec::new();
+        for i in 0..5 {
+            made.push(comment(&mut app, &p, &format!("c{i}")));
+        }
+        let mut seen = Vec::new();
+        let mut cursor = None;
+        loop {
+            let page = app
+                .view(|s| s.list_comments(p.clone(), cursor.clone(), 2))
+                .unwrap();
+            seen.extend(page.items.iter().map(|c| c.id.clone()));
+            match page.next_cursor {
+                Some(c) => cursor = Some(c),
+                None => break,
+            }
+        }
+        seen.sort();
+        made.sort();
+        assert_eq!(seen, made);
     }
 }

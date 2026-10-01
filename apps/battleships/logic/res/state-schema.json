@@ -9,7 +9,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "u64"
             }
@@ -23,33 +23,25 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "MatchSummary"
+              "$ref": "MatchEntry"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "match id -> the match, owned by the member who created it."
         },
         {
-          "name": "player_stats",
+          "name": "results",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "PlayerStats"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "history",
-          "type": {
-            "kind": "list",
-            "items": {
               "$ref": "MatchRecord"
             },
-            "crdt_type": "vector"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<match_id>/<nonce>\"` -> a result a game context reported."
         },
         {
           "name": "players",
@@ -65,14 +57,53 @@
               "inner_type": {
                 "kind": "string"
               }
-            },
-            "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "account -> the player key that account plays as, written only by it.\n\n`LwwRegister` so a member who rejoins with a fresh context identity\nconverges on the newer key."
+        }
+      ]
+    },
+    "MatchEntry": {
+      "kind": "record",
+      "doc": "A match as its creator recorded it, keyed by match id and owned by them.",
+      "fields": [
+        {
+          "name": "player1",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2_account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The ACCOUNT player 2 registered their key under — what the game\ncontext checks player 2's rows against."
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "created_ms",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
     },
     "MatchRecord": {
       "kind": "record",
+      "doc": "One reported result, keyed `\"<match_id>/<nonce>\"`.\n\nIndexed by winner and loser, so a player's stats are two index seeks rather\nthan a scan of every match, and by match, so the reader can gather every\nreport of one match.",
       "fields": [
         {
           "name": "match_id",
@@ -96,90 +127,6 @@
           "name": "finished_ms",
           "type": {
             "kind": "u64"
-          }
-        }
-      ]
-    },
-    "MatchStatus": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Pending"
-        },
-        {
-          "name": "Active"
-        },
-        {
-          "name": "Finished"
-        }
-      ]
-    },
-    "MatchSummary": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "player1",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "player2",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "status",
-          "type": {
-            "$ref": "MatchStatus"
-          }
-        },
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "winner",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "created_ms",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "PlayerStats": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "wins",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
-          }
-        },
-        {
-          "name": "losses",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "counter"
           }
         }
       ]
