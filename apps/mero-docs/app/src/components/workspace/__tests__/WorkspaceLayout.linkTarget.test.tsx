@@ -17,7 +17,9 @@ const workspace = vi.hoisted(() => ({
     | null,
   resolvedFolderIds: new Set(['f1']),
   hiddenFolderIds: new Set<string>(),
+  folders: [] as { id: string; alias: string; visibility: 'Open' | 'Restricted' }[],
 }));
+const perms = vi.hoisted(() => ({ removed: false }));
 const docs = vi.hoisted(() => ({
   list: [{ id: 'doc-1' }] as { id: string }[],
   loading: false,
@@ -41,7 +43,7 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
       registryContextId: 'reg',
       selectedFolderId: useAppRoute().route?.folder ?? null,
       setSelectedFolder: vi.fn(),
-      folders: [],
+      folders: workspace.folders,
       registryFolders: workspace.registryFolders,
       resolvedFolderIds: workspace.resolvedFolderIds,
       hiddenFolderIds: workspace.hiddenFolderIds,
@@ -84,7 +86,7 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
   usePublishWorkspacePresence: () => {},
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
-  useFolderPermissions: () => ({ loading: false, caps: 0, refetch: vi.fn() }),
+  useFolderPermissions: () => ({ loading: false, caps: 0, denied: false, removed: perms.removed, error: null, isMember: !perms.removed, refetch: vi.fn() }),
 }));
 vi.mock('@/hooks/useNamespacePermissions', () => ({
   useNamespacePermissions: () => ({ loading: false, canCreateFolder: false }),
@@ -154,6 +156,8 @@ afterEach(() => {
   ];
   workspace.resolvedFolderIds = new Set(['f1']);
   workspace.hiddenFolderIds = new Set();
+  workspace.folders = [];
+  perms.removed = false;
   docs.list = [{ id: 'doc-1' }];
   docs.loading = false;
   docs.listed = true;
@@ -295,6 +299,14 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     workspace.hiddenFolderIds = new Set(['f1']);
     renderAt('/app/ns/f/f1');
     expect(screen.getByText('Finance is a restricted folder')).toBeTruthy();
+  });
+
+  it('shows the no-access card for a person removed from an Open folder, even on a doc link', () => {
+    workspace.folders = [{ id: 'f1', alias: 'Finance', visibility: 'Open' }];
+    perms.removed = true;
+    renderAt('/app/ns/f/f1/d/doc-1');
+    expect(screen.getByText('This document is in Finance')).toBeTruthy();
+    expect(screen.queryByTestId('editor')).toBeNull();
   });
 
   it('says the docs failed to load and Try again re-reads them', () => {

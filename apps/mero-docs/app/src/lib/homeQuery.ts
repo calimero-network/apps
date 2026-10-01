@@ -132,10 +132,10 @@ export function viewRowCount(
   ).length;
 }
 
-/** The tag whose page this query is: that one tag, no other filter, any sort. */
+/** The tag whose page this query is: that one tag, no other filter, any sort, not a saved view. */
 export function tagPageKey(q: HomeQuery): string | null {
   const onlyTag =
-    q.tags.length === 1 && !isHomeQueryFiltered({ ...q, tags: [] });
+    q.tags.length === 1 && !q.view && !isHomeQueryFiltered({ ...q, tags: [] });
   return onlyTag ? q.tags[0] : null;
 }
 

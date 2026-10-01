@@ -35,6 +35,20 @@ describe('slashMenuItems', () => {
     ]);
   });
 
+  it('offers an image only to someone who may add one', () => {
+    const editor = editorWith('');
+    expect(slashMenuItems(editor).map((item) => item.key)).not.toContain('image');
+
+    const pickImage = vi.fn();
+    const image = slashMenuItems(editor, pickImage).find((item) => item.key === 'image');
+    expect(image).toMatchObject({ group: 'Media', title: 'Image' });
+    image!.onItemClick();
+    expect(pickImage).toHaveBeenCalledOnce();
+    expect(
+      filterSuggestionItems(slashMenuItems(editor, pickImage), 'photo').map((i) => i.title),
+    ).toEqual(['Image']);
+  });
+
   it('names shortcuts by modifier, not by platform', () => {
     const editor = editorWith('');
     expect(titled(editor, 'Heading 1').shortcut).toBe('Mod-Alt-1');

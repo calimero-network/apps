@@ -35,7 +35,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
-import { isForbidden } from '@/utils/accessDenied';
+import { isForbidden, isMemberGone } from '@/utils/accessDenied';
 
 // A u32 with every bit set - what we report as `caps` for a group-admin
 // so consumers' `isAdmin || hasCap(caps, bit)` checks all pass even if
@@ -216,7 +216,7 @@ export function useMemberCaps(
       const refused = isForbidden(lastErr);
       // A fault is not an answer: only a refusal may take away caps a read already granted.
       const last = stateRef.current;
-      if (!refused && last.caps !== null && last.error === null) {
+      if (!refused && !isMemberGone(lastErr) && last.caps !== null && last.error === null) {
         console.warn(
           '[useMemberCaps] re-read failed; keeping last caps',
           finalErr,

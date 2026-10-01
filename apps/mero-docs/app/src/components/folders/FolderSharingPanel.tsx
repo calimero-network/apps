@@ -372,7 +372,7 @@ export function FolderSharingPanel({ folderId }: Props) {
               <li key={id} className="flex items-center justify-between gap-3 py-1 text-sm">
                 <MemberLabel namespaceId={namespaceId} memberId={id} className="truncate" />
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   disabled={restoringId === id}
                   onClick={() => void onRestore(id)}

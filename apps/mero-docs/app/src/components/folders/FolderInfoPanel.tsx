@@ -56,16 +56,16 @@ export function FolderInfoPanel({
           </DialogClose>
         </header>
 
-        <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/60 px-4 py-3">
+          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground">
             {currentVisibility === 'Restricted' ? (
               <>
-                <Lock className="h-3.5 w-3.5" aria-hidden />
+                <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 Restricted: only invited members
               </>
             ) : currentVisibility === 'Open' ? (
               <>
-                <Globe className="h-3.5 w-3.5" aria-hidden />
+                <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 Open: all workspace members
               </>
             ) : (

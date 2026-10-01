@@ -147,6 +147,7 @@ function AppToaster() {
       theme={theme}
       position="bottom-right"
       offset={{ bottom: TOAST_BOTTOM_OFFSET }}
+      mobileOffset={{ bottom: TOAST_BOTTOM_OFFSET }}
       toastOptions={{
         classNames: {
           toast: '!bg-card !text-card-foreground !border-border',

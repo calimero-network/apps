@@ -24,6 +24,11 @@ export function lacksFolderAccess(perms: {
   return perms.denied || isForbidden(perms.error);
 }
 
+// Core answers 404 for a capability read of someone removed from an Open folder.
+export function isMemberGone(err: unknown): boolean {
+  return err instanceof HTTPError && err.status === 404;
+}
+
 // A revoked session also answers 403, but says nothing about membership.
 export function isForbidden(err: unknown): boolean {
   return (

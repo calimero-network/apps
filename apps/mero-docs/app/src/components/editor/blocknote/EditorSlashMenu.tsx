@@ -8,11 +8,17 @@ import { SlashMenu } from '@/components/editor/SlashMenu';
 import { SLASH_TRIGGER, slashMenuItems, type SlashItem } from './slashMenu';
 import type { DriveEditor } from './schema';
 
-export function EditorSlashMenu({ editor }: { editor: DriveEditor }) {
+export function EditorSlashMenu({
+  editor,
+  pickImage,
+}: {
+  editor: DriveEditor;
+  pickImage?: () => void;
+}) {
   const getItems = useCallback(
     async (query: string) =>
-      filterSuggestionItems(slashMenuItems(editor), query),
-    [editor],
+      filterSuggestionItems(slashMenuItems(editor, pickImage), query),
+    [editor, pickImage],
   );
   return (
     <SuggestionMenuController

@@ -29,6 +29,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
+import { useAddImages } from '@/hooks/useAddImages';
 import { useBodyCursors, type CursorEditor } from '@/hooks/useBodyCursors';
 import { useDocPresence } from '@/hooks/useDocPresence';
 import { useTitleCursors } from '@/hooks/useTitleCursors';
@@ -79,8 +80,6 @@ export function DocumentEditor({
   // rather than writable on error.
   const canEditDocs = perms.canEditDocs;
   const canManageTags = useCanManageTags();
-  // Tags and archive are for editors of this folder, never guests.
-  const canOrganize = canEditDocs && canManageTags;
   const docs = useDocs(folderId);
   const {
     addTag: docsAddTag,
@@ -97,6 +96,10 @@ export function DocumentEditor({
   // Settled with an error and no context (e.g. access lost): no longer "connecting".
   const contextFailed =
     !docsContextId && !docs.contextResolving && docs.error !== null;
+  const isOffline = !isOnline || contextFailed;
+  // Tags, archive and delete are direct calls that fail offline. Typing is not
+  // gated: the body and title hooks queue their writes and retry.
+  const canOrganize = canEditDocs && canManageTags && !isOffline;
 
   // Metadata only; the title and the body are read through their own hooks.
   const [doc, setDoc] = useState<DocDto | null>(null);
@@ -129,6 +132,7 @@ export function DocumentEditor({
     editor: editor as unknown as BodyEditor | null,
   });
   const { backendIdOf, editorIdOf, isConfirmed } = body;
+  const addImages = useAddImages(editor, docsContextId);
   const sectionLinks = useMemo(
     () =>
       namespaceId
@@ -314,7 +318,9 @@ export function DocumentEditor({
         }
         onBack={onClose}
         folderName={folderName}
-        onDelete={canEditDocs && doc?.can_delete ? onDelete : undefined}
+        onDelete={
+          canEditDocs && !isOffline && doc?.can_delete ? onDelete : undefined
+        }
         onCopyLink={
           namespaceId
             ? () => void copyLink(docUrl(namespaceId, folderId, docId))
@@ -324,11 +330,13 @@ export function DocumentEditor({
         onRedo={canEditDocs ? body.redo : undefined}
         onContentChange={canEditDocs ? body.onContentChange : undefined}
         readOnly={!canEditDocs}
+        imageContextId={docsContextId}
+        onAddImages={canEditDocs ? addImages : undefined}
         initialContent={body.content}
         saveStatus={body.status}
         lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
         isAppReady={!!namespaceId && !!docsContextId}
-        isOffline={!isOnline || contextFailed}
+        isOffline={isOffline}
         isLoading={body.loading}
         onEditorReady={onEditorReady}
         peers={peerList}

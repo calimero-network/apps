@@ -15,6 +15,7 @@
 
 import type { Page, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
+import type { ImageFile } from './images';
 
 const FILLER_LINES = 30; // enough text around "Milestones" that it needs a scroll and can reach the top
 export const SECTION_PARAGRAPH =
@@ -548,7 +549,9 @@ export class DocListDriver {
     });
   }
 
+  // A doc a peer made reaches this node on a sync, later than a click's own timeout.
   async clickDoc(title: string): Promise<void> {
+    await this.expectDocVisible(title, { timeout: 60_000 });
     await this.docRow(title).first().click();
   }
 }
@@ -795,6 +798,24 @@ export class EditorDriver {
 
   slashMenu(): Locator {
     return this.page.getByRole('listbox', { name: 'Insert' });
+  }
+
+  // The / menu's Image item, with `files` picked in the dialog it opens.
+  async addImages(files: ImageFile[]): Promise<void> {
+    const chooser = this.page.waitForEvent('filechooser');
+    await this.page.keyboard.type('/image');
+    await this.slashMenu().getByRole('option', { name: 'Image' }).click();
+    await (await chooser).setFiles(files);
+  }
+
+  /** An image block's picture, once it has loaded, by the file's name. */
+  image(name: string): Locator {
+    return this.page.locator('.bn-editor').getByRole('img', { name });
+  }
+
+  /** An image block still waiting for its picture, or unable to show it. */
+  imageNotice(): Locator {
+    return this.page.locator('.bn-editor [data-image-status]');
   }
 
   // A doc link renders as a chip: an ordinary link to an in-app path.

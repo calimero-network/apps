@@ -168,6 +168,15 @@ export function WorkspaceLayout() {
     routedDocs.listed && (!docMissing || recheckedDocKey === docKey)
       ? routedDocs.list
       : null;
+  // Core answers a person removed from an Open folder like a non-member of a
+  // Restricted one, so the folder is closed to them the same way.
+  const noAccessFolderIds = useMemo(
+    () =>
+      selectedFolderPerms.removed && selectedFolder
+        ? new Set([...hiddenFolderIds, selectedFolder.id])
+        : hiddenFolderIds,
+    [hiddenFolderIds, selectedFolder, selectedFolderPerms.removed],
+  );
   const linkTarget = useMemo(
     () =>
       resolveLinkTarget({
@@ -176,7 +185,7 @@ export function WorkspaceLayout() {
         namespaceIds,
         folderRegistry: registryFolders,
         resolvedFolderIds,
-        hiddenFolderIds,
+        hiddenFolderIds: noAccessFolderIds,
         docs: docsAnswer,
       }),
     [
@@ -185,7 +194,7 @@ export function WorkspaceLayout() {
       namespaceIds,
       registryFolders,
       resolvedFolderIds,
-      hiddenFolderIds,
+      noAccessFolderIds,
       docsAnswer,
     ],
   );

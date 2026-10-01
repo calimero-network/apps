@@ -3,33 +3,11 @@
 // folder by inheritance only, so the panel has to add a direct row for him.
 
 import type { Page, Route } from '@playwright/test';
-import { expect, test } from '../fixtures/two-user';
+import { expect, shareOpenDoc, SYNC_MS, test } from '../fixtures/two-user';
 import { getEnv } from '../fixtures/env';
 import type { WorkspaceDriver } from '../fixtures/workspace';
+import { DOC_READ_ONLY } from '../../src/lib/documentError';
 import { parseAppPath } from '../../src/lib/routes';
-
-const SYNC_MS = 60_000; // a write or a role change crossing to the other node
-
-async function shareOpenDoc(
-  alice: WorkspaceDriver,
-  bob: WorkspaceDriver,
-  ws: string,
-) {
-  await alice.goToWorkspace();
-  await alice.createNamespace(ws);
-  await alice.createFolder({ name: 'Team', visibility: 'Open' });
-  await alice.tree.openFolder('Team');
-  await alice.createDoc('Plan');
-  await alice.openSettings();
-  const inviteUrl = await alice.settings.copyNamespaceInvite();
-  await alice.closeSettings();
-
-  await bob.joinNamespace(inviteUrl);
-  await bob.tree.expectFolderVisible('Team', { timeout: SYNC_MS });
-  await bob.tree.openFolder('Team');
-  await bob.restrictedCard.joinIfPrompted('Team');
-  await bob.docs.expectDocVisible('Plan', { timeout: SYNC_MS });
-}
 
 async function setBobsRole(alice: WorkspaceDriver, role: string) {
   await alice.openFolderInfo('Team');
@@ -147,6 +125,9 @@ test.describe('Folder Read only (two-node)', () => {
     await bob.page.locator('.ProseMirror').first().getByText('before').click();
     await bob.page.keyboard.press('End');
     await bob.page.keyboard.type(' phantom');
+    await expect(bob.page.getByText(DOC_READ_ONLY)).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(bob.page.locator('.ProseMirror').first()).not.toContainText(
       'phantom',
       { timeout: 30_000 },
