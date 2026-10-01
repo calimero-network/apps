@@ -312,6 +312,9 @@ export async function uploadBlobDirect(
   }
 }
 
+/** Group roles held by nodes rather than people. */
+const TEE_NODE_ROLES = new Set(["RelayTee", "ReadOnlyTee"]);
+
 export class GroupApiDataSource implements GroupApi {
   async createGroup(
     request: CreateGroupRequest,
@@ -563,7 +566,9 @@ export class GroupApiDataSource implements GroupApi {
         // frontend's `alias` field — keeps every display-chain callsite
         // (`useChannelMembers`, MembersTab, AddMember dropdown, DM picker)
         // working without touching them.
-        const members: GroupMember[] = rawMembers.map((m) => ({
+        // TEE roles are nodes the workspace runs on (a relay, a replica), not
+        // people: every member list, DM picker and avatar row reads this.
+        const members: GroupMember[] = rawMembers.filter((m) => !TEE_NODE_ROLES.has(m.role)).map((m) => ({
           identity: m.identity,
           role: m.role as GroupMember["role"],
           alias: m.name ?? m.alias,
