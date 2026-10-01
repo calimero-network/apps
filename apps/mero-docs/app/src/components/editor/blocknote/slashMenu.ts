@@ -7,6 +7,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  ImageIcon,
   List,
   Pilcrow,
   type LucideIcon,
@@ -27,6 +28,7 @@ import type { DriveEditor } from './schema';
 export const SLASH_TRIGGER = '/';
 export const SECTION_LINK_TRIGGER = '#'; // the section picker's menu; typing # never opens it
 const LINKS_GROUP = 'Links';
+const MEDIA_GROUP = 'Media';
 // The blocks offered anywhere, by BlockNote's slash_menu key; the schema allows more than the app shows.
 const HEADING_BLOCKS = ['heading', 'heading_2', 'heading_3'] as const;
 const BASIC_BLOCKS = ['bullet_list', 'paragraph'] as const;
@@ -49,7 +51,8 @@ const ICONS: Record<string, LucideIcon> = {
 const sentenceCase = (text: string) =>
   text.charAt(0) + text.slice(1).toLowerCase();
 
-export function slashMenuItems(editor: DriveEditor): SlashItem[] {
+/** `pickImage` is left out for someone who may not add images, and the item with it. */
+export function slashMenuItems(editor: DriveEditor, pickImage?: () => void): SlashItem[] {
   const openPicker = (trigger: string) => () =>
     editor.getExtension(SuggestionMenu)?.openSuggestionMenu(trigger);
   const blocks = getDefaultSlashMenuItems(editor).map((item) => ({
@@ -82,6 +85,18 @@ export function slashMenuItems(editor: DriveEditor): SlashItem[] {
       onItemClick: openPicker(SECTION_LINK_TRIGGER),
     },
     ...pick(BASIC_BLOCKS),
+    ...(pickImage
+      ? [
+          {
+            key: 'image',
+            title: 'Image',
+            group: MEDIA_GROUP,
+            aliases: ['picture', 'photo', 'upload', 'img'],
+            icon: ImageIcon,
+            onItemClick: pickImage,
+          },
+        ]
+      : []),
   ];
 }
 

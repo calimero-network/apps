@@ -29,6 +29,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
+import { useAddImages } from '@/hooks/useAddImages';
 import { useBodyCursors, type CursorEditor } from '@/hooks/useBodyCursors';
 import { useDocPresence } from '@/hooks/useDocPresence';
 import { useTitleCursors } from '@/hooks/useTitleCursors';
@@ -129,6 +130,7 @@ export function DocumentEditor({
     editor: editor as unknown as BodyEditor | null,
   });
   const { backendIdOf, editorIdOf, isConfirmed } = body;
+  const addImages = useAddImages(editor, docsContextId);
   const sectionLinks = useMemo(
     () =>
       namespaceId
@@ -324,6 +326,8 @@ export function DocumentEditor({
         onRedo={canEditDocs ? body.redo : undefined}
         onContentChange={canEditDocs ? body.onContentChange : undefined}
         readOnly={!canEditDocs}
+        imageContextId={docsContextId}
+        onAddImages={canEditDocs ? addImages : undefined}
         initialContent={body.content}
         saveStatus={body.status}
         lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}

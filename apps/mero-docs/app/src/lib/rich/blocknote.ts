@@ -2,6 +2,7 @@
 // with a depth and string attrs. This is the only place that translation
 // happens, so the diff and the render can never disagree about the shape.
 
+import { schema, UNSUPPORTED_BLOCK } from '@/components/editor/blocknote/schema';
 import { inlineToSpans, spansToInline, type AttrSpan, type IdRun } from './delta';
 import type { EditorBlock } from './blocks';
 import type { InlineContent } from './delta';
@@ -29,18 +30,32 @@ export interface BackendBlock {
 // not carry a row for it.
 const DEFAULT_PROP = 'default';
 
+type BlockSpecs = Record<string, (typeof schema.blockSchema)[keyof typeof schema.blockSchema]>;
+const SPECS: BlockSpecs = schema.blockSchema;
+
+/** The block's kind as the editor can hold it; the placeholder itself is never taken at its word. */
+const specOf = (kind: string) => (kind === UNSUPPORTED_BLOCK ? undefined : SPECS[kind]);
+
+/** What the placeholder keeps of a block this version cannot show. */
+type Kept = Pick<EditorBlock, 'kind' | 'attrs' | 'inline'>;
+
 /** The editor's nested document as the flat list the backend diff takes. */
 export function fromBlockNote(document: BlockNoteBlock[]): EditorBlock[] {
   const out: EditorBlock[] = [];
   const walk = (blocks: BlockNoteBlock[], depth: number) => {
     for (const block of blocks) {
-      out.push({
-        id: block.id,
-        kind: block.type,
-        depth,
-        attrs: propsToAttrs(block.props),
-        inline: inlineToSpans(inlineOf(block)),
-      });
+      if (block.type === UNSUPPORTED_BLOCK) {
+        const kept = JSON.parse(String(block.props.block)) as Kept;
+        out.push({ id: block.id, depth, ...kept });
+      } else {
+        out.push({
+          id: block.id,
+          kind: block.type,
+          depth,
+          attrs: propsToAttrs(block.props),
+          inline: inlineToSpans(inlineOf(block)),
+        });
+      }
       walk(block.children ?? [], depth + 1);
     }
   };
@@ -55,13 +70,7 @@ export function toBlockNote(blocks: EditorBlock[]): BlockNoteBlock[] {
   // depth the editor cannot represent still lands somewhere sensible.
   const open: BlockNoteBlock[] = [];
   for (const block of blocks) {
-    const node: BlockNoteBlock = {
-      id: block.id,
-      type: block.kind,
-      props: attrsToProps(block.attrs),
-      content: spansToInline(block.inline),
-      children: [],
-    };
+    const node = blockNoteNode(block);
     open.length = Math.min(block.depth, open.length);
     const parent = open[open.length - 1];
     if (parent) parent.children.push(node);
@@ -138,11 +147,38 @@ function propsToAttrs(props: Record<string, unknown>): Record<string, string> {
   return attrs;
 }
 
-function attrsToProps(attrs: Record<string, string>): Record<string, unknown> {
+/** One flat block as a childless editor node; a kind the schema lacks becomes the placeholder. */
+function blockNoteNode(block: EditorBlock): BlockNoteBlock {
+  const spec = specOf(block.kind);
+  if (!spec) {
+    const kept: Kept = { kind: block.kind, attrs: block.attrs, inline: block.inline };
+    return {
+      id: block.id,
+      type: UNSUPPORTED_BLOCK,
+      props: { block: JSON.stringify(kept) },
+      children: [],
+    };
+  }
+  return {
+    id: block.id,
+    type: block.kind,
+    props: attrsToProps(spec.propSchema, block.attrs),
+    content: spec.content === 'none' ? undefined : spansToInline(block.inline),
+    children: [],
+  };
+}
+
+/** Attrs as typed props, by the prop's declared type: a caption of "2024" stays text. */
+function attrsToProps(
+  propSchema: Record<string, { default?: unknown; type?: string }>,
+  attrs: Record<string, string>,
+): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(attrs)) {
-    if (value === 'true' || value === 'false') props[key] = value === 'true';
-    else if (/^-?\d+$/.test(value)) props[key] = Number(value);
+    const prop = propSchema[key];
+    const type = prop?.type ?? typeof prop?.default;
+    if (type === 'boolean') props[key] = value === 'true';
+    else if (type === 'number') props[key] = Number(value);
     else props[key] = value;
   }
   return props;
