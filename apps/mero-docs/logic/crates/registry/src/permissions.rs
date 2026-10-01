@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use calimero_sdk::AccountId;
-use calimero_storage::collections::{LwwRegister, Op, StoreError, UnorderedMap};
+use calimero_storage::collections::{LwwRegister, Op, SortedMap, StoreError, UnorderedMap};
 use mero_docs_types::DriveError;
 
 use crate::{FolderRoleEntry, RegistryState, Role};
@@ -201,7 +201,7 @@ impl RegistryState {
     }
 
     /// The role map, for its writers: the registry admins.
-    fn write_roles(&mut self) -> Result<&mut UnorderedMap<String, LwwRegister<Role>>, DriveError> {
+    fn write_roles(&mut self) -> Result<&mut SortedMap<String, LwwRegister<Role>>, DriveError> {
         if !self.folder_roles.can(&caller_account(), Op::Write) {
             return Err(DriveError::Forbidden(
                 "only a registry admin may change folder roles".into(),
@@ -308,8 +308,8 @@ impl RegistryState {
             .folder_roles
             .get()
             .map_err(storage_err("folder_roles.get"))?
-            .entries()
-            .map_err(storage_err("folder_roles.entries"))?;
+            .prefix(prefix.as_bytes())
+            .map_err(storage_err("folder_roles.prefix"))?;
         let mut out = Vec::new();
         for (k, reg) in entries {
             if let Some(member) = k.strip_prefix(&prefix) {
@@ -333,10 +333,9 @@ impl RegistryState {
             .folder_roles
             .get()
             .map_err(storage_err("folder_roles.get"))?
-            .entries()
-            .map_err(storage_err("folder_roles.entries"))?
+            .prefix(prefix.as_bytes())
+            .map_err(storage_err("folder_roles.prefix"))?
             .map(|(k, _)| k)
-            .filter(|k| k.starts_with(&prefix))
             .collect();
         let roles = self.write_roles()?;
         for k in stale {
@@ -592,6 +591,29 @@ mod tests {
             host.view(|s| s.list_folder_roles(fid("f2"))).unwrap().len(),
             1
         );
+    }
+
+    #[test]
+    fn list_folder_roles_is_a_prefix_slice_in_member_order() {
+        let mut host = registry();
+        host.call(|s| s.register_folder(fid("f10"), None, None, None))
+            .unwrap();
+        let members: Vec<String> = (1..=8u8).rev().map(|b| key([b; 32])).collect();
+        for m in &members {
+            host.call(|s| s.set_folder_role(fid("f1"), m.clone(), Role::Viewer))
+                .unwrap();
+        }
+        host.call(|s| s.set_folder_role(fid("f10"), key(MEMBER), Role::Viewer))
+            .unwrap();
+        let listed: Vec<String> = host
+            .view(|s| s.list_folder_roles(fid("f1")))
+            .unwrap()
+            .into_iter()
+            .map(|r| r.member)
+            .collect();
+        let mut sorted = members;
+        sorted.sort();
+        assert_eq!(listed, sorted);
     }
 
     #[test]

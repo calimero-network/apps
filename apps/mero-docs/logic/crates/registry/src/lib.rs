@@ -44,7 +44,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, UnorderedMap, WriteOnce,
+    Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, SortedMap, UnorderedMap, WriteOnce,
 };
 use mero_docs_types::DriveError;
 
@@ -400,7 +400,7 @@ pub struct RegistryState {
     managers: SharedStorage<UnorderedMap<String, LwwRegister<bool>>>,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
     /// Writable by the registry admins only (see `sync_admins`).
-    folder_roles: SharedStorage<UnorderedMap<String, LwwRegister<Role>>>,
+    folder_roles: SharedStorage<SortedMap<String, LwwRegister<Role>>>,
     /// tag key → TagRecord. Public, like `sort_order`: any member may name,
     /// recolour or delete a tag; which roles may is the app's to gate.
     tags: UnorderedMap<String, TagRecord>,
