@@ -44,7 +44,8 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, SortedMap, UnorderedMap, WriteOnce,
+    AccessControl, Frozen, LwwRegister, Mergeable, Moderated, PermissionedStorage,
+    ProtocolAuthorizer, SortedMap, UnorderedMap, WriteOnce,
 };
 use mero_docs_types::DriveError;
 
@@ -145,13 +146,8 @@ pub struct FolderRoleEntry {
 
 /// Per-folder record inside the registry map. All fields are LWW so
 /// concurrent updates resolve deterministically.
-///
-/// `Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`
-/// because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
-/// trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
-/// resolution picks the inherent one from the derive expansion, which then
-/// fails the macro's `?` - same workaround battleships uses on
-/// `MatchSummary`.
+// Dispatched rather than derived: each field has its own setter, and an entry
+// merged without its own rule resolves whole, dropping one of two concurrent edits.
 #[app::mergeable(id = "mero_drive_registry::FolderRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -325,22 +321,14 @@ fn project_tag(key: &str, rec: &TagRecord) -> TagDto {
 
 /// A workspace-wide saved search. Its creator is not stored here but in
 /// `view_origins`, where nobody can rewrite it.
-#[app::mergeable(id = "mero_drive_registry::ViewRecord")]
-#[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
+// Derived: every save writes both fields, so the later save winning whole is the merge.
+#[derive(Clone, Default, BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct ViewRecord {
     /// The display name.
     pub name: LwwRegister<String>,
     /// The saved search text.
     pub query: LwwRegister<String>,
-}
-
-impl Mergeable for ViewRecord {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        <LwwRegister<String> as Mergeable>::merge(&mut self.name, &other.name)?;
-        <LwwRegister<String> as Mergeable>::merge(&mut self.query, &other.query)?;
-        Ok(())
-    }
 }
 
 /// Flat projection of a `ViewRecord`.
@@ -392,15 +380,12 @@ pub struct RegistryState {
     /// Hex account of the registry owner: whoever created the registry
     /// context (a namespace admin). Frozen at `init`; nobody can change it.
     owner: Frozen<String>,
-    /// Hex accounts granted manager rights over the whole registry (may set/
-    /// clear any folder role). Writable by the owner only. The owner is
-    /// implicitly a manager and is NOT stored here. Value `true` = is a
-    /// manager, `false` = removed (kept around so the key is never
-    /// CRDT-tombstoned - a `remove` would silently swallow a later re-add).
-    managers: SharedStorage<UnorderedMap<String, LwwRegister<bool>>>,
+    /// The registry's managers, as holders of the `MANAGER` role. The owner is
+    /// its only admin, so only the owner grants or revokes it, on every node.
+    access: AccessControl,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
-    /// Writable by the registry admins only (see `sync_admins`).
-    folder_roles: SharedStorage<SortedMap<String, LwwRegister<Role>>>,
+    /// The owner administers it; managers may write and delete rows (see `sync_admins`).
+    folder_roles: PermissionedStorage<SortedMap<String, LwwRegister<Role>>, ProtocolAuthorizer>,
     /// tag key → TagRecord. Public, like `sort_order`: any member may name,
     /// recolour or delete a tag; which roles may is the app's to gate.
     tags: UnorderedMap<String, TagRecord>,
@@ -421,12 +406,8 @@ impl RegistryState {
             folder_contexts: WriteOnce::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
             owner: Frozen::new(hex::encode(me.as_bytes())),
-            managers: SharedStorage::new_with_field_name(
-                "registry:managers",
-                BTreeSet::from([me]),
-                false,
-            ),
-            folder_roles: SharedStorage::new_with_field_name(
+            access: AccessControl::new(me),
+            folder_roles: PermissionedStorage::new_with_field_name(
                 "registry:folder_roles",
                 BTreeSet::from([me]),
                 false,
@@ -2014,5 +1995,121 @@ mod tests {
         let mut app = RegistryState::init();
         let err = app.delete_view_inner("ghost").unwrap_err();
         assert!(matches!(err, DriveError::NotFound(_)));
+    }
+
+    // ---- record merges, as nodes apply them ----
+
+    /// A script whose record merges are registered, as loading the
+    /// wasm module registers them on a node.
+    fn registry_script() -> calimero_storage::testing::Script<RegistryState> {
+        let script = calimero_storage::testing::Script::new(RegistryState::init);
+        RegistryState::__calimero_register_rekey();
+        script
+    }
+
+    /// Two devices of the folder's creator, each editing a different field
+    /// before seeing the other's edit.
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn concurrent_edits_of_different_folder_fields_both_hold() {
+        let mut script = registry_script();
+        let (laptop, phone) = (script.founder(), script.founder());
+        let registered = script
+            .run(laptop, |s| {
+                s.register_folder_inner(fid("f1"), None, None, None)
+                    .unwrap();
+            })
+            .unwrap();
+        assert_eq!(script.deliver(phone, registered), 0);
+        let coloured = script
+            .run(laptop, |s| {
+                s.set_color_inner("f1", "#ff0000".into()).unwrap()
+            })
+            .unwrap();
+        let named = script
+            .run(phone, |s| {
+                s.set_folder_alias_inner("f1", "Shared".into()).unwrap()
+            })
+            .unwrap();
+        assert_eq!(script.deliver(laptop, named), 0);
+        assert_eq!(script.deliver(phone, coloured), 0);
+        let both = |s: &RegistryState| {
+            let f = s.get_folder(fid("f1")).unwrap();
+            f.color.as_deref() == Some("#ff0000") && f.alias.as_deref() == Some("Shared")
+        };
+        for device in [laptop, phone] {
+            assert!(script.view(device, both));
+        }
+        script.assert_every_order_converges(both);
+    }
+
+    /// Every save writes the whole view, so concurrent saves settle on one of
+    /// them whole, never a name from one and a query from the other.
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn concurrent_saves_of_one_view_settle_on_one_whole_save() {
+        let mut script = registry_script();
+        let (alice, bob) = (script.member(), script.member());
+        let created = script
+            .run(alice, |s| {
+                s.save_view_inner("v1", "A".into(), "qa".into()).unwrap()
+            })
+            .unwrap();
+        assert_eq!(script.deliver(bob, created), 0);
+        let renamed = script
+            .run(alice, |s| {
+                s.save_view_inner("v1", "A2".into(), "qa".into()).unwrap()
+            })
+            .unwrap();
+        let rewritten = script
+            .run(bob, |s| {
+                s.save_view_inner("v1", "B".into(), "qb".into()).unwrap()
+            })
+            .unwrap();
+        assert_eq!(script.deliver(alice, rewritten), 0);
+        assert_eq!(script.deliver(bob, renamed), 0);
+        let one_save = |s: &RegistryState| {
+            let v = s.list_views().unwrap().remove(0);
+            matches!(
+                (v.name.as_str(), v.query.as_str()),
+                ("A2", "qa") | ("B", "qb")
+            )
+        };
+        let seen: Vec<_> = [alice, bob]
+            .map(|r| script.view(r, |s| s.list_views().unwrap().remove(0).name))
+            .into();
+        assert_eq!(seen[0], seen[1]);
+        script.assert_every_order_converges(one_save);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn a_tag_deleted_while_renamed_elsewhere_stays_deleted() {
+        let mut script = registry_script();
+        let (alice, bob) = (script.member(), script.member());
+        let created = script
+            .run(alice, |s| {
+                s.set_tag_inner("t", "T".into(), "#ff0000".into()).unwrap()
+            })
+            .unwrap();
+        assert_eq!(script.deliver(bob, created), 0);
+        let deleted = script
+            .run(alice, |s| s.delete_tag_inner("t").unwrap())
+            .unwrap();
+        let renamed = script
+            .run(bob, |s| {
+                s.set_tag_inner("t", "T2".into(), "#00ff00".into()).unwrap()
+            })
+            .unwrap();
+        assert_eq!(script.deliver(alice, renamed), 0);
+        assert_eq!(script.deliver(bob, deleted), 0);
+        let gone = |s: &RegistryState| s.list_tags().unwrap()[0].deleted;
+        for member in [alice, bob] {
+            assert!(script.view(member, gone));
+        }
+        script.assert_every_order_converges(gone);
     }
 }
