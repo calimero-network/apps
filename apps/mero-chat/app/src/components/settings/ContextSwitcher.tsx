@@ -307,7 +307,7 @@ export default function ContextSwitcher() {
             </Select>
             <Note>
               {contexts.length === 0
-                ? "No contexts found on this node"
+                ? "No contexts yet"
                 : `${contexts.length} context${contexts.length !== 1 ? "s" : ""} available`}
             </Note>
           </Section>

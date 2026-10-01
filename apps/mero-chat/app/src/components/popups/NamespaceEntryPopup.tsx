@@ -821,7 +821,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               Join existing workspace
             </CreateLink>
             <Divider />
-            <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
+            <LogoutBtn onClick={onLogout}>Sign out</LogoutBtn>
           </>
         )}
 
@@ -865,7 +865,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               ← Back
             </Button>
             <Divider />
-            <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
+            <LogoutBtn onClick={onLogout}>Sign out</LogoutBtn>
           </>
         )}
 
@@ -874,7 +874,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
           <>
             <Header>
               <Title>Welcome to MeroChat</Title>
-              <Sub>No servers found on this node. Create one, or join via an invitation link.</Sub>
+              <Sub>No workspaces yet. Create one, or join with an invitation link.</Sub>
             </Header>
             {error && <Err>{error}</Err>}
             <Button
@@ -890,7 +890,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               Join existing workspace
             </CreateLink>
             <Divider />
-            <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
+            <LogoutBtn onClick={onLogout}>Sign out</LogoutBtn>
           </>
         )}
 
@@ -988,7 +988,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
               ← Back
             </Button>
             <Divider />
-            <LogoutBtn onClick={onLogout} disabled={step === "creating"}>Disconnect node</LogoutBtn>
+            <LogoutBtn onClick={onLogout} disabled={step === "creating"}>Sign out</LogoutBtn>
           </>
         )}
 
