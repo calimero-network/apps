@@ -323,20 +323,41 @@ async function startUntilHealthy(state: RigState, node: RigNode, timeoutMs: numb
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
-export function meshTotals(log: string, from = 0): number[] {
+export function meshSnapshots(log: string, from = 0): Map<string, number>[] {
   if (!existsSync(log)) return [];
   const text = readFileSync(log).subarray(from).toString("utf8").replace(ANSI, "");
-  return [...text.matchAll(/gossipsub mesh summary.*?total_mesh_peers=(\d+)/g)].map((m) => Number(m[1]));
+  const snapshots: Map<string, number>[] = [];
+  let current = new Map<string, number>();
+  for (const line of text.split("\n")) {
+    const topic = line.match(/gossipsub mesh size topic=(\S+) mesh_peers=(\d+)/);
+    if (topic) current.set(topic[1]!, Number(topic[2]));
+    else if (line.includes("gossipsub mesh summary")) {
+      snapshots.push(current);
+      current = new Map();
+    }
+  }
+  return snapshots;
+}
+
+function meshedContextTopics(snapshot: Map<string, number> | undefined): string[] {
+  return [...(snapshot ?? [])].filter(([topic, peers]) => !topic.startsWith("ns/") && peers > 0).map(([topic]) => topic);
 }
 
 export async function restartNode(state: RigState, index: number): Promise<RigNode> {
   const node = state.nodes[index];
   if (!node) throw new Error(`no node ${index} in the rig`);
   const awaitMesh = state.nodes.length > 1 && process.env["JOURNEY_WRITE_BEFORE_MESH"] !== "1";
-  const meshBefore = awaitMesh
-    ? await waitFor(`${node.name} logged a gossip mesh summary`, async () => meshTotals(node.log).at(-1), 45_000, 1_000)
-        .catch(() => 0)
-    : 0;
+  const meshedBefore = awaitMesh
+    ? await waitFor(
+        `${node.name} logged a gossip mesh on a context topic`,
+        async () => {
+          const topics = meshedContextTopics(meshSnapshots(node.log).at(-1));
+          return topics.length > 0 && topics;
+        },
+        65_000,
+        1_000,
+      ).catch(() => [] as string[])
+    : [];
   const logOffset = existsSync(node.log) ? statSync(node.log).size : 0;
   await stopNodes([node.pid]);
   await startUntilHealthy(state, node, 90_000);
@@ -344,10 +365,11 @@ export async function restartNode(state: RigState, index: number): Promise<RigNo
   writeRigState(state);
   if (state.nodes.length > 1) {
     await waitFor(`${node.name} reconnected to a peer`, async () => (await peerCount(node)) > 0, 60_000);
-    if (meshBefore > 0) {
+    if (meshedBefore.length > 0) {
       await waitFor(
-        `${node.name}'s gossip mesh back to ${meshBefore} peer slot(s)`,
-        async () => meshTotals(node.log, logOffset).some((n) => n >= meshBefore),
+        `${node.name}'s gossip mesh back on ${meshedBefore.length} context topic(s)`,
+        async () =>
+          meshSnapshots(node.log, logOffset).some((snap) => meshedBefore.every((t) => (snap.get(t) ?? 0) > 0)),
         120_000,
         1_000,
       );
