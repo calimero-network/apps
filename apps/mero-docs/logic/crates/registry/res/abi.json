@@ -404,7 +404,7 @@
                   "$ref": "Role"
                 }
               },
-              "crdt_type": "unordered_map"
+              "crdt_type": "sorted_map"
             }
           },
           "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nWritable by the registry admins only (see `sync_admins`)."
