@@ -108,13 +108,6 @@ export const FolderId = (value: string): FolderId => value as FolderId;
 /**
  * Per-folder record inside the registry map. All fields are LWW so
  * concurrent updates resolve deterministically.
- *
- * `Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`
- * because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
- * trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
- * resolution picks the inherent one from the derive expansion, which then
- * fails the macro's `?` - same workaround battleships uses on
- * `MatchSummary`.
  */
 export interface FolderRecord {
   /**

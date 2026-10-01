@@ -224,7 +224,7 @@
     },
     "FolderRecord": {
       "kind": "record",
-      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.\n\n`Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`\nbecause `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a\ntrait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method\nresolution picks the inherent one from the derive expansion, which then\nfails the macro's `?` - same workaround battleships uses on\n`MatchSummary`.",
+      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.",
       "fields": [
         {
           "name": "parent_id",
