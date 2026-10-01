@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { setMeroJs } from "./meroJsClient";
+import { type ChatClient, setMeroJs } from "./meroJsClient";
 
 /**
  * Hands MeroProvider's MeroJs instance to the non-React callers in `api/`
@@ -20,7 +20,11 @@ import { setMeroJs } from "./meroJsClient";
  * is harmless.
  */
 export default function MeroJsBridge({ children }: { children: ReactNode }) {
-  const { mero } = useMero();
-  setMeroJs(mero);
+  // `admin` is the node's own admin client on a node and the account admin on
+  // an account (mero-react), so the data sources need no second code path.
+  const { mero, admin } = useMero();
+  setMeroJs(
+    mero && admin ? { admin, rpc: (mero as unknown as { rpc: ChatClient["rpc"] }).rpc } : null,
+  );
   return <>{children}</>;
 }

@@ -83,7 +83,7 @@ start: app-install
 # ── Quality ────────────────────────────────────────────────────────────────────
 
 app-typecheck:
-	cd app && pnpm exec tsc --noEmit
+	cd app && pnpm exec tsc -b
 
 app-lint:
 	cd app && pnpm lint
@@ -109,7 +109,7 @@ test-full: app-install
 run-all: app-install
 	@echo ""
 	@printf '\033[1;36m▶  typecheck\033[0m\n'
-	cd app && pnpm exec tsc --noEmit
+	cd app && pnpm exec tsc -b
 	@echo ""
 	@printf '\033[1;36m▶  unit tests (Vitest)\033[0m\n'
 	cd app && pnpm test

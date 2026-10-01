@@ -13,7 +13,7 @@
 // changed every id from base58 to hex. Two encodings inside one app, against
 // a node that parses one, is the failure this app already hit.
 import {
-  type MeroJs,
+  type AdminApiClient,
   RpcError,
   type Context,
   type ExecuteParams,
@@ -38,13 +38,24 @@ export function getJwt(): string {
 // our own: mero-js's refresh single-flight is per-instance, so a second instance
 // over the same `mero-tokens` bundle can double-spend a single-use refresh token
 // (core#3083) and get the whole token family revoked.
-let _instance: MeroJs | null = null;
+/**
+ * What the data sources use: an admin API and the contract RPC, whatever the
+ * session. On a node it is the node's own client; on an account, mero-react's
+ * account admin (reads through the relay, writes as delegated ops) and the
+ * relay transport's RPC. See `useMero().admin`.
+ */
+export interface ChatClient {
+  admin: AdminApiClient;
+  rpc: { execute<T>(params: ExecuteParams): Promise<T> };
+}
 
-export function setMeroJs(instance: MeroJs | null): void {
+let _instance: ChatClient | null = null;
+
+export function setMeroJs(instance: ChatClient | null): void {
   _instance = instance;
 }
 
-export function getMeroJs(): MeroJs {
+export function getMeroJs(): ChatClient {
   if (!_instance) {
     // MeroProvider hands us the instance as soon as it has a node URL; a null
     // instance means we are not connected/authenticated yet.
