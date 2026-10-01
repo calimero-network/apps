@@ -3,13 +3,14 @@
 //! that call these live in `lib.rs`; the gating, key encoding, and `_inner`
 //! mutators live here.
 
-use std::collections::BTreeSet;
-
 use calimero_sdk::AccountId;
-use calimero_storage::collections::{LwwRegister, Op, SortedMap, StoreError, UnorderedMap};
+use calimero_storage::collections::{LwwRegister, Op, SortedMap, StoreError};
+use calimero_storage::entities::OpMask;
 use mero_docs_types::DriveError;
 
 use crate::{FolderRoleEntry, RegistryState, Role};
+
+const MANAGER: &str = "manager"; // the `AccessControl` role a registry manager holds
 
 /// Composite key for the per-(folder, member) role map. U+001F (ASCII Unit
 /// Separator) cannot appear in a hex string or a Calimero group id, so it
@@ -92,16 +93,13 @@ fn storage_err(what: &str) -> impl Fn(StoreError) -> DriveError + '_ {
 impl RegistryState {
     /// True if `caller` is the owner or a manager.
     pub(crate) fn is_admin(&self, caller: &str) -> Result<bool, DriveError> {
-        if self.owner_hex() == caller {
-            return Ok(true);
-        }
-        let reg = self
-            .managers
-            .get()
-            .map_err(storage_err("managers.get"))?
-            .get(&caller.to_string())
-            .map_err(storage_err("managers.get"))?;
-        Ok(matches!(reg.as_ref().map(|r| *r.get()), Some(true)))
+        Ok(self.owner_hex() == caller || self.is_manager(caller)?)
+    }
+
+    fn is_manager(&self, member_hex: &str) -> Result<bool, DriveError> {
+        self.access
+            .has_role(MANAGER, &account_of(member_hex)?)
+            .map_err(storage_err("access.has_role"))
     }
 
     pub(crate) fn require_admin(&self, caller: &str) -> Result<(), DriveError> {
@@ -119,9 +117,8 @@ impl RegistryState {
         self.owner.get().cloned().unwrap_or_default()
     }
 
-    /// Owner-only. Validates `member` as hex. Re-adding / re-granting an
-    /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
-    /// with the current HLC always wins - the key is never tombstoned).
+    /// Owner-only. Validates `member` as hex. Re-adding an existing or
+    /// previously-removed manager succeeds.
     pub(crate) fn add_manager_inner(
         &mut self,
         caller: &str,
@@ -137,15 +134,13 @@ impl RegistryState {
         if member == owner {
             return Err(DriveError::Invalid("owner is implicitly a manager".into()));
         }
-        self.write_managers()?
-            .insert(member, LwwRegister::new(true))
-            .map_err(storage_err("managers.insert"))?;
+        self.access
+            .grant(MANAGER, account_of(&member)?)
+            .map_err(storage_err("access.grant"))?;
         self.sync_admins()
     }
 
-    /// Owner-only. `NotFound` if `member` is not currently a manager. Does
-    /// not `remove` the key - it sets the value to `false` so a later
-    /// `add_manager` of the same key isn't swallowed by a tombstone.
+    /// Owner-only. `NotFound` if `member` is not currently a manager.
     pub(crate) fn remove_manager_inner(
         &mut self,
         caller: &str,
@@ -158,49 +153,26 @@ impl RegistryState {
             ));
         }
         let member = validate_member_key(member)?;
-        let is_manager = self
-            .managers
-            .get()
-            .map_err(storage_err("managers.get"))?
-            .get(&member)
-            .map_err(storage_err("managers.get"))?
-            .is_some_and(|reg| *reg.get());
-        if !is_manager {
+        if !self.is_manager(&member)? {
             return Err(DriveError::NotFound(member));
         }
-        self.write_managers()?
-            .insert(member, LwwRegister::new(false))
-            .map_err(storage_err("managers.insert"))?;
+        self.access
+            .revoke(MANAGER, &account_of(&member)?)
+            .map_err(storage_err("access.revoke"))?;
         self.sync_admins()
     }
 
     pub(crate) fn list_managers_inner(&self) -> Result<Vec<String>, DriveError> {
-        let entries = self
-            .managers
-            .get()
-            .map_err(storage_err("managers.get"))?
-            .entries()
-            .map_err(storage_err("managers.entries"))?;
-        Ok(entries
-            .filter(|(_, reg)| *reg.get())
-            .map(|(k, _)| k)
+        Ok(self
+            .access
+            .members_of(MANAGER)
+            .map_err(storage_err("access.members_of"))?
+            .iter()
+            .map(|m| hex::encode(m.as_bytes()))
             .collect())
     }
 
-    /// The manager map, for its only writer: the owner. Every node refuses a
-    /// manager row written by anyone else; this refuses it here as well.
-    fn write_managers(
-        &mut self,
-    ) -> Result<&mut UnorderedMap<String, LwwRegister<bool>>, DriveError> {
-        if !self.managers.can(&caller_account(), Op::Write) {
-            return Err(DriveError::Forbidden(
-                "only the registry owner may change managers".into(),
-            ));
-        }
-        self.managers.get_mut().map_err(storage_err("managers"))
-    }
-
-    /// The role map, for its writers: the registry admins.
+    /// The role map, for its writers: the owner and the managers.
     fn write_roles(&mut self) -> Result<&mut SortedMap<String, LwwRegister<Role>>, DriveError> {
         if !self.folder_roles.can(&caller_account(), Op::Write) {
             return Err(DriveError::Forbidden(
@@ -212,20 +184,22 @@ impl RegistryState {
             .map_err(storage_err("folder_roles"))
     }
 
-    /// Bring the writer sets that follow the admins (owner and managers) in
-    /// line after a manager change: the role map's writers and the folders'
-    /// moderators. Each is verified by every node, so they are rotated here by
-    /// the owner, who is in both.
+    /// Bring what follows the managers in line after a manager change: who may
+    /// write role rows, and the folders' moderators. Every node verifies both
+    /// rotations, so the owner, who administers both, makes them.
     fn sync_admins(&mut self) -> Result<(), DriveError> {
-        let mut admins = BTreeSet::from([account_of(&self.owner_hex())?]);
-        for manager in self.list_managers_inner()? {
-            let _ = admins.insert(account_of(&manager)?);
-        }
-        if self.folder_roles.writers() != admins {
-            self.folder_roles
-                .rotate_writers(admins.clone())
-                .map_err(storage_err("folder_roles.rotate_writers"))?;
-        }
+        self.access
+            .project_onto(
+                &[(MANAGER, OpMask::WRITE.union(OpMask::DELETE))],
+                &mut self.folder_roles,
+            )
+            .map_err(storage_err("folder_roles.set_capabilities"))?;
+        let mut admins = self.access.admins();
+        admins.extend(
+            self.access
+                .members_of(MANAGER)
+                .map_err(storage_err("access.members_of"))?,
+        );
         if self.folders.moderators() != admins {
             self.folders
                 .set_moderators(admins)
@@ -349,10 +323,14 @@ impl RegistryState {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use calimero_sdk::testing::TestHost;
-    use calimero_storage::collections::Op;
+    use calimero_storage::collections::{LwwRegister, Op};
+    use calimero_storage::testing::Script;
     use mero_docs_types::DriveError;
 
+    use super::role_key;
     use crate::{FolderId, RegistryState, Role};
 
     const MANAGER: [u8; 32] = [0xA1; 32];
@@ -403,17 +381,90 @@ mod tests {
     fn only_the_owner_adds_or_removes_managers() {
         let mut host = registry();
         assert!(as_account(&mut host, OTHER, |s| s.add_manager(key(OTHER))).is_err());
-        // What every node checks on a patched node's direct write: only the
-        // owner writes the manager map.
-        assert!(!host.view(|s| s.managers.can(&OTHER.into(), Op::Write)));
-        assert!(host.view(|s| s.managers.can(&owner().into(), Op::Write)));
+        // What every node checks on a patched node's direct grant: only the
+        // owner administers the manager role, and a manager does not.
+        assert!(!host.view(|s| s.access.is_admin(&OTHER.into())));
+        assert!(host.view(|s| s.access.is_admin(&owner().into())));
 
         host.call(|s| s.add_manager(key(MANAGER))).unwrap();
+        assert!(!host.view(|s| s.access.is_admin(&MANAGER.into())));
         assert!(as_account(&mut host, MANAGER, |s| s.add_manager(key(OTHER))).is_err());
         assert!(as_account(&mut host, MANAGER, |s| s.remove_manager(key(MANAGER))).is_err());
         assert_eq!(
             host.view(|s| s.list_managers()).unwrap(),
             vec![key(MANAGER)]
+        );
+    }
+
+    #[test]
+    fn every_refusal_is_forbidden() {
+        let mut host = registry();
+        host.call(|s| s.add_manager(key(MANAGER))).unwrap();
+        let (manager, other, member) = (key(MANAGER), key(OTHER), key(MEMBER));
+        let refusals = host.call(|s| {
+            [
+                s.add_manager_inner(&other, &member),
+                s.add_manager_inner(&manager, &member),
+                s.remove_manager_inner(&other, &manager),
+                s.remove_manager_inner(&manager, &manager),
+                s.set_folder_role_inner(&other, "f1", &member, Role::Manager),
+                s.clear_folder_role_inner(&other, "f1", &member),
+            ]
+        });
+        for refusal in refusals {
+            assert!(
+                matches!(refusal, Err(DriveError::Forbidden(_))),
+                "{refusal:?}"
+            );
+        }
+        assert!(matches!(
+            as_account(&mut host, OTHER, |s| s.unregister_folder_inner(fid("f1"))),
+            Err(DriveError::Forbidden(_))
+        ));
+    }
+
+    /// A manager's own node refuses to rotate the role writers. Peers refusing a
+    /// forged rotation is core's to enforce, and a single TestHost cannot show it.
+    #[test]
+    fn a_manager_cannot_change_who_writes_roles() {
+        let mut host = registry();
+        host.call(|s| s.add_manager(key(MANAGER))).unwrap();
+        let rotated = as_account(&mut host, MANAGER, |s| {
+            s.folder_roles
+                .rotate_writers(BTreeSet::from([MANAGER.into(), OTHER.into()]))
+        });
+        assert!(rotated.is_err());
+        assert!(!host.view(|s| s.folder_roles.can(&OTHER.into(), Op::Write)));
+        assert!(host.view(|s| s.folder_roles.can(&owner().into(), Op::Write)));
+    }
+
+    /// Replicas apply each other's signed deltas as nodes do.
+    #[test]
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn a_members_direct_role_write_is_dropped_by_every_other_node() {
+        let mut script = Script::new(RegistryState::init);
+        let (owner, member) = (script.founder(), script.member());
+        let me = key(*script.account(member).as_bytes());
+        let registered = script
+            .run(owner, |s| {
+                s.register_folder_inner(fid("f1"), None, None, None)
+                    .unwrap();
+            })
+            .unwrap();
+        assert_eq!(script.deliver(member, registered), 0);
+
+        // A patched node skips `set_folder_role`'s check.
+        let forged = script
+            .run(member, |s| {
+                let roles = s.folder_roles.get_mut().unwrap();
+                let _ = roles.insert(role_key("f1", &me), LwwRegister::new(Role::Manager));
+            })
+            .unwrap();
+        assert!(script.deliver(owner, forged) > 0);
+        assert_eq!(
+            script.view(owner, |s| s.get_folder_role_inner("f1", &me).unwrap()),
+            Role::Editor
         );
     }
 
@@ -464,6 +515,7 @@ mod tests {
 
         host.call(|s| s.add_manager(key(MANAGER))).unwrap();
         assert!(host.view(|s| s.folder_roles.can(&manager, Op::Write)));
+        assert!(host.view(|s| s.folder_roles.can(&manager, Op::Delete)));
         assert!(host.view(|s| s.folders.is_moderator(&manager)));
 
         host.call(|s| s.remove_manager(key(MANAGER))).unwrap();

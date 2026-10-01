@@ -44,7 +44,8 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    Frozen, LwwRegister, Mergeable, Moderated, SharedStorage, SortedMap, UnorderedMap, WriteOnce,
+    AccessControl, Frozen, LwwRegister, Mergeable, Moderated, PermissionedStorage,
+    ProtocolAuthorizer, SortedMap, UnorderedMap, WriteOnce,
 };
 use mero_docs_types::DriveError;
 
@@ -379,15 +380,12 @@ pub struct RegistryState {
     /// Hex account of the registry owner: whoever created the registry
     /// context (a namespace admin). Frozen at `init`; nobody can change it.
     owner: Frozen<String>,
-    /// Hex accounts granted manager rights over the whole registry (may set/
-    /// clear any folder role). Writable by the owner only. The owner is
-    /// implicitly a manager and is NOT stored here. Value `true` = is a
-    /// manager, `false` = removed (kept around so the key is never
-    /// CRDT-tombstoned - a `remove` would silently swallow a later re-add).
-    managers: SharedStorage<UnorderedMap<String, LwwRegister<bool>>>,
+    /// The registry's managers, as holders of the `MANAGER` role. The owner is
+    /// its only admin, so only the owner grants or revokes it, on every node.
+    access: AccessControl,
     /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
-    /// Writable by the registry admins only (see `sync_admins`).
-    folder_roles: SharedStorage<SortedMap<String, LwwRegister<Role>>>,
+    /// The owner administers it; managers may write and delete rows (see `sync_admins`).
+    folder_roles: PermissionedStorage<SortedMap<String, LwwRegister<Role>>, ProtocolAuthorizer>,
     /// tag key → TagRecord. Public, like `sort_order`: any member may name,
     /// recolour or delete a tag; which roles may is the app's to gate.
     tags: UnorderedMap<String, TagRecord>,
@@ -408,12 +406,8 @@ impl RegistryState {
             folder_contexts: WriteOnce::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
             owner: Frozen::new(hex::encode(me.as_bytes())),
-            managers: SharedStorage::new_with_field_name(
-                "registry:managers",
-                BTreeSet::from([me]),
-                false,
-            ),
-            folder_roles: SharedStorage::new_with_field_name(
+            access: AccessControl::new(me),
+            folder_roles: PermissionedStorage::new_with_field_name(
                 "registry:folder_roles",
                 BTreeSet::from([me]),
                 false,
