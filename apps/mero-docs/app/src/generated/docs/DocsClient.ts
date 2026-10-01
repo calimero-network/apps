@@ -11,8 +11,17 @@ import {
  * refused write hands the client exactly the state it has to rebase onto.
  */
 export interface Applied {
+  /**
+   * `true` when the steps were written, `false` when the write was refused.
+   */
   applied: boolean;
+  /**
+   * The undo token for `undo`; `null` on a refusal.
+   */
   token: string | null;
+  /**
+   * The block's spans after the write, or the current ones on a refusal.
+   */
   spans: Span[];
   /**
    * The gap after this write's last change, or on a refusal the anchor sent.
@@ -33,10 +42,25 @@ export interface Applied {
  * every other method takes and returns.
  */
 export interface Block {
+  /**
+   * The block id every method takes as `block`. Opaque; pass it back unchanged.
+   */
   id: string;
+  /**
+   * The block type, as stored by `insert_block` or `set_kind`.
+   */
   kind: string;
+  /**
+   * Nesting depth, 0 for top level.
+   */
   depth: number;
+  /**
+   * The block's attributes, such as `level` on a heading.
+   */
   attrs: Record<string, string>;
+  /**
+   * The block's text as runs of equally formatted characters, in order.
+   */
   spans: Span[];
   /**
    * The id of each character of `spans`, in order.
@@ -53,8 +77,8 @@ export interface BlockView {
 }
 
 /**
- * One step of an attributed editor change, mirroring `DeltaOp`, which has no
- * `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
+ * One step of a text change, in Quill's delta shape: `{"retain": 6}`, `{"insert": "text"}` or `{"delete": 2}`.
+ * A `retain` or `insert` step also carries `attributes`: an object of formatting, or `null` for none.
  */
 export type Change =
   | Change_Retain
@@ -62,16 +86,31 @@ export type Change =
   | Change_Delete;
 
 export interface Change_Delete {
+  /**
+   * How many characters to remove.
+   */
   delete: number;
 }
 
 export interface Change_Insert {
+  /**
+   * The text to insert.
+   */
   insert: string;
+  /**
+   * Formatting of the inserted text.
+   */
   attributes: Record<string, string> | null;
 }
 
 export interface Change_Retain {
+  /**
+   * How many characters to keep.
+   */
   retain: number;
+  /**
+   * Formatting to set on the kept characters; `null` leaves it as is.
+   */
   attributes: Record<string, string> | null;
 }
 
@@ -91,6 +130,9 @@ export interface Comment {
    * comments are a seek rather than a walk of the folder's.
    */
   doc_id: string;
+  /**
+   * The comment text.
+   */
   body: string;
   /**
    * Immutable after create.
@@ -102,13 +144,25 @@ export interface Comment {
  * Flat projection of a `Comment` for list / get APIs.
  */
 export interface CommentDto {
+  /**
+   * The comment id.
+   */
   id: string;
   /**
    * Hex account of the comment's author, from its owner stamp.
    */
   author: string;
+  /**
+   * The document the comment is on.
+   */
   doc_id: string;
+  /**
+   * The comment text.
+   */
   body: string;
+  /**
+   * When the comment was added, in nanoseconds since the Unix epoch.
+   */
   created_at: number;
 }
 
@@ -117,19 +171,37 @@ export interface CommentDto {
  * through `get_document` / `get_block_delta`, never flattened into a string.
  */
 export interface DocDto {
+  /**
+   * The document id.
+   */
   id: string;
+  /**
+   * The title text.
+   */
   title: string;
   /**
    * Keys only, sorted; the registry maps each to a name and colour.
    */
   tags: string[];
+  /**
+   * Whether the document is archived.
+   */
   archived: boolean;
+  /**
+   * When the document was created, in nanoseconds since the Unix epoch; 0 when the creator cannot be determined.
+   */
   created_at: number;
+  /**
+   * When the document last changed, in nanoseconds since the Unix epoch.
+   */
   updated_at: number;
   /**
    * Hex account of whoever created the doc, from its header's owner stamp.
    */
   created_by: string;
+  /**
+   * Hex account of whoever last changed the document.
+   */
   updated_by: string;
   /**
    * Whether the caller may delete it: the same rule `delete_doc` enforces.
@@ -149,14 +221,29 @@ export interface DocDto {
  * double) and body text, formatting left out; `search_docs` queries it.
  */
 export interface DocRecord {
+  /**
+   * The title, plain text.
+   */
   title: {  };
+  /**
+   * The ordered blocks of the document.
+   */
   body: Record<string, BlockView>;
   /**
-   * A set, so two members tagging the same doc at once both keep their tag.
+   * The document's tags. A set, so two members tagging the same doc at once both keep their tag.
    */
   tags: string[];
+  /**
+   * Whether the document is hidden from the default list.
+   */
   archived: boolean;
+  /**
+   * When the document last changed, in nanoseconds since the Unix epoch.
+   */
   updated_at: number;
+  /**
+   * Hex account id of the last editor, advanced with `updated_at`.
+   */
   updated_by: string;
 }
 
@@ -164,14 +251,26 @@ export interface DocRecord {
  * One document `search_docs` found.
  */
 export interface DocSearchHit {
+  /**
+   * The document id.
+   */
   id: string;
+  /**
+   * The document title.
+   */
   title: string;
   /**
    * A fragment of the title or body around the match, the matched words
    * wrapped in `<b>`; empty when there is none to show.
    */
   snippet: string;
+  /**
+   * How well the document matched; higher is better.
+   */
   score: number;
+  /**
+   * Whether the document is archived.
+   */
   archived: boolean;
 }
 
@@ -179,6 +278,9 @@ export interface DocSearchHit {
  * A page of `search_docs`.
  */
 export interface DocSearchPage {
+  /**
+   * The hits on this page, best match first.
+   */
   hits: DocSearchHit[];
   /**
    * Documents the index matched in all.
@@ -289,8 +391,17 @@ export interface Event_TitleChanged {
  * `replica` is decimal text because a full `u64` loses its top bits as a JSON number in a browser.
  */
 export interface Run {
+  /**
+   * The replica that wrote the run's first character.
+   */
   replica: string;
+  /**
+   * That replica's counter for the run's first character.
+   */
   counter: number;
+  /**
+   * How many consecutive characters the run covers.
+   */
   len: number;
 }
 
@@ -303,8 +414,17 @@ export interface Span {
  * What `title_apply_delta_on` did; the title comes back either way.
  */
 export interface TitleApplied {
+  /**
+   * `true` when the steps were written, `false` when the write was refused.
+   */
   applied: boolean;
+  /**
+   * The undo token for `title_undo`; `null` on a refusal.
+   */
   token: string | null;
+  /**
+   * The title after the write, or the current title on a refusal.
+   */
   text: string;
   /**
    * The gap after this write's last change, or on a refusal the anchor sent.
@@ -324,7 +444,13 @@ export interface TitleApplied {
  * The title with the id of each of its characters, in order.
  */
 export interface TitleState {
+  /**
+   * The title text.
+   */
   text: string;
+  /**
+   * The id of each character of `text`, in order.
+   */
   ids: Run[];
 }
 
@@ -352,21 +478,111 @@ export type AbiEvent =
     name: "BlockChanged";
     payload: Event_BlockChanged;
   }
-  | { name: "BlockDeleted"; payload: Event_BlockDeleted }
-  | { name: "BlockInserted"; payload: Event_BlockInserted }
-  | { name: "BlockMoved"; payload: Event_BlockMoved }
-  | { name: "CommentAdded"; payload: Event_CommentAdded }
-  | { name: "CommentDeleted"; payload: Event_CommentDeleted }
-  | { name: "CommentEdited"; payload: Event_CommentEdited }
-  | { name: "DocArchived"; payload: Event_DocArchived }
-  | { name: "DocCreated"; payload: Event_DocCreated }
-  | { name: "DocDeleted"; payload: Event_DocDeleted }
-  | { name: "DocEdited"; payload: Event_DocEdited }
-  | { name: "DocTagsChanged"; payload: Event_DocTagsChanged }
-  | { name: "DocUnarchived"; payload: Event_DocUnarchived }
-  | { name: "MarkApplied"; payload: Event_MarkApplied }
-  | { name: "TextChanged"; payload: Event_TextChanged }
-  | { name: "TitleChanged"; payload: Event_TitleChanged }
+  | {
+    /**
+     * A block was removed from a document.
+     */
+    name: "BlockDeleted";
+    payload: Event_BlockDeleted;
+  }
+  | {
+    /**
+     * A block was added to a document.
+     */
+    name: "BlockInserted";
+    payload: Event_BlockInserted;
+  }
+  | {
+    /**
+     * A block was moved within a document.
+     */
+    name: "BlockMoved";
+    payload: Event_BlockMoved;
+  }
+  | {
+    /**
+     * A comment was added.
+     */
+    name: "CommentAdded";
+    payload: Event_CommentAdded;
+  }
+  | {
+    /**
+     * A comment was deleted.
+     */
+    name: "CommentDeleted";
+    payload: Event_CommentDeleted;
+  }
+  | {
+    /**
+     * A comment was edited.
+     */
+    name: "CommentEdited";
+    payload: Event_CommentEdited;
+  }
+  | {
+    /**
+     * A document was archived.
+     */
+    name: "DocArchived";
+    payload: Event_DocArchived;
+  }
+  | {
+    /**
+     * A document was created.
+     */
+    name: "DocCreated";
+    payload: Event_DocCreated;
+  }
+  | {
+    /**
+     * A document was deleted.
+     */
+    name: "DocDeleted";
+    payload: Event_DocDeleted;
+  }
+  | {
+    /**
+     * A document was renamed.
+     */
+    name: "DocEdited";
+    payload: Event_DocEdited;
+  }
+  | {
+    /**
+     * A tag was added to or removed from a document.
+     */
+    name: "DocTagsChanged";
+    payload: Event_DocTagsChanged;
+  }
+  | {
+    /**
+     * A document was unarchived.
+     */
+    name: "DocUnarchived";
+    payload: Event_DocUnarchived;
+  }
+  | {
+    /**
+     * A formatting mark was written to a block.
+     */
+    name: "MarkApplied";
+    payload: Event_MarkApplied;
+  }
+  | {
+    /**
+     * A block's text or formatting was edited or undone.
+     */
+    name: "TextChanged";
+    payload: Event_TextChanged;
+  }
+  | {
+    /**
+     * A document title was edited or undone.
+     */
+    name: "TitleChanged";
+    payload: Event_TitleChanged;
+  }
 ;
 
 
@@ -382,6 +598,13 @@ export class DocsClient {
   /**
    * add_comment
    *
+   * Adds a comment to a document, owned by the caller, and returns its id.
+   * Not idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.
+   *
+   * @param params.doc_id The id of the document to comment on.
+   * @param params.body The comment text.
+   * @returns The new comment's id.
+   *
    * @intent mutating
    */
   public async addComment(params: { doc_id: string; body: string }): Promise<string> {
@@ -391,6 +614,13 @@ export class DocsClient {
 
   /**
    * add_tag
+   *
+   * Puts a tag on a document.
+   * Adding a tag the document already has changes nothing.
+   * The tag key must be a registered tag's key for the workspace to show it by name; see the registry's `set_tag`.
+   *
+   * @param params.id The document id.
+   * @param params.tag The tag key: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
    *
    * @intent mutating
    */
@@ -402,7 +632,14 @@ export class DocsClient {
   /**
    * anchor_at
    *
-   * A cursor for the gap at `position`, as an opaque token any member resolves.
+   * Returns a cursor for the gap at a position in a block's text, as an opaque token that survives concurrent edits and that any member can resolve.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.position The gap, counted from 0 at the start of the text.
+   * @param params.before Which side the anchor leans toward when text is inserted exactly at the gap.
+   * @returns An opaque anchor token.
    *
    * @intent read_only
    */
@@ -414,8 +651,16 @@ export class DocsClient {
   /**
    * apply_delta
    *
-   * One editor transaction, text and formatting together, returning an
-   * opaque token `undo` takes.
+   * Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.
+   * `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
+   * Text after the last step is kept.
+   * A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.ops The steps of the transaction, in order.
+   * @returns An opaque undo token.
    *
    * @intent mutating
    */
@@ -427,8 +672,16 @@ export class DocsClient {
   /**
    * apply_delta_on
    *
-   * `apply_delta`, but only onto the text the caller diffed against, since a position
-   * counted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.
+   * Like `apply_delta`, but only applies when the block's text is still exactly `base`, because a position counted in any other text names the wrong place.
+   * When `anchor` is given the write must also be an insert right where that anchor sits.
+   * On refusal nothing is written: `applied` is `false` and `spans` are the block's current spans to rebase onto.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.base The block's full plain text the steps were computed against.
+   * @param params.ops The steps of the transaction, as for `apply_delta`.
+   * @param params.anchor Optional cursor token from `anchor_at`; `null` for an unanchored write.
+   * @returns Whether the write applied, the undo token, the block's spans afterwards, and an anchor at the end of the edit.
    *
    * @intent mutating
    */
@@ -440,6 +693,11 @@ export class DocsClient {
   /**
    * archive_doc
    *
+   * Archives a document, which hides it from `list_docs` unless archived documents are requested.
+   * Nothing is deleted and `unarchive_doc` reverses it.
+   *
+   * @param params.id The document id.
+   *
    * @intent mutating
    */
   public async archiveDoc(params: { id: string }): Promise<void> {
@@ -450,8 +708,10 @@ export class DocsClient {
   /**
    * comment_count
    *
-   * Comments held by the account their id names, on a doc that is still listed;
-   * `len` would count planted ones and a deleted doc's too.
+   * Returns how many comments the folder's live documents hold, across all of them.
+   * A comment counts only when it is held by the account its id names.
+   *
+   * @returns The comment count.
    *
    * @intent read_only
    */
@@ -463,13 +723,11 @@ export class DocsClient {
   /**
    * comment_schema_version
    *
-   * The comment's stored per-entry `schema_version` - `Some(1)` before
-   * convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
-   * one-tap `migrate_my_entries` actually re-stamped it.
+   * Returns the storage schema version stamped on a comment, or `null` when there is no such comment.
+   * A diagnostic for the web app's migration banner; not needed to read or write comments.
    *
-   * The entry of the account the comment's id names, read by name, so it
-   * answers the same on every node: a key-only
-   * `entry_schema_version` reads the caller's own entry only.
+   * @param params.id The comment id.
+   * @returns The schema version number, or `null`.
    *
    * @intent read_only
    */
@@ -481,8 +739,12 @@ export class DocsClient {
   /**
    * create_doc
    *
-   * Creates a document and seeds its title. The body starts empty; a client
-   * adds the first block with `insert_block`.
+   * Creates a document with the given title and an empty body, and returns its id.
+   * Add the first block with `insert_block`.
+   * Not idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.
+   *
+   * @param params.title The document title, plain text.
+   * @returns The new document's id, an opaque string the other methods take as `doc` or `id`.
    *
    * @intent mutating
    */
@@ -494,6 +756,12 @@ export class DocsClient {
   /**
    * delete_block
    *
+   * Removes a block from a document's body.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @remarks destructive
+   *
    * @intent mutating
    */
   public async deleteBlock(params: { doc: string; block: string }): Promise<void> {
@@ -503,6 +771,12 @@ export class DocsClient {
 
   /**
    * delete_comment
+   *
+   * Deletes a comment.
+   * Only its author or a moderator of this folder (the member who created the folder's context) may delete it.
+   *
+   * @param params.id The comment id.
+   * @remarks destructive
    *
    * @intent mutating
    */
@@ -514,6 +788,13 @@ export class DocsClient {
   /**
    * delete_doc
    *
+   * Deletes a document, its whole body and its comments permanently.
+   * Only the document's creator or a moderator of this folder (the member who created the folder's context) may delete it; `can_delete` on the document's row says whether the caller may.
+   * A moderator removes every comment on it; the creator removes their own, and the rest are no longer listed.
+   *
+   * @param params.id The document id.
+   * @remarks destructive
+   *
    * @intent mutating
    */
   public async deleteDoc(params: { id: string }): Promise<void> {
@@ -523,6 +804,12 @@ export class DocsClient {
 
   /**
    * edit_comment
+   *
+   * Replaces a comment's text.
+   * Only the comment's author may edit it.
+   *
+   * @param params.id The comment id.
+   * @param params.body The new comment text.
    *
    * @intent mutating
    */
@@ -534,8 +821,11 @@ export class DocsClient {
   /**
    * edit_doc
    *
-   * Renames a document by replacing the whole title, which is what a rename
-   * box does. Character-level edits go through `title_apply_delta`.
+   * Renames a document by replacing its whole title.
+   * Character-level title edits go through `title_apply_delta`.
+   *
+   * @param params.id The document id.
+   * @param params.title The new title, plain text.
    *
    * @intent mutating
    */
@@ -547,6 +837,12 @@ export class DocsClient {
   /**
    * get_block
    *
+   * Returns one block with its kind, depth, attributes and formatted text spans.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @returns The block, or `null` when there is no such block.
+   *
    * @intent read_only
    */
   public async getBlock(params: { doc: string; block: string }): Promise<Block> {
@@ -557,7 +853,11 @@ export class DocsClient {
   /**
    * get_block_delta
    *
-   * One block's rendered spans: the read a binding does on every keystroke.
+   * Returns one block's text as formatted spans, the read an editor binding does on every keystroke.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @returns The spans in order; each has `text` and, when formatted, `attributes`.
    *
    * @intent read_only
    */
@@ -569,6 +869,12 @@ export class DocsClient {
   /**
    * get_comment
    *
+   * Returns one comment.
+   * Fails when the comment does not exist.
+   *
+   * @param params.id The comment id.
+   * @returns The comment row.
+   *
    * @intent read_only
    */
   public async getComment(params: { id: string }): Promise<CommentDto> {
@@ -578,6 +884,13 @@ export class DocsClient {
 
   /**
    * get_doc
+   *
+   * Returns one document's metadata: title, tag keys, archived flag, timestamps, creator, last editor and whether the caller may delete it.
+   * The body is read with `get_document`.
+   * Fails when the document does not exist.
+   *
+   * @param params.id The document id.
+   * @returns The document's metadata row.
    *
    * @intent read_only
    */
@@ -589,6 +902,11 @@ export class DocsClient {
   /**
    * get_document
    *
+   * Returns a document's body as an ordered list of blocks, each with its id, kind, depth, attributes and formatted text spans.
+   *
+   * @param params.doc The document id.
+   * @returns The blocks in document order.
+   *
    * @intent read_only
    */
   public async getDocument(params: { doc: string }): Promise<Block[]> {
@@ -599,9 +917,11 @@ export class DocsClient {
   /**
    * get_state_digest
    *
-   * The ordered body as one canonical line, so replicas are compared exactly
-   * by one value. Block ids are excluded because they carry the minting
-   * replica, which no two nodes agree on.
+   * Returns the whole body as one canonical line, so two replicas can be compared by a single value.
+   * Block ids are left out because they differ between nodes.
+   *
+   * @param params.doc The document id.
+   * @returns The digest string.
    *
    * @intent read_only
    */
@@ -613,6 +933,12 @@ export class DocsClient {
   /**
    * get_text
    *
+   * Returns one block's plain text with formatting stripped.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @returns The block's text.
+   *
    * @intent read_only
    */
   public async getText(params: { doc: string; block: string }): Promise<string> {
@@ -622,6 +948,11 @@ export class DocsClient {
 
   /**
    * get_title
+   *
+   * Returns a document's title text.
+   *
+   * @param params.doc The document id.
+   * @returns The title.
    *
    * @intent read_only
    */
@@ -633,7 +964,11 @@ export class DocsClient {
   /**
    * get_title_state
    *
-   * The title and its character ids, read together so they line up.
+   * Returns a document's title text together with its character ids, read at the same moment so they line up.
+   * Pass the ids to `title_apply_delta_on` so an edit lands where the caller saw it.
+   *
+   * @param params.doc The document id.
+   * @returns The title text and the ids of its characters as runs.
    *
    * @intent read_only
    */
@@ -653,6 +988,17 @@ export class DocsClient {
   /**
    * insert_block
    *
+   * Inserts an empty block into a document's body and returns its id.
+   * The body is an ordered list of blocks; each has a `kind`, a `depth` and its own text.
+   * Fill the block with `apply_delta`.
+   * Not idempotent: a retry after a lost response adds a second block, so check `list_blocks` before repeating.
+   *
+   * @param params.doc The document id.
+   * @param params.after The id of the block to insert after; `null` inserts at the top.
+   * @param params.kind The block type, an opaque string stored as given. The Mero Docs editor uses `paragraph`, `heading`, `bulletListItem` and `image`.
+   * @param params.depth Nesting depth, 0 for top level, 1 for a child of the block above, and so on.
+   * @returns The new block's id.
+   *
    * @intent mutating
    */
   public async insertBlock(params: { doc: string; after: string | null; kind: string; depth: number }): Promise<string> {
@@ -662,6 +1008,11 @@ export class DocsClient {
 
   /**
    * list_blocks
+   *
+   * Returns the ids of a document's blocks in document order.
+   *
+   * @param params.doc The document id.
+   * @returns The block ids.
    *
    * @intent read_only
    */
@@ -673,7 +1024,10 @@ export class DocsClient {
   /**
    * list_comments
    *
-   * One doc's comments: an index seek, not a walk of every comment.
+   * Lists one document's comments, in no guaranteed order; sort by `created_at`.
+   *
+   * @param params.doc_id The document id.
+   * @returns One row per comment, including its author's account id.
    *
    * @intent read_only
    */
@@ -685,7 +1039,11 @@ export class DocsClient {
   /**
    * list_docs
    *
-   * The docs whose creator's header lives, body or not.
+   * Lists the documents in this folder's context, in no guaranteed order; sort by `updated_at` for most recent first.
+   * Each row carries metadata only; read a body with `get_document`.
+   *
+   * @param params.include_archived `true` to include archived documents, `false` to leave them out.
+   * @returns One metadata row per document.
    *
    * @intent read_only
    */
@@ -697,8 +1055,17 @@ export class DocsClient {
   /**
    * mark
    *
-   * Set `key` over visible positions `[start, end)`. `null` is a no-op result
-   * when every character already resolves to that value.
+   * Sets one formatting key over a range of a block's text, or clears it.
+   * Declared keys: `bold`, `italic`, `underline`, `strike`, `code`, `link`, `comment`, `textColor` and `backgroundColor`; any other key is refused.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.start First position of the range, inclusive.
+   * @param params.end Position after the range, exclusive.
+   * @param params.key The formatting key.
+   * @param params.value The value, for example `"true"` for `bold` or a URL for `link`; `null` clears the key.
+   * @returns The id of the new mark, or `null` when the range already had that value and nothing was written.
    *
    * @intent mutating
    */
@@ -710,7 +1077,11 @@ export class DocsClient {
   /**
    * merge_blocks
    *
-   * Append `second`'s body to `first` and tombstone `second`.
+   * Appends the text of `second` to `first` and removes `second`.
+   *
+   * @param params.doc The document id.
+   * @param params.first The block that keeps its place and receives the text.
+   * @param params.second The block whose text is appended and which is then removed.
    *
    * @intent mutating
    */
@@ -722,6 +1093,12 @@ export class DocsClient {
   /**
    * move_block
    *
+   * Moves a block to just after another block.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block to move.
+   * @param params.after The block to move it after; `null` moves it to the top.
+   *
    * @intent mutating
    */
   public async moveBlock(params: { doc: string; block: string; after: string | null }): Promise<void> {
@@ -732,8 +1109,12 @@ export class DocsClient {
   /**
    * passage_count
    *
-   * How many times `needle` appears contiguously in a block's text, which is
-   * an exact claim about interleaving that `contains` cannot make.
+   * Counts how many times a passage appears contiguously in a block's text.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.needle The text to look for.
+   * @returns The number of occurrences.
    *
    * @intent read_only
    */
@@ -745,6 +1126,13 @@ export class DocsClient {
   /**
    * remove_tag
    *
+   * Takes a tag off a document.
+   * Removing a tag the document does not have is not an error.
+   *
+   * @param params.id The document id.
+   * @param params.tag The tag key.
+   * @remarks destructive
+   *
    * @intent mutating
    */
   public async removeTag(params: { id: string; tag: string }): Promise<void> {
@@ -755,8 +1143,12 @@ export class DocsClient {
   /**
    * resolve_ids
    *
-   * Where anchors sit in THIS replica's block, one tree rebuild for the lot.
-   * `null` is an anchor this replica cannot place yet.
+   * Returns where anchors currently sit in this node's copy of a block, in one pass.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.anchors Tokens from `anchor_at`.
+   * @returns One position per anchor, in order; `null` for an anchor this node cannot place yet.
    *
    * @intent read_only
    */
@@ -768,17 +1160,17 @@ export class DocsClient {
   /**
    * search_docs
    *
-   * The docs whose title or body match `query`, best match first: words
-   * match as typed or as a prefix of a longer word, so a query can be
-   * typed as-you-go. The title counts double.
+   * Searches this folder's documents by title and body, best match first.
+   * Words match as typed or as a prefix of a longer word, and the title counts double.
+   * Archived documents come back only with `include_archived`; deleted ones never do.
+   * The index lives on each node and lags an edit by up to a second.
+   * On a node running with search off this fails; read the documents with `list_docs` and `get_document` instead.
    *
-   * Only docs the list shows are returned: an archived one only with
-   * `include_archived`, never one whose header is gone. A page holds at
-   * most `limit` hits (default 20, at most 100); `next_cursor` continues
-   * it. The index lives on each node and lags an edit by up to a second.
-   *
-   * On a node running with search off the index is not there and this
-   * fails: the client falls back to reading the docs itself.
+   * @param params.query The words to find.
+   * @param params.include_archived `true` to include archived documents, `false` to leave them out.
+   * @param params.cursor `next_cursor` from the previous page, or `null` for the first page.
+   * @param params.limit The most hits per page, or `null` for 20; at most 100.
+   * @returns One page of hits, the total match count, and the cursor for the next page.
    *
    * @intent read_only
    */
@@ -790,7 +1182,12 @@ export class DocsClient {
   /**
    * set_attr
    *
-   * `value: null` removes the attribute.
+   * Sets one attribute on a block, such as `level` on a heading, or removes it.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.key The attribute name.
+   * @param params.value The attribute value as a string; `null` removes the attribute.
    *
    * @intent mutating
    */
@@ -802,6 +1199,12 @@ export class DocsClient {
   /**
    * set_depth
    *
+   * Changes a block's nesting depth.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.depth The new depth, 0 for top level.
+   *
    * @intent mutating
    */
   public async setDepth(params: { doc: string; block: string; depth: number }): Promise<void> {
@@ -811,6 +1214,12 @@ export class DocsClient {
 
   /**
    * set_kind
+   *
+   * Changes a block's type.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block id.
+   * @param params.kind The new block type, as for `insert_block`.
    *
    * @intent mutating
    */
@@ -822,7 +1231,14 @@ export class DocsClient {
   /**
    * split_block
    *
-   * Split at visible position `at`, returning the new block's id.
+   * Splits a block in two at a text position and returns the new block, which holds the text after the split and follows the original.
+   * Not idempotent: a retry after a lost response splits again, so read the blocks before repeating.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block to split.
+   * @param params.at The position to split at; the text from here on moves to the new block.
+   * @returns The new block's id.
    *
    * @intent mutating
    */
@@ -834,7 +1250,13 @@ export class DocsClient {
   /**
    * title_anchor_at
    *
-   * A cursor for the gap at `position`, as an opaque token any member resolves.
+   * Returns a cursor for the gap at a title position, as an opaque token that survives concurrent edits and that any member can resolve.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.position The gap, counted from 0 at the start of the title.
+   * @param params.before Which side the anchor leans toward when text is inserted exactly at the gap.
+   * @returns An opaque anchor token.
    *
    * @intent read_only
    */
@@ -846,8 +1268,15 @@ export class DocsClient {
   /**
    * title_apply_delta
    *
-   * One editor transaction on the title, returning an opaque token
-   * `title_undo` takes.
+   * Applies one editing transaction to a document's title and returns a token that `title_undo` takes.
+   * `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
+   * Text after the last step is kept.
+   * The title carries no formatting, so a step with non-null `attributes` is refused.
+   * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   *
+   * @param params.doc The document id.
+   * @param params.ops The steps of the transaction, in order.
+   * @returns An opaque undo token.
    *
    * @intent mutating
    */
@@ -859,8 +1288,15 @@ export class DocsClient {
   /**
    * title_apply_delta_on
    *
-   * `title_apply_delta`, but only onto the title the caller diffed against and, with an
-   * `anchor`, only as an insert where that anchor sits; a refusal places the anchor.
+   * Like `title_apply_delta`, but only applies when the title is still exactly `base`, because a position counted in any other text names the wrong place.
+   * When `anchor` is given the write must also be an insert right where that anchor sits.
+   * On refusal nothing is written: `applied` is `false` and `text` is the current title to rebase onto.
+   *
+   * @param params.doc The document id.
+   * @param params.base The full title text the steps were computed against.
+   * @param params.ops The steps of the transaction, as for `title_apply_delta`.
+   * @param params.anchor Optional cursor token from `title_anchor_at`; `null` for an unanchored write.
+   * @returns Whether the write applied, the undo token, the resulting title, and an anchor at the end of the edit.
    *
    * @intent mutating
    */
@@ -872,8 +1308,11 @@ export class DocsClient {
   /**
    * title_resolve
    *
-   * Where anchors sit in THIS replica's title. `null` is an anchor this
-   * replica cannot place yet.
+   * Returns where anchors currently sit in this node's copy of the title.
+   *
+   * @param params.doc The document id.
+   * @param params.anchors Tokens from `title_anchor_at`.
+   * @returns One position per anchor, in order; `null` for an anchor this node cannot place yet.
    *
    * @intent read_only
    */
@@ -885,7 +1324,11 @@ export class DocsClient {
   /**
    * title_undo
    *
-   * Takes a whole title transaction back, returning a token that redoes it.
+   * Takes a whole title transaction back and returns a token that redoes it.
+   *
+   * @param params.doc The document id.
+   * @param params.token The token `title_apply_delta` (or a previous undo) returned.
+   * @returns An opaque token that redoes the transaction.
    *
    * @intent mutating
    */
@@ -897,6 +1340,10 @@ export class DocsClient {
   /**
    * unarchive_doc
    *
+   * Restores an archived document to the default `list_docs` view.
+   *
+   * @param params.id The document id.
+   *
    * @intent mutating
    */
   public async unarchiveDoc(params: { id: string }): Promise<void> {
@@ -907,7 +1354,12 @@ export class DocsClient {
   /**
    * undo
    *
-   * Take a whole transaction back, returning a token that redoes it.
+   * Takes a whole text transaction back and returns a token that redoes it.
+   *
+   * @param params.doc The document id.
+   * @param params.block The block the transaction was applied to.
+   * @param params.token The token `apply_delta` (or a previous undo) returned.
+   * @returns An opaque token that redoes the transaction.
    *
    * @intent mutating
    */
