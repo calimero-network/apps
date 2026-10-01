@@ -633,7 +633,7 @@ export function useFugueBody({
     const next = localBlocks();
     const calls = diffBlocks(serverRef.current, next);
     if (calls.length === 0) {
-      setStatus('saved');
+      setStatus((prev) => (prev === 'error' ? prev : 'saved'));
       return true;
     }
     setStatus('saving');
