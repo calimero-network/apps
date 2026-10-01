@@ -63,6 +63,7 @@ vi.mock("@calimero-network/mero-react", () => ({
 }));
 
 vi.mock("../../api/meroJsClient", () => ({
+  isAccountMode: () => false,
   getAuthConfig: () => ({ jwtToken: "token" }),
   getMeroJs: () => ({
     admin: {

@@ -7,17 +7,19 @@ import {
   toAccountBase58,
   toAccountHex,
 } from "./accountIdentity";
-import {
-  clearRegisteredContextIdentities,
-  isSelfSender,
-} from "./selfIdentity";
+import { clearRegisteredContextIdentities, isSelfSender } from "./selfIdentity";
 
 vi.mock("axios", () => ({ default: { get: vi.fn() } }));
 vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://node.test",
   getContextIdentity: () => "",
 }));
-vi.mock("../api/meroJsClient", () => ({ getAuthConfig: () => ({ jwtToken: "t" }) }));
+const getNodeIdentity = vi.fn();
+vi.mock("../api/meroJsClient", () => ({
+  isAccountMode: () => false,
+  getAuthConfig: () => ({ jwtToken: "t" }),
+  getMeroJs: () => ({ admin: { getNodeIdentity } }),
+}));
 vi.mock("../constants/config", () => ({
   getContextMemberIdentity: () => "",
   getGroupId: () => "",
@@ -40,7 +42,11 @@ describe("hexToBase58", () => {
   it("preserves leading zero bytes (they become leading '1's)", () => {
     // The captured account starts with 0x00 — dropping it would shift the
     // whole encoding and silently never match.
-    expect(hexToBase58("007c24434c4c26b01c4f5425ec06b0db51d3f4bde4ed8c30d409552567c48cda")).toMatch(/^1/);
+    expect(
+      hexToBase58(
+        "007c24434c4c26b01c4f5425ec06b0db51d3f4bde4ed8c30d409552567c48cda",
+      ),
+    ).toMatch(/^1/);
   });
 
   it("accepts a 0x prefix", () => {
@@ -60,27 +66,29 @@ describe("loadSelfAccountIdentity", () => {
 
   beforeEach(() => {
     vi.mocked(axios.get).mockReset();
+    getNodeIdentity.mockReset();
     clearRegisteredContextIdentities();
   });
 
-  it("reads the node-wide identity route, not the per-namespace one", async () => {
-    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24. When it
-    // did, nothing was registered as self and every ownership check silently
-    // failed — the user could not edit or delete their own messages.
-    vi.mocked(axios.get).mockResolvedValue({
-      data: { data: { accountId: accountHex, deviceId: null } },
+  it("asks the admin API who it is, so an account session is itself", async () => {
+    // On a node the admin is the node's own client; on an account it is
+    // mero-react's account admin, which answers with the session's account.
+    // A raw fetch of `/admin-api/identity` would ask the relay node instead.
+    getNodeIdentity.mockResolvedValue({
+      accountId: accountHex,
+      deviceId: null,
     });
 
     await loadSelfAccountIdentity("some-namespace");
 
-    const url = vi.mocked(axios.get).mock.calls[0][0] as string;
-    expect(url).toBe("http://node.test/admin-api/identity");
-    expect(url).not.toContain("/namespaces/");
+    expect(getNodeIdentity).toHaveBeenCalledOnce();
+    expect(axios.get).not.toHaveBeenCalled();
   });
 
   it("registers the base58 account id, which is what `sender` carries", async () => {
-    vi.mocked(axios.get).mockResolvedValue({
-      data: { data: { accountId: accountHex, deviceId: null } },
+    getNodeIdentity.mockResolvedValue({
+      accountId: accountHex,
+      deviceId: null,
     });
 
     await loadSelfAccountIdentity();
@@ -93,7 +101,7 @@ describe("loadSelfAccountIdentity", () => {
   });
 
   it("returns null and registers nothing when the node has no account id", async () => {
-    vi.mocked(axios.get).mockResolvedValue({ data: { data: {} } });
+    getNodeIdentity.mockResolvedValue({});
 
     await expect(loadSelfAccountIdentity()).resolves.toBeNull();
     expect(isSelfSender(accountB58, "ctx-1")).toBe(false);
@@ -103,9 +111,11 @@ describe("loadSelfAccountIdentity", () => {
 describe("account id canonicalisation", () => {
   // Observed on a live rc.24 node: the SAME two members, served hex by the
   // admin API and base58 by the contract's `get_profiles`.
-  const user1Hex = "e8b65145da3670b152e06eb3e2c00a5b41ca8907aac0a4ef24486bffa6283670";
+  const user1Hex =
+    "e8b65145da3670b152e06eb3e2c00a5b41ca8907aac0a4ef24486bffa6283670";
   const user1B58 = "GfQq3fL5PC9Lw4fV3EAFQmoaoGyWMig2GvQgp3u3ZYeK";
-  const user2Hex = "7528078a29c19803bbe1e370410b58992c0d1e436bec701ed33a4b3305bc916c";
+  const user2Hex =
+    "7528078a29c19803bbe1e370410b58992c0d1e436bec701ed33a4b3305bc916c";
   const user2B58 = "8tL6y7jzsTyff1UdKFzW67mMP91GGQCGSAzugpX6poKy";
 
   it("maps between the two encodings the app actually receives", () => {

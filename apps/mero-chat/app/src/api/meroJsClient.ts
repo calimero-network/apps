@@ -68,6 +68,19 @@ export function getMeroJs(): ChatClient {
   return _instance;
 }
 
+// Whether the session is an account (no node, through a relay). Set by
+// MeroJsBridge from `useMero().isDelegated`, read by the few node-only steps
+// that have an account form (blob download, the app-install check).
+let _account = false;
+
+export function setAccountMode(on: boolean): void {
+  _account = on;
+}
+
+export function isAccountMode(): boolean {
+  return _account;
+}
+
 export type LegacyRpcResult<T> =
   | {
       result: { output: T };
@@ -97,7 +110,8 @@ export async function rpcExec<T>(
       // Server-side WASM errors used to surface as
       // `error.error.cause.info.message`. Reconstruct that path so existing
       // dataSource code finds its message in the same place.
-      const data = e.data as { cause?: { info?: { message?: string } } } | undefined;
+      const data = e.data as
+        { cause?: { info?: { message?: string } } } | undefined;
       const causeMessage =
         data?.cause?.info?.message ?? e.message ?? "RPC error";
       return {
@@ -174,7 +188,8 @@ export type LegacySignedOpenInvitation = {
   inviterSignature: string;
 };
 
-export type LegacyContextInviteByOpenInvitationResponse = LegacySignedOpenInvitation | null;
+export type LegacyContextInviteByOpenInvitationResponse =
+  LegacySignedOpenInvitation | null;
 
 export type LegacyJoinContextResponse = {
   contextId: string;
@@ -197,7 +212,8 @@ export const nodeApi = {
     try {
       // Old endpoint was `/identities-owned` — preserve that semantic
       // (returns only identities this node controls, not all members).
-      const result = await getMeroJs().admin.getContextIdentitiesOwned(contextId);
+      const result =
+        await getMeroJs().admin.getContextIdentitiesOwned(contextId);
       // Old shape was double-wrapped: `{ data: { identities } }`. Match it.
       return { data: { data: { identities: result.identities ?? [] } } };
     } catch (e) {
@@ -232,7 +248,10 @@ export const nodeApi = {
 
     try {
       const res = await fetch(
-        new URL("/admin-api/contexts/invite_by_open_invitation", baseUrl).toString(),
+        new URL(
+          "/admin-api/contexts/invite_by_open_invitation",
+          baseUrl,
+        ).toString(),
         {
           method: "POST",
           headers: {
@@ -244,10 +263,15 @@ export const nodeApi = {
       );
       if (!res.ok) {
         return {
-          error: { code: res.status, message: `${res.status} ${res.statusText}` },
+          error: {
+            code: res.status,
+            message: `${res.status} ${res.statusText}`,
+          },
         };
       }
-      const body = (await res.json()) as { data?: LegacyContextInviteByOpenInvitationResponse };
+      const body = (await res.json()) as {
+        data?: LegacyContextInviteByOpenInvitationResponse;
+      };
       return { data: body?.data ?? null };
     } catch (e) {
       return { error: toLegacyError(e) };
@@ -266,7 +290,10 @@ export const nodeApi = {
 
     try {
       const res = await fetch(
-        new URL("/admin-api/contexts/join_by_open_invitation", baseUrl).toString(),
+        new URL(
+          "/admin-api/contexts/join_by_open_invitation",
+          baseUrl,
+        ).toString(),
         {
           method: "POST",
           headers: {
@@ -278,12 +305,17 @@ export const nodeApi = {
       );
       if (!res.ok) {
         return {
-          error: { code: res.status, message: `${res.status} ${res.statusText}` },
+          error: {
+            code: res.status,
+            message: `${res.status} ${res.statusText}`,
+          },
         };
       }
       const body = (await res.json()) as { data?: LegacyJoinContextResponse };
       if (!body?.data) {
-        return { error: { code: 500, message: "Empty response from join endpoint" } };
+        return {
+          error: { code: 500, message: "Empty response from join endpoint" },
+        };
       }
       return { data: body.data };
     } catch (e) {

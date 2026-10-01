@@ -1,7 +1,7 @@
 import axios from "axios";
 import { getNodeUrl } from "@calimero-network/mero-react";
 
-import { getAuthConfig, getMeroJs } from "../api/meroJsClient";
+import { getAuthConfig, getMeroJs, isAccountMode } from "../api/meroJsClient";
 import { getApplicationId } from "../constants/config";
 import { APP_SLUG } from "./invitation";
 
@@ -33,7 +33,9 @@ function nodeBase(): string {
 
 function authHeaders(): Record<string, string> {
   const cfg = getAuthConfig();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
   return headers;
 }
@@ -61,6 +63,10 @@ export async function listInstalledAppIds(): Promise<string[]> {
 export async function resolveInstalledAppId(
   preferred: string = getApplicationId(),
 ): Promise<string> {
+  // An account installs nothing: founding a workspace names the app, and the
+  // relay resolves its bundle from the registry. `/admin-api/applications` is
+  // an operator route the relay would not serve it anyway.
+  if (isAccountMode()) return preferred;
   const ids = await listInstalledAppIds();
   if (!ids.includes(preferred)) throw new AppNotInstalledError(preferred);
   return preferred;
