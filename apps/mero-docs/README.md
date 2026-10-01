@@ -181,7 +181,7 @@ pnpm run app:generate-client                  # regenerate DocsClient/RegistryCl
 - **Frontend** - lint + vitest + build
 - **Logic (Rust)** - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
 - **Bundle** - assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
-- **E2E (mero-docs)** - every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
+- **E2E (mero-docs / \<scenario\>)** - one runner per scenario in `logic/workflows/`, retried only when a joining step loses the cold-join race, with node logs collected per scenario
 - **Browser E2E (mero-docs)** - the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
 - **Browser E2E rich (mero-docs)** - the `rich` Playwright project, the live collab session, against a three-node rig brought up with CI's bundle
 
