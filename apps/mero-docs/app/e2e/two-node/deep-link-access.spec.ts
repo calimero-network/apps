@@ -49,6 +49,33 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     );
   });
 
+  test("Bob's link to the folder itself says it is restricted", async ({
+    alice,
+    bob,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Folder Link WS');
+    await alice.createFolder({ name: 'Finance', visibility: 'Restricted' });
+    await alice.tree.openFolder('Finance');
+    await alice.createDoc('Ledger');
+    const folderPath = pathOf(alice.page);
+
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
+    await bob.joinNamespace(inviteUrl);
+    await bob.page.goto(folderPath);
+
+    await expect(
+      bob.page.getByRole('heading', { name: 'Finance is a restricted folder' }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      bob.page.getByText(
+        'You are not a member yet. Ask a folder manager to add you, then open this link again.',
+      ),
+    ).toBeVisible();
+  });
+
   test("Bob's doc link into a folder he cannot open says so (L-21)", async ({
     alice,
     bob,
