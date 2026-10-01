@@ -100,26 +100,30 @@ describe("LayeredRepository", () => {
     expect(calls).toHaveLength(2);
   });
 
+  // The TTL tests run on a fake clock: on a busy runner a real 5 ms wait can
+  // outlast a 10 ms TTL, and the value is stale before it is first read.
   it("serves a stale value and refreshes behind it", async () => {
+    vi.useFakeTimers();
     const answers: Record<string, string> = { a: "Old" };
     const src = source(answers);
     const repo = new LayeredRepository(src, { ...BASE, ttlMs: 10 });
 
     repo.get("a");
-    await tick();
+    await vi.advanceTimersByTimeAsync(5);
     expect(repo.get("a")).toBe("Old");
 
     answers.a = "New";
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.advanceTimersByTimeAsync(20);
 
     // Stale value returned immediately...
     expect(repo.get("a")).toBe("Old");
-    await tick();
+    await vi.advanceTimersByTimeAsync(5);
     // ...and replaced once the refresh lands.
     expect(repo.get("a")).toBe("New");
   });
 
   it("withholds a stale value when the policy forbids serving one", async () => {
+    vi.useFakeTimers();
     const src = source({ a: "Old" });
     const repo = new LayeredRepository(src, {
       ...BASE,
@@ -128,10 +132,10 @@ describe("LayeredRepository", () => {
     });
 
     repo.get("a");
-    await tick();
+    await vi.advanceTimersByTimeAsync(5);
     expect(repo.get("a")).toBe("Old");
 
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.advanceTimersByTimeAsync(20);
     expect(repo.get("a")).toBeUndefined();
   });
 
@@ -163,7 +167,11 @@ describe("LayeredRepository", () => {
       clear: async () => {},
     };
     const src = source({ a: "Ann" });
-    const repo = new LayeredRepository(src, { ...BASE, persist: true }, persistent);
+    const repo = new LayeredRepository(
+      src,
+      { ...BASE, persist: true },
+      persistent,
+    );
 
     await repo.hydrated;
     expect(repo.peek("a")).toBe("Ann");
@@ -187,7 +195,11 @@ describe("LayeredRepository", () => {
       clear: async () => {},
     };
     const src = source({ a: "Fresh" });
-    const repo = new LayeredRepository(src, { ...BASE, persist: true }, persistent);
+    const repo = new LayeredRepository(
+      src,
+      { ...BASE, persist: true },
+      persistent,
+    );
 
     repo.get("a");
     await tick();
