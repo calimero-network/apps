@@ -12,7 +12,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  CREATION_UNSUPPORTED,
   claimAccountWithCloud,
   createContextThroughRelay,
   describeCreation,
@@ -23,9 +22,9 @@ import {
 import type { DeviceIdentity } from './identity.js';
 
 /**
- * A switch on `RelayClient`, so the creation tests can run against a client
- * that has the methods the installed mero-js does not — and every other test
- * keeps the real one. `fake` null means "the real client, unchanged".
+ * A switch on `RelayClient`, so the creation tests can script what the relay
+ * says without a relay — and every other test keeps the real one. `fake` null
+ * means "the real client, unchanged".
  */
 const relay = vi.hoisted(() => ({
   fake: null as null | ((config: Record<string, unknown>) => object),
@@ -281,8 +280,9 @@ describe('readInvitation', () => {
 });
 
 /**
- * Delegated creation, against both the mero-js this app pins — which has no
- * `describeCreation`/`createContext` — and a client that has them.
+ * Delegated creation: the real `RelayClient` the installed mero-js ships (22.4.0
+ * added `describeCreation`/`createContext`), and a scripted client for the
+ * paths a relay would have to be set up for.
  */
 describe('delegated context creation', () => {
   const GROUP = '11'.repeat(32);
@@ -300,12 +300,39 @@ describe('delegated context creation', () => {
     localStorage.clear();
   });
 
-  it('says the installed mero-js is too old, before sending anything', async () => {
-    const calls = scriptFetch([]);
+  it('asks the relay through the installed mero-js, not a guard', async () => {
+    const answer = {
+      executorAccount: '33'.repeat(32),
+      groupId: GROUP,
+      canCreateOnBehalf: true,
+      authorMayCreate: true,
+    };
+    const calls = scriptFetch([{ body: { data: answer } }]);
 
     await expect(
-      describeCreation('https://relay.example', GROUP, IDENTITY, { seal: false }),
-    ).rejects.toThrow(CREATION_UNSUPPORTED);
+      describeCreation('https://relay.example/', GROUP, IDENTITY, { seal: false }),
+    ).resolves.toEqual(answer);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(
+      `https://relay.example/admin-api/groups/${GROUP}/context-intents?author=${IDENTITY.accountId}`,
+    );
+    expect(calls[0]?.init?.method).toBe('GET');
+  });
+
+  it('refuses a creation the author may not make before signing anything', async () => {
+    const calls = scriptFetch([
+      {
+        body: {
+          data: {
+            executorAccount: '33'.repeat(32),
+            groupId: GROUP,
+            canCreateOnBehalf: true,
+            authorMayCreate: false,
+          },
+        },
+      },
+    ]);
+
     await expect(
       createContextThroughRelay(
         'https://relay.example',
@@ -313,8 +340,10 @@ describe('delegated context creation', () => {
         { groupId: GROUP, applicationId: APP, initArgs: {} },
         { seal: false },
       ),
-    ).rejects.toThrow(/predates delegated context creation/);
-    expect(calls).toEqual([]);
+    ).rejects.toThrow(/admin of the group has to grant it CAN_CREATE_CONTEXT/);
+    // Only the describe went out: no warrant was signed, no nonce spent.
+    expect(calls).toHaveLength(1);
+    expect(localStorage.length).toBe(0);
   });
 
   it('passes the relay, the author and the arguments through', async () => {

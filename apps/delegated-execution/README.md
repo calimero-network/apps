@@ -198,12 +198,10 @@ and answers both standings. The group id defaults to the namespace id from step 
 create button checks them again before it signs, so a missing grant costs no nonce. On
 success the panel offers to set the new context id for steps 6 and 7.
 
-**It needs a newer mero-js than this app pins.** `RelayClient.describeCreation` and
-`RelayClient.createContext` are not in `@calimero-network/mero-js` 21.2.0. Until the pin
-moves, both buttons say *"this build of mero-js predates delegated context creation"* and
-send nothing. `lib/flow.ts` looks the methods up structurally, so bumping the dependency is
-the whole upgrade. The relay has to be on a core release that serves the route, and a
-sealed relay also has to let it through sealed; one that does not answers
+**It needs mero-js 22.4 or newer.** `RelayClient.describeCreation` and
+`RelayClient.createContext` arrived in `@calimero-network/mero-js` 22.4.0 (#214); the
+workspace catalog is on ^23.0.0, so `lib/flow.ts` calls them directly. The relay has to
+be on a core release that serves the route, and a sealed relay also has to let it through sealed; one that does not answers
 `403 sealed_route_unguarded`, which the panel names.
 
 ## Two ways in, and only one of them needs an invitation
@@ -444,12 +442,12 @@ A relay that cannot attest, or runs an image the page does not trust, is refused
 which it was. For a relay that is not a TEE, untick the box. The page then says the write
 is unsealed.
 
-This app pins `@calimero-network/mero-js` ^22.1.0 itself instead of taking the
-workspace catalog&rsquo;s 21: trusting a signed release at run time
-(`createSignedReleaseVerifier`) is mero-js 22.1. The catalog cannot move yet. mero-react
-depends on mero-js ^21.3, so every app that uses both would carry two copies, and their
-`AdminApiClient` types do not match. Return this app to `catalog:` when the catalog
-reaches 22.1.
+This app takes `@calimero-network/mero-js` from the workspace catalog (^23.0.0) like every
+other app; trusting a signed release at run time (`createSignedReleaseVerifier`) needs
+mero-js 22. It used to pin ^22.1.0 itself because the catalog was on 21. mero-react 9.2.0
+still declares mero-js ^21.3, so the root `package.json` overrides that one dependency to
+^23.0.0: one copy of mero-js, one `AdminApiClient` type, and every namespace op signed at
+the schema core expects.
 
 `@phala/dcap-qvl`, the quote verifier, is loaded only when a quote needs checking. It is
 most of the page&rsquo;s weight, and a visitor who never seals never downloads it.
