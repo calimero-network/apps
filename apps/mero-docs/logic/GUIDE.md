@@ -136,7 +136,7 @@ Edit safely like this, because another member may change the text between your r
 
 1. `get_block` and join the `text` of its `spans`: that is the base.
 2. Compute the steps against the base, then `apply_delta_on` with `doc`, `block`, `base`, `ops` and `anchor` set to `null`.
-3. When it answers `applied: false` nothing was written; its `spans` are the current text, so recompute from them and repeat step 2.
+3. When it answers `applied: false` nothing was written; its `spans` (`text` for the title) are the current text, so recompute from them and repeat step 2.
 
 - For the title, read `get_title_state` and use `title_apply_delta_on` with its `text` as `base`, the same way.
   The title takes no formatting.
@@ -197,7 +197,9 @@ There is no tool to move a folder under another parent: the registry's `move_fol
 
 1. On your node, `invite_to_namespace` with the namespace id.
    Hand the whole returned object to the invitee.
-2. On the invitee's node: `join_namespace` with `namespace` and `invitation` passed through unchanged.
+2. On the invitee's node: `join_namespace` with `namespace`, the object's `invitation` field as `invitation` passed through unchanged, and its `groupName` as `groupName`.
+   Passing the whole object as `invitation` is refused.
+   The answer's `memberAccount` is the invitee's account id, which the inviter needs to assign roles.
    Then `join_context` with the registry context id.
 3. For every folder the invitee should open, top-down so a subfolder follows its parent: for an `open` folder, `join_open_group` with the folder's group id, then `join_context` with the folder's `context_id` (from `get_folders`).
 4. A `restricted` folder cannot be self-joined: an admin of the folder's group calls `add_group_members` with `group` set to the folder id and `members` set to `[{"identity": "<account id>", "role": "Member"}]`, and only then does the invitee call `join_context`, which otherwise hangs until it times out.
