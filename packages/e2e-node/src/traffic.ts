@@ -10,14 +10,34 @@ export interface NodeCall {
 }
 
 const NODE_ROUTES = /\/(admin-api|jsonrpc|auth|sse|ws)(\/|$|\?)/;
+const CAUSE_MARK = "[e2e-node:error-cause]";
+
+function reportErrorCauses(mark: string): void {
+  addEventListener("error", (ev) => {
+    const chain: string[] = [];
+    let cause = (ev.error as { cause?: unknown } | null)?.cause;
+    while (cause && chain.length < 5) {
+      chain.push(cause instanceof Error ? `${cause.name}: ${cause.message}\n${cause.stack ?? ""}` : String(cause));
+      cause = (cause as { cause?: unknown }).cause;
+    }
+    if (chain.length) console.error(mark, chain.join("\ncaused by: "));
+  });
+}
 
 export class TrafficLog {
   readonly calls: NodeCall[] = [];
   readonly pageErrors: string[] = [];
 
-  watch(page: Page, who: string, nodeUrls: string[]): void {
+  async watch(page: Page, who: string, nodeUrls: string[]): Promise<void> {
     const origins = new Set(nodeUrls.map((u) => new URL(u).origin));
+    await page.addInitScript(reportErrorCauses, CAUSE_MARK);
     page.on("pageerror", (e) => this.pageErrors.push(`[${who}] ${String(e).slice(0, 500)}`));
+    page.on("console", (m) => {
+      const text = m.text();
+      if (m.type() === "error" && text.startsWith(CAUSE_MARK)) {
+        this.pageErrors.push(`[${who}] cause: ${text.slice(CAUSE_MARK.length).trim().slice(0, 1500)}`);
+      }
+    });
     page.on("response", (r: Response) => {
       const url = new URL(r.url());
       if (!origins.has(url.origin) || !NODE_ROUTES.test(url.pathname)) return;

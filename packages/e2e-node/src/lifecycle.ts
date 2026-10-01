@@ -70,7 +70,7 @@ export async function openActor(
     permissions: ["clipboard-read", "clipboard-write", ...permissions],
   });
   const page = await context.newPage();
-  traffic.watch(page, name, nodeUrls);
+  await traffic.watch(page, name, nodeUrls);
   return { actor: { name, page, node, run }, context };
 }
 
