@@ -212,8 +212,8 @@ export interface DocDto {
 /**
  * Per-document record.
  *
- * The derive supplies the deterministic re-key cascade `title`, `body` and
- * `tags` need: a nested collection stored under a value type that is not a
+ * `#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`
+ * and `tags` need: a nested collection stored under a value type that is not a
  * registered `RekeyTarget` keeps a per-replica random storage id and never
  * converges.
  *
