@@ -5,6 +5,7 @@ import {
   blockOf,
   folderMatches,
   isIndexUnavailable,
+  matchedInTitle,
   NODE_FILTER_PAGE,
   parseSnippet,
   searchFolder,
@@ -153,5 +154,29 @@ describe('blockOf', () => {
   it('has none without the doc read here, or without a match', () => {
     expect(blockOf(hit, undefined)).toBeUndefined();
     expect(blockOf({ ...hit, ranges: [] }, text)).toBeUndefined();
+  });
+});
+
+describe('matchedInTitle', () => {
+  const hit = (title: string, snippet: string, ranges: [number, number][]) => ({
+    folderId: 'f1',
+    docId: 'd1',
+    title,
+    score: 1,
+    snippet,
+    ranges,
+  });
+
+  it('knows a snippet shown from the title', () => {
+    expect(
+      matchedInTitle(hit('Q3 launch plan', 'Q3 launch plan', [[10, 14]])),
+    ).toBe(true);
+  });
+
+  it('keeps a match in the text, and a hit with nothing marked', () => {
+    expect(
+      matchedInTitle(hit('Q3 launch plan', 'the plan for May', [[4, 8]])),
+    ).toBe(false);
+    expect(matchedInTitle(hit('Q3 launch plan', '', []))).toBe(false);
   });
 });

@@ -32,7 +32,7 @@ import { searchV1 } from '@/lib/search/rank';
 import { sidebarTags, tagCounts } from '@/lib/tags';
 import { plural } from '@/lib/plural';
 import { searchText } from '@/lib/search/docText';
-import { blockOf } from '@/lib/search/nodeSearch';
+import { blockOf, matchedInTitle } from '@/lib/search/nodeSearch';
 import { useDocSearch } from '@/hooks/useDocSearch';
 import { rowKey, type IndexRow } from '@/lib/workspaceIndex/types';
 
@@ -384,9 +384,12 @@ export function SearchContainer({ open, onOpenChange, recent }: Props) {
   const textHits = React.useMemo(() => {
     const ctx: RowContext = { paths, presence, targets: new Map() };
     if (!open || !normalizeQuery(textQuery).text) return { ...ctx, items: [] };
+    // Only matches in the text: a title match is under Documents already.
     const indexed =
       fromIndex.query === nodeQuery
-        ? [...fromIndex.hits].sort((a, b) => b.score - a.score)
+        ? fromIndex.hits
+            .filter((hit) => !matchedInTitle(hit))
+            .sort((a, b) => b.score - a.score)
         : [];
     const hits = [
       ...indexed.map((hit) => {

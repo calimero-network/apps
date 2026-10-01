@@ -2,9 +2,10 @@
 // index answers for all of a folder's docs, whether or not this device has
 // read them. A folder whose node cannot answer (search off, an app version
 // without the view) is remembered for the session and left to the text this
-// device reads (`useTextIndex`), as is one whose call failed this time.
+// device reads (`useTextIndex`), as is one whose call failed this time. A
+// folder is asked again once its docs change, here or synced from a peer.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceIndexValue } from '@/context/WorkspaceIndexContext';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { normalizeQuery } from '@/lib/search/match';
@@ -17,6 +18,9 @@ import {
 import { rowKey } from '@/lib/workspaceIndex/types';
 
 export const NODE_SEARCH_CONCURRENCY = 4; // folders asked at once
+// How long after a folder's docs change it is asked again: the index takes up
+// to a second to take in an edit.
+export const INDEX_CATCH_UP_MS = 1_000;
 
 export type DocSearch = {
   /** The query these hits answer; they are stale while it differs from the one asked. */
@@ -32,13 +36,46 @@ type Folder = { folderId: string; contextId: string; client: DocsClient };
 
 const EMPTY: DocSearch = { query: '', hits: [], served: new Set(), pending: 0 };
 
+/**
+ * A mark of every folder's docs that moves when one is added, removed or
+ * edited, and settles `INDEX_CATCH_UP_MS` later, once the index has it too.
+ */
+function useSettledVersion(): string {
+  const { rows } = useWorkspaceIndexValue();
+  const now = useMemo(() => {
+    const byFolder = new Map<string, { docs: number; latest: number }>();
+    for (const r of rows) {
+      const v = byFolder.get(r.folderId) ?? { docs: 0, latest: 0 };
+      v.docs++;
+      v.latest = Math.max(v.latest, r.updatedAt);
+      byFolder.set(r.folderId, v);
+    }
+    return [...byFolder]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([id, v]) => `${id}:${v.docs}:${v.latest}`)
+      .join(',');
+  }, [rows]);
+  const [settled, setSettled] = useState(now);
+  useEffect(() => {
+    if (now === settled) return;
+    const t = setTimeout(() => setSettled(now), INDEX_CATCH_UP_MS);
+    return () => clearTimeout(t);
+  }, [now, settled]);
+  return settled;
+}
+
 /** The folders a search can ask: ready, with a client, not known to lack an index. */
 function useSearchableFolders(): {
   folders: Folder[];
+  /** Moves when the folders asked change. */
+  key: string;
+  /** Moves when what they hold does, once their indexes have it. */
+  version: string;
   markUnavailable: (f: Folder) => void;
 } {
   const { folders, folderStatus, contextOf, clientOf } =
     useWorkspaceIndexValue();
+  const version = useSettledVersion();
   const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set());
   const out: Folder[] = [];
   for (const f of folders) {
@@ -55,7 +92,8 @@ function useSearchableFolders(): {
       ),
     [],
   );
-  return { folders: out, markUnavailable };
+  const key = out.map((f) => `${f.folderId}:${f.contextId}`).join(',');
+  return { folders: out, key, version, markUnavailable };
 }
 
 /** Runs `task` over `items`, at most `limit` at a time. */
@@ -91,16 +129,19 @@ async function ask<T>(
 
 /** The palette's matches inside documents, per folder from its index. */
 export function useDocSearch(query: string): DocSearch {
-  const { folders, markUnavailable } = useSearchableFolders();
+  const { folders, key, version, markUnavailable } = useSearchableFolders();
   const [result, setResult] = useState<DocSearch>(EMPTY);
-  // Only a change of folder or client asks again, not every render's new array.
-  const key = folders.map((f) => `${f.folderId}:${f.contextId}`).join(',');
+  // A change of folder, client or content asks again, not every render's new array.
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
+  const last = useRef({ query: '', key: '' });
 
   useEffect(() => {
     let cancelled = false;
     const asked = foldersRef.current;
+    // Asked again after an edit: the hits shown stay until the new ones are in.
+    const refresh = last.current.query === query && last.current.key === key;
+    last.current = { query, key };
     if (!query || !asked.length) {
       setResult({ ...EMPTY, query });
       return;
@@ -112,7 +153,7 @@ export function useDocSearch(query: string): DocSearch {
       if (!cancelled)
         setResult({ query, hits: [...hits], served: new Set(served), pending });
     };
-    publish();
+    if (!refresh) publish();
     void eachConcurrent(asked, NODE_SEARCH_CONCURRENCY, async (folder) => {
       const found = await ask(folder, markUnavailable, () =>
         searchFolder(folder.folderId, folder.client, query),
@@ -122,12 +163,12 @@ export function useDocSearch(query: string): DocSearch {
         hits.push(...found);
         served.add(folder.folderId);
       }
-      publish();
+      if (!refresh || pending === 0) publish();
     });
     return () => {
       cancelled = true;
     };
-  }, [query, key, markUnavailable]);
+  }, [query, key, version, markUnavailable]);
 
   return result;
 }
@@ -140,21 +181,24 @@ export function useDocSearch(query: string): DocSearch {
 export function useDocMatches(): (
   text: string,
 ) => { keys: Set<string>; served: Set<string> } | undefined {
-  const { folders, markUnavailable } = useSearchableFolders();
+  const { folders, key, version, markUnavailable } = useSearchableFolders();
   const [answers, setAnswers] = useState<
     Map<string, { keys: Set<string>; served: Set<string> }>
   >(() => new Map());
   const asked = useRef(new Set<string>());
-  const key = folders.map((f) => `${f.folderId}:${f.contextId}`).join(',');
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
   const alive = useRef(true);
 
-  // A folder joining or leaving asks every text again.
+  // A folder joining or leaving asks every text again from nothing.
   useEffect(() => {
     asked.current = new Set();
     setAnswers(new Map());
   }, [key]);
+  // An edit asks again too, keeping each answer until its fresh one is in.
+  useEffect(() => {
+    asked.current = new Set();
+  }, [version]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -163,9 +207,18 @@ export function useDocMatches(): (
   }, []);
 
   const fetchText = useCallback(
-    (text: string, query: string, from: Folder[]) => {
+    (text: string, query: string, from: Folder[], refresh: boolean) => {
       const keys = new Set<string>();
       const served = new Set<string>();
+      const publish = () =>
+        setAnswers((prev) =>
+          new Map(prev).set(text, {
+            keys: new Set(keys),
+            served: new Set(served),
+          }),
+        );
+      // A first answer shows folder by folder; a refresh replaces the old
+      // one whole, so a folder not yet asked again does not drop out.
       void eachConcurrent(from, NODE_SEARCH_CONCURRENCY, async (folder) => {
         const ids = await ask(folder, markUnavailable, () =>
           folderMatches(folder.client, query),
@@ -173,12 +226,9 @@ export function useDocMatches(): (
         if (!ids || !alive.current) return;
         for (const id of ids) keys.add(rowKey(folder.folderId, id));
         served.add(folder.folderId);
-        setAnswers((prev) =>
-          new Map(prev).set(text, {
-            keys: new Set(keys),
-            served: new Set(served),
-          }),
-        );
+        if (!refresh) publish();
+      }).then(() => {
+        if (refresh && alive.current) publish();
       });
     },
     [markUnavailable],
@@ -192,12 +242,13 @@ export function useDocMatches(): (
         asked.current.add(text);
         // Asked from a render: the calls start after it.
         const from = foldersRef.current;
-        setTimeout(() => fetchText(text, query, from));
+        const refresh = answers.has(text);
+        setTimeout(() => fetchText(text, query, from, refresh));
       }
       return answers.get(text);
     },
-    // `key` so a new folder set hands out a fresh matcher.
+    // `key` and `version` so a new folder set or an edit hands out a fresh matcher.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [answers, fetchText, key],
+    [answers, fetchText, key, version],
   );
 }

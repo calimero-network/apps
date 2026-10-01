@@ -98,6 +98,15 @@ function toHit(folderId: string, hit: DocSearchHit): NodeHit {
   };
 }
 
+/**
+ * Whether the index showed `hit` from its title: the snippet comes from the
+ * first field the words were found in, so its text is then (a piece of) the
+ * title, and the doc is already listed among the title matches.
+ */
+export function matchedInTitle(hit: NodeHit): boolean {
+  return hit.ranges.length > 0 && hit.title.includes(hit.snippet);
+}
+
 /** One page of a folder's best matches. */
 export async function searchFolder(
   folderId: string,
