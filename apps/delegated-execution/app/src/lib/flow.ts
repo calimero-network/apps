@@ -32,6 +32,8 @@ import {
   signAccountLogin,
   signMemberJoinOp,
   type CloudAccountRelay,
+  type CreatedContext,
+  type CreationDescription,
   type DelegatedSession,
   type IntentResult,
 } from '@calimero-network/mero-js';
@@ -218,27 +220,11 @@ export async function describeRelay(nodeUrl: string, contextId: string, { seal }
 }
 
 /**
- * What a relay says about creating contexts in a group, before anything is
- * signed.
- *
- * Declared here rather than imported because the mero-js this app pins
- * predates delegated creation and exports no such type. The shape is the one
- * `RelayClient.describeCreation` returns in the release that adds it.
+ * What a relay says about creating contexts in a group, and where a delegated
+ * creation landed — mero-js's own types since 22.4.0 (#214), re-exported so the
+ * UI keeps importing them from here.
  */
-export interface CreationDescription {
-  /** The account a creation warrant must name as `executor`, hex. */
-  executorAccount: string;
-  /** The group, hex. */
-  groupId: string;
-  /**
-   * Whether the relay has standing to act for members of this group — a
-   * `RelayTee` role or `CAN_AUTHOR_ON_BEHALF`. It needs no create rights of its
-   * own; those are checked on the author.
-   */
-  canCreateOnBehalf: boolean;
-  /** Whether the author may create here. Present only when an author was asked about. */
-  authorMayCreate?: boolean;
-}
+export type { CreationDescription, CreatedContext } from '@calimero-network/mero-js';
 
 /** What to create, as `RelayClient.createContext` takes it. */
 export interface CreateContextRequest {
@@ -250,54 +236,6 @@ export interface CreateContextRequest {
   initArgs: unknown;
   /** A display name for the context. */
   name?: string;
-}
-
-/** Where a delegated creation landed. */
-export interface CreatedContext {
-  contextId: string;
-  groupId: string;
-  /** The relay's identity in the new context, hex. */
-  memberPublicKey: string;
-}
-
-/**
- * The part of `RelayClient` that delegated creation adds, looked up
- * structurally.
- *
- * The installed mero-js is older than those methods, so calling them directly
- * would not typecheck and would throw `is not a function` at run time. Looking
- * them up through this type keeps the app building today and makes it work
- * unchanged once the dependency is bumped — the only thing that changes then is
- * that the lookup succeeds.
- */
-type CreationCapable = {
-  describeCreation?: (
-    groupId: string,
-    opts?: { author?: string },
-  ) => Promise<CreationDescription>;
-  createContext?: (input: {
-    groupId: string;
-    applicationId: string;
-    initArgs?: unknown;
-    serviceName?: string;
-    name?: string;
-    seed?: string;
-  }) => Promise<CreatedContext>;
-};
-
-/** Said when the installed mero-js has no delegated creation at all. */
-export const CREATION_UNSUPPORTED =
-  'this build of mero-js predates delegated context creation; upgrade ' +
-  '@calimero-network/mero-js to a release that has RelayClient.createContext';
-
-/** Fetch one of the creation methods off a client, bound, or explain its absence. */
-function creationMethod<K extends keyof CreationCapable>(
-  relay: RelayClient,
-  key: K,
-): NonNullable<CreationCapable[K]> {
-  const fn = (relay as unknown as CreationCapable)[key];
-  if (typeof fn !== 'function') throw new Error(CREATION_UNSUPPORTED);
-  return fn.bind(relay) as NonNullable<CreationCapable[K]>;
 }
 
 /**
@@ -326,9 +264,8 @@ export async function describeCreation(
     deviceSecret: '',
     nonces: { next: () => Promise.resolve(0n) },
   });
-  const describe = creationMethod(relay, 'describeCreation');
   try {
-    return await describe(groupId, identity ? { author: identity.accountId } : {});
+    return await relay.describeCreation(groupId, identity ? { author: identity.accountId } : {});
   } catch (error) {
     throw explained(error);
   }
@@ -361,9 +298,8 @@ export async function createContextThroughRelay(
     nonces: createLocalStorageNonceSource(nonceStorageKey(identity.devicePublicKey)),
     ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
   });
-  const create = creationMethod(relay, 'createContext');
   try {
-    return await create({ groupId, applicationId, initArgs, ...(name ? { name } : {}) });
+    return await relay.createContext({ groupId, applicationId, initArgs, ...(name ? { name } : {}) });
   } catch (error) {
     throw explained(error);
   }

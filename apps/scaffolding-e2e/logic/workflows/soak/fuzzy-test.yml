@@ -390,8 +390,9 @@ steps:
 
   # Main fuzzy test
   #
-  # Default duration is 15 minutes. Override via the workflow_dispatch
-  # `duration_override` input in the fuzzy-benchmark.yml CI workflow.
+  # Default duration is 15 minutes. It lives in workflows/soak/ so the PR e2e
+  # job (which globs workflows/*.yml only) skips it; .github/workflows/soak.yml
+  # runs it nightly, and its `duration_minutes` dispatch input overrides this.
   - name: Scaffolding E2E Fuzzy Load Test
     type: fuzzy_test
     duration_minutes: 15
