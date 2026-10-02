@@ -662,9 +662,9 @@ async function upgrade(s: Session, input: UpgradeInput): Promise<{ upgraded: boo
   await check(s, U, 'getGroupUpgradeStatus', OK, () =>
     poll(() => s.admin().getGroupUpgradeStatus(need(ns, 'a namespace')),
       (r) => r?.toVersion === UPGRADE_VERSION && !/fail/i.test(r.status), `the namespace upgrading to ${UPGRADE_VERSION}`), (v) => v);
-  // Refused by name for an account until core checks the caller, not the relay,
-  // for this read (it asks the relay to be the namespace admin).
-  await check(s, U, 'getMigrationStatus', NODE_ONLY, () =>
+  // An account that administers the namespace reads it through the relay since
+  // core rc.77 (#4400) checks the caller, not the relay.
+  await check(s, U, 'getMigrationStatus', OK, () =>
     poll(() => s.admin().getMigrationStatus(need(ns, 'a namespace')), (r) => r.rollup.failed === 0, 'a migration rollup with no failures'),
   (v) => (v ? { targetVersion: v.targetVersion, expectedMembers: v.expectedMembers, rollup: v.rollup } : v));
   await check(s, U, 'getCascadeStatus', OK, () =>
