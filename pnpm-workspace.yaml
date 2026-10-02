@@ -51,7 +51,7 @@ catalog:
   # that every app on both carries two copies, MeroProvider's client is the 21
   # one — signing at a refused schema — and the two AdminApiClient types do
   # not match. Drop the override when a mero-react release depends on ^23.0.0.
-  "@calimero-network/mero-react": ^9.2.0
+  "@calimero-network/mero-react": ^9.6.2
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
