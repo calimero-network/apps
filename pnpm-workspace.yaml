@@ -65,7 +65,9 @@ catalog:
   # an account: a node's leave is local, and leaving the group is leaveGroup.
   # 9.6.3 (#84): an account's alias reads are refused by name like its alias
   # writes, and it reads its groups' upgrade and cascade status (core rc.76).
-  "@calimero-network/mero-react": ^9.6.3
+  # 9.6.4 (#85): and its migration status, which core rc.77 (#4400) checks
+  # against the caller rather than the relay.
+  "@calimero-network/mero-react": ^9.6.4
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
