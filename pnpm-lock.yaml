@@ -260,10 +260,10 @@ importers:
     dependencies:
       '@calimero-network/mero-js':
         specifier: 'catalog:'
-        version: 23.4.2
+        version: 23.4.3
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.6.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
