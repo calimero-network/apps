@@ -21,7 +21,7 @@ const APP_ID_STORAGE_KEY = "calimero-application-id";
  * (e.g. mero-meet), whose contract then rejects chat's init args.
  */
 export function getApplicationId(): string {
-  const fromUrl = getUrlParam("app-id");
+  const fromUrl = getUrlParam("app-id") || getUrlParam("application_id");
   if (fromUrl) {
     try {
       localStorage.setItem(APP_ID_STORAGE_KEY, fromUrl);

@@ -25,6 +25,7 @@
     "redux": "^5.0.1"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -48,6 +49,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test --project=mocked",
     "e2e:ui": "playwright test --ui --project=mocked",
-    "e2e:integration": "playwright test --project=integration"
+    "e2e:integration": "playwright test --project=integration",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   }
 }

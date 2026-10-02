@@ -201,6 +201,7 @@ const ReactionEmojiComponentButton = ({
       onMouseLeave={() => setShowWhoReacted(false)}
     >
       <ReactionEmojiWrapper
+        data-testid="message-reaction"
         $isOwnReaction={reaction.accounts.some(
           (account) => account === selfAccount || sameAccount(account, selfAccount),
         )}

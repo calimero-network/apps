@@ -3,6 +3,12 @@ description: >
   Download the merod release the root Cargo.toml pins, from cache when
   possible, and export its path as MEROD_BINARY.
 
+inputs:
+  version:
+    description: A merod release tag to use instead of the Cargo.toml pin.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -14,7 +20,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        ver=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
+        ver='${{ inputs.version }}'
+        [ -n "$ver" ] || ver=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
         test -n "$ver"
         echo "merod $ver"
         echo "version=$ver" >> "$GITHUB_OUTPUT"

@@ -90,7 +90,8 @@
     "e2e:two-node": "playwright test --project=two-node",
     "e2e:rich": "../scripts/local-rig.sh tokens && playwright test --project=rich",
     "e2e:integration": "playwright test --project=single-node --project=two-node",
-    "e2e:report": "playwright show-report playwright-report"
+    "e2e:report": "playwright show-report playwright-report",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "eslintConfig": {
     "extends": [

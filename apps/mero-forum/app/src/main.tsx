@@ -4,7 +4,10 @@ import { BrowserRouter } from "react-router-dom";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";
 
 import App from "./App";
+import { captureSessionFromHash } from "./lib/session";
 import "./index.css";
+
+captureSessionFromHash();
 
 // MeroProvider owns SSO: it parses the auth callback out of the URL hash on
 // first render, stores the tokens and strips the hash. So the hash is left

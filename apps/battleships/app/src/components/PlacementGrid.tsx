@@ -13,7 +13,7 @@ interface PlacementGridProps {
  */
 export default function PlacementGrid({ size, grid, onCellClick }: PlacementGridProps) {
   return (
-    <div className="board-container placement-grid">
+    <div className="board-container placement-grid" data-testid="placement-grid">
       <div className="board-label">Place Your Fleet</div>
       <div className="board-grid-wrapper">
         <div className="coord-row">

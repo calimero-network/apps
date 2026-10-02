@@ -212,6 +212,7 @@ const ActionsPopup: React.FC<{
         <EmojiContainer
           onClick={() => toggleReaction(reaction.emoji)}
           key={"reaction" + id}
+          data-testid={"react-" + reaction.emoji}
         >
           {reaction.icon}
         </EmojiContainer>
@@ -219,6 +220,7 @@ const ActionsPopup: React.FC<{
       {(isThread ? ThreadActionsArray : actionsArray).map((action, id) => (
         <EmojiContainer
           key={"action" + id}
+          data-testid={"message-action-" + id}
           onClick={action.onClick}
         >
           {action.icon}

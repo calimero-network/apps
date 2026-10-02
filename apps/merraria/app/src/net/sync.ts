@@ -9,6 +9,7 @@ export const FLUSH_MS = 150;
 export const HEARTBEAT_MOVING_MS = 500;
 export const HEARTBEAT_IDLE_MS = 3000;
 export const PLAYERS_POLL_MS = 500;
+export const OVERRIDES_POLL_MS = 5000;
 
 export type PlayerAction = "idle" | "walking" | "mining" | "building" | "swimming";
 
@@ -42,6 +43,7 @@ export class SyncEngine {
   private flushClock = 0;
   private heartbeatClock = 0;
   private playersClock = 0;
+  private overridesClock = 0;
   private flushing = false;
 
   constructor(
@@ -147,6 +149,7 @@ export class SyncEngine {
     this.flushClock += dtMs;
     this.heartbeatClock += dtMs;
     this.playersClock += dtMs;
+    this.overridesClock += dtMs;
 
     if (this.flushClock >= FLUSH_MS) {
       this.flushClock = 0;
@@ -162,6 +165,10 @@ export class SyncEngine {
     if (this.playersClock >= PLAYERS_POLL_MS) {
       this.playersClock = 0;
       void this.pullPlayers();
+    }
+    if (this.overridesClock >= OVERRIDES_POLL_MS && !this.flushing) {
+      this.overridesClock = 0;
+      void this.pullOverrides();
     }
   }
 }

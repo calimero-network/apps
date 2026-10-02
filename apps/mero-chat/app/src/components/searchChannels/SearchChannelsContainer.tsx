@@ -443,7 +443,7 @@ export default function SearchChannelsContainer({
           {filteredChannels.map((channel) => {
             const displayName = getChannelListName(channel);
             return (
-              <div key={channel.contextId} className="listItem">
+              <div key={channel.contextId} className="listItem" data-testid="browse-channel">
                 <div>
                   <div className="channelNameText">
                     <svg

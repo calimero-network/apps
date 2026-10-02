@@ -16,7 +16,7 @@ interface GameBoardProps {
  */
 export default function GameBoard({ size, board, label, pendingShot }: GameBoardProps) {
   const cellClass = (val: number, x: number, y: number): string => {
-    if (pendingShot && pendingShot.x === x && pendingShot.y === y && val !== 2) {
+    if (pendingShot && pendingShot.x === x && pendingShot.y === y && val !== 2 && val !== 3) {
       return 'cell cell-pending';
     }
     switch (val) {
@@ -29,7 +29,7 @@ export default function GameBoard({ size, board, label, pendingShot }: GameBoard
   };
 
   return (
-    <div className="board-container game-board">
+    <div className="board-container game-board" data-testid="own-board">
       <div className="board-label">{label}</div>
       <div className="board-grid-wrapper">
         <div className="coord-row">

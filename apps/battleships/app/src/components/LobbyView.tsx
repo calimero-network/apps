@@ -162,7 +162,7 @@ export default function LobbyView({
                 const isSelf = m.identity === selfIdentity;
                 const key = playerKeyForMember(m.identity);
                 return (
-                  <div key={m.identity} className="member-row">
+                  <div key={m.identity} className="member-row" data-testid="lobby-member">
                     <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
                       {m.role}
                     </span>
@@ -179,6 +179,7 @@ export default function LobbyView({
                           <button
                             type="button"
                             className="btn-icon"
+                            data-testid="challenge-player"
                             onClick={() => onChallengePlayer(key)}
                           >
                             Challenge
@@ -211,7 +212,7 @@ export default function LobbyView({
                 {/* A link, not a JSON blob: it survives being pasted into a
                     chat, and opening it on a machine with the desktop app
                     hands the invitation straight to it. */}
-                <pre className="invite-code invite-link">{invitationJson}</pre>
+                <pre className="invite-code invite-link" data-testid="invite-link">{invitationJson}</pre>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
                   <CopyButton text={invitationJson} label="Copy link" copiedLabel="Link copied" className="btn-ghost" />
                   <button type="button" className="btn-ghost" onClick={onDismissInvitation}>
@@ -307,7 +308,7 @@ export default function LobbyView({
                   {matches.map((m) => {
                     const canOpen = m.status === 'Active' && !!m.context_id;
                     return (
-                      <div key={m.match_id} className="match-item">
+                      <div key={m.match_id} className="match-item" data-testid="match-item">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span className="match-id">{m.match_id}</span>
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>

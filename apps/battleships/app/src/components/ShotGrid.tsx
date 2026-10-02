@@ -31,7 +31,7 @@ export default function ShotGrid({
   };
 
   return (
-    <div className="board-container shot-grid">
+    <div className="board-container shot-grid" data-testid="shot-grid">
       <div className="board-label">
         Shots Fired
         {isMyTurn && (
