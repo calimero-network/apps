@@ -24,7 +24,8 @@
  * and `mero.rpc`, and nothing else. The migration is then a provider swap plus
  * this file, rather than 13 call sites through the signing code.
  */
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-network/mero-js';
+import type { SignClient } from './node';
 
 import {
   createAgreement,
@@ -74,7 +75,7 @@ export interface CreatedContext {
 }
 
 export function meroApp(
-  mero: MeroJs,
+  mero: SignClient,
   /** The workspace new agreements are created in. Null outside one. */
   workspaceId: string | null,
 ): MeroAppLike {
@@ -236,7 +237,7 @@ export function meroApp(
       }
       return mero.admin.joinGroup({
         invitation: invitation as unknown as Parameters<
-          MeroJs['admin']['joinGroup']
+          AdminApiClient['joinGroup']
         >[0]['invitation'],
       });
     },

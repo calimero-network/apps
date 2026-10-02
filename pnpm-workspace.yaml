@@ -44,14 +44,15 @@ catalog:
   # break (#202) dropped the chosen `groupId` from CreateGroupRequest; no app
   # sent one. 22.4.0 (#214) added RelayClient.describeCreation/createContext,
   # which lets delegated-execution drop its own ^22.1.0 pin for `catalog:`.
-  "@calimero-network/mero-js": ^23.0.0
-  # mero-react 9.2.0 (#77): the join hooks report why a join failed, and
-  # useRedeemInvitation. It still declares mero-js ^21.3.0 and no 9.x moves it,
-  # so the root package.json overrides mero-react's mero-js to ^23.0.0. Without
-  # that every app on both carries two copies, MeroProvider's client is the 21
-  # one — signing at a refused schema — and the two AdminApiClient types do
-  # not match. Drop the override when a mero-react release depends on ^23.0.0.
-  "@calimero-network/mero-react": ^9.2.0
+  "@calimero-network/mero-js": ^23.4.0
+  # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
+  # every app on ConnectButton signs in with an account as well as a node, and
+  # useMero().admin is the account admin on an account. From 9.3 `mero` is
+  # `MeroJs | MeroClient`: an app hands it to a generated client (which takes
+  # any ExecuteTransport from abi-codegen 2.4.0) or builds what it needs from
+  # `admin` and `mero.rpc`, never assumes a MeroJs. 9.6 depends on mero-js
+  # ^23.4.0 itself, so the root override that pinned its mero-js is gone.
+  "@calimero-network/mero-react": ^9.6.0
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
@@ -59,7 +60,9 @@ catalog:
   "@calimero-network/mero-icons": ^0.0.5
   "@calimero-network/mero-platform": ^0.1.0
   "@calimero-network/mero-platform-react": ^0.1.0
-  "@calimero-network/abi-codegen": ^2.3.0
+  # abi-codegen 2.4.0 (mero-devtools-js#66): a generated client takes any
+  # ExecuteTransport, or anything exposing one as `.rpc`, not a concrete MeroJs.
+  "@calimero-network/abi-codegen": ^2.4.0
 
   # ── runtime ────────────────────────────────────────────────────────────────
   react: ^19.2.8

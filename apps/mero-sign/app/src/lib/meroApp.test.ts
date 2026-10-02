@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { SignClient } from './node';
 
 import { clearApplicationIdCache } from './appId';
 import { PERSONAL_KIND } from './agreements';
@@ -65,7 +65,7 @@ function fakeMero(
 
   return {
     calls,
-    mero: { admin, rpc: { execute: rec('execute') } } as unknown as MeroJs,
+    mero: { admin, rpc: { execute: rec('execute') } } as unknown as SignClient,
   };
 }
 
