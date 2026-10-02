@@ -114,24 +114,51 @@ export function useMemberCaps(
   // Reset caps to null only when (groupId, memberId) really change; a plain
   // refetch keeps the prior value, or every SSE tick flickers gated UI off/on.
   const lastIdsRef = useRef<{ groupId: string; memberId: string } | null>(null);
+  // Only a change of (groupId, memberId), or unmount, discards a read. A tick
+  // must not: while a document is edited the registry ticks faster than one
+  // read completes, so aborting on each tick discarded every answer and left a
+  // fresh member `caps: null` - read-only - for as long as the editing went on.
+  // A tick during a read marks it stale instead, and one re-read follows it.
+  const epochRef = useRef<{ aborted: boolean } | null>(null);
+  const inFlightRef = useRef(false);
+  const staleRef = useRef(false);
+  useEffect(
+    () => () => {
+      if (epochRef.current) epochRef.current.aborted = true;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
+      if (epochRef.current) epochRef.current.aborted = true;
+      epochRef.current = null;
+      inFlightRef.current = false;
       lastIdsRef.current = null;
       setState(LOADING);
       return;
     }
-    const signal = { aborted: false };
     const idsChanged =
       !lastIdsRef.current ||
       lastIdsRef.current.groupId !== groupId ||
       lastIdsRef.current.memberId !== memberId;
     lastIdsRef.current = { groupId, memberId };
-    if (idsChanged) {
-      setState(LOADING);
+    // An aborted epoch is a read that will never report back - StrictMode's
+    // mount/unmount/mount aborts one - so it needs a fresh read, not a wait.
+    if (idsChanged || !epochRef.current || epochRef.current.aborted) {
+      if (epochRef.current) epochRef.current.aborted = true;
+      epochRef.current = { aborted: false };
+      inFlightRef.current = false;
+      staleRef.current = false;
+      if (idsChanged) setState(LOADING);
+    } else if (inFlightRef.current) {
+      staleRef.current = true;
+      return;
     }
+    const signal = epochRef.current;
+    inFlightRef.current = true;
 
-    (async () => {
+    void (async () => {
       let lastErr: unknown = null;
       for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
         if (signal.aborted) return;
@@ -224,12 +251,15 @@ export function useMemberCaps(
         return;
       }
       setState({ ...LOADING, caps: 0, error: finalErr, denied: refused });
-    })();
-
-    return () => {
-      signal.aborted = true;
-    };
-  }, [mero, groupId, memberId, tick]);
+    })().finally(() => {
+      if (signal.aborted) return;
+      inFlightRef.current = false;
+      if (staleRef.current) {
+        staleRef.current = false;
+        refetch();
+      }
+    });
+  }, [mero, groupId, memberId, tick, refetch]);
 
   return { ...state, refetch };
 }

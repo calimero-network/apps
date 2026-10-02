@@ -87,6 +87,7 @@ export class RichRig {
         await expect(row).toBeVisible({ timeout: 120_000 });
         await row.click();
         await ws.editor.expectMounted();
+        await expectEditable(page);
       },
     };
     return window;
@@ -122,6 +123,7 @@ export class RichRig {
     await expect(row).toBeVisible({ timeout: 120_000 });
     await row.click();
     await window.ws.editor.expectMounted();
+    await expectEditable(window.page);
     return window;
   }
 
@@ -151,3 +153,14 @@ export const test = base.extend<{ rig: RichRig }>({
 });
 
 export { expect } from '@playwright/test';
+
+/**
+ * The editor mounts read-only and turns editable once this member's folder role
+ * resolves - for a node that has just joined, a while later. Keys typed in
+ * between are dropped, so a window is not ready until it takes them.
+ */
+async function expectEditable(page: Page): Promise<void> {
+  await expect(
+    page.getByTestId('doc-editor').locator('.ProseMirror').first(),
+  ).toHaveAttribute('contenteditable', 'true', { timeout: 60_000 });
+}

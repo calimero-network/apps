@@ -272,6 +272,48 @@ describe('useBodyCursors - publishing our own caret', () => {
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
+  // A caret in text the node does not hold yet is refused. One retry was not
+  // enough on a busy node: the selection stayed unpublished until it moved.
+  it('keeps retrying a refused anchor until the node can place it', async () => {
+    vi.useFakeTimers();
+    try {
+      client.anchorAt
+        .mockRejectedValueOnce(new Error('not yet'))
+        .mockRejectedValueOnce(new Error('not yet'))
+        .mockRejectedValueOnce(new Error('not yet'))
+        .mockRejectedValueOnce(new Error('not yet'))
+        .mockRejectedValueOnce(new Error('not yet'))
+        .mockRejectedValueOnce(new Error('not yet'));
+      await act(async () => {
+        mount(new Map(), fakeEditor());
+      });
+      expect(publish).not.toHaveBeenCalledWith(expect.objectContaining({ anchor: 'anc-mine' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400 * 4);
+      });
+      expect(publish).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'anc-mine' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops retrying an anchor the node never places', async () => {
+    vi.useFakeTimers();
+    try {
+      client.anchorAt.mockRejectedValue(new Error('never'));
+      await act(async () => {
+        mount(new Map(), fakeEditor());
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400 * 30);
+      });
+      // Two ends per attempt, ten attempts.
+      expect(client.anchorAt).toHaveBeenCalledTimes(20);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('anchors and publishes on the node id of a block this window created', async () => {
     await act(async () => {
       mount(new Map(), fakeEditor(2, 2), minted);

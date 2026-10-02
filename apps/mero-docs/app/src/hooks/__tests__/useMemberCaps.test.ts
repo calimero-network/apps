@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type { SseEventData } from '@calimero-network/mero-react';
@@ -215,5 +216,40 @@ describe('useMemberCaps', () => {
     await waitFor(() =>
       expect(listMembers.mock.calls.length).toBe(before + 1),
     );
+  });
+
+  // While a document is edited the registry ticks faster than one read
+  // completes. Restarting the read on every tick discarded each answer, so a
+  // member who had just joined stayed `caps: null` - read-only - throughout.
+  it('commits a read that ticks keep arriving during, then re-reads once', async () => {
+    let answer: (v: { capabilities: number }) => void = () => {};
+    getCaps.mockImplementation(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(getCaps).toHaveBeenCalledTimes(1));
+    const first = answer;
+
+    act(() => result.current.refetch());
+    act(() => result.current.refetch());
+    act(() => result.current.refetch());
+    expect(getCaps).toHaveBeenCalledTimes(1);
+
+    await act(async () => first({ capabilities: 5 }));
+    await waitFor(() => expect(result.current.caps).toBe(5));
+    // The ticks that landed mid-read coalesce into a single re-read.
+    await waitFor(() => expect(getCaps).toHaveBeenCalledTimes(2));
+    await act(async () => answer({ capabilities: 7 }));
+    await waitFor(() => expect(result.current.caps).toBe(7));
+    expect(getCaps).toHaveBeenCalledTimes(2);
+  });
+
+  // Dev builds mount every effect twice; the first read is aborted on the way.
+  it('resolves under StrictMode', async () => {
+    getCaps.mockResolvedValue({ capabilities: 5 });
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'), {
+      wrapper: StrictMode,
+    });
+    await waitFor(() => expect(result.current.caps).toBe(5));
   });
 });
