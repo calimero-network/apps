@@ -1,0 +1,10 @@
+{
+  "// note": "The Playwright runner: node types, and the report types it shares with the page (src/conformance/types.ts, which imports nothing).",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/e2e",
+    "tsBuildInfoFile": "./dist-types/e2e.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["e2e", "playwright.config.ts", "src/conformance/types.ts"]
+}
