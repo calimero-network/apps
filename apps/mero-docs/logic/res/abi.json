@@ -965,7 +965,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The comment text."
+          "doc": "The comment text, at most 10000 characters."
         }
       ],
       "returns": {
@@ -1039,7 +1039,7 @@
     },
     {
       "name": "apply_delta",
-      "doc": "Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nA `retain` or `insert` step may carry `attributes` to set formatting, for example `{\"insert\": \"hi\", \"attributes\": {\"bold\": \"true\"}}`; to clear formatting from a range use `mark` with a `null` value.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
+      "doc": "Applies one editing transaction to a block's text, formatting included, and returns a token that `undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nA `retain` or `insert` step may carry `attributes` to set formatting, for example `{\"insert\": \"hi\", \"attributes\": {\"bold\": \"true\"}}`; to clear formatting from a range use `mark` with a `null` value.\nPositions count Unicode scalar values, not bytes or UTF-16 units.\nA transaction that leaves the block's text longer than 100000 characters is refused.",
       "params": [
         {
           "name": "doc",
@@ -1176,7 +1176,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The document title, plain text."
+          "doc": "The document title, plain text, at most 1024 characters."
         }
       ],
       "returns": {
@@ -1262,7 +1262,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The new comment text."
+          "doc": "The new comment text, at most 10000 characters."
         }
       ],
       "returns": {
@@ -1286,7 +1286,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The new title, plain text."
+          "doc": "The new title, plain text, at most 1024 characters."
         }
       ],
       "returns": {
@@ -1649,7 +1649,7 @@
     },
     {
       "name": "merge_blocks",
-      "doc": "Appends the text of `second` to `first` and removes `second`.",
+      "doc": "Appends the text of `second` to `first` and removes `second`.\nRefused when the joined text would be longer than 100000 characters.",
       "params": [
         {
           "name": "doc",
@@ -2013,7 +2013,7 @@
     },
     {
       "name": "title_apply_delta",
-      "doc": "Applies one editing transaction to a document's title and returns a token that `title_undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nThe title carries no formatting, so a step with non-null `attributes` is refused.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
+      "doc": "Applies one editing transaction to a document's title and returns a token that `title_undo` takes.\n`ops` is a list of steps that walk the text as it was before the change: `{\"retain\": 3, \"attributes\": null}` keeps three characters, `{\"insert\": \"text\", \"attributes\": null}` adds text, `{\"delete\": 2}` removes two.\nText after the last step is kept.\nThe title carries no formatting, so a step with non-null `attributes` is refused.\nA transaction that leaves the title longer than 1024 characters is refused.\nPositions count Unicode scalar values, not bytes or UTF-16 units.",
       "params": [
         {
           "name": "doc",

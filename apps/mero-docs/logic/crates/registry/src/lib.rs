@@ -53,6 +53,8 @@ pub mod events;
 pub mod permissions;
 use events::Event;
 
+const MAX_TAG_NAME_LEN: usize = 32; // Unicode scalar values, as the web app counts them
+
 // ---------------------------------------------------------------------------
 // ABI-boundary types (local copies of mero_docs_types; keep in sync).
 // ---------------------------------------------------------------------------
@@ -1010,7 +1012,7 @@ impl RegistryState {
     /// # Arguments
     ///
     /// * `key` - The tag's stable id: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
-    /// * `name` - The display name, 1 to 32 bytes after trimming.
+    /// * `name` - The display name, 1 to 32 characters after trimming.
     /// * `color` - Colour as `#rrggbb`.
     pub fn set_tag(&mut self, key: String, name: String, color: String) -> app::Result<()> {
         self.set_tag_inner(&key, name, color)
@@ -1059,7 +1061,7 @@ impl RegistryState {
             return Err(DriveError::Invalid(format!("invalid tag key: {key}")));
         }
         let name = name.trim().to_string();
-        if !(1..=32).contains(&name.len()) {
+        if !(1..=MAX_TAG_NAME_LEN).contains(&name.chars().count()) {
             return Err(DriveError::Invalid("invalid tag name".into()));
         }
         if !is_hex_color(&color) {
@@ -1767,6 +1769,22 @@ mod tests {
         assert!(matches!(err, DriveError::Invalid(_)));
         let err = app
             .set_tag_inner("launch", "a".repeat(33), "#ff0000".into())
+            .unwrap_err();
+        assert!(matches!(err, DriveError::Invalid(_)));
+    }
+
+    #[test]
+    fn set_tag_counts_the_name_in_characters() {
+        let mut app = RegistryState::init();
+        let at_cap = "\u{e9}".repeat(MAX_TAG_NAME_LEN);
+        app.set_tag_inner("launch", at_cap, "#ff0000".into())
+            .unwrap();
+        let err = app
+            .set_tag_inner(
+                "launch",
+                "\u{e9}".repeat(MAX_TAG_NAME_LEN + 1),
+                "#ff0000".into(),
+            )
             .unwrap_err();
         assert!(matches!(err, DriveError::Invalid(_)));
     }

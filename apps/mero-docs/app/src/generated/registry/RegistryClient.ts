@@ -805,7 +805,7 @@ export class RegistryClient {
    * Fails for a key that was deleted; deleted keys cannot be reused.
    *
    * @param params.key The tag's stable id: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
-   * @param params.name The display name, 1 to 32 bytes after trimming.
+   * @param params.name The display name, 1 to 32 characters after trimming.
    * @param params.color Colour as `#rrggbb`.
    *
    * @intent mutating

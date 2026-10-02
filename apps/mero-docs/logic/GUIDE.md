@@ -155,7 +155,7 @@ Edit safely like this, because another member may change the text between your r
 
 ### Tag documents
 
-1. In the registry, `set_tag` with `key` (lowercase letters, digits and `-`, at most 64 characters), `name` (1 to 32 bytes) and `color` (`#rrggbb`).
+1. In the registry, `set_tag` with `key` (lowercase letters, digits and `-`, at most 64 characters), `name` (1 to 32 characters) and `color` (`#rrggbb`).
    `list_tags` shows the workspace's tags; a deleted key is listed with `deleted: true` and cannot be reused.
 2. In the folder's docs context, `add_tag` with `id` and `tag` set to the key.
    `remove_tag` takes it off.
@@ -228,6 +228,7 @@ To end it, do the same steps with `Editor` and `Member`.
   On its own it stops nothing: a write is refused only for a member whose role in the folder's group is `ReadOnly`, as under "Make a member Read only on a folder".
   The web app also sets the member's group capabilities, which this tool set cannot, so `Manager` set from here does not let the member manage the folder.
 - Tags, colours and names have the limits stated on their methods; a value outside them is refused.
+- A document title is at most 1024 characters, a block's text at most 100000 and a comment at most 10000; a write that goes past one is refused and nothing is stored.
 - Retrying is safe only where a method says so.
 - `create_doc`, `insert_block`, `split_block` and `add_comment` create a second item on a repeat, so check `list_docs`, `list_blocks` or `list_comments` first.
 - `register_folder` and `bind_folder_context` fail on a repeat because the first attempt landed, so read `get_folder` instead.
