@@ -45,6 +45,8 @@ interface Rig {
   ownerToken: { access_token: string; refresh_token: string };
   accounts: { a: Credential; b: Credential };
   invitations: { a: unknown; b: unknown };
+  /** Written by `test-rig.mjs` for CONFORMANCE_TARGET: relays this run did not start. */
+  external?: boolean;
 }
 
 const rig = JSON.parse(readFileSync(RIG_JSON, 'utf8')) as Rig;
@@ -179,7 +181,7 @@ function writeReport() {
     JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
-        rig: { ownerUrl: rig.ownerUrl, ingressUrl: rig.ingressUrl, applicationId: rig.applicationId, namespaceId: rig.namespaceId },
+        rig: { ownerUrl: rig.ownerUrl, ingressUrl: rig.ingressUrl, cloudUrl: rig.cloudUrl, applicationId: rig.applicationId, namespaceId: rig.namespaceId, external: Boolean(rig.external) },
         summary: { rows: rows.length, passed: rows.length - failed.length, failed: failed.length },
         rows,
       },
@@ -211,6 +213,9 @@ test.describe.serial('conformance', () => {
   });
 
   test('node run: the owner node, with account B as the second session', async ({ browser }) => {
+    // An external target (CONFORMANCE_TARGET) without an owner node runs the
+    // account run alone: there is no node here to drive.
+    test.skip(!rig.ownerUrl, 'the target names no owner node');
     const primary = await openNode(browser);
     const second = await openAccount(browser, 'b', 'second', 'node');
     await runMatrix(primary, second, 'node');

@@ -49,6 +49,31 @@ What it needs, and the defaults it assumes for this workspace:
 | `TRAEFIK_BIN` | `traefik` on PATH | |
 | `MERO_JS_PATH` | unset | a built mero-js checkout to run against instead of the installed one (a paired run, or an unreleased fix); the page and the account minting both use it |
 
+## Against relays it did not start (`CONFORMANCE_TARGET`)
+
+```bash
+CONFORMANCE_TARGET=target.json pnpm --filter conformance test:rig
+```
+
+runs the matrix against a relay this run did not start (a hosted fleet relay,
+say) instead of the local rig. Nothing is started or stopped; two fresh accounts
+are minted offline, as the rig mints its own. `target.json` names:
+
+| field | what |
+| --- | --- |
+| `cloudUrl` | the cloud an account asks which relays admit a namespace |
+| `applicationId` | scaffolding-e2e's application id there |
+| `namespaceId` | a namespace the relay admits accounts to |
+| `invitation` | an invitation to it that names the relay as admitter |
+| `ownerUrl`, `ownerToken` | optional: a node to drive the node run with (`{ access_token, refresh_token }`); without them only the account run runs |
+
+Account A joins that namespace with the invitation (which is how an account
+gets its relay), founds its own namespace through the relay, and runs the
+matrix with account B. **Every write lands on the target** — namespaces,
+groups, contexts, blobs: point it only at relays you mean to test. The relay
+installs scaffolding-e2e from its registry, so the release there must be built
+against the core the relay runs.
+
 ## The rig (`rig/`)
 
 `up.sh` starts, and records the pid of, each of:
