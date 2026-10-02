@@ -1,0 +1,285 @@
+# The conformance app's rig (apps/conformance): an owner node, a mock-TEE relay
+# behind an ingress, and two accounts, with the matrix run in node mode and in
+# account mode. One row per admin or RPC call; any row whose outcome is not the
+# one its mode expects fails the job.
+#
+# Three ways in:
+#   * from ci.yml, on a change the `changes` job's `conformance` filter matches
+#     (apps/conformance, packages, the pnpm workspace files, this file);
+#   * nightly, so a new core release is checked without anyone touching this
+#     repo;
+#   * by hand, with an optional core ref.
+#
+# It builds core from source rather than taking a release: `merod` must have
+# `--features merod/mock-attestation`, which release binaries deliberately
+# leave out, and `mero-auth`, `cargo-mero` and the scaffolding-e2e bundles come
+# from that same checkout. Not a required check.
+
+name: Conformance
+
+on:
+  workflow_call:
+    inputs:
+      core_ref:
+        description: A calimero-network/core ref (tag, branch or sha); empty for the newest core release
+        type: string
+        required: false
+        default: ""
+  schedule:
+    - cron: "41 2 * * *" # nightly, off the hour and clear of soak.yml
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: A calimero-network/core ref (tag, branch or sha); empty for the newest core release
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Pinned to what mero-tee's node image bakes (mero-tee/versions.json), as
+  # core's own relay-device-login job does.
+  TRAEFIK_VERSION: "3.5.0"
+  TRAEFIK_SHA256: 2ecdcb14492481749176710bce15434bcc22c3124f32867233bb00f4160de661
+
+jobs:
+  rig:
+    name: Conformance rig
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Its own group, per event: a nightly on main must not replace a pending
+    # main-push run (or the reverse), and a newer push to a PR supersedes the
+    # older one, as ci.yml does.
+    concurrency:
+      group: conformance-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The newest core release unless a ref is given. Not the Cargo.toml
+      # `merod-image` pin setup-merod reads: the rig drives core's newest
+      # routes, and the nightly is how a new release gets checked before the
+      # workspace pin moves. The pin is the fallback when the API is down.
+      - name: Resolve the core ref
+        id: core
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.core_ref }}
+        run: |
+          set -euo pipefail
+          ref="$REF"
+          if [ -z "$ref" ]; then
+            if ! ref=$(gh api 'repos/calimero-network/core/releases?per_page=1' --jq '.[0].tag_name'); then
+              ref=""
+            fi
+            if [ -z "$ref" ] || [ "$ref" = "null" ]; then
+              ref=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
+              echo "::warning::could not list core releases; using the workspace pin $ref"
+            fi
+          fi
+          # Through env and validated, never inlined into a command: a ref is
+          # user input on a dispatch.
+          if [[ ! "$ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "::error::core ref '$ref' is not a plausible git ref"
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "::notice::conformance against core $ref"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: calimero-network/core
+          ref: ${{ steps.core.outputs.ref }}
+          path: core
+
+      - name: Record the core commit
+        id: sha
+        working-directory: core
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # ── core: merod, mero-auth, cargo-mero and the two bundles ─────────────
+      #
+      # All five are a function of the core commit alone (its toolchain is its
+      # rust-toolchain.toml), so the commit IS the key. Restored and saved
+      # explicitly: a plain actions/cache saves only when the job passes, and a
+      # failing rig is exactly when the next push wants the build back.
+      - name: Restore the core build
+        id: build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/conformance-core
+          key: conformance-core-${{ runner.os }}-${{ steps.sha.outputs.sha }}
+
+      # librocksdb-sys's bindgen loads libclang at build time; the runner image
+      # has no libclang-dev (core's setup-rust-ci installs it the same way).
+      - name: Install libclang
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libclang-dev
+
+      - name: Install core's toolchain
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        working-directory: core
+        run: |
+          set -euo pipefail
+          # No argument: the toolchain core's rust-toolchain.toml names.
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      # Saved from the nightly and main only: a debug build of core is several
+      # GB and the repo's cache budget is shared with every other job.
+      - uses: Swatinem/rust-cache@v2
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        with:
+          workspaces: core -> target
+          shared-key: conformance
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      # Debug, as the README's defaults assume, without debuginfo: it is most of
+      # a debug target's size and nothing here reads a backtrace's line numbers.
+      #
+      # mero-auth is built in its own invocation: one `cargo build` unifies
+      # features across its packages, which would compile the mock attestation
+      # into mero-auth too.
+      - name: Build merod (mock attestation), mero-auth and cargo-mero
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        working-directory: core
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: |
+          set -euo pipefail
+          cargo build -p merod --features merod/mock-attestation
+          cargo build -p mero-auth -p cargo-mero
+          out="$HOME/.cache/conformance-core"
+          mkdir -p "$out/bin"
+          cp target/debug/merod target/debug/mero-auth target/debug/cargo-mero "$out/bin/"
+
+      # cargo-mero from this same core: a stale global one fails on the ABI
+      # manifest with "unparseable ABI manifest".
+      - name: Bundle scaffolding-e2e 0.0.0 and 0.0.1
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        working-directory: core/apps/scaffolding-e2e
+        run: |
+          set -euo pipefail
+          out="$HOME/.cache/conformance-core"
+          export PATH="$out/bin:$PATH"
+          cargo mero --version
+          cargo mero bundle --dev --no-icon -o "$out/scaffolding-e2e.mpk"
+          cargo mero bundle --dev --no-icon --app-version 0.0.1 -o "$out/scaffolding-e2e-0.0.1.mpk"
+
+      - name: Save the core build
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/conformance-core
+          key: conformance-core-${{ runner.os }}-${{ steps.sha.outputs.sha }}
+
+      - name: Check the core build
+        run: |
+          set -euo pipefail
+          out="$HOME/.cache/conformance-core"
+          ls -la "$out" "$out/bin"
+          # Not `grep -q`: it exits at the first match and, under pipefail, the
+          # SIGPIPE it hands merod fails the step.
+          "$out/bin/merod" run --help | grep -- '--mock-tee' >/dev/null || { echo "::error::merod has no --mock-tee: it was not built with merod/mock-attestation"; exit 1; }
+          "$out/bin/merod" --version
+
+      # ── traefik ─────────────────────────────────────────────────────────────
+      - name: Install traefik
+        run: |
+          set -euo pipefail
+          tgz="$RUNNER_TEMP/traefik.tgz"
+          curl -fsSL --retry 8 --retry-delay 5 --retry-max-time 180 \
+            --retry-all-errors --connect-timeout 20 --max-time 300 \
+            "https://github.com/traefik/traefik/releases/download/v${TRAEFIK_VERSION}/traefik_v${TRAEFIK_VERSION}_linux_amd64.tar.gz" \
+            -o "$tgz"
+          echo "${TRAEFIK_SHA256}  $tgz" | sha256sum -c -
+          tar -xzf "$tgz" -C "$RUNNER_TEMP" traefik
+          "$RUNNER_TEMP/traefik" version
+
+      # ── the app ─────────────────────────────────────────────────────────────
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: apps/conformance/app
+
+      # up.sh reads every one of these (see its header and the README's table);
+      # each is set rather than left to a default that assumes a workstation.
+      - name: Run the conformance rig
+        env:
+          CORE: ${{ github.workspace }}/core
+          TRAEFIK_BIN: ${{ runner.temp }}/traefik
+        run: |
+          set -euo pipefail
+          out="$HOME/.cache/conformance-core"
+          export MEROD_BIN="$out/bin/merod"
+          export MERO_AUTH_BIN="$out/bin/mero-auth"
+          export CONFORMANCE_MPK="$out/scaffolding-e2e.mpk"
+          export CONFORMANCE_MPK_V2="$out/scaffolding-e2e-0.0.1.mpk"
+          pnpm --filter conformance test:rig
+
+      - name: Summarize the report
+        if: always()
+        env:
+          CORE_REF: ${{ steps.core.outputs.ref }}
+          CORE_SHA: ${{ steps.sha.outputs.sha }}
+          REPORT: apps/conformance/app/test-results/conformance-report.json
+        run: |
+          set -euo pipefail
+          if [ ! -f "$REPORT" ]; then
+            {
+              echo "### Conformance against core ${CORE_REF}"
+              echo
+              echo "No report: the run stopped before the matrix wrote one (the rig did not come up, or the build failed). See the log and the conformance-rig artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          jq -r --arg ref "$CORE_REF" --arg sha "${CORE_SHA:0:9}" '
+            def cell: tostring | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|") | .[0:400];
+            "### Conformance against core \($ref) (\($sha))",
+            "",
+            "| rows | passed | failed |",
+            "| ---: | ---: | ---: |",
+            "| \(.summary.rows) | \(.summary.passed) | \(.summary.failed) |",
+            (if .summary.failed > 0 then
+              "",
+              "#### Failing rows",
+              "",
+              "| run | mode | row | expected | actual | error |",
+              "| --- | --- | --- | --- | --- | --- |",
+              (.rows[] | select(.pass | not)
+                | "| \(.run) | \(.mode) | \(.name | cell) | \(.expected) | \(.actual) | \((.error // "") | cell) |")
+            else empty end)
+          ' "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report, traces and rig logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-rig-${{ github.run_id }}-${{ github.run_attempt }}
+          # `.state` is a dot-directory, which upload-artifact skips by default.
+          include-hidden-files: true
+          path: |
+            apps/conformance/app/test-results
+            apps/conformance/rig/.state/run/logs
+            apps/conformance/rig/.state/run/ingress/*.log
+          retention-days: 7
+          if-no-files-found: ignore

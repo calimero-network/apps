@@ -70,6 +70,10 @@ jobs:
       shared: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.locks.outputs.shared }}
       tooling: ${{ steps.filter.outputs.tooling }}
       js_deps: ${{ steps.locks.outputs.js_deps }}
+      # The raw `conformance` filter, not narrowed by the `locks` step: any
+      # lockfile move can change the mero-js/mero-react the rig runs. A manual
+      # "run every app" dispatch runs it too.
+      conformance: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.filter.outputs.conformance }}
     steps:
       # Full history: deciding whether a lockfile change reaches other apps
       # means reading the lockfile as it was BEFORE this change.
@@ -151,6 +155,16 @@ jobs:
             app:
               - 'apps/**'
               - 'packages/**'
+            # The conformance rig (conformance.yml). Not an app ci-scope.py maps:
+            # it has no contract of its own, and what it checks is what a shared
+            # package or a JS dependency bump can break for EVERY app — the
+            # admin and RPC calls mero-react makes, on a node and on an account.
+            conformance:
+              - 'apps/conformance/**'
+              - 'packages/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/conformance.yml'
 
       # DID THE LOCKFILES CHANGE FOR ANYONE ELSE?
       #
@@ -461,6 +475,10 @@ jobs:
 
       - name: Assert the e2e matrix lists every scenario the job globs
         run: python3 scripts/tests/e2e-matrix-test.py
+
+      # A filter that stops matching skips the rig with nothing to notice.
+      - name: Assert the conformance rig is gated on the paths it depends on
+        run: python3 scripts/tests/conformance-gate-test.py
 
       - name: Assert the journey skips a desktop merod older than the pin
         run: python3 scripts/tests/merod-older-test.py
@@ -1336,3 +1354,13 @@ jobs:
           path: apps/${{ matrix.app }}/node-logs/
           if-no-files-found: ignore
           retention-days: 3
+
+  # The conformance rig: every admin and RPC call, on a node and on an account,
+  # against the newest core release built with mock attestation. Its own
+  # workflow because it also runs nightly and by hand with a core ref; here it
+  # runs when the `conformance` filter matches. Not a required check.
+  conformance:
+    name: Conformance
+    needs: changes
+    if: needs.changes.outputs.conformance == 'true'
+    uses: ./.github/workflows/conformance.yml
