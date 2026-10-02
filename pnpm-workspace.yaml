@@ -66,7 +66,11 @@ catalog:
   # 9.6.3 (#84): an account's alias reads are refused by name like its alias
   # writes, and it reads its groups' upgrade and cascade status (core rc.76).
   "@calimero-network/mero-react": ^9.6.3
-  "@calimero-network/mero-ui": ^1.5.1
+  # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
+  # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
+  # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
+  # (mero-chat's journey, on main too).
+  "@calimero-network/mero-ui": ^1.5.2
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
   # it each pinned their own version.
