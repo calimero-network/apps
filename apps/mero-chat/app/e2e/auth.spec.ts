@@ -149,7 +149,7 @@ test.describe("Authenticated state", () => {
     await expect(page.getByText("Welcome to MeroChat")).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByRole("button", { name: /disconnect node/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   });
 
   test("Logout clears auth tokens from localStorage", async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe("Authenticated state", () => {
       timeout: 10_000,
     });
 
-    await page.getByRole("button", { name: /disconnect node/i }).click();
+    await page.getByRole("button", { name: /sign out/i }).click();
 
     // Wait a moment for the async logout handler to run
     await page.waitForTimeout(500);
