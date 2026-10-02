@@ -36,7 +36,7 @@
  *               namespace and reads its status; s:upgraded reads through it
  */
 import type { AdminApiClient } from '@calimero-network/mero-react';
-import { assert, Blocked, check, eventually, need, NODE_ONLY, NOT_DIRECT_MEMBER, OK, short, type RowContext } from './check';
+import { ADMIN_ONLY, adminOnly, assert, Blocked, check, eventually, need, NODE_ONLY, NOT_DIRECT_MEMBER, OK, short, type RowContext } from './check';
 import { EventLog, PresenceLog, type Streams } from './listen';
 import type { Mode } from './types';
 
@@ -370,13 +370,15 @@ async function nodeOnlyCalls(s: Session, p: Primary, input: StartInput): Promise
       await a.create(alias, need(a.target, `a ${a.kind} id`));
       return true;
     });
-    await check(s, AL, `lookup${cap(a.kind)}Alias`, OK, async () => {
+    // Reading an alias is as much a node's own as writing one: refused by name
+    // for an account (mero-react 9.6.3).
+    await check(s, AL, `lookup${cap(a.kind)}Alias`, NODE_ONLY, async () => {
       const r = await a.lookup(alias);
       if (made) assert(lower(r?.value) === lower(a.target), `${alias} names ${String(r?.value)}, not ${a.target}`);
       else assert(!r?.value, `${alias} was never created, yet names ${String(r?.value)}`);
       return r;
     }, (v) => v);
-    await check(s, AL, `list${cap(a.kind)}Aliases`, OK, async () => {
+    await check(s, AL, `list${cap(a.kind)}Aliases`, NODE_ONLY, async () => {
       const r = await a.list();
       if (made) assert(lower(r[alias]) === lower(a.target), `the listing has ${alias} as ${String(r[alias])}`);
       else assert(!(alias in r), `${alias} was never created, yet is listed`);
@@ -386,8 +388,10 @@ async function nodeOnlyCalls(s: Session, p: Primary, input: StartInput): Promise
   }
 
   const D = 'Devices';
-  await check(s, D, 'listAccountDevices', NODE_ONLY, async () => {
-    const r = await s.admin().listAccountDevices();
+  // Devices are the wallet's: core maps the route to `admin` alone, so an app's
+  // token is refused on a node, and mero-react refuses an account by name.
+  await check(s, D, 'listAccountDevices', ADMIN_ONLY, async () => {
+    const r = await adminOnly(() => s.admin().listAccountDevices());
     assert(r.some((d) => d.isSelf), 'lists no device as this node\'s own');
     return r;
   }, (v) => `${v.length} devices`);
@@ -642,7 +646,9 @@ export interface UpgradeInput {
  * The namespace, cascaded to its subgroups, onto the rig's 0.0.1 bundle; the
  * upgrade, migration and cascade status reads; and the main context read after
  * it (the bundle changes no state layout, so the value written in p:start must
- * still be there). All `NODE_ONLY` for an account in mero-react 9.6.2.
+ * still be there). `upgradeGroup` is `NODE_ONLY` for an account; the three
+ * status reads are an account's too since core rc.76 (#4392), and on an
+ * account, which upgraded nothing, they only have to answer.
  */
 async function upgrade(s: Session, input: UpgradeInput): Promise<{ upgraded: boolean }> {
   const p = primary(s);
@@ -650,18 +656,20 @@ async function upgrade(s: Session, input: UpgradeInput): Promise<{ upgraded: boo
   const ns = p.namespaceId;
   const up = await check(s, U, `upgradeGroup (the namespace, cascade, to ${UPGRADE_VERSION})`, NODE_ONLY, () =>
     s.admin().upgradeGroup(need(ns, 'a namespace'), { targetApplicationId: input.targetApplicationId, cascade: true }), (v) => v);
-  // Polled on a node, where the upgrade is under way; an account is refused at once.
+  // Polled on a node, where the upgrade is under way; an account upgraded nothing.
   const poll = <T>(read: () => Promise<T>, ok: (v: T) => boolean, what: string) =>
     s.mode === 'account' ? read() : eventually(read, ok, what, 60_000);
-  await check(s, U, 'getGroupUpgradeStatus', NODE_ONLY, () =>
+  await check(s, U, 'getGroupUpgradeStatus', OK, () =>
     poll(() => s.admin().getGroupUpgradeStatus(need(ns, 'a namespace')),
       (r) => r?.toVersion === UPGRADE_VERSION && !/fail/i.test(r.status), `the namespace upgrading to ${UPGRADE_VERSION}`), (v) => v);
+  // Refused by name for an account until core checks the caller, not the relay,
+  // for this read (it asks the relay to be the namespace admin).
   await check(s, U, 'getMigrationStatus', NODE_ONLY, () =>
     poll(() => s.admin().getMigrationStatus(need(ns, 'a namespace')), (r) => r.rollup.failed === 0, 'a migration rollup with no failures'),
-  (v) => ({ targetVersion: v.targetVersion, expectedMembers: v.expectedMembers, rollup: v.rollup }));
-  await check(s, U, 'getCascadeStatus', NODE_ONLY, () =>
+  (v) => (v ? { targetVersion: v.targetVersion, expectedMembers: v.expectedMembers, rollup: v.rollup } : v));
+  await check(s, U, 'getCascadeStatus', OK, () =>
     poll(() => s.admin().getCascadeStatus(need(ns, 'a namespace')), (r) => r.length > 0, 'a cascade snapshot per group'),
-  (v) => v.map((e) => ({ group: e.groupId.slice(0, 8), status: e.upgrade.status, to: e.upgrade.toVersion })));
+  (v) => (Array.isArray(v) ? v.map((e) => ({ group: e.groupId.slice(0, 8), status: e.upgrade.status, to: e.upgrade.toVersion })) : v));
   if (!up) return { upgraded: false };
   await check(s, U, 'the main context reads its state after the upgrade', OK, () =>
     eventually(() => s.execute(need(p.contexts.main, 'a context'), 'get', { key: 'conformance' }), (v) => v === p.values.public, 'the value written before the upgrade'),

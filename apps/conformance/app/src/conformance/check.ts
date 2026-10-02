@@ -44,6 +44,23 @@ export const OK: Expectation = { node: 'ok', account: 'ok' };
 export const NODE_ONLY: Expectation = { node: 'ok', account: 'NotForAccountError' };
 /** Core refuses this to node and account alike: the member only inherits. */
 export const NOT_DIRECT_MEMBER: Expectation = { node: 'NotDirectMember', account: 'NotDirectMember' };
+/**
+ * Core admits the route only for a node's `admin`, so an app's token is refused
+ * on a node; an account is refused by name. Pair with {@link adminOnly}.
+ */
+export const ADMIN_ONLY: Expectation = { node: 'AdminOnly', account: 'NotForAccountError' };
+
+/** A 403 from `fn` is the admin-only refusal this row expects; anything else is as thrown. */
+export async function adminOnly<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if ((e as { status?: number }).status === 403) {
+      throw Object.assign(new Error(`admin only: ${(e as Error).message}`), { name: 'AdminOnly' });
+    }
+    throw e;
+  }
+}
 
 function classify(e: unknown): { actual: Outcome; error: string } {
   const err = e as { name?: string; message?: string; status?: number; body?: unknown; type?: string; data?: unknown; step?: string };
@@ -51,6 +68,7 @@ function classify(e: unknown): { actual: Outcome; error: string } {
   if (name === 'NotForAccountError' || name === 'NoRelayError') return { actual: name, error: `${name}: ${err.message}` };
   if (name === 'Mismatch') return { actual: 'mismatch', error: String(err.message) };
   if (name === 'Blocked') return { actual: 'blocked', error: String(err.message) };
+  if (name === 'AdminOnly') return { actual: 'AdminOnly', error: String(err.message) };
   // core's LeaveGroupNotDirectMember: "member is not a direct member of group …;
   // leave the parent group where the membership anchor lives"
   if (/is not a direct member of group/.test(String(err?.message))) {

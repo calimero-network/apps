@@ -13,13 +13,15 @@ export type Mode = 'node' | 'account';
  * (`NotForAccountError`: the call has no account form; `NoRelayError`: the
  * account holds no relay yet). `NotDirectMember` is core's own refusal to let a
  * member who only inherits leave a subgroup (`LeaveGroupNotDirectMember`, 409),
- * which a node gets exactly as an account does. Anything else — an HTTP 403, a refused intent,
+ * which a node gets exactly as an account does. `AdminOnly` is a route core
+ * admits only for a node's admin, refused to an app's token on a node (a row
+ * opts in to it; a 403 is never read as it otherwise). Anything else — an HTTP 403, a refused intent,
  * a wrong value read back — is `error` or `mismatch`, and is never expected.
  */
-export type Outcome = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember' | 'error' | 'mismatch' | 'blocked';
+export type Outcome = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember' | 'AdminOnly' | 'error' | 'mismatch' | 'blocked';
 
 /** What a row expects, per mode of the session running it. */
-export type Expected = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember';
+export type Expected = 'ok' | 'NotForAccountError' | 'NoRelayError' | 'NotDirectMember' | 'AdminOnly';
 
 export interface Row {
   /** e.g. `Namespaces / createNamespace`. */
