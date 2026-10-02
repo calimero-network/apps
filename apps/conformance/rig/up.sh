@@ -29,7 +29,7 @@ WS=$(cd "${HERE}/../../../.." && pwd)
 STATE="${HERE}/.state"
 RUN="${STATE}/run"
 
-CORE="${CORE:-${WS}/core-routes}"
+CORE="${CORE:-${WS}/core}"
 MEROD_BIN="${MEROD_BIN:-${CORE}/target/debug/merod}"
 MERO_AUTH_BIN="${MERO_AUTH_BIN:-${CORE}/target/debug/mero-auth}"
 TRAEFIK_BIN="${TRAEFIK_BIN:-traefik}"

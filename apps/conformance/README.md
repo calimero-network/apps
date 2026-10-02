@@ -3,11 +3,16 @@
 A frontend with no product purpose: a checklist that runs every admin and RPC
 call an app makes, under whatever connection the tab holds, and reports one row
 per check — name, mode, expected outcome, actual outcome, error text, duration.
-The design is `docs/superpowers/specs/2026-10-02-conformance-app-design.md` in
-the workspace.
+It exists so one place proves, before an app ships a change, that each
+method behaves the same on a node and on an account, or that an account gets a
+named refusal instead of a bare 403. Every app migration to account (relay) mode
+used to be checked by hand, and each gap surfaced later, one app at a time.
 
-A row passes only when what happened is what its mode expects: `ok`, or a
-refusal mero-react names (`NotForAccountError`, `NoRelayError`). Anything else
+A row passes only when what happened is what its mode expects: `ok`; a
+refusal mero-react names (`NotForAccountError`, `NoRelayError`); or one of the
+two refusals a node gets exactly as an account does: core's
+`LeaveGroupNotDirectMember` (`NotDirectMember`), and a route core admits only
+for a node's admin (`AdminOnly`, which a row opts in to). Anything else
 fails — a bare 403, a refused intent, a value read back wrong — and no row is
 ever marked expected because it fails today.
 
@@ -36,9 +41,9 @@ What it needs, and the defaults it assumes for this workspace:
 
 | env | default | what |
 | --- | --- | --- |
-| `MEROD_BIN` | `../core-routes/target/debug/merod` | merod built with `--features merod/mock-attestation` |
-| `MERO_AUTH_BIN` | `../core-routes/target/debug/mero-auth` | mero-auth from the same core |
-| `CORE` | `../core-routes` | for `apps/scaffolding-e2e/relay-ingress` |
+| `MEROD_BIN` | `$CORE/target/debug/merod` | merod built with `--features merod/mock-attestation` |
+| `MERO_AUTH_BIN` | `$CORE/target/debug/mero-auth` | mero-auth from the same core |
+| `CORE` | `../core` (a core checkout next to this repo) | for `apps/scaffolding-e2e/relay-ingress` |
 | `CONFORMANCE_MPK` | `rig/.state/scaffolding-e2e.mpk` | `cd <core>/apps/scaffolding-e2e && cargo mero bundle --dev --no-icon -o <path>` |
 | `CONFORMANCE_MPK_V2` | `rig/.state/scaffolding-e2e-0.0.1.mpk` | the same, with `--app-version 0.0.1`: what the node run upgrades to |
 | `TRAEFIK_BIN` | `traefik` on PATH | |
