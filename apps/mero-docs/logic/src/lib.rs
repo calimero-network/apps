@@ -53,6 +53,10 @@ use mero_docs_types::{is_valid_tag_key, DriveError};
 pub mod events;
 use events::Event;
 
+const MAX_TITLE_LEN: usize = 1024; // Unicode scalar values; the web app sets no title limit
+const MAX_COMMENT_LEN: usize = 10_000; // Unicode scalar values; the web app sets no comment limit
+const MAX_BLOCK_TEXT_LEN: usize = 100_000; // Unicode scalar values; the web app sets no block limit
+
 // ---------------------------------------------------------------------------
 // Mark schema
 // ---------------------------------------------------------------------------
@@ -261,6 +265,26 @@ fn edit_end(ops: &[Change]) -> usize {
         .sum()
 }
 
+/// Refuses a value of `len` that exceeds `max`.
+fn ensure_len(what: &str, len: usize, max: usize) -> Result<(), DriveError> {
+    if len > max {
+        return Err(DriveError::Invalid(format!(
+            "{what} too long: {len} characters, limit is {max}"
+        )));
+    }
+    Ok(())
+}
+
+/// The length a text of `current` characters has once `ops` are applied.
+fn len_after(current: usize, ops: &[Change]) -> usize {
+    let (added, removed) = ops.iter().fold((0, 0), |(added, removed), op| match op {
+        Change::Insert { insert, .. } => (added + insert.chars().count(), removed),
+        Change::Delete { delete } => (added, removed + delete),
+        Change::Retain { .. } => (added, removed),
+    });
+    (current + added).saturating_sub(removed)
+}
+
 /// Whether an anchored write is an insert right where its anchor sits. A client's
 /// position for its anchor can drift across identical characters; the node's cannot.
 fn at_anchor(anchored: bool, anchor_pos: Option<usize>, ops: &[Change]) -> bool {
@@ -317,14 +341,15 @@ fn digest_block(view: &BlockView, out: &mut String) {
 
 /// Per-document record.
 ///
-/// The derive supplies the deterministic re-key cascade `title`, `body` and
-/// `tags` need: a nested collection stored under a value type that is not a
+/// `#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`
+/// and `tags` need: a nested collection stored under a value type that is not a
 /// registered `RekeyTarget` keeps a per-replica random storage id and never
 /// converges.
 ///
 /// `Searchable`: the node's full-text index holds each doc's title (weighted
 /// double) and body text, formatting left out; `search_docs` queries it.
-#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable, app::Searchable)]
+#[app::mergeable(id = "mero_docs::DocRecord")]
+#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Searchable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
     /// The title, plain text.
@@ -341,6 +366,17 @@ pub struct DocRecord {
     pub updated_at: LwwRegister<u64>,
     /// Hex account id of the last editor, advanced with `updated_at`.
     pub updated_by: LwwRegister<String>,
+}
+
+// Dispatched, so each register merges alone: as one last-write-wins record, an
+// edit undid a concurrent archive. The collections sync as their own entities.
+impl Mergeable for DocRecord {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        <LwwRegister<bool> as Mergeable>::merge(&mut self.archived, &other.archived)?;
+        <LwwRegister<u64> as Mergeable>::merge(&mut self.updated_at, &other.updated_at)?;
+        <LwwRegister<String> as Mergeable>::merge(&mut self.updated_by, &other.updated_by)?;
+        Ok(())
+    }
 }
 
 /// Flat projection of a `DocRecord` for list / get APIs. The body is read
@@ -556,7 +592,7 @@ impl DocsState {
     ///
     /// # Arguments
     ///
-    /// * `title` - The document title, plain text.
+    /// * `title` - The document title, plain text, at most 1024 characters.
     ///
     /// # Returns
     ///
@@ -571,6 +607,7 @@ impl DocsState {
         let id = mint_id("doc");
 
         let now = storage_env::time_now();
+        ensure_len("title", title.chars().count(), MAX_TITLE_LEN)?;
         let mut title_text = FugueText::new();
         let _minted = title_text
             .insert_str(0, &title)
@@ -722,7 +759,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `id` - The document id.
-    /// * `title` - The new title, plain text.
+    /// * `title` - The new title, plain text, at most 1024 characters.
     pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
         let len = self.read(&id)?.title.len()?;
         let ops = vec![
@@ -776,6 +813,7 @@ impl DocsState {
     /// `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
     /// Text after the last step is kept.
     /// The title carries no formatting, so a step with non-null `attributes` is refused.
+    /// A transaction that leaves the title longer than 1024 characters is refused.
     /// Positions count Unicode scalar values, not bytes or UTF-16 units.
     ///
     /// # Arguments
@@ -787,11 +825,14 @@ impl DocsState {
     ///
     /// An opaque undo token.
     pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
+        let title = &mut self.write(&doc)?.title;
+        ensure_len("title", len_after(title.len()?, &ops), MAX_TITLE_LEN)
+            .map_err(DriveError::into_app)?;
         let ops: Vec<TextOp> = ops
             .into_iter()
             .map(Change::into_text_op)
             .collect::<app::Result<_>>()?;
-        let steps = self.write(&doc)?.title.apply_delta(&ops)?;
+        let steps = title.apply_delta(&ops)?;
         app::emit!(Event::TitleChanged { doc: &doc });
         encode_token(&steps)
     }
@@ -1073,6 +1114,7 @@ impl DocsState {
     }
 
     /// Appends the text of `second` to `first` and removes `second`.
+    /// Refused when the joined text would be longer than 100000 characters.
     ///
     /// # Arguments
     ///
@@ -1080,8 +1122,11 @@ impl DocsState {
     /// * `first` - The block that keeps its place and receives the text.
     /// * `second` - The block whose text is appended and which is then removed.
     pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
-        let (head, tail) = (decode_token(&first)?, decode_token(&second)?);
-        self.write(&doc)?.body.merge_blocks(head, tail)?;
+        let (head, tail): (BlockId, BlockId) = (decode_token(&first)?, decode_token(&second)?);
+        let body = &mut self.write(&doc)?.body;
+        let joined = body.block_body(head)?.len()? + body.block_body(tail)?.len()?;
+        ensure_len("block text", joined, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
+        body.merge_blocks(head, tail)?;
         app::emit!(Event::BlockChanged {
             doc: &doc,
             block: &first
@@ -1100,6 +1145,7 @@ impl DocsState {
     /// Text after the last step is kept.
     /// A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
     /// Positions count Unicode scalar values, not bytes or UTF-16 units.
+    /// A transaction that leaves the block's text longer than 100000 characters is refused.
     ///
     /// # Arguments
     ///
@@ -1116,9 +1162,12 @@ impl DocsState {
         block: String,
         ops: Vec<Change>,
     ) -> app::Result<String> {
-        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
         let id = decode_token(&block)?;
-        let undo = self.write(&doc)?.body.apply_delta(id, &ops)?;
+        let body = &mut self.write(&doc)?.body;
+        let resulting = len_after(body.block_body(id)?.len()?, &ops);
+        ensure_len("block text", resulting, MAX_BLOCK_TEXT_LEN).map_err(DriveError::into_app)?;
+        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
+        let undo = body.apply_delta(id, &ops)?;
         app::emit!(Event::TextChanged {
             doc: &doc,
             block: &block
@@ -1588,7 +1637,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `doc_id` - The id of the document to comment on.
-    /// * `body` - The comment text.
+    /// * `body` - The comment text, at most 10000 characters.
     ///
     /// # Returns
     ///
@@ -1606,6 +1655,7 @@ impl DocsState {
         doc_id: String,
         body: String,
     ) -> Result<String, DriveError> {
+        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
         if self.header_of(&doc_id)?.is_none() {
             return Err(DriveError::NotFound(doc_id));
         }
@@ -1740,7 +1790,7 @@ impl DocsState {
     /// # Arguments
     ///
     /// * `id` - The comment id.
-    /// * `body` - The new comment text.
+    /// * `body` - The new comment text, at most 10000 characters.
     pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
         let id_for_event = id.clone();
         self.edit_comment_inner(id, body)
@@ -1754,6 +1804,7 @@ impl DocsState {
         id: String,
         body: String,
     ) -> Result<(), DriveError> {
+        ensure_len("comment", body.chars().count(), MAX_COMMENT_LEN)?;
         // The caller's own comment: keys are per owner, and only its author
         // may change a comment.
         let Some(mut c) = self
@@ -2196,7 +2247,48 @@ mod tests {
         assert_eq!(title(&app), "new");
     }
 
+    #[test]
+    fn a_title_longer_than_the_cap_is_refused() {
+        let at_cap = "\u{e9}".repeat(MAX_TITLE_LEN);
+        let over = format!("{at_cap}x");
+        let mut app = host(&at_cap);
+        assert!(app.call(|s| s.create_doc(over.clone())).is_err());
+        assert!(app.call(|s| s.edit_doc(doc(), over.clone())).is_err());
+        let grow = || vec![retain(MAX_TITLE_LEN), insert("x")];
+        assert!(app.call(|s| s.title_apply_delta(doc(), grow())).is_err());
+        let on = app.call(|s| s.title_apply_delta_on(doc(), at_cap.clone(), grow(), None));
+        assert!(on.is_err());
+        assert_eq!(title(&app), at_cap);
+        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
+        app.call(|s| s.title_apply_delta(doc(), swap)).unwrap();
+        app.call(|s| s.edit_doc(doc(), over[2..].to_owned()))
+            .unwrap();
+    }
+
     // ---- body ------------------------------------------------------------
+
+    #[test]
+    fn block_text_over_the_cap_is_refused() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let fill = "\u{e9}".repeat(MAX_BLOCK_TEXT_LEN);
+        let _typed = type_text(&mut app, &block, &fill);
+        let grow = || vec![retain(MAX_BLOCK_TEXT_LEN), insert("x")];
+        let plain = app.call(|s| s.apply_delta(doc(), block.clone(), grow()));
+        assert!(plain.is_err());
+        let on = app.call(|s| s.apply_delta_on(doc(), block.clone(), fill.clone(), grow(), None));
+        assert!(on.is_err());
+        let text = app.view(|s| s.get_text(doc(), block.clone())).unwrap();
+        assert_eq!(text, fill);
+        let swap = vec![Change::Delete { delete: 1 }, insert("a")];
+        app.call(|s| s.apply_delta(doc(), block.clone(), swap))
+            .unwrap();
+        let other = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &other, "x");
+        let merged = app.call(|s| s.merge_blocks(doc(), block.clone(), other.clone()));
+        assert!(merged.is_err());
+        assert_eq!(app.view(|s| s.list_blocks(doc())).unwrap().len(), 2);
+    }
 
     #[test]
     fn apply_delta_renders_into_the_digest() {
@@ -3188,6 +3280,24 @@ mod tests {
     }
 
     #[test]
+    fn a_comment_over_the_cap_is_refused() {
+        let at_cap = "\u{e9}".repeat(MAX_COMMENT_LEN);
+        let over = format!("{at_cap}x");
+        let mut app = DocsState::init();
+        let doc = app.create_doc_inner("d".into()).unwrap();
+        assert!(matches!(
+            app.add_comment_inner(doc.clone(), over.clone()),
+            Err(DriveError::Invalid(_))
+        ));
+        let id = app.add_comment_inner(doc, at_cap.clone()).unwrap();
+        assert!(matches!(
+            app.edit_comment_inner(id.clone(), over),
+            Err(DriveError::Invalid(_))
+        ));
+        app.edit_comment_inner(id, at_cap).unwrap();
+    }
+
+    #[test]
     fn a_comment_is_its_authors_and_moderators_remove_any() {
         let mut app = folder();
         let doc = app.call(|s| s.create_doc("d".into())).unwrap();
@@ -3224,52 +3334,38 @@ mod tests {
         assert!(app.view(|s| s.list_comments(doc)).unwrap().is_empty());
     }
 
-    // ---- struct-level DocRecord::merge ------------------------------------
-    //
-    // Pin the derived Mergeable so a future refactor cannot silently break sync
-    // for one field. Explicit zero-HLC baselines on `a` make `b`'s real-clock
-    // writes win the tie-break regardless of test-parallelism HLC collisions.
+    // ---- a doc record merges field by field --------------------------------
 
-    use calimero_storage::logical_clock::HybridTimestamp;
-
-    fn zero_lww<T>(v: T) -> LwwRegister<T> {
-        LwwRegister::new_with_metadata(v, HybridTimestamp::zero())
-    }
-
-    fn stub_record() -> DocRecord {
-        DocRecord {
-            title: FugueText::new(),
-            body: Body::new(),
-            tags: UnorderedSet::new(),
-            archived: zero_lww(false),
-            updated_at: zero_lww(0),
-            updated_by: zero_lww(String::new()),
-        }
+    /// A Script whose collection entries reach the app's merges, as a node's
+    /// module load registers them; `Script::new` clears that registry.
+    fn docs_script() -> calimero_storage::testing::Script<DocsState> {
+        let script = calimero_storage::testing::Script::new(DocsState::init);
+        DocsState::__calimero_register_rekey();
+        script
     }
 
     #[test]
-    fn doc_record_merge_takes_the_later_metadata() {
-        let mut a = stub_record();
-        let mut b = stub_record();
-        b.archived = LwwRegister::new(true);
-        b.updated_at = LwwRegister::new(7);
-        b.updated_by = LwwRegister::new("b0".to_owned());
-        <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert!(*a.archived.get());
-        assert_eq!(*a.updated_at.get(), 7);
-        assert_eq!(a.updated_by.get(), "b0");
-    }
-
-    #[test]
-    fn doc_record_merge_is_idempotent() {
-        let mut working = stub_record();
-        working.updated_at = LwwRegister::new(3);
-        let mut snapshot = stub_record();
-        snapshot.updated_at = LwwRegister::new(3);
-        <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        assert_eq!(*working.updated_at.get(), 3);
-        assert!(!*working.archived.get());
+    #[serial_test::serial]
+    #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
+    fn an_archive_survives_a_concurrent_title_edit() {
+        let mut script = docs_script();
+        let (alice, bob) = (script.member(), script.member());
+        let mut id = String::new();
+        let created = script
+            .run(alice, |s| id = s.create_doc_inner("draft".into()).unwrap())
+            .unwrap();
+        assert_eq!(script.deliver(bob, created), 0);
+        let _archived = script
+            .run(alice, |s| s.set_archived_inner(id.clone(), true).unwrap())
+            .unwrap();
+        let _renamed = script
+            .run(bob, |s| s.edit_doc(id.clone(), "final".into()).unwrap())
+            .unwrap();
+        let orders = script.assert_every_order_converges(|s| {
+            let doc = s.get_doc(id.clone()).unwrap();
+            doc.archived && doc.title == "final"
+        });
+        assert_eq!(orders, 2);
     }
 
     // ---- a doc id is its creator's alone ---------------------------------
@@ -3280,7 +3376,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn two_devices_of_one_account_create_two_docs() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (laptop, phone) = (script.founder(), script.founder());
         assert_eq!(script.account(laptop), script.account(phone));
         let on_laptop = script
@@ -3369,7 +3465,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn two_devices_of_one_account_add_two_comments() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (laptop, phone) = (script.founder(), script.founder());
         let mut doc = String::new();
         let created = script
@@ -3408,7 +3504,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn a_direct_body_delete_by_a_non_creator_leaves_the_doc_listed() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (alice, bob) = (script.member(), script.member());
         let mut id = String::new();
         let created = script
@@ -3464,7 +3560,7 @@ mod tests {
     #[serial_test::serial]
     #[ignore = "a Script test needs its own process: cargo test -- --ignored"]
     fn a_forged_updated_at_does_not_pin_a_doc_to_the_top() {
-        let mut script = calimero_storage::testing::Script::new(DocsState::init);
+        let mut script = docs_script();
         let (alice, mallory) = (script.member(), script.member());
         let mut a = String::new();
         let mut b = String::new();

@@ -29,7 +29,7 @@ import "./index.css";
 // MeroProvider strips it; those are read by name and never mutate location, so
 // running first is safe. The plain web has no hash → no-op, and App renders the
 // landing page (see App.tsx). Mirrors mero-meet's main.tsx.
-if (APP_ENABLED) captureSessionFromHash();
+captureSessionFromHash();
 
 // mero-react ≥4.1 REJECTS an SSO callback whose node_url is not explicitly
 // trusted (`allowedNodeUrls`) — it drops the tokens with only a console error.

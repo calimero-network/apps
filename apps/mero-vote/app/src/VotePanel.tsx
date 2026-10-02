@@ -167,7 +167,7 @@ export function VotePanel({ contextId }: { contextId: string }) {
         ) : (
           <div className="chips">
             {roster.map((m) => (
-              <span key={m.account} className="chip" title={m.account}>
+              <span key={m.account} className="chip" title={m.account} data-testid="member">
                 {m.name}
                 {m.account === me && " (you)"}
               </span>

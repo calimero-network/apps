@@ -567,6 +567,7 @@ const Message = (props: MessageProps) => {
     <>
       <MessageContainer
         {...attrs}
+        data-testid="message"
         $editmode={props.message?.editMode ? true : false}
         $focused={props.isFocused}
       >

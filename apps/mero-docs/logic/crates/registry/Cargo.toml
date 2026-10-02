@@ -23,3 +23,7 @@ calimero-storage-macros = { workspace = true }
 # until the roles pass; see `permissions::caller_account_hex`. core
 # 0.11.0-rc.27 removed base58 (core#3691), so hex is the only encoding here.
 hex                     = { workspace = true }
+
+[dev-dependencies]
+calimero-storage = { workspace = true, features = ["testing"] }
+serial_test      = "3.2"

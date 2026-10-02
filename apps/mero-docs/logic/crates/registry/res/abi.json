@@ -224,7 +224,7 @@
     },
     "FolderRecord": {
       "kind": "record",
-      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.\n\n`Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`\nbecause `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a\ntrait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method\nresolution picks the inherent one from the derive expansion, which then\nfails the macro's `?` - same workaround battleships uses on\n`MatchSummary`.",
+      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.",
       "fields": [
         {
           "name": "parent_id",
@@ -362,28 +362,18 @@
           "doc": "Hex account of the registry owner: whoever created the registry\ncontext (a namespace admin). Frozen at `init`; nobody can change it."
         },
         {
-          "name": "managers",
+          "name": "access",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "record",
-                "fields": [],
-                "crdt_type": "lww_register",
-                "inner_type": {
-                  "kind": "bool"
-                }
-              },
-              "crdt_type": "unordered_map"
-            }
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
           },
-          "doc": "Hex accounts granted manager rights over the whole registry (may set/\nclear any folder role). Writable by the owner only. The owner is\nimplicitly a manager and is NOT stored here. Value `true` = is a\nmanager, `false` = removed (kept around so the key is never\nCRDT-tombstoned - a `remove` would silently swallow a later re-add)."
+          "doc": "The registry's managers, as holders of the `MANAGER` role. The owner is\nits only admin, so only the owner grants or revokes it, on every node."
         },
         {
           "name": "folder_roles",
@@ -404,10 +394,10 @@
                   "$ref": "Role"
                 }
               },
-              "crdt_type": "unordered_map"
+              "crdt_type": "sorted_map"
             }
           },
-          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nWritable by the registry admins only (see `sync_admins`)."
+          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nThe owner administers it; managers may write and delete rows (see `sync_admins`)."
         },
         {
           "name": "tags",
@@ -1135,7 +1125,7 @@
           "type": {
             "kind": "string"
           },
-          "doc": "The display name, 1 to 32 bytes after trimming."
+          "doc": "The display name, 1 to 32 characters after trimming."
         },
         {
           "name": "color",

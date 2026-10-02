@@ -305,6 +305,7 @@ export default function LobbySelect({
                 return (
                   <div
                     key={l.namespaceId}
+                    data-testid="lobby-row"
                     className={`lobby-row ${pending ? 'lobby-row-pending' : ''}`}
                   >
                     <div className="lobby-row-info">

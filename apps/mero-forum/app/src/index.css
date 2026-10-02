@@ -286,6 +286,7 @@ button.ghost { background: transparent; color: var(--text-faint); border: 1px so
 }
 .back::before {
   content: "←";
+  content: "←" / "";
   font-size: 14px;
   line-height: 1;
 }

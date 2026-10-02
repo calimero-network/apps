@@ -108,13 +108,6 @@ export const FolderId = (value: string): FolderId => value as FolderId;
 /**
  * Per-folder record inside the registry map. All fields are LWW so
  * concurrent updates resolve deterministically.
- *
- * `Mergeable` is implemented by hand rather than `#[derive(Mergeable)]`
- * because `LwwRegister<T>` has both an inherent `merge(...) -> ()` and a
- * trait `Mergeable::merge(...) -> Result<(), MergeError>`. Rust's method
- * resolution picks the inherent one from the derive expansion, which then
- * fails the macro's `?` - same workaround battleships uses on
- * `MatchSummary`.
  */
 export interface FolderRecord {
   /**
@@ -189,16 +182,13 @@ export interface RegistryState {
    */
   owner: string;
   /**
-   * Hex accounts granted manager rights over the whole registry (may set/
-   * clear any folder role). Writable by the owner only. The owner is
-   * implicitly a manager and is NOT stored here. Value `true` = is a
-   * manager, `false` = removed (kept around so the key is never
-   * CRDT-tombstoned - a `remove` would silently swallow a later re-add).
+   * The registry's managers, as holders of the `MANAGER` role. The owner is
+   * its only admin, so only the owner grants or revokes it, on every node.
    */
-  managers: Record<string, boolean>;
+  access: Record<string, boolean>;
   /**
    * `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
-   * Writable by the registry admins only (see `sync_admins`).
+   * The owner administers it; managers may write and delete rows (see `sync_admins`).
    */
   folder_roles: Record<string, Role>;
   /**
@@ -815,7 +805,7 @@ export class RegistryClient {
    * Fails for a key that was deleted; deleted keys cannot be reused.
    *
    * @param params.key The tag's stable id: 1 to 64 characters of lowercase ASCII letters, digits and `-`.
-   * @param params.name The display name, 1 to 32 bytes after trimming.
+   * @param params.name The display name, 1 to 32 characters after trimming.
    * @param params.color Colour as `#rrggbb`.
    *
    * @intent mutating

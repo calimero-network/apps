@@ -138,6 +138,28 @@ describe("PeopleDialog", () => {
     expect(screen.queryByTestId("nickname-saved")).toBeNull();
   });
 
+  it("keeps the saved confirmation after the parent stores the new name", async () => {
+    const user = userEvent.setup();
+    function Host() {
+      const [name, setName] = useState("");
+      return (
+        <PeopleDialog
+          open
+          onClose={vi.fn()}
+          people={PEOPLE}
+          name={name}
+          onRename={setName}
+          maxBroadcasters={2}
+        />
+      );
+    }
+    render(<Host />);
+    await user.type(screen.getByTestId("username-input"), "Ana");
+    await user.click(screen.getByTestId("username-submit"));
+    expect(screen.getByTestId("nickname-saved")).toBeTruthy();
+    expect((screen.getByTestId("username-input") as HTMLInputElement).value).toBe("Ana");
+  });
+
   it("re-seeds the draft when reopened, dropping an abandoned edit", async () => {
     const user = userEvent.setup();
     function Host() {

@@ -48,6 +48,7 @@ import {
 } from "../../constants/config";
 import { getAppEntryState } from "../../utils/appEntry";
 import {
+  getSelfAccountBase58,
   loadSelfAccountIdentity,
   sameAccount,
 } from "../../utils/accountIdentity";
@@ -320,16 +321,18 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     // Bootstrap WASM admin role for namespace admins. set_member_role allows
     // a self-promotion to Admin when no admin exists in the WASM roles map yet.
     // After the first call this is a no-op (Admin → Admin is idempotent).
+    const selfAccount = getSelfAccountBase58();
     if (
       currentGroupPermissions.isAdmin &&
       resolvedChat.contextId &&
-      resolvedChat.contextIdentity
+      resolvedChat.contextIdentity &&
+      selfAccount
     ) {
       new ClientApiDataSource()
         .setMemberRole({
           contextId: resolvedChat.contextId,
           executorPublicKey: resolvedChat.contextIdentity,
-          target: resolvedChat.contextIdentity,
+          target: selfAccount,
           role: "Admin",
         })
         .catch(() => {});

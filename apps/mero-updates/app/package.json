@@ -24,7 +24,8 @@
     "prettier": "prettier --check 'src/**/*.{ts,tsx,json}'",
     "prettier:write": "prettier --write 'src/**/*.{ts,tsx,json}'",
     "test:e2e:node": "playwright test -c playwright.node.config.ts",
-    "test:e2e:ci": "playwright test && playwright test -c playwright.node.config.ts"
+    "test:e2e:ci": "playwright test && playwright test -c playwright.node.config.ts",
+    "test:journey": "playwright test -c playwright.journey.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",

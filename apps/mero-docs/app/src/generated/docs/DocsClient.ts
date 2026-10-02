@@ -212,8 +212,8 @@ export interface DocDto {
 /**
  * Per-document record.
  *
- * The derive supplies the deterministic re-key cascade `title`, `body` and
- * `tags` need: a nested collection stored under a value type that is not a
+ * `#[app::mergeable]` supplies the deterministic re-key cascade `title`, `body`
+ * and `tags` need: a nested collection stored under a value type that is not a
  * registered `RekeyTarget` keeps a per-replica random storage id and never
  * converges.
  *
@@ -602,7 +602,7 @@ export class DocsClient {
    * Not idempotent: a retry after a lost response adds a second comment, so check `list_comments` before repeating.
    *
    * @param params.doc_id The id of the document to comment on.
-   * @param params.body The comment text.
+   * @param params.body The comment text, at most 10000 characters.
    * @returns The new comment's id.
    *
    * @intent mutating
@@ -656,6 +656,7 @@ export class DocsClient {
    * Text after the last step is kept.
    * A `retain` or `insert` step may carry `attributes` to set formatting, for example `{"insert": "hi", "attributes": {"bold": "true"}}`; to clear formatting from a range use `mark` with a `null` value.
    * Positions count Unicode scalar values, not bytes or UTF-16 units.
+   * A transaction that leaves the block's text longer than 100000 characters is refused.
    *
    * @param params.doc The document id.
    * @param params.block The block id.
@@ -743,7 +744,7 @@ export class DocsClient {
    * Add the first block with `insert_block`.
    * Not idempotent: a retry after a lost response creates a second document, so check `list_docs` before repeating.
    *
-   * @param params.title The document title, plain text.
+   * @param params.title The document title, plain text, at most 1024 characters.
    * @returns The new document's id, an opaque string the other methods take as `doc` or `id`.
    *
    * @intent mutating
@@ -809,7 +810,7 @@ export class DocsClient {
    * Only the comment's author may edit it.
    *
    * @param params.id The comment id.
-   * @param params.body The new comment text.
+   * @param params.body The new comment text, at most 10000 characters.
    *
    * @intent mutating
    */
@@ -825,7 +826,7 @@ export class DocsClient {
    * Character-level title edits go through `title_apply_delta`.
    *
    * @param params.id The document id.
-   * @param params.title The new title, plain text.
+   * @param params.title The new title, plain text, at most 1024 characters.
    *
    * @intent mutating
    */
@@ -1078,6 +1079,7 @@ export class DocsClient {
    * merge_blocks
    *
    * Appends the text of `second` to `first` and removes `second`.
+   * Refused when the joined text would be longer than 100000 characters.
    *
    * @param params.doc The document id.
    * @param params.first The block that keeps its place and receives the text.
@@ -1272,6 +1274,7 @@ export class DocsClient {
    * `ops` is a list of steps that walk the text as it was before the change: `{"retain": 3, "attributes": null}` keeps three characters, `{"insert": "text", "attributes": null}` adds text, `{"delete": 2}` removes two.
    * Text after the last step is kept.
    * The title carries no formatting, so a step with non-null `attributes` is refused.
+   * A transaction that leaves the title longer than 1024 characters is refused.
    * Positions count Unicode scalar values, not bytes or UTF-16 units.
    *
    * @param params.doc The document id.
