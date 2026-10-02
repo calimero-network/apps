@@ -837,6 +837,10 @@ jobs:
         working-directory: apps/${{ matrix.app }}/app
         env:
           SHARD: ${{ matrix.shard }}
+          # Keep `.playwright-data/` past teardown: the upload below names its
+          # node logs, and teardown otherwise deletes them first, so a failed
+          # run uploaded none.
+          KEEP_DATA: "1"
         run: |
           shard_args=()
           [ "$SHARD" = "1/1" ] || shard_args=(--shard="$SHARD")

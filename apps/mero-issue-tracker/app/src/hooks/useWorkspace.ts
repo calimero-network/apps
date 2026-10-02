@@ -39,6 +39,7 @@ import { buildInvitePayload } from '../utils/invitePayload';
 import { redeemInviteCode } from '../utils/redeemInvite';
 import { IssueTrackerClient } from '../generated/IssueTrackerClient';
 import { useApplicationId } from './useApplicationId';
+import { decideActiveNs, useAnswered } from './activeNamespace';
 import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
 import { MEMBER_CAPABILITIES } from '../utils/roles';
 import { buildAliasMap } from './useAliases';
@@ -149,8 +150,14 @@ export function useWorkspace(): UseWorkspaceReturn {
     ? null
     : nodeApplicationId || authApplicationId || null;
 
-  const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
-    useNamespacesForApplication(applicationId);
+  const {
+    namespaces,
+    loading: nsLoading,
+    error: nsError,
+    refetch: refetchNamespaces,
+  } = useNamespacesForApplication(applicationId);
+  // The list reads `[]` until the node answers, and again on every scope change.
+  const nsListed = useAnswered(nsLoading, nsError, [mero, applicationId]);
   const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
   const { setMemberMetadata } = useSetMemberMetadata();
 
@@ -179,7 +186,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       try {
         const gid = await mero.admin.getContextGroup(callbackContextId);
         if (!cancelled && gid) {
-          // Explicit external handoff - persist it like any other selection.
+          // Explicit external handoff - persist it like any other selection,
+          // and like any other selection the cold-start default never
+          // overrides it.
+          userSelectedNs.current = true;
           setActiveNs(gid);
           writeActiveNs(gid);
         }
@@ -196,16 +206,19 @@ export function useWorkspace(): UseWorkspaceReturn {
   // otherwise default to the first namespace (the list is already scoped to this
   // app, so this is a friendly cold-start default, not a stale cross-app entry).
   // The default is in-memory only - explicit switcher picks are what persist.
+  // Only on a list that has answered: see ./activeNamespace.
   useEffect(() => {
-    if (userSelectedNs.current || resolvingCallback) return;
-    if (namespaces.length === 0) {
-      if (activeNs) { setActiveNs(null); writeActiveNs(null); }
-      return;
-    }
-    if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
-    if (activeNs) writeActiveNs(null); // drop a stale persisted id before defaulting
-    setActiveNs(namespaces[0].namespaceId);
-  }, [namespaces, activeNs, resolvingCallback]);
+    const decision = decideActiveNs({
+      namespaces,
+      listed: nsListed,
+      activeNs,
+      pinned: userSelectedNs.current,
+      resolvingCallback,
+    });
+    if (decision.kind === 'keep') return;
+    if (decision.dropPersisted) writeActiveNs(null);
+    setActiveNs(decision.id);
+  }, [namespaces, nsListed, activeNs, resolvingCallback]);
 
   const selectNamespace = useCallback((id: string) => {
     userSelectedNs.current = true;
