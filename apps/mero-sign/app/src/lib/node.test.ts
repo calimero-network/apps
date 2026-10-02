@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { SignClient } from './node';
 
 import { nodeApi } from './node';
 
@@ -31,7 +31,7 @@ function fake() {
         });
       },
     },
-  } as unknown as MeroJs;
+  } as unknown as SignClient;
   return { calls, api: nodeApi(mero) };
 }
 

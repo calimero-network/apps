@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { SignClient } from '../lib/node';
 import { shouldRetain } from '@calimero-apps/invite';
 
 import { setMeroInstance } from '../lib/node';
@@ -57,7 +57,7 @@ function node(opts: {
         (opts.namespaces ?? []).map((namespaceId) => ({ namespaceId })),
       ),
     },
-  } as unknown as MeroJs;
+  } as unknown as SignClient;
   setMeroInstance(mero);
   return { joinNamespace };
 }

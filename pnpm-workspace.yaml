@@ -44,22 +44,42 @@ catalog:
   # break (#202) dropped the chosen `groupId` from CreateGroupRequest; no app
   # sent one. 22.4.0 (#214) added RelayClient.describeCreation/createContext,
   # which lets delegated-execution drop its own ^22.1.0 pin for `catalog:`.
-  "@calimero-network/mero-js": ^23.0.0
-  # mero-react 9.2.0 (#77): the join hooks report why a join failed, and
-  # useRedeemInvitation. It still declares mero-js ^21.3.0 and no 9.x moves it,
-  # so the root package.json overrides mero-react's mero-js to ^23.0.0. Without
-  # that every app on both carries two copies, MeroProvider's client is the 21
-  # one — signing at a refused schema — and the two AdminApiClient types do
-  # not match. Drop the override when a mero-react release depends on ^23.0.0.
-  "@calimero-network/mero-react": ^9.2.0
-  "@calimero-network/mero-ui": ^1.5.1
+  # 23.4.2 (mero-js#239) is the first release that signs namespace ops at schema
+  # 21, which core 0.11.0-rc.75 requires: on 23.4.0/23.4.1 every account join,
+  # create and governance op against an rc.75 relay is refused.
+  # 23.4.3 (mero-js#240): a presence listener added after the context is already
+  # subscribed (useSubscription mounted before useEphemeral) still gets the
+  # context's current presence.
+  "@calimero-network/mero-js": ^23.4.3
+  # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
+  # every app on ConnectButton signs in with an account as well as a node, and
+  # useMero().admin is the account admin on an account. From 9.3 `mero` is
+  # `MeroJs | MeroClient`: an app hands it to a generated client (which takes
+  # any ExecuteTransport from abi-codegen 2.4.0) or builds what it needs from
+  # `admin` and `mero.rpc`, never assumes a MeroJs. 9.6 depends on mero-js
+  # ^23.4.0 itself, so the root override that pinned its mero-js is gone.
+  # 9.6.1 (#82): an account can leave or manage a subgroup it did not create,
+  # and a MultiContext token holds `context:delete`.
+  # 9.6.2 (#83): an account joins as a node joins (an inherited member joins,
+  # a direct member's join is a no-op), and leaveContext is refused by name for
+  # an account: a node's leave is local, and leaving the group is leaveGroup.
+  # 9.6.3 (#84): an account's alias reads are refused by name like its alias
+  # writes, and it reads its groups' upgrade and cascade status (core rc.76).
+  "@calimero-network/mero-react": ^9.6.3
+  # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
+  # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
+  # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
+  # (mero-chat's journey, on main too).
+  "@calimero-network/mero-ui": ^1.5.2
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
   # it each pinned their own version.
   "@calimero-network/mero-icons": ^0.0.5
   "@calimero-network/mero-platform": ^0.1.0
   "@calimero-network/mero-platform-react": ^0.1.0
-  "@calimero-network/abi-codegen": ^2.3.0
+  # abi-codegen 2.4.0 (mero-devtools-js#66): a generated client takes any
+  # ExecuteTransport, or anything exposing one as `.rpc`, not a concrete MeroJs.
+  "@calimero-network/abi-codegen": ^2.4.0
 
   # ── runtime ────────────────────────────────────────────────────────────────
   react: ^19.2.8

@@ -7,7 +7,7 @@
  * `add` / `list` / `get` / `update` / owner-gated `delete`.
  */
 
-import { MeroJs } from '@calimero-network/mero-react';
+import type { ExecuteTransport } from '@calimero-network/mero-react';
 
 // Generated types
 
@@ -40,43 +40,43 @@ export type AbiEvent =
 ;
 
 export class ServiceClient {
-  private _mero: MeroJs;
+  private _transport: ExecuteTransport;
   private _contextId: string;
   private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
-    this._mero = mero;
+  constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string, executorPublicKey: string) {
+    this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
     this._executorPublicKey = executorPublicKey;
   }
 
   /** add — create a new item. Returns the stored item. */
   public async add(params: { title: string; body: string }): Promise<Item> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as Item;
   }
 
   /** list — all items, newest first. */
   public async list(): Promise<Item[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'list', argsJson: {}, executorPublicKey: this._executorPublicKey });
     return response as Item[];
   }
 
   /** get — fetch one item by id (null if absent). */
   public async get(params: { id: string }): Promise<Item | null> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'get', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as Item | null;
   }
 
   /** update — edit an item's title/body. */
   public async update(params: { id: string; title: string; body: string }): Promise<Item> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'update', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as Item;
   }
 
   /** delete — remove an item. Owner-gated on the backend. */
   public async delete(params: { id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'delete', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 }

@@ -23,7 +23,25 @@
  * It is deliberately not a general-purpose wrapper — anything new should call
  * `mero.admin` directly.
  */
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { AdminApiClient, ExecuteTransport } from '@calimero-network/mero-js';
+
+/**
+ * What this app needs from a session: the admin API to write against and the
+ * contract RPC. On a node both are the node's own client; on an account,
+ * mero-react's account admin and the relay transport. See `useMero().admin`.
+ */
+export interface SignClient {
+  admin: AdminApiClient;
+  rpc: ExecuteTransport;
+}
+
+/** The session's {@link SignClient}, from `useMero()`'s `mero` and `admin`. */
+export function signClientOf(
+  mero: { readonly rpc: ExecuteTransport } | null,
+  admin: AdminApiClient | null,
+): SignClient | null {
+  return mero && admin ? { admin, rpc: mero.rpc } : null;
+}
 
 /**
  * The old SDK's result shape, kept because ~20 call sites branch on it.
@@ -165,7 +183,7 @@ export interface ContextInviteByOpenInvitationResponse {
   memberPublicKey?: string;
 }
 
-export function nodeApi(mero: MeroJs): NodeApi {
+export function nodeApi(mero: SignClient): NodeApi {
   return {
     getContext: (contextId) => wrap(() => mero.admin.getContext(contextId)),
     getContexts: () => wrap(() => mero.admin.getContexts()),
@@ -204,7 +222,7 @@ export function nodeApi(mero: MeroJs): NodeApi {
   ): Promise<JoinNamespaceResult> {
     const res = await mero.admin.joinNamespace(namespaceId, {
       invitation: invitation as Parameters<
-        MeroJs['admin']['joinNamespace']
+        AdminApiClient['joinNamespace']
       >[1]['invitation'],
     });
     return res as JoinNamespaceResult;
@@ -232,7 +250,7 @@ export interface BlobApi {
   downloadBlob(blobId: string, contextId?: string): Promise<Blob>;
 }
 
-export function blobApi(mero: MeroJs): BlobApi {
+export function blobApi(mero: SignClient): BlobApi {
   return {
     async uploadBlob(file, onProgress, contextId) {
       // mero-js streams the body and reports no progress events. The callback
@@ -266,14 +284,14 @@ export function blobApi(mero: MeroJs): BlobApi {
 // answers `{error}` is indistinguishable from a node that refused, and this
 // app has already shipped one failure that read as the other.
 
-let instance: MeroJs | null = null;
+let instance: SignClient | null = null;
 
 /** Called once, from under `MeroProvider`. See `lib/MeroBridge`. */
-export function setMeroInstance(mero: MeroJs | null): void {
+export function setMeroInstance(mero: SignClient | null): void {
   instance = mero;
 }
 
-function required(): MeroJs {
+function required(): SignClient {
   if (!instance) {
     throw new Error(
       'No node connection yet. This call ran before the app finished connecting.',
@@ -294,7 +312,7 @@ export const apiClient = {
  * change when the SDK did. The workspace model is new code and has no such
  * debt, so it calls the SDK directly — see the note at the top of this file.
  */
-export function adminApi(): MeroJs['admin'] {
+export function adminApi(): AdminApiClient {
   return required().admin;
 }
 
@@ -306,7 +324,7 @@ export function adminApi(): MeroJs['admin'] {
  * reason at the top of this section: a null client that answers `{error}` is
  * indistinguishable from a node that refused.
  */
-export function meroInstance(): MeroJs {
+export function meroInstance(): SignClient {
   return required();
 }
 

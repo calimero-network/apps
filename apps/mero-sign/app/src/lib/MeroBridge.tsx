@@ -10,15 +10,15 @@
 import { useEffect } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
-import { setMeroInstance } from './node';
+import { setMeroInstance, signClientOf } from './node';
 
 export function MeroBridge() {
-  const { mero } = useMero();
+  const { mero, admin } = useMero();
   useEffect(() => {
-    setMeroInstance(mero ?? null);
+    setMeroInstance(signClientOf(mero, admin));
     // Cleared on unmount so a torn-down provider cannot leave a stale client
     // answering calls against a connection that is gone.
     return () => setMeroInstance(null);
-  }, [mero]);
+  }, [mero, admin]);
   return null;
 }

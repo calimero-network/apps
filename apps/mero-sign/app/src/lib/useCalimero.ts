@@ -24,6 +24,7 @@ import { useMero } from '@calimero-network/mero-react';
 import { useActiveWorkspace } from './activeWorkspace';
 import { useOpenLogin } from './loginGate';
 import { meroApp, type MeroAppLike } from './meroApp';
+import { signClientOf } from './node';
 
 export interface CalimeroLike {
   /** The data layer's duck-typed client. Null until a node is connected. */
@@ -41,7 +42,7 @@ export interface CalimeroLike {
  *   else gets whatever workspace the app is currently in.
  */
 export function useCalimero(workspaceId?: string | null): CalimeroLike {
-  const { mero, isAuthenticated, logout } = useMero();
+  const { mero, admin, isAuthenticated, logout } = useMero();
   const activeWorkspace = useActiveWorkspace();
   const login = useOpenLogin();
 
@@ -52,10 +53,10 @@ export function useCalimero(workspaceId?: string | null): CalimeroLike {
   // first.
   const effective = workspaceId === undefined ? activeWorkspace : workspaceId;
 
-  const app = useMemo(
-    () => (mero ? meroApp(mero, effective) : null),
-    [mero, effective],
-  );
+  const app = useMemo(() => {
+    const client = signClientOf(mero, admin);
+    return client ? meroApp(client, effective) : null;
+  }, [mero, admin, effective]);
 
   return { app, isAuthenticated, login, logout };
 }
