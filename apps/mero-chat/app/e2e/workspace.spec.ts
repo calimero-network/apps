@@ -109,10 +109,10 @@ test.describe("No-workspace flow (node has no workspaces)", () => {
     await expect(page.getByRole("button", { name: /create workspace/i })).toBeVisible();
   });
 
-  test("shows Disconnect node button", async ({ page }) => {
+  test("shows Sign out button", async ({ page }) => {
     await page.goto("/login");
     await expect(page.getByText("Welcome to MeroChat")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/disconnect node/i)).toBeVisible();
+    await expect(page.getByText(/sign out/i)).toBeVisible();
   });
 });
 
@@ -147,14 +147,14 @@ test.describe("Enter-name step (workspace exists, no cached username)", () => {
     await expect(joinBtn).toBeDisabled();
   });
 
-  test("shows Disconnect node button in enter-name step", async ({ page }) => {
+  test("shows Sign out button in enter-name step", async ({ page }) => {
     await page.goto("/login");
     await expect(page.getByText("Select workspace")).toBeVisible({ timeout: 10_000 });
     await page.getByRole("button", { name: /^continue$/i }).click();
     await expect(
       page.locator("label").filter({ hasText: /your name/i }),
     ).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/disconnect node/i)).toBeVisible();
+    await expect(page.getByText(/sign out/i)).toBeVisible();
   });
 });
 

@@ -17,9 +17,14 @@ const h = vi.hoisted(() => ({
     params: Record<string, string>;
     resolve: () => void;
   },
-  joinGroup: vi.fn(),
-  listNamespaces: vi.fn(),
-  resolveCurrentMemberIdentity: vi.fn(),
+  // The shared redeemer's two calls (`useJoinInvitation().invitationRedeemer`),
+  // the same on a node and on an account.
+  join: vi.fn(),
+  memberships: vi.fn(),
+  // Stable across renders, as mero-react's is: the popup's loaders depend on it.
+  admin: {
+    getNodeIdentity: () => Promise.resolve({ accountId: "me" }),
+  },
 }));
 
 vi.mock("@calimero-network/mero-ui", () => ({
@@ -42,7 +47,10 @@ vi.mock("@calimero-network/mero-ui", () => ({
 }));
 
 vi.mock("@calimero-network/mero-react", () => ({
-  getNodeUrl: () => "http://localhost:2428",
+  useMero: () => ({ admin: h.admin }),
+  useJoinInvitation: () => ({
+    invitationRedeemer: () => ({ join: h.join, memberships: h.memberships }),
+  }),
 }));
 
 // Replays the held intent on mount, as the SDK's pending-intent store does.
@@ -55,23 +63,17 @@ vi.mock("@calimero-network/mero-platform-react", () => ({
   },
 }));
 
-vi.mock("../../api/meroJsClient", () => ({
-  getMeroJs: () => ({ admin: { listNamespaces: h.listNamespaces } }),
-}));
-
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     listGroups = () => Promise.resolve({ data: [], error: null });
-    joinGroup = h.joinGroup;
-    resolveCurrentMemberIdentity = h.resolveCurrentMemberIdentity;
     setGroupMetadata = () => Promise.resolve({ data: null, error: null });
     setMemberMetadata = () => Promise.resolve({ data: null, error: null });
     syncGroup = () => Promise.resolve({ data: null, error: null });
   },
 }));
 
-const failure = (code: number, message: string) =>
-  Promise.resolve({ data: null, error: { code, message } });
+const failure = (status: number, message: string) =>
+  Promise.reject(Object.assign(new Error(message), { status }));
 
 function arrive() {
   const resolve = vi.fn();
@@ -95,37 +97,30 @@ function arrive() {
 
 beforeEach(() => {
   localStorage.clear();
-  h.joinGroup.mockReset();
-  h.listNamespaces.mockReset().mockResolvedValue([]);
-  h.resolveCurrentMemberIdentity
-    .mockReset()
-    .mockResolvedValue({ data: { memberIdentity: "me", members: [] } });
+  h.join.mockReset();
+  h.memberships.mockReset().mockResolvedValue([]);
 });
 
 describe("NamespaceEntryPopup invitation link", () => {
   it("acks and asks for a name on a join", async () => {
-    h.joinGroup.mockResolvedValue({
-      data: { groupId: "ns1", memberIdentity: "me" },
-    });
+    h.join.mockResolvedValue(undefined);
     const resolve = arrive();
     await screen.findByText("Join Team");
     expect(resolve).toHaveBeenCalledTimes(1);
-    expect(h.joinGroup).toHaveBeenCalledTimes(1);
+    expect(h.join).toHaveBeenCalledTimes(1);
   });
 
   it("acks and goes in when the join failed but the node lists the workspace", async () => {
-    h.joinGroup.mockReturnValue(failure(500, "The request was aborted"));
-    h.listNamespaces.mockResolvedValue([{ namespaceId: "ns1" }]);
+    h.join.mockImplementation(() => failure(500, "The request was aborted"));
+    h.memberships.mockResolvedValue(["ns1"]);
     const resolve = arrive();
     await screen.findByText("Join Team");
     expect(resolve).toHaveBeenCalledTimes(1);
-    expect(h.joinGroup).toHaveBeenCalledTimes(1);
-    // The join never answered, so the identity is looked up instead.
-    expect(h.resolveCurrentMemberIdentity.mock.calls[0]?.[0]).toBe("ns1");
+    expect(h.join).toHaveBeenCalledTimes(1);
   });
 
   it("acks a refused invitation and says why", async () => {
-    h.joinGroup.mockReturnValue(failure(409, "member was removed"));
+    h.join.mockImplementation(() => failure(409, "member was removed"));
     const resolve = arrive();
     await screen.findByText(
       "You can't join this workspace with this invitation. Ask an admin to invite you again.",
@@ -134,10 +129,10 @@ describe("NamespaceEntryPopup invitation link", () => {
   });
 
   it("keeps the invitation when no one is online to let you in", async () => {
-    h.joinGroup.mockReturnValue(failure(503, "no peer available"));
+    h.join.mockImplementation(() => failure(503, "no peer available"));
     const resolve = arrive();
     await screen.findByText(/No one in this workspace is online/);
-    await waitFor(() => expect(h.listNamespaces).toHaveBeenCalled());
+    await waitFor(() => expect(h.memberships).toHaveBeenCalled());
     expect(resolve).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero, ConnectButtonAccount } from "@calimero-network/mero-react";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
 // The shared landing template (generated — scripts/landing), the same page
 // every other app in the fleet renders.
 import LandingPage from "../landing/LandingPage";
-import LoginPopup from "../landing/loginPopup";
 import NamespaceEntryPopup from "../../components/popups/NamespaceEntryPopup";
 
 declare global {
@@ -41,9 +40,10 @@ export const CONNECT_PRESERVE_EXACT = new Set([
   INVITATION_STORAGE_KEY,
   PLATFORM_PENDING_INTENTS_KEY,
 ]);
-// No prefix-based preservation: per-identity username rows were retired
-// in favor of the single global `chat-username` (preserved exactly above).
-const CONNECT_PRESERVE_PREFIX: string[] = [];
+// An account's durable state: its device keypair, the nonces its relays have
+// seen and its relay map. Wiping it would mint a new device on every sign-in and
+// replay nonces a relay already spent. Its session (sessionStorage) still goes.
+const CONNECT_PRESERVE_PREFIX: string[] = ["calimero."];
 
 export function clearStorageForConnect(): void {
   try {
@@ -81,7 +81,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   };
 
   // Not connected yet — the landing page. Its "Connect to node" opens the
-  // shared login popup, but through `onConnect`, so the stale-storage purge
+  // sign-in popup, but through `onConnect`, so the stale-storage purge
   // (whitelist preserved) runs before the auth flow starts, as it always has.
   if (!isAuthenticated && !isConfigSet) {
     return <UnauthenticatedLanding />;
@@ -100,8 +100,20 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   );
 }
 
+/**
+ * True when this tab is coming back from the wallet: the enrolment result (or
+ * its refusal) is in the fragment. `ConnectButtonAccount` completes it on
+ * mount, so the sign-in popup must already be open for it to run and for its
+ * note (a cancelled or unverifiable enrolment) to be seen.
+ */
+function isEnrolmentReturn(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return params.has("credential") || params.has("error");
+}
+
 export function UnauthenticatedLanding() {
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(isEnrolmentReturn);
   return (
     <>
       <LandingPage
@@ -110,7 +122,56 @@ export function UnauthenticatedLanding() {
           setLoginOpen(true);
         }}
       />
-      <LoginPopup isOpen={loginOpen} onClose={() => setLoginOpen(false)} />
+      {loginOpen && <SignInPopup onClose={() => setLoginOpen(false)} />}
     </>
+  );
+}
+
+/**
+ * Both sign-ins, where the shared template's popup offers only the node one:
+ * "I run a node" (the node login) and "I have an account" (a relay, no node).
+ */
+function SignInPopup({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sign in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        background: "rgba(0, 0, 0, 0.55)",
+      }}
+    >
+      <div
+        style={{
+          background: "#ffffff",
+          color: "#131215",
+          borderRadius: 12,
+          padding: 24,
+          maxWidth: 560,
+          width: "100%",
+          display: "grid",
+          gap: 16,
+        }}
+      >
+        {/* Unset in every deployed build (the hosted wallet). A local rig
+            points it at a local wallet, where a new passkey is a new account. */}
+        <ConnectButtonAccount
+          defaults={import.meta.env.VITE_WALLET_URL ? { walletUrl: import.meta.env.VITE_WALLET_URL } : undefined}
+        />
+        <button type="button" className="cal-lp-btn cal-lp-btn--ghost" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

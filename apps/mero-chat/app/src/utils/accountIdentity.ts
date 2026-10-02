@@ -1,12 +1,8 @@
-import axios from "axios";
 import bs58 from "bs58";
-import { getNodeUrl } from "@calimero-network/mero-react";
 
-import { getAuthConfig } from "../api/meroJsClient";
+import { getMeroJs } from "../api/meroJsClient";
 import { log } from "./logger";
 import { registerAccountIdentity } from "./selfIdentity";
-
-const DEFAULT_ENDPOINT = "http://localhost:2428";
 
 /**
  * This node's ACCOUNT, cached after the first `/admin-api/identity` read.
@@ -59,20 +55,14 @@ export async function loadSelfAccountIdentity(
   // so the value is no longer used to build the request.
   _namespaceId?: string,
 ): Promise<string | null> {
-
-  const base = getNodeUrl() || DEFAULT_ENDPOINT;
-  const cfg = getAuthConfig();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
-
   try {
-    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24 — the
-    // per-namespace route is gone. Identity is node-wide and served here, which
-    // is also what mero-js's own `getNamespaceIdentity` resolves to. Response
-    // shape is unchanged (`data.accountId`, `data.deviceId`).
-    const res = await axios.get(`${base}/admin-api/identity`, { headers });
-    const accountHex: string = res.data?.data?.accountId ?? "";
-    const deviceHex: string = res.data?.data?.deviceId ?? "";
+    // The admin API's own answer to "who am I": on a node, the node's account
+    // (`GET /admin-api/identity`, node-wide); on an account, mero-react's
+    // account admin, which is the session's account. A raw fetch here would ask
+    // the relay node who IT is.
+    const identity = await getMeroJs().admin.getNodeIdentity();
+    const accountHex: string = identity?.accountId ?? "";
+    const deviceHex: string = identity?.deviceId ?? "";
     if (!accountHex) return null;
 
     const accountB58 = hexToBase58(accountHex);
@@ -166,7 +156,6 @@ export function sameAccount(
   const right = toAccountHex(b);
   return HEX_ACCOUNT.test(left) && left === right;
 }
-
 
 /**
  * A short, honest stand-in for an account with no name yet.

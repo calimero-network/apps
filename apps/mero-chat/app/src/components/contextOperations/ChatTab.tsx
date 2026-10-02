@@ -315,7 +315,7 @@ export default function ChatTab({
 
         {!hasNamespaces && !fetchingGroups && (
           <Note style={{ textAlign: "center", marginBottom: "0.5rem" }}>
-            No namespaces found on this node. Create one to get started.
+            No workspaces yet. Create one to get started.
           </Note>
         )}
 

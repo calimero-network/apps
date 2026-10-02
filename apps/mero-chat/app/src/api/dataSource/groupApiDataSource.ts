@@ -1,6 +1,5 @@
 import axios from "axios";
-import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
-import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import { getMeroJs } from "../meroJsClient";
 import { uploadBlob, type BlobUploadResult } from "../blobs";
 export type { BlobUploadResult };
 import {
@@ -56,23 +55,6 @@ import {
 import { log } from "../../utils/logger";
 import { resolveCurrentGroupMemberIdentity } from "../../utils/groupMemberIdentity";
 
-const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
-
-function getNodeEndpoint(): string {
-  return getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const authConfig = getAuthConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (authConfig?.jwtToken) {
-    headers["Authorization"] = `Bearer ${authConfig.jwtToken}`;
-  }
-  return headers;
-}
-
 type Result<T> = Awaited<ApiResponse<T>>;
 
 function ok<T>(data: T): Result<T> {
@@ -91,7 +73,10 @@ interface CacheEntry<T> {
 
 const pendingCache = new Map<string, CacheEntry<unknown>>();
 
-function cachedRequest<T>(key: string, fetch: () => Promise<Result<T>>): Promise<Result<T>> {
+function cachedRequest<T>(
+  key: string,
+  fetch: () => Promise<Result<T>>,
+): Promise<Result<T>> {
   const now = Date.now();
   const existing = pendingCache.get(key) as CacheEntry<T> | undefined;
   if (existing && existing.expiresAt > now) {
@@ -103,17 +88,16 @@ function cachedRequest<T>(key: string, fetch: () => Promise<Result<T>>): Promise
       pendingCache.delete(key);
     }
   });
-  pendingCache.set(key, { promise: promise as Promise<Result<unknown>>, expiresAt: now + CACHE_TTL_MS });
+  pendingCache.set(key, {
+    promise: promise as Promise<Result<unknown>>,
+    expiresAt: now + CACHE_TTL_MS,
+  });
   return promise;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fail<T>(code: number, message: string): Result<T> {
   return { data: null, error: { code, message } };
-}
-
-function httpFail<T>(status: number, statusText: string): Result<T> {
-  return fail(status, statusText);
 }
 
 /**
@@ -162,7 +146,10 @@ function normalizeGroupContextEntry(entry: unknown): GroupContextEntry | null {
       : undefined;
 
   const sharedContextTypeValue =
-    typedEntry.contextType ?? typedEntry.context_type ?? metadata?.contextType ?? metadata?.context_type;
+    typedEntry.contextType ??
+    typedEntry.context_type ??
+    metadata?.contextType ??
+    metadata?.context_type;
   const sharedContextType =
     sharedContextTypeValue === "Dm" || sharedContextTypeValue === "Channel"
       ? sharedContextTypeValue
@@ -183,7 +170,8 @@ function normalizeGroupContextEntry(entry: unknown): GroupContextEntry | null {
     metadata?.participants;
   const memberIdentities = Array.isArray(memberIdentitiesValue)
     ? memberIdentitiesValue.filter(
-        (value): value is string => typeof value === "string" && value.trim().length > 0,
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
       )
     : undefined;
 
@@ -199,7 +187,10 @@ function normalizeGroupContextEntry(entry: unknown): GroupContextEntry | null {
           ? typedEntry.alias
           : undefined,
     sharedContextType,
-    memberIdentities: memberIdentities && memberIdentities.length > 0 ? memberIdentities : undefined,
+    memberIdentities:
+      memberIdentities && memberIdentities.length > 0
+        ? memberIdentities
+        : undefined,
     metadata,
   };
 }
@@ -243,7 +234,10 @@ function normalizeGroupInvitationPayload(
       groupAlias?: unknown;
       groupName?: unknown;
     };
-    if (typedValue.invitation && isSignedGroupOpenInvitation(typedValue.invitation)) {
+    if (
+      typedValue.invitation &&
+      isSignedGroupOpenInvitation(typedValue.invitation)
+    ) {
       return {
         invitation: typedValue.invitation,
         // groupName (mero-js ≥2.1) takes precedence; groupAlias kept for older nodes
@@ -318,11 +312,10 @@ export async function uploadBlobDirect(
   }
 }
 
-export class GroupApiDataSource implements GroupApi {
-  private base(): string {
-    return `${getNodeEndpoint()}/admin-api`;
-  }
+/** Group roles held by nodes rather than people. */
+const TEE_NODE_ROLES = new Set(["RelayTee", "ReadOnlyTee"]);
 
+export class GroupApiDataSource implements GroupApi {
   async createGroup(
     request: CreateGroupRequest,
   ): ApiResponse<CreateGroupResponse> {
@@ -434,7 +427,10 @@ export class GroupApiDataSource implements GroupApi {
           : [];
 
     const groups: GroupSummary[] = raw
-      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .filter(
+        (item): item is Record<string, unknown> =>
+          !!item && typeof item === "object",
+      )
       .map((item) => ({
         groupId: String(item.groupId ?? item.namespaceId ?? item.id ?? ""),
         // Server returns `name` post-054a784f; fall back to `alias` for older nodes.
@@ -499,16 +495,19 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  async joinGroup(
-    request: JoinGroupRequest,
-  ): ApiResponse<JoinGroupResponse> {
+  async joinGroup(request: JoinGroupRequest): ApiResponse<JoinGroupResponse> {
     try {
       // Extract namespace ID from the invitation's group_id (may be string or byte array)
-      const inv = request.invitation.invitation as unknown as Record<string, unknown>;
+      const inv = request.invitation.invitation as unknown as Record<
+        string,
+        unknown
+      >;
       const rawGroupId = inv.group_id ?? inv.groupId;
       const namespaceId = Array.isArray(rawGroupId)
-        ? (rawGroupId as number[]).map(b => b.toString(16).padStart(2, '0')).join('')
-        : String(rawGroupId ?? '');
+        ? (rawGroupId as number[])
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+        : String(rawGroupId ?? "");
 
       if (!namespaceId) {
         return fail(400, "Could not extract namespace ID from invitation");
@@ -539,16 +538,37 @@ export class GroupApiDataSource implements GroupApi {
         // still tolerates both a bare array and a `{ members, selfIdentity }`
         // object, because core has served each at different versions.
         const raw: unknown = await getMeroJs().admin.listGroupMembers(groupId);
-        const rawMembers: Array<{ identity: string; role: string; name?: string; alias?: string }> = Array.isArray(raw)
-          ? (raw as Array<{ identity: string; role: string; name?: string; alias?: string }>)
+        const rawMembers: Array<{
+          identity: string;
+          role: string;
+          name?: string;
+          alias?: string;
+        }> = Array.isArray(raw)
+          ? (raw as Array<{
+              identity: string;
+              role: string;
+              name?: string;
+              alias?: string;
+            }>)
           : Array.isArray((raw as { members?: unknown })?.members)
-            ? ((raw as { members: Array<{ identity: string; role: string; name?: string; alias?: string }> }).members)
+            ? (
+                raw as {
+                  members: Array<{
+                    identity: string;
+                    role: string;
+                    name?: string;
+                    alias?: string;
+                  }>;
+                }
+              ).members
             : [];
         // Post-054a784f the server returns `name` (not `alias`). Map to the
         // frontend's `alias` field — keeps every display-chain callsite
         // (`useChannelMembers`, MembersTab, AddMember dropdown, DM picker)
         // working without touching them.
-        const members: GroupMember[] = rawMembers.map((m) => ({
+        // TEE roles are nodes the workspace runs on (a relay, a replica), not
+        // people: every member list, DM picker and avatar row reads this.
+        const members: GroupMember[] = rawMembers.filter((m) => !TEE_NODE_ROLES.has(m.role)).map((m) => ({
           identity: m.identity,
           role: m.role as GroupMember["role"],
           alias: m.name ?? m.alias,
@@ -579,7 +599,10 @@ export class GroupApiDataSource implements GroupApi {
       }
       return {
         data: null,
-        error: membersResponse.error ?? { code: 500, message: "Failed to list namespace members" },
+        error: membersResponse.error ?? {
+          code: 500,
+          message: "Failed to list namespace members",
+        },
       };
     }
 
@@ -609,7 +632,8 @@ export class GroupApiDataSource implements GroupApi {
     const resolvedIdentity =
       selfRow?.identity ||
       selfIdentity ||
-      resolveCurrentGroupMemberIdentity({ members, storedMemberIdentity }).memberIdentity;
+      resolveCurrentGroupMemberIdentity({ members, storedMemberIdentity })
+        .memberIdentity;
 
     if (!resolvedIdentity) {
       return fail(
@@ -647,21 +671,24 @@ export class GroupApiDataSource implements GroupApi {
 
   async listGroupContexts(groupId: string): ApiResponse<GroupContextEntry[]> {
     return cachedRequest(`listGroupContexts:${groupId}`, async () => {
-    try {
-      const listed = await getMeroJs().admin.listGroupContexts(groupId);
-      const rawContexts: unknown[] = Array.isArray(listed)
-        ? (listed as unknown[])
-        : Array.isArray((listed as { contexts?: unknown[] })?.contexts)
-          ? ((listed as { contexts: unknown[] }).contexts)
-          : [];
-      const contexts = rawContexts
-        .map((entry: unknown) => normalizeGroupContextEntry(entry))
-        .filter((entry: GroupContextEntry | null): entry is GroupContextEntry => entry !== null)
+      try {
+        const listed = await getMeroJs().admin.listGroupContexts(groupId);
+        const rawContexts: unknown[] = Array.isArray(listed)
+          ? (listed as unknown[])
+          : Array.isArray((listed as { contexts?: unknown[] })?.contexts)
+            ? (listed as { contexts: unknown[] }).contexts
+            : [];
+        const contexts = rawContexts
+          .map((entry: unknown) => normalizeGroupContextEntry(entry))
+          .filter(
+            (entry: GroupContextEntry | null): entry is GroupContextEntry =>
+              entry !== null,
+          );
 
-      return ok(contexts);
-    } catch (error) {
-      return catchError("listGroupContexts", error);
-    }
+        return ok(contexts);
+      } catch (error) {
+        return catchError("listGroupContexts", error);
+      }
     });
   }
 
@@ -703,7 +730,9 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  async leaveNamespace(namespaceId: string): ApiResponse<LeaveNamespaceResponse> {
+  async leaveNamespace(
+    namespaceId: string,
+  ): ApiResponse<LeaveNamespaceResponse> {
     try {
       await getMeroJs().admin.leaveNamespace(namespaceId);
       return ok({ namespaceId, memberPublicKey: "" });
@@ -816,7 +845,8 @@ export class GroupApiDataSource implements GroupApi {
       const listed = await getMeroJs().admin.listGroupMembers(cgid);
       const members = Array.isArray(listed)
         ? (listed as Array<{ identity: string }>)
-        : ((listed as { members?: Array<{ identity: string }> })?.members ?? []);
+        : ((listed as { members?: Array<{ identity: string }> })?.members ??
+          []);
       return ok(members.map((m) => m.identity));
     } catch (error) {
       return catchError("getContextAllowlist", error);
@@ -925,7 +955,11 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
-  async setContextAlias(groupId: string, contextId: string, name: string): ApiResponse<void> {
+  async setContextAlias(
+    groupId: string,
+    contextId: string,
+    name: string,
+  ): ApiResponse<void> {
     try {
       await getMeroJs().admin.setContextMetadata(groupId, contextId, { name });
       return ok(undefined as void);
@@ -963,16 +997,24 @@ export class GroupApiDataSource implements GroupApi {
       // mero-js returns the array directly; core has also served it wrapped
       // as `{ subgroups: [...] }`, so accept either.
       const listed = await getMeroJs().admin.listSubgroups(namespaceId);
-      const rawSubgroups = (Array.isArray(listed)
-        ? listed
-        : ((listed as unknown as { subgroups?: unknown[] })?.subgroups ??
-          [])) as Array<{ group_id?: string; groupId?: string; name?: string; alias?: string }>;
-      return ok(rawSubgroups.map((s) => ({
-            groupId: (s.group_id ?? s.groupId) as string,
-            // Server returns `name` post-054a784f (formerly `alias`).
-            // Keep frontend field name as `alias` so display code stays put.
-        alias: s.name ?? s.alias,
-      })));
+      const rawSubgroups = (
+        Array.isArray(listed)
+          ? listed
+          : ((listed as unknown as { subgroups?: unknown[] })?.subgroups ?? [])
+      ) as Array<{
+        group_id?: string;
+        groupId?: string;
+        name?: string;
+        alias?: string;
+      }>;
+      return ok(
+        rawSubgroups.map((s) => ({
+          groupId: (s.group_id ?? s.groupId) as string,
+          // Server returns `name` post-054a784f (formerly `alias`).
+          // Keep frontend field name as `alias` so display code stays put.
+          alias: s.name ?? s.alias,
+        })),
+      );
     } catch (error) {
       return catchError("listSubgroups", error);
     }

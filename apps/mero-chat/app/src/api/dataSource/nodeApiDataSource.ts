@@ -1,6 +1,4 @@
-import axios from "axios";
-import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
-import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import { getMeroJs } from "../meroJsClient";
 import type { CreateContextRequest } from "@calimero-network/mero-react";
 import type { ApiResponse } from "../types";
 import { getApplicationId } from "../../constants/config";
@@ -9,13 +7,10 @@ import type {
   CreateContextResponse,
   CreateIdentityResponse,
   DeleteContextProps,
-  JoinContextProps,
   NodeApi,
   VerifyContextProps,
   VerifyContextResponse,
 } from "../nodeApi";
-
-const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
 
 /**
  * mero-js throws on a non-2xx instead of returning a status, so every migrated
@@ -31,20 +26,6 @@ function sdkError(context: string, error: unknown) {
       : `An unexpected error occurred during ${context}`;
   console.error(`${context} failed:`, error);
   return { data: null, error: { code, message } } as const;
-}
-
-// Helper function to get auth headers
-function getAuthHeaders() {
-  const authConfig = getAuthConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (authConfig?.jwtToken) {
-    headers["Authorization"] = `Bearer ${authConfig.jwtToken}`;
-  }
-
-  return headers;
 }
 
 export class ContextApiDataSource implements NodeApi {
@@ -81,61 +62,6 @@ export class ContextApiDataSource implements NodeApi {
     } catch (error) {
       console.error("createContext failed:", error);
       let errorMessage = "An unexpected error occurred during createContext";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      return {
-        data: null,
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
-  }
-
-  async joinContext(props: JoinContextProps): ApiResponse<string> {
-    try {
-      // NOT MIGRATED — the endpoint no longer exists. core 40639c13
-      // ("remove per-context join/invite/visibility/allowlist, groups-only
-      // model") deleted POST /contexts/join along with context-level
-      // invitations. mero-js's `joinContext(contextId)` is a different
-      // operation: it posts to /contexts/{id}/join to subscribe to a context
-      // you already have group access to.
-      //
-      // The replacement flow is joinGroup (join the namespace via a group
-      // invitation) followed by joinGroupContext (subscribe to the context),
-      // both already implemented in groupApiDataSource. This method has no
-      // callers left in the app; it is kept only to satisfy the NodeApi
-      // interface and should be removed with it.
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.post(
-        `${nodeEndpoint}/admin-api/contexts/join`,
-        {
-          invitationPayload: props.invitationPayload,
-        },
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      if (response.status === 200) {
-        return {
-          data: response.data.data,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: {
-            code: response.status,
-            message: response.statusText,
-          },
-        };
-      }
-    } catch (error) {
-      console.error("joinContext failed:", error);
-      let errorMessage = "An unexpected error occurred during joinContext";
       if (error instanceof Error) {
         errorMessage = error.message;
       }

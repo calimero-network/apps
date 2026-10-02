@@ -36,6 +36,20 @@ describe("clearStorageForConnect", () => {
     expect(CONNECT_PRESERVE_EXACT.has(INVITATION_STORAGE_KEY)).toBe(true);
   });
 
+  it("keeps an account's device key, nonces and relay map, and drops its session", () => {
+    localStorage.setItem("calimero.device", "device-keys");
+    localStorage.setItem("calimero.governance-nonce.r.ns", "7");
+    localStorage.setItem("calimero.delegated.relays.acct", "{}");
+    sessionStorage.setItem("calimero.delegated.credential", "cred");
+
+    clearStorageForConnect();
+
+    expect(localStorage.getItem("calimero.device")).toBe("device-keys");
+    expect(localStorage.getItem("calimero.governance-nonce.r.ns")).toBe("7");
+    expect(localStorage.getItem("calimero.delegated.relays.acct")).toBe("{}");
+    expect(sessionStorage.getItem("calimero.delegated.credential")).toBeNull();
+  });
+
   it("uses the storage key the platform SDK's PendingIntentStore writes to", () => {
     // Guards against drift from @calimero-network/mero-platform's STORAGE_KEY.
     expect(PLATFORM_PENDING_INTENTS_KEY).toBe("calimero.platform.pendingIntents");

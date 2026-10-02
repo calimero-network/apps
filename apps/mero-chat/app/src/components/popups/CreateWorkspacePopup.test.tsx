@@ -13,8 +13,6 @@ const {
   mockSetGroupId,
   mockSetGroupMemberIdentity,
   mockSerializeGroupInvitationPayload,
-  mockGetRegistryVersions,
-  mockInstallApplication,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -26,8 +24,6 @@ const {
   mockSetGroupId: vi.fn(),
   mockSetGroupMemberIdentity: vi.fn(),
   mockSerializeGroupInvitationPayload: vi.fn(),
-  mockGetRegistryVersions: vi.fn(),
-  mockInstallApplication: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -64,12 +60,6 @@ vi.mock("@calimero-network/mero-react", () => ({
 
 vi.mock("../../api/meroJsClient", () => ({
   getAuthConfig: () => ({ jwtToken: "token" }),
-  getMeroJs: () => ({
-    admin: {
-      getRegistryVersions: mockGetRegistryVersions,
-      installApplication: mockInstallApplication,
-    },
-  }),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -131,8 +121,6 @@ describe("CreateWorkspacePopup", () => {
     mockSetGroupId.mockReset();
     mockSetGroupMemberIdentity.mockReset();
     mockSerializeGroupInvitationPayload.mockReset();
-    mockGetRegistryVersions.mockReset();
-    mockInstallApplication.mockReset();
 
     mockAxiosGet.mockResolvedValue({
       data: {
@@ -212,12 +200,11 @@ describe("CreateWorkspacePopup", () => {
     });
   });
 
-  it("offers to install instead of falling back to another installed app", async () => {
-    // Node has a different app installed. The old code returned appIds[0]
-    // here and created the workspace against mero-meet et al.
-    mockAxiosGet.mockResolvedValue({
-      data: { data: { apps: [{ id: "some-other-app" }] } },
-    });
+  it("creates with the configured app and never asks the node what it has installed", async () => {
+    // Installing a missing app is mero-react's job (its admin's createNamespace
+    // does it on a node; a relay fetches it for an account), so the popup has
+    // no install step and makes no request of its own.
+    mockAxiosGet.mockResolvedValue({ data: { data: { apps: [{ id: "some-other-app" }] } } });
 
     render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
@@ -226,62 +213,9 @@ describe("CreateWorkspacePopup", () => {
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
+      expect(mockCreateGroup).toHaveBeenCalledWith({ applicationId: "app-1", name: "Team Space" });
     });
-    expect(mockCreateGroup).not.toHaveBeenCalled();
-  });
-
-  it("installs the configured app and then creates the workspace", async () => {
-    mockAxiosGet
-      .mockResolvedValueOnce({ data: { data: { apps: [] } } })
-      .mockResolvedValue({ data: { data: { apps: [{ id: "app-1" }] } } });
-    mockGetRegistryVersions.mockResolvedValue(["3.1.2", "3.1.1"]);
-    mockInstallApplication.mockResolvedValue({ applicationId: "app-1" });
-
-    const onSuccess = vi.fn();
-    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
-
-    await waitFor(() => {
-      // By registry coordinates — the newest published version. The node
-      // refuses the old `{ url, metadata }` body (deny_unknown_fields).
-      expect(mockInstallApplication).toHaveBeenCalledWith({
-        package: "com.calimero.chat",
-        version: "3.1.2",
-      });
-    });
-    await waitFor(() => {
-      expect(onSuccess).toHaveBeenCalledWith("group-1");
-    });
-  });
-
-  it("reports a mismatch when the installed app id is not the configured one", async () => {
-    mockAxiosGet.mockResolvedValue({ data: { data: { apps: [] } } });
-    mockGetRegistryVersions.mockResolvedValue(["3.1.2"]);
-    mockInstallApplication.mockResolvedValue({ applicationId: "different-app" });
-
-    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
-      target: { value: "Team Space" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/expects app-1/i)).toBeInTheDocument();
-    });
-    expect(mockCreateGroup).not.toHaveBeenCalled();
+    expect(mockAxiosGet).not.toHaveBeenCalled();
+    expect(mockAxiosPost).not.toHaveBeenCalled();
   });
 });

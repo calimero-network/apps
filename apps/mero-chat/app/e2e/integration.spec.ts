@@ -151,7 +151,7 @@ test.describe("Authentication with live node", () => {
       page.getByText(/Select workspace|Welcome to MeroChat/),
     ).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole("button", { name: /disconnect node/i }).click();
+    await page.getByRole("button", { name: /sign out/i }).click();
     await page.waitForTimeout(500);
 
     const tokens = await page.evaluate(() =>

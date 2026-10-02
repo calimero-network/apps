@@ -8,11 +8,6 @@ import {
   setGroupMemberIdentity,
 } from "../../constants/config";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
-import {
-  AppNotInstalledError,
-  installConfiguredApp,
-  resolveInstalledAppId,
-} from "../../utils/installedApps";
 
 const Overlay = styled.div`
   position: fixed;
@@ -108,7 +103,7 @@ const ButtonGroup = styled.div`
   margin-top: 1rem;
 `;
 
-type Step = "form" | "creating" | "not-installed" | "installing" | "error";
+type Step = "form" | "creating" | "error";
 
 interface CreateWorkspacePopupProps {
   onSuccess: (groupId: string) => void;
@@ -126,12 +121,11 @@ export default function CreateWorkspacePopup({
   const canCreateWorkspace = trimmedWorkspaceName.length > 0;
   const stepsCompleted = step === "form" ? 0 : step === "creating" ? 1 : 0;
 
-  // Throws AppNotInstalledError when the configured app is absent, so both
-  // entry points below can branch to the install step instead of creating a
-  // workspace against some other app that happens to be on the node.
+  // The configured app, always: mero-react's admin installs it on a node that
+  // lacks it, and a relay fetches it for an account.
   const runCreate = useCallback(async () => {
     const groupApi = new GroupApiDataSource();
-    const applicationId = await resolveInstalledAppId(getApplicationId());
+    const applicationId = getApplicationId();
 
     const groupResult = await groupApi.createGroup({
       applicationId,
@@ -159,41 +153,9 @@ export default function CreateWorkspacePopup({
     try {
       await runCreate();
     } catch (error) {
-      if (error instanceof AppNotInstalledError) {
-        setStep("not-installed");
-        return;
-      }
       console.error("Create workspace failed:", error);
       setErrorMessage(
         error instanceof Error ? error.message : "An unexpected error occurred",
-      );
-      setStep("error");
-    }
-  }, [runCreate]);
-
-  const installAndCreate = useCallback(async () => {
-    setStep("installing");
-    setErrorMessage("");
-    try {
-      const installedId = await installConfiguredApp();
-      const expectedId = getApplicationId();
-      // The node derives the id from the wasm bytes AND their metadata, so a
-      // successful install can still yield a different app. Say so plainly
-      // rather than looping back to "not installed".
-      if (installedId !== expectedId) {
-        setErrorMessage(
-          `Installed ${installedId}, but this build expects ${expectedId}. ` +
-            `The published WASM or its metadata differs from what this build was made against.`,
-        );
-        setStep("error");
-        return;
-      }
-      setStep("creating");
-      await runCreate();
-    } catch (error) {
-      console.error("Install application failed:", error);
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to install the application",
       );
       setStep("error");
     }
@@ -247,33 +209,6 @@ export default function CreateWorkspacePopup({
             <Title>Creating namespace…</Title>
             <Message $type="info">
               Setting up your namespace. You'll be taken in automatically.
-            </Message>
-          </>
-        )}
-
-        {step === "not-installed" && (
-          <>
-            <Title>Chat isn't installed yet</Title>
-            <Message $type="info">
-              This node doesn't have the chat application installed. Install it
-              to create your workspace.
-            </Message>
-            <ButtonGroup>
-              <Button onClick={installAndCreate} variant="primary" style={{ flex: 1 }}>
-                Install
-              </Button>
-              <Button onClick={onCancel} variant="secondary" style={{ flex: 1 }}>
-                Cancel
-              </Button>
-            </ButtonGroup>
-          </>
-        )}
-
-        {step === "installing" && (
-          <>
-            <Title>Installing chat…</Title>
-            <Message $type="info">
-              Downloading the application onto your node. This can take a moment.
             </Message>
           </>
         )}

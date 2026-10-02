@@ -27,6 +27,8 @@ test.describe("Landing page (unauthenticated)", () => {
 
   test("Connect to node opens the node picker", async ({ page }) => {
     await page.getByRole("button", { name: /connect to node/i }).first().click();
+    // The sign-in popup offers both ways in; the node one opens LoginModal.
+    await page.getByRole("dialog", { name: "Sign in" }).getByRole("button", { name: /i run a node/i }).click();
     // mero-react's LoginModal carries no dialog role, and its body changes
     // with what it finds (a list of local nodes, or straight to a URL field
     // when there are none, as on a CI runner). Its title is always there.
