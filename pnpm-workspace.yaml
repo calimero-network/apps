@@ -47,7 +47,10 @@ catalog:
   # 23.4.2 (mero-js#239) is the first release that signs namespace ops at schema
   # 21, which core 0.11.0-rc.75 requires: on 23.4.0/23.4.1 every account join,
   # create and governance op against an rc.75 relay is refused.
-  "@calimero-network/mero-js": ^23.4.2
+  # 23.4.3 (mero-js#240): a presence listener added after the context is already
+  # subscribed (useSubscription mounted before useEphemeral) still gets the
+  # context's current presence.
+  "@calimero-network/mero-js": ^23.4.3
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -60,7 +63,9 @@ catalog:
   # 9.6.2 (#83): an account joins as a node joins (an inherited member joins,
   # a direct member's join is a no-op), and leaveContext is refused by name for
   # an account: a node's leave is local, and leaving the group is leaveGroup.
-  "@calimero-network/mero-react": ^9.6.2
+  # 9.6.3 (#84): an account's alias reads are refused by name like its alias
+  # writes, and it reads its groups' upgrade and cascade status (core rc.76).
+  "@calimero-network/mero-react": ^9.6.3
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
