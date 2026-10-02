@@ -42,6 +42,8 @@ export interface Expectation {
 export const OK: Expectation = { node: 'ok', account: 'ok' };
 /** A call with no account form: mero-react refuses it by name. */
 export const NODE_ONLY: Expectation = { node: 'ok', account: 'NotForAccountError' };
+/** Core refuses this to node and account alike: the member only inherits. */
+export const NOT_DIRECT_MEMBER: Expectation = { node: 'NotDirectMember', account: 'NotDirectMember' };
 
 function classify(e: unknown): { actual: Outcome; error: string } {
   const err = e as { name?: string; message?: string; status?: number; body?: unknown; type?: string; data?: unknown; step?: string };
@@ -49,6 +51,11 @@ function classify(e: unknown): { actual: Outcome; error: string } {
   if (name === 'NotForAccountError' || name === 'NoRelayError') return { actual: name, error: `${name}: ${err.message}` };
   if (name === 'Mismatch') return { actual: 'mismatch', error: String(err.message) };
   if (name === 'Blocked') return { actual: 'blocked', error: String(err.message) };
+  // core's LeaveGroupNotDirectMember: "member is not a direct member of group …;
+  // leave the parent group where the membership anchor lives"
+  if (/is not a direct member of group/.test(String(err?.message))) {
+    return { actual: 'NotDirectMember', error: `${name}: ${err.message}` };
+  }
   const parts = [`${name}: ${err?.message ?? String(e)}`];
   if (err?.status !== undefined) parts.push(`status ${err.status}`);
   if (err?.step !== undefined) parts.push(`step ${err.step}`);

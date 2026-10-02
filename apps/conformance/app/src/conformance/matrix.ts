@@ -16,11 +16,12 @@
  *   p:invite    createNamespaceInvitation
  *   s:join      B joins, joins contexts and an open subgroup, reads the primary's writes, writes
  *   p:members   the primary sees B and B's write, manages B in a restricted group
- *   s:leave     B leaves a context, a subgroup, the namespace
+ *   s:leave     B leaves a context (refused on an account), a group it was added to
+ *               (and is refused a subgroup it only inherits), the namespace
  *   p:teardown  detach, delete context, delete groups, delete namespace
  */
 import type { AdminApiClient } from '@calimero-network/mero-react';
-import { assert, Blocked, check, eventually, need, NODE_ONLY, OK, type RowContext } from './check';
+import { assert, Blocked, check, eventually, need, NODE_ONLY, NOT_DIRECT_MEMBER, OK, type RowContext } from './check';
 import type { Mode } from './types';
 
 /** What a phase reaches the session through; always the CURRENT admin and client. */
@@ -38,7 +39,7 @@ interface Primary {
   myAccount?: string;
   namespaceId?: string;
   namespaceIsRig?: boolean;
-  groups: { restricted?: string; open?: string; inherit?: string; reparent?: string };
+  groups: { restricted?: string; open?: string; inherit?: string; reparent?: string; leave?: string };
   contexts: { main?: string; inOpen?: string; detach?: string };
   values: { public?: string; user?: string; authoredKey?: string };
 }
@@ -126,6 +127,7 @@ async function start(s: Session, input: StartInput): Promise<StartOutput> {
   p.groups.open = await group('open', 'open');
   p.groups.inherit = await group('inherit', 'open');
   p.groups.reparent = await group('reparent', 'restricted');
+  p.groups.leave = await group('leave', 'restricted');
 
   const made = Object.values(p.groups).filter(Boolean) as string[];
   await check(s, G, 'listSubgroups', OK, () =>
@@ -350,12 +352,20 @@ async function members(s: Session, input: MembersInput): Promise<void> {
   await check(s, G, 'getMemberCapabilities (another member)', OK, () =>
     eventually(() => s.admin().getMemberCapabilities(need(g1, 'a restricted group'), need(b, 'the second account')), (r) => r.capabilities === 7, 'the capabilities just set'), (v) => v);
   await check(s, G, 'removeGroupMembers', OK, () => s.admin().removeGroupMembers(need(g1, 'a restricted group'), { members: [need(b, 'the second account')] }));
+  await check(s, G, 'addGroupMembers (a group the second session leaves)', OK, () =>
+    s.admin().addGroupMembers(need(p.groups.leave, 'a group to leave'), { members: [{ identity: need(b, 'the second account'), role: 'Member' }] } as never));
 }
 
 async function secondLeave(s: Session, input: JoinInput): Promise<void> {
   const st = input.start;
-  await check(s, 'Contexts', 'leaveContext (the open subgroup\'s context)', OK, () => s.admin().leaveContext(need(st.contexts.inOpen, 'a context in an open subgroup')));
-  await check(s, 'Groups', 'leaveGroup', OK, () => s.admin().leaveGroup(need(st.groups.inherit, 'the subgroup joined by inheritance')));
+  // A node's leaveContext is a local opt-out that publishes nothing; an account
+  // has nothing local, so mero-react refuses it by name.
+  await check(s, 'Contexts', 'leaveContext (the open subgroup\'s context)', NODE_ONLY, () => s.admin().leaveContext(need(st.contexts.inOpen, 'a context in an open subgroup')));
+  // Joining an Open subgroup by inheritance records the join and adds no direct
+  // row, so leaving that subgroup is refused, on a node exactly as here: the
+  // membership is anchored in the parent.
+  await check(s, 'Groups', 'leaveGroup (a subgroup it only inherits)', NOT_DIRECT_MEMBER, () => s.admin().leaveGroup(need(st.groups.inherit, 'the subgroup joined by inheritance')));
+  await check(s, 'Groups', 'leaveGroup (a group it was added to)', OK, () => s.admin().leaveGroup(need(st.groups.leave, 'the group the second session was added to')));
   await check(s, 'Namespaces', 'leaveNamespace', OK, () => s.admin().leaveNamespace(need(st.namespaceId, 'a namespace')));
 }
 

@@ -59,7 +59,7 @@ What it needs, and the defaults it assumes for this workspace:
 
 Then the owner founds a namespace, the relay fleet-joins it as a `RelayTee`
 (before any invitation exists: an invited relay is a plain member), gets
-`CAN_AUTHOR_ON_BEHALF` (512), the namespace's default mask becomes 231, and two
+`CAN_AUTHOR_ON_BEHALF` (512) added to its mask (not written over it: that would drop `CAN_JOIN_OPEN_SUBGROUPS`), the namespace's default mask becomes 231, and two
 invitations naming the relay as admitter are minted. Two accounts (A, B) are
 minted offline with `app/scripts/mint-account.mjs`. The node session's token is
 minted through `/admin/client-key` with exactly the permissions mero-react's

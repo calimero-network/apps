@@ -14,7 +14,7 @@ matrix is what is under test.
   identity <state> <node-url>       prints the node's identity JSON
   create-namespace <state> <app>    the owner founds a namespace -> prints its id
   relay-join <state> <ns>           TEE admission policy, relay fleet-join as RelayTee,
-                                    relay caps 512, default caps 231
+                                    relay caps |= 512, default caps 231
   invite <state> <ns> <out.json>    an invitation naming the relay as admitter
 """
 import json
@@ -29,6 +29,7 @@ ZERO48 = "0" * 96
 # route the app needs and this scope lacks shows up as the 403 an app would get.
 MULTI_CONTEXT = [
     "context:create",
+    "context:delete",
     "context:list",
     "context:execute",
     "context:subscribe",
@@ -163,7 +164,14 @@ def cmd_relay_join(state, ns):
             break
     else:
         fail(f"relay never became a RelayTee in {ns}: last fleet-join answer {joined}")
-    call("PUT", f"{owner}/admin-api/groups/{ns}/members/{c['relayAccount']}/capabilities", {"capabilities": 512}, token=tok)
+    # CAN_AUTHOR_ON_BEHALF (512) is ADDED to the relay's mask, never written over
+    # it: the PUT replaces the whole mask, and a bare 512 drops
+    # CAN_JOIN_OPEN_SUBGROUPS (4), so core rightly stops counting the relay a
+    # member of the namespace's Open subgroups and refuses it their reads.
+    caps_url = f"{owner}/admin-api/groups/{ns}/members/{c['relayAccount']}/capabilities"
+    current = call("GET", caps_url, token=tok) or {}
+    current = (current.get("data") or current).get("capabilities", 0)
+    call("PUT", caps_url, {"capabilities": current | 512}, token=tok)
     call("PUT", f"{owner}/admin-api/groups/{ns}/settings/default-capabilities", {"defaultCapabilities": 231}, token=tok)
 
 
