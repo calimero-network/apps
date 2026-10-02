@@ -21,6 +21,7 @@ import {
 import { useActiveWorkspace } from '../../lib/activeWorkspace';
 import { blobClient } from '../../lib/node';
 import { toBlobIdHex } from '../../lib/blobIds';
+import { fetchWhileSyncing } from '../../lib/fetchWhileSyncing';
 import {
   integrityWarning,
   verifyDocumentBytes,
@@ -160,7 +161,13 @@ export default function AgreementPage() {
             'This document has no readable blob id recorded against it.',
           );
         }
-        const blob = await blobClient.downloadBlob(blobId, contextId);
+        // Listed is not yet fetched: the agreement's state syncs before the
+        // node has the bytes, so keep asking while it catches up ("Loading…"
+        // stays up) rather than failing on the first refusal.
+        const blob = await fetchWhileSyncing(
+          () => blobClient.downloadBlob(blobId, contextId),
+          { cancelled: () => cancelled },
+        );
         if (cancelled) return;
 
         // The hash has always been recorded and shown; nothing ever checked
