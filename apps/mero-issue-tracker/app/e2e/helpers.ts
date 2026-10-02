@@ -98,12 +98,17 @@ function specKey(): string {
   }
 }
 
+const ADMIN_API_TIMEOUT_MS = 30_000;
+
 async function adminApi(
   node: NodeState,
   method: string,
   apiPath: string,
   body?: unknown,
 ): Promise<any> {
+  // Bounded: a node that never answers would otherwise hold the call for
+  // undici's 300s header timeout, and the test dies at its own 90s timeout
+  // with nothing naming the call that hung.
   const res = await fetch(`${node.adminUrl}${apiPath}`, {
     method,
     headers: {
@@ -111,6 +116,9 @@ async function adminApi(
       Authorization: `Bearer ${node.accessToken}`,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(ADMIN_API_TIMEOUT_MS),
+  }).catch((e: Error) => {
+    throw new Error(`admin-api ${method} ${apiPath} on ${node.name}: ${e.name === 'TimeoutError' ? `no answer in ${ADMIN_API_TIMEOUT_MS / 1000}s` : e.message}`);
   });
   const text = await res.text();
   if (!res.ok) {
