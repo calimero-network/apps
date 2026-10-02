@@ -57,7 +57,10 @@ catalog:
   # ^23.4.0 itself, so the root override that pinned its mero-js is gone.
   # 9.6.1 (#82): an account can leave or manage a subgroup it did not create,
   # and a MultiContext token holds `context:delete`.
-  "@calimero-network/mero-react": ^9.6.1
+  # 9.6.2 (#83): an account joins as a node joins (an inherited member joins,
+  # a direct member's join is a no-op), and leaveContext is refused by name for
+  # an account: a node's leave is local, and leaving the group is leaveGroup.
+  "@calimero-network/mero-react": ^9.6.2
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
