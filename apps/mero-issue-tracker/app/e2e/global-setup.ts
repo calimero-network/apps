@@ -83,11 +83,17 @@ const STATE_FILE = path.resolve(DATA_DIR, 'pw-state.json');
 const ADMIN_USER = 'admin';
 const ADMIN_PASSWORD = 'adminadmin';
 
-const ALL_NODES = [
-  { name: 'pw-node-1', serverPort: 2428, swarmPort: 2528 },
-  { name: 'pw-node-2', serverPort: 2429, swarmPort: 2529 },
-  { name: 'pw-node-3', serverPort: 2430, swarmPort: 2530 },
-];
+// PW_SERVER_PORT / PW_SWARM_PORT move the three nodes off merod's defaults
+// (node N gets base + N), the same knobs the single-node apps read. 2428 is
+// where a desktop node already listens on most dev machines, and the reuse
+// check below would happily adopt it.
+const SERVER_PORT_BASE = Number(process.env['PW_SERVER_PORT']) || 2428;
+const SWARM_PORT_BASE = Number(process.env['PW_SWARM_PORT']) || 2528;
+const ALL_NODES = [0, 1, 2].map((i) => ({
+  name: `pw-node-${i + 1}`,
+  serverPort: SERVER_PORT_BASE + i,
+  swarmPort: SWARM_PORT_BASE + i,
+}));
 
 const NODE_COUNT = Math.max(1, Math.min(3, Number(process.env['NODE_COUNT']) || 3));
 const NODES = ALL_NODES.slice(0, NODE_COUNT);
