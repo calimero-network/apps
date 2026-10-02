@@ -40,6 +40,7 @@ What it needs, and the defaults it assumes for this workspace:
 | `MERO_AUTH_BIN` | `../core-routes/target/debug/mero-auth` | mero-auth from the same core |
 | `CORE` | `../core-routes` | for `apps/scaffolding-e2e/relay-ingress` |
 | `CONFORMANCE_MPK` | `rig/.state/scaffolding-e2e.mpk` | `cd <core>/apps/scaffolding-e2e && cargo mero bundle --dev --no-icon -o <path>` |
+| `CONFORMANCE_MPK_V2` | `rig/.state/scaffolding-e2e-0.0.1.mpk` | the same, with `--app-version 0.0.1`: what the node run upgrades to |
 | `TRAEFIK_BIN` | `traefik` on PATH | |
 | `MERO_JS_PATH` | unset | a built mero-js checkout to run against instead of the installed one (a paired run, or an unreleased fix); the page and the account minting both use it |
 
@@ -72,9 +73,11 @@ configurable with `CONF_*` (see the top of `up.sh`).
 
 ## The matrix (`app/src/conformance/matrix.ts`)
 
-Two runs. In each, the **primary** session is the run's subject (the owner node;
-then account A through the relay) and does the same calls; the **second**
-session is always account B. Phases interleave across the two:
+Two runs. In each, the **primary** session is the run's subject (account A
+through the relay; then the owner node) and does the same calls; the **second**
+session is always account B. The account run goes first because the node run
+ends by installing the 0.0.1 bundle, which takes the same application id as
+0.0.0 (it hashes package and signer). Phases interleave across the two:
 
 1. `p:start` — identity; for an account, the join that gives it its first
    relay; `createNamespace`, the namespace reads; four subgroups (open,
@@ -91,9 +94,30 @@ session is always account B. Phases interleave across the two:
    `AuthoredMap` entry), writes its own entry, and is refused the shared value.
 5. `p:members` — the primary sees B, sees B as the author of B's entry, and
    adds, promotes, re-capabilities and removes B in a restricted group.
-6. `s:leave` — B leaves a context, a subgroup and the namespace.
-7. `p:teardown` — detach, delete a context, delete subgroups, delete the
+6. *(node run only)* the rig installs the 0.0.1 bundle on the node.
+7. `p:upgrade` — `upgradeGroup` on the namespace (cascaded) and the upgrade,
+   migration and cascade status reads, then the main context read after it;
+   `s:upgraded` *(node run only)*: B reads through the upgraded namespace.
+8. `s:leave` — B leaves a context, a subgroup and the namespace.
+9. `p:teardown` — detach, delete a context, delete subgroups, delete the
    namespace (the last two `NODE_ONLY` for an account).
+
+Woven through those:
+
+- **Blobs** — `p:start` uploads one announced to the main context, reads its
+  info and bytes back; B downloads it through that context in `s:join`;
+  `p:members` deletes it (`NODE_ONLY` for an account).
+- **Events** — each session subscribes to the main context's stream the way
+  `useSubscription` does (`p:invite`, `s:join`), the other session `set`s, and
+  the subscription must hear it.
+- **Presence** — the same shape over `useEphemeral`'s client: each publishes,
+  the other must see it.
+- **Aliases, devices, node-only calls** (`p:start`) and **TEE policy**
+  (`p:members`, set back to the policy it read, so the relay stays admitted):
+  `ok` on a node, `NotForAccountError` on an account for each call mero-react
+  lists as `NODE_ONLY`. The alias lookups and listings are not on that list, so
+  an account must answer them as a node does. `revokeAccountDevice` runs on an
+  account only: the owner's one device is the node's own.
 
 Credentials are seeded the way the real flows leave them (a node login's token
 bundle, an account's delegated connection with no relay), so the Cloud tab's

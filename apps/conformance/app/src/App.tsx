@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppMode, ConnectButton, MeroProvider, useMero, type AdminApiClient } from '@calimero-network/mero-react';
 import { PHASES, type Session } from './conformance/matrix';
 import { sleep } from './conformance/check';
+import type { Streams } from './conformance/listen';
 import type { ConformanceApi, Mode, Row } from './conformance/types';
 import { readConfig } from './config';
 
@@ -55,6 +56,21 @@ function Shell() {
         const client = live.current.mero;
         if (!client) throw new Error('not connected: no client to execute through');
         return client.rpc.execute({ contextId, method, argsJson: args ?? {} });
+      },
+      streams: () => {
+        const client = live.current.mero;
+        if (!client) throw new Error('not connected: no client to listen through');
+        // What `useSubscription` and `useEphemeral` read. Cast: mero-js's `MeroJs`
+        // type predates `ephemeral`, which both clients have at runtime.
+        const c = client as unknown as Streams & { ephemeral: Streams['presence'] };
+        return {
+          get events() {
+            return c.events;
+          },
+          get presence() {
+            return c.ephemeral;
+          },
+        };
       },
       settle: async (previous: AdminApiClient | null) => {
         const deadline = Date.now() + 60_000;

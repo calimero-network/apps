@@ -39,6 +39,8 @@ interface Rig {
   cloudUrl: string;
   applicationId: string;
   namespaceId: string;
+  /** The 0.0.1 bundle the node upgrades to (same package, same application id). */
+  mpkV2: string;
   relayAccount: string;
   ownerToken: { access_token: string; refresh_token: string };
   accounts: { a: Credential; b: Credential };
@@ -108,15 +110,20 @@ async function rowsOf(page: Page): Promise<Row[]> {
   return page.evaluate(() => [...(window.__conformance?.rows ?? [])]);
 }
 
-/** A rig step between phases, recorded as a row so the report says it happened. */
-function rigStep(run: Mode, name: string, fn: () => void) {
+/**
+ * A rig step between phases, recorded as a row so the report says it happened.
+ * Resolves with what the step printed, or null when it failed.
+ */
+function rigStep(run: Mode, name: string, fn: () => string | Buffer | void): string | null {
   const t0 = Date.now();
   try {
-    fn();
-    rigRows.push({ name: `Rig / ${name}`, area: 'Rig', run, mode: run, session: 'primary', expected: 'ok', actual: 'ok', pass: true, ms: Date.now() - t0 });
+    const out = String(fn() ?? '').trim();
+    rigRows.push({ name: `Rig / ${name}`, area: 'Rig', run, mode: run, session: 'primary', expected: 'ok', actual: 'ok', pass: true, ...(out ? { detail: out.slice(0, 160) } : {}), ms: Date.now() - t0 });
+    return out;
   } catch (e) {
     const error = String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600);
     rigRows.push({ name: `Rig / ${name}`, area: 'Rig', run, mode: run, session: 'primary', expected: 'ok', actual: 'error', pass: false, error, ms: Date.now() - t0 });
+    return null;
   }
 }
 
@@ -139,11 +146,26 @@ async function runMatrix(primary: Page, second: Page, run: Mode) {
       execFileSync('python3', [resolve(RIG_DIR, 'rig.py'), 'relay-join', RUN_DIR, start.namespaceId!], { stdio: 'pipe' });
     });
   }
-  const { invitation } = await phase<{ invitation: unknown }>(primary, 'p:invite');
-  const joinInput = { start, invitation };
-  const joined = await phase<{ account: string | null; myAccount: string | null }>(second, 's:join', joinInput);
-  await phase(primary, 'p:members', { secondAccount: joined.account, secondMyAccount: joined.myAccount });
-  await phase(second, 's:leave', joinInput);
+  const { invitation, presence } = await phase<{ invitation: unknown; presence: string | null }>(primary, 'p:invite');
+  const joinInput = { start, invitation, primaryPresence: presence };
+  const joined = await phase<{ account: string | null; myAccount: string | null; eventMarker: string | null; presence: string | null }>(second, 's:join', joinInput);
+  const members = await phase<{ eventMarker: string }>(primary, 'p:members', {
+    secondAccount: joined.account,
+    secondMyAccount: joined.myAccount,
+    secondEventMarker: joined.eventMarker,
+    secondPresence: joined.presence,
+  });
+  // A node installs the next version itself; an account has no form of either
+  // the install or the upgrade, and is refused both by name (p:upgrade).
+  let target = rig.applicationId;
+  if (run === 'node') {
+    const installed = rigStep(run, 'the node installs scaffolding-e2e 0.0.1', () =>
+      execFileSync('python3', [resolve(RIG_DIR, 'rig.py'), 'install', RUN_DIR, rig.ownerUrl, rig.mpkV2], { stdio: 'pipe' }));
+    if (installed) target = installed;
+  }
+  const { upgraded } = await phase<{ upgraded: boolean }>(primary, 'p:upgrade', { targetApplicationId: target });
+  if (upgraded) await phase(second, 's:upgraded', joinInput);
+  await phase(second, 's:leave', { ...joinInput, primaryEventMarker: members?.eventMarker ?? null });
   await phase(primary, 'p:teardown');
   allRows.push(...(await rowsOf(primary)), ...(await rowsOf(second)));
 }
@@ -177,16 +199,21 @@ test.describe.serial('conformance', () => {
     writeReport();
   });
 
-  test('node run: the owner node, with account B as the second session', async ({ browser }) => {
-    const primary = await openNode(browser);
-    const second = await openAccount(browser, 'b', 'second', 'node');
-    await runMatrix(primary, second, 'node');
-  });
-
+  // The account run goes first. The node run ends by installing the 0.0.1
+  // bundle, and a same-package bundle installs under the SAME application id
+  // (hash of package and signer), so after it that id names 0.0.1 on the node,
+  // and on the relay once it fetches it: an account run after it would found
+  // its namespace on an application that is no longer the one it names.
   test('account run: account A through the relay, with account B as the second session', async ({ browser }) => {
     const primary = await openAccount(browser, 'a', 'primary', 'account');
     const second = await openAccount(browser, 'b', 'second', 'account');
     await runMatrix(primary, second, 'account');
+  });
+
+  test('node run: the owner node, with account B as the second session', async ({ browser }) => {
+    const primary = await openNode(browser);
+    const second = await openAccount(browser, 'b', 'second', 'node');
+    await runMatrix(primary, second, 'node');
   });
 
   test('every row is what its mode expects', () => {

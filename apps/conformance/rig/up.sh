@@ -19,6 +19,8 @@
 #   TRAEFIK_BIN     traefik (default: on PATH)
 #   CORE            the core checkout (for apps/scaffolding-e2e/relay-ingress)
 #   CONFORMANCE_MPK the scaffolding-e2e bundle (default .state/scaffolding-e2e.mpk)
+#   CONFORMANCE_MPK_V2 the same app at --app-version 0.0.1, what the node run
+#                   upgrades to (default .state/scaffolding-e2e-0.0.1.mpk)
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -32,6 +34,7 @@ MEROD_BIN="${MEROD_BIN:-${CORE}/target/debug/merod}"
 MERO_AUTH_BIN="${MERO_AUTH_BIN:-${CORE}/target/debug/mero-auth}"
 TRAEFIK_BIN="${TRAEFIK_BIN:-traefik}"
 MPK="${CONFORMANCE_MPK:-${STATE}/scaffolding-e2e.mpk}"
+MPK_V2="${CONFORMANCE_MPK_V2:-${STATE}/scaffolding-e2e-0.0.1.mpk}"
 INGRESS_TEMPLATES="${CORE}/apps/scaffolding-e2e/relay-ingress"
 
 OWNER_RPC="${CONF_OWNER_RPC:-4910}"
@@ -57,6 +60,7 @@ step() { echo "--- $*"; }
 [ -x "${MERO_AUTH_BIN}" ] || fail "no mero-auth at ${MERO_AUTH_BIN} (set MERO_AUTH_BIN)"
 command -v "${TRAEFIK_BIN}" >/dev/null 2>&1 || fail "no traefik (set TRAEFIK_BIN)"
 [ -f "${MPK}" ] || fail "no bundle at ${MPK} (set CONFORMANCE_MPK; build it with: cd <core>/apps/scaffolding-e2e && cargo mero bundle --dev --no-icon -o ${MPK})"
+[ -f "${MPK_V2}" ] || fail "no 0.0.1 bundle at ${MPK_V2} (set CONFORMANCE_MPK_V2; build it with: cd <core>/apps/scaffolding-e2e && cargo mero bundle --dev --no-icon --app-version 0.0.1 -o ${MPK_V2})"
 [ -f "${INGRESS_TEMPLATES}/routing.yml" ] || fail "no relay-ingress templates under ${INGRESS_TEMPLATES} (set CORE)"
 [ -d "${APP_DIR}/node_modules/@calimero-network/mero-js" ] || fail "run pnpm install first: the account minting uses the app's mero-js"
 
@@ -154,6 +158,7 @@ json.dump({
     "applicationId": "${APP_ID}",
     "packageName": "com.calimero.scaffolding-e2e",
     "packageVersion": "0.0.0",
+    "mpkV2": "${MPK_V2}",
     "namespaceId": "${NS}",
     "ownerAccount": "${OWNER_ACCOUNT}",
     "relayAccount": "${RELAY_ACCOUNT}",
