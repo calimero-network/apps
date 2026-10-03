@@ -159,7 +159,14 @@ async function start(s: Session, input: StartInput): Promise<StartOutput> {
       foundedWithoutApp = /founded ([0-9a-f]{64})/.exec(String((e as Error)?.message))?.[1];
       throw e;
     }
-  }, (v) => v);
+  }, (v) => {
+    // An account's founding also asks the cloud to host the namespace (HA),
+    // best-effort; its outcome rides along as extra fields. Spelled out so a
+    // long haError is not cut off with the id.
+    const ha = v as { namespaceId: string; haEnabled?: boolean; haError?: string };
+    if (ha.haEnabled === undefined) return v;
+    return `${short(ha.namespaceId, 12)} haEnabled=${ha.haEnabled}${ha.haError ? ` haError: ${ha.haError}` : ''}`;
+  });
   p.namespaceId = created?.namespaceId ?? foundedWithoutApp;
   p.namespaceIsRig = false;
   if (!p.namespaceId && input.rigNamespaceId) {
