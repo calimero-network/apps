@@ -6,6 +6,7 @@ import DataDialog from "../components/DataDialog";
 import { MetricValue } from "../components/MetricValue";
 import PeopleDialog from "../components/PeopleDialog";
 import { buildRoster, initials, shortId } from "../lib/people";
+import { JOIN_DEADLINE_MS, retryUntilValue } from "../lib/joinRetry";
 import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
 import {
@@ -81,16 +82,39 @@ export default function CallPage() {
   // which is what lets the UI nudge exactly once.
   const effectiveName = nickname || "guest";
 
-  const join = useCallback(
-    async (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      setUsername(trimmed);
-      const m = await stream.join(trimmed);
-      if (m) setJoined(true);
-    },
-    [stream],
-  );
+  // Each join supersedes the one before it (a rename mid-retry must not be
+  // overwritten by the stale name landing later), and unmount cancels all.
+  // `alive` is re-set on mount so StrictMode's simulated unmount/remount does
+  // not cancel the first join for good.
+  const joinGeneration = useRef(0);
+  const alive = useRef(true);
+  // Every attempt goes through the CURRENT execute: one captured before the
+  // provider was ready would keep failing "Not connected" for the whole retry.
+  const streamRef = useRef(stream);
+  streamRef.current = stream;
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // Retried, not one-shot: entering a room this node has only just learned
+  // about races the context's first sync, and until it lands `join` is refused
+  // (core's Uninitialized, which useExecute resolves as null). One attempt left
+  // the page on "joining…" for good. See lib/joinRetry.ts.
+  const join = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setUsername(trimmed);
+    const generation = ++joinGeneration.current;
+    const m = await retryUntilValue(() => streamRef.current.join(trimmed), {
+      deadlineMs: JOIN_DEADLINE_MS,
+      isCancelled: () =>
+        !alive.current || joinGeneration.current !== generation,
+    });
+    if (m) setJoined(true);
+  }, []);
 
   useEffect(() => {
     if (joinAttempted.current) return;
