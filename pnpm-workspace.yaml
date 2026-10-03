@@ -67,7 +67,11 @@ catalog:
   # writes, and it reads its groups' upgrade and cascade status (core rc.76).
   # 9.6.4 (#85): and its migration status, which core rc.77 (#4400) checks
   # against the caller rather than the relay.
-  "@calimero-network/mero-react": ^9.6.4
+  # 9.7.0 (#86): a brand-new account founds a namespace on a relay whose
+  # executor account the app knows (the cloud shows it), without joining one first.
+  # 9.7.1 (#87): an account's reads authenticate on a hosted (TDX) relay: the
+  # quote verifier loaded under Vite's CommonJS interop, so no session was minted.
+  "@calimero-network/mero-react": ^9.7.1
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

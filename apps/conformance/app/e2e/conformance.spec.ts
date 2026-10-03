@@ -45,6 +45,15 @@ interface Rig {
   ownerToken: { access_token: string; refresh_token: string };
   accounts: { a: Credential; b: Credential };
   invitations: { a: unknown; b: unknown };
+  /**
+   * Account A's relay and that relay's executor account, when the target names
+   * them instead of an invitation: A then founds its namespace on it directly.
+   */
+  accountRelay?: { relayUrl: string; executorAccount: string } | null;
+  /** The scaffolding-e2e release the relay installs from its registry (external targets). */
+  packageVersion?: string;
+  /** Written by `test-rig.mjs` for CONFORMANCE_TARGET: relays this run did not start. */
+  external?: boolean;
 }
 
 const rig = JSON.parse(readFileSync(RIG_JSON, 'utf8')) as Rig;
@@ -73,18 +82,23 @@ async function openNode(browser: Browser): Promise<Page> {
 async function openAccount(browser: Browser, who: 'a' | 'b', session: 'primary' | 'second', run: Mode): Promise<Page> {
   const context = await browser.newContext();
   await context.addInitScript(
-    ({ cred }) => {
+    ({ cred, relay }) => {
       if (sessionStorage.getItem('conformance.seeded')) return;
       sessionStorage.setItem('conformance.seeded', '1');
       // What enrolment leaves: an account and a certified device, and no relay
-      // yet. The join is how an account gets one.
-      sessionStorage.setItem('calimero.delegated.connection', JSON.stringify({ ...cred, relayUrl: null }));
+      // yet; the join is how an account gets one. A target naming a relay and
+      // its executor account gives one to account A instead, as an app that
+      // read both from the cloud would.
+      sessionStorage.setItem(
+        'calimero.delegated.connection',
+        JSON.stringify({ ...cred, relayUrl: relay?.relayUrl ?? null, executorAccount: relay?.executorAccount ?? null }),
+      );
     },
-    { cred: rig.accounts[who] },
+    { cred: rig.accounts[who], relay: who === 'a' ? (rig.accountRelay ?? null) : null },
   );
   const page = await context.newPage();
   wire(page, `account-${who}`);
-  const q = new URLSearchParams({ session, run, cloud: rig.cloudUrl });
+  const q = new URLSearchParams({ session, run, cloud: rig.cloudUrl, ...(rig.packageVersion ? { version: rig.packageVersion } : {}) });
   await page.goto(`http://localhost:${APP}/?${q}`);
   await waitReady(page, 'account');
   return page;
@@ -133,11 +147,25 @@ interface Start {
 }
 
 async function runMatrix(primary: Page, second: Page, run: Mode) {
+  // Rows are collected even when a phase throws or the run stops early: a
+  // report that loses every row on one failure says nothing about the others.
+  try {
+    await runPhases(primary, second, run);
+  } finally {
+    allRows.push(...(await rowsOf(primary).catch(() => [])), ...(await rowsOf(second).catch(() => [])));
+  }
+}
+
+async function runPhases(primary: Page, second: Page, run: Mode) {
   const start = await phase<Start>(primary, 'p:start', {
     applicationId: rig.applicationId,
     rigNamespaceId: rig.namespaceId,
     rigInvitation: rig.invitations.a,
   });
+  if (!start.namespaceId) {
+    rigRows.push({ name: 'Rig / the run has a namespace to continue in', area: 'Rig', run, mode: run, session: 'primary', expected: 'ok', actual: 'error', pass: false, error: 'createNamespace produced none and the target names none to fall back on; the remaining phases need one', ms: 0 });
+    return;
+  }
   if (run === 'node' && start.namespaceId && !start.namespaceIsRig) {
     // What enabling HA does for a node's namespace: seat the relay in it as a
     // RelayTee, before any invitation exists. An account's namespace has its
@@ -167,7 +195,6 @@ async function runMatrix(primary: Page, second: Page, run: Mode) {
   if (upgraded) await phase(second, 's:upgraded', joinInput);
   await phase(second, 's:leave', { ...joinInput, primaryEventMarker: members?.eventMarker ?? null });
   await phase(primary, 'p:teardown');
-  allRows.push(...(await rowsOf(primary)), ...(await rowsOf(second)));
 }
 
 function writeReport() {
@@ -179,7 +206,7 @@ function writeReport() {
     JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
-        rig: { ownerUrl: rig.ownerUrl, ingressUrl: rig.ingressUrl, applicationId: rig.applicationId, namespaceId: rig.namespaceId },
+        rig: { ownerUrl: rig.ownerUrl, ingressUrl: rig.ingressUrl, cloudUrl: rig.cloudUrl, applicationId: rig.applicationId, namespaceId: rig.namespaceId, external: Boolean(rig.external) },
         summary: { rows: rows.length, passed: rows.length - failed.length, failed: failed.length },
         rows,
       },
@@ -211,6 +238,9 @@ test.describe.serial('conformance', () => {
   });
 
   test('node run: the owner node, with account B as the second session', async ({ browser }) => {
+    // An external target (CONFORMANCE_TARGET) without an owner node runs the
+    // account run alone: there is no node here to drive.
+    test.skip(!rig.ownerUrl, 'the target names no owner node');
     const primary = await openNode(browser);
     const second = await openAccount(browser, 'b', 'second', 'node');
     await runMatrix(primary, second, 'node');
