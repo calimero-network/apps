@@ -323,6 +323,8 @@ export class GameClient {
   /**
    * acknowledge_shot_handler
    *
+   * @remarks handler
+   *
    * @intent mutating
    */
   public async acknowledgeShotHandler(params: { id: string; x: number; y: number }): Promise<void> {
@@ -463,6 +465,8 @@ export class GameClient {
    *
    * Runs on the other player's node when the answers end the match, so
    * both boards are opened without either player having to ask.
+   *
+   * @remarks handler
    *
    * @intent mutating
    */

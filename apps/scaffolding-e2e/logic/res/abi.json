@@ -2036,7 +2036,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     },
     {
       "name": "clear_with_handler",
@@ -2430,7 +2431,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     },
     {
       "name": "len",
@@ -2588,7 +2590,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     },
     {
       "name": "remove_with_handler",
@@ -3192,7 +3195,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     },
     {
       "name": "upload_file",

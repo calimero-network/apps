@@ -269,27 +269,24 @@ test.describe("cross-node transfer", () => {
     expect(down.bytes).toBeNull();
   });
 
-  // ── MEASURED, and not what the upload-side docs imply ──────────────────────
+  // ── A blob is served only for the context it was uploaded for ──────────────
   //
-  // This test asserted the opposite first — that a blob uploaded without
-  // `?context_id=` "never reaches node 2" — because that is what the SDK's own
-  // doc says ("Without it the blob is only readable on this node"). Against
-  // real rc.41 nodes, node 2 answered **200**.
+  // Up to core rc.74 this test asserted the opposite. Against rc.41 nodes, node
+  // 2 answered 200 for a blob uploaded with no `?context_id=`. Discovery was
+  // driven by the READER's context: node 2 probed that context's peers, and
+  // node 1 served the bytes whatever the upload named.
   //
-  // So discovery is driven by the READER's context, not the writer's announce.
-  // Node 2 probes that context's peers; node 1 is a member and holds the bytes,
-  // so it serves them — whether or not the upload named a context. The
-  // announce feeds availability-node prefetch (`blob_announce_to_context`
-  // returns once the announce is SCHEDULED, and since rc.39 that path is
-  // prefetch only, never discovery), which matters when the holder is offline
-  // and an availability node has to answer instead.
+  // core rc.75 tightened this, and this test caught it as it was meant to.
+  // Since #4239, a node serves a context's peers only the blobs it holds FOR
+  // that context, and a blob uploaded without a `context_id` is held for no
+  // context. Node 1 still has the bytes and reads them locally, but it refuses
+  // them to node 2, so node 2 answers 404.
   //
-  // The app still requires a context on upload — it costs nothing, it is the
-  // documented contract, and prefetch is worth having — but the honest reason
-  // is "so a peer that is offline can still be served", NOT "otherwise nobody
-  // can read it". Asserting the measured behaviour, so that if core ever does
-  // tighten this, the change is caught here rather than discovered in an app.
-  test("a blob uploaded with NO context is still served to node 2, via the reader's context", async () => {
+  // So the app's rule that every upload names its context is now load-bearing:
+  // a chat attachment uploaded without one would never reach the other members.
+  // uploadAttachment.ts refuses to upload with no context for exactly this
+  // reason.
+  test("a blob uploaded with NO context is not served to node 2, even via the reader's context", async () => {
     const env = requireTwoNodes();
     const data = payload("no-context-upload");
 
@@ -307,9 +304,10 @@ test.describe("cross-node transfer", () => {
     expect(local.status).toBe(200);
     expect(local.bytes!.equals(data)).toBe(true);
 
-    // And readable from node 2 too, because node 2 supplies a context whose
-    // peers include the holder. Byte-for-byte, so this is a real transfer and
-    // not a 200 with an empty body.
+    // Node 2 names a context whose peers include the holder. The holder still
+    // refuses, because it holds these bytes for no context. The positive
+    // control is the context-scoped transfer test above: the same two nodes do
+    // serve each other a blob uploaded WITH the context.
     const remote = await getBlob(
       env.nodeUrl2,
       env.accessToken2 || env.accessToken,
@@ -317,8 +315,8 @@ test.describe("cross-node transfer", () => {
       env.contextId,
       AbortSignal.timeout(CROSS_NODE_TIMEOUT_MS - 10_000),
     );
-    expect(remote.status).toBe(200);
-    expect(remote.bytes!.equals(data)).toBe(true);
+    expect(remote.status).toBe(404);
+    expect(remote.bytes).toBeNull();
   });
 });
 
