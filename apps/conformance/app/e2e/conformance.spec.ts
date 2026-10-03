@@ -50,6 +50,8 @@ interface Rig {
    * them instead of an invitation: A then founds its namespace on it directly.
    */
   accountRelay?: { relayUrl: string; executorAccount: string } | null;
+  /** The scaffolding-e2e release the relay installs from its registry (external targets). */
+  packageVersion?: string;
   /** Written by `test-rig.mjs` for CONFORMANCE_TARGET: relays this run did not start. */
   external?: boolean;
 }
@@ -96,7 +98,7 @@ async function openAccount(browser: Browser, who: 'a' | 'b', session: 'primary' 
   );
   const page = await context.newPage();
   wire(page, `account-${who}`);
-  const q = new URLSearchParams({ session, run, cloud: rig.cloudUrl });
+  const q = new URLSearchParams({ session, run, cloud: rig.cloudUrl, ...(rig.packageVersion ? { version: rig.packageVersion } : {}) });
   await page.goto(`http://localhost:${APP}/?${q}`);
   await waitReady(page, 'account');
   return page;
@@ -145,11 +147,25 @@ interface Start {
 }
 
 async function runMatrix(primary: Page, second: Page, run: Mode) {
+  // Rows are collected even when a phase throws or the run stops early: a
+  // report that loses every row on one failure says nothing about the others.
+  try {
+    await runPhases(primary, second, run);
+  } finally {
+    allRows.push(...(await rowsOf(primary).catch(() => [])), ...(await rowsOf(second).catch(() => [])));
+  }
+}
+
+async function runPhases(primary: Page, second: Page, run: Mode) {
   const start = await phase<Start>(primary, 'p:start', {
     applicationId: rig.applicationId,
     rigNamespaceId: rig.namespaceId,
     rigInvitation: rig.invitations.a,
   });
+  if (!start.namespaceId) {
+    rigRows.push({ name: 'Rig / the run has a namespace to continue in', area: 'Rig', run, mode: run, session: 'primary', expected: 'ok', actual: 'error', pass: false, error: 'createNamespace produced none and the target names none to fall back on; the remaining phases need one', ms: 0 });
+    return;
+  }
   if (run === 'node' && start.namespaceId && !start.namespaceIsRig) {
     // What enabling HA does for a node's namespace: seat the relay in it as a
     // RelayTee, before any invitation exists. An account's namespace has its
@@ -179,7 +195,6 @@ async function runMatrix(primary: Page, second: Page, run: Mode) {
   if (upgraded) await phase(second, 's:upgraded', joinInput);
   await phase(second, 's:leave', { ...joinInput, primaryEventMarker: members?.eventMarker ?? null });
   await phase(primary, 'p:teardown');
-  allRows.push(...(await rowsOf(primary)), ...(await rowsOf(second)));
 }
 
 function writeReport() {

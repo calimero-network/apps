@@ -148,14 +148,30 @@ async function start(s: Session, input: StartInput): Promise<StartOutput> {
     }, (v) => v);
   }
 
-  const created = await check(s, N, 'createNamespace', OK, () =>
-    s.admin().createNamespace({ applicationId: input.applicationId, name: `conformance-${tag()}` }), (v) => v);
-  p.namespaceId = created?.namespaceId;
+  // A founding can succeed and the application step after it fail ("founded
+  // <id> but could not give it its application"): the namespace exists, so the
+  // rows that do not need the application still run on it.
+  let foundedWithoutApp: string | undefined;
+  const created = await check(s, N, 'createNamespace', OK, async () => {
+    try {
+      return await s.admin().createNamespace({ applicationId: input.applicationId, name: `conformance-${tag()}` });
+    } catch (e) {
+      foundedWithoutApp = /founded ([0-9a-f]{64})/.exec(String((e as Error)?.message))?.[1];
+      throw e;
+    }
+  }, (v) => v);
+  p.namespaceId = created?.namespaceId ?? foundedWithoutApp;
   p.namespaceIsRig = false;
-  if (!p.namespaceId) {
+  if (!p.namespaceId && input.rigNamespaceId) {
     // The rest still says something on the rig's own namespace; teardown leaves it alone.
     p.namespaceId = input.rigNamespaceId;
     p.namespaceIsRig = true;
+  }
+  if (!p.namespaceId) {
+    // No namespace at all, and none to fall back on: every later row would call
+    // a route with an empty id and report the refusal as the finding. Stop here;
+    // the runner skips the phases that need one.
+    return { namespaceId: null, namespaceIsRig: false, primaryAccount: p.account ?? null, primaryMyAccount: p.myAccount ?? null, contexts: p.contexts, groups: p.groups, values: p.values, blob: null };
   }
   const ns = p.namespaceId;
 

@@ -18,6 +18,8 @@
  *     "namespaceId", "invitation": a namespace the relay admits accounts to and
  *                     an invitation to it naming the relay as admitter: A joins
  *                     it first, which is how it learns the relay,
+ *     "packageVersion"?: the scaffolding-e2e release the relay installs from its
+ *                     registry (the app's default is the local rig's 0.0.0),
  *     "ownerUrl"?, "ownerToken"?: { access_token, refresh_token } — a node to
  *                     drive the node run with; without them only the account
  *                     run runs }
@@ -100,6 +102,7 @@ function runExternal(file) {
     accounts,
     invitations: { a: t.invitation ?? null, b: null },
     accountRelay: byRelay ? { relayUrl: t.relayUrl, executorAccount: t.executorAccount } : null,
+    ...(t.packageVersion ? { packageVersion: t.packageVersion } : {}),
     external: true,
   };
   const dir = resolve(rig, '.state/external');
