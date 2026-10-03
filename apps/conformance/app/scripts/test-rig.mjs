@@ -22,10 +22,14 @@
  *                     registry (the app's default is the local rig's 0.0.0),
  *     "ownerUrl"?, "ownerToken"?: { access_token, refresh_token } — a node to
  *                     drive the node run with; without them only the account
- *                     run runs }
+ *                     run runs,
+ *     "founder"?:     a file holding { account, credential, deviceSecret } to
+ *                     use as account A instead of minting one: an account
+ *                     linked to a cloud user (in the wallet), so founding can
+ *                     enable HA and A's invitations are claimable }
  *
  * Nothing is started or stopped. Two fresh accounts are minted here, offline,
- * as the rig mints its own; account A founds its own namespace through the
+ * as the rig mints its own (A comes from "founder" when given); account A founds its own namespace through the
  * relay (after the join, with an invitation) and the matrix runs on it.
  * Every write lands on the target: point it only at relays you mean to test.
  */
@@ -53,6 +57,13 @@ const status = run('pnpm', ['exec', 'playwright', 'test']);
 
 if (!process.env.KEEP_RIG) run('sh', [resolve(rig, 'down.sh')]);
 process.exit(status);
+
+// Only the delegated credential: the root that linked it stays out of the run.
+function founderFrom(path) {
+  const f = JSON.parse(readFileSync(path, 'utf8'));
+  if (!f.account || !f.credential || !f.deviceSecret) throw new Error(`founder ${path} needs account, credential and deviceSecret`);
+  return { account: f.account, credential: f.credential, deviceSecret: f.deviceSecret };
+}
 
 function runExternal(file) {
   let t;
@@ -82,7 +93,7 @@ function runExternal(file) {
   };
   let accounts;
   try {
-    accounts = { a: mint(), b: mint() };
+    accounts = { a: t.founder ? founderFrom(resolve(dirname(file), t.founder)) : mint(), b: mint() };
   } catch (e) {
     console.error(`test:rig: ${e.message}`);
     return 1;

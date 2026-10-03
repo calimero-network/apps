@@ -50,7 +50,9 @@ catalog:
   # 23.4.3 (mero-js#240): a presence listener added after the context is already
   # subscribed (useSubscription mounted before useEphemeral) still gets the
   # context's current presence.
-  "@calimero-network/mero-js": ^23.4.3
+  # 23.6.0 (mero-js#242): an account's HA claim signs the founding relay
+  # (`relay_url`), which the cloud (mdma#418) hands the fleet node as admitter.
+  "@calimero-network/mero-js": ^23.6.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -71,7 +73,10 @@ catalog:
   # executor account the app knows (the cloud shows it), without joining one first.
   # 9.7.1 (#87): an account's reads authenticate on a hosted (TDX) relay: the
   # quote verifier loaded under Vite's CommonJS interop, so no session was minted.
-  "@calimero-network/mero-react": ^9.7.1
+  # 9.8.0 (#88): an account that founds a namespace enables HA for it with no
+  # cloud session, naming its founding relay; and refuses to mint an invitation
+  # the cloud routes to none of its admitters (InvitationNotClaimableError).
+  "@calimero-network/mero-react": ^9.8.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

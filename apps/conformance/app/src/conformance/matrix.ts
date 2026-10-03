@@ -159,7 +159,14 @@ async function start(s: Session, input: StartInput): Promise<StartOutput> {
       foundedWithoutApp = /founded ([0-9a-f]{64})/.exec(String((e as Error)?.message))?.[1];
       throw e;
     }
-  }, (v) => v);
+  }, (v) => {
+    // An account's founding also asks the cloud to host the namespace (HA),
+    // best-effort; its outcome rides along as extra fields. Spelled out so a
+    // long haError is not cut off with the id.
+    const ha = v as { namespaceId: string; haEnabled?: boolean; haError?: string };
+    if (ha.haEnabled === undefined) return v;
+    return `${short(ha.namespaceId, 12)} haEnabled=${ha.haEnabled}${ha.haError ? ` haError: ${ha.haError}` : ''}`;
+  });
   p.namespaceId = created?.namespaceId ?? foundedWithoutApp;
   p.namespaceIsRig = false;
   if (!p.namespaceId && input.rigNamespaceId) {
@@ -518,7 +525,7 @@ async function secondJoin(s: Session, input: JoinInput): Promise<JoinOutput> {
   await check(s, R, 'public: get (written by the primary)', OK, () =>
     eventually(() => s.execute(need(ctx, 'a context'), 'get', { key: 'conformance' }), (v) => v === st.values.public, 'the primary\'s public write'), (v) => v);
   await check(s, R, 'user: get_user_simple_for (the primary\'s slot)', OK, () =>
-    eventually(() => s.execute(need(ctx, 'a context'), 'get_user_simple_for', { user_key: need(st.primaryMyAccount, 'the primary\'s account') }),
+    eventually(() => getUserSimpleFor(s, need(ctx, 'a context'), need(st.primaryMyAccount, 'the primary\'s account')),
       (v) => v === st.values.user, 'the primary\'s user value'), (v) => v);
   await check(s, R, 'authored map: the primary\'s entry names the primary', OK, () =>
     eventually(() => s.execute(need(ctx, 'a context'), 'authored_get_owner', { key: need(st.values.authoredKey, 'an authored key') }),
@@ -759,3 +766,23 @@ export const PHASES: Record<string, (s: Session, input: never) => Promise<unknow
 };
 
 export type { Mode };
+
+/**
+ * scaffolding-e2e exists twice and the two copies name this argument
+ * differently: core's (what the rig and CI bundle) takes `user_key`, the apps
+ * repo's (what the registry publishes, so what a hosted relay installs) takes
+ * `account_hex`. Both refuse an unknown field, so ask the published name first
+ * and fall back only on that exact refusal.
+ */
+async function getUserSimpleFor(
+  s: { execute: (ctx: string, method: string, args?: Record<string, unknown>) => Promise<unknown> },
+  ctx: string,
+  account: string,
+): Promise<unknown> {
+  try {
+    return await s.execute(ctx, 'get_user_simple_for', { account_hex: account });
+  } catch (e) {
+    if (!/unknown field `account_hex`/.test(String((e as Error)?.message ?? e))) throw e;
+    return s.execute(ctx, 'get_user_simple_for', { user_key: account });
+  }
+}
