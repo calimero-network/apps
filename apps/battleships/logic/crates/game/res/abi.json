@@ -448,7 +448,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     },
     {
       "name": "export_board_seed",
@@ -677,7 +678,8 @@
       "returns": {
         "kind": "unit"
       },
-      "intent": "mutating"
+      "intent": "mutating",
+      "handler": true
     }
   ],
   "events": [

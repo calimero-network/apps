@@ -566,6 +566,7 @@ impl GameState {
     }
 
     #[allow(unused_variables)]
+    #[app::handler]
     pub fn acknowledge_shot_handler(&mut self, id: &str, x: u8, y: u8) -> app::Result<()> {
         self.acknowledge_shot(id)?;
         Ok(())
@@ -573,6 +574,7 @@ impl GameState {
 
     /// Runs on the other player's node when the answers end the match, so
     /// both boards are opened without either player having to ask.
+    #[app::handler]
     pub fn reveal_board_handler(&mut self, id: &str) -> app::Result<()> {
         self.reveal_board(id)
     }
