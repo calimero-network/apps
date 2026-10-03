@@ -45,5 +45,12 @@
 # fields `account_namespace` / `await_self`: 0.6.75 rejects them in workflow
 # validation. merobox 0.6.76 declares `calimero-client-py>=0.7.1`, so they move
 # TOGETHER. Verified against PyPI metadata.
-merobox==0.6.76
-calimero-client-py==0.7.1
+# ⚠️ 0.6.83 + 0.8.1 is the first pair whose client is built on the core these
+# apps pin (0.11.0-rc.79): every client-py up to 0.8.0 was compiled against a
+# pre-rc.51 core, so the E2E drove rc.7x nodes through a client with none of
+# core's client changes since — notably core#4455's request timeouts (30 s
+# default; 5 min for joins, syncs, registry installs, context creation and
+# JSON-RPC; 1 h for blobs). merobox 0.6.83 pins `calimero-client-py==0.8.1`
+# exactly, so they move TOGETHER.
+merobox==0.6.83
+calimero-client-py==0.8.1
