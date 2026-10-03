@@ -45,6 +45,11 @@ interface Rig {
   ownerToken: { access_token: string; refresh_token: string };
   accounts: { a: Credential; b: Credential };
   invitations: { a: unknown; b: unknown };
+  /**
+   * Account A's relay and that relay's executor account, when the target names
+   * them instead of an invitation: A then founds its namespace on it directly.
+   */
+  accountRelay?: { relayUrl: string; executorAccount: string } | null;
   /** Written by `test-rig.mjs` for CONFORMANCE_TARGET: relays this run did not start. */
   external?: boolean;
 }
@@ -75,14 +80,19 @@ async function openNode(browser: Browser): Promise<Page> {
 async function openAccount(browser: Browser, who: 'a' | 'b', session: 'primary' | 'second', run: Mode): Promise<Page> {
   const context = await browser.newContext();
   await context.addInitScript(
-    ({ cred }) => {
+    ({ cred, relay }) => {
       if (sessionStorage.getItem('conformance.seeded')) return;
       sessionStorage.setItem('conformance.seeded', '1');
       // What enrolment leaves: an account and a certified device, and no relay
-      // yet. The join is how an account gets one.
-      sessionStorage.setItem('calimero.delegated.connection', JSON.stringify({ ...cred, relayUrl: null }));
+      // yet; the join is how an account gets one. A target naming a relay and
+      // its executor account gives one to account A instead, as an app that
+      // read both from the cloud would.
+      sessionStorage.setItem(
+        'calimero.delegated.connection',
+        JSON.stringify({ ...cred, relayUrl: relay?.relayUrl ?? null, executorAccount: relay?.executorAccount ?? null }),
+      );
     },
-    { cred: rig.accounts[who] },
+    { cred: rig.accounts[who], relay: who === 'a' ? (rig.accountRelay ?? null) : null },
   );
   const page = await context.newPage();
   wire(page, `account-${who}`);

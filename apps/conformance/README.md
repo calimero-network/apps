@@ -63,12 +63,12 @@ are minted offline, as the rig mints its own. `target.json` names:
 | --- | --- |
 | `cloudUrl` | the cloud an account asks which relays admit a namespace |
 | `applicationId` | scaffolding-e2e's application id there |
-| `namespaceId` | a namespace the relay admits accounts to |
-| `invitation` | an invitation to it that names the relay as admitter |
+| `relayUrl`, `executorAccount` | the relay and its account, as the cloud's Machines page shows them: account A founds its namespace on it directly, as a brand-new account does (mero-react 9.7+) |
+| `namespaceId`, `invitation` | or: a namespace the relay admits accounts to and an invitation to it naming the relay as admitter: A joins it first, which is how it learns the relay |
 | `ownerUrl`, `ownerToken` | optional: a node to drive the node run with (`{ access_token, refresh_token }`); without them only the account run runs |
 
-Account A joins that namespace with the invitation (which is how an account
-gets its relay), founds its own namespace through the relay, and runs the
+Account A founds its own namespace through the relay (after joining one, when
+the target gives an invitation instead of the relay's account) and runs the
 matrix with account B. **Every write lands on the target** — namespaces,
 groups, contexts, blobs: point it only at relays you mean to test. The relay
 installs scaffolding-e2e from its registry, so the release there must be built

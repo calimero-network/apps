@@ -135,9 +135,11 @@ async function start(s: Session, input: StartInput): Promise<StartOutput> {
   p.account = identity?.accountId ? lower(identity.accountId) : undefined;
   p.deviceId = identity?.deviceId ?? undefined;
 
-  if (s.mode === 'account') {
-    // The account's first relay comes from the rig's invitation: before it, the
-    // account is a member of nothing and holds no relay.
+  // The account's first relay comes from an invitation: before it, the account
+  // is a member of nothing. A target that names its relay and the relay's
+  // executor account instead (the cloud shows both) skips the join, and the
+  // account founds its namespace on that relay directly.
+  if (s.mode === 'account' && input.rigInvitation) {
     const before = s.admin();
     await check(s, N, 'joinNamespace (rig invitation, first relay)', OK, async () => {
       const r = await before.joinNamespace(input.rigNamespaceId, { invitation: input.rigInvitation as never });
