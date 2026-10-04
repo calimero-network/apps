@@ -11,10 +11,13 @@
  *
  *   { "cloudUrl":      the cloud an account asks for routing (namespace admitters),
  *     "applicationId": scaffolding-e2e's application id on that relay,
- *     and how account A gets its relay — either
- *     "relayUrl", "executorAccount": the relay and its account, as the cloud's
- *                     machine page shows them: A founds its namespace on it
- *                     directly, as a brand-new account does; or
+ *     and how account A gets its relay — by default nothing: A asks the cloud
+ *                     (`getAccountRelays`), which names the relay it uses or
+ *                     assigns one to an account with none, with the relay's
+ *                     executor account, exactly as a brand-new account's
+ *                     enrolment does; or explicitly
+ *     "relayUrl", "executorAccount": a relay and its account to found on
+ *                     instead; or
  *     "namespaceId", "invitation": a namespace the relay admits accounts to and
  *                     an invitation to it naming the relay as admitter: A joins
  *                     it first, which is how it learns the relay,
@@ -74,14 +77,11 @@ function runExternal(file) {
     return 1;
   }
   const missing = ['cloudUrl', 'applicationId'].filter((k) => !t[k]);
-  const byRelay = Boolean(t.relayUrl && t.executorAccount);
-  const byInvitation = Boolean(t.namespaceId && t.invitation);
-  if (missing.length || (!byRelay && !byInvitation)) {
-    console.error(
-      `test:rig: CONFORMANCE_TARGET ${file} needs cloudUrl, applicationId, and either relayUrl + executorAccount or namespaceId + invitation${missing.length ? ` (missing ${missing.join(', ')})` : ''}`,
-    );
+  if (missing.length) {
+    console.error(`test:rig: CONFORMANCE_TARGET ${file} needs cloudUrl and applicationId (missing ${missing.join(', ')})`);
     return 1;
   }
+  const byInvitation = Boolean(t.namespaceId && t.invitation);
   if (Boolean(t.ownerUrl) !== Boolean(t.ownerToken)) {
     console.error('test:rig: give ownerUrl and ownerToken together, or neither (account run only)');
     return 1;
@@ -98,6 +98,23 @@ function runExternal(file) {
     console.error(`test:rig: ${e.message}`);
     return 1;
   }
+  // A's relay: as given, or (no invitation either) the one the cloud names.
+  let relay = t.relayUrl && t.executorAccount ? { relayUrl: t.relayUrl, executorAccount: t.executorAccount } : null;
+  if (!relay && !byInvitation) {
+    const out = spawnSync('node', [resolve(app, 'scripts/discover-relay.mjs'), t.cloudUrl], {
+      cwd: app,
+      encoding: 'utf8',
+      input: JSON.stringify(accounts.a),
+    });
+    if (out.status !== 0) {
+      console.error(`test:rig: asking the cloud for A's relay failed: ${out.stderr.trim()}`);
+      return 1;
+    }
+    const found = JSON.parse(out.stdout.trim().split('\n').pop());
+    relay = { relayUrl: found.relayUrl, executorAccount: found.executorAccount };
+    console.log(`test:rig: the cloud ${found.assigned ? 'assigned' : 'names'} A's relay ${found.relayUrl}`);
+  }
+  const byRelay = Boolean(relay);
   // The shape the spec reads from a rig's rig.json; the rig-only fields (the
   // relay's account, the v2 bundle, the ingress) stay empty: the steps that use
   // them run only in the node run, which needs an owner node.
@@ -112,7 +129,7 @@ function runExternal(file) {
     ownerToken: t.ownerToken ?? { access_token: '', refresh_token: '' },
     accounts,
     invitations: { a: t.invitation ?? null, b: null },
-    accountRelay: byRelay ? { relayUrl: t.relayUrl, executorAccount: t.executorAccount } : null,
+    accountRelay: relay,
     ...(t.packageVersion ? { packageVersion: t.packageVersion } : {}),
     external: true,
   };
@@ -120,6 +137,6 @@ function runExternal(file) {
   mkdirSync(dir, { recursive: true });
   const rigFile = resolve(dir, 'rig.json');
   writeFileSync(rigFile, JSON.stringify(rigJson, null, 2));
-  console.log(`test:rig: external target ${file}; accounts ${accounts.a.account.slice(0, 8)}… and ${accounts.b.account.slice(0, 8)}…; ${t.ownerUrl ? 'account and node runs' : 'account run only'}; A ${byRelay ? `founds on ${t.relayUrl}` : 'joins by invitation first'}`);
+  console.log(`test:rig: external target ${file}; accounts ${accounts.a.account.slice(0, 8)}… and ${accounts.b.account.slice(0, 8)}…; ${t.ownerUrl ? 'account and node runs' : 'account run only'}; A ${byRelay ? `founds on ${relay.relayUrl}` : 'joins by invitation first'}`);
   return run('pnpm', ['exec', 'playwright', 'test'], { ...process.env, CONFORMANCE_RIG: rigFile });
 }

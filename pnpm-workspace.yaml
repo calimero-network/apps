@@ -52,7 +52,9 @@ catalog:
   # context's current presence.
   # 23.6.0 (mero-js#242): an account's HA claim signs the founding relay
   # (`relay_url`), which the cloud (mdma#418) hands the fleet node as admitter.
-  "@calimero-network/mero-js": ^23.6.0
+  # 23.8.1 (mero-js#245, published as 23.8.1 after #246): getAccountRelays
+  # carries the relay's executorAccount and whether the cloud assigned it.
+  "@calimero-network/mero-js": ^23.8.1
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -76,7 +78,9 @@ catalog:
   # 9.8.0 (#88): an account that founds a namespace enables HA for it with no
   # cloud session, naming its founding relay; and refuses to mint an invitation
   # the cloud routes to none of its admitters (InvitationNotClaimableError).
-  "@calimero-network/mero-react": ^9.8.0
+  # 9.9.0 (#90): enrolment puts the cloud-assigned relay's executor account on
+  # the session, so a brand-new account founds without joining anything first.
+  "@calimero-network/mero-react": ^9.9.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
