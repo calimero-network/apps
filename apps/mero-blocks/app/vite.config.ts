@@ -5,6 +5,14 @@ export default defineConfig({
   server: {
     port: Number(process.env.PW_PORT ?? process.env.PORT ?? 5183),
   },
+  resolve: {
+    // One mero-js for the whole page. The app and mero-react both import it,
+    // and the dev optimizer otherwise picks whichever copy it meets first —
+    // which can be mero-react's older one, missing the account layer this app
+    // imports (`does not provide an export named …` at boot). Resolved from
+    // this package, so the app's own dependency is the one that runs.
+    dedupe: ["@calimero-network/mero-js"],
+  },
   test: {
     environment: "jsdom",
     // The lighting flood-fill and chunk mesher suites do real voxel compute —

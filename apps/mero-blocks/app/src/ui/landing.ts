@@ -28,16 +28,39 @@ import {
   WorldInviteError,
 } from "../net/admin";
 import { onInvitation as onInvite, shouldRetain } from "@calimero-apps/invite";
+import { beginAccountEnrolment } from "../net/account";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
-import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import {
+  clearSession,
+  getSession,
+  hasConnection,
+  isAuthenticated,
+  sessionKind,
+  updateSession,
+} from "../net/session";
 import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
 
 export interface LaunchChoice {
   name: string;
+  /** something the player should hear once the world is up (e.g. hosting was refused) */
+  notice?: string;
 }
+
+/**
+ * What the wallet had to say when it sent this tab back: shown on the
+ * connect dialog's Cloud tab (a refusal, or "signed in but nowhere to play
+ * from yet"), or above the world list once the account is in.
+ */
+export interface CloudReturn {
+  note: string | null;
+  /** open the connect dialog on the Cloud tab (enrolment did not produce a session) */
+  open: boolean;
+}
+
+export type ConnectTab = "node" | "cloud";
 
 const css = `
 #mb-landing { position: fixed; inset: 0; overflow-y: auto; z-index: 20;
@@ -150,6 +173,15 @@ const css = `
 .mbl-scan { font-size: 12px; color: #9fb0c3; text-align: center; animation: mblpulse 1.2s ease-in-out infinite; }
 @keyframes mblpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .mbl-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; text-align: center; }
+.mbl-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.mbl-tab { flex: 1; padding: 8px 0; border-radius: 6px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 700; color: #9fb0c3; background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.16); }
+.mbl-tab[aria-selected="true"] { color: #fff; background: rgba(79,140,255,0.28); border-color: rgba(79,140,255,0.7); }
+.mbl-tabpanel[hidden] { display: none; }
+.mbl-info { font-size: 12px; color: #cfd9e4; line-height: 1.55; margin: 8px 0 0; text-align: left; }
+.mbl-account-note { font-size: 12px; color: #ffd27a; line-height: 1.5; margin: 10px 0 0; text-align: center; }
+.mbl-account-note:empty { display: none; }
 .mbl-error { color: #ff8686; font-size: 12px; margin-top: 8px; min-height: 14px; text-align: center; }
 .mbl-controls { margin-top: 14px; color: #cfd9e4; font-size: 12px; line-height: 2; text-align: center;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
@@ -198,17 +230,25 @@ export class Landing {
    */
   show(
     defaults: { name: string; seed: number },
-    opts: { chromeless?: boolean } = {},
+    opts: { chromeless?: boolean; cloud?: CloudReturn } = {},
   ): Promise<LaunchChoice> {
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
+      this.cloudReturn = opts.cloud ?? null;
       this.render(defaults, (choice) => {
         this.panorama.destroy();
         this.root.remove();
         resolve(choice);
       });
+      // Back from the wallet without a session (refused, or state mismatch):
+      // reopen the dialog on the Cloud tab so the note is actually seen —
+      // otherwise the player returns to a closed dialog and nothing.
+      if (opts.cloud?.open && !isAuthenticated()) this.openConnectModal("cloud", opts.cloud.note);
     });
   }
+
+  /** the wallet's answer for this page load, consumed by the first card render */
+  private cloudReturn: CloudReturn | null = null;
 
   private render(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const shade = document.createElement("div");
@@ -282,9 +322,16 @@ export class Landing {
   private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const connected = hasConnection();
+    const account = sessionKind() === "account";
+    // An account has no node to disconnect from; it signs out (and forgets its
+    // device certificate — see clearSession). Same button, honest label.
+    const leave = account ? "Sign out of account" : "Disconnect from node";
+    const note = this.cloudReturn?.note ?? "";
+    this.cloudReturn = null;
     el.innerHTML = `
       <h3>Choose a world</h3>
       ${this.commonInputs(defaults)}
+      <div class="mbl-account-note" data-testid="account-note">${escapeHtml(note)}</div>
       <div class="mbl-worlds" data-testid="world-list"></div>
       <div class="mbl-error" data-testid="join-error"></div>
       <div class="mbl-row2">
@@ -292,7 +339,7 @@ export class Landing {
         <button class="mbl-btn primary" data-testid="join-invite-open-btn">Join with invite</button>
       </div>
       ${connected ? `<button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
-      <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
+      <button class="mbl-link" data-testid="disconnect-btn">${leave}</button>
     `;
     const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
     const errEl = el.querySelector<HTMLElement>("[data-testid=join-error]")!;
@@ -369,7 +416,9 @@ export class Landing {
         loading.remove();
         const others = worlds.filter((w) => w.contextId !== current);
         if (!current && others.length === 0) {
-          listEl.innerHTML = `<div class="mbl-note">No worlds on this node yet — create the first one!</div>`;
+          listEl.innerHTML = account
+            ? `<div class="mbl-note">No worlds for this account yet — create one, or join a friend's with an invite.</div>`
+            : `<div class="mbl-note">No worlds on this node yet — create the first one!</div>`;
           return;
         }
         others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done, errEl)));
@@ -516,10 +565,22 @@ export class Landing {
           namespaceId: created.namespaceId,
           groupId: created.groupId,
           worldName,
-          executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
+          // An account's `memberPublicKey` is the account, not the id the
+          // contract keys by; the transport resolves "me" for it (resolveMyId).
+          executorPublicKey:
+            sessionKind() === "account"
+              ? null
+              : created.memberPublicKey || getSession().executorPublicKey,
         });
         shade.remove();
-        done(choice);
+        // The world is created and playable either way; a hosting refusal
+        // (account path) only means invitees may find no node to admit them
+        // until it is sorted, so it is said once the world is up, not thrown.
+        done(
+          created.haError
+            ? { ...choice, notice: `World created, but not hosted by the cloud: ${created.haError}` }
+            : choice,
+        );
       } catch (e) {
         errEl.textContent = `Could not create world: ${errText(e)}`;
         busy = false;
@@ -616,40 +677,65 @@ export class Landing {
     el.innerHTML = `
       ${this.commonInputs(defaults)}
       <button class="mbl-btn green" data-testid="connect-open-btn">Connect a node</button>
-      <div class="mbl-note">Mero Blocks runs on your Calimero node — connect one to play.
+      <div class="mbl-note">Mero Blocks runs on your Calimero node — connect one to play,
+        or sign in with your Calimero account (the Cloud tab).
         No node yet? <a href="https://docs.calimero.network/getting-started/" target="_blank"
         rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>.</div>
     `;
     // the anonymous card can never start the game (_done unused): the only
-    // exit is beginWebLogin's redirect, which re-enters as picker/ready
+    // exits are the redirects (node auth page, or the wallet), which re-enter
+    // as picker/ready
     el.querySelector("[data-testid=connect-open-btn]")!.addEventListener("click", () =>
       this.openConnectModal(),
     );
   }
 
   /**
-   * The connect popup: the well-known local endpoints are pinged on open and
-   * only the LIVE ones are listed (a dead port is noise, not a choice) — so
-   * there is nothing to refresh. Rescan re-probes; the manual URL field is
-   * always there as the fallback.
+   * The connect dialog: a **Node** tab and a **Cloud** tab, the same two ways
+   * in that mero-react's `LoginModal` offers (apps#349 put the Cloud tab on
+   * every landing page's dialog; this app owns its own dialog, so here it is).
+   *
+   * Node: the well-known local endpoints are pinged on open and only the LIVE
+   * ones are listed (a dead port is noise, not a choice) — so there is nothing
+   * to refresh. Rescan re-probes; the manual URL field is always there as the
+   * fallback.
+   *
+   * Cloud: enrol this browser as a device of the player's Calimero account at
+   * the wallet (a redirect; the wallet sends the tab back here with the
+   * certificate). `note` is what the last enrolment had to say.
    */
-  private openConnectModal(): void {
+  private openConnectModal(tab: ConnectTab = "node", note: string | null = null): void {
     const shade = document.createElement("div");
     shade.className = "mbl-modal-shade";
     shade.dataset.testid = "connect-modal";
     shade.innerHTML = `
       <div class="mbl-modal">
         <div class="mbl-modal-head">
-          <h3>Connect a node</h3>
+          <h3>Connect</h3>
           <button class="mbl-modal-close" data-testid="connect-close" aria-label="Close">✕</button>
         </div>
-        <div class="mbl-nodes" data-testid="discovered-nodes"></div>
-        <div class="mbl-note" data-testid="scan-note"></div>
-        <button class="mbl-btn ghost" data-testid="rescan-btn">Rescan</button>
-        <div class="mbl-divider">or your node url</div>
-        <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
-        <button class="mbl-btn primary" data-testid="web-login-btn">Connect</button>
-        <div class="mbl-error" data-testid="login-error"></div>
+        <div class="mbl-tabs" role="tablist">
+          <button class="mbl-tab" role="tab" data-tab="node" data-testid="connect-tab-node">Node</button>
+          <button class="mbl-tab" role="tab" data-tab="cloud" data-testid="connect-tab-cloud">Cloud</button>
+        </div>
+        <div class="mbl-tabpanel" data-panel="node" data-testid="connect-panel-node">
+          <div class="mbl-nodes" data-testid="discovered-nodes"></div>
+          <div class="mbl-note" data-testid="scan-note"></div>
+          <button class="mbl-btn ghost" data-testid="rescan-btn">Rescan</button>
+          <div class="mbl-divider">or your node url</div>
+          <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
+          <button class="mbl-btn primary" data-testid="web-login-btn">Connect</button>
+          <div class="mbl-error" data-testid="login-error"></div>
+        </div>
+        <div class="mbl-tabpanel" data-panel="cloud" data-testid="connect-panel-cloud" hidden>
+          <div class="mbl-account-note" data-testid="connect-account-note">${escapeHtml(note ?? "")}</div>
+          <p class="mbl-info">You will approve a device key on the wallet's own page, then come
+            back here. The relay never sees your account root — only the certificate it signed.</p>
+          <p class="mbl-info">That one certificate is all of it: finding the relay that serves
+            your account, playing through it, and live events. Nothing to paste in.</p>
+          <button class="mbl-btn primary" data-testid="enrol-button">Enrol with your account</button>
+          <div class="mbl-error" data-testid="enrol-error"></div>
+        </div>
       </div>
     `;
     this.root.appendChild(shade);
@@ -663,6 +749,30 @@ export class Landing {
       if (e.target === shade) close();
     });
     shade.querySelector("[data-testid=connect-close]")!.addEventListener("click", close);
+
+    const tabs = [...shade.querySelectorAll<HTMLButtonElement>(".mbl-tab")];
+    const panels = [...shade.querySelectorAll<HTMLElement>(".mbl-tabpanel")];
+    const select = (which: ConnectTab) => {
+      for (const t of tabs) t.setAttribute("aria-selected", String(t.dataset.tab === which));
+      for (const p of panels) p.hidden = p.dataset.panel !== which;
+    };
+    for (const t of tabs) t.addEventListener("click", () => select(t.dataset.tab as ConnectTab));
+    select(tab);
+
+    const enrolBtn = shade.querySelector<HTMLButtonElement>("[data-testid=enrol-button]")!;
+    const enrolErr = shade.querySelector<HTMLElement>("[data-testid=enrol-error]")!;
+    enrolBtn.addEventListener("click", async () => {
+      enrolErr.textContent = "";
+      enrolBtn.disabled = true;
+      enrolBtn.textContent = "Opening the wallet…";
+      try {
+        await beginAccountEnrolment(); // navigates away; the wallet brings us back
+      } catch (e) {
+        enrolErr.textContent = errText(e);
+        enrolBtn.disabled = false;
+        enrolBtn.textContent = "Enrol with your account";
+      }
+    });
 
     const nodesEl = shade.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
     const noteEl = shade.querySelector<HTMLElement>("[data-testid=scan-note]")!;

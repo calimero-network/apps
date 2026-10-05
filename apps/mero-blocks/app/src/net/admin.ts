@@ -1,160 +1,26 @@
-// Admin-API helpers for the web flow: resolve the installed application,
-// list joinable worlds (contexts), create a new world. Response envelopes
-// vary across node versions, so every parser is shape-tolerant (the
-// mero-design `res.identities ?? res.items ?? res` school of parsing).
+// World-level operations: resolve the application, list joinable worlds
+// (contexts), create a world, mint and redeem invites. Everything here goes
+// through `getTransport().admin` — a node's REST routes or an account's signed
+// warrants, decided once in net/transport.ts — so this file knows nothing
+// about URLs, tokens or relays.
 
 import {
   describeInviteFailure,
   redeemInvitation,
   type RedeemOutcome,
 } from "@calimero-apps/invite";
-import { getAccessToken, getSession, updateSession } from "./session";
-import { PACKAGE_NAME } from "./auth";
+import { getSession, updateSession } from "./session";
 import {
   decodeInvite,
   encodeInvite,
   namespaceIdOfInvite,
-  SignedInvitation,
 } from "./inviteCodec";
+import { getTransport, type ContextInfo } from "./transport";
 
-export interface ContextInfo {
-  contextId: string;
-  applicationId: string;
-  /** human name of the world, when the node's context record carries one */
-  name?: string;
-}
-
-function headers(): Record<string, string> {
-  const token = getAccessToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-/**
- * An admin request that failed, carrying the HTTP status (`0` when the node
- * was never reached) so `@calimero-apps/invite` can tell a refused invitation
- * from a node that is only busy.
- */
-class AdminError extends Error {
-  readonly status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "AdminError";
-    this.status = status;
-  }
-}
-
-/**
- * The node's error responses carry the actual reason in the body —
- * `{"error": "identity not eligible for inheritance-based join"}` or
- * `{"message": …}` / `{"data": {"error": …}}` depending on the handler.
- * Surface that text; when the body carries nothing, translate the status
- * into something a player can act on — a bare "HTTP 403" is useless.
- */
-async function adminError(method: string, path: string, res: Response): Promise<AdminError> {
-  let detail = "";
-  try {
-    const body = (await res.json()) as Record<string, unknown>;
-    for (const v of [
-      body?.error,
-      body?.message,
-      (body?.data as Record<string, unknown>)?.error,
-      (body?.data as Record<string, unknown>)?.message,
-    ]) {
-      if (typeof v === "string" && v) {
-        detail = v;
-        break;
-      }
-    }
-  } catch {
-    /* non-JSON error body — fall back to the status text below */
-  }
-  const s = res.status;
-  if (detail) return new AdminError(detail, s);
-  if (s === 401 || s === 403) {
-    return new AdminError(
-      `the node rejected your session (HTTP ${s}) — disconnect and log in again`,
-      s,
-    );
-  }
-  if (s === 404) {
-    return new AdminError(
-      `the node doesn't know this resource (${method} ${path}: HTTP 404) — ` +
-        "it may not have synced yet, or the app isn't installed on it",
-      s,
-    );
-  }
-  if (s >= 500) {
-    return new AdminError(
-      `the node hit an internal error (${method} ${path}: HTTP ${s}) — try again in a moment`,
-      s,
-    );
-  }
-  return new AdminError(`the node rejected the request (${method} ${path}: HTTP ${s})`, s);
-}
-
-async function adminSend<T = unknown>(method: string, path: string, payload?: unknown): Promise<T> {
-  const { nodeUrl } = getSession();
-  let res: Response;
-  try {
-    res = await fetch(`${nodeUrl}${path}`, {
-      method,
-      headers: headers(),
-      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
-    });
-  } catch {
-    // fetch itself failed (the "HTTP 0" case): the node is down, the URL is
-    // wrong, or the browser blocked the request — say so instead of leaking
-    // a bare TypeError at the player.
-    throw new AdminError(
-      `can't reach your node at ${nodeUrl} — check that it's running and the URL is right`,
-      0,
-    );
-  }
-  if (!res.ok) throw await adminError(method, path, res);
-  const body = await res.json();
-  return (body?.data ?? body) as T;
-}
-
-const adminGet = <T = unknown>(path: string): Promise<T> => adminSend<T>("GET", path);
-const adminPost = <T = unknown>(path: string, payload: unknown): Promise<T> =>
-  adminSend<T>("POST", path, payload);
-const adminPut = <T = unknown>(path: string, payload: unknown): Promise<T> =>
-  adminSend<T>("PUT", path, payload);
-
-/** unwrap {apps: []} | {applications: []} | [] */
-export function parseApplications(data: unknown): Record<string, unknown>[] {
-  if (Array.isArray(data)) return data as Record<string, unknown>[];
-  const obj = (data ?? {}) as Record<string, unknown>;
-  for (const key of ["apps", "applications", "items"]) {
-    if (Array.isArray(obj[key])) return obj[key] as Record<string, unknown>[];
-  }
-  return [];
-}
-
-/** unwrap {contexts: []} | [] and normalize id fields */
-export function parseContexts(data: unknown): ContextInfo[] {
-  let list: Record<string, unknown>[] = [];
-  if (Array.isArray(data)) list = data as Record<string, unknown>[];
-  else {
-    const obj = (data ?? {}) as Record<string, unknown>;
-    for (const key of ["contexts", "items"]) {
-      if (Array.isArray(obj[key])) {
-        list = obj[key] as Record<string, unknown>[];
-        break;
-      }
-    }
-  }
-  return list
-    .map((c) => ({
-      contextId: String(c.contextId ?? c.id ?? ""),
-      applicationId: String(c.applicationId ?? c.application_id ?? ""),
-      name: String(c.name ?? c.contextName ?? c.context_name ?? "") || undefined,
-    }))
-    .filter((c) => c.contextId);
-}
+export type { ContextInfo } from "./transport";
+// The node path's parsers and the app-id rule, kept importable from here (the
+// tests beside this file pin them).
+export { packageOf, parseApplications, parseContexts, pickApplicationId } from "./nodeTransport";
 
 // ---- world names ------------------------------------------------------
 // The node doesn't reliably echo a context's name back on every version, so
@@ -197,93 +63,43 @@ export function worldNameOf(contextId: string, nodeName?: string): string {
   return nodeName || readWorldNames()[contextId] || "";
 }
 
-/** the package id of an application record, wherever this node version put it */
-export function packageOf(app: Record<string, unknown>): string {
-  const direct = app.package ?? app.packageName ?? app.package_name;
-  if (typeof direct === "string" && direct) return direct;
-  const manifest = app.manifest as Record<string, unknown> | undefined;
-  if (manifest && typeof manifest.package === "string") return manifest.package;
-  // some versions serialize metadata as bytes of the manifest json
-  if (Array.isArray(app.metadata)) {
-    try {
-      const text = new TextDecoder().decode(new Uint8Array(app.metadata as number[]));
-      const parsed = JSON.parse(text);
-      if (typeof parsed?.package === "string") return parsed.package;
-    } catch {
-      /* metadata was not manifest json */
-    }
-  }
-  return "";
-}
-
-const appId = (app: Record<string, unknown>): string =>
-  String(app.id ?? app.applicationId ?? app.application_id ?? "");
-
 /**
- * Pick our application id out of the node's installed apps.
+ * Resolve the application id, never from configuration.
  *
- * Order: the id this session was handed (the SSO/auth-callback hash, which the
- * desktop fills in — the mero-chat lesson: the URL beats anything remembered) >
- * the installed app carrying our package name > the lone app on a dev node.
- *
- * Every candidate is a PREFERENCE, checked against what this node actually has;
- * none of them is an override. There is deliberately no `VITE_APPLICATION_ID`
- * here and there must never be one: the id is `hash(package, signer)`, so it is
- * per-install and differs between a registry-signed release and a local
- * `cargo mero bundle --dev` of the same code. A baked id cannot be right for
- * both, and being wrong is not recoverable at runtime — the node answers a
- * request carrying an unknown application with an opaque `500` that never
- * mentions application ids (MeroDesign shipped a build wedged exactly that way).
- */
-export function pickApplicationId(
-  apps: Record<string, unknown>[],
-  sessionAppId: string,
-): string {
-  if (sessionAppId && apps.some((a) => appId(a) === sessionAppId)) return sessionAppId;
-  const match = apps.find((a) => packageOf(a) === PACKAGE_NAME);
-  const chosen = match ?? (apps.length === 1 ? apps[0] : undefined);
-  return chosen ? appId(chosen) : "";
-}
-
-/**
- * Resolve the application id from the node, never from configuration.
- *
- * The node is asked even when the session already carries an id: a remembered
- * id survives switching nodes and reinstalling the app, and an id this node
- * doesn't know is worse than no id at all (see `pickApplicationId`). A session
- * value that fails the check is cleared rather than left to come back on the
- * next call.
+ * Node: the node is asked even when the session already carries an id — a
+ * remembered id survives switching nodes and reinstalling the app, and an id
+ * this node doesn't know is worse than no id at all (see `pickApplicationId`).
+ * Account: derived from the registry (package + publisher), the same on every
+ * relay. Either way a session value that fails the check is cleared rather
+ * than left to come back on the next call.
  */
 export async function resolveApplicationId(): Promise<string | null> {
   const sessionAppId = getSession().applicationId ?? "";
-  const apps = parseApplications(await adminGet("/admin-api/applications"));
-  const id = pickApplicationId(apps, sessionAppId);
+  const id = await getTransport().admin.resolveApplicationId(sessionAppId);
   if (id !== sessionAppId) updateSession({ applicationId: id || null });
   return id || null;
 }
 
-/** worlds this node can enter (contexts of our application) */
+/** worlds this player can enter (contexts of our application) */
 export async function listWorlds(applicationId: string | null): Promise<ContextInfo[]> {
-  const contexts = parseContexts(await adminGet("/admin-api/contexts"));
+  const contexts = await getTransport().admin.listContexts();
   if (!applicationId) return contexts;
   // keep contexts with unknown applicationId — old nodes omit the field
   return contexts.filter((c) => !c.applicationId || c.applicationId === applicationId);
 }
-
-/** first field that exists, as a string ("" if none) */
-const pick = (obj: Record<string, unknown>, ...keys: string[]): string => {
-  for (const k of keys) {
-    const v = obj[k];
-    if (typeof v === "string" && v) return v;
-  }
-  return "";
-};
 
 export interface CreatedWorld {
   contextId: string;
   memberPublicKey: string;
   namespaceId: string;
   groupId: string;
+  /**
+   * Account path: the cloud declined to host the new namespace (HA), in words
+   * a player can act on — the world exists and is playable, but invitees may
+   * find no node to admit them until this is sorted. Undefined on a node and
+   * when hosting was granted.
+   */
+  haError?: string;
 }
 
 /**
@@ -306,50 +122,25 @@ export async function createWorld(
       JSON.stringify({ name, seed, now: Math.floor(Date.now() / 1000) }),
     ),
   );
-  // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`). Core's
-  // `CreateNamespaceApiRequest` carries `deny_unknown_fields`, so an extra key
-  // fails the whole create:
-  //   Invalid JSON data: unknown field `alias`,
-  //   expected one of `applicationId`, `name`, `appKey`, `bytecodeId`
-  // `alias` was the group label before core#2338 replaced it with the generic
-  // metadata record; `name` has been the only spelling since. Sending both was
-  // never "compatible with older nodes" — it is a 400 on every node that has
-  // the closed body, which is all of them.
-  //
+  const { admin } = getTransport();
   // This is the human name that later travels inside every invite for this
   // world.
-  const created = await adminPost<Record<string, unknown>>("/admin-api/namespaces", {
-    applicationId,
-    name,
-  });
-  const namespaceId = pick(created, "namespaceId", "namespace_id", "id");
-  if (!namespaceId) throw new Error("node did not return a namespace id");
-  const group = await adminPost<Record<string, unknown>>(
-    `/admin-api/namespaces/${namespaceId}/groups`,
-    { groupName: name, visibility: "open" },
-  );
-  const groupId = pick(group, "groupId", "group_id", "id");
-  if (!groupId) throw new Error("node did not return a group id");
-  const data = await adminPost<Record<string, unknown>>("/admin-api/contexts", {
-    applicationId,
-    groupId,
-    name,
-    initializationParams,
-  });
+  const { namespaceId, haError } = await admin.createNamespace(applicationId, name);
+  const groupId = await admin.createOpenGroup(namespaceId, name);
+  const created = await admin.createContext(applicationId, groupId, name, initializationParams);
   return {
-    contextId: String(data.contextId ?? data.id ?? ""),
-    memberPublicKey: String(data.memberPublicKey ?? data.member_public_key ?? ""),
+    contextId: created.contextId,
+    memberPublicKey: created.memberPublicKey,
     namespaceId,
     groupId,
+    ...(haError ? { haError } : {}),
   };
 }
 
-/** the identity this node owns for a context ("" when not a member) */
+/** the identity this player owns for a context ("" when not a member) */
 export async function ownedContextIdentity(contextId: string): Promise<string> {
-  const data = await adminGet<unknown>(`/admin-api/contexts/${contextId}/identities-owned`);
-  const obj = (data ?? {}) as Record<string, unknown>;
-  const arr = Array.isArray(data) ? data : ((obj.identities ?? obj.items ?? []) as unknown[]);
-  return Array.isArray(arr) && arr.length > 0 ? String(arr[0]) : "";
+  const owned = await getTransport().admin.identitiesOwned(contextId);
+  return owned.length > 0 ? owned[0] : "";
 }
 
 /**
@@ -360,7 +151,7 @@ export async function ownedContextIdentity(contextId: string): Promise<string> {
  * Returns the owned identity (the executor key for rpc calls).
  */
 export async function joinWorld(contextId: string): Promise<string> {
-  await adminPost(`/admin-api/contexts/${contextId}/join`, {});
+  await getTransport().admin.joinContext(contextId);
   const identity = await ownedContextIdentity(contextId);
   if (!identity) {
     throw new Error(
@@ -374,12 +165,6 @@ export async function joinWorld(contextId: string): Promise<string> {
 // ---- invitations (the curb flow: namespace-level signed invite, encoded ----
 // ---- deflate+base58; our payload additionally pins the world's context) ----
 
-/** the subgroup a context lives in (GET .../group returns a bare id string) */
-async function groupOfContext(contextId: string): Promise<string> {
-  const data = await adminGet<unknown>(`/admin-api/contexts/${contextId}/group`);
-  return typeof data === "string" ? data : "";
-}
-
 /**
  * Namespace of the given world, resolving + caching into the session when
  * we joined the world without going through createWorld (picker / SSO).
@@ -389,25 +174,18 @@ async function groupOfContext(contextId: string): Promise<string> {
 async function resolveNamespaceForContext(contextId: string): Promise<string> {
   const s = getSession();
   if (s.namespaceId && s.contextId === contextId) return s.namespaceId;
-  const groupId = await groupOfContext(contextId);
+  const { admin } = getTransport();
+  const groupId = await admin.contextGroup(contextId);
   // Resolved, not read off the session: `for-application/<unknown id>` is one of
   // the routes that answers an id this node doesn't have with an opaque 500.
   const applicationId = (await resolveApplicationId()) ?? "";
-  const spaces = await adminGet<unknown>(
-    `/admin-api/namespaces/for-application/${applicationId}`,
-  );
-  const list = Array.isArray(spaces) ? (spaces as Record<string, unknown>[]) : [];
-  for (const ns of list) {
-    const nsId = pick(ns, "namespaceId", "namespace_id", "id");
-    if (!nsId) continue;
+  for (const nsId of await admin.namespacesForApplication(applicationId)) {
     if (nsId === groupId) {
       updateSession({ namespaceId: nsId, groupId });
       return nsId;
     }
     try {
-      const groups = await adminGet<unknown>(`/admin-api/namespaces/${nsId}/groups`);
-      const entries = Array.isArray(groups) ? (groups as Record<string, unknown>[]) : [];
-      if (entries.some((g) => pick(g, "groupId", "group_id", "id") === groupId)) {
+      if ((await admin.namespaceGroups(nsId)).includes(groupId)) {
         updateSession({ namespaceId: nsId, groupId });
         return nsId;
       }
@@ -425,45 +203,36 @@ async function resolveNamespaceForContext(contextId: string): Promise<string> {
  * become shareable too.
  */
 async function ensureWorldOpen(groupId: string): Promise<void> {
+  const { admin } = getTransport();
   let visibility = "";
   try {
-    const info = await adminGet<Record<string, unknown>>(`/admin-api/groups/${groupId}`);
-    visibility = pick(info, "subgroupVisibility", "subgroup_visibility").toLowerCase();
+    visibility = await admin.groupVisibility(groupId);
   } catch {
     /* older node without group info — attempt the flip regardless */
   }
   if (visibility === "open") return;
-  await adminPut(`/admin-api/groups/${groupId}/settings/subgroup-visibility`, {
-    subgroupVisibility: "open",
-  });
+  await admin.setGroupOpen(groupId);
 }
 
 /**
  * Mint a copyable invite string for the current world: a signed namespace
- * invitation from the node, wrapped with the world's group+context ids and
- * encoded deflate+base58 (see inviteCodec.ts). Paste it on another client.
+ * invitation (from the node, or signed by the account), wrapped with the
+ * world's group+context ids and encoded deflate+base58 (see inviteCodec.ts).
+ * Paste it on another client.
  */
 export async function createWorldInvite(worldName?: string): Promise<string> {
   const s = getSession();
   if (!s.contextId) throw new Error("not in a shared world");
+  const { admin } = getTransport();
   const namespaceId = await resolveNamespaceForContext(s.contextId);
-  const knownGroupId =
-    getSession().groupId || (await groupOfContext(s.contextId).catch(() => ""));
+  const knownGroupId = getSession().groupId || (await admin.contextGroup(s.contextId).catch(() => ""));
   if (knownGroupId && knownGroupId !== namespaceId) await ensureWorldOpen(knownGroupId);
-  const res = await adminPost<Record<string, unknown>>(
-    `/admin-api/namespaces/${namespaceId}/invite`,
-    {},
-  );
-  const invitation = (res.invitation ?? res) as SignedInvitation;
+  const minted = await admin.createNamespaceInvitation(namespaceId);
   // alias priority: explicit arg > what the node echoes > the name stored at
   // create/join time — so the world's name always travels with the invite
-  const alias =
-    worldName ??
-    (typeof res.groupName === "string" && res.groupName ? res.groupName : undefined) ??
-    s.worldName ??
-    undefined;
+  const alias = worldName ?? minted.groupName ?? s.worldName ?? undefined;
   return encodeInvite({
-    invitation,
+    invitation: minted.invitation,
     groupAlias: alias,
     contextId: s.contextId,
     groupId: knownGroupId || undefined,
@@ -471,16 +240,6 @@ export async function createWorldInvite(worldName?: string): Promise<string> {
 }
 
 const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
-/** namespace ids this node is a member of (GET /namespaces → `[{ namespaceId, … }]`) */
-async function listNamespaceIds(): Promise<string[]> {
-  const data = await adminGet<unknown>("/admin-api/namespaces");
-  const obj = (data ?? {}) as Record<string, unknown>;
-  const list = Array.isArray(data) ? data : Array.isArray(obj.namespaces) ? obj.namespaces : [];
-  return (list as Record<string, unknown>[])
-    .map((ns) => pick(ns, "namespaceId", "namespace_id", "id"))
-    .filter(Boolean);
-}
 
 type FailedRedeem = Extract<RedeemOutcome, { status: "failed" }>;
 
@@ -518,30 +277,28 @@ export async function acceptWorldInvite(input: string): Promise<string> {
   if (!payload) throw new Error("that doesn't look like a valid invite code");
   const namespaceId = namespaceIdOfInvite(payload);
   if (!namespaceId) throw new Error("the invite carries no namespace");
+  const { admin } = getTransport();
 
   const outcome = await redeemInvitation(
     { namespaceId, invitation: payload.invitation },
     {
       join: async () => {
-        await adminPost(`/admin-api/namespaces/${namespaceId}/join`, {
-          invitation: payload.invitation,
-          ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
-        });
+        await admin.joinNamespace(namespaceId, payload.invitation, payload.groupAlias);
       },
-      memberships: listNamespaceIds,
+      memberships: () => admin.listNamespaces(),
     },
   );
   if (outcome.status === "failed") throw new WorldInviteError(outcome);
 
   if (payload.groupId && payload.groupId !== namespaceId) {
     try {
-      await adminPost(`/admin-api/groups/${payload.groupId}/join-via-inheritance`, {});
+      await admin.joinSubgroupInheritance(payload.groupId);
     } catch {
       // The subgroup may simply not have synced to this node yet — pull the
       // namespace once and retry before declaring failure.
       try {
-        await adminPost(`/admin-api/groups/${namespaceId}/sync`, {});
-        await adminPost(`/admin-api/groups/${payload.groupId}/join-via-inheritance`, {});
+        await admin.syncGroup(namespaceId);
+        await admin.joinSubgroupInheritance(payload.groupId);
       } catch (second) {
         throw new Error(inviteJoinFailure(second));
       }
@@ -553,13 +310,10 @@ export async function acceptWorldInvite(input: string): Promise<string> {
     // curb-style payload without a pinned context — take the group's first world
     let groupIds = payload.groupId ? [payload.groupId] : [];
     if (groupIds.length === 0) {
-      const groups = await adminGet<unknown>(`/admin-api/namespaces/${namespaceId}/groups`).catch(() => []);
-      groupIds = (Array.isArray(groups) ? (groups as Record<string, unknown>[]) : [])
-        .map((g) => pick(g, "groupId", "group_id", "id"))
-        .filter(Boolean);
+      groupIds = await admin.namespaceGroups(namespaceId).catch(() => [] as string[]);
     }
     for (const g of groupIds) {
-      const ctxs = parseContexts(await adminGet(`/admin-api/groups/${g}/contexts`).catch(() => []));
+      const ctxs = await admin.groupContexts(g).catch(() => [] as ContextInfo[]);
       if (ctxs[0]) {
         contextId = ctxs[0].contextId;
         break;

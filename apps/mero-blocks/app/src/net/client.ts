@@ -1,15 +1,14 @@
-// GameClient: session + JSON-RPC + SSE subscription in one connect() call.
+// GameClient: contract calls + the event subscription for the current world,
+// over whichever transport the session is (net/transport.ts).
 
 import {
   AuthRevokedError,
-  SseClient,
   type GroupMembershipEventData,
   type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
-import { clearSession, getAccessToken, getSession } from "./session";
-import { ownedContextIdentity } from "./admin";
-import { rpcExecute, RpcTarget } from "./rpc";
+import { clearSession, getSession } from "./session";
+import { getTransport, type EventStream } from "./transport";
 import { decodeSseEvents, GameEvent } from "./events";
 
 /** How long after a reconnect to wait before re-reading the world. */
@@ -22,39 +21,25 @@ export interface WorldMeta {
 }
 
 export class GameClient {
-  private sse: SseClient | null = null;
+  private sse: EventStream | null = null;
   private resyncTimer: ReturnType<typeof setTimeout> | null = null;
-  target: RpcTarget;
+  readonly contextId: string;
 
   constructor() {
-    const s = getSession();
-    this.target = {
-      nodeUrl: s.nodeUrl ?? "",
-      contextId: s.contextId ?? "",
-      getToken: getAccessToken,
-      executorPublicKey: s.executorPublicKey,
-    };
+    this.contextId = getSession().contextId ?? "";
   }
 
   exec = <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> =>
-    rpcExecute<T>(this.target, method, args);
+    getTransport().exec<T>(this.contextId, method, args);
 
   /**
-   * My per-context identity: the hash, else what the NODE reports owning.
-   *
-   * There is deliberately no cached fallback. This used to end in
-   * `localStorage.getItem(cacheKey)`, which meant a node that owns no identity
-   * for the context still produced one — so the app rendered as if it had
-   * joined and every contract call then failed with "No owned identity found
-   * for this context". A cache that answers when the node cannot is not a
-   * fallback, it is a lie about membership; `null` is the honest answer and
-   * boot() acts on it.
+   * "Me" as the contract sees it — the node's context identity, or an
+   * account's delegated device key. `null` when there is none, which boot()
+   * acts on; there is deliberately no cached fallback (see
+   * `nodeTransport.resolveMyId`).
    */
-  async resolveIdentity(): Promise<string | null> {
-    const s = getSession();
-    if (s.executorPublicKey) return s.executorPublicKey;
-    const owned = await ownedContextIdentity(this.target.contextId).catch(() => "");
-    return owned || null;
+  resolveIdentity(): Promise<string | null> {
+    return getTransport().resolveMyId(this.contextId);
   }
 
   async fetchWorldMeta(): Promise<WorldMeta> {
@@ -68,18 +53,16 @@ export class GameClient {
    * so without a re-read, edits made meanwhile never showed up.
    */
   subscribe(onEvent: (ev: GameEvent) => void, onReconnect?: () => void): void {
-    const s = getSession();
-    if (!s.nodeUrl || !s.contextId) return;
-    const contextId = s.contextId;
-    this.sse = new SseClient({
-      baseUrl: s.nodeUrl,
-      getAuthToken: async () => getAccessToken() ?? "",
-      reconnectDelayMs: 8000,
-    });
+    const contextId = this.contextId;
+    if (!contextId) return;
+    const sse = getTransport().openEvents();
+    if (!sse) return;
+    this.sse = sse;
     // mero-js ≥7.1 widened the handler to context events OR group-membership
     // events; the latter carries a groupId and no contextId, and says nothing
     // about the world, so drop it here.
-    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
+    sse.on("event", (raw: unknown) => {
+      const evt = raw as SseEventData | GroupMembershipEventData | GroupMigrationEventData;
       if (!("contextId" in evt)) return;
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);
@@ -94,7 +77,7 @@ export class GameClient {
     // credential. So "it reconnects on its own" stops being true at exactly
     // this point, and swallowing it leaves the game silently frozen with no
     // way back. Nothing we hold is live; clear it and make the user log in.
-    this.sse.on("error", (err: Error) => {
+    sse.on("error", (err: Error) => {
       if (err instanceof AuthRevokedError) {
         console.warn(`[sse] auth revoked (${err.reason}) — re-login required`);
         clearSession();
@@ -103,7 +86,7 @@ export class GameClient {
     // Every `connect` after the first is a reconnect. Deferred so the
     // re-subscribe SseClient sends right after `connect` lands first.
     let connectedOnce = false;
-    this.sse.on("connect", () => {
+    sse.on("connect", () => {
       if (!connectedOnce) {
         connectedOnce = true;
         return;
@@ -114,8 +97,8 @@ export class GameClient {
         onReconnect?.();
       }, RESYNC_DELAY_MS);
     });
-    this.sse.connect().catch(() => {});
-    this.sse.subscribe([contextId]).catch(() => {});
+    sse.connect().catch(() => {});
+    sse.subscribe([contextId]).catch(() => {});
   }
 
   close(): void {

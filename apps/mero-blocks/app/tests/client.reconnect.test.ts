@@ -26,6 +26,9 @@ vi.mock("../src/net/session", () => ({
   getSession: () => ({ nodeUrl: "http://localhost:2428", contextId: "ctx" }),
   getAccessToken: () => "token",
   clearSession: () => {},
+  // the transport switch (net/transport.ts): this is a node session
+  sessionKind: () => "node",
+  sessionEpoch: () => 0,
 }));
 
 import { GameClient } from "../src/net/client";
