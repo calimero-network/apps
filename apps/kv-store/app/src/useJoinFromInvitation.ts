@@ -61,7 +61,16 @@ export function useJoinFromInvitation(): {
   /** Refuse one, and stop being asked. */
   declineJoin: () => void;
 } {
-  const { isAuthenticated, mero } = useMero();
+  // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
+  // (account) session its transport is the relay: `mero.admin.joinNamespace`
+  // became `POST {relay}/admin-api/namespaces/{ns}/join` with the account's
+  // bearer token, which carries no `namespace:manage` — a 403 the redeemer
+  // then reported as "you can't join with this invitation". `admin` is the
+  // session-aware one: the node's own client on a node login, and on an
+  // account the account admin, whose `joinNamespace` redeems the invitation
+  // through the admitter's unauthenticated route and moves the session onto
+  // that relay once it is in.
+  const { isAuthenticated, admin, isDelegated } = useMero();
 
   const [state, setState] = useState<JoinState>({ status: "idle" });
   // Set once a join has been attempted for the held intent. Without it, the
@@ -88,19 +97,26 @@ export function useJoinFromInvitation(): {
       // The admin client directly, not `useJoinNamespace` / `useJoinContext`:
       // those hooks catch a failed request and resolve `null`, so a refused
       // join looked exactly like a successful one. `join` has to throw, with
-      // the node's HTTP status on the error, for the outcome to say why.
+      // the node's HTTP status on the error, for the outcome to say why. But
+      // the session-aware `admin` (see above), never the raw `mero.admin`.
       const redeemer: InviteRedeemer = {
         join: async (namespaceId) => {
-          if (!mero) throw new Error("Not connected to a node.");
-          await mero.admin.joinNamespace(namespaceId, {
+          if (!admin) throw new Error("Not connected.");
+          await admin.joinNamespace(namespaceId, {
             invitation: held.payload.invitation,
           });
-          await mero.admin.joinContext(held.payload.contextId);
+          // A node joins the context explicitly. An account does not: a
+          // namespace member follows its contexts (core auto-follow), and
+          // this app's contexts live directly in the namespace, so there is
+          // no further group to join — and the `admin` this closure holds may
+          // predate the relay the join just moved the session onto, so a read
+          // through it here would fail after a join that succeeded.
+          if (!isDelegated) await admin.joinContext(held.payload.contextId);
         },
         memberships: async () => {
-          if (!mero) throw new Error("Not connected to a node.");
+          if (!admin) throw new Error("Not connected.");
           // rc.25 renamed `groupId` -> `namespaceId`; read both (see ContextPicker).
-          const namespaces = (await mero.admin.listNamespaces()) as Array<{
+          const namespaces = (await admin.listNamespaces()) as Array<{
             namespaceId?: string;
             groupId?: string;
             id?: string;
@@ -146,7 +162,7 @@ export function useJoinFromInvitation(): {
     } finally {
       running.current = false;
     }
-  }, [mero]);
+  }, [admin, isDelegated]);
 
   useDeepLink((intent) => {
     // Only `join`. An unknown action must be left alone rather than acked, or
