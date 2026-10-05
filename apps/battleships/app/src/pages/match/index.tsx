@@ -59,9 +59,18 @@ export default function MatchPage() {
     isLoading: authLoading,
     logout,
     mero,
+    admin,
     nodeUrl,
     contextIdentity,
   } = useMero();
+  // `admin`, NOT `mero.admin`, for membership. `mero` is the raw client, and on
+  // a delegated (account) session its transport is the relay: `mero.admin
+  // .joinContext` is the relay's node route under the account's bearer token,
+  // which does not carry it (403). `admin` is the session-aware one (apps#348):
+  // the node's own client on a node login, and on an account the account
+  // admin, whose `joinContext` joins the context's group as the account and
+  // whose `getContextIdentitiesOwned` answers with the account itself.
+
   const defaultNodeUrl =
     import.meta.env.VITE_NODE_URL?.trim() || 'http://node1.127.0.0.1.nip.io';
   const { show } = useToast();
@@ -390,7 +399,7 @@ export default function MatchPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (!mero || !lobby.lobbyContextId) {
+    if (!mero || !admin || !lobby.lobbyContextId) {
       return;
     }
 
@@ -403,7 +412,7 @@ export default function MatchPage() {
         let executorKey = lobby.executorPublicKey;
         if (!executorKey) {
           try {
-            const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+            const { identities } = await admin.getContextIdentitiesOwned(lobbyContextId);
             if (identities.length > 0) executorKey = identities[0];
           } catch {
             // context identity lookup failed
@@ -424,8 +433,8 @@ export default function MatchPage() {
          */
         if (!executorKey) {
           try {
-            await mero.admin.joinContext(lobbyContextId);
-            const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+            await admin.joinContext(lobbyContextId);
+            const { identities } = await admin.getContextIdentitiesOwned(lobbyContextId);
             if (identities.length > 0) executorKey = identities[0];
           } catch (e) {
             console.warn('[lobby] joinContext failed', e);
@@ -455,7 +464,7 @@ export default function MatchPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [contextIdentity, defaultNodeUrl, lobby.lobbyContextId, lobby.executorPublicKey, mero, nodeUrl]);
+  }, [admin, contextIdentity, defaultNodeUrl, lobby.lobbyContextId, lobby.executorPublicKey, mero, nodeUrl]);
 
   // ---------------------------------------------------------------------------
   // Match API init
@@ -467,7 +476,7 @@ export default function MatchPage() {
     // executor identity. Without resetting, a previous run that set
     // matchJoinPhase = 'connecting' could leave the loader card visible
     // forever if a dep change drops executorKey before the join completes.
-    if (!mero || !matchContextId || view !== 'game' || !executorKey) {
+    if (!mero || !admin || !matchContextId || view !== 'game' || !executorKey) {
       setMatchApi(null);
       setMatchApiReady(false);
       setMatchJoinPhase('idle');
@@ -507,7 +516,7 @@ export default function MatchPage() {
       for (let i = 0; i < attempts; i += 1) {
         if (cancelled) return;
         try {
-          await mero.admin.joinContext(matchContextId);
+          await admin.joinContext(matchContextId);
           return;
         } catch (joinErr) {
           if (!isNotMemberError(joinErr) || i === attempts - 1) throw joinErr;
@@ -550,7 +559,7 @@ export default function MatchPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [contextIdentity, lobby.executorPublicKey, matchContextId, mero, show, view, ensureMatchContextReady]);
+  }, [admin, contextIdentity, lobby.executorPublicKey, matchContextId, mero, show, view, ensureMatchContextReady]);
 
   // Fetch runtime match ID
   useEffect(() => {

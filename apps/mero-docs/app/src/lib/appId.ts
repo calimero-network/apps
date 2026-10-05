@@ -22,7 +22,7 @@
 // the desktop launcher both resolve by, and the one thing that does not change
 // between releases, machines or sessions.
 
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-network/mero-js';
 import { PACKAGE_NAME } from '@/constants/config';
 
 /** One row of the node's installed-application list, narrowed to what we match on. */
@@ -94,9 +94,18 @@ export interface ResolvedApplicationId {
   packageAware: boolean;
 }
 
-/** Ask the node which of its installed applications is this one. */
+/**
+ * Ask the node which of its installed applications is this one.
+ *
+ * `admin` is the session's admin client (`useMero().admin`). This is a NODE
+ * question: `listApplications` is `GET /admin-api/applications`, a node-wide
+ * listing an account's token cannot pass (403 on the relay), and an account
+ * has no install of its own to find - its id comes from the registry, on
+ * `useMero().applicationId`. The hook does not call this on a delegated
+ * session; the catch below keeps a stray call from becoming "not installed".
+ */
 export async function resolveApplicationId(
-  admin: MeroJs['admin'],
+  admin: Pick<AdminApiClient, 'listApplications'>,
 ): Promise<ResolvedApplicationId> {
   try {
     const res = await admin.listApplications();

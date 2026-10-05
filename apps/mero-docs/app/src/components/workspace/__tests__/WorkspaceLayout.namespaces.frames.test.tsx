@@ -114,7 +114,9 @@ function Refetch() {
 }
 
 const meroValue = {
-  mero: { admin: { listNamespacesForApplication: h.listNamespacesForApplication } },
+  mero: { admin: {} },
+  admin: { listNamespacesForApplication: h.listNamespacesForApplication },
+  isDelegated: false,
   nodeUrl: 'http://node',
   logout: () => {},
   isAuthenticated: true,

@@ -2,7 +2,19 @@
 // invites. We bypass mero-react's hooks because both wrap mero-js in
 // `useAsyncMutation`, which swallows exceptions into a `null` return
 // - callers can't distinguish "server rejected" from "still loading".
-// Calling mero.admin directly surfaces real errors to the user.
+// Calling the admin client directly surfaces real errors to the user.
+//
+// That client is `useMero().admin`, NOT `mero.admin`. `mero` is the raw
+// client, and on a delegated (account) session its transport is the relay:
+// `mero.admin.joinNamespace` became `POST {relay}/admin-api/namespaces/{ns}
+// /join` with the account's bearer token, which carries no `namespace:manage`
+// - a 403. `admin` is the session-aware one (apps#348): the node's own client
+// on a node login, and on an account the account admin, whose `joinNamespace`
+// redeems the invitation through the admitter's unauthenticated route and
+// moves the session onto that relay, and whose `createNamespaceInvitation` is
+// signed by the account itself. Folder (subgroup) invitations have no account
+// form yet: `createGroupInvitation` and `joinGroup` reject with mero-react's
+// `NotForAccountError`, which the callers show like any other refusal.
 //
 // Invite URL shape (canonical deep link; the slug IS the package):
 //   https://links.calimero.network/{PACKAGE_NAME}/join
@@ -226,12 +238,12 @@ export function isInviteExpired(invitation: SignedGroupOpenInvitation): boolean 
 }
 
 export function useCreateNamespaceInvite() {
-  const { mero } = useMero();
+  const { admin } = useMero();
 
   const create = useCallback(
     async (namespaceId: string): Promise<InviteCreation> => {
-      if (!mero) throw new Error('Mero client not ready');
-      const response = await mero.admin.createNamespaceInvitation(
+      if (!admin) throw new Error('Mero client not ready');
+      const response = await admin.createNamespaceInvitation(
         namespaceId,
         { recursive: false },
       );
@@ -258,14 +270,14 @@ export function useCreateNamespaceInvite() {
         url,
       };
     },
-    [mero],
+    [admin],
   );
 
   return { create };
 }
 
 export function useJoinNamespaceByInvite() {
-  const { mero } = useMero();
+  const { admin } = useMero();
 
   const join = useCallback(
     async (
@@ -279,8 +291,8 @@ export function useJoinNamespaceByInvite() {
       // would overwrite a real one the node may already hold.
       groupName?: string,
     ): Promise<string> => {
-      if (!mero) throw new Error('Mero client not ready');
-      const response = await mero.admin.joinNamespace(namespaceId, {
+      if (!admin) throw new Error('Mero client not ready');
+      const response = await admin.joinNamespace(namespaceId, {
         invitation,
         ...(groupName ? { groupName } : {}),
       });
@@ -291,19 +303,19 @@ export function useJoinNamespaceByInvite() {
       // that release; the `groupId` fall-back is belt and braces.
       return response.namespaceId ?? response.groupId ?? namespaceId;
     },
-    [mero],
+    [admin],
   );
 
   return { join };
 }
 
 export function useCreateFolderInvite() {
-  const { mero } = useMero();
+  const { admin } = useMero();
 
   const create = useCallback(
     async (folderId: string): Promise<InviteCreation> => {
-      if (!mero) throw new Error('Mero client not ready');
-      const response = await mero.admin.createGroupInvitation(folderId, {
+      if (!admin) throw new Error('Mero client not ready');
+      const response = await admin.createGroupInvitation(folderId, {
         recursive: false,
       });
       if (
@@ -334,14 +346,14 @@ export function useCreateFolderInvite() {
         url,
       };
     },
-    [mero],
+    [admin],
   );
 
   return { create };
 }
 
 export function useJoinFolderByInvite() {
-  const { mero } = useMero();
+  const { admin } = useMero();
 
   const join = useCallback(
     async (
@@ -351,17 +363,17 @@ export function useJoinFolderByInvite() {
       // until it is a member of it.
       groupName?: string,
     ): Promise<string> => {
-      if (!mero) throw new Error('Mero client not ready');
+      if (!admin) throw new Error('Mero client not ready');
       // mero-js's joinGroup uses the `group_id` carried inside the
       // signed invitation - no separate groupId path param, unlike
       // joinNamespace.
-      const response = await mero.admin.joinGroup({
+      const response = await admin.joinGroup({
         invitation,
         ...(groupName ? { groupName } : {}),
       });
       return response.groupId;
     },
-    [mero],
+    [admin],
   );
 
   return { join };

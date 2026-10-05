@@ -1,10 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useAppNamespaces } from '../useAppNamespaces';
 
 const list = vi.hoisted(() => vi.fn());
-const mero = vi.hoisted(() => ({ mero: { admin: { listNamespacesForApplication: list } } }));
+// The RAW client's admin, `useMero().mero.admin`. On a delegated session its
+// `listNamespacesForApplication` is the relay's node-wide route, which an
+// account's token cannot pass (403). The hook must never reach it; this spy
+// exists to prove it does not.
+const rawList = vi.hoisted(() => vi.fn());
+// The session-aware admin the hook must use: `useMero().admin`.
+const mero = vi.hoisted(() => ({
+  mero: { admin: { listNamespacesForApplication: rawList } },
+  admin: { listNamespacesForApplication: list },
+  isDelegated: false,
+}));
 vi.mock('@calimero-network/mero-react', () => ({ useMero: () => mero }));
+
+afterEach(() => {
+  mero.isDelegated = false;
+  list.mockReset();
+  rawList.mockReset();
+});
 
 // Answers like core: one id-ordered page per request, 100 rows unless asked.
 function nodeHolding(ids: string[]) {
@@ -61,6 +77,34 @@ describe('useAppNamespaces', () => {
     await waitFor(() => expect(result.current.listed).toBe(true));
     await act(async () => answerA([{ namespaceId: 'from-a' }]));
     expect(result.current.namespaces).toEqual([{ namespaceId: 'from-b' }]);
+  });
+
+  it('never reaches the raw client: a node session lists through the session admin', async () => {
+    list.mockResolvedValue([{ namespaceId: 'ns1' }]);
+    const { result } = renderHook(() => useAppNamespaces('app'));
+    await waitFor(() => expect(result.current.listed).toBe(true));
+    expect(list).toHaveBeenCalledWith('app?offset=0&limit=100');
+    expect(rawList).not.toHaveBeenCalled();
+  });
+
+  // An account's token holds `namespace:list-own`, not the node-wide listing
+  // `GET /admin-api/namespaces/for-application/{appId}` needs: through the raw
+  // client that read was a 403 ("Token does not carry the permissions this
+  // route requires") and the switcher said "Failed to load workspaces". The
+  // account admin answers with the account's own list, filtered on the id
+  // exactly, so it is asked once, with the bare id.
+  it('on a delegated session lists through admin.listNamespacesForApplication with the bare id, once, and never the raw route', async () => {
+    mero.isDelegated = true;
+    list.mockResolvedValue([
+      { namespaceId: 'ns1', targetApplicationId: 'app' },
+      { namespaceId: 'ns2', targetApplicationId: 'app' },
+    ]);
+    const { result } = renderHook(() => useAppNamespaces('app'));
+    await waitFor(() => expect(result.current.listed).toBe(true));
+    expect(result.current.namespaces.map((n) => n.namespaceId)).toEqual(['ns1', 'ns2']);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledWith('app');
+    expect(rawList).not.toHaveBeenCalled();
   });
 
   it('is not listed after a failed read', async () => {

@@ -17,6 +17,7 @@ vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({
     mero: null,
+    admin: null,
     isAuthenticated: false,
     isLoading: false,
     applicationId: null,

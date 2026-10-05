@@ -21,7 +21,11 @@ const listNamespacesForApplication = vi.hoisted(() =>
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({
-    mero: { admin: { listNamespacesForApplication } },
+    // The session-aware admin (`useMero().admin`) is what the card and its
+    // membership pre-check read; the raw `mero.admin` must stay untouched.
+    mero: { admin: {} },
+    admin: { listNamespacesForApplication },
+    isDelegated: false,
     isAuthenticated: true,
     isLoading: false,
     applicationId: null,

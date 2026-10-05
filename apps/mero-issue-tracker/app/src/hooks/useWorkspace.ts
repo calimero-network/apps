@@ -126,6 +126,7 @@ export interface UseWorkspaceReturn {
 export function useWorkspace(): UseWorkspaceReturn {
   const {
     mero,
+    admin,
     applicationId: authApplicationId,
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
@@ -329,13 +330,20 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [callbackContextId, callbackContextIdentity]);
 
   useEffect(() => {
-    if (!mero || !activeRepo) { setExecutorPublicKey(callbackContextIdentity); return; }
+    // `admin`, NOT `mero.admin`, for membership. `mero` is the raw client, and on
+    // a delegated (account) session its transport is the relay: `mero.admin
+    // .joinContext` is the relay's node route under the account's bearer token,
+    // which does not carry it (403). `admin` is the session-aware one (apps#348):
+    // the node's own client on a node login, and on an account the account
+    // admin, whose `joinContext` joins the context's group as the account and
+    // whose `getContextIdentitiesOwned` answers with the account itself.
+    if (!mero || !admin || !activeRepo) { setExecutorPublicKey(callbackContextIdentity); return; }
     if (activeRepo === callbackContextId && callbackContextIdentity) return;
     let cancelled = false;
     setExecutorPublicKey(null);
     (async () => {
       try {
-        const { identities } = await mero.admin.getContextIdentitiesOwned(activeRepo);
+        const { identities } = await admin.getContextIdentitiesOwned(activeRepo);
         if (cancelled) return;
         if (identities.length > 0) { setExecutorPublicKey(identities[0]); return; }
 
@@ -346,7 +354,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         // read as "the invite worked but the app is stuck loading forever".
         // Joining is an explicit call; membership in the namespace is what
         // authorises it.
-        const joined = await mero.admin.joinContext(activeRepo);
+        const joined = await admin.joinContext(activeRepo);
         if (!cancelled && joined?.memberPublicKey) {
           setExecutorPublicKey(joined.memberPublicKey);
         }
@@ -355,7 +363,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       }
     })();
     return () => { cancelled = true; };
-  }, [mero, activeRepo, callbackContextId, callbackContextIdentity]);
+  }, [mero, admin, activeRepo, callbackContextId, callbackContextIdentity]);
 
   // --- Namespace members (people names live here) ---
   const {

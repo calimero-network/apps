@@ -20,7 +20,7 @@ const stub = vi.hoisted(() => {
   return {
     none,
     refetch,
-    mero: { mero: null, applicationId: 'app', isAuthenticated: true, isLoading: false },
+    mero: { mero: null, admin: null, applicationId: 'app', isAuthenticated: true, isLoading: false },
     contexts: none as { contextId: string; name: string }[],
     namespaces: namespaces(),
     // A list read landing: a new value, so the provider re-renders as in the app.
