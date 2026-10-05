@@ -38,7 +38,10 @@ export default function VaultPeople({
   team: { namespaceId: string; vaultId: string } | null;
   onChanged: () => void;
 }) {
-  const { mero } = useMero();
+  // The session-aware admin, for the audience reads below; the raw client's
+  // admin would answer 403 on an account and every rotation would run with no
+  // audience. See `lib/vaults` `AdminLike`.
+  const { admin } = useMero();
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -85,8 +88,7 @@ export default function VaultPeople({
 
   const rotate = () =>
     act('Rotating the vault key and re-encrypting…', async () => {
-      const allowed =
-        mero && team ? await vaultAudience(mero.admin, team) : null;
+      const allowed = admin && team ? await vaultAudience(admin, team) : null;
       const n = await session.rotate(allowed, (done, total) =>
         setStatus(`Re-encrypting ${done} of ${total}…`),
       );
@@ -99,8 +101,7 @@ export default function VaultPeople({
       // `remove_member` already stripped their roles and revoked their devices,
       // so the rotation below skips them even when the team listing is
       // unavailable; the audience narrows it further when it is.
-      const allowed =
-        mero && team ? await vaultAudience(mero.admin, team) : null;
+      const allowed = admin && team ? await vaultAudience(admin, team) : null;
       allowed?.delete(account);
       await session.rotate(allowed);
     });
@@ -206,8 +207,8 @@ export default function VaultPeople({
                       await client.revokeDevice({ fingerprint: d.fingerprint });
                       if (isAdmin) {
                         const allowed =
-                          mero && team
-                            ? await vaultAudience(mero.admin, team)
+                          admin && team
+                            ? await vaultAudience(admin, team)
                             : null;
                         await session.rotate(allowed);
                       }

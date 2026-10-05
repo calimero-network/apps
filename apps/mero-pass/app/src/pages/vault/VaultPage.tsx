@@ -41,6 +41,8 @@ interface Found {
   vaultName: string;
   teamName: string;
   personal: boolean;
+  /** Invite-only: an account cannot mint its invitation (see `inviteMember`). */
+  restricted: boolean;
 }
 
 const ROLE_TEXT: Record<string, string> = {
@@ -87,7 +89,10 @@ export default function VaultPage() {
 function VaultBody() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const contextId = vaultId ?? null;
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`: the session-aware client (see `lib/vaults`
+  // `AdminLike`). `isDelegated` hides the invitation to an invite-only vault:
+  // that needs a subgroup invitation, which only a node can mint today.
+  const { admin, isDelegated } = useMero();
   const { appId } = useApplicationId();
   const client = useVaultClient(contextId);
   const vaultName = useVaultName(contextId);
@@ -129,15 +134,15 @@ function VaultBody() {
   const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!mero || !appId || !contextId) return;
+    if (!admin || !appId || !contextId) return;
     let cancelled = false;
-    findVaultByContext(mero.admin, appId, contextId)
+    findVaultByContext(admin, appId, contextId)
       .then((f) => !cancelled && setFound(f))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [mero, appId, contextId]);
+  }, [admin, appId, contextId]);
 
   const tool = view.type === 'tool' ? view.tool : null;
 
@@ -246,15 +251,15 @@ function VaultBody() {
     });
 
   const inviteMember = async () => {
-    if (!mero || !found) return;
+    if (!admin || !found) return;
     setError(null);
     setMinting(true);
     try {
       const restricted =
         String(
-          (await mero.admin.getSubgroupVisibility(found.vaultId)) ?? '',
+          (await admin.getSubgroupVisibility(found.vaultId)) ?? '',
         ).toLowerCase() === 'restricted';
-      const code = await mintVaultInvite(mero.admin, {
+      const code = await mintVaultInvite(admin, {
         namespaceId: found.namespaceId,
         vaultId: found.vaultId,
         vaultName: found.vaultName,
@@ -310,7 +315,7 @@ function VaultBody() {
           </p>
         </div>
         <div className={styles.barActions}>
-          {found && !personal && (
+          {found && !personal && !(isDelegated && found.restricted) && (
             <button
               type="button"
               className={shell.btnGhost}

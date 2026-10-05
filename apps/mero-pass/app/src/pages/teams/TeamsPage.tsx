@@ -39,7 +39,12 @@ import { describeError } from '../../lib/errors';
  * connection flow to somebody already connected.
  */
 export default function TeamsPage() {
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`: the session-aware client. On an account the
+  // raw client's admin is the relay's node route and answers 403 to every
+  // call on this screen — the list, the creates, the invitation, the join —
+  // which rendered as "Mero Pass is not installed on this node". See
+  // `lib/vaults` `AdminLike`.
+  const { admin } = useMero();
   // ⚠️ `accountId`, never `publicKey` and never a context executor identity —
   // all three are 64 hex since rc.27, so a swap type-checks, returns 200, and
   // grants a principal that exists nowhere. See `useTeamCapabilities`.
@@ -75,20 +80,20 @@ export default function TeamsPage() {
   const redeemer = useRedeemInvitation();
 
   const load = useCallback(async () => {
-    if (!mero || !appId) {
+    if (!admin || !appId) {
       setLoading(resolving);
       return;
     }
     setLoading(true);
     try {
-      const rows = await listTeams(mero.admin, appId);
+      const rows = await listTeams(admin, appId);
       setTeams(rows);
       const mine = rows.find((t) => t.personal);
       if (mine) {
         // One extra request, only when a personal vault exists. A failure here
         // degrades the card to "open the namespace" rather than emptying the
         // screen — the vault still exists either way.
-        const vaults = await listVaults(mero.admin, mine.namespaceId).catch(
+        const vaults = await listVaults(admin, mine.namespaceId).catch(
           () => [],
         );
         setPersonalVaultId(vaults[0]?.contextId ?? null);
@@ -101,7 +106,7 @@ export default function TeamsPage() {
     } finally {
       setLoading(false);
     }
-  }, [mero, appId, resolving]);
+  }, [admin, appId, resolving]);
 
   useEffect(() => {
     void load();
@@ -144,30 +149,37 @@ export default function TeamsPage() {
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!mero || !appId || !name) return;
+    if (!admin || !appId || !name) return;
     setError(null);
     try {
-      const { namespaceId } = await createTeam(
-        mero.admin,
+      const { namespaceId, haError } = await createTeam(
+        admin,
         { applicationId: appId, name, accountId: identity?.accountId ?? null },
         setBusy,
       );
       setNewName('');
       await load();
-      navigate(`/teams/${namespaceId}`);
+      // The team exists either way. What `haError` says is that nobody can
+      // JOIN it yet (an account the cloud cannot place, typically one not yet
+      // linked to its cloud user) — so the team screen says that now, next to
+      // the invite controls, rather than the first invitation failing later.
+      navigate(
+        `/teams/${namespaceId}`,
+        haError ? { state: { hostingNotice: haError } } : undefined,
+      );
     } catch (e) {
       setError(describeError(e));
     } finally {
       setBusy(null);
     }
-  }, [mero, appId, newName, load, navigate, identity?.accountId]);
+  }, [admin, appId, newName, load, navigate, identity?.accountId]);
 
   const createPersonal = useCallback(async () => {
-    if (!mero || !appId) return;
+    if (!admin || !appId) return;
     setError(null);
     try {
       const { contextId } = await createPersonalVault(
-        mero.admin,
+        admin,
         { applicationId: appId },
         setBusy,
       );
@@ -178,16 +190,16 @@ export default function TeamsPage() {
     } finally {
       setBusy(null);
     }
-  }, [mero, appId, load, navigate]);
+  }, [admin, appId, load, navigate]);
 
   const inviteTo = useCallback(
     async (team: TeamRow) => {
-      if (!mero) return;
+      if (!admin) return;
       setMenuOpenId(null);
       setError(null);
       try {
         const code = await mintTeamInvite(
-          mero.admin,
+          admin,
           { namespaceId: team.namespaceId, teamName: team.name },
           setBusy,
         );
@@ -198,7 +210,7 @@ export default function TeamsPage() {
         setBusy(null);
       }
     },
-    [mero],
+    [admin],
   );
 
   // Two different things share one listing on the wire. Split them here so no
@@ -255,7 +267,7 @@ export default function TeamsPage() {
               type="button"
               className={styles.btn}
               onClick={() => void createPersonal()}
-              disabled={!mero || !appId || !!busy}
+              disabled={!admin || !appId || !!busy}
               data-testid="personal-create"
             >
               Create private vault
@@ -282,7 +294,7 @@ export default function TeamsPage() {
             type="button"
             className={styles.btn}
             onClick={() => void create()}
-            disabled={!mero || !appId || !newName.trim() || !!busy}
+            disabled={!admin || !appId || !newName.trim() || !!busy}
             data-testid="team-create"
           >
             Create
@@ -411,7 +423,7 @@ export default function TeamsPage() {
               type="button"
               className={styles.btn}
               onClick={() => void join()}
-              disabled={!mero || !joinCode.trim() || redeemer.busy}
+              disabled={!admin || !joinCode.trim() || redeemer.busy}
               data-testid="join-submit"
             >
               {redeemer.busy ? 'Joining…' : 'Join'}

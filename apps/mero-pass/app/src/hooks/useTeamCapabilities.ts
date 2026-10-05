@@ -22,20 +22,24 @@ export function useTeamCapabilities(namespaceId: string | null): {
   loading: boolean;
   refetch: () => Promise<void>;
 } {
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`: the session-aware client. On an account the
+  // raw client's admin is the relay's node route and answers 403; the account
+  // admin reads caller-scoped, and `useNodeIdentity` already asks it, so the
+  // account id and the mask come from the same place.
+  const { admin } = useMero();
   const { identity } = useNodeIdentity();
   const accountId = identity?.accountId ?? null;
   const [capabilities, setCapabilities] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const read = useCallback(async () => {
-    if (!mero || !namespaceId || !accountId) {
+    if (!admin || !namespaceId || !accountId) {
       setCapabilities(null);
       setLoading(!!namespaceId);
       return;
     }
     setLoading(true);
-    const mask = await myCapabilities(mero.admin, namespaceId, accountId);
+    const mask = await myCapabilities(admin, namespaceId, accountId);
 
     // A team created before `createTeam` granted its creator anything leaves
     // that creator holding the Member mask, and the only control that could
@@ -46,14 +50,14 @@ export function useTeamCapabilities(namespaceId: string | null): {
     // `setMemberCapabilities`, and a caller who is not the owner is refused by
     // the node. See `repairCreatorAdmin`.
     const repaired = await repairCreatorAdmin(
-      mero.admin,
+      admin,
       namespaceId,
       accountId,
       mask,
     );
     setCapabilities(repaired ?? mask);
     setLoading(false);
-  }, [mero, namespaceId, accountId]);
+  }, [admin, namespaceId, accountId]);
 
   useEffect(() => {
     let cancelled = false;

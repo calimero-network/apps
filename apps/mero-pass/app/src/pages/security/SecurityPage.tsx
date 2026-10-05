@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
@@ -44,7 +44,14 @@ interface NodeDevice {
  *     an admin revocation also rotates that team's key.
  */
 export default function SecurityPage() {
-  const { mero } = useMero();
+  // `admin` is the session-aware client; `mero.rpc` is what executes on each
+  // vault's contract. On an account they are two objects (see `lib/vaults`
+  // `VaultMero`), so the whole-account walks below take them apart.
+  const { mero, admin, isDelegated } = useMero();
+  const vaultMero = useMemo(
+    () => (mero && admin ? { admin, rpc: mero.rpc } : null),
+    [mero, admin],
+  );
   const { appId } = useApplicationId();
   const [minutes, setMinutes] = useAutoLockMinutes();
   const [protection, setProtection] = useState<Protection | null>(null);
@@ -63,15 +70,23 @@ export default function SecurityPage() {
 
   const load = useCallback(async () => {
     setProtection(await deviceKeeper.protection().catch(() => 'none' as const));
-    if (!mero) return;
+    if (!admin) return;
+    // An account's devices are the wallet's to list, not a node's: the account
+    // admin refuses `listAccountDevices` by name (a node-only operation), so
+    // the list is not asked for and the section says where to look instead.
+    if (isDelegated) {
+      setDevices([]);
+      setDevicesHidden(true);
+      return;
+    }
     try {
-      setDevices((await mero.admin.listAccountDevices()) as NodeDevice[]);
+      setDevices((await admin.listAccountDevices()) as NodeDevice[]);
       setDevicesHidden(false);
     } catch (e) {
       if (/403|forbidden/i.test(rawReason(e))) setDevicesHidden(true);
       else setError(describeError(e));
     }
-  }, [mero]);
+  }, [admin, isDelegated]);
 
   useEffect(() => {
     void load();
@@ -84,7 +99,7 @@ export default function SecurityPage() {
       return setError('The two passphrases do not match.');
     const old = deviceKeeper.device;
     const oldFp = deviceKeeper.fingerprint;
-    if (!mero || !appId || !old || !oldFp) return;
+    if (!vaultMero || !appId || !old || !oldFp) return;
     try {
       let moved = 0;
       const handOver = async (
@@ -92,7 +107,7 @@ export default function SecurityPage() {
         nextFp: string,
       ) => {
         moved = await migrateDevice(
-          mero,
+          vaultMero,
           appId,
           { device: old, fingerprint: oldFp },
           { device: next, fingerprint: nextFp },
@@ -118,10 +133,10 @@ export default function SecurityPage() {
     setError(null);
     const device = deviceKeeper.device;
     const fingerprint = deviceKeeper.fingerprint;
-    if (!mero || !appId || !device || !fingerprint) return;
+    if (!vaultMero || !appId || !device || !fingerprint) return;
     try {
       const { code, vaults } = await setUpRecoveryKey(
-        mero,
+        vaultMero,
         appId,
         { device, fingerprint },
         deviceLabel(),
@@ -139,10 +154,10 @@ export default function SecurityPage() {
     setError(null);
     const device = deviceKeeper.device;
     const fingerprint = deviceKeeper.fingerprint;
-    if (!mero || !appId || !device || !fingerprint) return;
+    if (!vaultMero || !appId || !device || !fingerprint) return;
     try {
       const n = await restoreFromRecoveryKey(
-        mero,
+        vaultMero,
         appId,
         restoreCode,
         { device, fingerprint },
@@ -160,11 +175,11 @@ export default function SecurityPage() {
   };
 
   const revoke = async (d: NodeDevice) => {
-    if (!mero) return;
+    if (!admin) return;
     setError(null);
     try {
       for (const ns of d.namespaces) {
-        await mero.admin.revokeAccountDevice(ns, { deviceId: d.deviceId });
+        await admin.revokeAccountDevice(ns, { deviceId: d.deviceId });
       }
       setStatus(
         `Device ${d.deviceId.slice(0, 10)}… revoked in ${d.namespaces.length} team(s).`,
@@ -332,9 +347,9 @@ export default function SecurityPage() {
           </p>
           {devicesHidden && (
             <p className={shell.empty} data-testid="devices-hidden">
-              This sign-in may use its vaults but not manage the node, so the
-              node keeps its device list to itself. Revoke devices from the
-              node's own admin dashboard.
+              {isDelegated
+                ? "You are signed in as an account, and an account's devices are managed in the wallet that issued this sign-in, not here."
+                : "This sign-in may use its vaults but not manage the node, so the node keeps its device list to itself. Revoke devices from the node's own admin dashboard."}
             </p>
           )}
           {!devicesHidden && devices.length === 0 && (

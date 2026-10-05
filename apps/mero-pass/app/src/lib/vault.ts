@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
 import { MeroPassClient } from '../generated/MeroPassClient';
+import type { VaultMero } from './vaults';
 
 /**
  * A typed client for one vault, imperatively.
@@ -9,14 +10,19 @@ import { MeroPassClient } from '../generated/MeroPassClient';
  * A list page needs one client PER context, and a hook cannot be called in a
  * loop — so the shared resolution lives here and `useVaultClient` wraps it for
  * the single-vault case.
+ *
+ * Takes the session-aware `admin` and the raw client's `rpc` apart (see
+ * `VaultMero`): on an account they are two objects, and the raw client's own
+ * admin would answer 403 to the identity read.
  */
 export async function clientForContext(
-  mero: NonNullable<ReturnType<typeof useMero>['mero']>,
+  session: VaultMero,
   contextId: string,
 ): Promise<MeroPassClient | null> {
-  const { identities } = await mero.admin.getContextIdentitiesOwned(contextId);
+  const { identities } =
+    await session.admin.getContextIdentitiesOwned(contextId);
   if (identities.length === 0) return null;
-  return new MeroPassClient(mero, contextId);
+  return new MeroPassClient(session.rpc, contextId);
 }
 
 /**
@@ -27,20 +33,24 @@ export async function clientForContext(
  * `getContextIdentitiesOwned` — not the account id. They are both 64 hex
  * characters since rc.27, so passing the wrong one type-checks, sends, and is
  * rejected as an unauthorized signer rather than as a bad argument.
+ *
+ * On an account the same read goes through the account admin, which answers
+ * caller-scoped: the identities this ACCOUNT holds in the context. The raw
+ * client's admin is never asked — it is the relay's node route and refuses.
  */
 export function useVaultClient(
   contextId: string | null,
 ): MeroPassClient | null {
-  const { mero } = useMero();
+  const { mero, admin } = useMero();
   const [executor, setExecutor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!mero || !contextId) {
+    if (!admin || !contextId) {
       setExecutor(null);
       return;
     }
     let cancelled = false;
-    mero.admin
+    admin
       .getContextIdentitiesOwned(contextId)
       .then(({ identities }) => {
         if (!cancelled && identities.length > 0) setExecutor(identities[0]);
@@ -51,12 +61,12 @@ export function useVaultClient(
     return () => {
       cancelled = true;
     };
-  }, [mero, contextId]);
+  }, [admin, contextId]);
 
   return useMemo(
     () =>
       mero && contextId && executor
-        ? new MeroPassClient(mero, contextId)
+        ? new MeroPassClient(mero.rpc, contextId)
         : null,
     [mero, contextId, executor],
   );

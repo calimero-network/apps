@@ -63,7 +63,11 @@ export interface RedeemState {
 }
 
 export function useRedeemInvitation(): RedeemState {
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`. On an account the join has to go through the
+  // account admin — it asks a node named in the invitation to admit this
+  // account — and the raw client's `POST /admin-api/namespaces/{id}/join` is
+  // a 403 on the relay. On a node the two are the same client.
+  const { admin } = useMero();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -71,14 +75,14 @@ export function useRedeemInvitation(): RedeemState {
 
   const redeem = useCallback(
     async (payload: PassInvitePayload): Promise<RedeemResult> => {
-      if (!mero) {
+      if (!admin) {
         setError('No node connection yet. Reconnect and try again.');
         return { destination: null, retain: true };
       }
       setBusy(true);
       setError(null);
       try {
-        const landed = await redeemInvite(mero.admin, payload, setStatus);
+        const landed = await redeemInvite(admin, payload, setStatus);
         const destination = destinationFor(landed);
         navigate(destination);
         return { destination, retain: false };
@@ -100,7 +104,7 @@ export function useRedeemInvitation(): RedeemState {
         setStatus(null);
       }
     },
-    [mero, navigate],
+    [admin, navigate],
   );
 
   return { busy, status, error, setError, redeem };
