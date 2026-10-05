@@ -201,6 +201,47 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("scan-note")).not.toContainText("No local nodes found");
   });
 
+  test("the connect popup offers a Cloud tab that enrols this browser at the wallet", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    let walletUrl: string | null = null;
+    await page.route("https://wallet.cloud.calimero.network/**", (route) => {
+      walletUrl = route.request().url();
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>wallet</h1>" });
+    });
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    // two tabs, Node selected — the same dialog the shared landing page offers
+    await expect(page.getByTestId("tab-node")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("tab-cloud")).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByTestId("node-url-input")).toBeVisible();
+    await expect(page.getByTestId("enrol-btn")).toBeHidden();
+
+    await page.getByTestId("tab-cloud").click();
+    await expect(page.getByTestId("enrol-btn")).toBeVisible();
+    await expect(page.getByTestId("node-url-input")).toBeHidden();
+    await page.getByTestId("enrol-btn").click();
+    await page.waitForURL("https://wallet.cloud.calimero.network/**");
+
+    // the wallet is asked to certify THIS browser's device keys and send us back here
+    const params = new URL(walletUrl!).searchParams;
+    expect(params.get("enrol-device")).toMatch(/^[0-9a-f]{64}$/);
+    expect(params.get("enrol-kem")).toMatch(/^[0-9a-f]{64}$/);
+    expect(params.get("callback-url")).toBe(`http://localhost:${process.env.PW_PORT ?? 5184}/`);
+    expect(params.get("state")).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  test("a declined enrolment reopens the popup on the Cloud tab and says so", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    await page.goto("/#error=cancelled");
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    await expect(page.getByTestId("tab-cloud")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("cloud-note")).toContainText("not approved");
+    // the refusal is consumed: a reload is an ordinary visit
+    expect(new URL(page.url()).hash).toBe("");
+  });
+
   test("the connect popup closes without touching the session", async ({ page }) => {
     for (const port of [2428, 2429, 2528, 2529])
       await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());

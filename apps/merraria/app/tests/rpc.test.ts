@@ -1,19 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeOutput, extractRpcError, rpcExecute } from "../src/net/rpc";
-
-const target = {
-  nodeUrl: "http://localhost:2430",
-  contextId: "ctx-1",
-  getToken: () => "tok-123",
-};
-
-const okResponse = (result: unknown) =>
-  ({
-    ok: true,
-    json: async () => ({ jsonrpc: "2.0", id: 1, result }),
-  }) as Response;
-
-afterEach(() => vi.restoreAllMocks());
+import { describe, expect, it, vi } from "vitest";
+import { RpcError, type ExecuteParams, type ExecuteTransport } from "@calimero-network/mero-js";
+import { bindExec, decodeOutput, describeExecError, extractRpcError } from "../src/net/rpc";
 
 describe("decodeOutput", () => {
   it("decodes a legacy u8[] byte array", () => {
@@ -48,65 +35,70 @@ describe("extractRpcError", () => {
   });
 });
 
-describe("rpcExecute wire shape", () => {
-  it("POSTs the camelCase envelope with argsJson as a raw object", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(okResponse({ output: null }));
-    await rpcExecute(target, "set_blocks", { edits: [{ x: 1, y: 2, z: 3, b: 4 }], now: 123 });
+/** an ExecuteTransport that records what it was handed and answers `output` */
+function fakeRpc(output: unknown | (() => never)) {
+  const calls: ExecuteParams[] = [];
+  const rpc: ExecuteTransport = {
+    kind: "node",
+    canSubscribe: true,
+    execute: vi.fn(async (params: ExecuteParams) => {
+      calls.push(params);
+      if (typeof output === "function") (output as () => never)();
+      return output;
+    }) as ExecuteTransport["execute"],
+    executeWithMetadata: vi.fn(),
+    migrateMyEntries: vi.fn(),
+    countMyPending: vi.fn(),
+  };
+  return { rpc, calls };
+}
 
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("http://localhost:2430/jsonrpc");
-    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");
-    const body = JSON.parse(init!.body as string);
-    expect(body.method).toBe("execute");
-    expect(body.params.contextId).toBe("ctx-1"); // camelCase, not context_id
-    expect(body.params.method).toBe("set_blocks");
-    expect(body.params.argsJson).toEqual({ edits: [{ x: 1, y: 2, z: 3, b: 4 }], now: 123 });
-    expect(typeof body.params.argsJson).toBe("object"); // NOT a JSON string
-  });
-
-  // The regression this file did not have. `executorPublicKey` used to be
-  // spread into `params` whenever the session carried one — so a target
-  // WITHOUT an identity (every other case here, and every route-mocked e2e)
-  // sent the correct three keys and passed, while a real logged-in session
-  // sent four and got
-  //   rpc world_meta: unknown field `executorPublicKey`,
-  //   expected one of `contextId`, `method`, `argsJson`
-  // from core's `deny_unknown_fields`. Asserting the keys that SHOULD be there
-  // cannot catch that; only asserting that nothing else is can, and only with
-  // an identity on the target.
-  it("sends exactly contextId/method/argsJson even when the session has an identity", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(okResponse({ output: null }));
-    await rpcExecute(
-      { ...target, executorPublicKey: "a".repeat(64) },
-      "world_meta",
-      {},
-    );
-
-    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
-    expect(Object.keys(body.params).sort()).toEqual(["argsJson", "contextId", "method"]);
+describe("bindExec (the contract-call shape handed to mero-js)", () => {
+  it("hands mero-js exactly contextId/method/argsJson, argsJson as a raw object", async () => {
+    const { rpc, calls } = fakeRpc(null);
+    await bindExec(rpc, "ctx-1")("set_tiles", { edits: [{ x: 1, y: 2, t: 3 }], now: 123 });
+    expect(calls).toHaveLength(1);
+    // Core's `ExecutionRequest` is `deny_unknown_fields`: a fourth key
+    // (`executorPublicKey` once) is a 400 for the whole call. Assert the key
+    // SET, not just the keys we want.
+    expect(Object.keys(calls[0]).sort()).toEqual(["argsJson", "contextId", "method"]);
+    expect(calls[0].contextId).toBe("ctx-1"); // camelCase, not context_id
+    expect(calls[0].method).toBe("set_tiles");
+    expect(calls[0].argsJson).toEqual({ edits: [{ x: 1, y: 2, t: 3 }], now: 123 });
+    expect(typeof calls[0].argsJson).toBe("object"); // NOT a JSON string
   });
 
   it("decodes byte-array outputs from the node", async () => {
-    const bytes = Array.from(new TextEncoder().encode(JSON.stringify([{ k: "0,1,0", b: 3 }])));
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse({ output: bytes }));
-    const out = await rpcExecute(target, "get_overrides", {});
-    expect(out).toEqual([{ k: "0,1,0", b: 3 }]);
+    const bytes = Array.from(new TextEncoder().encode(JSON.stringify([{ k: "0,1", t: 3 }])));
+    const { rpc } = fakeRpc(bytes);
+    expect(await bindExec(rpc, "ctx")("get_overrides", {})).toEqual([{ k: "0,1", t: 3 }]);
   });
 
-  it("throws the WASM error reason", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ error: { data: "too many edits in one batch" } }),
-    } as Response);
-    await expect(rpcExecute(target, "set_blocks", {})).rejects.toThrow(/too many edits/);
+  it("passes parsed outputs through (the relay's query route answers JSON)", async () => {
+    const { rpc } = fakeRpc({ name: "w", seed: 4, createdAt: 1 });
+    expect(await bindExec(rpc, "ctx")("world_meta", {})).toEqual({ name: "w", seed: 4, createdAt: 1 });
   });
 
-  it("throws on HTTP failure", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 401 } as Response);
-    await expect(rpcExecute(target, "world_meta", {})).rejects.toThrow(/401/);
+  it("throws the WASM error reason, prefixed with the method", async () => {
+    const { rpc } = fakeRpc(() => {
+      throw new RpcError(-32000, "execution failed", "too many edits in one batch", "ExecutionError");
+    });
+    await expect(bindExec(rpc, "ctx")("set_tiles", {})).rejects.toThrow(/^rpc set_tiles: too many edits/);
+  });
+
+  it("keeps the contract's typed refusal readable, so boot() can wait on Uninitialized", async () => {
+    const { rpc } = fakeRpc(() => {
+      throw new RpcError(-32000, "execution failed", { type: "Uninitialized" }, "ExecutionError");
+    });
+    const err = await bindExec(rpc, "ctx")("world_meta", {}).catch((e: Error) => e);
+    expect(String(err)).toMatch(/"type"\s*:\s*"Uninitialized"/);
+  });
+
+  it("surfaces transport failures (HTTP, a refused warrant) as they are", async () => {
+    const { rpc } = fakeRpc(() => {
+      throw new Error("HTTP 401 Unauthorized");
+    });
+    await expect(bindExec(rpc, "ctx")("world_meta", {})).rejects.toThrow(/rpc world_meta: HTTP 401/);
+    expect(describeExecError("plain")).toBe("plain");
   });
 });

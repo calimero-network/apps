@@ -1,34 +1,27 @@
-// JSON-RPC contract calls. Wire shape (locked by the tests beside this file):
-//   POST {node}/jsonrpc  { jsonrpc, id, method: "execute",
-//                          params: { contextId, method, argsJson } }
-// - envelope params are camelCase (contextId, argsJson)
-// - argsJson is a raw object, NOT a JSON string
-// - output may be a JSON string, a parsed value, or a legacy u8[] byte array
+// Contract calls, over whichever mero-js transport the session rides.
 //
-// `params` is EXACTLY those three keys. Core's `ExecutionRequest` carries
-// `deny_unknown_fields`, so a fourth key is a 400 for the whole call, not a
-// field the node ignores:
+// Node: mero-js's `RpcClient` POSTs `{node}/jsonrpc` with the camelCase
+// `execute` envelope (`contextId`, `method`, `argsJson` as a raw object) and
+// the bearer the token store holds. Account: the delegated client's `rpc`
+// reads through the relay's query route and writes as `/intents` warrants.
+// Both satisfy `ExecuteTransport`, so this module never sees the difference —
+// and never opens a socket of its own: there is no `fetch` here on purpose.
 //
-//   rpc world_meta: unknown field `executorPublicKey`,
-//   expected one of `contextId`, `method`, `argsJson`
-//
-// `executorPublicKey` was that fourth key. Core stopped reading it in #2116 —
-// the node derives the executor from the bearer token — and it stayed here for
-// releases because it was spread in CONDITIONALLY: a session without an
-// identity sent three keys and worked, which is the only shape the unit test
-// and the route-mocked Playwright suite ever built. The field is still on
-// `RpcTarget` (session state reads it, `identities-owned` fills it), it just
-// never reaches the wire.
+// `params` is EXACTLY `contextId`/`method`/`argsJson`. Core's
+// `ExecutionRequest` carries `deny_unknown_fields`, so a fourth key is a 400
+// for the whole call (`executorPublicKey` was that key once; the node derives
+// the executor from the credential). mero-js builds the envelope and the test
+// beside this file pins what we hand it.
 
-export interface RpcTarget {
-  nodeUrl: string;
-  contextId: string;
-  getToken: () => string | null;
-  executorPublicKey?: string | null;
-}
+import { RpcError, type ExecuteTransport } from "@calimero-network/mero-js";
 
-let rpcId = 0;
+export type Exec = <T = unknown>(method: string, args: Record<string, unknown>) => Promise<T>;
 
+/**
+ * Decode a contract return value. mero-js hands back `result.output`, which
+ * across node versions has been a parsed value, a JSON string, or a legacy
+ * `u8[]` byte array — tolerate all three.
+ */
 export function decodeOutput(output: unknown): unknown {
   if (output == null) return null;
   if (Array.isArray(output) && output.every((v) => typeof v === "number")) {
@@ -50,6 +43,7 @@ export function decodeOutput(output: unknown): unknown {
   return output;
 }
 
+/** The WASM reason out of a JSON-RPC error body (`error.data` wins). */
 export function extractRpcError(body: Record<string, unknown>): string | null {
   const err = body?.error as Record<string, unknown> | undefined;
   if (!err) return null;
@@ -59,33 +53,33 @@ export function extractRpcError(body: Record<string, unknown>): string | null {
   return JSON.stringify(err);
 }
 
-export async function rpcExecute<T = unknown>(
-  target: RpcTarget,
-  method: string,
-  args: Record<string, unknown>,
-): Promise<T> {
-  const token = target.getToken();
-  const res = await fetch(`${target.nodeUrl}/jsonrpc`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: ++rpcId,
-      method: "execute",
-      params: {
-        contextId: target.contextId,
-        method,
-        argsJson: args,
-      },
-    }),
-  });
-  if (!res.ok) throw new Error(`rpc ${method}: HTTP ${res.status}`);
-  const body = (await res.json()) as Record<string, unknown>;
-  const err = extractRpcError(body);
-  if (err) throw new Error(`rpc ${method}: ${err}`);
-  const result = body.result as Record<string, unknown> | undefined;
-  return decodeOutput(result?.output) as T;
+/**
+ * The reason behind a failed call, as the player should read it: the WASM
+ * error's `data` (the contract's own words, e.g. `{"type":"Uninitialized"}`
+ * that boot() waits on), else the message. Non-RPC failures (the relay
+ * refused a warrant, the node is down) keep their own message.
+ */
+export function describeExecError(err: unknown): string {
+  if (err instanceof RpcError) {
+    const fromData = extractRpcError({ error: { data: err.data, message: err.message } });
+    return fromData ?? err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Bind a transport to a context: the `exec(method, args)` the game engine
+ * (SyncEngine) is written against. Errors read `rpc <method>: <reason>`, the
+ * shape the fatal screen and the "world not ready yet" retry match on.
+ */
+export function bindExec(rpc: ExecuteTransport, contextId: string): Exec {
+  return async <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> => {
+    let output: unknown;
+    try {
+      output = await rpc.execute<unknown>({ contextId, method, argsJson: args });
+    } catch (err) {
+      throw new Error(`rpc ${method}: ${describeExecError(err)}`);
+    }
+    return decodeOutput(output) as T;
+  };
 }

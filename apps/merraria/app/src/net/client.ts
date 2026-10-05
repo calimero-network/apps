@@ -1,15 +1,17 @@
-// GameClient: session + JSON-RPC + SSE subscription in one connect() call.
+// GameClient: contract calls + the event stream for the current world, over
+// whichever transport the session rides (see transport.ts). Nothing here
+// knows whether it is a node or an account.
 
 import {
   AuthRevokedError,
-  SseClient,
   type GroupMembershipEventData,
   type GroupMigrationEventData,
+  type SseClient,
   type SseEventData,
 } from "@calimero-network/mero-js";
-import { clearSession, getAccessToken, getSession } from "./session";
-import { ownedContextIdentity } from "./admin";
-import { rpcExecute, RpcTarget } from "./rpc";
+import { clearSession, getSession } from "./session";
+import { getTransport, type Transport } from "./transport";
+import { bindExec, type Exec } from "./rpc";
 import { decodeSseEvents, GameEvent } from "./events";
 
 /** How long after a reconnect to wait before re-reading the world. */
@@ -24,37 +26,34 @@ export interface WorldMeta {
 export class GameClient {
   private sse: SseClient | null = null;
   private resyncTimer: ReturnType<typeof setTimeout> | null = null;
-  target: RpcTarget;
+  readonly contextId: string;
+  private transport: Promise<Transport>;
 
-  constructor() {
-    const s = getSession();
-    this.target = {
-      nodeUrl: s.nodeUrl ?? "",
-      contextId: s.contextId ?? "",
-      getToken: getAccessToken,
-      executorPublicKey: s.executorPublicKey,
-    };
+  constructor(transport: Promise<Transport> = getTransport()) {
+    this.contextId = getSession().contextId ?? "";
+    this.transport = transport;
   }
 
-  exec = <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> =>
-    rpcExecute<T>(this.target, method, args);
+  /** `exec(method, args)` bound to this world — what SyncEngine drives. */
+  exec: Exec = async <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> => {
+    const t = await this.transport;
+    return bindExec(t.rpc, this.contextId)<T>(method, args);
+  };
 
   /**
-   * My per-context identity: the hash, else what the NODE reports owning.
+   * My identity in this world, as the contract will render it: the hash's,
+   * else what the node reports owning; the device signing key on an account.
    *
    * There is deliberately no cached fallback. This used to end in
    * `localStorage.getItem(cacheKey)`, which meant a node that owns no identity
    * for the context still produced one — so the app rendered as if it had
    * joined and every contract call then failed with "No owned identity found
-   * for this context". A cache that answers when the node cannot is not a
-   * fallback, it is a lie about membership; `null` is the honest answer and
-   * boot() acts on it.
+   * for this context". A cache that answers when the node cannot is a lie
+   * about membership; `null` is the honest answer and boot() acts on it.
    */
   async resolveIdentity(): Promise<string | null> {
-    const s = getSession();
-    if (s.executorPublicKey) return s.executorPublicKey;
-    const owned = await ownedContextIdentity(this.target.contextId).catch(() => "");
-    return owned || null;
+    const t = await this.transport;
+    return t.myId(this.contextId).catch(() => null);
   }
 
   async fetchWorldMeta(): Promise<WorldMeta> {
@@ -66,21 +65,22 @@ export class GameClient {
    * restarted, the machine slept). SseClient re-subscribes on its own, but
    * every event from the gap is lost, and tiles are only pulled on an event —
    * so without a re-read, edits made meanwhile never showed up.
+   *
+   * Resolves once the stream object exists (or never will: an account with
+   * no relay has nothing to listen to, and polling covers it).
    */
-  subscribe(onEvent: (ev: GameEvent) => void, onReconnect?: () => void): void {
-    const s = getSession();
-    if (!s.nodeUrl || !s.contextId) return;
-    const contextId = s.contextId;
-    this.sse = new SseClient({
-      baseUrl: s.nodeUrl,
-      getAuthToken: async () => getAccessToken() ?? "",
-      reconnectDelayMs: 8000,
-    });
+  async subscribe(onEvent: (ev: GameEvent) => void, onReconnect?: () => void): Promise<void> {
+    const contextId = this.contextId;
+    if (!contextId) return;
+    const t = await this.transport;
+    const sse = t.events();
+    if (!sse) return;
+    this.sse = sse;
     // mero-js 7 widened the "event" stream to a union: group-membership events
     // ride the same channel, keyed by groupId instead of contextId. We only ever
     // subscribe to a context, so one of those is never ours — and the `in` check
     // is what lets the compiler agree before we read contextId.
-    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
+    sse.on("event", (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
       if (!("contextId" in evt)) return;
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);
@@ -95,8 +95,9 @@ export class GameClient {
     // credential. So "it reconnects on its own" stops being true at exactly
     // this point, and swallowing it leaves the game silently frozen with no
     // way back. Nothing we hold is live; clear it and make the user log in.
-    this.sse.on("error", (err: Error) => {
-      if (err instanceof AuthRevokedError) {
+    // (A node-token matter: an account's stream is a device-cert session.)
+    sse.on("error", (err: Error) => {
+      if (t.kind === "node" && err instanceof AuthRevokedError) {
         console.warn(`[sse] auth revoked (${err.reason}) — re-login required`);
         clearSession();
       }
@@ -104,7 +105,7 @@ export class GameClient {
     // Every `connect` after the first is a reconnect. Deferred so the
     // re-subscribe SseClient sends right after `connect` lands first.
     let connectedOnce = false;
-    this.sse.on("connect", () => {
+    sse.on("connect", () => {
       if (!connectedOnce) {
         connectedOnce = true;
         return;
@@ -115,8 +116,8 @@ export class GameClient {
         onReconnect?.();
       }, RESYNC_DELAY_MS);
     });
-    this.sse.connect().catch(() => {});
-    this.sse.subscribe([contextId]).catch(() => {});
+    sse.connect().catch(() => {});
+    sse.subscribe([contextId]).catch(() => {});
   }
 
   close(): void {

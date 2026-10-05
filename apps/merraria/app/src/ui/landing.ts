@@ -1,10 +1,14 @@
 // Landing page + launcher. Three auth states:
-//  1. anonymous          → "Connect a node" opens the connect popup: the
-//                          well-known local endpoints render immediately and
-//                          are pinged live (mero-react probeNodeHealth), plus
-//                          a manual URL field. No node, no game — there is no
+//  1. anonymous          → "Connect" opens the connect popup with two tabs:
+//                          Node — the well-known local endpoints render
+//                          immediately and are pinged live (mero-js
+//                          probeNodeHealth), plus a manual URL field; and
+//                          Cloud — enrol this browser's device key with your
+//                          account at the wallet and play through its relay.
+//                          No node and no account, no game — there is no
 //                          offline mode.
-//  2. authenticated      → pick an existing world or create one (admin API)
+//  2. authenticated      → pick an existing world or create one (admin API,
+//                          the same surface on a node and on an account)
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
@@ -12,7 +16,7 @@ import {
   DEFAULT_LOCAL_NODE_PORTS,
   localNodeUrl,
   probeNodeHealth,
-} from "@calimero-network/mero-react";
+} from "@calimero-network/mero-js";
 import {
   acceptWorldInvite,
   createWorld,
@@ -28,13 +32,29 @@ import {
 import { inviteLink } from "../net/inviteLink";
 import { onInvitation as onInvite, shouldRetain } from "@calimero-apps/invite";
 import { beginWebLogin } from "../net/auth";
+import { goToWallet, isReturningFromWallet, shortAccount, type EnrolmentResult } from "../net/account";
 import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
-import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import {
+  clearSession,
+  getAccountSession,
+  getSession,
+  hasConnection,
+  isAuthenticated,
+  sessionKind,
+  updateSession,
+} from "../net/session";
 import { showLandingAgain } from "../pages/landing/mount";
 
 export interface LaunchChoice {
   name: string;
+}
+
+export interface LandingOptions {
+  /** skip this screen's own logo/title/pitch (the unified landing just showed them) */
+  chromeless?: boolean;
+  /** what happened to an enrolment this page load came back from, if any */
+  enrolment?: EnrolmentResult;
 }
 
 const css = `
@@ -169,6 +189,14 @@ const css = `
 .mtl-modal-close { background: none; border: none; color: #9fb0c3; font-size: 18px;
   cursor: pointer; padding: 2px 6px; line-height: 1; }
 .mtl-modal-close:hover { color: #fff; }
+.mtl-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.mtl-tab { flex: 1; padding: 9px 0; background: none; border: none; border-bottom: 2px solid transparent;
+  color: #9fb0c3; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: -1px; }
+.mtl-tab[aria-selected="true"] { color: #fff; border-bottom-color: #4f8cff; }
+.mtl-tabpanel[hidden] { display: none; }
+.mtl-account { font-size: 12px; color: #8fe0a0; margin: -8px 0 4px; }
+.mtl-account code { color: #cdd9e5; }
+.mtl-warn { color: #ffd37a; font-size: 12px; margin-top: 10px; line-height: 1.5; }
 .mtl-scan { font-size: 12px; color: #8fa3ba; animation: mtlpulse 1.2s ease-in-out infinite; }
 @keyframes mtlpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .mtl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
@@ -239,6 +267,8 @@ export class Landing {
   /** Codes already tried this session — stops a failed link reopening the modal. */
   private attemptedInvites = new Set<string>();
   private anim: WorldAnim | null = null;
+  /** the enrolment this page load came back from — shown once, on the Cloud tab */
+  private enrolment: EnrolmentResult | null = null;
 
   constructor(parent: HTMLElement) {
     const style = document.createElement("style");
@@ -257,10 +287,11 @@ export class Landing {
    */
   show(
     defaults: { name: string; seed: number },
-    opts: { chromeless?: boolean } = {},
+    opts: LandingOptions = {},
   ): Promise<LaunchChoice> {
     return new Promise((resolve) => {
       if (opts.chromeless) this.root.classList.add("is-chromeless");
+      this.enrolment = opts.enrolment ?? null;
       this.render(defaults, (choice) => {
         this.anim?.stop();
         this.root.remove();
@@ -357,8 +388,19 @@ export class Landing {
   private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     const connected = hasConnection();
+    // An account is "me" at the governance level: say which one is signed
+    // in, and that leaving is signing out, not disconnecting a node.
+    const account = sessionKind() === "account" ? getAccountSession() : null;
     el.innerHTML = `
       <h3>Choose a world</h3>
+      ${
+        account
+          ? `<div class="mtl-account" data-testid="account-badge">Signed in as
+               <code>${escapeHtml(shortAccount(account.account))}</code>${
+                 account.relayUrl ? "" : " — no relay yet: join a world with an invite"
+               }</div>`
+          : ""
+      }
       ${this.commonInputs(defaults)}
       <div class="mtl-worlds" data-testid="world-list"></div>
       <div class="mtl-error" data-testid="join-error"></div>
@@ -367,7 +409,9 @@ export class Landing {
         <button class="mtl-btn primary" data-testid="join-invite-open-btn">Join with invite</button>
       </div>
       ${connected ? `<button class="mtl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
-      <button class="mtl-link" data-testid="disconnect-btn">Disconnect from node</button>
+      <button class="mtl-link" data-testid="disconnect-btn">${
+        account ? "Sign out" : "Disconnect from node"
+      }</button>
     `;
     const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
     const errEl = el.querySelector<HTMLElement>("[data-testid=join-error]")!;
@@ -376,6 +420,19 @@ export class Landing {
       clearSession();
       this.renderPlayCard(defaults, done);
     });
+
+    // The world just created on an account exists, but the cloud declined to
+    // host its namespace — so nobody without a node can find it. Surface the
+    // reason (and what to do) where the player is looking, not in a console.
+    const haWarning = this.pendingHaWarning;
+    this.pendingHaWarning = null;
+    if (haWarning) {
+      const warn = document.createElement("div");
+      warn.className = "mtl-warn";
+      warn.dataset.testid = "ha-warning";
+      warn.textContent = `World created, but it is not hosted yet: ${haWarning}`;
+      errEl.insertAdjacentElement("afterend", warn);
+    }
     el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
       this.openCreateWorldModal(defaults, done),
     );
@@ -444,7 +501,9 @@ export class Landing {
         loading.remove();
         const others = worlds.filter((w) => w.contextId !== current);
         if (!current && others.length === 0) {
-          listEl.innerHTML = `<div class="mtl-note">No worlds on this node yet — create the first one!</div>`;
+          listEl.innerHTML = account
+            ? `<div class="mtl-note">No worlds for this account yet — create one, or join a friend's with an invite.</div>`
+            : `<div class="mtl-note">No worlds on this node yet — create the first one!</div>`;
           return;
         }
         others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done, errEl)));
@@ -594,6 +653,14 @@ export class Landing {
           executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
         });
         shade.remove();
+        if (created.haError) {
+          // Not hosted: entering would hide the one thing the host needs to
+          // know before inviting anyone. Back to the picker, which shows it;
+          // the new world is its first card.
+          this.pendingHaWarning = created.haError;
+          this.renderPlayCard(defaults, done);
+          return;
+        }
         done(choice);
       } catch (e) {
         errEl.textContent = `Could not create world: ${errText(e)}`;
@@ -682,10 +749,13 @@ export class Landing {
     }
   }
 
+  /** set by a create on an account the cloud declined to host; shown by the next picker render */
+  private pendingHaWarning: string | null = null;
+
   // state 1: anonymous — the game is online-only, so the only path forward is
-  // connecting a node. Nothing is probed on page load (no surprise browser
-  // local-network prompt): the "Connect a node" button opens a popup that
-  // pings the well-known local endpoints on demand.
+  // connecting a node or signing in with an account. Nothing is probed on
+  // page load (no surprise browser local-network prompt): the "Connect"
+  // button opens a popup that pings the well-known local endpoints on demand.
   private renderAnonymous(defaults: { name: string; seed: number }, _done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     el.innerHTML = `
@@ -696,38 +766,63 @@ export class Landing {
         You'll authenticate on your node and come straight back; opening from the
         Calimero desktop skips this page entirely. No node yet?
         <a href="https://docs.calimero.network/getting-started/" target="_blank"
-        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>.</div>
+        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>, or sign in with
+        your Calimero account (the Cloud tab) and play through its relay.</div>
     `;
     // the anonymous card can never start the game (_done unused): the only
-    // exit is beginWebLogin's redirect, which re-enters as picker/ready
+    // exits are beginWebLogin's / the wallet's redirects, which re-enter as
+    // picker/ready
     el.querySelector("[data-testid=connect-open-btn]")!.addEventListener("click", () =>
       this.openConnectModal(),
     );
+    // Back from the wallet: open the popup on the Cloud tab so the person
+    // sees what the enrolment has to say instead of a closed dialog.
+    const enrolment = this.enrolment;
+    if (enrolment && enrolment.status !== "none") {
+      this.enrolment = null;
+      this.openConnectModal({ tab: "cloud", note: enrolment.note });
+    }
   }
 
   /**
-   * The connect popup: the well-known local endpoints are pinged on open and
-   * only the LIVE ones are listed (a dead port is noise, not a choice) — so
-   * there is nothing to refresh. Rescan re-probes; the manual URL field is
-   * always there as the fallback.
+   * The connect popup, two tabs (the wording of the shared landing dialog):
+   *   Node  — the well-known local endpoints are pinged on open and only the
+   *           LIVE ones are listed (a dead port is noise, not a choice), so
+   *           there is nothing to refresh. Rescan re-probes; the manual URL
+   *           field is always there as the fallback.
+   *   Cloud — enrol this browser's device key with your account at the
+   *           wallet. Opens here when the page comes back from the wallet.
    */
-  private openConnectModal(): void {
+  private openConnectModal(opts: { tab?: "node" | "cloud"; note?: string | null } = {}): void {
     const shade = document.createElement("div");
     shade.className = "mtl-modal-shade";
     shade.dataset.testid = "connect-modal";
     shade.innerHTML = `
       <div class="mtl-modal">
         <div class="mtl-modal-head">
-          <h3>Connect a node</h3>
+          <h3>Connect</h3>
           <button class="mtl-modal-close" data-testid="connect-close" aria-label="Close">✕</button>
         </div>
-        <div class="mtl-nodes" data-testid="discovered-nodes"></div>
-        <div class="mtl-note" data-testid="scan-note"></div>
-        <button class="mtl-btn ghost" data-testid="rescan-btn">Rescan</button>
-        <div class="mtl-divider">or your node url</div>
-        <input id="mtl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
-        <button class="mtl-btn primary" data-testid="web-login-btn">Connect</button>
-        <div class="mtl-error" data-testid="login-error"></div>
+        <div class="mtl-tabs" role="tablist">
+          <button class="mtl-tab" role="tab" data-tab="node" data-testid="tab-node">Node</button>
+          <button class="mtl-tab" role="tab" data-tab="cloud" data-testid="tab-cloud">Cloud</button>
+        </div>
+        <div class="mtl-tabpanel" data-panel="node" role="tabpanel">
+          <div class="mtl-nodes" data-testid="discovered-nodes"></div>
+          <div class="mtl-note" data-testid="scan-note"></div>
+          <button class="mtl-btn ghost" data-testid="rescan-btn">Rescan</button>
+          <div class="mtl-divider">or your node url</div>
+          <input id="mtl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
+          <button class="mtl-btn primary" data-testid="web-login-btn">Connect</button>
+          <div class="mtl-error" data-testid="login-error"></div>
+        </div>
+        <div class="mtl-tabpanel" data-panel="cloud" role="tabpanel" hidden>
+          <div class="mtl-note">Sign in with your Calimero account. The wallet certifies
+            this browser as one of your devices and you come straight back; worlds you
+            create or join are served by your account's relay — no node of your own.</div>
+          <button class="mtl-btn primary" data-testid="enrol-btn">Enrol with your account</button>
+          <div class="mtl-note" data-testid="cloud-note"></div>
+        </div>
       </div>
     `;
     this.root.appendChild(shade);
@@ -741,6 +836,26 @@ export class Landing {
       if (e.target === shade) close();
     });
     shade.querySelector("[data-testid=connect-close]")!.addEventListener("click", close);
+
+    const select = (tab: "node" | "cloud") => {
+      for (const t of shade.querySelectorAll<HTMLButtonElement>(".mtl-tab"))
+        t.setAttribute("aria-selected", String(t.dataset.tab === tab));
+      for (const p of shade.querySelectorAll<HTMLElement>(".mtl-tabpanel"))
+        p.hidden = p.dataset.panel !== tab;
+    };
+    for (const t of shade.querySelectorAll<HTMLButtonElement>(".mtl-tab"))
+      t.addEventListener("click", () => select(t.dataset.tab as "node" | "cloud"));
+    select(opts.tab ?? (isReturningFromWallet() ? "cloud" : "node"));
+
+    const cloudNote = shade.querySelector<HTMLElement>("[data-testid=cloud-note]")!;
+    if (opts.note) cloudNote.textContent = opts.note;
+    shade.querySelector("[data-testid=enrol-btn]")!.addEventListener("click", () => {
+      // A device key this browser cannot make (no X25519, blocked storage) is
+      // reported where the person is looking, not lost as a rejection.
+      goToWallet().catch((e) => {
+        cloudNote.textContent = errText(e);
+      });
+    });
 
     const nodesEl = shade.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
     const noteEl = shade.querySelector<HTMLElement>("[data-testid=scan-note]")!;

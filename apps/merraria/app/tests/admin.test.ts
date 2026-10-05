@@ -8,7 +8,8 @@ import {
   parseContexts,
   resolveApplicationId,
 } from "../src/net/admin";
-import { resetSession, updateSession } from "../src/net/session";
+import { getSession, resetSession, updateSession } from "../src/net/session";
+import { resetTransport } from "../src/net/transport";
 
 const manifestBytes = (pkg: string) =>
   Array.from(new TextEncoder().encode(JSON.stringify({ package: pkg })));
@@ -16,12 +17,15 @@ const manifestBytes = (pkg: string) =>
 beforeEach(() => {
   localStorage.clear();
   resetSession();
-  updateSession({ nodeUrl: "http://node:2428" });
+  resetTransport();
+  updateSession({ kind: "node", nodeUrl: "http://node:2428" });
   localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "t" }));
 });
 afterEach(() => vi.restoreAllMocks());
 
-const okJson = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
+// Real `Response`s: the wire is mero-js's now, which reads bodies as text.
+const okJson = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("shape-tolerant parsers", () => {
   it("parseApplications handles arrays and every wrapper key", () => {
@@ -62,11 +66,45 @@ describe("shape-tolerant parsers", () => {
 });
 
 describe("resolveApplicationId", () => {
-  it("prefers the session app id without any network call", async () => {
+  // MRR6. The session id used to be trusted without asking the node, and a
+  // remembered id survives switching nodes and reinstalling the app — the
+  // node then answers every request carrying it with an opaque 500. Every
+  // candidate is now checked against what the node actually has.
+  it("keeps the session app id when the node has it installed", async () => {
     updateSession({ applicationId: "app-hash" });
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    expect(await resolveApplicationId()).toBe("app-hash");
-    expect(fetchMock).not.toHaveBeenCalled();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "app-hash", package: "com.something.else" }, { id: "mine", package: "com.calimero.merraria" }] } }),
+    );
+    expect(await resolveApplicationId()).toBe("app-hash"); // the hash wins over the package match
+    expect(getSession().applicationId).toBe("app-hash");
+  });
+
+  it("drops a session app id this node does not know, instead of sending it (MRR6)", async () => {
+    updateSession({ applicationId: "app-from-another-node" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "mine", package: "com.calimero.merraria" }] } }),
+    );
+    expect(await resolveApplicationId()).toBe("mine");
+    expect(getSession().applicationId).toBe("mine"); // and not left to come back next call
+  });
+
+  it("clears a stale session id when nothing on the node matches", async () => {
+    updateSession({ applicationId: "app-stale" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "a", package: "x" }, { id: "b", package: "y" }] } }),
+    );
+    expect(await resolveApplicationId()).toBeNull();
+    expect(getSession().applicationId).toBeNull();
+  });
+
+  it("asks the node with the session's bearer, on the admin route", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "mine", package: "com.calimero.merraria" }] } }),
+    );
+    await resolveApplicationId();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("http://node:2428/admin-api/applications");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer t");
   });
 
   it("matches the installed app by package name", async () => {
@@ -129,7 +167,7 @@ function mockRoutes(routes: [string, unknown][]) {
     for (const [suffix, data] of routes) {
       if (url.endsWith(suffix)) return okJson({ data });
     }
-    return { ok: false, status: 404, json: async () => ({}) } as Response;
+    return okJson({}, 404);
   });
   return calls;
 }
@@ -216,25 +254,24 @@ describe("createWorld (own namespace → open subgroup → context)", () => {
 
 describe("admin error parsing", () => {
   it("surfaces the node's error body instead of a bare HTTP status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ error: "identity not eligible for inheritance-based join" }),
-    } as Response);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ error: "identity not eligible for inheritance-based join" }, 403),
+    );
     await expect(joinWorld("ctx-x")).rejects.toThrow(
       "identity not eligible for inheritance-based join",
     );
   });
 
   it("falls back to method + path + status when the body is not JSON", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => {
-        throw new Error("not json");
-      },
-    } as unknown as Response);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("<h1>bad gateway</h1>", { status: 502, headers: { "content-type": "text/html" } }),
+    );
     await expect(joinWorld("ctx-x")).rejects.toThrow(/POST .*\/join: HTTP 502/);
+  });
+
+  it("says the node is unreachable when fetch itself fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    await expect(joinWorld("ctx-x")).rejects.toThrow(/can't reach your node at http:\/\/node:2428/);
   });
 });
 
