@@ -36,17 +36,22 @@ export function useSelfAccount(): string | null {
 }
 
 export function useUpdatesClient(): UpdatesClient | null {
-  const { mero } = useMero();
+  // `mero` carries the rpc transport the generated client writes through —
+  // identical on a node and on a relay. `admin` is the session-aware admin: on
+  // an account the raw client's `identities-owned` route is the relay's node
+  // route and answers `[]`, which left this hook with no executor and the app
+  // on a spinner forever.
+  const { mero, admin } = useMero();
   const contextId = useAudienceContextId();
   const [executor, setExecutor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!mero || !contextId) {
+    if (!admin || !contextId) {
       setExecutor(null);
       return;
     }
     let cancelled = false;
-    mero.admin
+    admin
       .getContextIdentitiesOwned(contextId)
       .then(({ identities }) => {
         if (!cancelled && identities.length > 0) setExecutor(identities[0]);
@@ -55,7 +60,7 @@ export function useUpdatesClient(): UpdatesClient | null {
     return () => {
       cancelled = true;
     };
-  }, [mero, contextId]);
+  }, [admin, contextId]);
 
   return useMemo(
     () =>

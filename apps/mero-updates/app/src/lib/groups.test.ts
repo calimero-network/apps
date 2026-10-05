@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
-import { CAPABILITIES } from "@calimero-network/mero-js";
+import { clearHostingState, hostingProblem } from "./hosting";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
 import {
   MEMBER_CAPABILITIES,
   acceptInvite,
@@ -10,7 +11,6 @@ import {
   listAudiences,
   mintAudienceInvite,
   unwrapInvitation,
-  type AdminLike,
 } from "./groups";
 
 // These are the sequences a second person's whole experience depends on, and every
@@ -66,7 +66,7 @@ function fakeAdmin(overrides: Record<string, (...a: never[]) => unknown> = {}) {
     setGroupMetadata: rec("setGroupMetadata"),
     getGroupMetadata: rec("getGroupMetadata", () => null),
   };
-  return admin as unknown as AdminLike & {
+  return admin as unknown as AdminApiClient & {
     calls: { method: string; args: unknown[] }[];
   };
 }
@@ -79,7 +79,10 @@ const signed = (groupId: string) => ({
 const methodsOf = (a: { calls: { method: string }[] }) =>
   a.calls.map((c) => c.method);
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  clearHostingState();
+});
 
 describe("unwrapInvitation", () => {
   it("descends to the object carrying the signature", () => {
@@ -118,6 +121,8 @@ describe("createAudience", () => {
       "setGroupMetadata",
       "setSubgroupVisibility",
       "createContext",
+      // The identity is re-read rather than trusted from the create response.
+      "getContextIdentitiesOwned",
     ]);
     expect(
       admin.calls.find((c) => c.method === "setGroupMetadata")!.args[1],
@@ -125,8 +130,24 @@ describe("createAudience", () => {
     expect(out).toEqual({
       audienceId: "audience1",
       contextId: "ctx1",
-      memberPublicKey: "pk-creator",
+      identity: "pk-creator",
     });
+  });
+
+  it("takes the identity from identities-owned when the create response has none", async () => {
+    // The ACCOUNT admin's createContext returns `memberPublicKey: ""` — a
+    // delegated create has no node-held key to report. Trusting that empty
+    // string made every write in the new audience fail with no executor.
+    const admin = fakeAdmin({
+      createContext: () => ({ contextId: "ctx1", memberPublicKey: "" }),
+      getContextIdentitiesOwned: () => ({ identities: ["acct-1"] }),
+    });
+    const out = await createAudience(admin, {
+      applicationId: "app1",
+      namespaceId: "ns1",
+      name: "Standup",
+    });
+    expect(out.identity).toBe("acct-1");
   });
 
   it('sets visibility to LOWERCASE open — core rejects "Open"', () => {
@@ -180,7 +201,8 @@ describe("createAudience", () => {
       { applicationId: "app1", namespaceId: "ns1", name: "Standup" },
       (m) => seen.push(m),
     );
-    expect(seen.length).toBe(4);
+    // Five, not four: the identity re-read after the create names itself too.
+    expect(seen.length).toBe(5);
   });
 });
 
@@ -548,7 +570,7 @@ describe("listAudiences", () => {
 describe("createSpaceNamespace — the rc.41 default mask", () => {
   it("never sends CAN_AUTHOR_ON_BEHALF", async () => {
     const admin = fakeAdmin();
-    await createSpaceNamespace(admin as unknown as AdminLike, {
+    await createSpaceNamespace(admin as unknown as AdminApiClient, {
       applicationId: "app-1",
       name: "Space",
     });
@@ -559,6 +581,37 @@ describe("createSpaceNamespace — the rc.41 default mask", () => {
     expect(sent).toBe(MEMBER_CAPABILITIES);
   });
 
+  it("reports a node's namespace as hosted — the response carries no haEnabled", async () => {
+    const admin = fakeAdmin();
+    const out = await createSpaceNamespace(admin as unknown as AdminApiClient, {
+      applicationId: "app-1",
+      name: "Space",
+    });
+    expect(out).toEqual({ namespaceId: "ns1", haEnabled: true });
+    expect(hostingProblem("ns1")).toBeNull();
+  });
+
+  it("surfaces the account admin's hosting refusal and remembers it for the Invite buttons", async () => {
+    // An account founds through the relay; the cloud then refuses to host the
+    // namespace when the account is not linked to a cloud user. The namespace
+    // exists, but nobody can be invited to it — and that used to show up only
+    // as a failed Invite on the next page.
+    const admin = fakeAdmin({
+      createNamespace: () => ({
+        namespaceId: "ns1",
+        haEnabled: false,
+        haError: "link this account to your cloud user in the wallet",
+      }),
+    });
+    const out = await createSpaceNamespace(admin as unknown as AdminApiClient, {
+      applicationId: "app-1",
+      name: "Space",
+    });
+    expect(out.haEnabled).toBe(false);
+    expect(out.haError).toMatch(/link this account/);
+    expect(hostingProblem("ns1")).toMatch(/link this account/);
+  });
+
   it("fails the whole call when the node refuses the write", async () => {
     // Was `.catch(() => {})`. At rc.41 swallowing this leaves every invited
     // member holding CAN_AUTHOR_ON_BEHALF, with nothing reported anywhere.
@@ -566,10 +619,36 @@ describe("createSpaceNamespace — the rc.41 default mask", () => {
       setDefaultCapabilities: () => Promise.reject(new Error("503")),
     });
     await expect(
-      createSpaceNamespace(admin as unknown as AdminLike, {
+      createSpaceNamespace(admin as unknown as AdminApiClient, {
         applicationId: "app-1",
         name: "Space",
       }),
     ).rejects.toThrow("503");
+  });
+});
+
+describe("mint*Invite — the account admin's hosting refusal", () => {
+  it("turns InvitationNotClaimableError(not-hosted) into an instruction and remembers it", async () => {
+    // The account admin asks the cloud who hosts the namespace before signing an
+    // invitation and refuses when the answer is nobody. Matched by name: the
+    // class lives in mero-react, which lib/groups does not import.
+    const refusal = Object.assign(new Error("nobody could claim an invitation"), {
+      name: "InvitationNotClaimableError",
+      namespaceId: "ns1",
+      reason: "not-hosted",
+    });
+    const admin = fakeAdmin({ createNamespaceInvitation: () => Promise.reject(refusal) });
+    await expect(
+      mintAudienceInvite(admin, { namespaceId: "ns1", audienceId: "audience1" }),
+    ).rejects.toThrow(/Link this account to your cloud user/);
+    expect(hostingProblem("ns1")).toMatch(/Link this account/);
+  });
+
+  it("lets any other minting error through untouched", async () => {
+    const admin = fakeAdmin({ createNamespaceInvitation: () => Promise.reject(new Error("503")) });
+    await expect(
+      mintAudienceInvite(admin, { namespaceId: "ns1", audienceId: "audience1" }),
+    ).rejects.toThrow("503");
+    expect(hostingProblem("ns1")).toBeNull();
   });
 });
