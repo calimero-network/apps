@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   applyContextFromJwt, clearContextId, decodeJwt, getAccessToken, getContextId,
-  getContextIdentity, getJwtPayload, getNodeUrl, setNodeUrl, setTokens,
+  getContextIdentity, getJwtPayload, getMeroClient, getNodeUrl, resetMeroClient,
+  setNodeUrl, setTokens,
 } from "./mero";
 
 /**
@@ -144,5 +145,35 @@ describe("clearContextId", () => {
     clearContextId();
     expect(getContextId() || null).toBeNull();
     expect(getAccessToken()).toBe("access-1");
+  });
+});
+
+describe("getMeroClient", () => {
+  beforeEach(() => resetMeroClient());
+
+  it("is null until a node is selected — nothing to talk to", () => {
+    expect(getMeroClient()).toBeNull();
+  });
+
+  it("is one client per node url, shared by rpc, admin and blobs", () => {
+    setNodeUrl("http://localhost:2528");
+    const a = getMeroClient();
+    expect(a).not.toBeNull();
+    expect(getMeroClient()).toBe(a);
+    setNodeUrl("http://localhost:2529");
+    expect(getMeroClient()).not.toBe(a);
+  });
+
+  it("picks up a login that happened after it was built", () => {
+    // MeroJs snapshots the token store at construction, so a client built
+    // before login would keep sending no token. Keying on the token means the
+    // next call after login gets a signed-in client.
+    setNodeUrl("http://localhost:2528");
+    const anonymous = getMeroClient();
+    expect(anonymous?.isAuthenticated()).toBe(false);
+    setTokens("access-1", "refresh-1", 3600);
+    const signedIn = getMeroClient();
+    expect(signedIn).not.toBe(anonymous);
+    expect(signedIn?.isAuthenticated()).toBe(true);
   });
 });

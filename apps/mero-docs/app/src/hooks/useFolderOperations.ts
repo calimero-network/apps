@@ -31,7 +31,6 @@ import {
 } from '../generated/registry/RegistryClient';
 import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
-import { reparentGroup } from '../api/reparentGroup';
 import { descendantsOf } from '../utils/ancestry';
 import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';
 
@@ -135,8 +134,12 @@ export function useFolderOperations(
         const newId = group.groupId;
 
         if (input.parentGroupId !== rootGroupId) {
-          if (!nodeUrl) throw new Error('Node URL not resolved');
-          await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
+          // Through the session-aware admin: the node's `POST
+          // /admin-api/groups/:child/reparent` on a node login, the account
+          // admin's governance op on an account. (This used to be a raw
+          // `fetch` with the node token read out of localStorage, from before
+          // mero-js surfaced `reparentGroup`.)
+          await admin.reparentGroup(newId, { newParentId: input.parentGroupId });
         }
 
         if (openChild) {

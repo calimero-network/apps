@@ -16,6 +16,7 @@ const addGroupMembers = vi.fn();
 const listGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
+const reparentGroup = vi.fn();
 
 vi.mock('@calimero-network/mero-react', () => ({
   useCreateGroupInNamespace: () => ({ createGroupInNamespace }),
@@ -35,11 +36,13 @@ vi.mock('@calimero-network/mero-react', () => ({
       listGroupMembers,
       updateMemberRole,
       setMemberCapabilities,
+      // Reparenting goes through the session-aware admin too, no raw
+      // `fetch` to `/admin-api/groups/:id/reparent` any more.
+      reparentGroup,
       getMemberCapabilities: async () => ({ capabilities: 0 }),
     },
   }),
 }));
-vi.mock('../../api/reparentGroup', () => ({ reparentGroup: vi.fn().mockResolvedValue(undefined) }));
 
 function makeRegistry() {
   return {
@@ -65,6 +68,40 @@ beforeEach(() => {
   addGroupMembers.mockResolvedValue(undefined);
   listGroupMembers.mockResolvedValue({ members: [] });
   setMemberCapabilities.mockResolvedValue(undefined);
+  reparentGroup.mockResolvedValue({ reparented: true });
+});
+
+describe('useFolderOperations.create - reparenting', () => {
+  it('reparents a sub-folder through the admin client, before it is named', async () => {
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Nested',
+      visibility: 'Restricted',
+    });
+    expect(reparentGroup).toHaveBeenCalledWith('new-folder', { newParentId: 'parent-folder' });
+    // The name op must encrypt on the chain the folder ends up on, so the
+    // reparent lands first.
+    expect(reparentGroup.mock.invocationCallOrder[0]).toBeLessThan(
+      setGroupMetadata.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not reparent a folder created directly under the root', async () => {
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Top level',
+      visibility: 'Restricted',
+    });
+    expect(reparentGroup).not.toHaveBeenCalled();
+  });
 });
 
 describe('useFolderOperations.create - Read only', () => {

@@ -18,7 +18,6 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/signature_pad": "^4.0.0",
-    "axios": "catalog:",
     "bs58": "catalog:",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",

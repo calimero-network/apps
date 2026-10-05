@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
 import {
   contractErrorMessage,
   friendlyContractMessage,
@@ -149,8 +150,38 @@ describe('structural parsing', () => {
     expect(parseContractError(bytes)).toEqual({ data: 'not your turn', kind: 'Forbidden' });
   });
 
-  it('unwraps an axios-shaped error', () => {
+  it('unwraps a wrapped `{ response: { data } }` error', () => {
     expect(parseContractError({ response: { data: ENVELOPE } })).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('reads a mero-js RpcError, whose detail is in `data`, not `message`', () => {
+    // What `mero.rpc.execute` throws for the envelope above: the node sends
+    // `{ type, data }` with no `message`, so the message is only the variant
+    // name and the bytes live in `data`.
+    const err = new RpcError(-1, 'FunctionCallError', NODE1_BYTES, 'FunctionCallError');
+    expect(parseContractError(err)).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('reads a mero-js HTTPError, whose reply body is in `bodyText`', () => {
+    const err = new HTTPError(
+      500,
+      'Internal Server Error',
+      'http://node/jsonrpc',
+      new Headers(),
+      JSON.stringify(ENVELOPE),
+    );
+    expect(parseContractError(err)).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+    // …and its `toJSON()` shape, which is what ends up in a log line.
+    expect(parseContractError(err.toJSON())).toEqual({
       data: 'both players must place ships first',
       kind: 'Invalid',
     });

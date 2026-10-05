@@ -11,7 +11,6 @@
     "@calimero-network/mero-platform-react": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
-    "axios": "catalog:",
     "bs58": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",
