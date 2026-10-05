@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero, setApplicationId } from "@calimero-network/mero-react";
-import { adminGet, adminPost, adminPut, adminDelete, rpcCall, joinContext } from "../api/rpc";
-import { resolveApplicationId } from "../api/appId";
+import { useMero } from "@calimero-network/mero-react";
+import { useApi } from "../api/useApi";
+import { listGroupContextRows, listSubgroupRows } from "../api/teamContexts";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
@@ -13,22 +13,6 @@ import { getStoredTeamName, teamLabel } from "../utils/teamName";
 import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
-
-type SubgroupRaw = {
-  groupId?: string;
-  group_id?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
-
-type ContextRaw = {
-  contextId?: string;
-  context_id?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
 
 type Tab = "projects" | "invitations";
 
@@ -55,7 +39,12 @@ export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { logout, applicationId } = useMero();
+  const { logout } = useMero();
+  // The session-aware API (see api/useApi): contract reads over the session's
+  // transport, governance and contexts through `useMero().admin` — the account
+  // admin on a delegated session, where the raw node routes are a 403.
+  const api = useApi();
+  const { admin, isDelegated } = api;
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<ProjectCard[]>([]);
@@ -82,21 +71,6 @@ export default function ProjectsPage() {
   const [inviteError, setInviteError] = useState("");
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Resolve MeroPixArt's own application id (mirrors TeamsPage's ensureAppId).
-  // The desktop can deep-link straight to this page (bypassing TeamsPage), so we
-  // must resolve here too rather than trust a possibly-empty useMero().applicationId
-  // — otherwise createProject would POST an empty applicationId and the node
-  // rejects it ("invalid length 0").
-  const appIdRef = useRef<string>("");
-  const ensureAppId = useCallback(async (): Promise<string> => {
-    if (appIdRef.current) return appIdRef.current;
-    let id = "";
-    try { id = await resolveApplicationId(); } catch { /* ignore */ }
-    if (!id) id = applicationId ?? "";
-    if (id) { appIdRef.current = id; setApplicationId(id); }
-    return id;
-  }, [applicationId]);
-
   function handleLogout() {
     logout();
     navigate("/");
@@ -107,47 +81,35 @@ export default function ProjectsPage() {
     let cancelled = false;
     async function loadProjects() {
       try {
-        const raw = await adminGet<{ subgroups?: SubgroupRaw[]; data?: SubgroupRaw[] } | SubgroupRaw[]>(
-          `/groups/${teamId}/subgroups`,
-        );
-        const subgroups: SubgroupRaw[] = Array.isArray(raw)
-          ? raw
-          : (raw as { subgroups?: SubgroupRaw[] }).subgroups ?? (raw as { data?: SubgroupRaw[] }).data ?? [];
+        const subgroups = await listSubgroupRows(admin, teamId!);
 
         const resolved: ProjectCard[] = [];
         for (const sg of subgroups) {
-          const sgId = sg.groupId ?? sg.group_id ?? sg.id ?? "";
-          const sgName = sg.alias ?? sg.name ?? sgId.slice(0, 8);
+          const sgId = sg.groupId;
+          const sgName = sg.name ?? sgId.slice(0, 8);
           try {
-            const ctxRaw = await adminGet<{ contexts?: ContextRaw[]; items?: ContextRaw[] } | ContextRaw[]>(
-              `/groups/${sgId}/contexts`,
-            );
-            const ctxs: ContextRaw[] = Array.isArray(ctxRaw)
-              ? ctxRaw
-              : (ctxRaw as { contexts?: ContextRaw[]; items?: ContextRaw[] }).contexts
-                ?? (ctxRaw as { items?: ContextRaw[] }).items ?? [];
+            const ctxs = await listGroupContextRows(admin, sgId);
             if (ctxs.length > 0) {
               const ctx = ctxs[0];
-              const contextId = ctx.contextId ?? ctx.context_id ?? ctx.id ?? sgId;
+              const contextId = ctx.contextId;
               // Best-effort: read the document so the card can show real
               // dimensions / member count + name. Failures (not joined yet,
               // unsynced) leave them undefined.
               let doc: DocumentInfo | null = null;
-              try { doc = await rpcCall<DocumentInfo>(contextId, "get_document", {}); } catch { /* unsynced */ }
+              try { doc = await api.call<DocumentInfo>(contextId, "get_document", {}); } catch { /* unsynced */ }
               // Member count comes from the governance group, not the contract's
               // `doc.memberCount` (which counts in-contract registrations and reads
               // 0 for peers who joined the subgroup but never registered). The
-              // subgroup id is hex, so `/groups/{id}/members` accepts it.
+              // subgroup id is hex, so the members listing accepts it.
               let memberCount: number | undefined = doc?.memberCount;
               try {
-                const m = await adminGet<{ members?: unknown[] } | unknown[]>(`/groups/${sgId}/members`);
-                const arr = Array.isArray(m) ? m : (m as { members?: unknown[] }).members ?? [];
-                if (Array.isArray(arr)) memberCount = arr.length;
+                const m = await admin.listGroupMembers(sgId);
+                if (Array.isArray(m?.members)) memberCount = m.members.length;
               } catch { /* keep the doc fallback */ }
               resolved.push({
                 contextId,
                 groupId: sgId,
-                name: doc?.name?.trim() || ctx.alias || ctx.name || sgName,
+                name: doc?.name?.trim() || ctx.name || sgName,
                 description: doc?.description ?? "",
                 width: doc?.width,
                 height: doc?.height,
@@ -168,7 +130,7 @@ export default function ProjectsPage() {
     loadProjects();
     const id = setInterval(loadProjects, 30_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [teamId]);
+  }, [teamId, api, admin]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -212,28 +174,21 @@ export default function ProjectsPage() {
     try {
       // Resolve the app id up front. Never POST an empty one — the node rejects
       // it ("applicationId: invalid length 0, expected a base58 encoded hash").
-      const appId = await ensureAppId();
+      const appId = await api.ensureAppId();
       if (!appId) {
         showToast("Select or install the Mero PixArt application first.");
         return;
       }
 
-      const sgData = await adminPost<{ groupId?: string; group_id?: string; id?: string }>(
-        `/namespaces/${teamId}/groups`,
-        // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
-        // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
-        // whole create:
-        //   unknown field `groupAlias`, expected `groupName` or `visibility`
-        // Note this body is NOT `CreateGroupApiRequest`: the namespace-scoped
-        // subgroup route is a different, much smaller shape than `POST /groups`.
-        { groupName: newName.trim() },
-      );
-      const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
+      // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
+      // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
+      // whole create. On an account the subgroup is created as a governance op
+      // signed by the account, through the same `admin`.
+      const sgData = await admin.createGroupInNamespace(teamId, { groupName: newName.trim() });
+      const subgroupId = sgData?.groupId ?? "";
 
       if (subgroupId) {
-        await adminPut(`/groups/${subgroupId}/settings/subgroup-visibility`, {
-          subgroupVisibility: "open",
-        }).catch(() => {});
+        await admin.setSubgroupVisibility(subgroupId, { subgroupVisibility: "open" }).catch(() => {});
       }
 
       // Editor document init params: name, description, width, height. Encoded as
@@ -247,20 +202,17 @@ export default function ProjectsPage() {
       });
       const initBytes = Array.from(new TextEncoder().encode(initJson));
 
-      const ctxData = await adminPost<{ contextId?: string; id?: string }>(
-        "/contexts",
-        {
-          // `CreateContextRequest` is `deny_unknown_fields` and accepts only
-          // applicationId / serviceName / contextSeed / initializationParams /
-          // groupId / identitySecret / name. `protocol` went with the external
-          // chain config and `alias` with core#2338; either one is a 400.
-          applicationId: appId,
-          groupId: subgroupId || teamId,
-          name: newName.trim(),
-          initializationParams: initBytes,
-        },
-      );
-      const id = ctxData.contextId ?? ctxData.id ?? "";
+      // `CreateContextRequest` is `deny_unknown_fields` and accepts only
+      // applicationId / serviceName / contextSeed / initializationParams /
+      // groupId / identitySecret / name. `protocol` went with the external
+      // chain config and `alias` with core#2338; either one is a 400.
+      const ctxData = await admin.createContext({
+        applicationId: appId,
+        groupId: subgroupId || teamId,
+        name: newName.trim(),
+        initializationParams: initBytes,
+      });
+      const id = ctxData?.contextId ?? "";
       // Store the same group the context was created under (`subgroupId || teamId`).
       // An empty groupId would make Settings fall back to the base58 contextId for
       // `/groups/{id}/members`, which the admin API rejects.
@@ -295,10 +247,12 @@ export default function ProjectsPage() {
     }
   }
 
+  // A node's own operation: deleting a context has no account form, so the
+  // control is hidden on a delegated session rather than offered and refused.
   async function deleteProject(contextId: string) {
     setMenuOpenId(null);
     try {
-      await adminDelete(`/contexts/${contextId}`);
+      await admin.deleteContext(contextId);
     } catch {
       // best-effort
     }
@@ -312,7 +266,7 @@ export default function ProjectsPage() {
     if (!teamId) return;
     setOpening(contextId);
     try {
-      await joinContext(contextId).catch(() => { /* already joined / not required */ });
+      await admin.joinContext(contextId).catch(() => { /* already joined / not required */ });
       navigate(`/teams/${teamId}/projects/${contextId}`);
     } finally {
       setOpening(null);
@@ -324,10 +278,8 @@ export default function ProjectsPage() {
     setInviteError("");
     setInviteLoading(true);
     try {
-      const data = await adminPost<Record<string, unknown>>(
-        `/namespaces/${teamId}/invite`,
-        {},
-      );
+      // Signed by the account itself on a delegated session (see InviteModal).
+      const data = (await admin.createNamespaceInvitation(teamId)) as unknown as Record<string, unknown>;
       if (data) {
         // Embed the team's human name so the joiner doesn't see a raw ID before
         // the namespace metadata syncs. `__teamName` is a sibling of the signed
@@ -454,9 +406,11 @@ export default function ProjectsPage() {
                         <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
-                        <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
-                          Delete
-                        </button>
+                        {!isDelegated && (
+                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

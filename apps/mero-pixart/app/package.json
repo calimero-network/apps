@@ -25,7 +25,6 @@
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
-    "axios": "^1.12.0",
     "bs58": "catalog:",
     "clsx": "^2.1.1",
     "fflate": "catalog:",

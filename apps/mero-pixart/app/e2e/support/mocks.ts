@@ -85,6 +85,12 @@ export async function mockNode(page: Page, opts: MockOptions = {}): Promise<RpcR
     status: 200, contentType: "application/json",
     body: JSON.stringify({ data: { contexts: [] } }),
   }));
+  // Who this session is: the account the contract keys members by. Matches
+  // TEST_MEMBER.id so the editor sees itself as already a member.
+  await page.route("**/admin-api/identity", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ data: { accountId: "test-identity", deviceId: null, publicKey: "" } }),
+  }));
   await page.route("**/admin-api/contexts/**/identities-owned", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ data: ["test-identity"] }),
   }));
@@ -163,6 +169,11 @@ export async function openEditor(
   const log = await mockNode(page, opts);
   await page.goto(`/teams/team-1/projects/project-1${opts.query ?? ""}`);
   await page.getByTestId("toolbar").waitFor({ state: "visible", timeout: 10_000 });
+  // The toolbar renders before the document has loaded; until it has, the
+  // "Loading project…" overlay sits over the stage and swallows pointer input.
+  // A spec that drags on the canvas or the rulers straight after opening used
+  // to win that race by a few milliseconds; wait for the editor to be usable.
+  await page.getByText("Loading project…").waitFor({ state: "hidden", timeout: 10_000 });
   return log;
 }
 

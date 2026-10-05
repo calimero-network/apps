@@ -1,4 +1,4 @@
-import { adminGet } from "./rpc";
+import type { AdminApiClient } from "@calimero-network/mero-js";
 
 // ── Every document in a team ────────────────────────────────────────────────────
 //
@@ -8,11 +8,13 @@ import { adminGet } from "./rpc";
 // take it away) has to enumerate the team's documents first.
 //
 // Two hops, because a document is a context inside a subgroup:
-//   /groups/{teamId}/subgroups  →  /groups/{subgroupId}/contexts
+//   listSubgroups(teamId)  →  listGroupContexts(subgroupId)
 //
 // Both routes have been returning three different envelope shapes across
-// releases, so the parsing is deliberately tolerant and kept pure — that is the
-// part worth testing, and the part that quietly returns [] when a shape moves.
+// releases — and mero-js's `listSubgroups` hands back whichever it got rather
+// than flattening them — so the parsing is deliberately tolerant and kept pure:
+// that is the part worth testing, and the part that quietly returns [] when a
+// shape moves.
 
 interface SubgroupRaw {
   groupId?: string;
@@ -26,11 +28,11 @@ interface ContextRaw {
   id?: string;
 }
 
-type SubgroupsResponse =
+export type SubgroupsResponse =
   | SubgroupRaw[]
   | { subgroups?: SubgroupRaw[]; data?: SubgroupRaw[] };
 
-type ContextsResponse =
+export type ContextsResponse =
   | ContextRaw[]
   | { contexts?: ContextRaw[]; items?: ContextRaw[]; data?: ContextRaw[] };
 
@@ -54,16 +56,48 @@ export function parseContextIds(raw: ContextsResponse | null | undefined): strin
     .filter((id): id is string => !!id);
 }
 
+/** The subgroups of a group, as `{ groupId, name }` rows whatever the envelope. */
+export async function listSubgroupRows(
+  admin: AdminApiClient,
+  groupId: string,
+): Promise<{ groupId: string; name?: string }[]> {
+  const raw = (await admin.listSubgroups(groupId)) as unknown as SubgroupsResponse;
+  const list = Array.isArray(raw) ? raw : raw?.subgroups ?? raw?.data ?? [];
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((s) => ({
+      groupId: s?.groupId ?? s?.group_id ?? s?.id ?? "",
+      name: (s as { name?: string; alias?: string })?.name ?? (s as { alias?: string })?.alias,
+    }))
+    .filter((s) => !!s.groupId);
+}
+
+/** The contexts of a group, as `{ contextId, name }` rows whatever the envelope. */
+export async function listGroupContextRows(
+  admin: AdminApiClient,
+  groupId: string,
+): Promise<{ contextId: string; name?: string }[]> {
+  const raw = (await admin.listGroupContexts(groupId)) as unknown as ContextsResponse;
+  const list = Array.isArray(raw) ? raw : raw?.contexts ?? raw?.items ?? raw?.data ?? [];
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((c) => ({
+      contextId: c?.contextId ?? c?.context_id ?? c?.id ?? "",
+      name: (c as { name?: string; alias?: string })?.name ?? (c as { alias?: string })?.alias,
+    }))
+    .filter((c) => !!c.contextId);
+}
+
 /**
  * Every document context in a team. A subgroup with no context yet is skipped
  * rather than failing the whole walk — half a team's documents is still better
  * than none when one subgroup is mid-creation.
  */
-export async function listTeamContexts(teamId: string): Promise<string[]> {
+export async function listTeamContexts(admin: AdminApiClient, teamId: string): Promise<string[]> {
   let subgroupIds: string[] = [];
   try {
     subgroupIds = parseSubgroupIds(
-      await adminGet<SubgroupsResponse>(`/groups/${teamId}/subgroups`),
+      (await admin.listSubgroups(teamId)) as unknown as SubgroupsResponse,
     );
   } catch {
     return [];
@@ -74,7 +108,7 @@ export async function listTeamContexts(teamId: string): Promise<string[]> {
     try {
       contexts.push(
         ...parseContextIds(
-          await adminGet<ContextsResponse>(`/groups/${groupId}/contexts`),
+          (await admin.listGroupContexts(groupId)) as unknown as ContextsResponse,
         ),
       );
     } catch {

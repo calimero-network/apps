@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { adminGet, adminPut, getNodeIdentity, rpcCall } from "../api/rpc";
+import { useApi } from "../api/useApi";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -21,11 +21,8 @@ interface MemberEntry {
   name?: string;
 }
 
-// No `selfIdentity` here: rc.23 removed it from this response (#3522). The
+// No `selfIdentity` on the member listing: rc.23 removed it (#3522). The
 // caller's own account comes from `getNodeIdentity()` instead.
-type MembersResponse =
-  | MemberEntry[]
-  | { members?: MemberEntry[]; data?: MemberEntry[] };
 
 interface Props {
   type: "team" | "project";
@@ -44,6 +41,11 @@ interface Props {
 
 export default function SettingsModal({ type, id, groupId, name, onClose }: Props) {
   const { applicationId } = useMero();
+  // Session-aware: contract calls over the session's transport, governance
+  // through `useMero().admin` (the account admin on a delegated session).
+  const api = useApi();
+  const { admin } = api;
+  const rpcCall = api.call;
   const { showToast } = useToast();
   const membersGroupId = groupId || id;
   const [members, setMembers] = useState<MemberEntry[]>([]);
@@ -86,7 +88,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
       }
     });
     return () => { cancelled = true; };
-  }, [type, id]);
+  }, [type, id, rpcCall]);
 
   // The document owner/admin (contract) may grant/revoke the editor role. The
   // grant is admin-gated at merge, so a non-admin's forged grant is rejected by peers.
@@ -148,7 +150,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   // account serves every namespace, so this is fetched once per modal.
   useEffect(() => {
     let cancelled = false;
-    getNodeIdentity()
+    api.getNodeIdentity()
       .then((me) => {
         if (!cancelled) setSelfIdentity(me.accountId ?? "");
       })
@@ -160,7 +162,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,10 +175,10 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
       return;
     }
     setLoadingMembers(true);
-    adminGet<MembersResponse>(`/groups/${membersGroupId}/members`)
+    admin.listGroupMembers(membersGroupId)
       .then((raw) => {
         if (cancelled) return;
-        const arr: MemberEntry[] = Array.isArray(raw) ? raw : raw.members ?? raw.data ?? [];
+        const arr: MemberEntry[] = Array.isArray(raw?.members) ? raw.members : [];
         setMembers(
           arr
             .map((m) => ({
@@ -190,7 +192,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
       .catch(() => { if (!cancelled) setMembers([]); })
       .finally(() => { if (!cancelled) setLoadingMembers(false); });
     return () => { cancelled = true; };
-  }, [membersGroupId]);
+  }, [membersGroupId, admin]);
 
   const selfIsAdmin =
     !!selfIdentity && members.some((m) => m.identity === selfIdentity && m.role === "Admin");
@@ -224,7 +226,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
       }
     })();
     return () => { cancelled = true; };
-  }, [type, id, members, contractRoles, myContractRole]);
+  }, [type, id, members, contractRoles, myContractRole, rpcCall]);
 
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
@@ -249,7 +251,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     identity: string,
     role: "Admin" | "Member",
   ): Promise<{ changed: number; failed: number }> {
-    const contexts = await listTeamContexts(membersGroupId);
+    const contexts = await listTeamContexts(admin, membersGroupId);
     const method = role === "Admin" ? "grant_editor" : "revoke_editor";
     let changed = 0;
     let failed = 0;
@@ -269,7 +271,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   async function changeRole(identity: string, role: "Admin" | "Member") {
     setPendingRole(identity);
     try {
-      await adminPut(`/groups/${membersGroupId}/members/${identity}/role`, { role });
+      await admin.updateMemberRole(membersGroupId, identity, { role });
       setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
 
       const { changed, failed } = await cascadeDocumentRole(identity, role);

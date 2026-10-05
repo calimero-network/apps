@@ -1,39 +1,27 @@
-import { adminGet } from "./rpc";
+import type { AdminApiClient } from "@calimero-network/mero-js";
 
 /**
- * Resolving MeroPixArt's own application id.
+ * Resolving MeroPixArt's own application id on a NODE login.
  *
- * A node can have several applications installed, so picking `apps[0]` is wrong —
- * it is whichever app happens to be first, and the teams/projects list then shows
- * another application's namespaces.
- *
- * The id is `hash(package, signer)`: it does NOT change between releases (verified
- * — two versions of the same package signed by the same key derive the same id),
- * and it is identical on every node that installs the same signed bundle. So the
- * production id can simply be a constant here, with no build-time configuration.
- *
- * It DOES change with the signer, which is the one thing to keep in mind:
- *
- *   registry bundle (production key)      J7SPnKLUbvf166Z61X74JMyK4oDLyAzN98RehWJhNyrv
- *   `cargo mero bundle --dev` / dev key   DuaN713adUp9Mr8VN448U7vNeyhavfP3nVZVBWSyhCox
- *
- * Same code, two ids. That is why the constant is a PREFERENCE checked against
- * what the node actually has, not an override: a locally dev-installed build, or a
- * future re-signed lineage, still resolves correctly via the manifest `package`
- * instead of failing. Getting this wrong is expensive to debug — the node answers a
- * request for an unknown application with an opaque `500 Internal server error`
- * that never mentions application ids.
+ * A node can have several applications installed, so picking `apps[0]` is wrong
+ * when the node knows packages — it is whichever app happens to be first, and the
+ * teams list then shows another application's namespaces. The id is
+ * `hash(package, signer)`: a registry build and a locally dev-signed one have
+ * DIFFERENT ids for the same code, so there is no constant to pin; the bundle's
+ * `package` is the one identity that does not change between releases, machines
+ * or signers, and it is what the node is asked to match on.
  *
  * Deliberately NOT read from `import.meta.env.VITE_APPLICATION_ID`: a stale value
  * configured in the hosting project would silently outrank everything below, which
  * is exactly how MeroDesign shipped a build pinned to an id no node had.
+ *
+ * On a delegated (account) session there is no node to ask — `GET
+ * /admin-api/applications` is node-wide and the relay refuses it to an account
+ * (403) — and nothing here runs: the provider resolves the id from the registry
+ * by this app's package, and `useApi()` hands that out instead.
  */
 
-/** Production `com.calimero.mero-pixart`, signed by the release key. */
-export const PRODUCTION_APPLICATION_ID =
-  "J7SPnKLUbvf166Z61X74JMyK4oDLyAzN98RehWJhNyrv";
-
-const APP_PACKAGE =
+export const APP_PACKAGE =
   (import.meta.env.VITE_APPLICATION_PACKAGE as string | undefined)?.trim() ||
   "com.calimero.mero-pixart";
 
@@ -45,23 +33,21 @@ export interface AppEntry {
 /**
  * Choose MeroPixArt's application id from the node's installed apps.
  *
- * Order: the production id if this node has it, else whatever carries our
- * `package` (a dev install, or a re-signed release), else the only app installed.
+ * Whatever carries our `package`, else — on a node that knows no packages at all
+ * (a raw-wasm dev install) — the only app installed. When the node knows
+ * packages and none is ours, the answer is "", not another app's id.
  */
-export function pickApplicationId(apps: AppEntry[]): string {
-  if (apps.some((a) => a.id === PRODUCTION_APPLICATION_ID)) {
-    return PRODUCTION_APPLICATION_ID;
-  }
-  const byPackage = apps.find((a) => a.package === APP_PACKAGE);
+export function pickApplicationId(apps: readonly AppEntry[]): string {
+  const byPackage = apps.find((a) => a?.package === APP_PACKAGE && !!a.id);
   if (byPackage) return byPackage.id;
+  const packageAware = apps.some((a) => typeof a?.package === "string" && a.package !== "");
+  if (packageAware) return "";
   return apps[0]?.id ?? "";
 }
 
-/** Fetch the installed apps from the node and resolve MeroPixArt's id. */
-export async function resolveApplicationId(): Promise<string> {
-  const res = await adminGet<{ apps?: AppEntry[]; applications?: AppEntry[] }>(
-    "/applications",
-  );
-  const apps = res?.apps ?? res?.applications ?? [];
+/** Ask the node which of its installed applications is this one. */
+export async function resolveApplicationId(admin: AdminApiClient): Promise<string> {
+  const res = await admin.listApplications();
+  const apps = (res as { apps?: AppEntry[] } | undefined)?.apps ?? [];
   return pickApplicationId(Array.isArray(apps) ? apps : []);
 }
