@@ -29,7 +29,6 @@
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
-    "axios": "catalog:",
     "bs58": "catalog:",
     "clsx": "catalog:",
     "fabric": "^7.4.0",

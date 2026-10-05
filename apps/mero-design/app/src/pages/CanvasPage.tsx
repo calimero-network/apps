@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext, getNodeIdentity } from "../api/rpc";
+import { rpcCall, getBlob, getContextIdentitiesOwned, getNodeIdentity, joinContext, uploadBlob } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { getElementsByIds } from "../api/elementBatch";
 import { collectBoardChanges } from "../utils/boardEvents";
@@ -95,10 +95,11 @@ export default function CanvasPage() {
   const syncRetryCountRef = useRef(0);
   const joinAttemptedRef = useRef(false);
 
-  // Fetch real context identity from the node (the key WASM knows as member_id).
-  // Persists the last known identity in localStorage so refresh doesn't produce a
-  // new random UUID when the API is temporarily unavailable. Re-run after we join
-  // a context (the node only returns our key once we're a member).
+  // Fetch the identity this session holds in the context (the key WASM knows as
+  // member_id) — on an account session the account admin answers with the
+  // account. Persists the last known identity in localStorage so refresh keeps
+  // it when the API is temporarily unavailable. Re-run after we join a context
+  // (the key only exists once we're a member).
   // `shouldApply` guards setMyIdentity so a slow response from a previous project
   // can't clobber the identity after the user has switched canvases. Callers pass
   // their own !cancelled check; the localStorage write is per-project (keyed by id)
@@ -106,33 +107,32 @@ export default function CanvasPage() {
   const refreshIdentity = useCallback((shouldApply: () => boolean = () => true) => {
     if (!projectId) return;
     const storageKey = `md-identity-${projectId}`;
-    adminGet<unknown>(`/contexts/${projectId}/identities-owned`)
-      .then((res) => {
-        const arr: string[] = Array.isArray(res)
-          ? (res as string[])
-          : ((res as { identities?: string[]; items?: string[] })?.identities
-              ?? (res as { identities?: string[]; items?: string[] })?.items
-              ?? []);
+    getContextIdentitiesOwned(projectId)
+      .then((arr) => {
         if (arr.length > 0) {
           localStorage.setItem(storageKey, arr[0]);
           if (shouldApply()) setMyIdentity(arr[0]);
+          return;
         }
+        throw new Error("no owned identity yet");
       })
       .catch(() => {
-        // identities-owned 404s when this node hasn't joined the context yet
-        // (e.g. a project created on a peer). Fall back to the cached key for THIS
-        // project — the member id is per-context, so never keep the previous
-        // canvas's identity (`cur`). Last resort: a fresh uuid, cached under this
-        // project's key so it stays stable across retries instead of churning, and
-        // is replaced by the real key once we join.
+        // identities-owned 404s (or is empty) when this session hasn't joined the
+        // context yet (e.g. a project created on a peer). Fall back to the cached
+        // key for THIS project — the member id is per-context, so never keep the
+        // previous canvas's identity. Last resort: who the session IS (the
+        // account), which is what the member id resolves to once we join; never
+        // an invented id, which the contract would key nothing by.
         const stored = localStorage.getItem(storageKey);
         if (stored) {
           if (shouldApply()) setMyIdentity(stored);
-        } else {
-          const generated = uuid();
-          localStorage.setItem(storageKey, generated);
-          if (shouldApply()) setMyIdentity(generated);
+          return;
         }
+        getNodeIdentity()
+          .then((me) => {
+            if (me.accountId && shouldApply()) setMyIdentity(me.accountId);
+          })
+          .catch(() => {});
       });
   }, [projectId]);
 
@@ -276,9 +276,8 @@ export default function CanvasPage() {
               refreshIdentity(() => !cancelled); // now a member — fetch our real context key
             } catch (joinErr) {
               if (cancelled) return;
-              // joinContext uses adminPost → rejects with a raw Axios error, so pull
-              // the node's `{ error }` body (where entitlement rejections live) rather
-              // than the generic HTTP message.
+              // Pull the node's own words (where entitlement rejections live)
+              // rather than the generic HTTP message.
               const jmsg = extractErrorMessage(joinErr, "join failed");
               console.error("[MeroDesign] auto-join failed:", jmsg);
               // Surface it — otherwise the canvas shows an endless "syncing" hint and
@@ -318,8 +317,8 @@ export default function CanvasPage() {
         const elId = el.id;
         // Pass projectId (the context id) so the node can P2P-fetch blobs that
         // were uploaded on a peer node — without it the receiver only checks
-        // local storage and 404s. See adminGetBlob.
-        adminGetBlob(blobId, projectId)
+        // local storage and 404s. See getBlob.
+        getBlob(blobId, projectId!)
           .then((buf) => {
             const mime = kind === "svg" ? "image/svg+xml" : "image/png";
             const url = URL.createObjectURL(new Blob([buf], { type: mime }));
@@ -573,7 +572,7 @@ export default function CanvasPage() {
     let blobId = "";
     try {
       const buf = await file.arrayBuffer();
-      const result = await adminUploadBlob(buf, projectId);
+      const result = await uploadBlob(buf, projectId);
       blobId = result?.blobId ?? "";
     } catch (err) {
       console.error("[MeroDesign] blob upload failed — image will only be visible this session:", err);

@@ -8,21 +8,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const adminPost = vi.fn();
+const joinNamespace = vi.fn();
 const listNamespaces = vi.fn();
 const showToast = vi.fn();
 const navigate = vi.fn();
 
 vi.mock("../api/rpc", () => ({
-  adminPost: (...a: unknown[]) => adminPost(...a),
-  adminDelete: vi.fn().mockResolvedValue({}),
+  joinNamespace: (...a: unknown[]) => joinNamespace(...a),
+  createNamespace: vi.fn(),
+  deleteNamespace: vi.fn().mockResolvedValue(undefined),
   listNamespaces: (...a: unknown[]) => listNamespaces(...a),
 }));
-vi.mock("../api/appId", () => ({
-  resolveApplicationId: vi.fn().mockResolvedValue("app-1"),
+vi.mock("../hooks/useApplicationId", () => ({
+  useApplicationId: () => async () => "app-1",
 }));
 vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ applicationId: "app-1", logout: vi.fn() }),
+  useMero: () => ({ applicationId: "app-1", logout: vi.fn(), isDelegated: false, admin: {} }),
   setApplicationId: vi.fn(),
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
@@ -66,7 +67,7 @@ describe("TeamsPage – an invite link opened this app", () => {
     resetInvitationCaptureForTests();
     localStorage.clear();
     sessionStorage.clear();
-    adminPost.mockReset();
+    joinNamespace.mockReset();
     listNamespaces.mockReset();
     showToast.mockReset();
     navigate.mockReset();
@@ -79,7 +80,7 @@ describe("TeamsPage – an invite link opened this app", () => {
   });
 
   it("joins, says so, and opens the team", async () => {
-    adminPost.mockResolvedValue({});
+    joinNamespace.mockResolvedValue(undefined);
     listNamespaces.mockResolvedValue([{ namespaceId: NS, name: "Design" }]);
     openWithInvitation();
 
@@ -92,9 +93,7 @@ describe("TeamsPage – an invite link opened this app", () => {
       expect(navigate).toHaveBeenCalledWith(`/teams/${NS}/projects`),
     );
     // The body is the invitation struct, not the whole decoded token.
-    expect(adminPost).toHaveBeenCalledWith(`/namespaces/${NS}/join`, {
-      invitation: OUTER,
-    });
+    expect(joinNamespace).toHaveBeenCalledWith(NS, OUTER);
     // And the post-join sync gate is armed before the navigation.
     expect(sessionStorage.getItem("calimero:justJoinedNamespaces")).toContain(
       NS,
@@ -103,7 +102,7 @@ describe("TeamsPage – an invite link opened this app", () => {
 
   // The 30s-proxy-abort case: the request fails, the join landed.
   it("says you are already in it rather than reporting a failure", async () => {
-    adminPost.mockRejectedValue(new Error("timed out after 30 seconds"));
+    joinNamespace.mockRejectedValue(new Error("timed out after 30 seconds"));
     listNamespaces.mockResolvedValue([{ namespaceId: NS, name: "Design" }]);
     openWithInvitation();
 
@@ -114,7 +113,7 @@ describe("TeamsPage – an invite link opened this app", () => {
   });
 
   it("shows the node's own reason when the join really failed", async () => {
-    adminPost.mockRejectedValue(
+    joinNamespace.mockRejectedValue(
       new Error("could not reach any member of this namespace"),
     );
     listNamespaces.mockResolvedValue([]);

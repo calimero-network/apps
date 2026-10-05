@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { rpcCall, adminUploadBlob } from "../api/rpc";
+import { rpcCall, uploadBlob } from "../api/rpc";
 import { deleteElements, updateElementLabels } from "../api/elementBatch";
 import type { Element } from "../types";
 import { toDataUrl } from "./image";
@@ -122,7 +122,7 @@ export async function flattenElements(
   const box = boundsOf(elements);
 
   const bytes = new TextEncoder().encode(svg);
-  const { blobId } = await adminUploadBlob(
+  const { blobId } = await uploadBlob(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     deps.contextId,
   );

@@ -6,6 +6,7 @@ import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
 import { ToastProvider } from "./contexts/ToastContext";
+import { ApiBinder } from "./api/ApiBinder";
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
@@ -42,6 +43,9 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
+    // ApiBinder publishes the session's clients (rpc / admin / events) to the
+    // plain-function data layer in src/api — see api/client.tsx.
+    <ApiBinder>
     <ToastProvider>
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
@@ -76,5 +80,6 @@ export default function App() {
         <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><CanvasPage /></RequireAuth>} />
       </Routes>
     </ToastProvider>
+    </ApiBinder>
   );
 }

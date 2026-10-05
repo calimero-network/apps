@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { adminPost } from "../api/rpc";
+import { createNamespaceInvitation } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
@@ -28,7 +28,7 @@ export default function InviteModal({ teamId, onClose }: Props) {
     setError("");
     setLoading(true);
     try {
-      const data = await adminPost<Record<string, unknown>>(`/namespaces/${teamId}/invite`, {});
+      const data = await createNamespaceInvitation(teamId);
       if (data) {
         // Embed the team name so the joiner doesn't render a raw ID (see teamName.ts).
         const teamName = getStoredTeamName(teamId);

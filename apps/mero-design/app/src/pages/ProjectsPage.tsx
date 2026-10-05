@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero, setApplicationId } from "@calimero-network/mero-react";
-import { adminGet, adminPost, adminPut, adminDelete } from "../api/rpc";
-import { resolveApplicationId } from "../api/appId";
+import { useMero } from "@calimero-network/mero-react";
+import {
+  createContext,
+  createNamespaceInvitation,
+  createSubgroup,
+  deleteContext,
+  listGroupContexts,
+  listSubgroups,
+  setSubgroupVisibility,
+} from "../api/rpc";
+import { useApplicationId } from "../hooks/useApplicationId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import ProjectThumbnail from "../components/ProjectThumbnail";
@@ -14,29 +22,13 @@ import { getStoredTeamName } from "../utils/teamName";
 import type { Project } from "../types";
 import styles from "./ProjectsPage.module.css";
 
-type SubgroupRaw = {
-  groupId?: string;
-  group_id?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
-
-type ContextRaw = {
-  contextId?: string;
-  context_id?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
-
 type Tab = "projects" | "invitations";
 
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { logout, applicationId } = useMero();
+  const { logout, isDelegated } = useMero();
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,22 +46,10 @@ export default function ProjectsPage() {
   const [inviteError, setInviteError] = useState("");
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Resolve MeroDesign's own application id (mirrors TeamsPage's ensureAppId).
-  // resolveApplicationId is authoritative: the pinned production id when the node
-  // has it, else the installed app whose package is
-  // com.calimero.mero-design. The desktop deep-links straight to this page
-  // (bypassing TeamsPage), so we must resolve here too rather than trust a
-  // possibly-empty useMero().applicationId — otherwise createProject would POST
-  // an empty applicationId and the node rejects it ("invalid length 0").
-  const appIdRef = useRef<string>("");
-  const ensureAppId = useCallback(async (): Promise<string> => {
-    if (appIdRef.current) return appIdRef.current;
-    let id = "";
-    try { id = await resolveApplicationId(); } catch { /* ignore */ }
-    if (!id) id = applicationId ?? "";
-    if (id) { appIdRef.current = id; setApplicationId(id); }
-    return id;
-  }, [applicationId]);
+  // MeroDesign's own application id — see hooks/useApplicationId. The desktop
+  // deep-links straight to this page (bypassing TeamsPage), so this page
+  // resolves it for itself too.
+  const ensureAppId = useApplicationId();
 
   function handleLogout() {
     logout();
@@ -80,30 +60,20 @@ export default function ProjectsPage() {
     if (!teamId) return;
     async function loadProjects() {
       try {
-        const raw = await adminGet<{ subgroups?: SubgroupRaw[]; data?: SubgroupRaw[] } | SubgroupRaw[]>(
-          `/groups/${teamId}/subgroups`,
-        );
-        const subgroups: SubgroupRaw[] = Array.isArray(raw)
-          ? raw
-          : (raw as { subgroups?: SubgroupRaw[] }).subgroups ?? (raw as { data?: SubgroupRaw[] }).data ?? [];
+        const subgroups = await listSubgroups(teamId!);
 
         const resolved: Project[] = [];
         for (const sg of subgroups) {
-          const sgId = sg.groupId ?? sg.group_id ?? sg.id ?? "";
-          const sgName = sg.alias ?? sg.name ?? sgId.slice(0, 8);
+          const sgId = sg.groupId;
+          const sgName = sg.name ?? sgId.slice(0, 8);
           try {
-            const ctxRaw = await adminGet<{ contexts?: ContextRaw[]; items?: ContextRaw[] } | ContextRaw[]>(
-              `/groups/${sgId}/contexts`,
-            );
-            const ctxs: ContextRaw[] = Array.isArray(ctxRaw)
-              ? ctxRaw
-              : (ctxRaw as any).contexts ?? (ctxRaw as any).items ?? [];
+            const ctxs = await listGroupContexts(sgId);
             if (ctxs.length > 0) {
               const ctx = ctxs[0];
               resolved.push({
-                contextId: ctx.contextId ?? ctx.context_id ?? ctx.id ?? sgId,
+                contextId: ctx.contextId || sgId,
                 groupId: sgId,
-                name: ctx.alias ?? ctx.name ?? sgName,
+                name: ctx.name ?? sgName,
                 description: "",
                 isPublic: true,
               });
@@ -153,41 +123,22 @@ export default function ProjectsPage() {
         return;
       }
 
-      const sgData = await adminPost<{ groupId?: string; group_id?: string; id?: string }>(
-        `/namespaces/${teamId}/groups`,
-        // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
-        // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
-        // whole create:
-        //   unknown field `groupAlias`, expected `groupName` or `visibility`
-        // Note this body is NOT `CreateGroupApiRequest`: the namespace-scoped
-        // subgroup route is a different, much smaller shape than `POST /groups`.
-        { groupName: newName.trim() },
-      );
-      const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
+      // A project is a subgroup of the team with one context (the board) in it.
+      const subgroupId = await createSubgroup(teamId, newName.trim());
 
       if (subgroupId) {
-        await adminPut(`/groups/${subgroupId}/settings/subgroup-visibility`, {
-          subgroupVisibility: "open",
-        }).catch(() => {});
+        await setSubgroupVisibility(subgroupId, "open").catch(() => {});
       }
 
       const initJson = JSON.stringify({ name: newName.trim(), description: "" });
       const initBytes = Array.from(new TextEncoder().encode(initJson));
 
-      const ctxData = await adminPost<{ contextId?: string; id?: string }>(
-        "/contexts",
-        {
-          // `CreateContextRequest` is `deny_unknown_fields` and accepts only
-          // applicationId / serviceName / contextSeed / initializationParams /
-          // groupId / identitySecret / name. `protocol` went with the external
-          // chain config and `alias` with core#2338; either one is a 400.
-          applicationId: appId,
-          groupId: subgroupId || teamId,
-          name: newName.trim(),
-          initializationParams: initBytes,
-        },
-      );
-      const id = ctxData.contextId ?? ctxData.id ?? "";
+      const id = await createContext({
+        applicationId: appId,
+        groupId: subgroupId || teamId,
+        name: newName.trim(),
+        initializationParams: initBytes,
+      });
       // Store the same group the context was created under (`subgroupId || teamId`).
       // If the subgroup create returned no id, an empty groupId would make Settings
       // fall back to the contextId for `/groups/{id}/members`, which the admin
@@ -209,7 +160,7 @@ export default function ProjectsPage() {
   async function deleteProject(contextId: string) {
     setMenuOpenId(null);
     try {
-      await adminDelete(`/contexts/${contextId}`);
+      await deleteContext(contextId);
     } catch {
       // best-effort
     }
@@ -221,10 +172,7 @@ export default function ProjectsPage() {
     setInviteError("");
     setInviteLoading(true);
     try {
-      const data = await adminPost<Record<string, unknown>>(
-        `/namespaces/${teamId}/invite`,
-        {},
-      );
+      const data = await createNamespaceInvitation(teamId);
       if (data) {
         // Embed the team's human name so the joiner doesn't see a raw ID before
         // the namespace metadata syncs. `__teamName` is a sibling of the signed
@@ -328,9 +276,13 @@ export default function ProjectsPage() {
                         <button className={styles.dropdownItem} data-testid={`project-settings-${p.contextId}`} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
-                        <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
-                          Delete
-                        </button>
+                        {/* Deleting a context is a node's own operation; an
+                            account's relay has no form of it. */}
+                        {!isDelegated && (
+                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
+                            Delete
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

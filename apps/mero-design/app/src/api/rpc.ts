@@ -1,45 +1,16 @@
-import axios from "axios";
-import { getNodeUrl, clearAllStorage } from "@calimero-network/mero-react";
+import { RpcError, type SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import { getApi } from "./client";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 import { fromWire, metaOf, packLabel, toWire } from "../utils/elementMeta";
 import { useCanvasStore } from "../store/canvasStore";
 import type { Element } from "../types";
 
-interface RpcResponse<T> {
-  data: T;
-  error?: string;
-}
-
-/** Read the access token from the mero token store (localStorage["mero-tokens"]). */
-export function getJwt(): string {
-  try {
-    const raw = localStorage.getItem("mero-tokens");
-    return raw ? (JSON.parse(raw).access_token ?? "") : "";
-  } catch {
-    return "";
-  }
-}
-
-/** Node URL from mero-react storage (set by the auth callback / Tauri hash). */
-function nodeBase(): string {
-  return getNodeUrl() ?? "";
-}
-
-axios.interceptors.response.use(
-  (r) => r,
-  (err) => {
-    const url: string = err?.config?.url ?? "";
-    const is401 = err?.response?.status === 401;
-    const isAuthEndpoint = url.includes("/auth/token") || url.includes("/auth/");
-    // identities-owned failure is non-fatal — CanvasPage falls back to JWT sub
-    const isIdentitiesOwned = url.includes("/identities-owned");
-    if (is401 && !isAuthEndpoint && !isIdentitiesOwned) {
-      clearAllStorage();
-      window.location.href = "/";
-    }
-    return Promise.reject(err);
-  },
-);
+// ── Contract calls ───────────────────────────────────────────────────────────
+//
+// Every call goes through the session's `rpc` transport (see `client.tsx`):
+// JSON-RPC `execute` against a node on a node login, a warrant through the
+// relay on an account session. The call sites do not know which — the same
+// `rpcCall(contextId, method, args)` serves both.
 
 /**
  * Fold the client-side element extras into `label` on the way out.
@@ -88,227 +59,335 @@ export function unpackResult<T>(method: string, value: T): T {
   return value;
 }
 
+/**
+ * What a contract method returned, whatever shape the transport handed back.
+ *
+ * A node's `execute` answers `{ output, logs }` and mero-js returns `output`
+ * verbatim: older nodes encode it as a `u8[]` of JSON text, newer ones as the
+ * parsed value (string, object, array of objects). The relay answers the
+ * parsed `returns`. Handle all of them.
+ */
+export function decodeOutput<T>(out: unknown): T {
+  if (out === null || out === undefined) return null as T;
+  if (typeof out === "string") {
+    try { return JSON.parse(out) as T; } catch { return out as T; }
+  }
+  if (Array.isArray(out)) {
+    if (out.length === 0) return null as T;
+    if (typeof out[0] !== "number") return out as T; // already JSON values
+    // Legacy byte-array format
+    const text = new TextDecoder().decode(new Uint8Array(out as number[]));
+    return JSON.parse(text) as T;
+  }
+  if (typeof out === "object") return out as T;
+  // A bare number or boolean is already the value.
+  return out as T;
+}
+
+/**
+ * A readable message for a failed contract call: the WASM's own reason when
+ * the RPC error carries one, else the RPC-level message.
+ */
+function rpcFailure(err: unknown): Error {
+  if (err instanceof RpcError) {
+    const data = err.data;
+    if (typeof data === "string" && data) return new Error(data);
+    if (data && typeof data === "object") {
+      const inner = (data as { data?: unknown; message?: unknown });
+      if (typeof inner.data === "string" && inner.data) return new Error(inner.data);
+      if (typeof inner.message === "string" && inner.message) return new Error(inner.message);
+    }
+    return new Error(err.message || JSON.stringify(data ?? err));
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 export async function rpcCall<T>(
   contextId: string,
   method: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  return unpackResult(method, await rawRpcCall<T>(contextId, method, packArgs(method, args)));
-}
-
-async function rawRpcCall<T>(
-  contextId: string,
-  method: string,
-  args: Record<string, unknown>,
-): Promise<T> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  const res = await axios.post(
-    `${nodeUrl}/jsonrpc`,
-    {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "execute",
-      params: {
-        contextId,
-        method,
-        argsJson: args,
-      },
-    },
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  const body = res.data;
-  if (body.error) {
-    // Prefer a human-readable string: data (WASM reason), then message (RPC level), then raw JSON
-    const msg = typeof body.error === "string"
-      ? body.error
-      : (typeof body.error.data === "string" && body.error.data
-          ? body.error.data
-          : (body.error.message ?? JSON.stringify(body.error)));
-    throw new Error(msg);
+  const { rpc } = getApi();
+  let out: unknown;
+  try {
+    out = await rpc.execute<unknown>({ contextId, method, argsJson: packArgs(method, args) });
+  } catch (err) {
+    throw rpcFailure(err);
   }
-  const result = body.result;
-  // Calimero execute returns { output: <varies>, logs: [] }.
-  // Older nodes: output is u8[] (byte array). Newer nodes: output is already
-  // parsed JSON (string, object, or array of objects). Handle both.
-  if (result?.output !== undefined) {
-    const out = result.output;
-    if (out === null || out === undefined) return null as T;
-    if (typeof out === "string") {
-      try { return JSON.parse(out) as T; } catch { return out as T; }
-    }
-    if (Array.isArray(out)) {
-      if (out.length === 0) return null as T;
-      if (typeof out[0] !== "number") return out as T; // already JSON objects
-      // Legacy byte-array format
-      const text = new TextDecoder().decode(new Uint8Array(out as number[]));
-      return JSON.parse(text) as T;
-    }
-    if (typeof out === "object") return out as T;
-    return null as T;
-  }
-  // Fallback for non-execute endpoints
-  return result?.data ?? result ?? body.data ?? (null as T);
+  return unpackResult(method, decodeOutput<T>(out));
 }
 
-export async function adminGet<T>(path: string): Promise<T> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  const res = await axios.get<RpcResponse<T>>(`${nodeUrl}/admin-api${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  return res.data.data ?? (res.data as T);
-}
+// ── Admin API ────────────────────────────────────────────────────────────────
+//
+// Thin, typed wrappers over the session's admin client. They exist so pages
+// and tests have one seam (`../api/rpc`) rather than reaching for the client
+// everywhere, and so the shapes the pages read are normalised in one place.
 
-/** What `GET /admin-api/identity` answers with. */
+/** What `admin.getNodeIdentity()` answers with. */
 export interface NodeIdentity {
   /** The person: 64 hex characters. What member listings name members by. */
   accountId: string;
   /** This installation, when the node reports one. */
-  deviceId?: string;
+  deviceId?: string | null;
   publicKey?: string;
 }
 
 /**
- * Ask the NODE who it is.
+ * Ask the session who it is.
  *
  * core 0.11.0-rc.23 (#3522) deleted `GET /namespaces/:id/identity` and dropped
  * `selfIdentity` from the group member listing — "who am I" was always a
  * node-level question, and one identity is shared across namespaces. Compare
  * `accountId` against a member's `identity`, which rc.23 also made an account.
- *
- * Reading `selfIdentity` off the member listing instead does not fail: the
- * field is simply absent, so "am I an admin" silently answers false and every
- * moderation control stays disabled.
+ * On an account session the account admin answers with the account itself.
  */
 export async function getNodeIdentity(): Promise<NodeIdentity> {
-  return adminGet<NodeIdentity>("/identity");
+  const me = await getApi().admin.getNodeIdentity();
+  return { accountId: me.accountId ?? "", deviceId: me.deviceId, publicKey: me.publicKey };
+}
+
+export interface NamespaceEntry {
+  namespaceId: string;
+  name?: string;
+}
+
+function httpStatus(err: unknown): number | undefined {
+  const s = (err as { status?: unknown } | null)?.status;
+  return typeof s === "number" ? s : undefined;
 }
 
 /**
- * List namespaces scoped to a single application. Uses the server-side
- * `/namespaces/for-application/{appId}` endpoint so only this app's namespaces
- * come back (instead of every namespace on the node). Falls back to the
- * unscoped `/namespaces` endpoint on older merod versions that lack the
- * scoped route (404/405).
+ * This app's namespaces. Scoped to the application so only Mero Design's
+ * teams come back (instead of every namespace the session can see). Falls
+ * back to the unscoped listing on older nodes that lack the scoped route
+ * (404/405).
  */
-export async function listNamespaces<T>(applicationId?: string): Promise<T> {
+export async function listNamespaces(applicationId?: string): Promise<NamespaceEntry[]> {
+  const { admin } = getApi();
+  let raw: unknown;
   if (applicationId) {
     try {
-      return await adminGet<T>(`/namespaces/for-application/${applicationId}`);
+      raw = await admin.listNamespacesForApplication(applicationId);
     } catch (err) {
-      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const status = httpStatus(err);
       if (status !== 404 && status !== 405) throw err;
-      // fall through to unscoped endpoint
+      raw = await admin.listNamespaces();
     }
+  } else {
+    raw = await admin.listNamespaces();
   }
-  return adminGet<T>("/namespaces");
+  const list = Array.isArray(raw)
+    ? raw
+    : ((raw as { namespaces?: unknown[]; data?: unknown[] } | null)?.namespaces
+        ?? (raw as { data?: unknown[] } | null)?.data
+        ?? []);
+  return (list as Record<string, unknown>[])
+    .map((n) => ({
+      namespaceId: String(n.namespaceId ?? n.groupId ?? n.id ?? ""),
+      name: (typeof n.name === "string" ? n.name : typeof n.alias === "string" ? n.alias : "") || undefined,
+    }))
+    .filter((n) => n.namespaceId);
 }
 
-export async function adminPost<T>(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  const res = await axios.post<RpcResponse<T>>(
-    `${nodeUrl}/admin-api${path}`,
-    body,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  return res.data.data ?? (res.data as T);
+export interface CreatedNamespace {
+  namespaceId: string;
+  /**
+   * An account founds through the relay and asks the cloud to host the new
+   * team (HA). When the cloud declined — typically the account is not linked
+   * to a cloud user yet — `haError` says why, and invitations minted for the
+   * team will not be claimable until that is fixed. A node never sets these.
+   */
+  haEnabled?: boolean;
+  haError?: string;
 }
 
 /**
- * Join a context this node is entitled to but hasn't joined yet (e.g. a project
- * created on a peer after we joined the team). Idempotent on the node side.
- * `POST /admin-api/contexts/{id}/join` — mirrors curb's joinGroupContext.
+ * Found a team. The body is EXACTLY `applicationId` + `name`:
+ * `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key is a
+ * 400 for the whole create.
+ */
+export async function createNamespace(applicationId: string, name: string): Promise<CreatedNamespace> {
+  const data = await getApi().admin.createNamespace({ applicationId, name });
+  const extra = data as { haEnabled?: boolean; haError?: string };
+  return {
+    namespaceId: data.namespaceId ?? "",
+    ...(extra.haEnabled !== undefined ? { haEnabled: extra.haEnabled } : {}),
+    ...(extra.haError ? { haError: extra.haError } : {}),
+  };
+}
+
+/** Node-only: an account cannot delete a namespace. Callers hide the control. */
+export async function deleteNamespace(namespaceId: string): Promise<void> {
+  await getApi().admin.deleteNamespace(namespaceId);
+}
+
+/**
+ * Mint an invitation to a team. Returned as the raw response object so the
+ * token the inviter shares is exactly what the node (or the account) signed;
+ * the joiner's parser reads `invitation` out of it.
+ */
+export async function createNamespaceInvitation(namespaceId: string): Promise<Record<string, unknown>> {
+  const data = await getApi().admin.createNamespaceInvitation(namespaceId);
+  return (data ?? {}) as unknown as Record<string, unknown>;
+}
+
+/** Redeem an invitation. `invitation` is the signed struct, not the whole token. */
+export async function joinNamespace(namespaceId: string, invitation: unknown): Promise<void> {
+  await getApi().admin.joinNamespace(namespaceId, {
+    invitation: invitation as SignedGroupOpenInvitation,
+  });
+}
+
+export interface SubgroupInfo {
+  groupId: string;
+  name?: string;
+}
+
+/** The subgroups of a team — one per project. */
+export async function listSubgroups(groupId: string): Promise<SubgroupInfo[]> {
+  const raw: unknown = await getApi().admin.listSubgroups(groupId);
+  const list = Array.isArray(raw)
+    ? raw
+    : ((raw as { subgroups?: unknown[]; data?: unknown[] } | null)?.subgroups
+        ?? (raw as { data?: unknown[] } | null)?.data
+        ?? []);
+  return (list as Record<string, unknown>[])
+    .map((s) => ({
+      groupId: String(s.groupId ?? s.group_id ?? s.id ?? ""),
+      name: (typeof s.name === "string" ? s.name : typeof s.alias === "string" ? s.alias : "") || undefined,
+    }))
+    .filter((s) => s.groupId);
+}
+
+export interface GroupContextInfo {
+  contextId: string;
+  name?: string;
+}
+
+/** The contexts in a group — a project's board lives in its subgroup. */
+export async function listGroupContexts(groupId: string): Promise<GroupContextInfo[]> {
+  const raw: unknown = await getApi().admin.listGroupContexts(groupId);
+  const list = Array.isArray(raw)
+    ? raw
+    : ((raw as { contexts?: unknown[]; items?: unknown[]; data?: unknown[] } | null)?.contexts
+        ?? (raw as { items?: unknown[] } | null)?.items
+        ?? (raw as { data?: unknown[] } | null)?.data
+        ?? []);
+  return (list as Record<string, unknown>[])
+    .map((c) => ({
+      contextId: String(c.contextId ?? c.context_id ?? c.id ?? ""),
+      name: (typeof c.name === "string" ? c.name : typeof c.alias === "string" ? c.alias : "") || undefined,
+    }))
+    .filter((c) => c.contextId);
+}
+
+/**
+ * A project's subgroup. `CreateGroupInNamespaceBody` accepts `groupName` and
+ * `visibility`, nothing else, and is `deny_unknown_fields`.
+ */
+export async function createSubgroup(namespaceId: string, groupName: string): Promise<string> {
+  const data = await getApi().admin.createGroupInNamespace(namespaceId, { groupName });
+  const raw = data as unknown as { groupId?: string; group_id?: string; id?: string };
+  return raw.groupId ?? raw.group_id ?? raw.id ?? "";
+}
+
+export async function setSubgroupVisibility(groupId: string, subgroupVisibility: "open" | "restricted"): Promise<void> {
+  await getApi().admin.setSubgroupVisibility(groupId, { subgroupVisibility });
+}
+
+/**
+ * A project's board. `CreateContextRequest` is `deny_unknown_fields` and
+ * accepts only applicationId / serviceName / contextSeed / initializationParams
+ * / groupId / identitySecret / name.
+ */
+export async function createContext(input: {
+  applicationId: string;
+  groupId: string;
+  name: string;
+  initializationParams: number[];
+}): Promise<string> {
+  const data = await getApi().admin.createContext(input);
+  const raw = data as unknown as { contextId?: string; id?: string };
+  return raw.contextId ?? raw.id ?? "";
+}
+
+/** Node-only: an account cannot delete a context. Callers hide the control. */
+export async function deleteContext(contextId: string): Promise<void> {
+  await getApi().admin.deleteContext(contextId);
+}
+
+/**
+ * Join a context this session is entitled to but hasn't joined yet (e.g. a
+ * project created on a peer after we joined the team). Idempotent.
  */
 export async function joinContext(contextId: string): Promise<{ memberPublicKey?: string }> {
-  return adminPost<{ memberPublicKey?: string }>(`/contexts/${contextId}/join`, {});
+  const data = await getApi().admin.joinContext(contextId);
+  return { memberPublicKey: data?.memberPublicKey };
 }
 
-export async function adminDelete<T>(path: string): Promise<T> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  const res = await axios.delete<RpcResponse<T>>(`${nodeUrl}/admin-api${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    data: {},
-  });
-  return res.data.data ?? (res.data as T);
+/** The identities this session holds in a context — its member key(s). */
+export async function getContextIdentitiesOwned(contextId: string): Promise<string[]> {
+  const res: unknown = await getApi().admin.getContextIdentitiesOwned(contextId);
+  if (Array.isArray(res)) return res.filter((x): x is string => typeof x === "string");
+  const obj = res as { identities?: unknown[]; items?: unknown[] } | null;
+  const list = obj?.identities ?? obj?.items ?? [];
+  return (Array.isArray(list) ? list : []).filter((x): x is string => typeof x === "string");
 }
 
-export async function adminPut<T>(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  const res = await axios.put<RpcResponse<T>>(
-    `${nodeUrl}/admin-api${path}`,
-    body,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  return res.data.data ?? (res.data as T);
+export interface GroupMemberInfo {
+  identity: string;
+  role: string;
+  name?: string;
 }
 
-/**
- * Core's blob discovery sweep runs to a **30 s deadline before the transfer
- * starts** (probe-based discovery, rc.39 / core#3831). A client budget under
- * that aborts a fetch that was about to succeed, in exactly the case discovery
- * exists for: a blob a peer holds and we do not. No budget at all is wrong too
- * — a stalled node should fail, just not before core has finished looking.
- */
-const BLOB_READ_TIMEOUT_MS = 35_000;
-
-export async function adminUploadBlob(data: ArrayBuffer, contextId?: string): Promise<{ blobId: string }> {
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  // Pass context_id so the node announces the blob to the network immediately.
-  const url = contextId
-    ? `${nodeUrl}/admin-api/blobs?context_id=${encodeURIComponent(contextId)}`
-    : `${nodeUrl}/admin-api/blobs`;
-  const res = await axios.put<unknown>(url, data, {
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/octet-stream" },
-  });
-  // Server returns { data: { blob_id: "...", size: N } } — field is snake_case blob_id.
-  const body = res.data as { data?: { blob_id?: string; blobId?: string } };
-  const blobId = body?.data?.blob_id ?? body?.data?.blobId ?? "";
-  return { blobId };
+export async function listGroupMembers(groupId: string): Promise<GroupMemberInfo[]> {
+  const raw: unknown = await getApi().admin.listGroupMembers(groupId);
+  const list = Array.isArray(raw)
+    ? raw
+    : ((raw as { members?: unknown[]; data?: unknown[] } | null)?.members
+        ?? (raw as { data?: unknown[] } | null)?.data
+        ?? []);
+  return (list as Record<string, unknown>[])
+    .map((m) => ({
+      identity: String(m.identity ?? m.memberId ?? m.id ?? ""),
+      role: typeof m.role === "string" ? m.role : "Member",
+      name: (typeof m.name === "string" ? m.name.trim() : "") || undefined,
+    }))
+    .filter((m) => m.identity);
 }
 
-export async function adminGetBlob(blobId: string, contextId?: string): Promise<ArrayBuffer> {
+export async function updateMemberRole(groupId: string, identity: string, role: string): Promise<void> {
+  await getApi().admin.updateMemberRole(groupId, identity, { role });
+}
+
+// ── Blobs ────────────────────────────────────────────────────────────────────
+//
+// `contextId` is REQUIRED on both calls. On a node it makes the upload announce
+// the blob to the context's peers at once, and the read do P2P discovery for
+// a blob a peer holds and we do not (without it the node only checks local
+// storage and 404s — exactly the receiver-side error for peer-uploaded
+// images). On a relay the account's blob requests are refused outright
+// without one.
+
+export async function uploadBlob(data: ArrayBuffer | Uint8Array, contextId: string): Promise<{ blobId: string }> {
+  if (!contextId) throw new Error("uploadBlob needs the board's context id");
+  const res = await getApi().admin.uploadBlob({ data, contextId });
+  return { blobId: res?.blobId ?? "" };
+}
+
+export async function getBlob(blobId: string, contextId: string): Promise<ArrayBuffer> {
   const cached = await getCachedBlob(blobId);
   if (cached) return cached;
+  if (!contextId) throw new Error("getBlob needs the board's context id");
 
-  const nodeUrl = nodeBase();
-  const accessToken = getJwt();
-  // Pass context_id so the node does P2P network discovery for blobs it doesn't
-  // have locally (e.g. an image uploaded by a peer) AND signs the blob-access
-  // auth with our owned identity in that context. WITHOUT context_id the node
-  // only checks local storage and returns 404 "Blob not found locally or in
-  // network" — which is exactly the receiver-side error for peer-uploaded images.
-  const url = contextId
-    ? `${nodeUrl}/admin-api/blobs/${blobId}?context_id=${encodeURIComponent(contextId)}`
-    : `${nodeUrl}/admin-api/blobs/${blobId}`;
+  // Core's blob discovery sweep runs to a 30 s deadline before the transfer
+  // starts (probe-based discovery, rc.39 / core#3831); mero-js's read budget
+  // is sized for that, so no extra client-side timeout here.
   const t0 = performance.now();
-  const res = await axios.get<ArrayBuffer>(
-    url,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      responseType: "arraybuffer",
-      timeout: BLOB_READ_TIMEOUT_MS,
-    },
-  );
+  const buf = await getApi().admin.getBlob(blobId, { contextId });
   const ms = Math.round(performance.now() - t0);
-  const kb = Math.round(res.data.byteLength / 1024);
+  const kb = Math.round(buf.byteLength / 1024);
   if (ms > 500) console.warn(`[MeroDesign] slow blob fetch: ${blobId.slice(0, 8)}… ${kb} KB in ${ms}ms`);
-  setCachedBlob(blobId, res.data); // fire-and-forget, non-blocking
-  return res.data;
+  setCachedBlob(blobId, buf); // fire-and-forget, non-blocking
+  return buf;
 }
