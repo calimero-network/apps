@@ -17,14 +17,22 @@ import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { inviteLink } from "./net/inviteLink";
 import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
+import { completeAccountEnrolment, isReturningFromWallet } from "./net/account";
 import { createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient, type WorldMeta } from "./net/client";
-import { captureSessionFromHash, clearWorld, getSession, hasConnection } from "./net/session";
+import {
+  adoptAccountSession,
+  captureSessionFromHash,
+  clearWorld,
+  getSession,
+  hasConnection,
+  sessionKind,
+} from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
-import { Landing, LaunchChoice } from "./ui/landing";
+import { CloudReturn, Landing, LaunchChoice } from "./ui/landing";
 import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu, WorldMap } from "./ui/overlays";
 
@@ -44,6 +52,7 @@ const EDIT_REPEAT_MS = 250;
 const SAVE_MS = 5000;
 const RELIGHT_FULL_THRESHOLD = 8;
 const WORLD_READY_MS = 60_000;
+const MEMBERSHIP_CHECK_MS = 8_000;
 
 async function fetchWorldMetaWhenReady(client: GameClient): Promise<WorldMeta> {
   const deadline = Date.now() + WORLD_READY_MS;
@@ -67,6 +76,24 @@ interface RemoteAvatar {
 
 async function boot(): Promise<void> {
   const captured = captureSessionFromHash();
+
+  // Back from the wallet (the Cloud tab's enrolment redirect): finish the
+  // enrolment, find the account's relay, and switch this tab onto the account
+  // session. Its hash (`credential`/`account`/`device`, or `error`) is not a
+  // node-login hash, so `captured` above is "none" on this path. A refusal is
+  // not fatal — it is said on the dialog's Cloud tab, which reopens for it.
+  let cloud: CloudReturn | undefined;
+  if (isReturningFromWallet()) {
+    try {
+      const outcome = await completeAccountEnrolment();
+      if (outcome) {
+        adoptAccountSession();
+        cloud = { note: outcome.note, open: false };
+      }
+    } catch (err) {
+      cloud = { note: err instanceof Error ? err.message : String(err), open: true };
+    }
+  }
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");
@@ -101,7 +128,7 @@ async function boot(): Promise<void> {
     // its own logo/title/pitch and opens on the world picker — join a world or
     // create one — rather than making the visitor read a second landing page.
     const sawLanding = await showLandingOnce();
-    choice = await new Landing(app).show(defaults, { chromeless: sawLanding });
+    choice = await new Landing(app).show(defaults, { chromeless: sawLanding, cloud });
   }
   localStorage.setItem("mb-name", choice.name);
 
@@ -223,6 +250,9 @@ async function boot(): Promise<void> {
   } catch {
     hud.toast("Sync failed — edits will retry in the background");
   }
+  // e.g. the cloud declined to host a world an account just created (HA):
+  // playable, but worth knowing before inviting anyone
+  if (choice.notice) hud.toast(choice.notice);
 
   // ---- overlays (Esc/O = game menu, M = map — trackpad-friendly) --------
   const options = new PauseMenu(app, {
@@ -621,12 +651,19 @@ async function boot(): Promise<void> {
  */
 async function dropWorldIfNotOurs(): Promise<void> {
   const { contextId, nodeUrl } = getSession();
-  if (!contextId || !nodeUrl) return;
+  if (!contextId) return;
+  if (sessionKind() === "node" && !nodeUrl) return;
   let owned: string;
   try {
-    owned = await ownedContextIdentity(contextId);
+    // Bounded: an account's first read waits for its relay's node key, which
+    // mero-js keeps retrying while the relay is unreachable. That is right for
+    // a session, wrong for a boot check — the landing page must still appear.
+    owned = await Promise.race([
+      ownedContextIdentity(contextId),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), MEMBERSHIP_CHECK_MS)),
+    ]);
   } catch {
-    return; // node unreachable — not the same thing as not a member
+    return; // node/relay unreachable — not the same thing as not a member
   }
   if (!owned) clearWorld();
 }

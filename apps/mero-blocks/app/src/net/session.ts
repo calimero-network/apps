@@ -12,12 +12,28 @@
 // the apps the node reports before anything is built on it (there is no env
 // var in that order, and must not be — see resolveApplicationId).
 
+import {
+  clearDelegatedCredential,
+  clearDelegatedSession,
+  readDelegatedSession,
+} from "@calimero-network/mero-js";
 import { takePendingNodeUrl } from "./auth";
 import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";
 
 const STORE_KEY = "mb-session";
 
+/**
+ * How this player is connected. `node`: logged into their own merod (the
+ * paths above). `account`: enrolled a device with their Calimero account and
+ * plays through a relay — the credential itself lives where mero-js keeps it
+ * (`readDelegatedSession`, per tab), this record only remembers which kind we
+ * are and which world we were in. See net/transport.ts for the switch.
+ */
+export type SessionKind = "node" | "account";
+
 export interface Session {
+  /** absent on records written before accounts existed — those are `node` */
+  kind?: SessionKind;
   nodeUrl: string | null;
   contextId: string | null;
   applicationId: string | null;
@@ -77,6 +93,14 @@ export function captureSessionFromHash(): CaptureResult {
   const previousNodeUrl = session.nodeUrl;
   const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
   if (!nodeUrl) return "none";
+  // A node login replaces whatever account session this tab held: one kind
+  // of session at a time, and the hash is the newer intent.
+  if (session.kind === "account") {
+    clearDelegatedSession();
+    clearDelegatedCredential();
+    session = { ...session, contextId: null, executorPublicKey: null, namespaceId: null, groupId: null, worldName: null };
+  }
+  session.kind = "node";
   session.nodeUrl = nodeUrl;
 
   session.contextId = p.get("context_id") || session.contextId;
@@ -140,17 +164,62 @@ export function getAccessToken(): string | null {
   }
 }
 
-/** logged into a node (may still need to pick a world) */
+/** `account` when this tab plays as a Calimero account, else `node`. */
+export function sessionKind(): SessionKind {
+  return session.kind ?? "node";
+}
+
+/**
+ * Bumped every time an account session is adopted, so a transport built for
+ * the previous account (same `kind`) is not reused for the next one.
+ */
+let epoch = 0;
+export function sessionEpoch(): number {
+  return epoch;
+}
+
+/**
+ * Switch this tab onto an account session. The credential is already saved
+ * where mero-js keeps it (`saveDelegatedSession`); this records the kind,
+ * drops the node login and the previous world, and keeps the player name.
+ */
+export function adoptAccountSession(): void {
+  epoch += 1;
+  session = {
+    kind: "account",
+    nodeUrl: null,
+    contextId: null,
+    applicationId: null,
+    executorPublicKey: null,
+    devMode: false,
+  };
+  try {
+    localStorage.removeItem(TOKENS_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+  persist();
+}
+
+/** logged in (may still need to pick a world) */
 export function isAuthenticated(): boolean {
+  if (sessionKind() === "account") return readDelegatedSession() !== null;
   return Boolean(session.nodeUrl && getAccessToken());
 }
 
 /** ready to play online right now */
 export function hasConnection(): boolean {
+  if (sessionKind() === "account") {
+    // an account with no relay yet is signed in but has nowhere to play from —
+    // redeeming an invite is what gives it one
+    return Boolean(session.contextId && readDelegatedSession()?.relayUrl);
+  }
   return Boolean(session.nodeUrl && session.contextId && getAccessToken());
 }
 
 export function clearSession(): void {
+  const wasAccount = session.kind === "account";
+  epoch += 1;
   session = {
     nodeUrl: null,
     contextId: null,
@@ -163,6 +232,13 @@ export function clearSession(): void {
     localStorage.removeItem(TOKENS_KEY);
   } catch {
     /* nothing to clear */
+  }
+  if (wasAccount) {
+    // Signing out of an account forgets its device certificate too: leaving
+    // it in storage would let the next visitor bootstrap as this account from
+    // any invitation they hold (the mero-react logout rule).
+    clearDelegatedSession();
+    clearDelegatedCredential();
   }
 }
 
@@ -194,6 +270,7 @@ export function clearWorld(): void {
 
 /** for tests */
 export function resetSession(): void {
+  epoch += 1;
   session = {
     nodeUrl: null,
     contextId: null,

@@ -205,6 +205,48 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("scan-note")).not.toContainText("No local nodes found");
   });
 
+  test("the connect popup's Cloud tab enrols this browser's device at the wallet", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    let walletUrl: string | null = null;
+    await page.route("https://wallet.cloud.calimero.network/**", (route) => {
+      walletUrl = route.request().url();
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>wallet</h1>" });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    // Node is the default tab; Cloud sits beside it (apps#349's dialog)
+    await expect(page.getByTestId("connect-panel-node")).toBeVisible();
+    await expect(page.getByTestId("connect-panel-cloud")).toBeHidden();
+    await page.getByTestId("connect-tab-cloud").click();
+    await expect(page.getByTestId("connect-panel-cloud")).toBeVisible();
+    await expect(page.getByTestId("node-url-input")).toBeHidden();
+
+    await page.getByTestId("enrol-button").click();
+    await page.waitForURL("https://wallet.cloud.calimero.network/**");
+
+    const url = new URL(walletUrl!);
+    expect(url.pathname).toBe("/account-enroll");
+    expect(url.searchParams.get("enrol-device")).toMatch(/^[0-9a-f]{64}$/);
+    expect(url.searchParams.get("enrol-kem")).toMatch(/^[0-9a-f]{64}$/);
+    expect(url.searchParams.get("callback-url")).toContain("localhost");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  test("back from the wallet with a refusal, the dialog reopens on the Cloud tab and says so", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    await page.goto("/#error=denied");
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    await expect(page.getByTestId("connect-panel-cloud")).toBeVisible();
+    await expect(page.getByTestId("connect-account-note")).toContainText("not approved");
+    expect(new URL(page.url()).hash).toBe("");
+    // nothing was signed in
+    await page.getByTestId("connect-close").click();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+  });
+
   test("the connect popup closes without touching the session", async ({ page }) => {
     for (const port of [2428, 2429, 2528, 2529])
       await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
