@@ -388,7 +388,7 @@ export function useLiveStream(enabled: boolean): LiveController {
   // being measured. Two or more remote senders still interleave in one sample
   // list, so the metric stays blanked there.
   const withGapValidity = useCallback((snap: ProbeSnapshot): ProbeSnapshot => {
-    const me = streamRef.current.executorId;
+    const me = streamRef.current.myId;
     const remotes = [...sendersSeenRef.current].filter((s) => s !== me).length;
     return remotes > 1 ? { ...snap, seqGaps: null } : snap;
   }, []);
@@ -429,7 +429,7 @@ export function useLiveStream(enabled: boolean): LiveController {
     }));
     const view = evaluateSlots({
       others: claims,
-      me: streamRef.current.executorId ?? null,
+      me: streamRef.current.myId ?? null,
       myStartedAtMs: startedAtRef.current,
       nowMs: Date.now(),
       timeoutMs: PEER_TIMEOUT_MS,
@@ -625,7 +625,10 @@ export function useLiveStream(enabled: boolean): LiveController {
     const off = ephemeral.subscribe<Uint8Array>(
       contextId,
       (entry) => {
-        const me = streamRef.current.executorId;
+        // `myId`, not `executorId`: the author of a frame is what the contract
+        // and the node call this device — on an account that is the certified
+        // device key, while the executor is the account. See lib/identity.
+        const me = streamRef.current.myId;
 
         // The node tells us a sender is gone — TTL sweep, disconnect, or an
         // author-cap eviction. Worth acting on directly rather than waiting for

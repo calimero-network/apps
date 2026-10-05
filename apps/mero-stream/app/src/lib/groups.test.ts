@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
-import { CAPABILITIES } from "@calimero-network/mero-js";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
 import {
   MEMBER_CAPABILITIES,
   acceptInvite,
@@ -8,13 +8,21 @@ import {
   createRoom,
   enterRoomContext,
   listRooms,
+  mintNamespaceInvite,
   mintRoomInvite,
   redeemFailureMessage,
   redeemInvite,
   unwrapInvitation,
-  type AdminLike,
 } from "./groups";
+import {
+  HOSTING_REFUSED_MESSAGE,
+  clearHostingState,
+  hostingProblem,
+} from "./hosting";
 import { shouldRetain } from "@calimero-apps/invite";
+
+/** The one type every flow takes: the session-aware admin, `useMero().admin`. */
+type AdminLike = AdminApiClient;
 
 const noop = () => {};
 
@@ -84,6 +92,7 @@ const signed = (groupId: string) => ({
 const methodsOf = (a: { calls: { method: string }[] }) =>
   a.calls.map((c) => c.method);
 
+beforeEach(() => clearHostingState());
 afterEach(() => vi.useRealTimers());
 
 describe("unwrapInvitation", () => {
@@ -123,15 +132,48 @@ describe("createRoom", () => {
       "setGroupMetadata",
       "setSubgroupVisibility",
       "createContext",
+      "getContextIdentitiesOwned",
     ]);
     expect(
       admin.calls.find((c) => c.method === "setGroupMetadata")!.args[1],
     ).toEqual({ name: "Standup" });
+    // The fake holds no identity in ctx1, so the create response's key is the
+    // fallback — a node login, where that key is real.
     expect(out).toEqual({
       roomId: "room1",
       contextId: "ctx1",
-      memberPublicKey: "pk-creator",
+      identity: "pk-creator",
     });
+  });
+
+  it("takes the identity from identities-owned, not the create response", async () => {
+    // The ACCOUNT admin returns `memberPublicKey: ""` from createContext — a
+    // delegated create has no node-held key to report — and an empty executor
+    // fails every write in the room. What the session actually holds in the
+    // context is the answer, and it is the same read the enter path trusts.
+    const admin = fakeAdmin({
+      createContext: () => ({ contextId: "ctx1", memberPublicKey: "" }),
+      getContextIdentitiesOwned: () => ({ identities: ["acct-1"] }),
+    });
+    const out = await createRoom(admin, {
+      applicationId: "app1",
+      namespaceId: "ns1",
+      name: "Standup",
+    });
+    expect(out.identity).toBe("acct-1");
+  });
+
+  it("fails loudly when no identity comes back at all", async () => {
+    const admin = fakeAdmin({
+      createContext: () => ({ contextId: "ctx1", memberPublicKey: "" }),
+    });
+    await expect(
+      createRoom(admin, {
+        applicationId: "app1",
+        namespaceId: "ns1",
+        name: "S",
+      }),
+    ).rejects.toThrow(/no member identity/i);
   });
 
   it('sets visibility to LOWERCASE open — core rejects "Open"', () => {
@@ -185,7 +227,7 @@ describe("createRoom", () => {
       { applicationId: "app1", namespaceId: "ns1", name: "Standup" },
       (m) => seen.push(m),
     );
-    expect(seen.length).toBe(4);
+    expect(seen.length).toBe(5);
   });
 });
 
@@ -273,6 +315,56 @@ describe("acceptInvite", () => {
       roomId: "room1",
       contextId: "ctx1",
     });
+  });
+
+  it("enters the room by inheritance when joinGroup is not for an account", async () => {
+    // The account admin has no `joinGroup` (a targeted subgroup invitation is a
+    // node's own join) and throws NotForAccountError. Every room this app makes
+    // is OPEN, and an open subgroup is entered by inheritance from the namespace
+    // the chain just joined — so that is the door an account takes.
+    const admin = fakeAdmin({
+      joinGroup: () =>
+        Promise.reject(
+          Object.assign(
+            new Error("joinGroup is not available for an account"),
+            {
+              name: "NotForAccountError",
+            },
+          ),
+        ),
+    });
+    const out = await acceptInvite(admin, {
+      invitation: signed("room1"),
+      kind: "room",
+      groupId: "room1",
+      chain: [
+        { groupId: "ns1", invitation: signed("ns1"), kind: "namespace" },
+        { groupId: "room1", invitation: signed("room1"), kind: "room" },
+      ],
+    });
+    expect(methodsOf(admin)).toEqual([
+      "joinNamespace",
+      "joinGroup",
+      "joinSubgroupInheritance",
+    ]);
+    expect(admin.calls[2].args[0]).toBe("room1");
+    expect(out).toMatchObject({ namespaceId: "ns1", roomId: "room1" });
+  });
+
+  it("does not retry a joinGroup failure that is not about accounts", async () => {
+    const admin = fakeAdmin({
+      joinGroup: () => Promise.reject(new Error("invitation expired")),
+    });
+    await expect(
+      acceptInvite(admin, {
+        invitation: signed("room1"),
+        kind: "room",
+        chain: [
+          { groupId: "room1", invitation: signed("room1"), kind: "room" },
+        ],
+      }),
+    ).rejects.toThrow("invitation expired");
+    expect(methodsOf(admin)).not.toContain("joinSubgroupInheritance");
   });
 
   it("treats a code with no `kind` as a namespace invite (pre-rooms codes)", async () => {
@@ -657,5 +749,116 @@ describe("createStreamNamespace — the rc.41 default mask", () => {
         name: "Stream",
       }),
     ).rejects.toThrow("503");
+  });
+});
+
+// ── Hosting: what an ACCOUNT's stream can and cannot do ─────────────────────
+//
+// A node's createNamespace answers `{namespaceId}` and hosts what it founds.
+// The account admin answers `{namespaceId, haEnabled, haError?}`: the namespace
+// was founded through a relay and the cloud was asked to host it, and it can
+// refuse (an account not linked to a cloud user). The namespace exists, rooms
+// and calls work, but no invitation can be claimed — so the refusal has to be
+// surfaced at creation and gate the Invite buttons, not fail at the first mint.
+
+describe("createStreamNamespace — hosting", () => {
+  it("reports a node's namespace as hosted (no haEnabled in the answer)", async () => {
+    const admin = fakeAdmin();
+    const out = await createStreamNamespace(admin, {
+      applicationId: "app-1",
+      name: "Stream",
+    });
+    expect(out).toEqual({ namespaceId: "ns1", haEnabled: true });
+    expect(hostingProblem("ns1")).toBeNull();
+  });
+
+  it("returns and remembers the cloud's refusal", async () => {
+    const admin = fakeAdmin({
+      createNamespace: () => ({
+        namespaceId: "ns-acct",
+        haEnabled: false,
+        haError: "link this account to your cloud user",
+      }),
+    });
+    const out = await createStreamNamespace(admin, {
+      applicationId: "app-1",
+      name: "Stream",
+    });
+    expect(out.haEnabled).toBe(false);
+    expect(out.haError).toBe("link this account to your cloud user");
+    // Remembered per namespace, so the room page can gate Invite on arrival.
+    expect(hostingProblem("ns-acct")).toBe(
+      "link this account to your cloud user",
+    );
+  });
+
+  it("still grants member capabilities and opens the namespace when hosting is refused", async () => {
+    // The refusal is about INVITING. The namespace is real and the founder can
+    // still make rooms in it, so the setup writes must not be skipped.
+    const admin = fakeAdmin({
+      createNamespace: () => ({ namespaceId: "ns-acct", haEnabled: false }),
+    });
+    await createStreamNamespace(admin, { applicationId: "app-1", name: "S" });
+    expect(methodsOf(admin)).toEqual([
+      "createNamespace",
+      "setDefaultCapabilities",
+      "setSubgroupVisibility",
+    ]);
+  });
+});
+
+describe("mint*Invite — a refusal nobody could claim", () => {
+  const notClaimable = (reason: string) =>
+    Object.assign(new Error(`nobody could claim an invitation to ns1`), {
+      name: "InvitationNotClaimableError",
+      reason,
+    });
+
+  it("turns not-hosted into the hosting instruction and remembers it", async () => {
+    const admin = fakeAdmin({
+      createNamespaceInvitation: () =>
+        Promise.reject(notClaimable("not-hosted")),
+    });
+    await expect(
+      mintNamespaceInvite(admin, { namespaceId: "ns1" }),
+    ).rejects.toThrow(HOSTING_REFUSED_MESSAGE);
+    expect(hostingProblem("ns1")).toBe(HOSTING_REFUSED_MESSAGE);
+  });
+
+  it("applies to room codes too — the grant is the namespace", async () => {
+    const admin = fakeAdmin({
+      createNamespaceInvitation: () =>
+        Promise.reject(notClaimable("not-hosted")),
+    });
+    await expect(
+      mintRoomInvite(admin, { namespaceId: "ns1", roomId: "room1" }),
+    ).rejects.toThrow(HOSTING_REFUSED_MESSAGE);
+    expect(hostingProblem("ns1")).toBe(HOSTING_REFUSED_MESSAGE);
+  });
+
+  it("clears a remembered refusal once a mint goes through", async () => {
+    const admin = fakeAdmin({
+      createNamespaceInvitation: () => ({ invitation: signed("ns1") }),
+    });
+    // As if the create had been refused earlier in this session.
+    const refused = fakeAdmin({
+      createNamespace: () => ({ namespaceId: "ns1", haEnabled: false }),
+    });
+    await createStreamNamespace(refused, { applicationId: "a", name: "S" });
+    expect(hostingProblem("ns1")).not.toBeNull();
+
+    await mintNamespaceInvite(admin, { namespaceId: "ns1" });
+    expect(hostingProblem("ns1")).toBeNull();
+  });
+
+  it("passes any other mint failure through untouched", async () => {
+    const admin = fakeAdmin({
+      createNamespaceInvitation: () =>
+        Promise.reject(new Error("502 bad gateway")),
+    });
+    await expect(
+      mintNamespaceInvite(admin, { namespaceId: "ns1" }),
+    ).rejects.toThrow("502 bad gateway");
+    expect(hostingProblem("ns1")).toBeNull();
   });
 });

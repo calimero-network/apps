@@ -30,7 +30,10 @@ vi.mock("@calimero-apps/invite", async (importOriginal) => ({
 }));
 
 vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ mero: { admin: h.admin } }),
+  // The prompt redeems through the SESSION-AWARE admin (`useMero().admin`),
+  // never the raw client's. The raw one is absent here on purpose: reaching
+  // for `mero.admin` would throw, which is the right outcome for a regression.
+  useMero: () => ({ admin: h.admin, mero: {} }),
 }));
 
 // Explicit: this project does not enable vitest globals, so RTL's auto-cleanup

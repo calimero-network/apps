@@ -6,6 +6,7 @@ import {
   nowMillis,
   nowSecs,
 } from "../lib/session";
+import { useMyId } from "./useMyId";
 import type {
   ChunkView,
   DecodedFrame,
@@ -27,7 +28,14 @@ import type {
  */
 export function useMeroStream() {
   const contextId = getContextId();
+  // Two ids, equal on a node and different on an account — see lib/identity.
+  // `executorId` is what writes go out as (`identities-owned`: the node's
+  // context identity, or the account). `myId` is what the CONTRACT records as
+  // the caller, which is the device: the same key on a node, the certified
+  // device's signing key on an account. Compare `member.memberId` and the
+  // ephemeral `author` against `myId`, never against `executorId`.
   const executorId = getExecutorPublicKey();
+  const myId = useMyId(executorId);
   const { execute, loading, error } = useExecute(contextId, executorId);
 
   const join = useCallback(
@@ -145,6 +153,7 @@ export function useMeroStream() {
     () => ({
       contextId,
       executorId,
+      myId,
       loading,
       error,
       join,
@@ -170,6 +179,7 @@ export function useMeroStream() {
     [
       contextId,
       executorId,
+      myId,
       join,
       getMembers,
       encodeFrame,

@@ -24,7 +24,7 @@
 // retry and fallback in them, they are the part most likely to need a fix, and a
 // component is the worst place to unit-test one.
 
-import { CAPABILITIES, type MeroJs } from "@calimero-network/mero-js";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -38,9 +38,29 @@ import {
   redeemInvitation,
   type RedeemOutcome,
 } from "@calimero-apps/invite";
+import {
+  HOSTING_REFUSED_MESSAGE,
+  clearStreamUnhosted,
+  markStreamUnhosted,
+} from "./hosting";
 
-/** The admin client, as `useMero().mero.admin` provides it. */
-export type AdminLike = MeroJs["admin"];
+// Every function here takes `admin: AdminApiClient` — the SESSION-AWARE admin
+// from `useMero().admin`, never `useMero().mero.admin`. On a node login the two
+// are the same object. On an account (delegated) session they are not: the raw
+// client's admin is the relay's node route, which an account's token cannot
+// pass — `POST /admin-api/namespaces`, `/contexts`, `/namespaces/:id/join` all
+// answer 403 and `identities-owned` comes back empty, so every flow below sat
+// on "Working…" forever. `useMero().admin` is the account admin: the same
+// method names, with writes carried as governance ops, delegated creation and
+// self-signed invitations. Taking the type from mero-js rather than
+// `MeroJs["admin"]` is what keeps the raw client out of this module by
+// construction.
+//
+// One method the account admin does NOT have is `joinGroup` (a targeted
+// subgroup invitation is a node's own join). This app never needs it: rooms are
+// OPEN subgroups entered by inheritance, which the account admin carries as
+// MemberJoinedOpen. `acceptInvite` falls back to exactly that when a chain
+// names a room — see there.
 
 /**
  * Progress sink. Every flow in here is several round-trips deep, and a single
@@ -162,7 +182,7 @@ export interface NamespaceRow {
 }
 
 export async function listStreamNamespaces(
-  admin: AdminLike,
+  admin: AdminApiClient,
   applicationId: string,
 ): Promise<NamespaceRow[]> {
   const namespaces = await admin.listNamespacesForApplication(applicationId);
@@ -182,16 +202,36 @@ export async function listStreamNamespaces(
  * No context is created here — that is a room's job. A namespace with no room is
  * a valid, expected state: you invite people to the namespace, then make rooms.
  */
+export interface CreatedStream {
+  namespaceId: string;
+  /**
+   * Whether somebody will be able to CLAIM an invitation to this stream.
+   *
+   * On a node login this is always true: the node that founded the namespace
+   * hosts it, and it admits whoever redeems the code. On an account session the
+   * namespace is founded through a relay and the cloud is asked to host it
+   * (HA) right after; `haEnabled: false` means the cloud refused — most often
+   * because the account is not linked to a cloud user yet — and the namespace
+   * exists but an invitee with no node has no relay to be admitted through.
+   * Minting an invitation would then fail with "not hosted" at invite time, on
+   * a different page, with no hint of what to do. So the refusal is returned
+   * here and remembered (`lib/hosting`), and the room page says so on arrival.
+   */
+  haEnabled: boolean;
+  /** Why `haEnabled` is false, in words a person can act on. */
+  haError?: string;
+}
+
 export async function createStreamNamespace(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { applicationId: string; name: string },
   onStatus: StatusFn = noop,
-): Promise<{ namespaceId: string }> {
+): Promise<CreatedStream> {
   onStatus("Creating the namespace…");
-  const ns = await admin.createNamespace({
+  const ns = (await admin.createNamespace({
     applicationId: opts.applicationId,
     name: opts.name,
-  });
+  })) as { namespaceId: string; haEnabled?: boolean; haError?: string };
 
   onStatus("Granting member capabilities…");
   // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
@@ -225,7 +265,16 @@ export async function createStreamNamespace(
     .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: "open" })
     .catch(() => {});
 
-  return { namespaceId: ns.namespaceId };
+  // A node's response has no `haEnabled`: the node hosts what it founds. Only
+  // the account admin reports hosting, and only it can be refused it.
+  const haEnabled = ns.haEnabled ?? true;
+  if (!haEnabled) {
+    const reason = ns.haError ?? HOSTING_REFUSED_MESSAGE;
+    markStreamUnhosted(ns.namespaceId, reason);
+    return { namespaceId: ns.namespaceId, haEnabled, haError: reason };
+  }
+  clearStreamUnhosted(ns.namespaceId);
+  return { namespaceId: ns.namespaceId, haEnabled };
 }
 
 // ── Rooms (subgroups) ─────────────────────────────────────────────────────────
@@ -297,7 +346,7 @@ function invitedNamespaceOf(payload: StreamInvitePayload): string {
  * not a failure.
  */
 export async function redeemInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   payload: StreamInvitePayload,
   onStatus: (message: string) => void,
 ): Promise<RedeemResult> {
@@ -384,7 +433,7 @@ export interface RoomRow {
  * replicated to this node yet is the normal case right after joining, not an error.
  */
 export async function listRooms(
-  admin: AdminLike,
+  admin: AdminApiClient,
   namespaceId: string,
 ): Promise<RoomRow[]> {
   const subgroups = await admin.listNamespaceGroups(namespaceId);
@@ -427,10 +476,10 @@ export async function listRooms(
  * exists to pin exactly this.
  */
 export async function createRoom(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { applicationId: string; namespaceId: string; name: string },
   onStatus: StatusFn = noop,
-): Promise<{ roomId: string; contextId: string; memberPublicKey: string }> {
+): Promise<{ roomId: string; contextId: string; identity: string }> {
   onStatus("Creating the room…");
   // ⚠️ `groupName`, not `name`. mero-js renamed the field; the request denies
   // unknown ones, so the old spelling is a 400 rather than a silently ignored
@@ -465,14 +514,67 @@ export async function createRoom(
     initializationParams: initParamsFor(opts.name),
   });
 
+  // The identity to execute as. NOT `ctx.memberPublicKey` on its own: the
+  // account admin returns "" there (a delegated create has no node-held key to
+  // report), and an empty executor makes every write in the room fail. Ask what
+  // identity this session holds in the context — the same read the enter path
+  // trusts — and only fall back to the create response when that is empty.
+  onStatus("Reading your identity in the room…");
+  const identity =
+    (await ownedIdentity(admin, ctx.contextId)) || ctx.memberPublicKey || "";
+  if (!identity) {
+    throw new Error(
+      "The room was created but no member identity came back for you — refresh and open it from the list.",
+    );
+  }
+
   return {
     roomId: sg.groupId,
     contextId: ctx.contextId,
-    memberPublicKey: ctx.memberPublicKey,
+    identity,
   };
 }
 
 // ── Invitations ───────────────────────────────────────────────────────────────
+
+/**
+ * Ask the session's admin for a namespace invitation, and turn "nobody can
+ * claim this" into an instruction.
+ *
+ * A node mints one unconditionally. The account admin first asks the cloud who
+ * hosts the namespace, and refuses with `InvitationNotClaimableError`
+ * (`reason: "not-hosted"`) when the answer is nobody — the namespace was
+ * founded by an account the cloud cannot place, so an invitee with no node has
+ * no relay to be admitted through. That is the same refusal
+ * `createStreamNamespace` already reported as `haError`; it is remembered here
+ * too, so a stream joined on another device, or one created before this check
+ * existed, gates its Invite buttons the moment the refusal is seen rather than
+ * failing on every click.
+ *
+ * Matched by name and `reason`, not `instanceof`: the class lives in mero-react,
+ * and this module deliberately depends on mero-js only.
+ */
+async function mintNamespaceInvitation(
+  admin: AdminApiClient,
+  namespaceId: string,
+): Promise<unknown> {
+  try {
+    const res = await admin.createNamespaceInvitation(namespaceId, {});
+    clearStreamUnhosted(namespaceId);
+    return res;
+  } catch (e) {
+    const err = e as { name?: string; reason?: string; message?: string };
+    if (err?.name === "InvitationNotClaimableError") {
+      const reason =
+        err.reason === "not-hosted"
+          ? HOSTING_REFUSED_MESSAGE
+          : (err.message ?? HOSTING_REFUSED_MESSAGE);
+      markStreamUnhosted(namespaceId, reason);
+      throw new Error(reason);
+    }
+    throw e;
+  }
+}
 
 /**
  * Mint an OPEN namespace invitation and encode it as one pasteable code.
@@ -482,12 +584,12 @@ export async function createRoom(
  * misleads the next reader (learned in `dev-invite.sh`).
  */
 export async function mintNamespaceInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { namespaceId: string; namespaceName?: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus("Minting a namespace invitation…");
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await mintNamespaceInvitation(admin, opts.namespaceId);
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error("The node returned an invitation with no signature.");
@@ -526,7 +628,7 @@ export async function mintNamespaceInvite(
  * node that mints one needs no change here beyond emitting it.
  */
 export async function mintRoomInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: {
     namespaceId: string;
     roomId: string;
@@ -537,7 +639,7 @@ export async function mintRoomInvite(
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus("Minting an invitation for this room…");
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await mintNamespaceInvitation(admin, opts.namespaceId);
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error("The node returned an invitation with no signature.");
@@ -575,7 +677,7 @@ export interface AcceptedInvite {
  * wrapper, so a tampered code cannot redirect a join somewhere else.
  */
 export async function acceptInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   payload: StreamInvitePayload,
   onStatus: StatusFn = noop,
 ): Promise<AcceptedInvite> {
@@ -615,7 +717,7 @@ export async function acceptInvite(
           invitation: step.invitation as never,
         });
       } else {
-        await admin.joinGroup({ invitation: step.invitation as never });
+        await joinRoomStep(admin, signedId, step);
       }
     } catch (e) {
       // Walking a chain routinely re-joins something already held.
@@ -635,12 +737,36 @@ export async function acceptInvite(
 }
 
 /**
+ * Join the ROOM entry of an invitation chain.
+ *
+ * A node redeems the subgroup's own signed invitation with `joinGroup`. The
+ * account admin has no `joinGroup` — a targeted subgroup invitation is a node's
+ * own join, and it throws `NotForAccountError` — but every room this app makes
+ * is OPEN, and an open subgroup is entered by inheritance from the namespace
+ * the chain has just joined. So an account takes that door instead. What an
+ * account cannot do is use a targeted invitation to enter a RESTRICTED room;
+ * the inheritance join then refuses, and `enterRoomContext` says why.
+ */
+async function joinRoomStep(
+  admin: AdminApiClient,
+  roomId: string,
+  step: InviteChainEntry,
+): Promise<void> {
+  try {
+    await admin.joinGroup({ invitation: step.invitation as never });
+  } catch (e) {
+    if ((e as { name?: string })?.name !== "NotForAccountError") throw e;
+    await admin.joinSubgroupInheritance(roomId);
+  }
+}
+
+/**
  * Which namespace a room belongs to, discovered by looking for it among the
  * namespaces this node knows. There is no "parent of" read in the admin API, and
  * the invite wrapper's claim is unsigned, so this is the honest way to get it.
  */
 async function parentNamespaceOf(
-  admin: AdminLike,
+  admin: AdminApiClient,
   roomId: string,
 ): Promise<string | null> {
   const namespaces = await admin.listNamespaces().catch(() => []);
@@ -663,7 +789,7 @@ async function parentNamespaceOf(
  * is you. The round trip is the same either way.
  */
 async function ownedIdentity(
-  admin: AdminLike,
+  admin: AdminApiClient,
   contextId: string,
 ): Promise<string | null> {
   const owned = await admin
@@ -711,7 +837,7 @@ function isForbidden(e: unknown): boolean {
  * and the open/restricted setting is unchanged throughout.
  */
 async function joinRoomWithRetry(
-  admin: AdminLike,
+  admin: AdminApiClient,
   roomId: string,
   onStatus: StatusFn,
 ): Promise<void> {
@@ -763,7 +889,7 @@ async function joinRoomWithRetry(
  * possibilities rather than throwing a second error over the first.
  */
 async function diagnoseAdmission(
-  admin: AdminLike,
+  admin: AdminApiClient,
   roomId: string,
 ): Promise<string> {
   const visibility = await admin
@@ -801,7 +927,7 @@ async function diagnoseAdmission(
 }
 
 export async function enterRoomContext(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { roomId: string; contextId: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {

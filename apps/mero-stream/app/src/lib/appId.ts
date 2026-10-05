@@ -1,4 +1,4 @@
-import type { MeroJs } from "@calimero-network/mero-js";
+import type { AdminApiClient } from "@calimero-network/mero-js";
 
 /**
  * Resolving Mero Stream's OWN application id.
@@ -76,8 +76,20 @@ export function pickApplicationId(apps: readonly InstalledApp[]): string {
   return best.id;
 }
 
-/** Ask the node which of its installed applications is this one. */
-export async function resolveApplicationId(admin: MeroJs["admin"]): Promise<string> {
+/**
+ * Ask the node which of its installed applications is this one.
+ *
+ * `admin` is the session's admin client (`useMero().admin`). This is a NODE
+ * question: `listApplications` is `GET /admin-api/applications`, a node-wide
+ * listing an account's token cannot pass (403 on the relay), and an account
+ * has no install of its own to find — its id comes from the registry, on
+ * `useMero().applicationId`. `useApplicationId` does not call this on a
+ * delegated session; the catch below keeps a stray call from becoming "not
+ * installed".
+ */
+export async function resolveApplicationId(
+  admin: Pick<AdminApiClient, "listApplications">,
+): Promise<string> {
   try {
     const res = await admin.listApplications();
     const apps = (res?.apps ?? []) as InstalledApp[];
