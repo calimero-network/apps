@@ -4,7 +4,7 @@
 // invitation encoder) has already been broken once by a non-ASCII team name.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { AxiosError, AxiosHeaders } from "axios";
+import { HTTPError } from "@calimero-network/mero-js";
 import { clampText, escapeCss, escapeHtml, MAX_COMMENT_LEN } from "./sanitize";
 import { truncateMiddle } from "./format";
 import { getStoredTeamName, setStoredTeamName, teamLabel } from "./teamName";
@@ -87,25 +87,26 @@ describe("teamName cache", () => {
 });
 
 describe("extractErrorMessage", () => {
-  const axiosError = (data: unknown, message = "Request failed") => {
-    const err = new AxiosError(message);
-    err.response = {
-      data, status: 400, statusText: "Bad Request",
-      headers: new AxiosHeaders(), config: { headers: new AxiosHeaders() },
-    };
-    return err;
-  };
+  // What mero-js throws for a non-2xx answer: the node's body is kept as text
+  // and its `error` field surfaces as `explanation`.
+  const httpError = (body: unknown, status = 400) =>
+    new HTTPError(status, "Bad Request", "http://node/admin-api/x", new Headers(), JSON.stringify(body));
 
   it("prefers the node's error body", () => {
-    expect(extractErrorMessage(axiosError({ error: "  not an admin  " }))).toBe("not an admin");
+    expect(extractErrorMessage(httpError({ error: "  not an admin  " }))).toBe("not an admin");
   });
 
-  it("falls back to the body's message field", () => {
-    expect(extractErrorMessage(axiosError({ message: "nope" }))).toBe("nope");
+  it("reads a response body's message field (an axios-shaped error)", () => {
+    expect(extractErrorMessage({ response: { data: { message: "nope" } } })).toBe("nope");
   });
 
-  it("falls back to the axios message when the body says nothing", () => {
-    expect(extractErrorMessage(axiosError({}, "Network Error"))).toBe("Network Error");
+  it("falls back to the status line when the body says nothing", () => {
+    expect(extractErrorMessage(httpError({}, 403))).toMatch(/403/);
+  });
+
+  it("reads an account admin's refusal like any other error", () => {
+    expect(extractErrorMessage(new Error("deleteNamespace is not available for an account")))
+      .toBe("deleteNamespace is not available for an account");
   });
 
   it("handles plain Errors, strings and junk", () => {

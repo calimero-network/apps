@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { adminPost } from "../api/rpc";
+import { useApi } from "../api/useApi";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { encodeInvitationObject, invitationLink } from "../utils/invitation";
@@ -14,6 +14,7 @@ interface Props {
 
 export default function InviteModal({ teamId, onClose }: Props) {
   const { showToast } = useToast();
+  const { admin } = useApi();
   const [invitation, setInvitation] = useState("");
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -28,7 +29,10 @@ export default function InviteModal({ teamId, onClose }: Props) {
     setError("");
     setLoading(true);
     try {
-      const data = await adminPost<Record<string, unknown>>(`/namespaces/${teamId}/invite`, {});
+      // The session-aware admin: on an account the invitation is signed by the
+      // account itself (and checked against the routing its claimant will
+      // use), where the raw node route is a 403.
+      const data = (await admin.createNamespaceInvitation(teamId)) as unknown as Record<string, unknown>;
       if (data) {
         // Embed the team name so the joiner doesn't render a raw ID (see teamName.ts).
         const teamName = getStoredTeamName(teamId);

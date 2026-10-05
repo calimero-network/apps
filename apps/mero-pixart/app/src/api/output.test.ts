@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeContractError } from "./rpc";
+import { decodeContractError, decodeOutput } from "./output";
 
 // The exact payload the node returned for a `grant_editor` on a member the
 // document had never seen — a JSON-encoded UTF-8 byte array, quotes included.
@@ -33,5 +33,35 @@ describe("decodeContractError", () => {
   it("decodes an unquoted (non-JSON) byte payload too", () => {
     // "hi" without surrounding quotes.
     expect(decodeContractError("err: [104, 105]")).toBe("hi");
+  });
+});
+
+// `execute` hands back the contract's `output` as whichever of three shapes the
+// node (or the relay) chose; every page reads the same decoded value.
+describe("decodeOutput", () => {
+  const doc = { name: "Poster", width: 800, height: 600 };
+  const bytes = Array.from(new TextEncoder().encode(JSON.stringify(doc)));
+
+  it("decodes an older node's UTF-8 byte array", () => {
+    expect(decodeOutput(bytes)).toEqual(doc);
+  });
+
+  it("parses a JSON string", () => {
+    expect(decodeOutput(JSON.stringify(doc))).toEqual(doc);
+  });
+
+  it("returns a plain string that is not JSON as-is (a role, say)", () => {
+    expect(decodeOutput("editor")).toBe("editor");
+  });
+
+  it("passes already-parsed JSON through", () => {
+    expect(decodeOutput(doc)).toEqual(doc);
+    expect(decodeOutput([doc])).toEqual([doc]);
+  });
+
+  it("maps null, undefined and an empty output to null", () => {
+    expect(decodeOutput(null)).toBeNull();
+    expect(decodeOutput(undefined)).toBeNull();
+    expect(decodeOutput([])).toBeNull();
   });
 });
