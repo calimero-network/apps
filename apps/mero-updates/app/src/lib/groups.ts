@@ -24,7 +24,7 @@
 // retry and fallback in them, they are the part most likely to need a fix, and a
 // component is the worst place to unit-test one.
 
-import { CAPABILITIES, type MeroJs } from "@calimero-network/mero-js";
+import { CAPABILITIES, type AdminApiClient } from "@calimero-network/mero-js";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -33,9 +33,22 @@ import {
   type AudienceInvitePayload,
 } from "./inviteCodec";
 import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
+import {
+  HOSTING_REFUSED_MESSAGE,
+  clearSpaceUnhosted,
+  markSpaceUnhosted,
+} from "./hosting";
 
-/** The admin client, as `useMero().mero.admin` provides it. */
-export type AdminLike = MeroJs["admin"];
+// Every function here takes `admin: AdminApiClient` — the SESSION-AWARE admin
+// from `useMero().admin`, never `useMero().mero.admin`. On a node login the two
+// are the same object. On an account (delegated) session they are not: the raw
+// client's admin is the relay's node route, which an account's token cannot
+// pass — `POST /admin-api/namespaces`, `/contexts`, `/namespaces/:id/join` all
+// answer 403 and `identities-owned` comes back empty, so the UI sat on "Working…"
+// forever. `useMero().admin` is the account admin: the same method names, with
+// writes carried as governance ops, delegated creation and self-signed
+// invitations. Taking the type from mero-js rather than `MeroJs["admin"]` is
+// what keeps the raw client out of this module by construction.
 
 /**
  * Progress sink. Every flow in here is several round-trips deep, and a single
@@ -180,7 +193,7 @@ export interface NamespaceRow {
 }
 
 export async function listSpaceNamespaces(
-  admin: AdminLike,
+  admin: AdminApiClient,
   applicationId: string,
 ): Promise<NamespaceRow[]> {
   const namespaces = await admin.listNamespacesForApplication(applicationId);
@@ -200,16 +213,36 @@ export async function listSpaceNamespaces(
  * No context is created here — that is an audience's job. A namespace with no audience is
  * a valid, expected state: you invite people to the namespace, then make audiences.
  */
+export interface CreatedSpace {
+  namespaceId: string;
+  /**
+   * Whether somebody will be able to CLAIM an invitation to this space.
+   *
+   * On a node login this is always true: the node that founded the namespace
+   * hosts it, and it admits whoever redeems the code. On an account session the
+   * namespace is founded through a relay and the cloud is asked to host it
+   * (HA) right after; `haEnabled: false` means the cloud refused — most often
+   * because the account is not linked to a cloud user yet — and the namespace
+   * exists but an invitee with no node has no relay to be admitted through.
+   * Minting an invitation would then fail with "not hosted" at invite time, on a
+   * different page, with no hint of what to do. So the refusal is returned here
+   * and the page says so right after creation.
+   */
+  haEnabled: boolean;
+  /** Why `haEnabled` is false, in words a person can act on. */
+  haError?: string;
+}
+
 export async function createSpaceNamespace(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { applicationId: string; name: string },
   onStatus: StatusFn = noop,
-): Promise<{ namespaceId: string }> {
+): Promise<CreatedSpace> {
   onStatus("Creating the namespace…");
-  const ns = await admin.createNamespace({
+  const ns = (await admin.createNamespace({
     applicationId: opts.applicationId,
     name: opts.name,
-  });
+  })) as { namespaceId: string; haEnabled?: boolean; haError?: string };
 
   onStatus("Granting member capabilities…");
   // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
@@ -243,7 +276,16 @@ export async function createSpaceNamespace(
     .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: "open" })
     .catch(() => {});
 
-  return { namespaceId: ns.namespaceId };
+  // A node's response has no `haEnabled`: the node hosts what it founds. Only
+  // the account admin reports hosting, and only it can be refused it.
+  const haEnabled = ns.haEnabled ?? true;
+  if (!haEnabled) {
+    const reason = ns.haError ?? HOSTING_REFUSED_MESSAGE;
+    markSpaceUnhosted(ns.namespaceId, reason);
+    return { namespaceId: ns.namespaceId, haEnabled, haError: reason };
+  }
+  clearSpaceUnhosted(ns.namespaceId);
+  return { namespaceId: ns.namespaceId, haEnabled };
 }
 
 // ── Audiences (subgroups) ─────────────────────────────────────────────────────────
@@ -281,7 +323,7 @@ export type Redeemed =
  * second leaves someone a member of a space staring at an audience they cannot open.
  */
 export async function redeemInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   payload: AudienceInvitePayload,
   onStatus: (message: string) => void,
 ): Promise<Redeemed> {
@@ -337,7 +379,7 @@ export interface AudienceRow {
  * replicated to this node yet is the normal case right after joining, not an error.
  */
 export async function listAudiences(
-  admin: AdminLike,
+  admin: AdminApiClient,
   namespaceId: string,
 ): Promise<AudienceRow[]> {
   const subgroups = await admin.listNamespaceGroups(namespaceId);
@@ -380,10 +422,10 @@ export async function listAudiences(
  * exists to pin exactly this.
  */
 export async function createAudience(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { applicationId: string; namespaceId: string; name: string },
   onStatus: StatusFn = noop,
-): Promise<{ audienceId: string; contextId: string; memberPublicKey: string }> {
+): Promise<{ audienceId: string; contextId: string; identity: string }> {
   onStatus("Creating the audience…");
   // ⚠️ `groupName`, not `name`. mero-js renamed the field; the request denies
   // unknown ones, so the old spelling is a 400 rather than a silently ignored
@@ -418,10 +460,24 @@ export async function createAudience(
     initializationParams: initParams(),
   });
 
+  // The identity to post as. NOT `ctx.memberPublicKey` on its own: the account
+  // admin returns "" there today (a delegated create has no node-held key to
+  // report), and an empty executor makes every write in the audience fail. Ask
+  // what identity this session holds in the context — the same read the enter
+  // path trusts — and only fall back to the create response when that is empty.
+  onStatus("Reading your identity in the audience…");
+  const identity =
+    (await ownedIdentity(admin, ctx.contextId)) || ctx.memberPublicKey || "";
+  if (!identity) {
+    throw new Error(
+      "The audience was created but no member identity came back for you — reload and open it from the list.",
+    );
+  }
+
   return {
     audienceId: sg.groupId,
     contextId: ctx.contextId,
-    memberPublicKey: ctx.memberPublicKey,
+    identity,
   };
 }
 
@@ -441,7 +497,7 @@ export async function createAudience(
  * the namespace, not a local hide.
  */
 export async function deleteAudience(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { audienceId: string; contextId: string | null },
   onStatus: StatusFn = noop,
 ): Promise<void> {
@@ -463,7 +519,7 @@ export async function deleteAudience(
  * leave the space undeletable on exactly the node that most wants rid of it.
  */
 export async function deleteSpace(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { namespaceId: string },
   onStatus: StatusFn = noop,
 ): Promise<void> {
@@ -483,6 +539,42 @@ export async function deleteSpace(
 // ── Invitations ───────────────────────────────────────────────────────────────
 
 /**
+ * Ask the session's admin for a namespace invitation, and turn "nobody can
+ * claim this" into an instruction.
+ *
+ * A node mints one unconditionally. The account admin first asks the cloud who
+ * hosts the namespace, and refuses with `InvitationNotClaimableError`
+ * (`reason: "not-hosted"`) when the answer is nobody — the namespace was
+ * founded by an account the cloud cannot place, so an invitee with no node has
+ * no relay to be admitted through. That is the same refusal `createSpaceNamespace`
+ * already reported as `haError`; it is remembered here too, so a space joined on
+ * another device, or one created before this check existed, gates its Invite
+ * buttons the moment the refusal is seen rather than failing on every click.
+ *
+ * Matched by name and `reason`, not `instanceof`: the class lives in mero-react,
+ * and this module deliberately depends on mero-js only.
+ */
+async function mintNamespaceInvitation(
+  admin: AdminApiClient,
+  namespaceId: string,
+): Promise<unknown> {
+  try {
+    return await admin.createNamespaceInvitation(namespaceId, {});
+  } catch (e) {
+    const err = e as { name?: string; reason?: string; message?: string };
+    if (err?.name === "InvitationNotClaimableError") {
+      const reason =
+        err.reason === "not-hosted"
+          ? HOSTING_REFUSED_MESSAGE
+          : (err.message ?? HOSTING_REFUSED_MESSAGE);
+      markSpaceUnhosted(namespaceId, reason);
+      throw new Error(reason);
+    }
+    throw e;
+  }
+}
+
+/**
  * Mint an OPEN namespace invitation and encode it as one pasteable code.
  *
  * OPEN means the invitation carries no invitee key, so anyone holding the code can
@@ -490,12 +582,12 @@ export async function deleteSpace(
  * misleads the next reader (learned in `dev-invite.sh`).
  */
 export async function mintNamespaceInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { namespaceId: string; namespaceName?: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus("Minting a namespace invitation…");
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await mintNamespaceInvitation(admin, opts.namespaceId);
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error("The node returned an invitation with no signature.");
@@ -534,7 +626,7 @@ export async function mintNamespaceInvite(
  * node that mints one needs no change here beyond emitting it.
  */
 export async function mintAudienceInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: {
     namespaceId: string;
     audienceId: string;
@@ -545,7 +637,7 @@ export async function mintAudienceInvite(
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus("Minting an invitation for this audience…");
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await mintNamespaceInvitation(admin, opts.namespaceId);
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error("The node returned an invitation with no signature.");
@@ -583,7 +675,7 @@ export interface AcceptedInvite {
  * wrapper, so a tampered code cannot redirect a join somewhere else.
  */
 export async function acceptInvite(
-  admin: AdminLike,
+  admin: AdminApiClient,
   payload: AudienceInvitePayload,
   onStatus: StatusFn = noop,
 ): Promise<AcceptedInvite> {
@@ -648,7 +740,7 @@ export async function acceptInvite(
  * the invite wrapper's claim is unsigned, so this is the honest way to get it.
  */
 async function parentNamespaceOf(
-  admin: AdminLike,
+  admin: AdminApiClient,
   audienceId: string,
 ): Promise<string | null> {
   const namespaces = await admin.listNamespaces().catch(() => []);
@@ -672,7 +764,7 @@ async function parentNamespaceOf(
  * is you. The round trip is the same either way.
  */
 async function ownedIdentity(
-  admin: AdminLike,
+  admin: AdminApiClient,
   contextId: string,
 ): Promise<string | null> {
   const owned = await admin
@@ -720,7 +812,7 @@ function isForbidden(e: unknown): boolean {
  * and the open/restricted setting is unchanged throughout.
  */
 async function joinAudienceWithRetry(
-  admin: AdminLike,
+  admin: AdminApiClient,
   audienceId: string,
   onStatus: StatusFn,
 ): Promise<void> {
@@ -772,7 +864,7 @@ async function joinAudienceWithRetry(
  * possibilities rather than throwing a second error over the first.
  */
 async function diagnoseAdmission(
-  admin: AdminLike,
+  admin: AdminApiClient,
   audienceId: string,
 ): Promise<string> {
   const visibility = await admin
@@ -810,7 +902,7 @@ async function diagnoseAdmission(
 }
 
 export async function enterAudienceContext(
-  admin: AdminLike,
+  admin: AdminApiClient,
   opts: { audienceId: string; contextId: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {

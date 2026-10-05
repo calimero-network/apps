@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
@@ -15,6 +15,7 @@ import {
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
+import { hostingProblem } from "../lib/hosting";
 import styles from "./AudiencesPage.module.css";
 import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
@@ -40,10 +41,19 @@ import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 export default function AudiencesPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero, logout } = useMero();
+  // `admin`, never `mero.admin`: the session-aware admin (see CompaniesPage).
+  // On an account session the raw client's admin is the relay's node route and
+  // answers 403 to every create and join.
+  const { admin, isDelegated, logout } = useMero();
   const { showToast } = useToast();
-  // Resolved from the NODE by package, not from the session — see lib/appId.
+  // Resolved from the NODE by package (or the registry, for an account) — see
+  // lib/appId and hooks/useApplicationId.
   const { appId } = useApplicationId();
+  // Whether anyone can be invited to this space — see lib/hosting. Re-read
+  // after every mint, since a refused one is where the answer may change.
+  const [hostingVersion, setHostingVersion] = useState(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hostingNote = useMemo(() => hostingProblem(namespaceId), [namespaceId, hostingVersion]);
 
   const [audiences, setAudiences] = useState<AudienceRow[]>([]);
   /** The space whose audience list has come back at least once. */
@@ -91,18 +101,16 @@ export default function AudiencesPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !namespaceId) return;
+      if (!admin || !namespaceId) return;
       if (showSpinner) setListing(true);
       try {
         // The namespace's own name for the header, so the page says which space
         // you are in rather than a truncated id.
-        const info = await mero.admin
-          .getNamespace(namespaceId)
-          .catch(() => null);
+        const info = await admin.getNamespace(namespaceId).catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
         );
-        setAudiences(await listAudiences(mero.admin, namespaceId));
+        setAudiences(await listAudiences(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
         setListedForNs(namespaceId);
       } catch (e) {
@@ -111,7 +119,7 @@ export default function AudiencesPage() {
         setListing(false);
       }
     },
-    [mero, namespaceId],
+    [admin, namespaceId],
   );
 
   useEffect(() => {
@@ -128,7 +136,7 @@ export default function AudiencesPage() {
 
   const create = useCallback(() => {
     const audienceName = name.trim();
-    if (!audienceName || !mero) return;
+    if (!audienceName || !admin) return;
     if (!appId) {
       setError(
         "Missing application id — reopen Mero Updates from the desktop app.",
@@ -136,24 +144,27 @@ export default function AudiencesPage() {
       return;
     }
     void run("create", async (onStatus) => {
-      const { contextId, memberPublicKey } = await createAudience(
-        mero.admin,
+      // `identity`, not the create response's `memberPublicKey`: the account
+      // admin returns "" there, and lib/groups re-reads the identity this
+      // session actually holds in the new context.
+      const { contextId, identity } = await createAudience(
+        admin,
         { applicationId: appId, namespaceId, name: audienceName },
         onStatus,
       );
       setAudienceName(contextId, audienceName);
       setName("");
-      setActiveAudience(contextId, memberPublicKey, namespaceId);
+      setActiveAudience(contextId, identity, namespaceId);
       // Into the audience: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/a");
     });
-  }, [name, mero, appId, namespaceId, run, navigate]);
+  }, [name, admin, appId, namespaceId, run, navigate]);
 
   /** Enter an audience: join it if needed, wait for the identity, then open the audience. */
   const enter = useCallback(
     (audience: AudienceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       if (!audience.contextId) {
         setError(
           `“${audience.name}” has no audience context on this node yet. It may still be replicating — refresh in a moment.`,
@@ -163,7 +174,7 @@ export default function AudiencesPage() {
       const contextId = audience.contextId;
       void run(`enter:${audience.audienceId}`, async (onStatus) => {
         const identity = await enterAudienceContext(
-          mero.admin,
+          admin,
           { audienceId: audience.audienceId, contextId },
           onStatus,
         );
@@ -172,15 +183,15 @@ export default function AudiencesPage() {
         navigate("/a");
       });
     },
-    [mero, run, navigate, namespaceId],
+    [admin, run, navigate, namespaceId],
   );
 
   const inviteToAudience = useCallback(
     (audience: AudienceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${audience.audienceId}`, async (onStatus) => {
         const code = await mintAudienceInvite(
-          mero.admin,
+          admin,
           {
             namespaceId,
             audienceId: audience.audienceId,
@@ -189,7 +200,7 @@ export default function AudiencesPage() {
             contextId: audience.contextId,
           },
           onStatus,
-        );
+        ).finally(() => setHostingVersion((v) => v + 1));
         setInvite({
           key: `audience:${audience.audienceId}`,
           code,
@@ -207,17 +218,17 @@ export default function AudiencesPage() {
         showToast(`Invite ready for “${audience.name}”.`);
       });
     },
-    [mero, namespaceId, nsName, run, showToast],
+    [admin, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
-    if (!mero) return;
+    if (!admin) return;
     void run("invite:namespace", async (onStatus) => {
       const code = await mintNamespaceInvite(
-        mero.admin,
+        admin,
         { namespaceId, namespaceName: nsName },
         onStatus,
-      );
+      ).finally(() => setHostingVersion((v) => v + 1));
       setInvite({
         key: "namespace",
         code,
@@ -233,7 +244,7 @@ export default function AudiencesPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [mero, namespaceId, nsName, run, showToast]);
+  }, [admin, namespaceId, nsName, run, showToast]);
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
@@ -248,11 +259,11 @@ export default function AudiencesPage() {
 
   const removeAudience = useCallback(
     (audience: AudienceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${audience.audienceId}`, async (onStatus) => {
         await deleteAudience(
-          mero.admin,
+          admin,
           { audienceId: audience.audienceId, contextId: audience.contextId },
           onStatus,
         );
@@ -261,7 +272,7 @@ export default function AudiencesPage() {
         showToast(`Deleted \u201c${audience.name}\u201d.`);
       });
     },
-    [mero, run, load, showToast],
+    [admin, run, load, showToast],
   );
 
   return (
@@ -272,13 +283,21 @@ export default function AudiencesPage() {
         </button>
         <span className={styles.logo}>{nsName || "Space"}</span>
         <div className={styles.headerRight}>
+          {/* Gated on hosting: a space the cloud refused to host cannot be
+              invited to (lib/hosting), and the button says so rather than
+              failing on the click. */}
           <button
             className={styles.logoutBtn}
             onClick={inviteToNamespace}
-            disabled={pending === "invite-ns"}
+            disabled={pending === "invite:namespace" || !!hostingNote}
+            title={hostingNote ?? undefined}
             data-testid="invite-space"
           >
-            {pending === "invite-ns" ? "Inviting…" : "Invite"}
+            {pending === "invite:namespace"
+              ? "Inviting…"
+              : hostingNote
+                ? "Invite (not hosted yet)"
+                : "Invite"}
           </button>
           <button className={styles.logoutBtn} onClick={logout}>
             Logout
@@ -370,23 +389,30 @@ export default function AudiencesPage() {
                     <button
                       className={styles.dropdownItem}
                       data-testid="invite-audience"
+                      disabled={!!hostingNote}
+                      title={hostingNote ?? undefined}
                       onClick={() => {
                         setMenuOpenId(null);
                         inviteToAudience(audience);
                       }}
                     >
-                      Invite
+                      {hostingNote ? "Invite (not hosted yet)" : "Invite"}
                     </button>
-                    <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                      data-testid="delete-audience"
-                      onClick={() => {
-                        setMenuOpenId(null);
-                        setPendingDelete(audience);
-                      }}
-                    >
-                      Delete
-                    </button>
+                    {/* Deleting an audience deletes its context first, which
+                        is a node's own operation — the account admin refuses
+                        `deleteContext` by name. Hidden rather than failing. */}
+                    {!isDelegated && (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                        data-testid="delete-audience"
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          setPendingDelete(audience);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

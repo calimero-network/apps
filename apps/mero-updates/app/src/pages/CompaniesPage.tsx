@@ -16,6 +16,7 @@ import {
 import InviteModal from "../components/InviteModal";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
+import { hostingProblem } from "../lib/hosting";
 import styles from "./CompaniesPage.module.css";
 
 /**
@@ -39,10 +40,26 @@ import styles from "./CompaniesPage.module.css";
  */
 export default function CompaniesPage() {
   const navigate = useNavigate();
-  const { mero, logout, nodeUrl } = useMero();
+  // `admin`, never `mero.admin`: the session-aware admin. On a node login it is
+  // the node's own client; on an account (delegated) session it is the account
+  // admin, which carries creates and joins through the relay. The raw client's
+  // admin is the relay's NODE route there, and an account's token gets 403 from
+  // every write on it — which is how this page used to sit on "Creating…".
+  const { admin, isDelegated, logout, nodeUrl } = useMero();
   const { showToast } = useToast();
-  // Resolved from the NODE by package, not from the session — see lib/appId.
+  // Resolved from the NODE by package (or the registry, for an account) — see
+  // lib/appId and hooks/useApplicationId.
   const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
+  // Which spaces nobody can be invited to, and why — see lib/hosting. Learned
+  // from the create call (`haError`) or from a refused mint, and re-read after
+  // either so the Invite buttons update without a reload.
+  const [hostingVersion, setHostingVersion] = useState(0);
+  const hostingNote = useCallback(
+    (namespaceId: string) => hostingProblem(namespaceId),
+    // The version is the dependency on purpose: the store is outside React.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hostingVersion],
+  );
   const nodeLabel = (() => {
     if (!nodeUrl) return "";
     try {
@@ -104,20 +121,20 @@ export default function CompaniesPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !appId) {
+      if (!admin || !appId) {
         setListing(false);
         return;
       }
       if (showSpinner) setListing(true);
       try {
-        setNamespaces(await listSpaceNamespaces(mero.admin, appId));
+        setNamespaces(await listSpaceNamespaces(admin, appId));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load companies.");
       } finally {
         setListing(false);
       }
     },
-    [mero, appId],
+    [admin, appId],
   );
 
   useEffect(() => {
@@ -138,7 +155,7 @@ export default function CompaniesPage() {
 
   const create = useCallback(() => {
     const spaceName = name.trim();
-    if (!spaceName || !mero) return;
+    if (!spaceName || !admin) return;
     if (!appId) {
       setError(
         "Missing application id — reopen Mero Updates from the desktop app.",
@@ -146,43 +163,57 @@ export default function CompaniesPage() {
       return;
     }
     void run("create", async (onStatus) => {
-      const { namespaceId } = await createSpaceNamespace(
-        mero.admin,
+      const created = await createSpaceNamespace(
+        admin,
         { applicationId: appId, name: spaceName },
         onStatus,
       );
       setName("");
       onStatus("Refreshing your companies…");
       await load(false);
+      setHostingVersion((v) => v + 1);
+      if (!created.haEnabled) {
+        // The space exists and the founder can use it; what will NOT work is
+        // inviting, and the person is told now — on this screen, right after
+        // creating — rather than by a failed Invite on the next page.
+        showToast(created.haError ?? "This company is not hosted yet — nobody can be invited to it.", "error");
+      }
       // Straight into the new namespace: it has no audiences yet, and making one is
       // the only useful next step.
-      navigate(`/companies/${namespaceId}`);
+      navigate(`/companies/${created.namespaceId}`);
     });
-  }, [name, mero, appId, run, load, navigate]);
+  }, [name, admin, appId, run, load, navigate, showToast]);
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
-        const code = await mintNamespaceInvite(
-          mero.admin,
-          { namespaceId: ns.namespaceId, namespaceName: ns.name },
-          onStatus,
-        );
-        setInvite({ id: ns.namespaceId, code });
-        showToast(`Invite ready for “${ns.name}”.`);
+        try {
+          const code = await mintNamespaceInvite(
+            admin,
+            { namespaceId: ns.namespaceId, namespaceName: ns.name },
+            onStatus,
+          );
+          setInvite({ id: ns.namespaceId, code });
+          showToast(`Invite ready for “${ns.name}”.`);
+        } finally {
+          // A refused mint records the space as unhosted (lib/groups); a
+          // successful one clears nothing, but re-reading is cheap and keeps
+          // the buttons honest either way.
+          setHostingVersion((v) => v + 1);
+        }
       });
     },
-    [mero, run, showToast],
+    [admin, run, showToast],
   );
 
   const removeSpace = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       setPendingDelete(null);
       void run(`delete:${ns.namespaceId}`, async (onStatus) => {
         await deleteSpace(
-          mero.admin,
+          admin,
           { namespaceId: ns.namespaceId },
           onStatus,
         );
@@ -191,7 +222,7 @@ export default function CompaniesPage() {
         showToast(`Deleted \u201c${ns.name}\u201d.`);
       });
     },
-    [mero, run, load, showToast],
+    [admin, run, load, showToast],
   );
 
   /**
@@ -201,7 +232,7 @@ export default function CompaniesPage() {
    */
   const acceptCode = useCallback(
     (raw: string) => {
-      if (!mero) return;
+      if (!admin) return;
       // Accept a LINK pasted into the code field, not just a code. People paste
       // whatever they were sent, and the two are indistinguishable to them —
       // rejecting a link here would be the app refusing its own invitation.
@@ -219,7 +250,7 @@ export default function CompaniesPage() {
         // Shared with the app-level link prompt, so the two cannot drift. An audience
         // invitation needs BOTH joins — the namespace grant and the audience's
         // context — and this sequence is where that lives.
-        const landed = await redeemInvite(mero.admin, payload, onStatus);
+        const landed = await redeemInvite(admin, payload, onStatus);
         setJoinCode("");
         onStatus("Refreshing your companies…");
         await load(false);
@@ -238,7 +269,7 @@ export default function CompaniesPage() {
         showToast("Joined. Your companies are listed below.");
       });
     },
-    [mero, run, load, navigate, showToast],
+    [admin, run, load, navigate, showToast],
   );
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
@@ -331,26 +362,36 @@ export default function CompaniesPage() {
                 </button>
                 {menuOpenId === ns.namespaceId && (
                   <div className={styles.dropdown}>
+                    {/* Gated on hosting: a space the cloud refused to host
+                        cannot be invited to, and the button says why instead
+                        of failing on the click. */}
                     <button
                       className={styles.dropdownItem}
                       onClick={() => {
                         setMenuOpenId(null);
                         mintInvite(ns);
                       }}
+                      disabled={!!hostingNote(ns.namespaceId)}
+                      title={hostingNote(ns.namespaceId) ?? undefined}
                       data-testid="invite-btn"
                     >
-                      Invite
+                      {hostingNote(ns.namespaceId) ? "Invite (not hosted yet)" : "Invite"}
                     </button>
-                    <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                      onClick={() => {
-                        setMenuOpenId(null);
-                        setPendingDelete(ns);
-                      }}
-                      data-testid="delete-space"
-                    >
-                      Delete
-                    </button>
+                    {/* Deleting a namespace is a node's own operation — the
+                        account admin refuses it by name (NotForAccountError).
+                        Hidden rather than shown-and-failing. */}
+                    {!isDelegated && (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          setPendingDelete(ns);
+                        }}
+                        data-testid="delete-space"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
