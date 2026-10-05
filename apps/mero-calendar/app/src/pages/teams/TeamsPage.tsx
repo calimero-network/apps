@@ -7,16 +7,10 @@ import {
   useInviteRedemption,
 } from "@calimero-apps/invite";
 import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
-import { useMero, setApplicationId } from "@calimero-network/mero-react";
-import {
-  adminGet,
-  adminPost,
-  adminPut,
-  adminDelete,
-  listNamespaces,
-  joinContext,
-} from "../../api/rpc";
-import { resolveApplicationId } from "../../api/appId";
+import { useMero } from "@calimero-network/mero-react";
+import type { SignedGroupOpenInvitation } from "@calimero-network/mero-js";
+import { listNamespaces } from "../../api/admin";
+import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import { useToast } from "../../contexts/ToastContext";
@@ -43,22 +37,17 @@ type NamespaceRaw = {
   name?: string;
 };
 
-type SubgroupRaw = {
-  groupId?: string;
-  group_id?: string;
-  id?: string;
-};
-
-type ContextRaw = {
-  contextId?: string;
-  context_id?: string;
-  id?: string;
-};
-
 export default function TeamsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { applicationId, logout } = useMero();
+  // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
+  // (account) session its transport is the relay: `mero.admin.createNamespace`
+  // is `POST {relay}/admin-api/namespaces` under the account's bearer token,
+  // which carries no `namespace:manage` — a 403. `admin` is the session-aware
+  // one: the node's own client on a node login, and on an account the account
+  // admin, which founds through the relay, signs invitations as the account
+  // and redeems them through the admitter's route.
+  const { admin, isDelegated, logout } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -72,33 +61,21 @@ export default function TeamsPage() {
   );
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Mero Calendar's own application id, resolved once per mount (see appId.ts).
-  // Resolution already prefers the session's id, but only when the node really
-  // has it — so the persisted id is a fallback for the case where we could not
-  // reach /applications at all. Shared by list/create/join/open so every
-  // namespace + context is scoped to the right app.
-  const appIdRef = useRef<string>("");
-  const ensureAppId = useCallback(async (): Promise<string> => {
-    if (appIdRef.current) return appIdRef.current;
-    let id = "";
-    try {
-      id = await resolveApplicationId();
-    } catch {
-      /* ignore */
-    }
-    if (!id) id = applicationId ?? "";
-    if (id) {
-      appIdRef.current = id;
-      setApplicationId(id);
-    }
-    return id;
-  }, [applicationId]);
+  // Mero Calendar's own application id (see hooks/useEnsureAppId).
+  const ensureAppId = useEnsureAppId();
+
+  /** The session-aware admin, or a clear refusal before anything is sent. */
+  const requireAdmin = useCallback(() => {
+    if (!admin) throw new Error("Not connected.");
+    return admin;
+  }, [admin]);
 
   useEffect(() => {
+    if (!admin) return;
     let cancelled = false;
     async function loadTeams() {
       const appId = await ensureAppId();
-      listNamespaces(appId)
+      listNamespaces(requireAdmin(), appId)
         .then((items) => {
           if (cancelled) return;
           const arr = Array.isArray(items) ? items : [];
@@ -122,7 +99,7 @@ export default function TeamsPage() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [ensureAppId]);
+  }, [admin, ensureAppId, requireAdmin]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -140,26 +117,32 @@ export default function TeamsPage() {
     if (!name) return;
     setCreating(true);
     try {
-      const data = await adminPost<{
+      // Body is EXACTLY `applicationId` + `name`: `CreateNamespaceApiRequest`
+      // is `deny_unknown_fields`, so an extra key is a 400 for the whole
+      // create. On an account the same call founds through the relay with the
+      // provider's package, and comes back with `haEnabled`/`haError` on top.
+      const data = (await requireAdmin().createNamespace({
+        applicationId: await ensureAppId(),
+        name,
+      })) as {
         namespaceId?: string;
         groupId?: string;
         id?: string;
-      }>("/namespaces", {
-        // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`).
-        // `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key
-        // is a 400 for the whole create:
-        //   unknown field `alias`, expected one of `applicationId`, `name`,
-        //   `appKey`, `bytecodeId`
-        // `alias` was the pre-core#2338 spelling of the group label; `name` is
-        // the only one a node has read since.
-        // (No `upgradePolicy` either: core removed the concept in rc.21.)
-        applicationId: await ensureAppId(),
-        name,
-      });
+        haEnabled?: boolean;
+        haError?: string;
+      };
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       if (id) setStoredTeamName(id, name);
       setTeams((prev) => [...prev, { groupId: id, name }]);
       setNewName("");
+      // The team exists either way; only hosting was refused. Said now, where
+      // it can be acted on, rather than at the first invite, where it would
+      // read as a broken link.
+      if (data.haError) {
+        showToast(
+          `Team created, but invitations will not work yet: ${data.haError}.`,
+        );
+      }
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not create team."));
     } finally {
@@ -167,10 +150,11 @@ export default function TeamsPage() {
     }
   }
 
+  /** Node-only: the account admin refuses it, so the control is hidden there. */
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await adminDelete(`/namespaces/${teamId}`);
+      await requireAdmin().deleteNamespace(teamId);
     } catch {
       /* best-effort */
     }
@@ -201,21 +185,29 @@ export default function TeamsPage() {
   /** The two calls @calimero-apps/invite needs from this app. */
   const redeemer = useMemo(
     () => ({
+      // Through `admin`: on an account, `joinNamespace` redeems the invitation
+      // via the admitter's unauthenticated route and moves the session onto
+      // that relay. `join` has to THROW on refusal — the redeemer reads the
+      // outcome off the error — so no catch here.
       join: async (namespaceId: string, invitation: unknown) => {
-        await adminPost(`/namespaces/${namespaceId}/join`, { invitation });
+        await requireAdmin().joinNamespace(namespaceId, {
+          invitation: invitation as SignedGroupOpenInvitation,
+        });
       },
       memberships: async () => {
-        const items = await listNamespaces(await ensureAppId());
+        const items = await listNamespaces(requireAdmin(), await ensureAppId());
         return (Array.isArray(items) ? items : []).map(
           (n: NamespaceRaw) => n.namespaceId ?? n.groupId ?? n.id ?? "",
         );
       },
     }),
-    [ensureAppId],
+    [ensureAppId, requireAdmin],
   );
 
   const refreshTeams = useCallback(async () => {
-    const items = await listNamespaces(await ensureAppId()).catch(() => null);
+    const items = await listNamespaces(requireAdmin(), await ensureAppId()).catch(
+      () => null,
+    );
     if (!Array.isArray(items)) return;
     setTeams(
       items.map((n: NamespaceRaw) => ({
@@ -223,7 +215,7 @@ export default function TeamsPage() {
         name: (n.alias ?? n.name ?? "").trim(),
       })),
     );
-  }, [ensureAppId]);
+  }, [ensureAppId, requireAdmin]);
 
   // ── An invitation link opened this app ──────────────────────────────────────
   //
@@ -302,10 +294,13 @@ export default function TeamsPage() {
   async function generateInvite(teamId: string) {
     setMenuOpenId(null);
     try {
-      const data = await adminPost<Record<string, unknown>>(
-        `/namespaces/${teamId}/invite`,
-        {},
-      );
+      // `{ invitation, groupName? }` — the same envelope the node route
+      // returned, so the code a node mints and the one an account mints decode
+      // identically in `parseInvitation`. On an account the invitation is
+      // signed by the account itself.
+      const data = (await requireAdmin().createNamespaceInvitation(
+        teamId,
+      )) as unknown as Record<string, unknown>;
       const teamName = getStoredTeamName(teamId);
       const payload = teamName ? { ...data, __teamName: teamName } : data;
       const code = encodeInvitationObject(payload);
@@ -429,12 +424,18 @@ export default function TeamsPage() {
                     >
                       Invite
                     </button>
-                    <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                      onClick={() => deleteTeam(t.groupId)}
-                    >
-                      Delete
-                    </button>
+                    {/* Deleting a namespace is a node's own operation; the
+                        account admin refuses it by name, so an account is
+                        not offered it. */}
+                    {!isDelegated && (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                        onClick={() => deleteTeam(t.groupId)}
+                        data-testid={`delete-team-${t.groupId}`}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
                 {inviteFor?.id === t.groupId && (

@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero, setApplicationId } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
 import {
-  adminGet,
-  adminPost,
-  adminPut,
-  deleteContext,
-  joinContext,
-  leaveContext,
   listContextsForApplication,
   listGroupContexts,
+  listSubgroupIds,
   setContextName,
-} from "../../api/rpc";
+} from "../../api/admin";
 import {
   contextId as readContextId,
   contextName as readContextName,
 } from "../../api/appScope";
 import TeamMembersPanel from "./TeamMembersPanel";
-import { resolveApplicationId } from "../../api/appId";
+import { useEnsureAppId } from "../../hooks/useEnsureAppId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import { useToast } from "../../contexts/ToastContext";
@@ -32,12 +27,6 @@ import {
 import { useClickOutside } from "../../hooks/useClickOutside";
 import styles from "./teams.module.scss";
 
-type SubgroupRaw = {
-  groupId?: string;
-  group_id?: string;
-  id?: string;
-};
-
 /**
  * Choosing which calendar inside a team to open — and removing the ones that
  * have served their purpose.
@@ -51,7 +40,10 @@ export default function TeamCalendarsPage() {
   const navigate = useNavigate();
   const { teamId = "" } = useParams();
   const { showToast } = useToast();
-  const { applicationId, logout } = useMero();
+  // `admin`, not `mero.admin`: the session-aware client (see TeamsPage). On an
+  // account, `createGroupInNamespace`/`createContext` are delegated creation
+  // through the relay; the raw client's node routes answer 403 there.
+  const { admin, isDelegated, logout } = useMero();
 
   const [calendars, setCalendars] = useState<string[]>([]);
   /**
@@ -75,44 +67,24 @@ export default function TeamCalendarsPage() {
 
   // Mero Calendar's own application id — every list below is scoped to it, so a
   // sibling application's contexts can never show up as calendars here.
-  const appIdRef = useRef<string>("");
-  const ensureAppId = useCallback(async (): Promise<string> => {
-    if (appIdRef.current) return appIdRef.current;
-    let id = "";
-    try {
-      id = await resolveApplicationId();
-    } catch {
-      /* ignore */
-    }
-    if (!id) id = applicationId ?? "";
-    if (id) {
-      appIdRef.current = id;
-      setApplicationId(id);
-    }
-    return id;
-  }, [applicationId]);
+  const ensureAppId = useEnsureAppId();
+
+  /** The session-aware admin, or a clear refusal before anything is sent. */
+  const requireAdmin = useCallback(() => {
+    if (!admin) throw new Error("Not connected.");
+    return admin;
+  }, [admin]);
 
   /** The subgroups of this team, plus the team itself: contexts hang off both. */
   const teamGroupIds = useCallback(async (): Promise<string[]> => {
     const ids = new Set<string>([teamId]);
     try {
-      const raw = await adminGet<
-        { subgroups?: SubgroupRaw[]; data?: SubgroupRaw[] } | SubgroupRaw[]
-      >(`/groups/${teamId}/subgroups`);
-      const subgroups: SubgroupRaw[] = Array.isArray(raw)
-        ? raw
-        : (raw as { subgroups?: SubgroupRaw[] }).subgroups ??
-          (raw as { data?: SubgroupRaw[] }).data ??
-          [];
-      for (const sg of subgroups) {
-        const id = sg.groupId ?? sg.group_id ?? sg.id ?? "";
-        if (id) ids.add(id);
-      }
+      for (const id of await listSubgroupIds(requireAdmin(), teamId)) ids.add(id);
     } catch {
       /* no subgroups yet — the team itself is still worth checking */
     }
     return [...ids];
-  }, [teamId]);
+  }, [teamId, requireAdmin]);
 
   /**
    * The calendars in this team.
@@ -127,13 +99,19 @@ export default function TeamCalendarsPage() {
    */
   const load = useCallback(async () => {
     const appId = await ensureAppId();
+    const client = requireAdmin();
 
-    let calendarIds: Set<string>;
-    try {
-      const appContexts = await listContextsForApplication(appId);
-      calendarIds = new Set(appContexts.map(readContextId).filter(Boolean));
-    } catch {
-      calendarIds = new Set();
+    // `null` means "do not filter": a namespace is bound to one application by
+    // core, so on an account — whose node-wide context listing is not a thing
+    // the relay answers — everything the team's groups hold IS a calendar.
+    let calendarIds: Set<string> | null = null;
+    if (!isDelegated) {
+      try {
+        const appContexts = await listContextsForApplication(client, appId);
+        calendarIds = new Set(appContexts.map(readContextId).filter(Boolean));
+      } catch {
+        calendarIds = new Set();
+      }
     }
 
     const groupIds = await teamGroupIds();
@@ -145,7 +123,7 @@ export default function TeamCalendarsPage() {
     const ownerGroup: Record<string, string> = {};
     for (const gid of groupIds) {
       try {
-        for (const ctx of await listGroupContexts(gid)) {
+        for (const ctx of await listGroupContexts(client, gid)) {
           const id = readContextId(ctx);
           if (!id) continue;
           inTeam.add(id);
@@ -158,7 +136,9 @@ export default function TeamCalendarsPage() {
       }
     }
 
-    const visible = [...inTeam].filter((id) => calendarIds.has(id));
+    const visible = [...inTeam].filter(
+      (id) => calendarIds === null || calendarIds.has(id),
+    );
     setCalendars(visible);
     setNames(found);
     setLoading(false);
@@ -175,13 +155,13 @@ export default function TeamCalendarsPage() {
       if (!cached) continue;
       const gid = ownerGroup[id] ?? teamId;
       try {
-        await setContextName(gid, id, cached.slice(0, 64));
+        await setContextName(client, gid, id, cached.slice(0, 64));
         setNames((prev) => ({ ...prev, [id]: cached }));
       } catch {
         /* not permitted, or the node is older — the label still falls back */
       }
     }
-  }, [ensureAppId, teamGroupIds, teamId]);
+  }, [ensureAppId, isDelegated, requireAdmin, teamGroupIds, teamId]);
 
   /** Best label for a calendar: replicated name → cached name → id stub. */
   const nameOf = useCallback(
@@ -190,6 +170,7 @@ export default function TeamCalendarsPage() {
   );
 
   useEffect(() => {
+    if (!admin) return;
     let cancelled = false;
     async function run() {
       try {
@@ -207,7 +188,7 @@ export default function TeamCalendarsPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [load]);
+  }, [admin, load]);
 
   async function createCalendar() {
     const name = newName.trim() || teamLabel(teamId, "");
@@ -219,51 +200,44 @@ export default function TeamCalendarsPage() {
         return;
       }
 
-      const sgData = await adminPost<{
-        groupId?: string;
-        group_id?: string;
-        id?: string;
-      }>(`/namespaces/${teamId}/groups`, {
-        // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
-        // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
-        // whole create:
-        //   unknown field `groupAlias`, expected `groupName` or `visibility`
-        // Note this body is NOT `CreateGroupApiRequest`: the namespace-scoped
-        // subgroup route is a different, much smaller shape than `POST /groups`.
+      const client = requireAdmin();
+      // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`,
+      // nothing else, and is `deny_unknown_fields` — so an extra key is a 400
+      // for the whole create. Open, so every team member can follow the
+      // calendar without being added to it one by one.
+      const sgData = (await client.createGroupInNamespace(teamId, {
         groupName: name,
-      });
+        visibility: "open",
+      })) as { groupId?: string; group_id?: string; id?: string };
       const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
       if (subgroupId) {
-        await adminPut(`/groups/${subgroupId}/settings/subgroup-visibility`, {
-          subgroupVisibility: "open",
-        }).catch(() => {});
+        // Older nodes ignore `visibility` on create; say it again explicitly.
+        await client
+          .setSubgroupVisibility(subgroupId, { subgroupVisibility: "open" })
+          .catch(() => {});
       }
 
       // The calendar contract's init() takes no args → empty init params.
-      const ctxData = await adminPost<{ contextId?: string; id?: string }>(
-        "/contexts",
-        {
-          // `CreateContextRequest` is `deny_unknown_fields` and accepts only
-          // applicationId / serviceName / contextSeed / initializationParams /
-          // groupId / identitySecret / name. `protocol` went with the external
-          // chain config and `alias` with core#2338; either one is a 400.
-          applicationId: appId,
-          groupId: subgroupId || teamId,
-          name,
-          initializationParams: [],
-        },
-      );
+      // `CreateContextRequest` is `deny_unknown_fields` and accepts only
+      // applicationId / serviceName / contextSeed / initializationParams /
+      // groupId / identitySecret / name.
+      const ctxData = (await client.createContext({
+        applicationId: appId,
+        groupId: subgroupId || teamId,
+        name,
+        initializationParams: [],
+      })) as { contextId?: string; id?: string };
       const contextId = ctxData.contextId ?? ctxData.id ?? "";
       if (!contextId) throw new Error("The node created no calendar.");
 
       setStoredCalendarName(contextId, name);
-      // `POST /contexts` already carries `name`, but only for the group it was
+      // The create already carries `name`, but only for the group it was
       // created in; setting it explicitly also covers the node that created the
       // subgroup a moment ago and makes the failure visible in one place.
-      await setContextName(subgroupId || teamId, contextId, name.slice(0, 64))
+      await setContextName(client, subgroupId || teamId, contextId, name.slice(0, 64))
         .catch(() => {});
       setNewName("");
-      await joinContext(contextId).catch(() => {});
+      await client.joinContext(contextId).catch(() => {});
       navigate(`/teams/${teamId}/calendar/${contextId}`);
     } catch (err) {
       showToast(
@@ -277,7 +251,7 @@ export default function TeamCalendarsPage() {
   async function openCalendar(contextId: string) {
     setBusyId(contextId);
     try {
-      await joinContext(contextId).catch(() => {});
+      await requireAdmin().joinContext(contextId).catch(() => {});
       navigate(`/teams/${teamId}/calendar/${contextId}`);
     } finally {
       setBusyId(null);
@@ -291,6 +265,11 @@ export default function TeamCalendarsPage() {
    * but keeps our copy out of the group. Neither reaches the peers — they keep
    * theirs — so the confirmation says so rather than implying a team-wide
    * deletion the API cannot perform.
+   *
+   * Both are a NODE's own operations: an account has no local copy to drop and
+   * nothing local to opt out of, and the account admin refuses both by name
+   * (`NotForAccountError`). The menu that offers them is not rendered for an
+   * account at all.
    */
   async function removeCalendar(contextId: string, mode: "delete" | "leave") {
     setConfirmId(null);
@@ -298,10 +277,10 @@ export default function TeamCalendarsPage() {
     setBusyId(contextId);
     try {
       if (mode === "delete") {
-        await deleteContext(contextId);
+        await requireAdmin().deleteContext(contextId);
         clearStoredCalendarName(contextId);
       } else {
-        await leaveContext(contextId);
+        await requireAdmin().leaveContext(contextId);
       }
       setCalendars((prev) => prev.filter((id) => id !== contextId));
       showToast(
@@ -409,18 +388,22 @@ export default function TeamCalendarsPage() {
                   <span className={styles.cardSub}>{cid.slice(0, 12)}…</span>
                 </button>
 
-                <button
-                  className={styles.menuBtn}
-                  onClick={() =>
-                    setMenuOpenId((prev) => (prev === cid ? null : cid))
-                  }
-                  aria-label="Calendar options"
-                  data-testid={`calendar-menu-${cid}`}
-                >
-                  ⋯
-                </button>
+                {/* Leave and Delete are a node's own operations (see
+                    removeCalendar); an account is not offered the menu. */}
+                {!isDelegated && (
+                  <button
+                    className={styles.menuBtn}
+                    onClick={() =>
+                      setMenuOpenId((prev) => (prev === cid ? null : cid))
+                    }
+                    aria-label="Calendar options"
+                    data-testid={`calendar-menu-${cid}`}
+                  >
+                    ⋯
+                  </button>
+                )}
 
-                {menuOpenId === cid && (
+                {!isDelegated && menuOpenId === cid && (
                   <div className={styles.dropdown} ref={menuRef}>
                     <button
                       className={styles.dropdownItem}

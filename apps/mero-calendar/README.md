@@ -104,7 +104,7 @@ logic/                Rust smart contract (the calendar state machine)
   Cargo.toml          SDK pins + [package.metadata.calimero] bundle manifest
   build.sh            shim over `cargo mero build`, kept for scripts/dev-node.sh
 app/                  React frontend
-  src/api/            rpc.ts (JSON-RPC + admin-api), dataSource, appId
+  src/api/            contract (mero.rpc), admin (useMero().admin), session, privateStore, dataSource, appId
   src/pages/          landing, login, teams, calendar
   src/components/      calendar views + shared UI
 workflows/            merobox workflow tests (e2e, integration-setup, logic-test)
