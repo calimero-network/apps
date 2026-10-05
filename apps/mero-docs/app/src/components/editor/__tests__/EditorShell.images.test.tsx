@@ -15,7 +15,7 @@ const h = vi.hoisted(() => ({
 const uploadBlob = vi.fn();
 const mero = { admin: { uploadBlob } };
 
-vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero }) }));
+vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero, admin: mero.admin }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() } }));
 vi.mock('@blocknote/mantine', () => ({
   BlockNoteView: ({ children }: { children?: React.ReactNode }) => (

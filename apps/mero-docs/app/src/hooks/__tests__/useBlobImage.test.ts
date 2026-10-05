@@ -6,7 +6,7 @@ import { useBlobImage } from '../useBlobImage';
 const getBlob = vi.fn();
 const mero = { admin: { getBlob } }; // the provider hands out one client
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero }),
+  useMero: () => ({ mero, admin: mero.admin }),
 }));
 
 const ID = 'cd'.repeat(32);

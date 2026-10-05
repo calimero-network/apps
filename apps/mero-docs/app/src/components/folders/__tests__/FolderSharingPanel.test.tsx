@@ -43,15 +43,15 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
 }));
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
-    mero: {
-      admin: {
-        listGroupMembers,
-        addGroupMembers,
-        updateMemberRole,
-        setMemberCapabilities,
-        removeGroupMembers,
-        getMemberCapabilities,
-      },
+    mero: {},
+    // The session-aware admin (`useMero().admin`) is what the code writes through.
+    admin: {
+      listGroupMembers,
+      addGroupMembers,
+      updateMemberRole,
+      setMemberCapabilities,
+      removeGroupMembers,
+      getMemberCapabilities,
     },
   }),
   useGroupCapabilities: () => ({

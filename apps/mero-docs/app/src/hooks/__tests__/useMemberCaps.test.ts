@@ -22,11 +22,11 @@ const getCaps = vi.fn();
 // Stable mero ref - the effect deps include `mero`; a fresh object
 // every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
-  mero: {
-    admin: {
-      listGroupMembers: listMembers,
-      getMemberCapabilities: getCaps,
-    },
+  mero: {},
+  // The session-aware admin (`useMero().admin`) is what the code writes through.
+  admin: {
+    listGroupMembers: listMembers,
+    getMemberCapabilities: getCaps,
   },
 };
 let sseHandler: ((e: SseEventData) => void) | null = null;

@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderMembership } from '../useFolderMembership';
 
 const listGroupMembers = vi.fn();
-const MERO_STUB = { mero: { admin: { listGroupMembers } } };
+const MERO_STUB = { mero: {}, admin: { listGroupMembers } };
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => MERO_STUB,
   useAddGroupMembers: () => ({ addGroupMembers: vi.fn() }),

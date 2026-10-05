@@ -63,7 +63,7 @@ export function FolderMemberRoleRow({
   onRemove,
   removing,
 }: Props) {
-  const { mero } = useMero();
+  const { admin } = useMero();
   const { registryClient, registryContextId, namespaceId, folders } =
     useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
@@ -95,12 +95,12 @@ export function FolderMemberRoleRow({
   );
 
   const applyRole = async (next: FolderAccessRole) => {
-    if (!registryClient || !mero) {
+    if (!registryClient || !admin) {
       setUpdateError('Workspace not ready');
       return;
     }
     // `identity` is the member's account, which is what core keys group rows by.
-    const writer = { admin: mero.admin, registry: registryClient };
+    const writer = { admin: admin, registry: registryClient };
     const readOnly = next === 'ReadOnly';
     setUpdating(true);
     setUpdateError(null);

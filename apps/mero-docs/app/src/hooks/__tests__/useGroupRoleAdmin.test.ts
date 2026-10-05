@@ -29,7 +29,7 @@ const registryAdmin = {
 };
 
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: { admin: { setMemberCapabilities } } }),
+  useMero: () => ({ mero: {}, admin: { setMemberCapabilities } }),
   useUpdateMemberRole: () => ({
     updateMemberRole,
     loading: false,

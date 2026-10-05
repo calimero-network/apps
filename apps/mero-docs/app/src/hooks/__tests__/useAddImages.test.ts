@@ -10,7 +10,7 @@ import { IMAGE_SIZE_REFUSED, IMAGE_TYPE_REFUSED, useAddImages } from '../useAddI
 
 const uploadBlob = vi.fn();
 const mero = { admin: { uploadBlob } };
-vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero }) }));
+vi.mock('@calimero-network/mero-react', () => ({ useMero: () => ({ mero, admin: mero.admin }) }));
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));

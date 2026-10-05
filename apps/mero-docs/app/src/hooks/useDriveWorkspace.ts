@@ -264,8 +264,18 @@ export interface DriveWorkspaceState {
 // `selectedFolderId` state - so a refetch in one component's copy
 // never reaches another's, and selection clicks never propagate.
 function useDriveWorkspaceInternal(): DriveWorkspaceState {
+  // `mero` is the raw client, kept for the contract RPC (`RegistryClient`)
+  // and the event stream. Every admin call goes through `admin`, the
+  // session-aware client (apps#348): the node's own on a node login; on a
+  // delegated (account) session the account admin, whose `createNamespace`
+  // founds through the relay with the provider's package and whose
+  // `createContext` creates inside the namespace's root group as the account.
+  // `mero.admin` on an account is the relay's node route under the account's
+  // token - `POST /admin-api/namespaces` was a 403 ("Token does not carry the
+  // permissions this route requires") on every "New workspace".
   const {
     mero,
+    admin,
     applicationId: authApplicationId,
     isAuthenticated,
     isLoading: authLoading,
@@ -652,7 +662,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // start another one - the loop that produced the duplicates.
   const lazyCreateRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!mero || !applicationId || !selectedNsId) return;
+    if (!admin || !applicationId || !selectedNsId) return;
     if (contextsLoading) return;
     if (registryContextId) return;
     // (1) Only a positive "absent". `unsynced` waits.
@@ -674,7 +684,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         let callerIsNsAdmin = false;
         try {
           const { members: membersList } =
-            await mero.admin.listGroupMembers(healingNsId);
+            await admin.listGroupMembers(healingNsId);
           callerIsNsAdmin =
             membersList.find((m) => m.identity === callerIdentity)?.role ===
             'Admin';
@@ -685,13 +695,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
         // (3) Authoritative re-read. `contexts` is a cached hook value that can
         // be a render behind; creating off it is creating off a snapshot.
-        const fresh = await mero.admin.listGroupContexts(healingNsId);
+        const fresh = await admin.listGroupContexts(healingNsId);
         if (Array.isArray(fresh) && fresh.length > 0) {
           await refetchContexts();
           return;
         }
 
-        const reg = await mero.admin.createContext({
+        const reg = await admin.createContext({
           applicationId,
           groupId: healingNsId,
           serviceName: REGISTRY_SERVICE_ID,
@@ -746,7 +756,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // this branch unreachable anyway.
     })();
   }, [
-    mero,
+    admin,
     applicationId,
     selectedNsId,
     contextsLoading,
@@ -986,7 +996,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   selectedNsIdRef.current = selectedNsId;
   const [aliasRevision, setAliasRevision] = useState(0);
   useEffect(() => {
-    if (!mero) return;
+    if (!admin) return;
     const ids = regFolders.map((f) => f.id);
     // Capture via the ref (not a direct `selectedNsId` read) so this
     // stays out of the dependency array - the effect intentionally
@@ -1002,7 +1012,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     let alive = true;
     Promise.all(
       ids.map((id) =>
-        mero.admin
+        admin
           .getGroupInfo(id)
           .then(
             (info) =>
@@ -1014,7 +1024,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
               ] as const,
           )
           .catch(async (e) => {
-            const denied = await isGroupAccessDenied(mero.admin, id, e);
+            const denied = await isGroupAccessDenied(admin, id, e);
             return [id, null, null, denied] as const;
           }),
       ),
@@ -1053,7 +1063,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     };
     // aliasRevision is intentional - bumping it forces this effect to
     // re-run after a rename even if regFolders is referentially stable.
-  }, [mero, regFolders, aliasRevision]);
+  }, [admin, regFolders, aliasRevision]);
 
   // Re-arm the first-paint gate on namespace switch: clear the resolved
   // set so the new workspace's folders aren't rendered (with a stale
@@ -1130,7 +1140,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   const createWorkspace = useCallback(
     async (alias: string): Promise<string | null> => {
-      if (!mero || !applicationId) return null;
+      if (!admin || !applicationId) return null;
       // Defensive validation: NamespaceCreateDialog already trims +
       // length-checks before calling, but `createWorkspace` is a
       // public hook API and other callers (programmatic, tests)
@@ -1174,7 +1184,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // mero-react (8.0.0) still depends on `^15.0.0`, which does not. So
         // this line is correct and the call still fails until the SDK moves;
         // see the PR for the escalation.
-        const ns = await mero.admin.createNamespace({
+        const ns = await admin.createNamespace({
           applicationId,
           name: trimmed,
         });
@@ -1193,7 +1203,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // built-in default; the admin can re-set defaults via the
         // Member-defaults panel.
         try {
-          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
+          await admin.setDefaultCapabilities(ns.namespaceId, {
             defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS,
           });
         } catch (e) {
@@ -1208,7 +1218,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // root group. This is the convention the rest of the hook
         // relies on: contexts[0] === Registry context. Hard failure -
         // without a Registry context the workspace is unusable.
-        await mero.admin.createContext({
+        await admin.createContext({
           applicationId,
           groupId: ns.namespaceId,
           serviceName: REGISTRY_SERVICE_ID,
@@ -1229,7 +1239,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         setCreateLoading(false);
       }
     },
-    [mero, applicationId, refetchNamespaces, goWorkspace, setStoredNsId],
+    [admin, applicationId, refetchNamespaces, goWorkspace, setStoredNsId],
   );
 
   const selectNamespace = useCallback(

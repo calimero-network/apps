@@ -47,11 +47,11 @@ const getMemberCapsMock = vi.fn();
 // Stable mero ref - useMemberCaps's effect deps include `mero`, so a
 // new object every render would retrigger the fetch and infinite-loop.
 const MERO_STUB = {
-  mero: {
-    admin: {
-      listGroupMembers: listMembersMock,
-      getMemberCapabilities: getMemberCapsMock,
-    },
+  mero: {},
+  // The session-aware admin (`useMero().admin`) is what the code writes through.
+  admin: {
+    listGroupMembers: listMembersMock,
+    getMemberCapabilities: getMemberCapsMock,
   },
 };
 vi.mock('@calimero-network/mero-react', () => ({

@@ -61,7 +61,7 @@ export interface MemberCapsState {
   /** Force the underlying fetch (members + capabilities) to re-run.
    *  Needed after an external membership-changing op (e.g. the
    *  RestrictedFolderCard's join-via-inheritance click) - the
-   *  effect's deps `[mero, groupId, memberId]` don't change, so a
+   *  effect's deps `[admin, groupId, memberId]` don't change, so a
    *  successful join wouldn't otherwise lift a previously-cached
    *  "identity is not a member" error. */
   refetch: () => void;
@@ -96,7 +96,7 @@ export function useMemberCaps(
   _namespaceId: string,
   groupId: string,
 ): MemberCapsState {
-  const { mero } = useMero();
+  const { admin } = useMero();
   const { selfIdentity, registryContextId } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
@@ -130,7 +130,7 @@ export function useMemberCaps(
   );
 
   useEffect(() => {
-    if (!mero || !groupId || !memberId) {
+    if (!admin || !groupId || !memberId) {
       if (epochRef.current) epochRef.current.aborted = true;
       epochRef.current = null;
       inFlightRef.current = false;
@@ -168,7 +168,7 @@ export function useMemberCaps(
           // 1) Read the members list - used ONLY to detect the Admin
           //    short-circuit.
           const { members: membersList } =
-            await mero.admin.listGroupMembers(groupId);
+            await admin.listGroupMembers(groupId);
           if (signal.aborted) return;
           const me = membersList.find(
             (m) => m.identity === memberId,
@@ -208,7 +208,7 @@ export function useMemberCaps(
           //    resolves them via core's parent-walk
           //    and returns 0. A genuine non-member instead gets a 403
           //    → propagation-lag retry.
-          const result = await mero.admin.getMemberCapabilities(
+          const result = await admin.getMemberCapabilities(
             groupId,
             memberId,
           );
@@ -259,7 +259,7 @@ export function useMemberCaps(
         refetch();
       }
     });
-  }, [mero, groupId, memberId, tick, refetch]);
+  }, [admin, groupId, memberId, tick, refetch]);
 
   return { ...state, refetch };
 }

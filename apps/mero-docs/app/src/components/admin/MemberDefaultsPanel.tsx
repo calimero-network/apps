@@ -93,7 +93,7 @@ export function MemberDefaultsPanel() {
     useDefaultCapabilities(namespaceId ?? undefined);
   const { setDefaultCapabilities, loading: saving } =
     useSetDefaultCapabilities();
-  const { mero } = useMero();
+  const { admin } = useMero();
   const membership = useFolderMembership(rootGroupId);
   const confirm = useConfirm();
   const [applying, setApplying] = useState(false);
@@ -201,7 +201,7 @@ export function MemberDefaultsPanel() {
   const sweep = planDefaultsSweep(membership.members);
 
   const onApplyToExisting = async () => {
-    if (!mero || !rootGroupId) return;
+    if (!admin || !rootGroupId) return;
     const count = sweep.apply.length;
     const ok = await confirm({
       title: 'Apply to existing members?',
@@ -218,7 +218,7 @@ export function MemberDefaultsPanel() {
       let unnamedFailures = 0;
       for (const m of sweep.apply) {
         try {
-          await mero.admin.setMemberCapabilities(rootGroupId, m.identity, {
+          await admin.setMemberCapabilities(rootGroupId, m.identity, {
             capabilities: effectiveCurrent,
           });
         } catch {

@@ -69,7 +69,7 @@ export function useGroupRoleAdmin(
   groupId: string | null,
   syncRegistryManagers: boolean,
 ): GroupRoleAdmin {
-  const { mero } = useMero();
+  const { admin } = useMero();
   const { updateMemberRole } = useUpdateMemberRole();
   const { registryAdmin } = useDriveWorkspace();
   const [saving, setSaving] = useState(false);
@@ -82,7 +82,7 @@ export function useGroupRoleAdmin(
       currentRole: GroupRole,
     ): Promise<RoleChangeResult> => {
       if (!groupId) throw new Error('No group selected');
-      if (!mero) throw new Error('Mero client not ready');
+      if (!admin) throw new Error('Mero client not ready');
       setSaving(true);
       const warnings: string[] = [];
       try {
@@ -99,7 +99,7 @@ export function useGroupRoleAdmin(
 
         if (grant.caps !== null && grant.caps !== currentCaps) {
           try {
-            await mero.admin.setMemberCapabilities(groupId, memberAccount, {
+            await admin.setMemberCapabilities(groupId, memberAccount, {
               capabilities: grant.caps,
             });
           } catch (e: unknown) {
@@ -150,7 +150,7 @@ export function useGroupRoleAdmin(
         setSaving(false);
       }
     },
-    [groupId, mero, updateMemberRole, registryAdmin, syncRegistryManagers],
+    [groupId, admin, updateMemberRole, registryAdmin, syncRegistryManagers],
   );
 
   return { setRole, saving };

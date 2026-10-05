@@ -34,7 +34,8 @@ vi.mock('@calimero-network/mero-react', () => ({
     refetch: vi.fn(),
   }),
   useMero: () => ({
-    mero: { admin: { setMemberCapabilities, removeGroupMembers: removeMember } },
+    mero: {},
+    admin: { setMemberCapabilities, removeGroupMembers: removeMember },
   }),
   useUpdateMemberRole: () => ({ updateMemberRole }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),

@@ -7,7 +7,7 @@ import { canOpenFolder, useFolderReach } from '../useFolderReach';
 const lists = new Map<string, () => Promise<unknown>>();
 const listGroupMembers = vi.fn((folder: string) => lists.get(folder)!());
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: { admin: { listGroupMembers } } }),
+  useMero: () => ({ mero: {}, admin: { listGroupMembers } }),
   useAddGroupMembers: () => ({ addGroupMembers: vi.fn() }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn() }),
 }));

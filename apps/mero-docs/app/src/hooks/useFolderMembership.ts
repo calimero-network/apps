@@ -28,7 +28,7 @@ export interface FolderMembershipState {
 }
 
 export function useFolderMembership(folderId: string | null): FolderMembershipState {
-  const { mero } = useMero();
+  const { admin } = useMero();
   const { addGroupMembers } = useAddGroupMembers();
   const { removeGroupMembers } = useRemoveGroupMembers();
   const { registryContextId } = useDriveWorkspace();
@@ -48,7 +48,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const fetchSeqRef = useRef(0);
 
   const refetch = useCallback(async () => {
-    if (!mero || !folderId) {
+    if (!admin || !folderId) {
       setMembers([]);
       setReadFor(null);
       setLoading(false);
@@ -59,7 +59,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     setLoading(true);
     setError(null);
     try {
-      const { members: rows } = await mero.admin.listGroupMembers(folderId);
+      const { members: rows } = await admin.listGroupMembers(folderId);
       if (seq !== fetchSeqRef.current) return;
       setMembers(rows);
       setReadFor(folderId);
@@ -69,7 +69,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     } finally {
       if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [mero, folderId]);
+  }, [admin, folderId]);
 
   useEffect(() => {
     void refetch();
