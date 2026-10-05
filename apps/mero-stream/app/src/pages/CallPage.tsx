@@ -9,11 +9,7 @@ import { buildRoster, initials, shortId } from "../lib/people";
 import { JOIN_DEADLINE_MS, retryUntilValue } from "../lib/joinRetry";
 import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
-import {
-  getActiveNamespaceId,
-  getUsername,
-  setUsername,
-} from "../lib/session";
+import { getActiveNamespaceId, getUsername, setUsername } from "../lib/session";
 import {
   DEGRADED_DELIVERY_PERCENT,
   DEGRADED_FROM_BROADCASTERS,
@@ -224,7 +220,10 @@ export default function CallPage() {
   // The roster, with "is this person broadcasting" folded in from the media
   // stream rather than from the contract — the contract knows who JOINED, and
   // only the presence traffic knows who is publishing right now.
-  const me = stream.executorId ?? "me";
+  // `myId`, not `executorId`: the roster is keyed by what the CONTRACT calls
+  // the caller, which on an account is the certified device key rather than
+  // the account the writes go out as. See lib/identity.
+  const me = stream.myId ?? "me";
   const people = useMemo(
     () =>
       buildRoster({
@@ -255,7 +254,9 @@ export default function CallPage() {
               navigate(namespaceId ? `/streams/${namespaceId}` : "/streams")
             }
             data-testid="back-to-rooms"
-            title={namespaceId ? "Back to the room list" : "Back to your streams"}
+            title={
+              namespaceId ? "Back to the room list" : "Back to your streams"
+            }
           >
             ← {namespaceId ? "Rooms" : "Streams"}
           </button>

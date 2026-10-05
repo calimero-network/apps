@@ -15,8 +15,14 @@ import {
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
+import { hostingProblem } from "../lib/hosting";
+import { useMyId } from "../hooks/useMyId";
 import { initials } from "../lib/people";
-import { labelMembers, summariseMembers, type RoomMemberLabel } from "../lib/roomMembers";
+import {
+  labelMembers,
+  summariseMembers,
+  type RoomMemberLabel,
+} from "../lib/roomMembers";
 import type { Member } from "../types";
 import styles from "./Manage.module.css";
 import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
@@ -43,8 +49,15 @@ import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 export default function RoomsPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero } = useMero();
+  // `admin` is the session-aware admin (the node's own, or the account admin
+  // through the relay); `mero` stays only for `rpc`, which is the same
+  // transport shape on both and is what the contract roster is read with.
+  const { mero, admin } = useMero();
   const { showToast } = useToast();
+  // What the contract calls "you" on an ACCOUNT: the certified device key,
+  // which is not the identity `identities-owned` reports (the account). Null on
+  // a node, where it is the room's own identity instead — see lib/identity.
+  const accountMyId = useMyId(null);
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
 
@@ -97,18 +110,16 @@ export default function RoomsPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !namespaceId) return;
+      if (!admin || !namespaceId) return;
       if (showSpinner) setListing(true);
       try {
         // The namespace's own name for the header, so the page says which stream
         // you are in rather than a truncated id.
-        const info = await mero.admin
-          .getNamespace(namespaceId)
-          .catch(() => null);
+        const info = await admin.getNamespace(namespaceId).catch(() => null);
         setNsName(
           (info?.name ?? "").trim() || `Stream ${namespaceId.slice(0, 6)}`,
         );
-        setRooms(await listRooms(mero.admin, namespaceId));
+        setRooms(await listRooms(admin, namespaceId));
         // A real answer, empty or not — that is what ends the sync gate.
         setListedForNs(namespaceId);
       } catch (e) {
@@ -117,7 +128,7 @@ export default function RoomsPage() {
         setListing(false);
       }
     },
-    [mero, namespaceId],
+    [admin, namespaceId],
   );
 
   useEffect(() => {
@@ -151,7 +162,9 @@ export default function RoomsPage() {
           });
           return [
             room.contextId!,
-            labelMembers(members ?? [], room.identity ?? ""),
+            // Self is the CONTRACT's id for this session: the device key on an
+            // account, the room's own identity on a node.
+            labelMembers(members ?? [], accountMyId ?? room.identity ?? ""),
           ] as const;
         } catch {
           return null;
@@ -166,11 +179,11 @@ export default function RoomsPage() {
     return () => {
       cancelled = true;
     };
-  }, [mero, rooms]);
+  }, [mero, rooms, accountMyId]);
 
   const create = useCallback(() => {
     const roomName = name.trim();
-    if (!roomName || !mero) return;
+    if (!roomName || !admin) return;
     if (!appId) {
       setError(
         "Missing application id — reopen Mero Stream from the desktop app.",
@@ -178,24 +191,26 @@ export default function RoomsPage() {
       return;
     }
     void run("create", async (onStatus) => {
-      const { contextId, memberPublicKey } = await createRoom(
-        mero.admin,
+      // `identity` is re-read from `identities-owned` after the create, not
+      // taken from the create response: the account admin returns "" there.
+      const { contextId, identity } = await createRoom(
+        admin,
         { applicationId: appId, namespaceId, name: roomName },
         onStatus,
       );
       setRoomName(contextId, roomName);
       setName("");
-      setActiveRoom(contextId, memberPublicKey, namespaceId);
+      setActiveRoom(contextId, identity, namespaceId);
       // Into the call: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/live");
     });
-  }, [name, mero, appId, namespaceId, run, navigate]);
+  }, [name, admin, appId, namespaceId, run, navigate]);
 
   /** Enter a room: join it if needed, wait for the identity, then open the call. */
   const enter = useCallback(
     (room: RoomRow) => {
-      if (!mero) return;
+      if (!admin) return;
       if (!room.contextId) {
         setError(
           `“${room.name}” has no call context on this node yet. It may still be replicating — refresh in a moment.`,
@@ -205,7 +220,7 @@ export default function RoomsPage() {
       const contextId = room.contextId;
       void run(`enter:${room.roomId}`, async (onStatus) => {
         const identity = await enterRoomContext(
-          mero.admin,
+          admin,
           { roomId: room.roomId, contextId },
           onStatus,
         );
@@ -214,15 +229,15 @@ export default function RoomsPage() {
         navigate("/live");
       });
     },
-    [mero, run, navigate, namespaceId],
+    [admin, run, navigate, namespaceId],
   );
 
   const inviteToRoom = useCallback(
     (room: RoomRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${room.roomId}`, async (onStatus) => {
         const code = await mintRoomInvite(
-          mero.admin,
+          admin,
           {
             namespaceId,
             roomId: room.roomId,
@@ -249,14 +264,14 @@ export default function RoomsPage() {
         showToast(`Invite ready for “${room.name}”.`);
       });
     },
-    [mero, namespaceId, nsName, run, showToast],
+    [admin, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
-    if (!mero) return;
+    if (!admin) return;
     void run("invite:namespace", async (onStatus) => {
       const code = await mintNamespaceInvite(
-        mero.admin,
+        admin,
         { namespaceId, namespaceName: nsName },
         onStatus,
       );
@@ -275,11 +290,18 @@ export default function RoomsPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [mero, namespaceId, nsName, run, showToast]);
+  }, [admin, namespaceId, nsName, run, showToast]);
 
   /** This room's labelled roster, or undefined when we do not have one. */
   const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>
     room.contextId ? rosters[room.contextId] : undefined;
+
+  // Why nobody can be invited to this stream, when that is so: an account's
+  // namespace the cloud does not host yet (`haError` at creation, or a refused
+  // mint since). Read per render — every action on this page re-renders it, and
+  // the create that learned this navigates here, so a new stream shows it on
+  // arrival. Null on a node, always.
+  const hostingNote = hostingProblem(namespaceId);
 
   return (
     <div className={styles.page}>
@@ -295,7 +317,8 @@ export default function RoomsPage() {
           variant="secondary"
           size="small"
           testId="invite-namespace"
-          title="Invite someone to this whole stream"
+          disabled={!!hostingNote}
+          title={hostingNote ?? "Invite someone to this whole stream"}
         >
           Invite to stream
         </ActionButton>
@@ -352,7 +375,7 @@ export default function RoomsPage() {
             onClick={create}
             pending={pending === "create"}
             pendingLabel="Creating…"
-            disabled={!name.trim() || !mero}
+            disabled={!name.trim() || !admin}
             testId="create-room"
           >
             Create room
@@ -367,6 +390,15 @@ export default function RoomsPage() {
         {error && (
           <StatusNote tone="error" testId="rooms-error">
             {error}
+          </StatusNote>
+        )}
+        {/* An account's stream the cloud does not host yet. Said here, where
+            the Invite buttons it disables are, and on arrival from the create
+            that learned it — not at the first click, on a page that never
+            mentioned hosting. */}
+        {hostingNote && (
+          <StatusNote tone="error" testId="rooms-hosting">
+            {hostingNote}
           </StatusNote>
         )}
 
@@ -404,15 +436,19 @@ export default function RoomsPage() {
           <JoinSyncBanner show what="rooms" onDismiss={dismissSyncing} />
         )}
 
-        {!isSyncing && !listing && !resolvingAppId && !notInstalled && rooms.length === 0 && (
-          <div className={styles.empty}>
-            <span className={styles.emptyTitle}>No rooms in this stream</span>
-            <span className={styles.emptyHint}>
-              Create one above to start a call. Everyone already in the stream
-              can join it without a new invitation.
-            </span>
-          </div>
-        )}
+        {!isSyncing &&
+          !listing &&
+          !resolvingAppId &&
+          !notInstalled &&
+          rooms.length === 0 && (
+            <div className={styles.empty}>
+              <span className={styles.emptyTitle}>No rooms in this stream</span>
+              <span className={styles.emptyHint}>
+                Create one above to start a call. Everyone already in the stream
+                can join it without a new invitation.
+              </span>
+            </div>
+          )}
 
         {rooms.length > 0 && (
           <div className={styles.grid}>
@@ -474,7 +510,8 @@ export default function RoomsPage() {
                 >
                   {roomRoster(room)?.length
                     ? summariseMembers(roomRoster(room)!)
-                    : (room.contextId ?? "waiting for the context to replicate")}
+                    : (room.contextId ??
+                      "waiting for the context to replicate")}
                 </span>
                 <div className={styles.cardActions}>
                   <button
@@ -502,7 +539,10 @@ export default function RoomsPage() {
                     pendingLabel="Minting…"
                     variant="secondary"
                     testId="invite-room"
-                    title="Invite someone straight into this room"
+                    disabled={!!hostingNote}
+                    title={
+                      hostingNote ?? "Invite someone straight into this room"
+                    }
                   >
                     Invite
                   </ActionButton>

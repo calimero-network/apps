@@ -18,6 +18,7 @@ import { initials } from "../lib/people";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
+import { hostingProblem } from "../lib/hosting";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./Manage.module.css";
 
@@ -42,7 +43,11 @@ import styles from "./Manage.module.css";
  */
 export default function StreamsPage() {
   const navigate = useNavigate();
-  const { mero } = useMero();
+  // `admin`, not `mero.admin`: the session-aware admin. On a node login it is
+  // the node's own client; on an account it is the account admin, which
+  // carries the same calls through the relay. The raw client's admin is the
+  // relay's node route there and answers 403 to every write.
+  const { admin } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
@@ -92,20 +97,20 @@ export default function StreamsPage() {
 
   const load = useCallback(
     async (showSpinner = true) => {
-      if (!mero || !appId) {
+      if (!admin || !appId) {
         setListing(false);
         return;
       }
       if (showSpinner) setListing(true);
       try {
-        setNamespaces(await listStreamNamespaces(mero.admin, appId));
+        setNamespaces(await listStreamNamespaces(admin, appId));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load streams.");
       } finally {
         setListing(false);
       }
     },
-    [mero, appId],
+    [admin, appId],
   );
 
   useEffect(() => {
@@ -114,7 +119,7 @@ export default function StreamsPage() {
 
   const create = useCallback(() => {
     const streamName = name.trim();
-    if (!streamName || !mero) return;
+    if (!streamName || !admin) return;
     if (!appId) {
       setError(
         "Missing application id — reopen Mero Stream from the desktop app.",
@@ -122,8 +127,11 @@ export default function StreamsPage() {
       return;
     }
     void run("create", async (onStatus) => {
+      // `haError` is not read here: `createStreamNamespace` remembers a hosting
+      // refusal per namespace (lib/hosting), and the room page this navigates
+      // to shows it on arrival, next to the Invite buttons it gates.
       const { namespaceId } = await createStreamNamespace(
-        mero.admin,
+        admin,
         { applicationId: appId, name: streamName },
         onStatus,
       );
@@ -134,14 +142,14 @@ export default function StreamsPage() {
       // the only useful next step.
       navigate(`/streams/${namespaceId}`);
     });
-  }, [name, mero, appId, run, load, navigate]);
+  }, [name, admin, appId, run, load, navigate]);
 
   const mintInvite = useCallback(
     (ns: NamespaceRow) => {
-      if (!mero) return;
+      if (!admin) return;
       void run(`invite:${ns.namespaceId}`, async (onStatus) => {
         const code = await mintNamespaceInvite(
-          mero.admin,
+          admin,
           { namespaceId: ns.namespaceId, namespaceName: ns.name },
           onStatus,
         );
@@ -149,7 +157,7 @@ export default function StreamsPage() {
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [mero, run, showToast],
+    [admin, run, showToast],
   );
 
   /**
@@ -159,7 +167,7 @@ export default function StreamsPage() {
    */
   const acceptCode = useCallback(
     (raw: string) => {
-      if (!mero) return;
+      if (!admin) return;
       // Accept a LINK pasted into the code field, not just a code. People paste
       // whatever they were sent, and the two are indistinguishable to them —
       // rejecting a link here would be the app refusing its own invitation.
@@ -178,7 +186,7 @@ export default function StreamsPage() {
         // invitation needs BOTH joins — the namespace grant and the room's
         // context — and this sequence is where that lives.
         const { outcome, landed } = await redeemInvite(
-          mero.admin,
+          admin,
           payload,
           onStatus,
         );
@@ -203,7 +211,7 @@ export default function StreamsPage() {
         showToast("Joined. Your streams are listed below.");
       });
     },
-    [mero, run, load, navigate, showToast],
+    [admin, run, load, navigate, showToast],
   );
 
   const join = useCallback(() => {
@@ -258,7 +266,7 @@ export default function StreamsPage() {
             onClick={create}
             pending={pending === "create"}
             pendingLabel="Creating…"
-            disabled={!name.trim() || !mero}
+            disabled={!name.trim() || !admin}
             testId="create-stream"
           >
             Create stream
@@ -322,21 +330,26 @@ export default function StreamsPage() {
               Mero Stream is not installed on this node
             </span>
             <span className={styles.emptyHint}>
-              Install it from the marketplace, then reload. Streams are listed per
-              application, so there is nothing to show until the node has this one.
+              Install it from the marketplace, then reload. Streams are listed
+              per application, so there is nothing to show until the node has
+              this one.
             </span>
           </div>
         )}
 
-        {!listing && !resolvingAppId && !notInstalled && namespaces.length === 0 && (
-          <div className={styles.empty}>
-            <span className={styles.emptyTitle}>No streams yet</span>
-            <span className={styles.emptyHint}>
-              Create one above to start a call, or use{" "}
-              <strong>Join with a link or code</strong> if someone invited you.
-            </span>
-          </div>
-        )}
+        {!listing &&
+          !resolvingAppId &&
+          !notInstalled &&
+          namespaces.length === 0 && (
+            <div className={styles.empty}>
+              <span className={styles.emptyTitle}>No streams yet</span>
+              <span className={styles.emptyHint}>
+                Create one above to start a call, or use{" "}
+                <strong>Join with a link or code</strong> if someone invited
+                you.
+              </span>
+            </div>
+          )}
 
         {namespaces.length > 0 && (
           <div className={styles.grid}>
@@ -380,13 +393,22 @@ export default function StreamsPage() {
                   </button>
                   {/* Outside any wrapping button: nested interactive elements are
                       invalid HTML and the inner click does not reliably fire. */}
+                  {/* Gated, not hidden, when nobody could claim a code for
+                      this stream (an account's namespace the cloud does not
+                      host yet): the button stays where it is and its title
+                      says what to do, instead of each click failing with the
+                      same message. */}
                   <ActionButton
                     onClick={() => mintInvite(ns)}
                     pending={pending === `invite:${ns.namespaceId}`}
                     pendingLabel="Minting…"
                     variant="secondary"
                     testId="invite-btn"
-                    title="Invite someone to this whole stream"
+                    disabled={!!hostingProblem(ns.namespaceId)}
+                    title={
+                      hostingProblem(ns.namespaceId) ??
+                      "Invite someone to this whole stream"
+                    }
                   >
                     Invite
                   </ActionButton>
@@ -431,7 +453,7 @@ export default function StreamsPage() {
               onClick={join}
               pending={pending === "join"}
               pendingLabel="Joining…"
-              disabled={!joinCode.trim() || !mero}
+              disabled={!joinCode.trim() || !admin}
               testId="join-submit"
             >
               Join

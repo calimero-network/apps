@@ -37,7 +37,9 @@ import styles from "./InvitationPrompt.module.css";
  * as the app nagging rather than as durability.
  */
 export default function InvitationPrompt() {
-  const { mero } = useMero();
+  // The session-aware admin: on an account the raw client's join route is the
+  // relay's node route and answers 403. `redeemInvite` takes only the admin.
+  const { admin } = useMero();
   const navigate = useNavigate();
   const [pending, setPending] = useState<{
     captured: CapturedInvitation;
@@ -64,16 +66,12 @@ export default function InvitationPrompt() {
   );
 
   const accept = useCallback(async () => {
-    if (!pending || !mero) return;
+    if (!pending || !admin) return;
     const { captured, payload } = pending;
     setBusy(true);
     setError(null);
     try {
-      const { outcome, landed } = await redeemInvite(
-        mero.admin,
-        payload,
-        setStatus,
-      );
+      const { outcome, landed } = await redeemInvite(admin, payload, setStatus);
       if (!landed) {
         setError(redeemFailureMessage(outcome));
         // A failure that could pass (no online member yet, a flaky node) is NOT
@@ -107,7 +105,7 @@ export default function InvitationPrompt() {
       setBusy(false);
       setStatus(null);
     }
-  }, [pending, mero, navigate]);
+  }, [pending, admin, navigate]);
 
   const decline = useCallback(() => {
     pending?.captured.resolve();
@@ -155,7 +153,7 @@ export default function InvitationPrompt() {
           type="button"
           className={styles.accept}
           onClick={() => void accept()}
-          disabled={busy || !mero}
+          disabled={busy || !admin}
           data-testid="invite-accept"
         >
           {busy ? "Joining…" : "Join"}

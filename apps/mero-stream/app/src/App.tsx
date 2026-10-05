@@ -26,16 +26,19 @@ const verifiedStreams = new Set<string>();
 // without this check the app boots into a dead capture page instead of the
 // picker. Mirrors mero-meet's RequireRoom.
 function RequireStream({ children }: { children: ReactNode }) {
-  const { mero } = useMero();
+  // The session-aware admin: on an account the raw client's `getContexts` is
+  // the relay's node route, while `admin.getContexts()` answers caller-scoped
+  // (the account's own contexts) — which is exactly the question asked here.
+  const { admin } = useMero();
   const ctx = getContextId();
   const [exists, setExists] = useState<boolean | null>(() =>
     ctx && verifiedStreams.has(ctx) ? true : null,
   );
 
   useEffect(() => {
-    if (!ctx || verifiedStreams.has(ctx) || !mero) return;
+    if (!ctx || verifiedStreams.has(ctx) || !admin) return;
     let cancelled = false;
-    mero.admin
+    admin
       .getContexts()
       .then((resp) => {
         const found = (resp.contexts ?? []).some((c) => c.id === ctx);
@@ -51,7 +54,7 @@ function RequireStream({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [ctx, mero]);
+  }, [ctx, admin]);
 
   if (!ctx) return <Navigate to="/streams" replace />;
   if (exists === null) return null; // verifying — don't flash a dead page
@@ -140,8 +143,12 @@ export default function App() {
                     without them the catch-all below matches `/docs`, redirects to `/`,
                     and a shared docs link silently shows the overview. Measured — it
                     is how this was found. */}
-        {['/docs', '/preview'].map((landingPath) => (
-          <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+        {["/docs", "/preview"].map((landingPath) => (
+          <Route
+            key={landingPath}
+            path={landingPath}
+            element={<LandingPage />}
+          />
         ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
