@@ -500,8 +500,8 @@ export function readInvitation(invitationJson: string): ParsedInvitation {
     );
   }
 
-  const namespaceId = typeof body.group_id === 'string' ? body.group_id.trim().toLowerCase() : '';
-  if (!/^[0-9a-f]{64}$/.test(namespaceId)) {
+  const namespaceId = idHex(body.group_id);
+  if (namespaceId === undefined) {
     throw new Error(
       'The invitation carries no `group_id`, so there is no namespace to join. Every ' +
         'invitation this flow can use names one inside the signed body; ask for a freshly ' +
@@ -509,11 +509,46 @@ export function readInvitation(invitationJson: string): ParsedInvitation {
     );
   }
 
+  // Strings pass through as they always have (`classifyNodes` normalises them
+  // for comparison); only the byte spelling needs turning into hex here.
   const admitters = Array.isArray(body.admitters)
-    ? body.admitters.filter((a): a is string => typeof a === 'string')
+    ? body.admitters
+        .map((a: unknown) => (typeof a === 'string' ? a : idHex(a)))
+        .filter((a): a is string => a !== undefined)
     : [];
 
   return { namespaceId, admitters };
+}
+
+/**
+ * A 32-byte id as the 64-hex string every other account-addressing field uses,
+ * from either spelling an invitation carries it in.
+ *
+ * A node prints `group_id` as 64 hex. An invitation minted by an account —
+ * mero-js's `signGroupInvitation`, which is what a browser-held key produces —
+ * carries the same field as the 32-byte array core's wire type is, and types
+ * it that way (`GroupInvitationFromAdmin.group_id: number[]`). Both are the
+ * same signed fact; reading only one of them made every account-minted
+ * invitation fail as "no `group_id`" before the join legs were reached.
+ *
+ * Anything else — the wrong length, a byte out of range, not hex — is
+ * `undefined`, so the caller can say what is missing rather than join the
+ * wrong namespace.
+ */
+function idHex(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const text = value.trim().toLowerCase();
+    return /^[0-9a-f]{64}$/.test(text) ? text : undefined;
+  }
+  if (Array.isArray(value) && value.length === 32) {
+    let out = '';
+    for (const b of value) {
+      if (typeof b !== 'number' || !Number.isInteger(b) || b < 0 || b > 255) return undefined;
+      out += b.toString(16).padStart(2, '0');
+    }
+    return out;
+  }
+  return undefined;
 }
 
 /**
