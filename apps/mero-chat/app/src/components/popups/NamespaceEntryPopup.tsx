@@ -30,6 +30,7 @@ import {
   resolveInstalledAppId,
 } from "../../utils/installedApps";
 import { ensureNotificationPermission } from "../../utils/notificationPermission";
+import { useToast } from "../../contexts/ToastContext";
 import {
   decodeInvitationPayload,
   parseGroupInvitationPayload,
@@ -315,6 +316,7 @@ interface Props {
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
   const api = useRef(new GroupApiDataSource());
+  const { addToast } = useToast();
 
   // The pending deep-link invitation: the decoded JSON payload plus the SDK's
   // ack callback. Sourced from `useDeepLink` below — the platform SDK's durable
@@ -712,7 +714,20 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         throw new Error(createRes.error?.message || "Failed to create namespace");
       }
 
-      const { groupId } = createRes.data;
+      const { groupId, haError } = createRes.data;
+      // An account's founding also asked the cloud to host the workspace, and
+      // it can say no (the account is not linked to a cloud user, no fleet
+      // node could be admitted, …). The workspace exists either way; what is
+      // lost is the ability to invite anyone until the cause is fixed. Say so
+      // now, where the person can act on it, not as a failed Invite later.
+      if (haError) {
+        addToast({
+          title: "Workspace created, but not hosted yet",
+          message: `Nobody can be invited to it until this is fixed: ${haError}`,
+          type: "channel",
+          duration: 12000,
+        });
+      }
       setStoredGroupAlias(groupId, trimmedNs);
       // The `name` passed to createNamespace above does not reach the group's
       // metadata record — a freshly created namespace reads back
@@ -753,7 +768,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setError(err instanceof Error ? err.message : "Failed to create namespace");
       setStep("create");
     }
-  }, [nsNameInput, namespaces, enterChat]);
+  }, [nsNameInput, namespaces, enterChat, addToast]);
 
   // Install the configured app, then resume the create the user asked for.
   const handleInstallApp = useCallback(async () => {

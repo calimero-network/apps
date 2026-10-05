@@ -2,9 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GroupApiDataSource } from "./groupApiDataSource";
 
 const {
-  mockAxiosGet,
-  mockAxiosPost,
-  mockAxiosPut,
+  session,
   mockCreateNamespace,
   mockCreateNamespaceInvitation,
   mockJoinNamespace,
@@ -18,9 +16,8 @@ const {
   mockReparentGroup,
   mockUpgradeGroup,
 } = vi.hoisted(() => ({
-  mockAxiosGet: vi.fn(),
-  mockAxiosPost: vi.fn(),
-  mockAxiosPut: vi.fn(),
+  // What `MeroJsBridge` records about the session; flipped per test.
+  session: { isDelegated: false, applicationId: null as string | null },
   mockCreateNamespace: vi.fn(),
   mockCreateNamespaceInvitation: vi.fn(),
   mockJoinNamespace: vi.fn(),
@@ -35,17 +32,24 @@ const {
   mockUpgradeGroup: vi.fn(),
 }));
 
-vi.mock("axios", () => ({
-  default: {
-    get: mockAxiosGet,
-    post: mockAxiosPost,
-    put: mockAxiosPut,
+// mero-js's `HTTPError`, as mero-react re-exports it: `status` plus the
+// node's own words in `explanation`. The data source maps it with
+// `instanceof`, so the mock must be a real class, hoisted with the mock.
+const { MockHTTPError } = vi.hoisted(() => ({
+  MockHTTPError: class MockHTTPError extends Error {
+    status: number;
+    explanation: string | undefined;
+    constructor(status: number, explanation?: string) {
+      super(`HTTP ${status} : ${explanation ?? ""}`);
+      this.status = status;
+      this.explanation = explanation;
+    }
   },
-  isAxiosError: () => false,
 }));
 
 vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://localhost:2428",
+  HTTPError: MockHTTPError,
 }));
 
 vi.mock("../../constants/config", async (importOriginal) => ({
@@ -53,13 +57,14 @@ vi.mock("../../constants/config", async (importOriginal) => ({
   getApplicationId: () => "runtime-app-id",
 }));
 
-// The data source now issues its admin calls through mero-js rather than
-// axios, so the assertions below check the SDK method and its arguments. The
-// SDK unwraps core's `{ data: ... }` envelope, so mocks resolve the inner
-// payload directly.
+// The data source issues every call through the session admin `MeroJsBridge`
+// hands it (the node's own on a node, the account admin on an account), so the
+// assertions below check the SDK method and its arguments. The SDK unwraps
+// core's `{ data: ... }` envelope, so mocks resolve the inner payload directly.
 vi.mock("../meroJsClient", () => ({
-  getAuthConfig: () => ({ jwtToken: "token" }),
   getMeroJs: () => ({
+    isDelegated: session.isDelegated,
+    applicationId: session.applicationId,
     admin: {
       createNamespace: mockCreateNamespace,
       listGroupContexts: mockListGroupContexts,
@@ -161,9 +166,10 @@ describe("GroupApiDataSource", () => {
   });
 
   beforeEach(() => {
-    mockAxiosGet.mockReset();
-    mockAxiosPost.mockReset();
-    mockAxiosPut.mockReset();
+    session.isDelegated = false;
+    session.applicationId = null;
+    mockListApplications.mockReset();
+    mockListNamespaces.mockReset();
     mockCreateNamespace.mockReset();
     mockCreateNamespaceInvitation.mockReset();
     mockJoinNamespace.mockReset();
@@ -193,6 +199,75 @@ describe("GroupApiDataSource", () => {
         groupId: "group-1",
       },
       error: null,
+    });
+  });
+
+  it("on an account, lists the account's own namespaces by the registry id and never lists applications", async () => {
+    // The account admin's `listNamespaces` is already the account's own; the
+    // one id that is chat for it is the registry-derived one. A relay's
+    // `/admin-api/applications` is not the account's to read (403), and the
+    // node path used to ask for it on every listing.
+    session.isDelegated = true;
+    session.applicationId = "runtime-app-id";
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [ns("ns-chat", "runtime-app-id", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+    expect(mockListApplications).not.toHaveBeenCalled();
+  });
+
+  it("carries the cloud's hosting answer (`haEnabled` / `haError`) out of an account's founding", async () => {
+    // mero-react's account admin founds through the relay and then asks the
+    // cloud to host the namespace; a refusal comes back beside the id, not as
+    // an error. The popup shows it, so it must survive the envelope.
+    mockCreateNamespace.mockResolvedValue({
+      namespaceId: "group-3",
+      haEnabled: false,
+      haError: "link this account to your cloud user in the wallet so invitees can find this namespace",
+    });
+
+    const response = await new GroupApiDataSource().createGroup({ applicationId: "app-1" });
+
+    expect(response).toEqual({
+      data: {
+        groupId: "group-3",
+        haEnabled: false,
+        haError: "link this account to your cloud user in the wallet so invitees can find this namespace",
+      },
+      error: null,
+    });
+  });
+
+  it("maps an HTTPError to its status and the node's own explanation", async () => {
+    // What the caller branches on (403 from a route an account's token cannot
+    // pass, 404 on a missing member row) and what a person reads — the body's
+    // `error`, not `HTTP 403 : ...`. This used to be axios's job.
+    mockCreateNamespace.mockRejectedValue(
+      new MockHTTPError(403, "Token does not carry the permissions this route requires"),
+    );
+
+    const response = await new GroupApiDataSource().createGroup({ applicationId: "app-1" });
+
+    expect(response).toEqual({
+      data: null,
+      error: { code: 403, message: "Token does not carry the permissions this route requires" },
+    });
+  });
+
+  it("keeps a numeric `status` from any other thrown error, and defaults to 500", async () => {
+    mockCreateNamespace.mockRejectedValue(Object.assign(new Error("not for an account"), { status: 405 }));
+    expect((await new GroupApiDataSource().createGroup({ applicationId: "app-1" })).error).toEqual({
+      code: 405,
+      message: "not for an account",
+    });
+
+    mockCreateNamespace.mockRejectedValue(new Error("boom"));
+    expect((await new GroupApiDataSource().createGroup({ applicationId: "app-1" })).error).toEqual({
+      code: 500,
+      message: "boom",
     });
   });
 

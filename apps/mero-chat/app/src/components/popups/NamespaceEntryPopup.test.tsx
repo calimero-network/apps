@@ -56,7 +56,16 @@ vi.mock("@calimero-network/mero-platform-react", () => ({
 }));
 
 vi.mock("../../api/meroJsClient", () => ({
-  getMeroJs: () => ({ admin: { listNamespaces: h.listNamespaces } }),
+  getMeroJs: () => ({
+    admin: { listNamespaces: h.listNamespaces },
+    isDelegated: false,
+    applicationId: null,
+  }),
+  isDelegatedSession: () => false,
+}));
+
+vi.mock("../../contexts/ToastContext", () => ({
+  useToast: () => ({ addToast: vi.fn() }),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({

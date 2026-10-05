@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import axios from "axios";
 import {
+  clearSelfAccount,
+  getSelfAccountHex,
   hexToBase58,
   loadSelfAccountIdentity,
   sameAccount,
@@ -12,12 +13,22 @@ import {
   isSelfSender,
 } from "./selfIdentity";
 
-vi.mock("axios", () => ({ default: { get: vi.fn() } }));
+const { mockGetNodeIdentity } = vi.hoisted(() => ({
+  mockGetNodeIdentity: vi.fn(),
+}));
+
 vi.mock("@calimero-network/mero-react", () => ({
-  getNodeUrl: () => "http://node.test",
   getContextIdentity: () => "",
 }));
-vi.mock("../api/meroJsClient", () => ({ getAuthConfig: () => ({ jwtToken: "t" }) }));
+// The session admin is the only thing identity reads. No node URL, no token:
+// a raw `/admin-api/identity` read is what an account's token could not pass.
+vi.mock("../api/meroJsClient", () => ({
+  getMeroJs: () => ({
+    admin: { getNodeIdentity: mockGetNodeIdentity },
+    isDelegated: false,
+    applicationId: null,
+  }),
+}));
 vi.mock("../constants/config", () => ({
   getContextMemberIdentity: () => "",
   getGroupId: () => "",
@@ -59,29 +70,26 @@ describe("loadSelfAccountIdentity", () => {
   const accountB58 = "DZZPSfWzipi1aH8YxjJop8eS3oJXUHaE5kbL67V6s3MU";
 
   beforeEach(() => {
-    vi.mocked(axios.get).mockReset();
+    mockGetNodeIdentity.mockReset();
     clearRegisteredContextIdentities();
+    clearSelfAccount();
   });
 
-  it("reads the node-wide identity route, not the per-namespace one", async () => {
-    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24. When it
-    // did, nothing was registered as self and every ownership check silently
-    // failed — the user could not edit or delete their own messages.
-    vi.mocked(axios.get).mockResolvedValue({
-      data: { data: { accountId: accountHex, deviceId: null } },
-    });
+  it("asks the session admin for the identity, never a node route", async () => {
+    // `getNodeIdentity` is the node-wide `/admin-api/identity` on a node and
+    // the enrolled account on an account session. The app used to GET the
+    // route itself with a node token; an account has no such token, so "me"
+    // was never learned and every own message looked like someone else's.
+    mockGetNodeIdentity.mockResolvedValue({ accountId: accountHex, deviceId: null });
 
-    await loadSelfAccountIdentity("some-namespace");
+    await expect(loadSelfAccountIdentity("some-namespace")).resolves.toBe(accountB58);
 
-    const url = vi.mocked(axios.get).mock.calls[0][0] as string;
-    expect(url).toBe("http://node.test/admin-api/identity");
-    expect(url).not.toContain("/namespaces/");
+    expect(mockGetNodeIdentity).toHaveBeenCalledTimes(1);
+    expect(getSelfAccountHex()).toBe(accountHex);
   });
 
   it("registers the base58 account id, which is what `sender` carries", async () => {
-    vi.mocked(axios.get).mockResolvedValue({
-      data: { data: { accountId: accountHex, deviceId: null } },
-    });
+    mockGetNodeIdentity.mockResolvedValue({ accountId: accountHex, deviceId: null });
 
     await loadSelfAccountIdentity();
 
@@ -92,11 +100,29 @@ describe("loadSelfAccountIdentity", () => {
     expect(isSelfSender("someone-else", "ctx-1")).toBe(false);
   });
 
-  it("returns null and registers nothing when the node has no account id", async () => {
-    vi.mocked(axios.get).mockResolvedValue({ data: { data: {} } });
+  it("registers the device id too when the node reports one", async () => {
+    const deviceHex =
+      "e8b65145da3670b152e06eb3e2c00a5b41ca8907aac0a4ef24486bffa6283670";
+    mockGetNodeIdentity.mockResolvedValue({ accountId: accountHex, deviceId: deviceHex });
+
+    await loadSelfAccountIdentity();
+
+    expect(isSelfSender(deviceHex, "ctx-1")).toBe(true);
+    expect(isSelfSender(hexToBase58(deviceHex), "ctx-1")).toBe(true);
+  });
+
+  it("returns null and registers nothing when the session has no account id", async () => {
+    mockGetNodeIdentity.mockResolvedValue({});
 
     await expect(loadSelfAccountIdentity()).resolves.toBeNull();
     expect(isSelfSender(accountB58, "ctx-1")).toBe(false);
+  });
+
+  it("returns null rather than throwing when the admin refuses", async () => {
+    mockGetNodeIdentity.mockRejectedValue(new Error("HTTP 403"));
+
+    await expect(loadSelfAccountIdentity()).resolves.toBeNull();
+    expect(getSelfAccountHex()).toBe("");
   });
 });
 

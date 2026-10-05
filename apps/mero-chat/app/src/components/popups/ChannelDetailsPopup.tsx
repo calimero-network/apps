@@ -8,6 +8,7 @@ import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { ResponseData } from "../../api/types";
 import { getContextIdentity } from "@calimero-network/mero-react";
+import { isDelegatedSession } from "../../api/meroJsClient";
 import { useGroupAdmin } from "../../hooks/useGroupAdmin";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import { getGroupId } from "../../constants/config";
@@ -140,6 +141,19 @@ export default function ChannelDetailsPopup({
           });
           return;
         }
+      } else if (isDelegatedSession()) {
+        // The fallback is a node's local `deleteContext`, which has no account
+        // form (the account admin throws `NotForAccountError`). An account
+        // deletes a channel only through its subgroup, resolved above; a
+        // channel with no subgroup is older data a node has to clean up.
+        addToast({
+          title: "Delete channel",
+          message:
+            "This channel has no subgroup to delete it through; an account cannot delete it. Delete it from the node that created it.",
+          type: "channel",
+          duration: 5000,
+        });
+        return;
       } else {
         const result = await new ContextApiDataSource().deleteContext({ contextId: chat.contextId });
         if (result.error) {

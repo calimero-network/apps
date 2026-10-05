@@ -13,6 +13,7 @@ import {
   installConfiguredApp,
   resolveInstalledAppId,
 } from "../../utils/installedApps";
+import { useToast } from "../../contexts/ToastContext";
 
 const Overlay = styled.div`
   position: fixed;
@@ -119,6 +120,7 @@ export default function CreateWorkspacePopup({
   onSuccess,
   onCancel,
 }: CreateWorkspacePopupProps) {
+  const { addToast } = useToast();
   const [step, setStep] = useState<Step>("form");
   const [errorMessage, setErrorMessage] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -140,8 +142,19 @@ export default function CreateWorkspacePopup({
     if (groupResult.error || !groupResult.data) {
       throw new Error(groupResult.error?.message || "Failed to create group");
     }
-    const groupId = groupResult.data.groupId;
+    const { groupId, haError } = groupResult.data;
     setGroupId(groupId);
+    // An account's founding also asked the cloud to host the workspace; a
+    // refusal means it exists but nobody can be invited until the cause is
+    // fixed. Surface it here, not as a failed Invite later.
+    if (haError) {
+      addToast({
+        title: "Workspace created, but not hosted yet",
+        message: `Nobody can be invited to it until this is fixed: ${haError}`,
+        type: "channel",
+        duration: 12000,
+      });
+    }
 
     await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
 
@@ -151,7 +164,7 @@ export default function CreateWorkspacePopup({
     }
 
     onSuccess(groupId);
-  }, [trimmedWorkspaceName, onSuccess]);
+  }, [trimmedWorkspaceName, onSuccess, addToast]);
 
   const createWorkspace = useCallback(async () => {
     setStep("creating");

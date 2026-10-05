@@ -28,7 +28,7 @@
     "e2e:live": "../scripts/setup-nodes.sh --restart && playwright test --project=mocked --project=live; ../scripts/setup-nodes.sh --stop",
     "e2e:nodes": "../scripts/setup-nodes.sh --restart && playwright test --project=rpc --project=rpc-admin --project=integration; ../scripts/setup-nodes.sh --stop",
     "e2e:all": "../scripts/setup-nodes.sh --restart && playwright test; ../scripts/setup-nodes.sh --stop",
-    "test:sse": "vitest run src/hooks/useSseSubscription.test.ts && playwright test --project=sse",
+    "test:sse": "playwright test --project=sse",
     "landing:media": "vite build --config e2e/media/vite.config.ts && node e2e/media/record.mjs",
     "test:journey": "playwright test -c playwright.journey.config.ts"
   },
@@ -47,7 +47,6 @@
     "@radix-ui/react-navigation-menu": "^1.2.16",
     "@radix-ui/react-toast": "^1.2.20",
     "@uidotdev/usehooks": "^2.4.1",
-    "axios": "catalog:",
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
     "bs58": "catalog:",

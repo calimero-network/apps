@@ -1,6 +1,5 @@
-import axios from "axios";
-import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
-import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import { HTTPError } from "@calimero-network/mero-react";
+import { getMeroJs } from "../meroJsClient";
 import { uploadBlob, type BlobUploadResult } from "../blobs";
 export type { BlobUploadResult };
 import {
@@ -56,23 +55,6 @@ import {
 import { log } from "../../utils/logger";
 import { resolveCurrentGroupMemberIdentity } from "../../utils/groupMemberIdentity";
 
-const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
-
-function getNodeEndpoint(): string {
-  return getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const authConfig = getAuthConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (authConfig?.jwtToken) {
-    headers["Authorization"] = `Bearer ${authConfig.jwtToken}`;
-  }
-  return headers;
-}
-
 type Result<T> = Awaited<ApiResponse<T>>;
 
 function ok<T>(data: T): Result<T> {
@@ -91,13 +73,13 @@ interface CacheEntry<T> {
 
 const pendingCache = new Map<string, CacheEntry<unknown>>();
 
-function cachedRequest<T>(key: string, fetch: () => Promise<Result<T>>): Promise<Result<T>> {
+function cachedRequest<T>(key: string, load: () => Promise<Result<T>>): Promise<Result<T>> {
   const now = Date.now();
   const existing = pendingCache.get(key) as CacheEntry<T> | undefined;
   if (existing && existing.expiresAt > now) {
     return existing.promise;
   }
-  const promise = fetch().finally(() => {
+  const promise = load().finally(() => {
     const entry = pendingCache.get(key);
     if (entry && entry.promise === promise) {
       pendingCache.delete(key);
@@ -110,10 +92,6 @@ function cachedRequest<T>(key: string, fetch: () => Promise<Result<T>>): Promise
 
 function fail<T>(code: number, message: string): Result<T> {
   return { data: null, error: { code, message } };
-}
-
-function httpFail<T>(status: number, statusText: string): Result<T> {
-  return fail(status, statusText);
 }
 
 /**
@@ -264,37 +242,25 @@ function normalizeGroupInvitationPayload(
 }
 
 function catchError<T>(context: string, error: unknown): Result<T> {
-  // mero-js throws HTTPError (which carries `status`) rather than returning a
-  // status code. Map it first so callers that branch on 404/405 — listGroups'
-  // fallback to the legacy /groups route, for one — keep working after the
-  // transport moved off axios.
-  const sdkStatus = (error as { status?: number })?.status;
-  if (typeof sdkStatus === "number" && !axios.isAxiosError(error)) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : `An unexpected error occurred during ${context}`;
-    console.error(`${context} failed:`, error);
-    return fail(sdkStatus, message);
+  console.error(`${context} failed:`, error);
+
+  // mero-js throws rather than returning a status. An `HTTPError` carries the
+  // response's `status` and, when the node said why, its own words in
+  // `explanation` (without the `HTTP 403 :` prefix `message` has) — the text
+  // worth showing a person. Callers that branch on a status (404 on a missing
+  // member row, 403 from a route an account's token cannot pass) read `code`.
+  if (error instanceof HTTPError) {
+    return fail(error.status, error.explanation || error.message);
   }
 
-  if (axios.isAxiosError(error)) {
-    const status = error.response?.status ?? 500;
-    const responseError = error.response?.data?.error;
-    const message =
-      typeof responseError === "string"
-        ? responseError
-        : error.message || `An unexpected error occurred during ${context}`;
-    console.error(`${context} failed:`, error);
-    return fail(status, message);
-  }
-
+  // Anything else that still carries a numeric `status` (the relay transport
+  // and the account admin wrap some refusals this way) keeps its code.
+  const status = (error as { status?: unknown })?.status;
   const message =
     error instanceof Error
       ? error.message
       : `An unexpected error occurred during ${context}`;
-  console.error(`${context} failed:`, error);
-  return fail(500, message);
+  return fail(typeof status === "number" ? status : 500, message);
 }
 
 /**
@@ -319,10 +285,6 @@ export async function uploadBlobDirect(
 }
 
 export class GroupApiDataSource implements GroupApi {
-  private base(): string {
-    return `${getNodeEndpoint()}/admin-api`;
-  }
-
   async createGroup(
     request: CreateGroupRequest,
   ): ApiResponse<CreateGroupResponse> {
@@ -346,12 +308,27 @@ export class GroupApiDataSource implements GroupApi {
       const data = (await getMeroJs().admin.createNamespace({
         applicationId: request.applicationId,
         ...(request.name ? { name: request.name } : {}),
-      })) as unknown as { namespaceId?: string; groupId?: string; id?: string };
+      })) as unknown as {
+        namespaceId?: string;
+        groupId?: string;
+        id?: string;
+        haEnabled?: boolean;
+        haError?: string;
+      };
       const groupId = data?.namespaceId ?? data?.groupId ?? data?.id;
       if (!groupId) {
         return fail(500, "Namespace creation response missing ID");
       }
-      return ok({ groupId });
+      // An account's founding also asks the cloud to host the namespace (HA),
+      // and says whether it agreed: `haEnabled` false with `haError` means
+      // the workspace exists but nobody can be invited to it until the cause
+      // is fixed (typically: link the account to a cloud user in the
+      // wallet). A node's response has neither key — a node hosts itself.
+      return ok({
+        groupId,
+        ...(typeof data.haEnabled === "boolean" ? { haEnabled: data.haEnabled } : {}),
+        ...(data.haError ? { haError: data.haError } : {}),
+      });
     } catch (error) {
       return catchError("createGroup", error);
     }
@@ -401,6 +378,11 @@ export class GroupApiDataSource implements GroupApi {
     const ids = new Set<string>();
     const configured = getApplicationId();
     if (configured) ids.add(configured);
+    // An account has no installed set: the one id that is chat for it is the
+    // registry-derived one mero-react resolved (which `getApplicationId()`
+    // already answers on a delegated session), and the account admin's
+    // namespace listing is the account's own, so that id alone filters it.
+    if (getMeroJs().isDelegated) return ids;
     try {
       const listed = (await getMeroJs().admin.listApplications()) as { apps?: { id?: string; package?: string }[] } | null;
       for (const app of listed?.apps ?? []) {

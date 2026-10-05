@@ -1,9 +1,7 @@
 import { useState } from "react";
 
 import { TabPanel, Tabs } from "@calimero-network/mero-ui";
-import JoinContextTab from "./JoinContextTab";
 import CreateIdentityTab from "./CreateIdentityTab";
-import InviteToContextTab from "./InviteToContextTab";
 import NotificationSettings from "../settings/NotificationSettings";
 import ContextSwitcher from "../settings/ContextSwitcher";
 import ChatTab from "./ChatTab";
@@ -31,12 +29,12 @@ export default function TabbedInterface({
         onValueChange={setActiveTab}
         style={{ justifyContent: "center", display: "flex" }}
       />
-      <TabPanel when="join-context" active={activeTab}>
-        <JoinContextTab />
-      </TabPanel>
-      <TabPanel when="invite-to-context" active={activeTab}>
-        <InviteToContextTab />
-      </TabPanel>
+      {/* The per-context open-invitation tabs (invite / join by open
+          invitation) are gone: they posted to legacy `/admin-api/contexts/
+          *_by_open_invitation` routes with a node token, which core removed
+          with the groups-only model and which no session can reach now.
+          Workspace invitations are namespace invitations, minted and redeemed
+          through the session admin in `GroupApiDataSource`. */}
       <TabPanel when="create-identity" active={activeTab}>
         <CreateIdentityTab />
       </TabPanel>
