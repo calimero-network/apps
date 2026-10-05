@@ -14,15 +14,23 @@
  * else's node.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 
 import {
+  fallbackCapabilities,
   getMemberCapabilities,
   listGroupMembers,
   setMemberCapabilities,
   type GroupMemberRow,
-} from "../../api/rpc";
+} from "../../api/admin";
 import { accountId } from "../../api/identity";
-import { capabilitiesFor, roleLabel, roleOf, type Role } from "../../api/roles";
+import {
+  ADMIN_CAPABILITIES,
+  capabilitiesFor,
+  roleLabel,
+  roleOf,
+  type Role,
+} from "../../api/roles";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
 import { CloseIcon, ShieldIcon, UserIcon } from "../../components/common/icons/Icons";
@@ -40,15 +48,19 @@ interface Row extends GroupMemberRow {
 
 export default function TeamMembersPanel({ teamId, onClose }: Props) {
   const { showToast } = useToast();
+  // `admin`, not `mero.admin`: the session-aware client, which on an account
+  // governs through the relay as the account (see TeamsPage).
+  const { admin } = useMero();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const me = accountId();
 
   const load = useCallback(async () => {
+    if (!admin) return;
     setLoading(true);
     try {
-      const members = await listGroupMembers(teamId);
+      const members = await listGroupMembers(admin, teamId);
       // Capabilities are a per-member read, so they are fetched together rather
       // than one after another — a ten-person team would otherwise spend ten
       // round-trips before the list appears.
@@ -56,9 +68,17 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
         members.map(async (m) => {
           let capabilities = 0;
           try {
-            capabilities = await getMemberCapabilities(teamId, m.identity);
+            capabilities = await getMemberCapabilities(admin, teamId, m.identity);
           } catch {
-            /* unreadable capabilities read as none, never as admin */
+            // Unreadable capabilities read as what the member's ROW already
+            // says (the group admin is an admin; everyone else holds the
+            // group's defaults) — never as more than that.
+            capabilities = await fallbackCapabilities(
+              admin,
+              teamId,
+              m,
+              ADMIN_CAPABILITIES,
+            );
           }
           return { ...m, capabilities, role: roleOf(capabilities) };
         }),
@@ -72,7 +92,7 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [teamId, showToast]);
+  }, [admin, teamId, showToast]);
 
   useEffect(() => {
     void load();
@@ -86,13 +106,15 @@ export default function TeamMembersPanel({ teamId, onClose }: Props) {
     // `capabilitiesFor` preserves every bit it does not speak for — which only
     // works if it is handed the CURRENT mask.
     try {
+      if (!admin) throw new Error("Not connected.");
       let current = row.capabilities;
       try {
-        current = await getMemberCapabilities(teamId, row.identity);
+        current = await getMemberCapabilities(admin, teamId, row.identity);
       } catch {
         /* fall back to what the list already had */
       }
       await setMemberCapabilities(
+        admin,
         teamId,
         row.identity,
         capabilitiesFor(next, current),

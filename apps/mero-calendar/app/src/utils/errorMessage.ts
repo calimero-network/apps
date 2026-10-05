@@ -1,27 +1,35 @@
-import axios from "axios";
-
 /**
  * Pull a human-readable message out of an unknown thrown error.
- * Prefers the node's `{ error: "..." }` / `{ message: "..." }` response body
- * (where governance rejections live), then the axios/Error message.
+ *
+ * mero-js's `HTTPError` carries the node's response body as `bodyText`, which
+ * is where governance rejections live (`{ error: "..." }` / `{ message: "..." }`
+ * or a bare string); that is preferred over the generic "HTTP 403" message.
+ * Anything else falls back to the error's own message, then to `fallback`.
  */
 export function extractErrorMessage(
   err: unknown,
   fallback = "Something went wrong",
 ): string {
-  if (axios.isAxiosError(err)) {
-    const data = err.response?.data as
-      | { error?: unknown; message?: unknown }
-      | undefined;
-    if (data) {
-      if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
-      if (typeof data.message === "string" && data.message.trim())
+  const bodyText = (err as { bodyText?: unknown } | null)?.bodyText;
+  if (typeof bodyText === "string" && bodyText.trim()) {
+    const text = bodyText.trim();
+    try {
+      const data = JSON.parse(text) as { error?: unknown; message?: unknown };
+      if (typeof data?.error === "string" && data.error.trim()) return data.error.trim();
+      if (typeof data?.message === "string" && data.message.trim())
         return data.message.trim();
+    } catch {
+      return text;
     }
-    if (err.message) return err.message;
   }
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string" && err.trim()) return err.trim();
+  if (err && typeof err === "object") {
+    const data = err as { error?: unknown; message?: unknown };
+    if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
+    if (typeof data.message === "string" && data.message.trim())
+      return data.message.trim();
+  }
   return fallback;
 }
 

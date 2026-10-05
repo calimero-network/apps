@@ -1,4 +1,5 @@
 import { ChangeEvent, FC, useEffect, useMemo, useRef, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import { accountId } from "../../../../api/identity";
 import { useClickOutside, useForm, useMembers } from "../../../../hooks/index";
 import {
@@ -42,6 +43,9 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   // The ACCOUNT — see api/identity. The signing key read here before never
   // equalled `owner`, so every event opened view-only, even your own.
   const me = accountId();
+  // On an account the relay has no private storage, so a private event stays on
+  // this device (api/privateStore); the toggle says so.
+  const { isDelegated } = useMero();
   // FEATURE (missing names): members power the peer autocomplete (show username,
   // store pubkey).
   const { members, displayName } = useMembers();
@@ -306,9 +310,17 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                     data-testid="private-toggle"
                   />
                   <span className={styles.modal__form__checkbox__title}>
-                    Private (only on my node)
+                    {isDelegated ? "Private (only on this device)" : "Private (only on my node)"}
                   </span>
                 </label>
+                {isDelegated && (
+                  <small
+                    className={styles.modal__form__checkbox__title}
+                    data-testid="private-device-note"
+                  >
+                    Private events on an account live on this device only.
+                  </small>
+                )}
               </div>
             )}
             {!viewOnly && (

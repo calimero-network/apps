@@ -4,10 +4,11 @@ import {
   setContextId,
   setContextIdentity,
   getContextIdentity,
+  useMero,
 } from "@calimero-network/mero-react";
 
-import { adminGet } from "../../api/rpc";
 import { loadAccountId } from "../../api/identity";
+import { bindSession } from "../../api/session";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
@@ -23,6 +24,10 @@ export default function CalendarPage() {
   const { teamId, contextId } = useParams<{ teamId: string; contextId: string }>();
   const { getEvents, getMembers } = useActions();
   const { openErrorModal } = useModal();
+  // `admin`, not `mero.admin`: the session-aware client. On an account its
+  // `getNodeIdentity` is the ACCOUNT and its `getContextIdentitiesOwned` is the
+  // account too — where the relay's own routes would name the relay.
+  const { admin } = useMero();
   const [ready, setReady] = useState(false);
   const [askUsername, setAskUsername] = useState(false);
   const setupDone = useRef(false);
@@ -39,26 +44,28 @@ export default function CalendarPage() {
       navigate(teamId ? `/teams/${teamId}` : "/teams");
       return;
     }
+    if (!admin) return; // the session is still connecting; run once it is
     if (setupDone.current) return;
     setupDone.current = true;
 
     (async () => {
       setContextId(contextId);
+      // The team keys an account's device-local private store (api/privateStore).
+      bindSession({ namespaceId: teamId ?? "" });
 
       // Who we are, for the OWNERSHIP checks (Edit / Delete / view-only). This
       // is the ACCOUNT and is a different value from the context signing key
       // resolved just below — see api/identity for why conflating them silently
       // hid Edit and Delete from every event's owner. Resolved before the
       // calendar is revealed so the first render already knows what it owns.
-      await loadAccountId();
+      await loadAccountId(admin);
 
-      // Resolve the public key this node owns in the context and make it the
-      // executor identity. identities-owned shape is { identities: [pk] } (or a
-      // bare string[]). Failure is non-fatal — fall back to whatever's stored.
+      // Resolve the public key this session owns in the context and make it the
+      // executor identity. Failure is non-fatal — fall back to whatever's stored.
       try {
-        const res = await adminGet<
-          { identities?: string[] } | string[]
-        >(`/contexts/${contextId}/identities-owned`);
+        const res = (await admin.getContextIdentitiesOwned(contextId)) as
+          | { identities?: string[] }
+          | string[];
         const ids = Array.isArray(res) ? res : (res.identities ?? []);
         const pk = ids[0];
         if (pk) setContextIdentity(pk);
@@ -90,7 +97,7 @@ export default function CalendarPage() {
       setReady(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextId]);
+  }, [contextId, admin]);
 
   // ── Live updates: re-fetch events + members on every context mutation ───────
   // …and on every reconnect: whatever changed while the stream was down

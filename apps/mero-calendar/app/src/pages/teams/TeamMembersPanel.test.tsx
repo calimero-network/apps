@@ -15,10 +15,25 @@ const getMemberCapabilities = vi.fn();
 const setMemberCapabilities = vi.fn();
 const showToast = vi.fn();
 
-vi.mock("../../api/rpc", () => ({
-  listGroupMembers: (...a: unknown[]) => listGroupMembers(...a),
-  getMemberCapabilities: (...a: unknown[]) => getMemberCapabilities(...a),
-  setMemberCapabilities: (...a: unknown[]) => setMemberCapabilities(...a),
+// The panel reaches the admin API through `useMero().admin` — the
+// session-aware client — and `api/admin` is a thin shim over it, so the mocks
+// sit on the client itself. The row shapes are what mero-js returns.
+const admin = {
+  listGroupMembers: (groupId: string) =>
+    Promise.resolve(listGroupMembers(groupId)).then((rows) => ({ members: rows })),
+  getMemberCapabilities: (groupId: string, identity: string) =>
+    Promise.resolve(getMemberCapabilities(groupId, identity)).then(
+      (capabilities) => ({ capabilities }),
+    ),
+  setMemberCapabilities: (
+    groupId: string,
+    identity: string,
+    req: { capabilities: number },
+  ) => setMemberCapabilities(groupId, identity, req.capabilities),
+  getGroupInfo: vi.fn(async () => ({ defaultCapabilities: 0 })),
+};
+vi.mock("@calimero-network/mero-react", () => ({
+  useMero: () => ({ admin, isDelegated: false }),
 }));
 vi.mock("../../contexts/ToastContext", () => ({
   useToast: () => ({ showToast }),

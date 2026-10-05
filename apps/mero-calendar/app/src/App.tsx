@@ -1,6 +1,8 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
+import { bindSession } from "./api/session";
+import { loadAccountId } from "./api/identity";
 import LandingPage from "./pages/landing/LandingPage";
 import TeamsPage from "./pages/teams/TeamsPage";
 import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
@@ -10,6 +12,26 @@ import { ToastProvider } from "./contexts/ToastContext";
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
 
+
+/**
+ * Hands the live session to the data layer, which cannot call `useMero()`.
+ *
+ * The redux thunks build their data source once at module load; it reads the
+ * contract transport (`mero.rpc` — a node's JSON-RPC, or the relay for an
+ * account) and whether the session is delegated from `api/session`, which this
+ * keeps current. The account id is loaded here too, so the ownership gates
+ * (Edit / Delete) know who "me" is on every page, not only the calendar.
+ */
+function MeroSessionBridge() {
+  const { mero, admin, isDelegated } = useMero();
+  useEffect(() => {
+    bindSession({ rpc: mero?.rpc ?? null, isDelegated });
+  }, [mero, isDelegated]);
+  useEffect(() => {
+    if (admin) void loadAccountId(admin);
+  }, [admin]);
+  return null;
+}
 
 // Route guards driven by mero-react auth state. `isLoading` gates the redirect
 // so we don't flash to /login while the auth probe is still in flight.
@@ -45,6 +67,7 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <ToastProvider>
+      <MeroSessionBridge />
       <Routes>
         {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
             real URLs so they can be shared and opened cold, which needs a route

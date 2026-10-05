@@ -1,5 +1,5 @@
+import type { AdminApiClient } from "@calimero-network/mero-js";
 import { getApplicationId } from "@calimero-network/mero-react";
-import { adminGet } from "./rpc";
 
 /**
  * Resolving Mero Calendar's own application id.
@@ -53,11 +53,22 @@ export function pickApplicationId(
   return apps[0]?.id ?? "";
 }
 
-/** Fetch the installed apps from the node and resolve Mero Calendar's id. */
-export async function resolveApplicationId(): Promise<string> {
-  const res = await adminGet<{ apps?: AppEntry[]; applications?: AppEntry[] }>(
-    "/applications",
-  );
+/**
+ * Fetch the installed apps from the node and resolve Mero Calendar's id.
+ *
+ * A NODE question: `listApplications` is `GET /admin-api/applications`, a
+ * node-wide listing an account's token cannot pass (403 on the relay), and an
+ * account has no install of its own to find — its id comes from the registry,
+ * on `useMero().applicationId`. `useEnsureAppId` never calls this on a
+ * delegated session.
+ */
+export async function resolveApplicationId(
+  admin: Pick<AdminApiClient, "listApplications">,
+): Promise<string> {
+  const res = (await admin.listApplications()) as {
+    apps?: AppEntry[];
+    applications?: AppEntry[];
+  };
   const apps = res?.apps ?? res?.applications ?? [];
   return pickApplicationId(
     Array.isArray(apps) ? apps : [],
