@@ -67,9 +67,22 @@ describe('describeError', () => {
     expect(out).toContain('delete: caller is not the owner');
   });
 
-  it('passes plain messages through untouched', () => {
-    expect(describeError('the method call returned an error: boom')).toBe(
-      'the method call returned an error: boom',
-    );
+  it('shows a plain message behind the wrapper prefix without the prefix', () => {
+    expect(describeError('the method call returned an error: boom')).toBe('boom');
+  });
+
+  // From core rc.81 the node renders the contract's JSON as text, not bytes.
+  const DELETE_TEXT = '{"data":"delete: caller is not the owner","kind":"Forbidden"}';
+
+  it('reads the text payload rc.81 puts in the message wrapper', () => {
+    const msg = `the method call returned an error: ${DELETE_TEXT}`;
+    expect(describeError(msg)).toBe('Forbidden: delete: caller is not the owner');
+  });
+
+  it('reads the same refusal whether the node sent text or bytes', () => {
+    const asText = { message: 'FunctionCallError', data: `the method call returned an error: ${DELETE_TEXT}` };
+    const asBytes = { message: 'FunctionCallError', data: `the method call returned an error: ${JSON.stringify(DELETE_BYTES)}` };
+    expect(describeError(asText)).toBe(describeError(asBytes));
+    expect(describeError(asText)).toBe('FunctionCallError — Forbidden: delete: caller is not the owner');
   });
 });

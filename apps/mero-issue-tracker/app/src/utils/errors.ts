@@ -3,7 +3,9 @@
  *
  * The node reports contract failures in several unfriendly shapes:
  *   - a bare wrapper string: `"the method call returned an error: [123, 34, …]"`
- *     where the `[…]` is the ASCII byte array of a JSON error, OR
+ *     where the `[…]` is the ASCII byte array of a JSON error (older nodes), or
+ *     `"the method call returned an error: {"kind":…}"` with the JSON as text
+ *     (core rc.81 on), OR
  *   - `RpcError { message, data, type }` where `data` is that byte array or an
  *     already-decoded `{ kind, data }` object.
  *
@@ -53,11 +55,39 @@ function formatContractError(text: string): string {
   }
 }
 
+const CORE_PREFIX = 'the method call returned an error: ';
+
+/**
+ * What the node put behind its wrapper prefix, as text: a byte list (older
+ * nodes) is decoded; the text core sends from rc.81 on is taken as it is.
+ * Null when `s` carries no prefix.
+ */
+function methodErrorText(s: string): string | null {
+  const at = s.indexOf(CORE_PREFIX);
+  if (at === -1) return null;
+  const rest = s.slice(at + CORE_PREFIX.length).trim();
+  if (!rest) return null;
+  try {
+    const parsed: unknown = JSON.parse(rest);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((b) => typeof b === 'number')) {
+      return bytesToText(parsed as number[]);
+    }
+  } catch {
+    /* not JSON: the text itself is the message */
+  }
+  return rest;
+}
+
 /**
  * Replace any embedded ASCII byte-array (`[123, 34, …]`) in a string with its
  * decoded, formatted contract error — and drop the noisy wrapper prefix.
  */
 function cleanString(s: string): string {
+  const method = methodErrorText(s);
+  if (method !== null) {
+    const decoded = formatContractError(method);
+    if (decoded) return decoded;
+  }
   const match = s.match(/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/);
   if (match) {
     try {

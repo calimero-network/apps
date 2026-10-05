@@ -54,7 +54,19 @@ catalog:
   # (`relay_url`), which the cloud (mdma#418) hands the fleet node as admitter.
   # 23.8.1 (mero-js#245, published as 23.8.1 after #246): getAccountRelays
   # carries the relay's executorAccount and whether the cloud assigned it.
-  "@calimero-network/mero-js": ^23.8.1
+  # 23.8.2 (mero-js#244) signs namespace ops at schema 22 (core#4263 appends
+  # GroupOp::SharedWritersRotated and ties core#4453's capability-revoke void
+  # rule to the same number). This catalog is paired with core 0.11.0-rc.81,
+  # the first release at schema 22. A node refuses any other version, so
+  # against an rc.81 relay every account join, create and governance op
+  # signed at 21 (23.8.1) is refused, and a 23.8.2 app is refused by an rc.79
+  # or rc.80 node the same way. The `merod-image` pin in Cargo.toml and this
+  # line move TOGETHER.
+  # 23.9.0 (mero-js#247): the delegated account layer (createAccountAdmin,
+  # buildDelegatedClient, foundDelegatedNamespace, joinAsAccount, the registry
+  # app id and the wallet enrolment helpers) lives in mero-js, so a vanilla-TS
+  # app (mero-blocks, merraria) signs in with an account without mero-react.
+  "@calimero-network/mero-js": ^23.9.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -80,7 +92,17 @@ catalog:
   # the cloud routes to none of its admitters (InvitationNotClaimableError).
   # 9.9.0 (#90): enrolment puts the cloud-assigned relay's executor account on
   # the session, so a brand-new account founds without joining anything first.
-  "@calimero-network/mero-react": ^9.11.3
+  # 9.11.2 (#95): every hook goes through the session's account-aware admin,
+  # not the raw client, so an account mints invitations and joins through the
+  # relay from any app (the raw route answered 403 on an account token).
+  # 9.11.3 (#96): an account's createContext carries `serviceName` and
+  # `contextSeed` into the creation warrant; without it the relay created a
+  # multi-service bundle's non-default context (mero-docs `registry`) for the
+  # default service and the route answered 500.
+  # 9.11.4 (#97): memberPublicKey is the account on an account's createContext,
+  # invitations fall back to the admitting relay when the cloud has no route,
+  # and reads go through the relay's query route instead of warrants.
+  "@calimero-network/mero-react": ^9.11.4
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"

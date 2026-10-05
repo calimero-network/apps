@@ -37,29 +37,52 @@ export class RpcCallError extends Error {
   }
 }
 
+const CORE_PREFIX = "the method call returned an error: ";
+
+/** The text a decimal byte list spells, or null when `list` is not one. */
+function decodeByteList(list: string): string | null {
+  const m = /^\[((?:\s*\d+\s*,)*\s*\d+\s*)\]$/.exec(list.trim());
+  if (!m) return null;
+  const bytes = m[1].split(",").map((n) => Number(n.trim()));
+  if (!bytes.length || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return null;
+  try {
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  } catch {
+    return null;
+  }
+}
+
+/** An `app::bail!` message is a JSON string; take the string out of its quotes. */
+function unquote(text: string): string {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "string") return parsed;
+  } catch {
+    /* not JSON — use the raw text */
+  }
+  return text;
+}
+
 /**
- * Decode a byte-array-encoded error message.
+ * Decode a contract error message: the text core rc.81 renders behind the
+ * prefix, or the byte list older nodes put there.
  *
  * Exported for tests: this is the one piece of the envelope with no observable
  * effect other than what the user reads.
  */
 export function decodeContractError(msg: string): string {
+  const at = msg.indexOf(CORE_PREFIX);
+  if (at !== -1) {
+    const rest = msg.slice(at + CORE_PREFIX.length).trim();
+    if (!rest) return msg;
+    return unquote(decodeByteList(rest) ?? rest).trim() || msg;
+  }
+  // No prefix: a byte list may still sit anywhere in the message.
   const m = /\[((?:\s*\d+\s*,)*\s*\d+\s*)\]/.exec(msg);
   if (!m) return msg;
-  const bytes = m[1].split(",").map((n) => Number(n.trim()));
-  if (!bytes.length || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return msg;
-  try {
-    const text = new TextDecoder().decode(new Uint8Array(bytes));
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (typeof parsed === "string") return parsed.trim() || msg;
-    } catch {
-      /* not JSON — use the raw decode */
-    }
-    return text.trim() || msg;
-  } catch {
-    return msg;
-  }
+  const text = decodeByteList(m[0]);
+  if (text === null) return msg;
+  return unquote(text).trim() || msg;
 }
 
 /** Pull a readable message out of whatever the node put in `error`. */

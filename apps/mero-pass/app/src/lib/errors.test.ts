@@ -18,6 +18,26 @@ describe('errors', () => {
     expect(describeError(e)).toBe('only a vault Admin can do that');
   });
 
+  it("reads the contract's own message out of the text rc.81 sends", () => {
+    const e = rpcError(
+      'the method call returned an error: "only a vault Admin can do that"',
+    );
+    expect(describeError(e)).toBe('only a vault Admin can do that');
+  });
+
+  it('reads the same message whether the node sent text or bytes', () => {
+    const asText = rpcError('the method call returned an error: "no such device"');
+    const asBytes = rpcError(
+      `the method call returned an error: ${bytes('"no such device"')}`,
+    );
+    expect(rawReason(asText)).toBe(rawReason(asBytes));
+    expect(rawReason(asText)).toBe('no such device');
+  });
+
+  it('shows a plain message behind the prefix without the prefix', () => {
+    expect(describeError(rpcError('the method call returned an error: boom'))).toBe('boom');
+  });
+
   it('shows the reason, not the bare type', () => {
     const e = rpcError('Caller is not a member of this context');
     expect(rawReason(e)).toBe('Caller is not a member of this context');
