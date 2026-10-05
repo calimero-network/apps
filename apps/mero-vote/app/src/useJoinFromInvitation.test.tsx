@@ -5,16 +5,26 @@ import { JoinCard } from "./JoinCard";
 import { useJoinFromInvitation } from "./useJoinFromInvitation";
 import { encodeInvitationPayload, serializeInvitationPayload } from "./utils/invitation";
 
-// The node, as the hook reaches it: the admin client on `useMero().mero`.
+// The session-aware admin the hook must use: `useMero().admin`. On a node it
+// is the node's client; on an account it redeems through the admitter.
 const admin = {
   joinNamespace: vi.fn(),
   joinContext: vi.fn(),
   listNamespaces: vi.fn(),
 };
+// The RAW client's admin, `useMero().mero.admin`. On a delegated session this
+// is the relay's node route, which an account's token cannot pass (403). The
+// hook must never reach it; these spies exist to prove it does not.
+const rawAdmin = {
+  joinNamespace: vi.fn(),
+  joinContext: vi.fn(),
+  listNamespaces: vi.fn(),
+};
+let isDelegated = false;
 const setContextId = vi.fn();
 
 vi.mock("@calimero-network/mero-react", () => ({
-  useMero: () => ({ isAuthenticated: true, mero: { admin } }),
+  useMero: () => ({ isAuthenticated: true, isDelegated, admin, mero: { admin: rawAdmin } }),
   setContextId: (id: string) => setContextId(id),
 }));
 
@@ -74,6 +84,7 @@ const originalLocation = window.location;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  isDelegated = false;
   deliver = null;
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -105,6 +116,40 @@ describe("useJoinFromInvitation", () => {
     );
     expect(setContextId).toHaveBeenCalledWith(CONTEXT);
     expect(resolve).toHaveBeenCalledTimes(1);
+    expect(rawAdmin.joinNamespace).not.toHaveBeenCalled();
+    expect(rawAdmin.joinContext).not.toHaveBeenCalled();
+  });
+
+  it("redeems for an account through the account admin, never the relay's node route", async () => {
+    // Seen on prod: `mero.admin.joinNamespace` on a delegated session went to
+    // `POST {relay}/admin-api/namespaces/{ns}/join` with the account's bearer
+    // token, which has no `namespace:manage` -> 403 -> "refused". The relay
+    // would still answer that way, so the raw admin here refuses too; the test
+    // passes only if nothing asks it.
+    isDelegated = true;
+    rawAdmin.joinNamespace.mockRejectedValue(
+      httpError(403, "Token does not carry the permissions this route requires"),
+    );
+    rawAdmin.joinContext.mockRejectedValue(httpError(403, "forbidden"));
+    rawAdmin.listNamespaces.mockRejectedValue(httpError(403, "forbidden"));
+    admin.joinNamespace.mockResolvedValue({ namespaceId: NAMESPACE });
+    admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
+
+    const resolve = await followLinkAndConfirm();
+
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(admin.joinNamespace).toHaveBeenCalledWith(NAMESPACE, {
+      invitation: payload.invitation,
+    });
+    // An account follows the namespace's contexts on joining it, and this
+    // app's contexts live directly in the namespace: no second join.
+    expect(admin.joinContext).not.toHaveBeenCalled();
+    expect(rawAdmin.joinNamespace).not.toHaveBeenCalled();
+    expect(rawAdmin.joinContext).not.toHaveBeenCalled();
+    expect(rawAdmin.listNamespaces).not.toHaveBeenCalled();
+    expect(setContextId).toHaveBeenCalledWith(CONTEXT);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/can't join/)).toBeNull();
   });
 
   it("treats a failed request for a namespace it is now in as joined", async () => {
@@ -161,5 +206,18 @@ describe("useJoinFromInvitation", () => {
     await screen.findByText("something nobody has seen before");
     expect(resolve).not.toHaveBeenCalled();
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("checks membership through the session's admin when the join request failed", async () => {
+    isDelegated = true;
+    admin.joinNamespace.mockRejectedValue(httpError(504, "Gateway Timeout"));
+    admin.listNamespaces.mockResolvedValue([{ namespaceId: NAMESPACE }]);
+    rawAdmin.listNamespaces.mockRejectedValue(httpError(403, "forbidden"));
+
+    await followLinkAndConfirm();
+
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(admin.listNamespaces).toHaveBeenCalled();
+    expect(rawAdmin.listNamespaces).not.toHaveBeenCalled();
   });
 });

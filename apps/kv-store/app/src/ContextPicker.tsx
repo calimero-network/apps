@@ -29,6 +29,18 @@ function namespaceIdOf(ns: unknown): string | undefined {
   return n?.namespaceId ?? n?.groupId ?? n?.id;
 }
 
+/** Why the last action failed: a message of our own, or whichever hook's `error` to show. */
+type Failure =
+  | { kind: "message"; message: string }
+  | { kind: "hook"; hook: "namespace" | "context" };
+
+/** Thrown when a mutation hook resolved `null`: the real error is in the hook's state. */
+class HookFailed extends Error {
+  constructor(readonly hook: "namespace" | "context") {
+    super(`${hook} request failed`);
+  }
+}
+
 function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
@@ -66,12 +78,29 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     error: nsError,
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId);
-  const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
+  // `error` too, not just the action. These hooks catch a failed request into
+  // their `error` state and resolve `null`, so awaiting the action alone cannot
+  // tell "the node refused" from "nothing came back": a 500 from `POST
+  // /contexts` ("bytecode blob not found") was reported here as "context
+  // created but no contextId came back", which is false on both counts.
+  const { createNamespace, error: namespaceError } = useCreateNamespace();
+  const { createContext, error: contextError } = useCreateContext();
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState<Failure | null>(null);
   const [note, setNote] = useState<string | null>(null);
+
+  // A hook's `error` is state, set by the hook after its action resolved, so
+  // it cannot be read inside the async handler that awaited the action: that
+  // closure still sees the value from before the call. Record WHICH hook
+  // failed and read its error at render time instead, when it is current.
+  const failureText =
+    failed === null
+      ? null
+      : failed.kind === "message"
+        ? failed.message
+        : ((failed.hook === "namespace" ? namespaceError : contextError)?.message ??
+          `the ${failed.hook} request failed, but the hook reported no error — is this session connected?`);
 
   function select(id: string) {
     setContextId(id);
@@ -89,11 +118,15 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     try {
       const ns = await createNamespace({ applicationId });
       const namespaceId = namespaceIdOf(ns);
-      if (!namespaceId) throw new Error("namespace created but no id came back");
+      if (!namespaceId) throw new HookFailed("namespace");
       await refetchNamespaces();
       setNote(`Namespace ${shortId(namespaceId)} created — now add a context to it.`);
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : String(e));
+      setFailed(
+        e instanceof HookFailed
+          ? { kind: "hook", hook: e.hook }
+          : { kind: "message", message: e instanceof Error ? e.message : String(e) },
+      );
     } finally {
       setBusy(null);
     }
@@ -114,14 +147,18 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
       // `createNamespaceInvitation` a subgroup id and fail confusingly.
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      if (!newContextId) throw new HookFailed("context");
       select(newContextId);
     } catch (e) {
       // Surfaced rather than swallowed on purpose: a bare 500 from
       // `POST /contexts` means the contract's `init` rejected the params, and
       // core hides untyped errors deliberately. Hiding it again in the UI
       // leaves nothing to debug.
-      setFailed(e instanceof Error ? e.message : String(e));
+      setFailed(
+        e instanceof HookFailed
+          ? { kind: "hook", hook: e.hook }
+          : { kind: "message", message: e instanceof Error ? e.message : String(e) },
+      );
     } finally {
       setBusy(null);
     }
@@ -136,13 +173,17 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
     try {
       const ns = await createNamespace({ applicationId });
       const namespaceId = namespaceIdOf(ns);
-      if (!namespaceId) throw new Error("namespace created but no id came back");
+      if (!namespaceId) throw new HookFailed("namespace");
       const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
-      if (!newContextId) throw new Error("context created but no contextId came back");
+      if (!newContextId) throw new HookFailed("context");
       select(newContextId);
     } catch (e) {
-      setFailed(e instanceof Error ? e.message : String(e));
+      setFailed(
+        e instanceof HookFailed
+          ? { kind: "hook", hook: e.hook }
+          : { kind: "message", message: e instanceof Error ? e.message : String(e) },
+      );
     } finally {
       setBusy(null);
     }
@@ -223,7 +264,7 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
           </p>
         )}
         {note && <p className="empty" style={{ marginTop: 12 }}>{note}</p>}
-        {failed && <pre className="err">{failed}</pre>}
+        {failureText && <pre className="err">{failureText}</pre>}
       </div>
 
       <div className="card">
