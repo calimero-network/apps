@@ -62,7 +62,11 @@ catalog:
   # signed at 21 (23.8.1) is refused, and a 23.8.2 app is refused by an rc.79
   # or rc.80 node the same way. The `merod-image` pin in Cargo.toml and this
   # line move TOGETHER.
-  "@calimero-network/mero-js": ^23.8.2
+  # 23.9.0 (mero-js#247): the delegated account layer (createAccountAdmin,
+  # buildDelegatedClient, foundDelegatedNamespace, joinAsAccount, the registry
+  # app id and the wallet enrolment helpers) lives in mero-js, so a vanilla-TS
+  # app (mero-blocks, merraria) signs in with an account without mero-react.
+  "@calimero-network/mero-js": ^23.9.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
@@ -95,7 +99,10 @@ catalog:
   # `contextSeed` into the creation warrant; without it the relay created a
   # multi-service bundle's non-default context (mero-docs `registry`) for the
   # default service and the route answered 500.
-  "@calimero-network/mero-react": ^9.11.3
+  # 9.11.4 (#97): memberPublicKey is the account on an account's createContext,
+  # invitations fall back to the admitting relay when the cloud has no route,
+  # and reads go through the relay's query route instead of warrants.
+  "@calimero-network/mero-react": ^9.11.4
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
