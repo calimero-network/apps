@@ -125,12 +125,15 @@ describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson
     captureSessionFromHash();
   };
 
-  const errorResponse = (status: number, authError: string) => ({
-    ok: false,
-    status,
-    headers: { get: (h: string) => (h === "x-auth-error" ? authError : null) },
-    json: async () => ({ error: authError }),
-  });
+  // Real `Response`s: the refresh now rides mero-js's auth client, which reads
+  // the body as text and the `x-auth-error` header off a real Headers object.
+  const errorResponse = (status: number, authError: string) =>
+    new Response(JSON.stringify({ error: authError }), {
+      status,
+      headers: { "content-type": "application/json", ...(authError ? { "x-auth-error": authError } : {}) },
+    });
+  const okResponse = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
   /**
    * A node that models core#3083: refresh tokens are SINGLE-USE. Each POST
@@ -155,18 +158,13 @@ describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson
       consumed.add(rt);
       issued += 1;
       live = `rt-${issued}`;
-      return {
-        ok: true,
-        status: 200,
-        headers: { get: () => null },
-        json: async () => ({
-          data: {
-            access_token: `at-${issued}`,
-            refresh_token: live,
-            expires_at: Date.now() + (opts.expiresIn ?? 3600_000),
-          },
-        }),
-      };
+      return okResponse({
+        data: {
+          access_token: `at-${issued}`,
+          refresh_token: live,
+          expires_at: Date.now() + (opts.expiresIn ?? 3600_000),
+        },
+      });
     }) as unknown as typeof fetch;
 
     return { fetchFn, presented, calls: () => presented.length };
@@ -186,12 +184,9 @@ describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson
 
   it("tolerates seconds-based expiry stamps", async () => {
     seedTokens(Math.floor(Date.now() / 1000) - 10); // expired, in seconds
-    const fetchFn = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      json: async () => ({ access_token: "new-at", refresh_token: "new-rt" }), // un-nested shape
-    })) as unknown as typeof fetch;
+    const fetchFn = vi.fn(async () =>
+      okResponse({ access_token: "new-at", refresh_token: "new-rt" }), // un-nested shape
+    ) as unknown as typeof fetch;
     await ensureFreshToken(fetchFn);
     expect(getAccessToken()).toBe("new-at");
   });
@@ -266,7 +261,7 @@ describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson
 
   it("keeps the old tokens when the refresh fails or the node is down", async () => {
     seedTokens(Date.now() - 1000);
-    const failing = vi.fn(async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch;
+    const failing = vi.fn(async () => errorResponse(400, "")) as unknown as typeof fetch;
     await ensureFreshToken(failing);
     expect(getAccessToken()).toBe("old-at");
     const throwing = vi.fn(async () => {

@@ -8,8 +8,11 @@ import {
 import { shouldRetain } from "@calimero-apps/invite";
 import { acceptWorldInvite, createWorldInvite, WorldInviteError } from "../src/net/admin";
 import { getSession, resetSession, updateSession } from "../src/net/session";
+import { resetTransport } from "../src/net/transport";
 
-const okJson = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
+// Real `Response`s: the wire is mero-js's now, which reads bodies as text.
+const okJson = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const SIGNED = {
   invitation: {
@@ -31,7 +34,8 @@ const PAYLOAD: WorldInvitePayload = {
 beforeEach(() => {
   localStorage.clear();
   resetSession();
-  updateSession({ nodeUrl: "http://node:2428", applicationId: "app-1" });
+  resetTransport();
+  updateSession({ kind: "node", nodeUrl: "http://node:2428", applicationId: "app-1" });
   localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "t" }));
 });
 afterEach(() => vi.restoreAllMocks());
@@ -79,13 +83,12 @@ function mockRoutes(routes: [string, unknown][], failing: [string, string, numbe
       body: init?.body ? JSON.parse(init.body as string) : undefined,
     });
     for (const [suffix, error, status = 403] of failing) {
-      if (url.endsWith(suffix))
-        return { ok: false, status, json: async () => ({ error }) } as Response;
+      if (url.endsWith(suffix)) return okJson({ error }, status);
     }
     for (const [suffix, data] of routes) {
       if (url.endsWith(suffix)) return okJson({ data });
     }
-    return { ok: false, status: 404, json: async () => ({}) } as Response;
+    return okJson({}, 404);
   });
   return calls;
 }
@@ -170,8 +173,7 @@ describe("acceptWorldInvite", () => {
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.endsWith("/join-via-inheritance")) {
         inheritanceCalls++;
-        if (inheritanceCalls === 1)
-          return { ok: false, status: 404, json: async () => ({ error: "group not found" }) } as Response;
+        if (inheritanceCalls === 1) return okJson({ error: "group not found" }, 404);
         return okJson({ data: {} });
       }
       if (url.endsWith("/identities-owned")) return okJson({ data: ["pk-me"] });

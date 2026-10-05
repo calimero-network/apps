@@ -8,14 +8,34 @@
 //      &context_identity=…[&node_url=…]
 //    (mero-js parseAuthCallback format; node_url may be absent — we stashed
 //    it before redirecting, see auth.ts takePendingNodeUrl).
+//  - Account (Cloud): the wallet certified a device key this app generated
+//    (see account.ts). The credential + relay live in mero-js's own delegated
+//    session store; this module records only that the session IS an account
+//    one (`kind: "account"`) plus the game-level coordinates. Every data call
+//    then goes through transport.ts, which switches on `kind`.
 // App-id resolution prefers hash > stored > env (the mero-chat SSO-strip lesson).
 
+import {
+  AuthRevokedError,
+  clearDelegatedCredential,
+  clearDelegatedSession,
+  createAuthApiClientFromHttpClient,
+  createBrowserHttpClient,
+  readDelegatedSession,
+  type DelegatedAccountSession,
+} from "@calimero-network/mero-js";
 import { takePendingNodeUrl } from "./auth";
 
 const STORE_KEY = "mt-session";
 const TOKENS_KEY = "mero-tokens";
 
+/** Which transport a session rides: a node the player logged into, or an
+ *  account (Cloud) writing through its relay. */
+export type SessionKind = "node" | "account";
+
 export interface Session {
+  /** absent on sessions stored before the account path existed → node */
+  kind?: SessionKind;
   nodeUrl: string | null;
   contextId: string | null;
   applicationId: string | null;
@@ -72,6 +92,7 @@ export function captureSessionFromHash(): CaptureResult {
   // node url: hash > the one stashed before the web-login redirect > stored
   const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
   if (!nodeUrl) return "none";
+  session.kind = "node";
   session.nodeUrl = nodeUrl;
 
   session.contextId = p.get("context_id") || session.contextId;
@@ -181,8 +202,14 @@ async function withTokenLock(fn: () => Promise<void>): Promise<void> {
  * Transport failures stay best-effort (tokens untouched, caller degrades to
  * offline); a reuse/revocation is terminal and forces a re-login.
  */
-export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<void> {
-  if (!session.nodeUrl) return;
+/**
+ * `fetchFn` is for tests. Left out, mero-js binds the browser's own — a bare
+ * `fetch` handed over as a value is invoked as a plain function, and browsers
+ * throw "Illegal invocation" on that (the tests inject their own, which is
+ * why they never saw it).
+ */
+export async function ensureFreshToken(fetchFn?: typeof fetch): Promise<void> {
+  if (sessionKind() !== "node" || !session.nodeUrl) return;
   if (refreshInFlight) return refreshInFlight;
 
   const run = withTokenLock(() => refreshIfExpired(fetchFn)).finally(() => {
@@ -192,7 +219,7 @@ export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<v
   return run;
 }
 
-async function refreshIfExpired(fetchFn: typeof fetch): Promise<void> {
+async function refreshIfExpired(fetchFn?: typeof fetch): Promise<void> {
   if (!session.nodeUrl) return;
 
   // Re-read INSIDE the guard — another tab (or an earlier caller) may have
@@ -205,50 +232,42 @@ async function refreshIfExpired(fetchFn: typeof fetch): Promise<void> {
   if (exp === null) return; // no expiry info — assume valid
   if (Date.now() < exp) return; // still valid — the node rejects an early refresh
 
-  let resp: Response;
+  // mero-js's auth client over a bare HTTP transport: no bearer, no automatic
+  // 401 refresh hook (this IS the refresh), just `POST {node}/auth/refresh`
+  // with the mero-js request shape. `fetchFn` stays injectable for tests.
+  const auth = createAuthApiClientFromHttpClient(
+    createBrowserHttpClient({ baseUrl: session.nodeUrl, ...(fetchFn ? { fetch: fetchFn } : {}) }),
+    { baseUrl: session.nodeUrl },
+  );
+  let refreshed: { access_token?: string; refresh_token?: string; expires_at?: string | number };
   try {
-    resp = await fetchFn(`${session.nodeUrl}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-      }),
+    const res = await auth.refreshToken({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
     });
-  } catch {
-    return; /* node unreachable — the caller's online path will degrade gracefully */
-  }
-
-  if (!resp.ok) {
-    const authError = resp.headers?.get?.("x-auth-error") ?? "";
+    // `{data: {...}}` on current nodes; tolerate an un-nested bundle too
+    refreshed = ((res as { data?: unknown })?.data ?? res) as typeof refreshed;
+  } catch (err) {
     // 401 token_reuse: we replayed a consumed refresh token and the node just
     // revoked the family. 403 token_revoked: the family was already gone.
-    // Either way no token we hold is live — clear them and force a re-login
-    // rather than silently carrying on with credentials that can never work.
-    if (
-      (resp.status === 401 && authError === "token_reuse") ||
-      (resp.status === 403 && authError === "token_revoked")
-    ) {
-      onAuthRevoked(authError);
-    }
+    // mero-js tells those two apart from every other failure for us. Either
+    // way no token we hold is live — clear them and force a re-login rather
+    // than silently carrying on with credentials that can never work.
+    // Everything else (node unreachable, "still valid", malformed body) is
+    // best-effort: tokens untouched, the caller's online path degrades.
+    if (err instanceof AuthRevokedError) onAuthRevoked(err.reason);
     return;
   }
 
-  try {
-    const json = await resp.json();
-    const refreshed = json?.data ?? json;
-    if (refreshed?.access_token && refreshed?.refresh_token) {
-      localStorage.setItem(
-        TOKENS_KEY,
-        JSON.stringify({
-          access_token: refreshed.access_token,
-          refresh_token: refreshed.refresh_token,
-          expires_at: refreshed.expires_at ?? Date.now() + 3600_000,
-        }),
-      );
-    }
-  } catch {
-    /* malformed body — keep the old bundle and let the caller degrade */
+  if (refreshed?.access_token && refreshed?.refresh_token) {
+    localStorage.setItem(
+      TOKENS_KEY,
+      JSON.stringify({
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token,
+        expires_at: refreshed.expires_at ?? Date.now() + 3600_000,
+      }),
+    );
   }
 }
 
@@ -262,14 +281,55 @@ export function getAccessToken(): string | null {
   }
 }
 
-/** logged into a node (may still need to pick a world) */
+/**
+ * Which transport the current session rides, or null when there is none.
+ *
+ * `node` needs a node url (the token check is `isAuthenticated`'s job);
+ * `account` needs the delegated session mero-js keeps for this tab — a
+ * stored `kind: "account"` whose credential is gone (new tab, cleared site
+ * data) is no session at all, and says so rather than pretending.
+ */
+export function sessionKind(): SessionKind | null {
+  if (session.kind === "account") return readDelegatedSession() ? "account" : null;
+  return session.nodeUrl ? "node" : null;
+}
+
+/** the delegated (account) session, when this IS an account session */
+export function getAccountSession(): DelegatedAccountSession | null {
+  return session.kind === "account" ? readDelegatedSession() : null;
+}
+
+/**
+ * Adopt an account session: the delegated record is already saved by
+ * account.ts (mero-js store); this marks the game session as riding it and
+ * drops every node-only field so nothing from an earlier node login leaks.
+ */
+export function adoptAccountSession(patch: Partial<Session> = {}): void {
+  session = {
+    ...session,
+    kind: "account",
+    nodeUrl: null,
+    devMode: false,
+    ...patch,
+  };
+  try {
+    localStorage.removeItem(TOKENS_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+  persist();
+}
+
+/** logged in — into a node, or as an account (may still need to pick a world) */
 export function isAuthenticated(): boolean {
-  return Boolean(session.nodeUrl && getAccessToken());
+  const kind = sessionKind();
+  if (kind === "account") return true;
+  return kind === "node" && Boolean(getAccessToken());
 }
 
 /** ready to play online right now */
 export function hasConnection(): boolean {
-  return Boolean(session.nodeUrl && session.contextId && getAccessToken());
+  return isAuthenticated() && Boolean(session.contextId);
 }
 
 export function clearSession(): void {
@@ -286,6 +346,10 @@ export function clearSession(): void {
   } catch {
     /* nothing to clear */
   }
+  // The account too: logging out of an account and leaving its device
+  // certificate behind would silently re-authenticate the next visitor.
+  clearDelegatedSession();
+  clearDelegatedCredential();
 }
 
 /**

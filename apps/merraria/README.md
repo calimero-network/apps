@@ -37,10 +37,15 @@ wanted.
    (or a far-future stamp) to knock live players offline. A player who
    vanishes without `leave` ages out of the TTL; nobody writes another
    player's row.
-5. **Both auth paths, no friction.** Desktop SSO hash → zero-click auto-enter;
+5. **Every auth path, no friction.** Desktop SSO hash → zero-click auto-enter;
    web → node auth redirect (`/auth/login?callback-url=…`) + world picker
-   (list / join / create via admin API); offline → localStorage persistence
-   with reconcile-on-connect.
+   (list / join / create via admin API); **account (Cloud)** → the connect
+   popup's Cloud tab enrols this browser's device key at the wallet, and the
+   account plays through its relay with no node of its own — worlds are
+   founded, joined and written as delegated warrants, read through the
+   relay's query route, and events ride the relay's stream. One switch
+   (`app/src/net/transport.ts`, `session.kind === "node" | "account"`) picks
+   the mero-js client; nothing above it knows which.
 
 ## How it works
 
