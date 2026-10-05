@@ -1,18 +1,19 @@
-import axios from "axios";
-
 /**
  * Pull a human-readable message out of an unknown thrown error.
- * Prefers the node's `{ error: "..." }` / `{ message: "..." }` response body
- * (where governance rejections live), then the axios/Error message.
+ *
+ * mero-js's `HTTPError` carries the node's own words for a failure as
+ * `explanation` (the body's `error` / `detail`, where governance rejections
+ * live) and a `message` prefixed with the status; prefer the former. A
+ * `NotForAccountError` — an operation that only a node can do, asked of an
+ * account — names the method; say so plainly rather than leaking a bare 403.
  */
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong"): string {
-  if (axios.isAxiosError(err)) {
-    const data = err.response?.data as { error?: unknown; message?: unknown } | undefined;
-    if (data) {
-      if (typeof data.error === "string" && data.error.trim()) return data.error.trim();
-      if (typeof data.message === "string" && data.message.trim()) return data.message.trim();
+  if (err && typeof err === "object") {
+    const e = err as { name?: unknown; method?: unknown; explanation?: unknown; message?: unknown };
+    if (e.name === "NotForAccountError") {
+      return "This needs a node login: an account cannot do this through its relay.";
     }
-    if (err.message) return err.message;
+    if (typeof e.explanation === "string" && e.explanation.trim()) return e.explanation.trim();
   }
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === "string" && err.trim()) return err.trim();

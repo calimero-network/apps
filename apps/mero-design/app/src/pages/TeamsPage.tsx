@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMero, setApplicationId } from "@calimero-network/mero-react";
-import { adminPost, adminDelete, listNamespaces } from "../api/rpc";
-import { resolveApplicationId } from "../api/appId";
+import { useMero } from "@calimero-network/mero-react";
+import { createNamespace, deleteNamespace, joinNamespace, listNamespaces } from "../api/rpc";
+import { useApplicationId } from "../hooks/useApplicationId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
@@ -19,18 +19,10 @@ import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
 
-type NamespaceRaw = {
-  namespaceId?: string;
-  groupId?: string;
-  id?: string;
-  alias?: string;
-  name?: string;
-};
-
 export default function TeamsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { applicationId, logout } = useMero();
+  const { logout, isDelegated } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -42,34 +34,17 @@ export default function TeamsPage() {
   const [joinError, setJoinError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // MeroDesign's own application id, resolved once per mount.
-  // resolveApplicationId is authoritative — the pinned production id when the node has it, else
-  // the installed app whose package is com.calimero.mero-design. We prefer it
-  // over a possibly-stale/wrong id from persisted auth or the Tauri hash, and
-  // only fall back to that id if resolution fails. Shared by list/create/join
-  // so namespaces are always scoped to (and created under) the right app.
-  const appIdRef = useRef<string>("");
-  const ensureAppId = useCallback(async (): Promise<string> => {
-    if (appIdRef.current) return appIdRef.current;
-    let id = "";
-    try { id = await resolveApplicationId(); } catch { /* ignore */ }
-    if (!id) id = applicationId ?? "";
-    if (id) { appIdRef.current = id; setApplicationId(id); }
-    return id;
-  }, [applicationId]);
+  // MeroDesign's own application id — see hooks/useApplicationId.
+  const ensureAppId = useApplicationId();
 
   useEffect(() => {
     let cancelled = false;
     async function loadTeams() {
       const appId = await ensureAppId();
-      listNamespaces<NamespaceRaw[]>(appId)
+      listNamespaces(appId)
         .then((items) => {
           if (cancelled) return;
-          const arr = Array.isArray(items) ? items : [];
-          setTeams(arr.map((n) => ({
-            groupId: n.namespaceId ?? n.groupId ?? n.id ?? "",
-            name: n.alias ?? n.name ?? "",
-          })));
+          setTeams(items.map((n) => ({ groupId: n.namespaceId, name: n.name ?? "" })));
         })
         .catch(() => { if (!cancelled) setTeams([]); })
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -95,23 +70,26 @@ export default function TeamsPage() {
     if (!name) return;
     setCreating(true);
     try {
-      const data = await adminPost<{ namespaceId?: string; groupId?: string; id?: string }>(
-        "/namespaces",
-        // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`).
-        // `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key
-        // is a 400 for the whole create:
-        //   unknown field `alias`, expected one of `applicationId`, `name`,
-        //   `appKey`, `bytecodeId`
-        // `alias` was the pre-core#2338 spelling of the group label; `name` is
-        // the only one a node has read since.
-        { applicationId: await ensureAppId(), name },
-      );
-      const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
+      const appId = await ensureAppId();
+      if (!appId) {
+        showToast("Select or install the Mero Design application first.");
+        return;
+      }
+      // On a node this is the node's own namespace; on an account the admin
+      // founds it through the relay, as the account, and asks the cloud to host
+      // it. The body is the same either way.
+      const data = await createNamespace(appId, name);
+      const id = data.namespaceId;
       // Cache the name so it survives even if the server later returns no alias,
       // and so it can be embedded in invitations for joiners.
       if (id) setStoredTeamName(id, name);
       setTeams((prev) => [...prev, { groupId: id, name }]);
       setNewName("");
+      // Say it now, not at invite time: an unhosted team's invitations cannot
+      // be claimed, and "link this account in the wallet" is the fix.
+      if (data.haError) {
+        showToast(`Team created, but it is not hosted yet: ${data.haError}`);
+      }
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not create team."));
     } finally {
@@ -122,7 +100,7 @@ export default function TeamsPage() {
   async function deleteTeam(teamId: string) {
     setMenuOpenId(null);
     try {
-      await adminDelete(`/namespaces/${teamId}`);
+      await deleteNamespace(teamId);
     } catch {
       // best-effort
     }
@@ -163,27 +141,20 @@ export default function TeamsPage() {
   const redeemer = useMemo(
     () => ({
       join: async (namespaceId: string, invitation: unknown) => {
-        await adminPost(`/namespaces/${namespaceId}/join`, { invitation });
+        await joinNamespace(namespaceId, invitation);
       },
       memberships: async () => {
-        const items = await listNamespaces<NamespaceRaw[]>(await ensureAppId());
-        return (Array.isArray(items) ? items : []).map(
-          (n) => n.namespaceId ?? n.groupId ?? n.id ?? "",
-        );
+        const items = await listNamespaces(await ensureAppId());
+        return items.map((n) => n.namespaceId);
       },
     }),
     [ensureAppId],
   );
 
   const refreshTeams = useCallback(async () => {
-    const items = await listNamespaces<NamespaceRaw[]>(await ensureAppId()).catch(() => null);
-    if (!Array.isArray(items)) return;
-    setTeams(
-      items.map((n) => {
-        const gid = n.namespaceId ?? n.groupId ?? n.id ?? "";
-        return { groupId: gid, name: (n.alias ?? n.name ?? "").trim() };
-      }),
-    );
+    const items = await listNamespaces(await ensureAppId()).catch(() => null);
+    if (!items) return;
+    setTeams(items.map((n) => ({ groupId: n.namespaceId, name: (n.name ?? "").trim() })));
   }, [ensureAppId]);
 
   // ── An invitation link opened this app ──────────────────────────────────────
@@ -311,9 +282,13 @@ export default function TeamsPage() {
                     <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsTeam(t); }}>
                       Settings
                     </button>
-                    <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
-                      Delete
-                    </button>
+                    {/* Deleting a namespace is a node's own operation; an
+                        account's relay has no form of it. */}
+                    {!isDelegated && (
+                      <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteTeam(t.groupId)}>
+                        Delete
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

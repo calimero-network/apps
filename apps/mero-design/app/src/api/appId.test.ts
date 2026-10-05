@@ -1,19 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import {
-  PRODUCTION_APPLICATION_ID,
-  pickApplicationId,
-  resolveApplicationId,
-} from "./appId";
-import { adminGet } from "./rpc";
+import { pickApplicationId, resolveApplicationId } from "./appId";
 
-vi.mock("./rpc", () => ({ adminGet: vi.fn() }));
-
-const mockAdminGet = vi.mocked(adminGet);
-
-// The production id is pinned in source, so it wins whenever the node has it;
-// otherwise resolution falls to package matching / apps[0]. VITE_APPLICATION_ID is
-// no longer read at all — a stale hosting-project value must not be able to
-// outrank what the node actually has.
+// The id is matched on the bundle's package. There is no pinned production id
+// any more (it went stale with the signer) and VITE_APPLICATION_ID is not read
+// at all — a stale hosting-project value must not outrank what the node has.
 
 describe("pickApplicationId", () => {
   it("matches the app whose package is com.calimero.mero-design", () => {
@@ -30,7 +20,6 @@ describe("pickApplicationId", () => {
       { id: "other-app", package: "com.calimero.other" },
       { id: "mero-design-app", package: "com.calimero.mero-design" },
     ];
-    expect(pickApplicationId(apps)).not.toBe("other-app");
     expect(pickApplicationId(apps)).toBe("mero-design-app");
   });
 
@@ -50,17 +39,8 @@ describe("pickApplicationId", () => {
     expect(pickApplicationId([])).toBe("");
   });
 
-  it("prefers the pinned production id when the node has it", () => {
-    const apps = [
-      { id: "curb-app", package: "com.calimero.curb" },
-      { id: PRODUCTION_APPLICATION_ID, package: "com.calimero.mero-design" },
-    ];
-    expect(pickApplicationId(apps)).toBe(PRODUCTION_APPLICATION_ID);
-  });
-
-  // The reason the constant is a preference and not an override: a dev-signed
-  // build has a DIFFERENT id for the same code and must still resolve.
-  it("falls back to the package match for a dev install with another id", () => {
+  // A dev-signed build has a DIFFERENT id for the same code and must still resolve.
+  it("resolves a dev install by package, whatever its id", () => {
     const apps = [
       { id: "curb-app", package: "com.calimero.curb" },
       { id: "dev-signed-id", package: "com.calimero.mero-design" },
@@ -70,29 +50,32 @@ describe("pickApplicationId", () => {
 });
 
 describe("resolveApplicationId", () => {
+  const listApplications = vi.fn();
+  const admin = { listApplications };
   beforeEach(() => vi.clearAllMocks());
 
-  it("fetches /applications and resolves by package", async () => {
-    mockAdminGet.mockResolvedValue({
+  it("lists the node's applications through the session's admin and resolves by package", async () => {
+    listApplications.mockResolvedValue({
       apps: [
         { id: "curb-app", package: "com.calimero.curb" },
         { id: "mero-design-app", package: "com.calimero.mero-design" },
       ],
-    } as never);
-    const id = await resolveApplicationId();
-    expect(mockAdminGet).toHaveBeenCalledWith("/applications");
-    expect(id).toBe("mero-design-app");
+    });
+    expect(await resolveApplicationId(admin)).toBe("mero-design-app");
+    expect(listApplications).toHaveBeenCalledTimes(1);
   });
 
-  it("handles the legacy `applications` array key", async () => {
-    mockAdminGet.mockResolvedValue({
+  it("handles the legacy `applications` array key and a bare array", async () => {
+    listApplications.mockResolvedValue({
       applications: [{ id: "mero-design-app", package: "com.calimero.mero-design" }],
-    } as never);
-    expect(await resolveApplicationId()).toBe("mero-design-app");
+    });
+    expect(await resolveApplicationId(admin)).toBe("mero-design-app");
+    listApplications.mockResolvedValue([{ id: "bare", package: "com.calimero.mero-design" }]);
+    expect(await resolveApplicationId(admin)).toBe("bare");
   });
 
   it("returns empty string when the node has no apps", async () => {
-    mockAdminGet.mockResolvedValue({ apps: [] } as never);
-    expect(await resolveApplicationId()).toBe("");
+    listApplications.mockResolvedValue({ apps: [] });
+    expect(await resolveApplicationId(admin)).toBe("");
   });
 });

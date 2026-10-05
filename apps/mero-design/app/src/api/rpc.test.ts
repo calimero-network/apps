@@ -1,349 +1,335 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
-import axios from "axios";
-import { rpcCall, adminGet, adminPost, adminDelete, adminPut, listNamespaces } from "./rpc";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { RpcError } from "@calimero-network/mero-js";
+import { bindApi, getApi, type ApiBinding } from "./client";
+import {
+  createContext,
+  createNamespace,
+  createNamespaceInvitation,
+  createSubgroup,
+  decodeOutput,
+  getBlob,
+  getContextIdentitiesOwned,
+  getNodeIdentity,
+  joinContext,
+  joinNamespace,
+  listGroupContexts,
+  listGroupMembers,
+  listNamespaces,
+  listSubgroups,
+  rpcCall,
+  updateMemberRole,
+  uploadBlob,
+} from "./rpc";
 
-vi.mock("axios");
-vi.mock("@calimero-network/mero-react", () => ({
-  getNodeUrl: () => "http://localhost:2430",
-  clearAllStorage: vi.fn(),
+vi.mock("../utils/blobCache", () => ({
+  getCachedBlob: vi.fn().mockResolvedValue(null),
+  setCachedBlob: vi.fn(),
 }));
 
-// Token now lives in the mero token store (localStorage["mero-tokens"]).
+// The data layer talks to whatever `ApiBinder` bound: the session's rpc
+// transport and admin client. Tests bind fakes and read what reached them.
+const execute = vi.fn();
+const admin = {
+  getNodeIdentity: vi.fn(),
+  listNamespaces: vi.fn(),
+  listNamespacesForApplication: vi.fn(),
+  createNamespace: vi.fn(),
+  deleteNamespace: vi.fn(),
+  createNamespaceInvitation: vi.fn(),
+  joinNamespace: vi.fn(),
+  listSubgroups: vi.fn(),
+  listGroupContexts: vi.fn(),
+  createGroupInNamespace: vi.fn(),
+  setSubgroupVisibility: vi.fn(),
+  createContext: vi.fn(),
+  deleteContext: vi.fn(),
+  joinContext: vi.fn(),
+  getContextIdentitiesOwned: vi.fn(),
+  listGroupMembers: vi.fn(),
+  updateMemberRole: vi.fn(),
+  uploadBlob: vi.fn(),
+  getBlob: vi.fn(),
+};
+
+function bind(isDelegated = false) {
+  bindApi({
+    rpc: { execute } as unknown as ApiBinding["rpc"],
+    admin: admin as unknown as ApiBinding["admin"],
+    events: null,
+    isDelegated,
+  });
+}
+
+/** What a node's `execute` hands mero-js: JSON-encoded output bytes. */
+function bytesOf(value: unknown): number[] {
+  return Array.from(new TextEncoder().encode(JSON.stringify(value)));
+}
+
 beforeEach(() => {
-  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "test-token" }));
+  vi.clearAllMocks();
+  bind();
+  execute.mockResolvedValue([]);
 });
+afterEach(() => bindApi(null));
 
-const mockPost   = vi.mocked(axios.post);
-const mockGet    = vi.mocked(axios.get);
-const mockDelete = vi.mocked(axios.delete);
-const mockPut    = vi.mocked(axios.put);
+// ── binding ───────────────────────────────────────────────────────────────────
 
-/** Build a Calimero-style execute response with JSON-encoded output bytes. */
-function execResponse(value: unknown) {
-  const bytes = Array.from(new TextEncoder().encode(JSON.stringify(value)));
-  return { data: { jsonrpc: "2.0", id: 1, result: { output: bytes, logs: [] } } };
-}
+describe("the binding", () => {
+  it("fails loudly when nothing is connected", () => {
+    bindApi(null);
+    expect(() => getApi()).toThrow(/Not connected/);
+  });
 
-function emptyExecResponse() {
-  return { data: { jsonrpc: "2.0", id: 1, result: { output: [], logs: [] } } };
-}
+  it("a contract call before a session is bound rejects, rather than hitting a node", async () => {
+    bindApi(null);
+    await expect(rpcCall("ctx-1", "get_elements", {})).rejects.toThrow(/Not connected/);
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
 
 // ── rpcCall ───────────────────────────────────────────────────────────────────
 
-describe("rpcCall — request format", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockPost.mockResolvedValue(emptyExecResponse());
-  });
-
-  it("POSTs to <nodeUrl>/jsonrpc", async () => {
+describe("rpcCall — request shape", () => {
+  it("executes on the session transport with contextId / method / argsJson", async () => {
     await rpcCall("ctx-1", "get_elements", {});
-    expect(mockPost.mock.calls[0][0]).toBe("http://localhost:2430/jsonrpc");
+    expect(execute).toHaveBeenCalledWith({ contextId: "ctx-1", method: "get_elements", argsJson: {} });
   });
 
-  it("sends jsonrpc version '2.0'", async () => {
-    await rpcCall("ctx-1", "get_elements", {});
-    const body = mockPost.mock.calls[0][1] as Record<string, unknown>;
-    expect(body.jsonrpc).toBe("2.0");
+  it("passes args object directly as argsJson (not a JSON string)", async () => {
+    await rpcCall("ctx-1", "update_element", { id: "e1", x: 10 });
+    const params = execute.mock.calls[0][0] as { argsJson: unknown };
+    expect(params.argsJson).toEqual({ id: "e1", x: 10 });
   });
 
-  it("uses outer method='execute' (not 'call')", async () => {
-    await rpcCall("ctx-1", "get_elements", {});
-    const body = mockPost.mock.calls[0][1] as Record<string, unknown>;
-    expect(body.method).toBe("execute");
-    expect(body.method).not.toBe("call");
-  });
-
-  it("sends params.contextId (camelCase, not context_id)", async () => {
-    await rpcCall("ctx-abc", "get_elements", {});
-    const body = mockPost.mock.calls[0][1] as { params: Record<string, unknown> };
-    expect(body.params.contextId).toBe("ctx-abc");
-    expect(body.params.context_id).toBeUndefined();
-  });
-
-  it("sends params.argsJson (camelCase, not args_json)", async () => {
-    await rpcCall("ctx-1", "add_element", { id: "el-1" });
-    const body = mockPost.mock.calls[0][1] as { params: Record<string, unknown> };
-    expect(body.params.argsJson).toBeDefined();
-    expect(body.params.args_json).toBeUndefined();
-  });
-
-  it("passes args object directly as argsJson (not JSON string)", async () => {
-    const args = { id: "el-1", x: 50, y: 100, width: 200 };
-    await rpcCall("ctx-1", "update_element", args);
-    const body = mockPost.mock.calls[0][1] as { params: { argsJson: Record<string, unknown> } };
-    expect(body.params.argsJson).toEqual(args);
-  });
-
-  it("sends the inner method name in params.method", async () => {
-    await rpcCall("ctx-1", "delete_element", { id: "el-99" });
-    const body = mockPost.mock.calls[0][1] as { params: { method: string } };
-    expect(body.params.method).toBe("delete_element");
-  });
-
-  it("includes Authorization Bearer header", async () => {
-    await rpcCall("ctx-1", "get_elements", {});
-    const config = mockPost.mock.calls[0][2] as { headers: Record<string, string> };
-    expect(config.headers.Authorization).toBe("Bearer test-token");
+  it("add_element sends lowercase kind", async () => {
+    await rpcCall("ctx-1", "add_element", {
+      element: {
+        id: "e1", data: { kind: "rect" }, x: 0, y: 0, width: 1, height: 1, rotation: 0,
+        fill: "#fff", stroke: "#000", strokeWidth: 1, opacity: 100, layerIndex: 0,
+        createdBy: "", createdAt: 0, updatedAt: 0,
+      },
+    });
+    const params = execute.mock.calls[0][0] as { argsJson: { element: { data: { kind: string } } } };
+    expect(params.argsJson.element.data.kind).toBe("rect");
   });
 });
 
 describe("rpcCall — response parsing", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("decodes result.output bytes as JSON", async () => {
-    const data = [{ id: "el-1", data: { kind: "rect" }, x: 0, y: 0, width: 100, height: 100 }];
-    mockPost.mockResolvedValue(execResponse(data));
-    const result = await rpcCall("ctx-1", "get_elements", {});
-    expect(result).toEqual(data);
+  it("decodes legacy output bytes as JSON", async () => {
+    execute.mockResolvedValue(bytesOf([{ id: "e1" }]));
+    expect(await rpcCall("ctx-1", "get_comments", {})).toEqual([{ id: "e1" }]);
   });
 
   it("decodes a single object from output bytes", async () => {
-    const el = { id: "el-1", data: { kind: "circle" } };
-    mockPost.mockResolvedValue(execResponse(el));
-    const result = await rpcCall<typeof el>("ctx-1", "get_element", { id: "el-1" });
-    expect(result).toEqual(el);
+    execute.mockResolvedValue(bytesOf({ name: "Board" }));
+    expect(await rpcCall("ctx-1", "get_board", {})).toEqual({ name: "Board" });
   });
 
-  it("add_element sends lowercase kind", async () => {
-    const element = {
-      id: "el-1", data: { kind: "rect" }, x: 10, y: 20,
-      width: 100, height: 80, rotation: 0, fill: "#fff", stroke: "transparent",
-      strokeWidth: 0, opacity: 100, layerIndex: 0,
-      createdBy: "", createdAt: 1000, updatedAt: 1000,
-    };
-    mockPost.mockResolvedValue(emptyExecResponse());
-    await rpcCall("ctx-1", "add_element", { element });
-    const body = mockPost.mock.calls[0][1] as { params: { argsJson: { element: { data: { kind: string } } } } };
-    expect(body.params.argsJson.element.data.kind).toBe("rect");
+  it("passes an already-parsed array of objects through", async () => {
+    execute.mockResolvedValue([{ id: "e1" }, { id: "e2" }]);
+    expect(await rpcCall("ctx-1", "get_comments", {})).toEqual([{ id: "e1" }, { id: "e2" }]);
   });
 
-  it("add_element with circle sends lowercase kind", async () => {
-    const element = {
-      id: "el-2", data: { kind: "circle" }, x: 0, y: 0,
-      width: 50, height: 50, rotation: 0, fill: "#00f", stroke: "transparent",
-      strokeWidth: 0, opacity: 100, layerIndex: 1,
-      createdBy: "", createdAt: 1000, updatedAt: 1000,
-    };
-    mockPost.mockResolvedValue(emptyExecResponse());
-    await rpcCall("ctx-1", "add_element", { element });
-    const body = mockPost.mock.calls[0][1] as { params: { argsJson: { element: { data: { kind: string } } } } };
-    expect(body.params.argsJson.element.data.kind).toBe("circle");
-    expect(body.params.argsJson.element.data.kind).not.toBe("Circle");
+  it("parses a JSON string output, and keeps a plain string", async () => {
+    execute.mockResolvedValue('"admin"');
+    expect(await rpcCall("ctx-1", "my_role", {})).toBe("admin");
+    execute.mockResolvedValue("viewer");
+    expect(await rpcCall("ctx-1", "my_role", {})).toBe("viewer");
   });
 
-  it("returns null for empty output array", async () => {
-    mockPost.mockResolvedValue(emptyExecResponse());
-    const result = await rpcCall("ctx-1", "delete_element", { id: "x" });
-    expect(result).toBeNull();
+  it("returns null for an empty output array", async () => {
+    execute.mockResolvedValue([]);
+    expect(await rpcCall("ctx-1", "get_elements", {})).toBeNull();
   });
 
-  it("decodes boolean true from output", async () => {
-    mockPost.mockResolvedValue(execResponse(true));
-    const result = await rpcCall<boolean>("ctx-1", "ping", {});
-    expect(result).toBe(true);
+  it("decodes boolean true from output bytes", async () => {
+    execute.mockResolvedValue(bytesOf(true));
+    expect(await rpcCall("ctx-1", "is_member", {})).toBe(true);
   });
 
-  it("decodes null value from output bytes", async () => {
-    mockPost.mockResolvedValue(execResponse(null));
-    const result = await rpcCall("ctx-1", "noop", {});
-    expect(result).toBeNull();
+  it("decodes null from output bytes", async () => {
+    execute.mockResolvedValue(bytesOf(null));
+    expect(await rpcCall("ctx-1", "get_element", {})).toBeNull();
+  });
+
+  it("decodeOutput keeps a bare boolean or number", () => {
+    expect(decodeOutput(false)).toBe(false);
+    expect(decodeOutput(3)).toBe(3);
   });
 });
 
 describe("rpcCall — error handling", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("throws using error.data when present", async () => {
-    mockPost.mockResolvedValue({
-      data: { error: { type: "ParseError", data: "missing field `contextId`" } },
-    });
-    await expect(rpcCall("ctx-1", "foo", {})).rejects.toThrow("missing field `contextId`");
+  it("throws the WASM reason when the RPC error carries one as data", async () => {
+    execute.mockRejectedValue(new RpcError(-32000, "execution failed", "not an editor"));
+    await expect(rpcCall("ctx-1", "add_element", {})).rejects.toThrow("not an editor");
   });
 
-  it("throws using error as string", async () => {
-    mockPost.mockResolvedValue({ data: { error: "unauthorized" } });
-    await expect(rpcCall("ctx-1", "foo", {})).rejects.toThrow("unauthorized");
+  it("throws a nested data message", async () => {
+    execute.mockRejectedValue(new RpcError(-32000, "execution failed", { data: "no such element" }));
+    await expect(rpcCall("ctx-1", "delete_element", {})).rejects.toThrow("no such element");
   });
 
-  it("throws with stringified error object when no data field", async () => {
-    mockPost.mockResolvedValue({
-      data: { error: { type: "InternalError" } },
-    });
-    await expect(rpcCall("ctx-1", "foo", {})).rejects.toThrow(/InternalError/);
-  });
-});
-
-// ── adminGet ──────────────────────────────────────────────────────────────────
-
-describe("adminGet", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("GETs from <nodeUrl>/admin-api/<path>", async () => {
-    mockGet.mockResolvedValue({ data: { data: [] } });
-    await adminGet("/namespaces");
-    expect(mockGet.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces");
+  it("falls back to the RPC-level message", async () => {
+    execute.mockRejectedValue(new RpcError(-32601, "method not found"));
+    await expect(rpcCall("ctx-1", "nope", {})).rejects.toThrow("method not found");
   });
 
-  it("includes Authorization header", async () => {
-    mockGet.mockResolvedValue({ data: { data: [] } });
-    await adminGet("/namespaces");
-    const config = mockGet.mock.calls[0][1] as { headers: Record<string, string> };
-    expect(config.headers.Authorization).toBe("Bearer test-token");
-  });
-
-  it("returns .data.data when present", async () => {
-    mockGet.mockResolvedValue({ data: { data: [{ id: "ns-1" }] } });
-    const result = await adminGet<{ id: string }[]>("/namespaces");
-    expect(result).toEqual([{ id: "ns-1" }]);
-  });
-
-  it("falls back to full response data when no .data.data", async () => {
-    mockGet.mockResolvedValue({ data: { namespaces: [] } });
-    const result = await adminGet<{ namespaces: unknown[] }>("/namespaces");
-    expect(result).toEqual({ namespaces: [] });
+  it("passes any other error through", async () => {
+    execute.mockRejectedValue(new Error("network down"));
+    await expect(rpcCall("ctx-1", "get_elements", {})).rejects.toThrow("network down");
   });
 });
 
-// ── listNamespaces ────────────────────────────────────────────────────────────
+// ── admin wrappers ───────────────────────────────────────────────────────────
+
+describe("getNodeIdentity", () => {
+  it("asks the session's admin and returns the account", async () => {
+    admin.getNodeIdentity.mockResolvedValue({ accountId: "acc", deviceId: null, publicKey: "pk" });
+    expect(await getNodeIdentity()).toEqual({ accountId: "acc", deviceId: null, publicKey: "pk" });
+  });
+});
 
 describe("listNamespaces", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("uses the application-scoped endpoint when an applicationId is given", async () => {
-    mockGet.mockResolvedValue({ data: { data: [] } });
-    await listNamespaces("app-123");
-    expect(mockGet.mock.calls[0][0]).toBe(
-      "http://localhost:2430/admin-api/namespaces/for-application/app-123",
-    );
+  it("uses the application-scoped listing when an applicationId is given", async () => {
+    admin.listNamespacesForApplication.mockResolvedValue([{ namespaceId: "ns1", name: "Design" }]);
+    expect(await listNamespaces("app-1")).toEqual([{ namespaceId: "ns1", name: "Design" }]);
+    expect(admin.listNamespacesForApplication).toHaveBeenCalledWith("app-1");
+    expect(admin.listNamespaces).not.toHaveBeenCalled();
   });
 
-  it("uses the unscoped endpoint when no applicationId is given", async () => {
-    mockGet.mockResolvedValue({ data: { data: [] } });
-    await listNamespaces();
-    expect(mockGet.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces");
+  it("uses the unscoped listing when no applicationId is given", async () => {
+    admin.listNamespaces.mockResolvedValue([{ namespaceId: "ns1" }]);
+    expect(await listNamespaces()).toEqual([{ namespaceId: "ns1", name: undefined }]);
+    expect(admin.listNamespacesForApplication).not.toHaveBeenCalled();
   });
 
-  it("falls back to the unscoped endpoint on 404", async () => {
-    const err = { response: { status: 404 } };
-    vi.mocked(axios.isAxiosError).mockReturnValue(true);
-    mockGet
-      .mockRejectedValueOnce(err)
-      .mockResolvedValueOnce({ data: { data: [{ id: "ns-1" }] } });
-    const result = await listNamespaces<{ id: string }[]>("app-123");
-    expect(mockGet.mock.calls[0][0]).toBe(
-      "http://localhost:2430/admin-api/namespaces/for-application/app-123",
-    );
-    expect(mockGet.mock.calls[1][0]).toBe("http://localhost:2430/admin-api/namespaces");
-    expect(result).toEqual([{ id: "ns-1" }]);
+  it.each([404, 405])("falls back to the unscoped listing on %i", async (status) => {
+    admin.listNamespacesForApplication.mockRejectedValue(Object.assign(new Error("nope"), { status }));
+    admin.listNamespaces.mockResolvedValue([{ namespaceId: "ns1" }]);
+    expect(await listNamespaces("app-1")).toEqual([{ namespaceId: "ns1", name: undefined }]);
   });
 
-  it("falls back to the unscoped endpoint on 405", async () => {
-    const err = { response: { status: 405 } };
-    vi.mocked(axios.isAxiosError).mockReturnValue(true);
-    mockGet
-      .mockRejectedValueOnce(err)
-      .mockResolvedValueOnce({ data: { data: [] } });
-    await listNamespaces("app-123");
-    expect(mockGet).toHaveBeenCalledTimes(2);
+  it("rethrows other errors instead of falling back", async () => {
+    admin.listNamespacesForApplication.mockRejectedValue(Object.assign(new Error("forbidden"), { status: 403 }));
+    await expect(listNamespaces("app-1")).rejects.toThrow("forbidden");
+    expect(admin.listNamespaces).not.toHaveBeenCalled();
   });
 
-  it("rethrows non-404/405 errors instead of falling back", async () => {
-    const err = { response: { status: 500 } };
-    vi.mocked(axios.isAxiosError).mockReturnValue(true);
-    mockGet.mockRejectedValueOnce(err);
-    await expect(listNamespaces("app-123")).rejects.toBe(err);
-    expect(mockGet).toHaveBeenCalledTimes(1);
+  it("reads the { namespaces } and { data } envelopes and the alias spelling", async () => {
+    admin.listNamespaces.mockResolvedValue({ namespaces: [{ id: "ns1", alias: "Old" }] });
+    expect(await listNamespaces()).toEqual([{ namespaceId: "ns1", name: "Old" }]);
+    admin.listNamespaces.mockResolvedValue({ data: [{ groupId: "ns2" }] });
+    expect(await listNamespaces()).toEqual([{ namespaceId: "ns2", name: undefined }]);
   });
 });
 
-// ── adminPost ─────────────────────────────────────────────────────────────────
-
-describe("adminPost", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("POSTs to <nodeUrl>/admin-api/<path>", async () => {
-    mockPost.mockResolvedValue({ data: { data: {} } });
-    await adminPost("/namespaces", { alias: "my-team" });
-    expect(mockPost.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces");
+describe("createNamespace", () => {
+  it("sends exactly applicationId + name", async () => {
+    admin.createNamespace.mockResolvedValue({ namespaceId: "ns1" });
+    expect(await createNamespace("app-1", "Design")).toEqual({ namespaceId: "ns1" });
+    expect(admin.createNamespace).toHaveBeenCalledWith({ applicationId: "app-1", name: "Design" });
   });
 
-  it("sends the request body", async () => {
-    mockPost.mockResolvedValue({ data: { data: {} } });
-    const body = { alias: "test" };
-    await adminPost("/namespaces", body);
-    expect(mockPost.mock.calls[0][1]).toEqual(body);
-  });
-
-  it("includes Authorization header", async () => {
-    mockPost.mockResolvedValue({ data: { data: {} } });
-    await adminPost("/namespaces", {});
-    const config = mockPost.mock.calls[0][2] as { headers: Record<string, string> };
-    expect(config.headers.Authorization).toBe("Bearer test-token");
-  });
-
-  it("returns .data.data when present", async () => {
-    mockPost.mockResolvedValue({ data: { data: { namespaceId: "ns-new" } } });
-    const result = await adminPost<{ namespaceId: string }>("/namespaces", {});
-    expect(result).toEqual({ namespaceId: "ns-new" });
+  it("surfaces the account admin's HA outcome", async () => {
+    admin.createNamespace.mockResolvedValue({ namespaceId: "ns1", haEnabled: false, haError: "not linked" });
+    expect(await createNamespace("app-1", "Design")).toEqual({
+      namespaceId: "ns1", haEnabled: false, haError: "not linked",
+    });
   });
 });
 
-// ── adminDelete ───────────────────────────────────────────────────────────────
-
-describe("adminDelete", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("DELETEs from <nodeUrl>/admin-api/<path>", async () => {
-    mockDelete.mockResolvedValue({ data: { data: null } });
-    await adminDelete("/namespaces/ns-1");
-    expect(mockDelete.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces/ns-1");
+describe("invitations", () => {
+  it("createNamespaceInvitation returns the signed response verbatim", async () => {
+    const signed = { invitation: { invitation: { group_id: [1] }, inviterSignature: "s" } };
+    admin.createNamespaceInvitation.mockResolvedValue(signed);
+    expect(await createNamespaceInvitation("ns1")).toBe(signed);
+    expect(admin.createNamespaceInvitation).toHaveBeenCalledWith("ns1");
   });
 
-  it("includes Content-Type: application/json header", async () => {
-    mockDelete.mockResolvedValue({ data: { data: null } });
-    await adminDelete("/namespaces/ns-1");
-    const config = mockDelete.mock.calls[0][1] as { headers: Record<string, string> };
-    expect(config.headers["Content-Type"]).toBe("application/json");
-  });
-
-  it("sends empty object as data body (required by some servers)", async () => {
-    mockDelete.mockResolvedValue({ data: { data: null } });
-    await adminDelete("/namespaces/ns-1");
-    const config = mockDelete.mock.calls[0][1] as { data: unknown };
-    expect(config.data).toEqual({});
-  });
-
-  it("includes Authorization header", async () => {
-    mockDelete.mockResolvedValue({ data: { data: null } });
-    await adminDelete("/namespaces/ns-1");
-    const config = mockDelete.mock.calls[0][1] as { headers: Record<string, string> };
-    expect(config.headers.Authorization).toBe("Bearer test-token");
+  it("joinNamespace wraps the invitation struct as the body", async () => {
+    admin.joinNamespace.mockResolvedValue({ namespaceId: "ns1" });
+    await joinNamespace("ns1", { group_id: [1] });
+    expect(admin.joinNamespace).toHaveBeenCalledWith("ns1", { invitation: { group_id: [1] } });
   });
 });
 
-// ── adminPut ──────────────────────────────────────────────────────────────────
-
-describe("adminPut", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("PUTs to <nodeUrl>/admin-api/<path>", async () => {
-    mockPut.mockResolvedValue({ data: { data: {} } });
-    await adminPut("/namespaces/ns-1", { alias: "renamed" });
-    expect(mockPut.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces/ns-1");
+describe("projects", () => {
+  it("listSubgroups and listGroupContexts normalise every envelope the routes have used", async () => {
+    admin.listSubgroups.mockResolvedValue([{ groupId: "g1", name: "A" }]);
+    expect(await listSubgroups("ns1")).toEqual([{ groupId: "g1", name: "A" }]);
+    admin.listSubgroups.mockResolvedValue({ subgroups: [{ group_id: "g2" }] });
+    expect(await listSubgroups("ns1")).toEqual([{ groupId: "g2", name: undefined }]);
+    admin.listGroupContexts.mockResolvedValue([{ contextId: "c1" }]);
+    expect(await listGroupContexts("g1")).toEqual([{ contextId: "c1", name: undefined }]);
+    admin.listGroupContexts.mockResolvedValue({ contexts: [{ context_id: "c2", alias: "Board" }] });
+    expect(await listGroupContexts("g1")).toEqual([{ contextId: "c2", name: "Board" }]);
   });
 
-  it("sends the request body", async () => {
-    mockPut.mockResolvedValue({ data: { data: {} } });
-    const body = { alias: "renamed" };
-    await adminPut("/namespaces/ns-1", body);
-    expect(mockPut.mock.calls[0][1]).toEqual(body);
+  it("createSubgroup sends only groupName", async () => {
+    admin.createGroupInNamespace.mockResolvedValue({ groupId: "g1" });
+    expect(await createSubgroup("ns1", "Landing")).toBe("g1");
+    expect(admin.createGroupInNamespace).toHaveBeenCalledWith("ns1", { groupName: "Landing" });
   });
 
-  it("includes Authorization header", async () => {
-    mockPut.mockResolvedValue({ data: { data: {} } });
-    await adminPut("/namespaces/ns-1", {});
-    const config = mockPut.mock.calls[0][2] as { headers: Record<string, string> };
-    expect(config.headers.Authorization).toBe("Bearer test-token");
+  it("createContext sends the request as given and returns the id", async () => {
+    admin.createContext.mockResolvedValue({ contextId: "c1", memberPublicKey: "" });
+    const req = { applicationId: "app-1", groupId: "g1", name: "Landing", initializationParams: [1, 2] };
+    expect(await createContext(req)).toBe("c1");
+    expect(admin.createContext).toHaveBeenCalledWith(req);
+  });
+
+  it("joinContext and getContextIdentitiesOwned read the session's answers", async () => {
+    admin.joinContext.mockResolvedValue({ contextId: "c1", memberPublicKey: "me" });
+    expect(await joinContext("c1")).toEqual({ memberPublicKey: "me" });
+    admin.getContextIdentitiesOwned.mockResolvedValue({ identities: ["me"] });
+    expect(await getContextIdentitiesOwned("c1")).toEqual(["me"]);
+    admin.getContextIdentitiesOwned.mockResolvedValue(["a", "b"]);
+    expect(await getContextIdentitiesOwned("c1")).toEqual(["a", "b"]);
+  });
+});
+
+describe("members", () => {
+  it("listGroupMembers normalises identity / role / name", async () => {
+    admin.listGroupMembers.mockResolvedValue({
+      members: [{ identity: "a", role: "Admin", name: " Ana " }, { memberId: "b", role: "Member" }, { id: "" }],
+    });
+    expect(await listGroupMembers("ns1")).toEqual([
+      { identity: "a", role: "Admin", name: "Ana" },
+      { identity: "b", role: "Member", name: undefined },
+    ]);
+  });
+
+  it("updateMemberRole sends { role }", async () => {
+    admin.updateMemberRole.mockResolvedValue(undefined);
+    await updateMemberRole("ns1", "a", "Admin");
+    expect(admin.updateMemberRole).toHaveBeenCalledWith("ns1", "a", { role: "Admin" });
+  });
+});
+
+// ── blobs ─────────────────────────────────────────────────────────────────────
+
+describe("blobs always carry the context", () => {
+  it("uploadBlob passes contextId and returns the blob id", async () => {
+    admin.uploadBlob.mockResolvedValue({ blobId: "b1", size: 3 });
+    const data = new Uint8Array([1, 2, 3]).buffer;
+    expect(await uploadBlob(data, "ctx-1")).toEqual({ blobId: "b1" });
+    expect(admin.uploadBlob).toHaveBeenCalledWith({ data, contextId: "ctx-1" });
+  });
+
+  it("uploadBlob refuses an empty contextId before calling anything", async () => {
+    await expect(uploadBlob(new ArrayBuffer(1), "")).rejects.toThrow(/context id/);
+    expect(admin.uploadBlob).not.toHaveBeenCalled();
+  });
+
+  it("getBlob passes contextId", async () => {
+    const buf = new Uint8Array([9]).buffer;
+    admin.getBlob.mockResolvedValue(buf);
+    expect(await getBlob("b1", "ctx-1")).toBe(buf);
+    expect(admin.getBlob).toHaveBeenCalledWith("b1", { contextId: "ctx-1" });
+  });
+
+  it("getBlob refuses an empty contextId", async () => {
+    await expect(getBlob("b1", "")).rejects.toThrow(/context id/);
+    expect(admin.getBlob).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { adminGet } from "./rpc";
+import { getApi } from "./client";
 
 // ── Every board in a team ────────────────────────────────────────────────────
 //
@@ -8,7 +8,7 @@ import { adminGet } from "./rpc";
 // away) has to enumerate the team's boards first.
 //
 // Two hops, because a board is a context inside a subgroup:
-//   /groups/{teamId}/subgroups  →  /groups/{subgroupId}/contexts
+//   listSubgroups(teamId)  →  listGroupContexts(subgroupId)
 //
 // Both routes have been returning three different envelope shapes across
 // releases, so the parsing is deliberately tolerant and kept pure — that is the
@@ -63,7 +63,7 @@ export async function listTeamContexts(teamId: string): Promise<string[]> {
   let subgroupIds: string[] = [];
   try {
     subgroupIds = parseSubgroupIds(
-      await adminGet<SubgroupsResponse>(`/groups/${teamId}/subgroups`),
+      (await getApi().admin.listSubgroups(teamId)) as unknown as SubgroupsResponse,
     );
   } catch {
     return [];
@@ -74,7 +74,7 @@ export async function listTeamContexts(teamId: string): Promise<string[]> {
     try {
       contexts.push(
         ...parseContextIds(
-          await adminGet<ContextsResponse>(`/groups/${groupId}/contexts`),
+          (await getApi().admin.listGroupContexts(groupId)) as unknown as ContextsResponse,
         ),
       );
     } catch {

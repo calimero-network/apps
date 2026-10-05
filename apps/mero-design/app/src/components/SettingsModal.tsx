@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { adminGet, adminPut, getNodeIdentity, rpcCall } from "../api/rpc";
+import { getNodeIdentity, listGroupMembers, rpcCall, updateMemberRole } from "../api/rpc";
 import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
@@ -21,11 +21,8 @@ interface MemberEntry {
   name?: string;
 }
 
-// No `selfIdentity` here: rc.23 removed it from this response (#3522). The
+// No `selfIdentity` on the member listing: rc.23 removed it (#3522). The
 // caller's own account comes from `getNodeIdentity()` instead.
-type MembersResponse =
-  | MemberEntry[]
-  | { members?: MemberEntry[]; data?: MemberEntry[] };
 
 interface Props {
   type: "team" | "project";
@@ -120,21 +117,10 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   useEffect(() => {
     let cancelled = false;
     setLoadingMembers(true);
-    adminGet<MembersResponse>(`/groups/${membersGroupId}/members`)
-      .then((raw) => {
+    listGroupMembers(membersGroupId)
+      .then((arr) => {
         if (cancelled) return;
-        const arr: MemberEntry[] = Array.isArray(raw)
-          ? raw
-          : raw.members ?? raw.data ?? [];
-        setMembers(
-          arr
-            .map((m) => ({
-              identity: m.identity ?? (m as { memberId?: string }).memberId ?? (m as { id?: string }).id ?? "",
-              role: (m.role as MemberRole) ?? "Member",
-              name: m.name?.trim() || undefined,
-            }))
-            .filter((m) => m.identity),
-        );
+        setMembers(arr.map((m): MemberEntry => ({ identity: m.identity, role: m.role, name: m.name })));
       })
       .catch(() => {
         if (!cancelled) setMembers([]);
@@ -225,7 +211,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   async function changeRole(identity: string, role: "Admin" | "Member") {
     setPendingRole(identity);
     try {
-      await adminPut(`/groups/${membersGroupId}/members/${identity}/role`, { role });
+      await updateMemberRole(membersGroupId, identity, role);
       setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
 
       const { changed, failed } = await cascadeCanvasRole(identity, role);

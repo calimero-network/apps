@@ -1,7 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("axios");
-vi.mock("@calimero-network/mero-react", () => ({ getNodeUrl: () => "", clearAllStorage: () => {} }));
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { packArgs, unpackResult } from "./rpc";
 import { useCanvasStore } from "../store/canvasStore";
