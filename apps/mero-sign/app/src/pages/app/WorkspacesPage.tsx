@@ -146,6 +146,23 @@ export default function WorkspacesPage() {
       setNewName('');
       setStatus('');
       setActiveWorkspace(created.namespaceId);
+      if (created.haError) {
+        // Founded, but the cloud is not hosting it — for an account that is
+        // "this account is not linked to a cloud user yet". Said NOW, where
+        // the person can act on it, rather than at invite time as a bare
+        // "not hosted". Staying on this screen is what keeps the sentence
+        // on the screen; the new workspace is in the list below it. The
+        // banner is set AFTER the reload, which clears it on success.
+        await load();
+        setBanner({
+          kind: 'notice',
+          text:
+            `"${name}" was created, but invitations to it will not work ` +
+            `yet: ${created.haError}. Link this account to your cloud ` +
+            'user in the wallet before inviting anyone.',
+        });
+        return;
+      }
       navigate(`/workspaces/${created.namespaceId}`);
     } catch (error) {
       setStatus('');
@@ -159,7 +176,7 @@ export default function WorkspacesPage() {
     } finally {
       setCreating(false);
     }
-  }, [applicationId, navigate, newName]);
+  }, [applicationId, load, navigate, newName]);
 
   const invite = useCallback(async (row: WorkspaceRow) => {
     setInviteFor(row);

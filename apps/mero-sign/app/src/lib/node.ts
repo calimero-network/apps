@@ -21,9 +21,12 @@
  * A thin, TYPED surface for the four node calls and two blob calls the app
  * actually made, so the call sites change an import rather than their logic.
  * It is deliberately not a general-purpose wrapper — anything new should call
- * `mero.admin` directly.
+ * `session.admin` directly.
  */
-import type { AdminApiClient, ExecuteTransport } from '@calimero-network/mero-js';
+import type {
+  AdminApiClient,
+  ExecuteTransport,
+} from '@calimero-network/mero-js';
 
 /**
  * What this app needs from a session: the admin API to write against and the
@@ -183,22 +186,26 @@ export interface ContextInviteByOpenInvitationResponse {
   memberPublicKey?: string;
 }
 
-export function nodeApi(mero: SignClient): NodeApi {
+export function nodeApi(session: SignClient): NodeApi {
   return {
-    getContext: (contextId) => wrap(() => mero.admin.getContext(contextId)),
-    getContexts: () => wrap(() => mero.admin.getContexts()),
-    getInstalledApplications: () => wrap(() => mero.admin.listApplications()),
+    getContext: (contextId) => wrap(() => session.admin.getContext(contextId)),
+    getContexts: () => wrap(() => session.admin.getContexts()),
+    getInstalledApplications: () =>
+      wrap(() => session.admin.listApplications()),
     joinFromInvitation: join,
     contextInviteByOpenInvitation: (namespaceId) =>
       wrap(async () => {
-        const res = await mero.admin.createNamespaceInvitation(namespaceId, {});
+        const res = await session.admin.createNamespaceInvitation(
+          namespaceId,
+          {},
+        );
         return res as ContextInviteByOpenInvitationResponse;
       }),
     joinContextByOpenInvitation: (namespaceId, invitation) =>
       wrap(async () => join_(namespaceId, invitation)),
     createNewIdentity: () =>
       wrap(async () => {
-        const id = await mero.admin.getNodeIdentity();
+        const id = await session.admin.getNodeIdentity();
         return { accountId: id?.accountId, publicKey: id?.publicKey };
       }),
   };
@@ -220,7 +227,7 @@ export function nodeApi(mero: SignClient): NodeApi {
     namespaceId: string,
     invitation: unknown,
   ): Promise<JoinNamespaceResult> {
-    const res = await mero.admin.joinNamespace(namespaceId, {
+    const res = await session.admin.joinNamespace(namespaceId, {
       invitation: invitation as Parameters<
         AdminApiClient['joinNamespace']
       >[1]['invitation'],
@@ -232,14 +239,18 @@ export function nodeApi(mero: SignClient): NodeApi {
 export interface BlobApi {
   /**
    * @param contextId announce the blob to this context, so peers can fetch it.
-   *   ⚠️ NOT optional in practice: a blob uploaded without one is reachable
-   *   only on the node that stored it, which reads as "the document uploaded
-   *   fine and the other signer cannot open it".
+   *   ⚠️ REQUIRED, and not only in practice. On a node a blob uploaded
+   *   without one is reachable only on the node that stored it, which reads
+   *   as "the document uploaded fine and the other signer cannot open it".
+   *   Through a relay an ACCOUNT's blob request without a context is refused
+   *   outright (400): the relay scopes blobs to a context the account is a
+   *   member of. `''` was being sent from two screens; it is refused here,
+   *   in words, before it reaches the wire.
    */
   uploadBlob(
     file: Blob,
-    onProgress?: (pct: number) => void,
-    contextId?: string,
+    onProgress: ((pct: number) => void) | undefined,
+    contextId: string,
   ): ApiResponse<{ blobId: string; size: number }>;
   /**
    * Resolves to the BYTES, not a `{data, error}` envelope — the call sites hand
@@ -247,18 +258,32 @@ export interface BlobApi {
    * way and the difference is invisible until a PDF renders as `[object
    * Object]`.
    */
-  downloadBlob(blobId: string, contextId?: string): Promise<Blob>;
+  downloadBlob(blobId: string, contextId: string): Promise<Blob>;
 }
 
-export function blobApi(mero: SignClient): BlobApi {
+/** The sentence a blob call without a context fails with. */
+export const BLOB_NEEDS_CONTEXT =
+  'A blob belongs to a context, and none was given. For a signature that is ' +
+  'your private store; for a document it is the agreement.';
+
+function requireContext(contextId: string | null | undefined): string {
+  const id = (contextId ?? '').trim();
+  if (!id) throw new Error(BLOB_NEEDS_CONTEXT);
+  return id;
+}
+
+export function blobApi(session: SignClient): BlobApi {
   return {
     async uploadBlob(file, onProgress, contextId) {
       // mero-js streams the body and reports no progress events. The callback
       // is kept in the signature so call sites are unchanged, and driven to
       // 100% on completion rather than faked mid-flight — a progress bar that
       // invents intermediate values is worse than one that jumps.
-      const res = await wrap(() =>
-        mero.admin.uploadBlob({ data: file, contextId }),
+      const res = await wrap(async () =>
+        session.admin.uploadBlob({
+          data: file,
+          contextId: requireContext(contextId),
+        }),
       );
       if (res.data) onProgress?.(100);
       return res as Awaited<ApiResponse<{ blobId: string; size: number }>>;
@@ -269,7 +294,9 @@ export function blobApi(mero: SignClient): BlobApi {
     // `[object Object]`.
     downloadBlob: async (blobId, contextId) =>
       new Blob([
-        await mero.admin.getBlob(blobId, contextId ? { contextId } : undefined),
+        await session.admin.getBlob(blobId, {
+          contextId: requireContext(contextId),
+        }),
       ]),
   };
 }
@@ -305,7 +332,7 @@ export const apiClient = {
 };
 
 /**
- * `mero.admin`, for the code that needs the real namespace/subgroup surface
+ * `session.admin`, for the code that needs the real namespace/subgroup surface
  * rather than the six-method shim above.
  *
  * The shim exists so ~20 call sites through the signing path did not have to

@@ -168,12 +168,20 @@ export async function createWorkspace(
   admin: AdminLike,
   opts: { applicationId: string; name: string; accountId?: string | null },
   onStatus: StatusFn = noop,
-): Promise<{ namespaceId: string }> {
+): Promise<{ namespaceId: string; haError: string | null }> {
   onStatus('Creating the workspace…');
   const ns = await admin.createNamespace({
     applicationId: opts.applicationId,
     name: opts.name,
   });
+  // An ACCOUNT founds through the relay, and the account admin says whether
+  // the cloud agreed to host the namespace: `haEnabled: false` with `haError`
+  // in words. The namespace exists either way — but an unhosted one cannot
+  // mint an invitation anybody can redeem, and that failure used to surface
+  // only at invite time, as "not hosted", with nothing to say why. Read it
+  // here, so the screen can say it right after creation. A node answers
+  // without these fields and this reads as `null`.
+  const haError = hostingErrorOf(ns);
 
   onStatus("Recording the workspace's name…");
   await admin
@@ -214,7 +222,46 @@ export async function createWorkspace(
     .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: 'open' })
     .catch(() => {});
 
-  return { namespaceId: ns.namespaceId };
+  return { namespaceId: ns.namespaceId, haError };
+}
+
+/**
+ * Why a freshly founded namespace is not hosted, or `null` when it is (or
+ * when the answer came from a node, which says nothing about hosting).
+ */
+export function hostingErrorOf(created: unknown): string | null {
+  const r = (created ?? {}) as { haEnabled?: unknown; haError?: unknown };
+  if (r.haEnabled !== false) return null;
+  return typeof r.haError === 'string' && r.haError.trim()
+    ? r.haError.trim()
+    : 'the cloud did not agree to host this workspace';
+}
+
+/**
+ * Who this session is in a context it has just created.
+ *
+ * ⚠️ NOT `createContext().memberPublicKey`. On a node that field is the new
+ * member key; through the account admin it is `""` today, and this app wrote
+ * that empty string into the agreement row — `memberPublicKey`,
+ * `privateIdentity`, `sharedIdentity` — and then refused to record the
+ * agreement because "it cannot be recorded without the identity it was joined
+ * with". The identity the node (or relay) holds for the caller is a question
+ * with its own answer: `getContextIdentitiesOwned`, which returns the account
+ * for a delegated session and the member key for a node. Asked only when the
+ * create answered with nothing, so a node round-trips no more than before.
+ */
+export async function memberIdentityAfterCreate(
+  admin: AdminLike,
+  ctx: { contextId: string; memberPublicKey?: string | null },
+): Promise<string> {
+  const given = (ctx.memberPublicKey ?? '').trim();
+  if (given) return given;
+  const owned = await ownedIdentity(admin, ctx.contextId);
+  if (owned) return owned;
+  throw new Error(
+    'The context was created but this session holds no identity in it yet. ' +
+      'Reload and try again.',
+  );
 }
 
 // ── The personal workspace ──────────────────────────────────────────────────
@@ -324,7 +371,7 @@ export async function createPersonalContext(
   return {
     groupId: sg.groupId,
     contextId: ctx.contextId,
-    memberPublicKey: ctx.memberPublicKey,
+    memberPublicKey: await memberIdentityAfterCreate(admin, ctx),
   };
 }
 
@@ -436,7 +483,7 @@ export async function createAgreement(
   return {
     agreementId: sg.groupId,
     contextId: ctx.contextId,
-    memberPublicKey: ctx.memberPublicKey,
+    memberPublicKey: await memberIdentityAfterCreate(admin, ctx),
   };
 }
 

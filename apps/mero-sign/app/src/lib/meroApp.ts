@@ -20,7 +20,7 @@
  * methods — and that includes `sign_document`'s path, which must not be
  * touched to change a login screen.
  *
- * So this implements exactly the surface the data layer uses, on `mero.admin`
+ * So this implements exactly the surface the data layer uses, on `session.admin`
  * and `mero.rpc`, and nothing else. The migration is then a provider swap plus
  * this file, rather than 13 call sites through the signing code.
  */
@@ -74,10 +74,20 @@ export interface CreatedContext {
   applicationId: string;
 }
 
+/** What the adapter needs to know about the session beyond its clients. */
+export interface MeroAppOptions {
+  /**
+   * An account on a relay rather than a node login. Node-only routes are
+   * refused HERE, in words, instead of as the bare 403 the relay answers.
+   */
+  isDelegated?: boolean;
+}
+
 export function meroApp(
-  mero: SignClient,
+  session: SignClient,
   /** The workspace new agreements are created in. Null outside one. */
   workspaceId: string | null,
+  opts: MeroAppOptions = {},
 ): MeroAppLike {
   /**
    * This app's id on THIS node, resolved lazily and cached by `lib/appId`.
@@ -90,15 +100,20 @@ export function meroApp(
    * `null`, and a null id meant every `createContext` threw before it reached
    * the wire.
    *
-   * `mero.admin.listApplications()` is called directly rather than through
+   * `session.admin.listApplications()` is called directly rather than through
    * `lib/node`'s `apiClient`: that module re-exports `useCalimero`, which
    * imports this one, and the cycle is avoidable for the cost of adapting one
    * result shape.
+   *
+   * For an ACCOUNT the listing is never sent: the route is a node's own and
+   * the account admin answers 403. `resolveApplicationId` returns the id
+   * mero-react resolved from the registry first (`lib/appId`'s session seam,
+   * set by `lib/MeroBridge`), and only asks the node when there is none.
    */
   async function requireApplicationId(): Promise<string> {
     const id = await resolveApplicationId(async () => {
       try {
-        return { data: await mero.admin.listApplications() };
+        return { data: await session.admin.listApplications() };
       } catch (error) {
         return {
           error: {
@@ -136,7 +151,7 @@ export function meroApp(
       // identity in the context (core #3960 answers context identities for the
       // CALLER rather than the node), and the old SDK's habit of supplying one
       // is what `check-admin-wire.py` flags as a rejected body key.
-      return mero.rpc.execute({ contextId, method, argsJson: args });
+      return session.rpc.execute({ contextId, method, argsJson: args });
     },
 
     async createContext(_applicationId, initParams) {
@@ -169,10 +184,10 @@ export function meroApp(
       // personal-workspace note in `lib/agreements`.
       if (params.is_private) {
         const namespaceId = await ensurePersonalWorkspace(
-          mero.admin,
+          session.admin,
           applicationId,
         );
-        const created = await createPersonalContext(mero.admin, {
+        const created = await createPersonalContext(session.admin, {
           applicationId,
           namespaceId,
           name: params.context_name,
@@ -191,7 +206,7 @@ export function meroApp(
         );
       }
 
-      const created = await createAgreement(mero.admin, {
+      const created = await createAgreement(session.admin, {
         applicationId,
         namespaceId: workspaceId,
         name: (params.context_name ?? '').trim() || 'Agreement',
@@ -206,7 +221,7 @@ export function meroApp(
     },
 
     async fetchContexts() {
-      return mero.admin.getContexts();
+      return session.admin.getContexts();
     },
 
     async joinContext(props) {
@@ -235,7 +250,20 @@ export function meroApp(
             'invitation. Ask for a new link.',
         );
       }
-      return mero.admin.joinGroup({
+      // ⚠️ `joinGroup` IS A NODE'S OWN ROUTE. A subgroup invitation has no
+      // account form yet, so the account admin refuses it by name
+      // (`NotForAccountError`) — and before this guard that surfaced as a
+      // bare 403 blamed on the invitation. Said in words instead, with the
+      // path that does work for an account: the workspace link, which
+      // `api/invitationJoin` redeems through `joinNamespace`.
+      if (opts.isDelegated) {
+        throw new Error(
+          'This is a legacy per-agreement invitation, which only a node can ' +
+            'redeem. Ask for a workspace invitation link instead — it works ' +
+            'for an account and covers every agreement in the workspace.',
+        );
+      }
+      return session.admin.joinGroup({
         invitation: invitation as unknown as Parameters<
           AdminApiClient['joinGroup']
         >[0]['invitation'],
@@ -265,7 +293,7 @@ export function meroApp(
     async verifyContext(props) {
       // "Do I hold an identity here?" — not "does this context exist". The old
       // SDK answered the second and the callers read it as the first.
-      const { identities } = await mero.admin
+      const { identities } = await session.admin
         .getContextIdentitiesOwned(props.contextId)
         .catch(() => ({ identities: [] as string[] }));
       return { joined: identities.length > 0 };

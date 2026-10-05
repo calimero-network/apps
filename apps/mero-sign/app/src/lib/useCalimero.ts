@@ -42,7 +42,7 @@ export interface CalimeroLike {
  *   else gets whatever workspace the app is currently in.
  */
 export function useCalimero(workspaceId?: string | null): CalimeroLike {
-  const { mero, admin, isAuthenticated, logout } = useMero();
+  const { mero, admin, isAuthenticated, isDelegated, logout } = useMero();
   const activeWorkspace = useActiveWorkspace();
   const login = useOpenLogin();
 
@@ -55,8 +55,10 @@ export function useCalimero(workspaceId?: string | null): CalimeroLike {
 
   const app = useMemo(() => {
     const client = signClientOf(mero, admin);
-    return client ? meroApp(client, effective) : null;
-  }, [mero, admin, effective]);
+    // `isDelegated` rides along so the adapter can refuse a node-only route
+    // (the legacy `joinGroup` invite) in words rather than as the relay's 403.
+    return client ? meroApp(client, effective, { isDelegated }) : null;
+  }, [mero, admin, effective, isDelegated]);
 
   return { app, isAuthenticated, login, logout };
 }

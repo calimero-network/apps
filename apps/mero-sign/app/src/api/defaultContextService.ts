@@ -63,6 +63,30 @@ export interface DefaultContextInfo {
   is_private: boolean;
 }
 
+/**
+ * The private context's id, for the blob calls that store and fetch
+ * signatures.
+ *
+ * ⚠️ NOT `localStorage.getItem('defaultContextId') || ''`. That read is empty
+ * until the first `ensureDefaultContext` has run, and an empty context on a
+ * blob call is not "no context": a node stores the blob unannounced, and a
+ * relay refuses an account's request outright (400). So the store is ENSURED
+ * here — found or created — and its id returned, or the reason there is none
+ * is thrown in words rather than sent as `''`.
+ */
+export async function defaultContextIdFor(app: any): Promise<string> {
+  const ensured =
+    await DefaultContextService.getInstance(app).ensureDefaultContext();
+  const contextId = ensured.contextInfo?.contextId?.trim();
+  if (!ensured.success || !contextId) {
+    throw new Error(
+      ensured.error ||
+        'Your private signature store is not ready yet. Try again shortly.',
+    );
+  }
+  return contextId;
+}
+
 export class DefaultContextService {
   private static instance: DefaultContextService | null = null;
   private static globalCreatingFlag: boolean = false;
@@ -324,11 +348,21 @@ export class DefaultContextService {
         return { success: false, error: createResult.error };
       }
 
+      // ⚠️ THE CREATE'S OWN `memberPublicKey` IS NOT TRUSTED AS IDENTITY. The
+      // account admin answers it with `""` today, and that empty string was
+      // being stored as `defaultContextUserID` and sent as the executor of
+      // every signature call. `lib/agreements` already re-derives it through
+      // `getContextIdentitiesOwned`; this is the belt to that brace, for the
+      // fallback path that reaches here without it.
+      const identity =
+        createResult.data.memberPublicKey ||
+        createResult.data.executorId ||
+        (await ownedIdentity(createResult.data.contextId)) ||
+        '';
       const contextInfo: DefaultContextInfo = {
         contextId: createResult.data.contextId,
-        memberPublicKey:
-          createResult.data.memberPublicKey || createResult.data.executorId,
-        executorId: createResult.data.executorId,
+        memberPublicKey: identity,
+        executorId: identity,
         applicationId: createResult.data.applicationId,
         context_name: 'default',
         is_private: true,
