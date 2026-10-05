@@ -153,6 +153,23 @@ export function appsFromResponse(body: unknown): InstalledApp[] {
  */
 let cached: string | null = null;
 
+/**
+ * The id the SESSION already knows, when there is one.
+ *
+ * An account on a relay cannot ask "which installed app am I": the account
+ * admin answers `listApplications()` with a 403 (the route is a node's own),
+ * which the resolver below read as "not installed" and the UI turned into a
+ * dead end. mero-react ≥ 9.11 resolves the id for a delegated session from the
+ * registry instead (`useMero().applicationId`), so `lib/MeroBridge` hands it
+ * here and the listing is never asked for. `null` on a node login, where the
+ * listing is the only source that can be right — see the note at the top.
+ */
+let session: string | null = null;
+
+export function setSessionApplicationId(id: string | null): void {
+  session = id && id.trim() ? id.trim() : null;
+}
+
 export type ListApps = () => Promise<{
   data?: unknown;
   error?: { message?: string } | null;
@@ -161,6 +178,7 @@ export type ListApps = () => Promise<{
 export async function resolveApplicationId(
   listApps: ListApps,
 ): Promise<string> {
+  if (session !== null) return session;
   if (cached !== null) return cached;
   try {
     const res = await listApps();
@@ -183,4 +201,5 @@ export async function resolveApplicationId(
 /** Test seam, and the hatch for a node that has just installed the app. */
 export function clearApplicationIdCache(): void {
   cached = null;
+  session = null;
 }

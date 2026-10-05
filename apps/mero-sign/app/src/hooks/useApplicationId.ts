@@ -12,6 +12,7 @@
 // constant after the first connected render.
 
 import { useCallback, useEffect, useState } from 'react';
+import { useMero } from '@calimero-network/mero-react';
 
 import { APP_PACKAGE, resolveApplicationId } from '../lib/appId';
 import { apiClient } from '../lib/node';
@@ -28,6 +29,7 @@ export interface ApplicationIdState {
 
 export function useApplicationId(): ApplicationIdState {
   const { app } = useCalimero();
+  const { isDelegated, applicationId: sessionApplicationId } = useMero();
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notInstalled, setNotInstalled] = useState(false);
@@ -41,6 +43,22 @@ export function useApplicationId(): ApplicationIdState {
     // rather than returning an error when it does not, precisely so a missing
     // connection cannot read as a refusal.
     if (!app) {
+      setLoading(false);
+      return;
+    }
+    // ⚠️ AN ACCOUNT IS NOT ASKED. `listApplications()` is a node's own route:
+    // the account admin answers it with a 403, which this hook used to read
+    // as "not installed" — a dead end for every delegated session. mero-react
+    // resolves the id from the registry for an account (`useMero()
+    // .applicationId`), and that is the id every namespace call wants.
+    if (isDelegated) {
+      setApplicationId(sessionApplicationId || null);
+      setNotInstalled(false);
+      setError(
+        sessionApplicationId
+          ? null
+          : `${APP_PACKAGE} could not be resolved from the registry for this account.`,
+      );
       setLoading(false);
       return;
     }
@@ -63,7 +81,7 @@ export function useApplicationId(): ApplicationIdState {
     return () => {
       cancelled = true;
     };
-  }, [app, nonce]);
+  }, [app, isDelegated, sessionApplicationId, nonce]);
 
   return { applicationId, loading, notInstalled, error, reload };
 }

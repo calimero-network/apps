@@ -46,6 +46,7 @@ import { DocumentService } from '../api/documentService';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient } from '../lib/node';
 import { useCalimero } from '../lib/useCalimero';
+import { defaultContextIdFor } from '../api/defaultContextService';
 import ConsentModal from './ConsentModal';
 import LegalChatbot, { LEGAL_ASSISTANT_ENABLED } from './LegalChatbot';
 import { toBlobIdHex } from '../lib/blobIds';
@@ -376,6 +377,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           return;
         }
 
+        // ⚠️ THE LIBRARY'S OWN CONTEXT, not the agreement's. These rows came
+        // out of the PRIVATE context (`listSignatures` runs there) and so
+        // did their blobs. This used to send `agreementContextID || ''` —
+        // the wrong context on a node, and on a relay `''` is a 400 for an
+        // account. Ensured once, before the per-row fetches.
+        const libraryContextId = await defaultContextIdFor(app);
+
         const signaturesWithImages = await Promise.all(
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
@@ -391,9 +399,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                   ? sig.blob_id
                   : sig.blob_id.toArray(),
               );
-              const contextId =
-                localStorage.getItem('agreementContextID') || '';
-              const blob = await blobClient.downloadBlob(blobId, contextId);
+              const blob = await blobClient.downloadBlob(
+                blobId,
+                libraryContextId,
+              );
               if (blob) {
                 dataURL = await new Promise<string>((resolve) => {
                   const reader = new FileReader();
@@ -423,7 +432,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
 
     fetchSignatures();
-  }, [api]);
+  }, [api, app]);
 
   const handleCreateNewSignature = () => {
     setShowSignatureOptions(false);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { blobClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
+import { defaultContextIdFor } from '../../api/defaultContextService';
 import { toBlobIdHex } from '../../lib/blobIds';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import SignaturePadComponent from '../../components/SignaturePad';
@@ -76,6 +77,12 @@ export default function SignaturesPage() {
         return;
       }
 
+      // The PRIVATE context the library lives in, ensured rather than read
+      // back from storage — `localStorage.getItem('defaultContextId') || ''`
+      // is empty on a fresh session, and a blob fetch with no context is a
+      // 400 for an account. Once, not per row.
+      const contextId = await defaultContextIdFor(app);
+
       const withImages = await Promise.all(
         rows.map(async (sig) => {
           let dataURL = '';
@@ -92,7 +99,6 @@ export default function SignaturesPage() {
               : sig.blob_id.toArray(),
           );
           try {
-            const contextId = localStorage.getItem('defaultContextId') || '';
             const blob = blobId
               ? await blobClient.downloadBlob(blobId, contextId)
               : null;
@@ -125,7 +131,7 @@ export default function SignaturesPage() {
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, app]);
 
   useEffect(() => {
     void fetchSignatures();
@@ -150,8 +156,9 @@ export default function SignaturesPage() {
         const file = new File([blob], 'signature.png', { type: blob.type });
         // The PRIVATE context: a signature is yours and is announced
         // nowhere else. `''` would store it on this node with no context at
-        // all, which is a different thing from "my own context".
-        const contextId = localStorage.getItem('defaultContextId') || '';
+        // all — a different thing from "my own context" — and a relay
+        // refuses an account's blob without one. Ensured, not read back.
+        const contextId = await defaultContextIdFor(app);
         const uploaded = await blobClient.uploadBlob(file, () => {}, contextId);
         if (uploaded.error || !uploaded.data?.blobId) {
           throw new Error(uploaded.error?.message ?? 'Upload failed');
@@ -182,7 +189,7 @@ export default function SignaturesPage() {
         setPadOpen(false);
       }
     },
-    [api, signatures.length, fetchSignatures],
+    [api, app, signatures.length, fetchSignatures],
   );
 
   const remove = useCallback(async () => {
