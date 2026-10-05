@@ -80,7 +80,7 @@ catalog:
   # the cloud routes to none of its admitters (InvitationNotClaimableError).
   # 9.9.0 (#90): enrolment puts the cloud-assigned relay's executor account on
   # the session, so a brand-new account founds without joining anything first.
-  "@calimero-network/mero-react": ^9.9.0
+  "@calimero-network/mero-react": ^9.11.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
