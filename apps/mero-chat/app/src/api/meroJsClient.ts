@@ -1,8 +1,15 @@
-// Accessor for MeroProvider's MeroJs instance + a thin RPC wrapper that
-// preserves the old calimero-client
+// Accessor for MeroProvider's client + a thin RPC wrapper that preserves the
+// old calimero-client
 // `{ result: { output }, error: { code, error: { cause: { info } } } }`
 // envelope shape, so dataSource code can keep its existing access patterns
 // without per-callsite refactors.
+//
+// This module is the ONE place the app's data layer meets the session. Every
+// admin call and every contract call in `api/`, `utils/` and the components
+// goes through `getMeroJs()`; nothing else in the app knows a node URL or a
+// token. That is what lets the same code run for a node login and for an
+// account (delegated/relay) session: mero-react hands us the right `admin`
+// and `rpc` for whichever the user signed in with, and the callers never ask.
 
 // Everything comes from mero-react, including the mero-js surface it
 // re-exports (`export * from "@calimero-network/mero-js"`).
@@ -21,32 +28,39 @@ import {
 } from "@calimero-network/mero-react";
 import type { ResponseData } from "./types";
 
-// Helper used by raw-fetch wrappers below + by useSseSubscription.
-export function getJwt(): string {
-  try {
-    const raw = localStorage.getItem("mero-tokens");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { access_token?: string };
-    return parsed?.access_token ?? "";
-  } catch {
-    return "";
-  }
-}
-
-// The ONE MeroJs instance, owned by MeroProvider and handed to us by
-// <MeroJsBridge> (see api/MeroJsBridge.tsx). We deliberately do not construct
-// our own: mero-js's refresh single-flight is per-instance, so a second instance
-// over the same `mero-tokens` bundle can double-spend a single-use refresh token
+// The ONE client, owned by MeroProvider and handed to us by <MeroJsBridge>
+// (see api/MeroJsBridge.tsx). We deliberately do not construct our own:
+// mero-js's refresh single-flight is per-instance, so a second instance over
+// the same `mero-tokens` bundle can double-spend a single-use refresh token
 // (core#3083) and get the whole token family revoked.
 /**
  * What the data sources use: an admin API and the contract RPC, whatever the
- * session. On a node it is the node's own client; on an account, mero-react's
- * account admin (reads through the relay, writes as delegated ops) and the
- * relay transport's RPC. See `useMero().admin`.
+ * session.
+ *
+ * On a node it is the node's own client. On an account it is mero-react's
+ * account admin (`useMero().admin`: reads through the relay, writes as
+ * delegated ops, node-only methods throw `NotForAccountError`) and the relay
+ * transport's RPC (reads via the query route, writes via `/intents` warrants).
  */
 export interface ChatClient {
   admin: AdminApiClient;
   rpc: { execute<T>(params: ExecuteParams): Promise<T> };
+  /**
+   * True on an account (delegated/relay) session. The few places that must
+   * differ — which application id to use, which controls have no account form
+   * — read this; the data calls themselves do not branch.
+   */
+  isDelegated: boolean;
+  /**
+   * The application id this session runs chat under.
+   *
+   * On an account it is the registry-derived id for chat's package (mero-react
+   * resolves it; an account cannot `listApplications`, and has no "installed"
+   * set to consult). `null` until the provider has it. On a node it is `null`
+   * here: the node path resolves the id the way it always has, from the URL /
+   * stored / build-time value in `constants/config.ts`.
+   */
+  applicationId: string | null;
 }
 
 let _instance: ChatClient | null = null;
@@ -66,6 +80,16 @@ export function getMeroJs(): ChatClient {
     );
   }
   return _instance;
+}
+
+/**
+ * Whether the current session is an account's, without throwing when there is
+ * no session yet. For hiding controls that have no account form (a node's
+ * local `deleteContext`, installing an application, device lists); anything
+ * that performs a call goes through `getMeroJs()`.
+ */
+export function isDelegatedSession(): boolean {
+  return _instance?.isDelegated ?? false;
 }
 
 export type LegacyRpcResult<T> =
@@ -136,14 +160,6 @@ export {
   BlobContextRequiredError,
 } from "./blobs";
 
-// Minimal replacement for calimero-client's `getAuthConfig`. Curb only ever
-// reads `cfg?.jwtToken`, so we expose just that field. Reads from the same
-// `mero:access_token` localStorage key MeroProvider writes to.
-export function getAuthConfig(): { jwtToken: string } | null {
-  const jwt = getJwt();
-  return jwt ? { jwtToken: jwt } : null;
-}
-
 // ─── nodeApi shim ────────────────────────────────────────────────────────────
 // Mimics calimero-client's `apiClient.node().X()` surface so call sites can
 // just swap their import path. Each wrapper re-shapes mero-js's throw-on-error
@@ -168,21 +184,6 @@ export type LegacyFetchContextIdentitiesResponse = {
   data: { identities: string[] };
 };
 
-// `contextInviteByOpenInvitation` returned a signed invitation payload.
-// Shape preserved from the old `nodeApi`.
-export type LegacySignedOpenInvitation = {
-  invitation: unknown;
-  inviterSignature: string;
-};
-
-export type LegacyContextInviteByOpenInvitationResponse =
-  LegacySignedOpenInvitation | null;
-
-export type LegacyJoinContextResponse = {
-  contextId: string;
-  memberPublicKey: string;
-};
-
 export const nodeApi = {
   async getContext(contextId: string): Promise<ResponseData<Context>> {
     try {
@@ -198,7 +199,9 @@ export const nodeApi = {
   ): Promise<ResponseData<LegacyFetchContextIdentitiesResponse>> {
     try {
       // Old endpoint was `/identities-owned` — preserve that semantic
-      // (returns only identities this node controls, not all members).
+      // (returns only identities this node controls, not all members). On an
+      // account the admin answers with the account's own identity in the
+      // context, which is the same question.
       const result =
         await getMeroJs().admin.getContextIdentitiesOwned(contextId);
       // Old shape was double-wrapped: `{ data: { identities } }`. Match it.
@@ -210,101 +213,12 @@ export const nodeApi = {
 
   async createNewIdentity(): Promise<ResponseData<LegacyNodeIdentity>> {
     try {
+      // Node-only: an account has no local key store to mint into, and the
+      // account admin refuses this by name (`NotForAccountError`).
       const result = await getMeroJs().admin.generateContextIdentity();
       // Server no longer returns privateKey; expose empty string for shape
       // compatibility — downstream code reads `.publicKey` for executor.
       return { data: { publicKey: result.publicKey, privateKey: "" } };
-    } catch (e) {
-      return { error: toLegacyError(e) };
-    }
-  },
-
-  async contextInviteByOpenInvitation(
-    contextId: string,
-    inviterId: string,
-    validForBlocks: number,
-  ): Promise<ResponseData<LegacyContextInviteByOpenInvitationResponse>> {
-    // No direct mero-js method — hit the same admin-api endpoint the old
-    // SDK used. Group/namespace invitations have `createGroupInvitation`,
-    // but per-context open invitations are still served by this legacy URL.
-    const baseUrl = getNodeUrl();
-    if (!baseUrl) {
-      return { error: { code: 400, message: "Node URL is not set." } };
-    }
-    const token = getJwt();
-
-    try {
-      const res = await fetch(
-        new URL(
-          "/admin-api/contexts/invite_by_open_invitation",
-          baseUrl,
-        ).toString(),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ contextId, inviterId, validForBlocks }),
-        },
-      );
-      if (!res.ok) {
-        return {
-          error: {
-            code: res.status,
-            message: `${res.status} ${res.statusText}`,
-          },
-        };
-      }
-      const body = (await res.json()) as {
-        data?: LegacyContextInviteByOpenInvitationResponse;
-      };
-      return { data: body?.data ?? null };
-    } catch (e) {
-      return { error: toLegacyError(e) };
-    }
-  },
-
-  async joinContextByOpenInvitation(
-    invitation: LegacySignedOpenInvitation,
-    newMemberPublicKey: string,
-  ): Promise<ResponseData<LegacyJoinContextResponse>> {
-    const baseUrl = getNodeUrl();
-    if (!baseUrl) {
-      return { error: { code: 400, message: "Node URL is not set." } };
-    }
-    const token = getJwt();
-
-    try {
-      const res = await fetch(
-        new URL(
-          "/admin-api/contexts/join_by_open_invitation",
-          baseUrl,
-        ).toString(),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ invitation, newMemberPublicKey }),
-        },
-      );
-      if (!res.ok) {
-        return {
-          error: {
-            code: res.status,
-            message: `${res.status} ${res.statusText}`,
-          },
-        };
-      }
-      const body = (await res.json()) as { data?: LegacyJoinContextResponse };
-      if (!body?.data) {
-        return {
-          error: { code: 500, message: "Empty response from join endpoint" },
-        };
-      }
-      return { data: body.data };
     } catch (e) {
       return { error: toLegacyError(e) };
     }

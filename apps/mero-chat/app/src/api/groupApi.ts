@@ -17,6 +17,14 @@ export interface CreateGroupRequest {
 
 export interface CreateGroupResponse {
   groupId: string;
+  /**
+   * Whether the cloud agreed to host the namespace right after founding.
+   * Only an account's founding answers this; a node's response has no such
+   * key, and the field is absent.
+   */
+  haEnabled?: boolean;
+  /** Why `haEnabled` is false, in words a person can act on. */
+  haError?: string;
 }
 
 export interface GroupInvitationFromAdmin {

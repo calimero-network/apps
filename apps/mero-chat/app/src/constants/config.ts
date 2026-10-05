@@ -11,7 +11,27 @@ const getUrlParam = (name: string): string => {
 const APP_ID_STORAGE_KEY = "calimero-application-id";
 
 /**
- * Application ID: URL param `app-id` > stored id > env VITE_APPLICATION_ID > fallback.
+ * The application id the SESSION decided, when it did.
+ *
+ * On an account (delegated/relay) session mero-react resolves chat's id from
+ * the registry by package — an account cannot list a node's installed
+ * applications and has no "installed" set to consult — and `MeroJsBridge`
+ * records it here. While set it wins over everything below: the URL param,
+ * the stored id and the build-time default all describe a NODE's install, and
+ * running an account against one of those ids would create contexts the relay
+ * cannot serve. `null` on a node login (and before the registry has answered),
+ * which leaves the node resolution exactly as it was.
+ */
+let resolvedApplicationId: string | null = null;
+
+/** Set by `MeroJsBridge` from `useMero().applicationId` when `isDelegated`. */
+export function setResolvedApplicationId(id: string | null): void {
+  resolvedApplicationId = id;
+}
+
+/**
+ * Application ID: session-resolved (account) > URL param `app-id` > stored id
+ * > env VITE_APPLICATION_ID > fallback.
  *
  * The stored id (persisted by main.tsx before the SSO bootstrap strips the
  * URL hash) must take precedence over the build-time defaults: the desktop
@@ -21,6 +41,7 @@ const APP_ID_STORAGE_KEY = "calimero-application-id";
  * (e.g. mero-meet), whose contract then rejects chat's init args.
  */
 export function getApplicationId(): string {
+  if (resolvedApplicationId) return resolvedApplicationId;
   const fromUrl = getUrlParam("app-id") || getUrlParam("application_id");
   if (fromUrl) {
     try {

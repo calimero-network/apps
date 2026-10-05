@@ -1,15 +1,11 @@
-import axios from "axios";
 import bs58 from "bs58";
-import { getNodeUrl } from "@calimero-network/mero-react";
 
-import { getAuthConfig } from "../api/meroJsClient";
+import { getMeroJs } from "../api/meroJsClient";
 import { log } from "./logger";
 import { registerAccountIdentity } from "./selfIdentity";
 
-const DEFAULT_ENDPOINT = "http://localhost:2428";
-
 /**
- * This node's ACCOUNT, cached after the first `/admin-api/identity` read.
+ * This session's ACCOUNT, cached after the first `getNodeIdentity()` read.
  *
  * Account vs device is the distinction the app kept getting wrong: an account
  * is one person across all their devices, a device key signs for one of them.
@@ -55,24 +51,21 @@ export function clearSelfAccount(): void {
  * encoding succeeds.
  */
 export async function loadSelfAccountIdentity(
-  // Kept for call-site compatibility: identity is node-wide, not per-namespace,
-  // so the value is no longer used to build the request.
+  // Kept for call-site compatibility: identity is session-wide, not
+  // per-namespace, so the value is no longer used to build the request.
   _namespaceId?: string,
 ): Promise<string | null> {
-
-  const base = getNodeUrl() || DEFAULT_ENDPOINT;
-  const cfg = getAuthConfig();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
-
   try {
-    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24 — the
-    // per-namespace route is gone. Identity is node-wide and served here, which
-    // is also what mero-js's own `getNamespaceIdentity` resolves to. Response
-    // shape is unchanged (`data.accountId`, `data.deviceId`).
-    const res = await axios.get(`${base}/admin-api/identity`, { headers });
-    const accountHex: string = res.data?.data?.accountId ?? "";
-    const deviceHex: string = res.data?.data?.deviceId ?? "";
+    // The session-aware admin, not a raw `/admin-api/identity` read. On a node
+    // it is that route (`/admin-api/namespaces/{id}/account` 404s since merod
+    // 0.11.0-rc.24 — identity is node-wide). On an account there is no route
+    // at all: the account admin answers with the account the session was
+    // enrolled for, which is exactly what the contract stamps on `sender`
+    // via `env::account_id()`. Either way: `accountId` hex, `deviceId` or
+    // null.
+    const identity = await getMeroJs().admin.getNodeIdentity();
+    const accountHex: string = identity?.accountId ?? "";
+    const deviceHex: string = identity?.deviceId ?? "";
     if (!accountHex) return null;
 
     const accountB58 = hexToBase58(accountHex);

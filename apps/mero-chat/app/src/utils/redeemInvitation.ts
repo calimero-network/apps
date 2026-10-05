@@ -10,7 +10,7 @@ import type { GroupInvitationPayload } from "./invitation";
 export interface GroupInvitationRedeemer {
   /** This app's namespace join (`GroupApiDataSource.joinGroup`). */
   joinGroup: GroupApi["joinGroup"];
-  /** The node's namespaces, as `mero.admin.listNamespaces()` answers. */
+  /** The session's namespaces, as the session admin's `listNamespaces()` answers. */
   listNamespaces: () => Promise<
     readonly { namespaceId?: string; groupId?: string }[] | null | undefined
   >;

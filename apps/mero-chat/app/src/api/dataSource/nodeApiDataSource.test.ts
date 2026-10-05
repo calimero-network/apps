@@ -13,8 +13,11 @@ vi.mock("../../constants/config", async (importOriginal) => ({
 }));
 
 vi.mock("../meroJsClient", () => ({
-  getAuthConfig: () => ({ jwtToken: "token" }),
-  getMeroJs: () => ({ admin: { createContext: mockCreateContext } }),
+  getMeroJs: () => ({
+    admin: { createContext: mockCreateContext },
+    isDelegated: false,
+    applicationId: null,
+  }),
 }));
 
 // core's CreateContextRequest, which is `deny_unknown_fields`: ANY other key is

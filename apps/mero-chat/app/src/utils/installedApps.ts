@@ -1,11 +1,6 @@
-import axios from "axios";
-import { getNodeUrl } from "@calimero-network/mero-react";
-
-import { getAuthConfig, getMeroJs } from "../api/meroJsClient";
+import { getMeroJs } from "../api/meroJsClient";
 import { getApplicationId } from "../constants/config";
 import { APP_SLUG } from "./invitation";
-
-const DEFAULT_ENDPOINT = "http://localhost:2428";
 
 /**
  * Thrown when the app we are configured to run is not installed on the node.
@@ -16,6 +11,9 @@ const DEFAULT_ENDPOINT = "http://localhost:2428";
  * chat against whatever else happened to be on the node — e.g. mero-meet,
  * whose contract then rejects chat's init args. `constants/config.ts`
  * documents the same failure for the app-id defaults.
+ *
+ * Never thrown on an account session: an account has no "installed" set, so
+ * there is nothing to be absent from (see `resolveInstalledAppId`).
  */
 export class AppNotInstalledError extends Error {
   readonly appId: string;
@@ -27,29 +25,30 @@ export class AppNotInstalledError extends Error {
   }
 }
 
-function nodeBase(): string {
-  return getNodeUrl() || DEFAULT_ENDPOINT;
-}
-
-function authHeaders(): Record<string, string> {
-  const cfg = getAuthConfig();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
-  return headers;
+/**
+ * Thrown on an account session while mero-react is still resolving chat's
+ * application id from the registry. Transient: the provider fills it in once
+ * the registry answers, so the caller shows it and lets the user retry rather
+ * than offering an install (an account cannot install anything).
+ */
+export class ApplicationIdPendingError extends Error {
+  constructor() {
+    super(
+      "Still looking up chat's application id in the registry. Try again in a moment.",
+    );
+    this.name = "ApplicationIdPendingError";
+  }
 }
 
 /** Application ids ("packages") installed on the node, in node order. */
 export async function listInstalledAppIds(): Promise<string[]> {
-  const res = await axios.get(`${nodeBase()}/admin-api/applications`, {
-    headers: authHeaders(),
-  });
-  const apps: unknown[] = res.data?.data?.apps ?? [];
+  // Node-only in substance: the account admin answers this list too, but with
+  // the relay's view, which is why `resolveInstalledAppId` never asks for an
+  // account. Through the session admin rather than a raw `/admin-api/
+  // applications` read so the node path and its token handling are mero-js's.
+  const { apps = [] } = await getMeroJs().admin.listApplications();
   return apps
-    .map((app) => {
-      if (!app || typeof app !== "object") return "";
-      const typed = app as { id?: string; applicationId?: string };
-      return typed.id ?? typed.applicationId ?? "";
-    })
+    .map((app) => (app && typeof app === "object" ? (app.id ?? "") : ""))
     .filter((id): id is string => Boolean(id));
 }
 
@@ -57,10 +56,22 @@ export async function listInstalledAppIds(): Promise<string[]> {
  * Resolve the configured application id, matching strictly on id (the
  * package). Throws `AppNotInstalledError` when it is absent — never
  * substitutes a different app.
+ *
+ * On an account session the answer is the registry-derived id mero-react
+ * resolved for chat's package (`useMero().applicationId`, carried on the
+ * client): a relay is not "a node with chat installed", its `/admin-api/
+ * applications` is not the account's to read, and the id a node derives from
+ * its own install is not the one an account's contexts are created under. No
+ * listing happens, and `AppNotInstalledError` is never thrown for an account.
  */
 export async function resolveInstalledAppId(
   preferred: string = getApplicationId(),
 ): Promise<string> {
+  const client = getMeroJs();
+  if (client.isDelegated) {
+    if (!client.applicationId) throw new ApplicationIdPendingError();
+    return client.applicationId;
+  }
   const ids = await listInstalledAppIds();
   if (!ids.includes(preferred)) throw new AppNotInstalledError(preferred);
   return preferred;
@@ -82,6 +93,10 @@ const REGISTRY_URL = "https://apps.calimero.network";
  * Returns the application id the node derived — hash(package, signer). Callers
  * must still compare it with `getApplicationId()` and report a mismatch rather
  * than assuming success: a dev bundle signed by another key derives another id.
+ *
+ * Node-only. The account admin's `installApplication` throws
+ * `NotForAccountError`; callers never reach here for an account because
+ * `resolveInstalledAppId` never reports "not installed" on one.
  */
 export async function installConfiguredApp(): Promise<string> {
   const admin = getMeroJs().admin;

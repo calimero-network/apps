@@ -21,10 +21,6 @@ export interface InviteToContextProps {
   inviter: UserId;
 }
 
-export interface JoinContextProps {
-  invitationPayload: string;
-}
-
 export interface VerifyContextProps {
   contextId: string;
 }
@@ -52,7 +48,6 @@ export interface ContextInfo {
 export interface NodeApi {
   createContext(props: CreateContextProps): ApiResponse<CreateContextResponse>;
   deleteContext(props: DeleteContextProps): ApiResponse<string>;
-  joinContext(props: JoinContextProps): ApiResponse<string>;
   verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse>;
   createIdentity(): ApiResponse<CreateIdentityResponse>;
   listContexts(): ApiResponse<ContextInfo[]>;

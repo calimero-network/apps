@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import CreateWorkspacePopup from "./CreateWorkspacePopup";
 
 const {
-  mockAxiosGet,
-  mockAxiosPost,
+  session,
+  mockAddToast,
+  mockListApplications,
   mockCreateGroup,
   mockResolveCurrentMemberIdentity,
   mockSetDefaultCapabilities,
@@ -16,8 +17,10 @@ const {
   mockGetRegistryVersions,
   mockInstallApplication,
 } = vi.hoisted(() => ({
-  mockAxiosGet: vi.fn(),
-  mockAxiosPost: vi.fn(),
+  // What `MeroJsBridge` records about the session; flipped per test.
+  session: { isDelegated: false, applicationId: null as string | null },
+  mockAddToast: vi.fn(),
+  mockListApplications: vi.fn(),
   mockCreateGroup: vi.fn(),
   mockResolveCurrentMemberIdentity: vi.fn(),
   mockSetDefaultCapabilities: vi.fn(),
@@ -30,11 +33,8 @@ const {
   mockInstallApplication: vi.fn(),
 }));
 
-vi.mock("axios", () => ({
-  default: {
-    get: mockAxiosGet,
-    post: mockAxiosPost,
-  },
+vi.mock("../../contexts/ToastContext", () => ({
+  useToast: () => ({ addToast: mockAddToast }),
 }));
 
 vi.mock("@calimero-network/mero-ui", () => ({
@@ -62,14 +62,19 @@ vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://localhost:2428",
 }));
 
+// The session admin, as `MeroJsBridge` hands it out: the "is chat installed"
+// listing and the install both go through it, never a raw node route.
 vi.mock("../../api/meroJsClient", () => ({
-  getAuthConfig: () => ({ jwtToken: "token" }),
   getMeroJs: () => ({
+    isDelegated: session.isDelegated,
+    applicationId: session.applicationId,
     admin: {
+      listApplications: mockListApplications,
       getRegistryVersions: mockGetRegistryVersions,
       installApplication: mockInstallApplication,
     },
   }),
+  isDelegatedSession: () => session.isDelegated,
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -121,8 +126,10 @@ vi.mock("./GroupInviteModal", () => ({
 
 describe("CreateWorkspacePopup", () => {
   beforeEach(() => {
-    mockAxiosGet.mockReset();
-    mockAxiosPost.mockReset();
+    session.isDelegated = false;
+    session.applicationId = null;
+    mockAddToast.mockReset();
+    mockListApplications.mockReset();
     mockCreateGroup.mockReset();
     mockResolveCurrentMemberIdentity.mockReset();
     mockSetDefaultCapabilities.mockReset();
@@ -134,13 +141,7 @@ describe("CreateWorkspacePopup", () => {
     mockGetRegistryVersions.mockReset();
     mockInstallApplication.mockReset();
 
-    mockAxiosGet.mockResolvedValue({
-      data: {
-        data: {
-          apps: [{ id: "app-1" }],
-        },
-      },
-    });
+    mockListApplications.mockResolvedValue({ apps: [{ id: "app-1" }] });
     mockCreateGroup.mockResolvedValue({
       data: {
         groupId: "group-1",
@@ -215,9 +216,7 @@ describe("CreateWorkspacePopup", () => {
   it("offers to install instead of falling back to another installed app", async () => {
     // Node has a different app installed. The old code returned appIds[0]
     // here and created the workspace against mero-meet et al.
-    mockAxiosGet.mockResolvedValue({
-      data: { data: { apps: [{ id: "some-other-app" }] } },
-    });
+    mockListApplications.mockResolvedValue({ apps: [{ id: "some-other-app" }] });
 
     render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
@@ -232,9 +231,9 @@ describe("CreateWorkspacePopup", () => {
   });
 
   it("installs the configured app and then creates the workspace", async () => {
-    mockAxiosGet
-      .mockResolvedValueOnce({ data: { data: { apps: [] } } })
-      .mockResolvedValue({ data: { data: { apps: [{ id: "app-1" }] } } });
+    mockListApplications
+      .mockResolvedValueOnce({ apps: [] })
+      .mockResolvedValue({ apps: [{ id: "app-1" }] });
     mockGetRegistryVersions.mockResolvedValue(["3.1.2", "3.1.1"]);
     mockInstallApplication.mockResolvedValue({ applicationId: "app-1" });
 
@@ -264,7 +263,7 @@ describe("CreateWorkspacePopup", () => {
   });
 
   it("reports a mismatch when the installed app id is not the configured one", async () => {
-    mockAxiosGet.mockResolvedValue({ data: { data: { apps: [] } } });
+    mockListApplications.mockResolvedValue({ apps: [] });
     mockGetRegistryVersions.mockResolvedValue(["3.1.2"]);
     mockInstallApplication.mockResolvedValue({ applicationId: "different-app" });
 
@@ -283,5 +282,65 @@ describe("CreateWorkspacePopup", () => {
       expect(screen.getByText(/expects app-1/i)).toBeInTheDocument();
     });
     expect(mockCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it("on an account, founds under the registry id without listing the node's applications", async () => {
+    // An account has no "installed" set: a relay's `/admin-api/applications`
+    // is not its to read (403) and its contexts are created under the id the
+    // registry derives for chat's package, which mero-react resolved.
+    session.isDelegated = true;
+    session.applicationId = "registry-app-id";
+    mockListApplications.mockRejectedValue(new Error("HTTP 403"));
+
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateGroup).toHaveBeenCalledWith({
+        applicationId: "registry-app-id",
+        name: "Team Space",
+      });
+    });
+    expect(mockListApplications).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^install$/i })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+    expect(mockAddToast).not.toHaveBeenCalled();
+  });
+
+  it("on an account, says so when the cloud refused to host the new workspace", async () => {
+    // The workspace exists; what is lost is inviting anyone until the account
+    // is linked. Surfaced right away, not as a failed Invite later.
+    session.isDelegated = true;
+    session.applicationId = "registry-app-id";
+    mockCreateGroup.mockResolvedValue({
+      data: {
+        groupId: "group-1",
+        haEnabled: false,
+        haError: "link this account to your cloud user in the wallet so invitees can find this namespace",
+      },
+    });
+
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/not hosted/i),
+        message: expect.stringContaining("link this account to your cloud user"),
+      }),
+    );
   });
 });
