@@ -22,10 +22,12 @@
  */
 
 import {
+  AdminApiClient,
   CloudClient,
   HTTPError,
   RelayClient,
   accountRootFromSecret,
+  createBrowserHttpClient,
   createLocalStorageNonceSource,
   login,
   routingProofHeaders,
@@ -90,11 +92,12 @@ export interface ReadResult {
 /**
  * Read context state through the session.
  *
- * Posted directly rather than through a mero-js client because there is no
- * client for this route yet: `RpcClient` speaks JSON-RPC as a node member, and
- * `AdminClient` wants a node credential. The delegated read is neither — it is
- * a plain POST carrying a session token, and wrapping thirty lines of `fetch`
- * in a class would not make it clearer.
+ * `AdminApiClient.queryContext` is the route; the session's bearer token is the
+ * only credential it is given, so the client is exactly as capable as the
+ * session — reads, and nothing else. The token is handed over as a function
+ * because that is how a mero-js transport takes one; nothing refreshes it, so
+ * an expired session is the 401 `explainReadFailure` names and not a silent
+ * re-login.
  */
 export async function readContext(
   nodeUrl: string,
@@ -103,31 +106,41 @@ export async function readContext(
   method: string,
   argsJson: unknown,
 ): Promise<ReadResult> {
-  const response = await fetch(
-    `${normaliseUrl(nodeUrl)}/admin-api/contexts/${encodeURIComponent(contextId)}/query`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ method, argsJson }),
-    },
-  );
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(explainReadFailure(response.status, text));
+  const admin = sessionAdmin(nodeUrl, session);
+  let data: unknown;
+  try {
+    data = await admin.queryContext(contextId, { method, argsJson });
+  } catch (error) {
+    throw explainedRead(error);
   }
 
-  const body: unknown = text ? JSON.parse(text) : {};
-  // The route answers `{ data: { returns } }`, but the node has spelled this
-  // both bare and wrapped before. Accept either rather than couple a demo to
-  // one envelope revision — and show `raw` regardless, so a shape this does not
+  // mero-js unwraps the route's `{ data: { returns } }` envelope, so `data` is
+  // the inner object. Show it whole as `raw`, so a shape this does not
   // anticipate is visible rather than silently read as `undefined`.
-  const envelope = body as { returns?: unknown; data?: { returns?: unknown } };
-  return { returns: envelope.data?.returns ?? envelope.returns, raw: body };
+  const envelope = (data ?? {}) as { returns?: unknown };
+  return { returns: envelope.returns, raw: data };
+}
+
+/** An admin client that speaks for `session` and holds no node credential. */
+function sessionAdmin(nodeUrl: string, session: DelegatedSession): AdminApiClient {
+  return new AdminApiClient(
+    createBrowserHttpClient({
+      baseUrl: normaliseUrl(nodeUrl),
+      getAuthToken: () => Promise.resolve(session.accessToken),
+    }),
+  );
+}
+
+/**
+ * The operator guidance for a read refusal, as an Error — or `error` itself
+ * when the node never answered (status 0: offline, CORS, a timeout), which the
+ * page explains on its own.
+ */
+function explainedRead(error: unknown): unknown {
+  if (error instanceof HTTPError && error.status > 0) {
+    return new Error(explainReadFailure(error.status, error.bodyText ?? ''), { cause: error });
+  }
+  return error;
 }
 
 /**
@@ -234,6 +247,11 @@ export interface CreateContextRequest {
   applicationId: string;
   /** The JSON the app's `init()` receives — run as the author's account. */
   initArgs: unknown;
+  /**
+   * Which service of a multi-service bundle; absent for the default. Inside
+   * the creation warrant, so a relay cannot pick a different one.
+   */
+  serviceName?: string;
   /** A display name for the context. */
   name?: string;
 }
@@ -286,7 +304,7 @@ export async function describeCreation(
 export async function createContextThroughRelay(
   nodeUrl: string,
   identity: DeviceIdentity,
-  { groupId, applicationId, initArgs, name }: CreateContextRequest,
+  { groupId, applicationId, initArgs, serviceName, name }: CreateContextRequest,
   { seal }: RelayTransport,
 ): Promise<CreatedContext> {
   const relayUrl = normaliseUrl(nodeUrl);
@@ -299,7 +317,13 @@ export async function createContextThroughRelay(
     ...(seal ? { fetch: sealedRelayFetch(relayUrl) } : {}),
   });
   try {
-    return await relay.createContext({ groupId, applicationId, initArgs, ...(name ? { name } : {}) });
+    return await relay.createContext({
+      groupId,
+      applicationId,
+      initArgs,
+      ...(serviceName ? { serviceName } : {}),
+      ...(name ? { name } : {}),
+    });
   } catch (error) {
     throw explained(error);
   }
@@ -596,11 +620,13 @@ export async function discoverAdmitter(
  * name its heads. Empty parents is the only thing it *can* sign, and the direct
  * admission path exists precisely for callers in that position.
  *
- * ## Posted with `fetch`, like the read
+ * ## Sent through `AdminApiClient.admitJoin`, with no credential
  *
- * mero-js has `AdminClient.admitJoin`, but `AdminClient` is built around a node
- * credential this caller does not have. The endpoint takes no authentication —
- * the signature is the authorization — so a plain POST is the honest shape.
+ * The endpoint takes no authentication — the signature is the authorization —
+ * so the client is built on a transport holding no token at all. `admitUrl` is
+ * the ready-made admission URL the cloud answered the routing read with; mero-js
+ * posts to the same path, so the node it belongs to is that URL with the route
+ * taken off it (see {@link admitterBaseUrl}).
  */
 export async function sendJoin(
   admitUrl: string,
@@ -625,19 +651,47 @@ export async function sendJoin(
     nonce: await nonces.next(),
   });
 
-  const response = await fetch(admitUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ invitation, signedOp }),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(explainAdmitFailure(response.status, text));
+  const admin = new AdminApiClient(
+    createBrowserHttpClient({ baseUrl: admitterBaseUrl(admitUrl, namespaceId) }),
+  );
+  let data: { published?: boolean } | undefined;
+  try {
+    data = await admin.admitJoin(namespaceId, { invitation, signedOp });
+  } catch (error) {
+    if (error instanceof HTTPError && error.status > 0) {
+      throw new Error(explainAdmitFailure(error.status, error.bodyText ?? ''), { cause: error });
+    }
+    throw error;
   }
+  return { published: data?.published === true, namespaceId };
+}
 
-  const body = text ? (JSON.parse(text) as { data?: { published?: boolean } }) : {};
-  return { published: body.data?.published === true, namespaceId };
+/**
+ * The node behind a cloud-issued admission URL.
+ *
+ * The cloud hands out `<node>/admin-api/namespaces/<ns>/admit` ready-made, and
+ * `AdminApiClient.admitJoin` appends exactly that route to a base URL — so the
+ * base is the URL with the route removed, and anything else is refused here
+ * rather than posted somewhere mero-js never meant to. The namespace in the
+ * URL has to be the one inside the signed invitation: a URL for another
+ * namespace would admit nothing and read as a permissions problem.
+ */
+export function admitterBaseUrl(admitUrl: string, namespaceId: string): string {
+  const url = normaliseUrl(admitUrl.trim());
+  const route = `/admin-api/namespaces/${namespaceId}/admit`;
+  if (!url.toLowerCase().endsWith(route)) {
+    throw new Error(
+      `The admitter URL does not end in ${route}, which is where a join for this ` +
+        'invitation is presented. Find an admitter again; if the cloud keeps answering ' +
+        'with a URL for a different namespace, the invitation is not for the namespace ' +
+        'it was issued in.',
+    );
+  }
+  const base = url.slice(0, url.length - route.length);
+  if (base === '') {
+    throw new Error('The admitter URL names no node — it is only the route.');
+  }
+  return base;
 }
 
 /**
