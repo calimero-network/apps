@@ -3,8 +3,8 @@
  * is the join between three maps that each mean something different. Pure, so
  * it is tested directly rather than through a rendered table.
  */
-import { describe, expect, it } from 'vitest';
-import { effectiveFor } from './useMemberRoles';
+import { describe, expect, it, vi } from 'vitest';
+import { effectiveFor, readDefaultCapabilities, type DefaultCapabilitiesAdmin } from './useMemberRoles';
 import { ALL_CAPABILITIES, CAP, MEMBER_CAPABILITIES } from '../utils/roles';
 
 const ADMIN = 'a'.repeat(64);
@@ -51,5 +51,49 @@ describe('effectiveFor', () => {
     expect(
       effectiveFor(MEMBER, { ...state, defaultCapabilities: null }),
     ).toBe(0);
+  });
+});
+
+describe('readDefaultCapabilities', () => {
+  function fakeAdmin(opts: { wrapper?: unknown; wrapperError?: unknown; info?: unknown; infoError?: unknown }) {
+    const getDefaultCapabilities = vi.fn(async () => {
+      if (opts.wrapperError) throw opts.wrapperError;
+      return opts.wrapper as never;
+    });
+    const getGroupInfo = vi.fn(async () => {
+      if (opts.infoError) throw opts.infoError;
+      return opts.info as never;
+    });
+    return {
+      admin: { getDefaultCapabilities, getGroupInfo } as unknown as DefaultCapabilitiesAdmin,
+      getDefaultCapabilities,
+      getGroupInfo,
+    };
+  }
+
+  it('answers from the thin wrapper when it works, without a second read', async () => {
+    const { admin, getGroupInfo } = fakeAdmin({ wrapper: MEMBER_CAPABILITIES });
+    expect(await readDefaultCapabilities(admin, 'ns')).toBe(MEMBER_CAPABILITIES);
+    expect(getGroupInfo).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the group info record when the wrapper is refused', async () => {
+    // An account reading through the relay: the wrapper 403s, the record it
+    // reads from does not. Members of the workspace must not read as 0.
+    const { admin } = fakeAdmin({
+      wrapperError: Object.assign(new Error('forbidden'), { status: 403 }),
+      info: { groupId: 'ns', defaultCapabilities: MEMBER_CAPABILITIES },
+    });
+    expect(await readDefaultCapabilities(admin, 'ns')).toBe(MEMBER_CAPABILITIES);
+  });
+
+  it('keeps 0 as a real answer', async () => {
+    const { admin } = fakeAdmin({ wrapper: 0 });
+    expect(await readDefaultCapabilities(admin, 'ns')).toBe(0);
+  });
+
+  it('is null - unknown, not 0 - when neither read answers', async () => {
+    const { admin } = fakeAdmin({ wrapperError: new Error('x'), infoError: new Error('y') });
+    expect(await readDefaultCapabilities(admin, 'ns')).toBeNull();
   });
 });

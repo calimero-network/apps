@@ -37,10 +37,10 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { PRIMARY_SERVICE } from '../config';
 import { buildInvitePayload } from '../utils/invitePayload';
 import { redeemInviteCode } from '../utils/redeemInvite';
+import { createWorkspaceContext, foundWorkspace, publishContextName } from '../utils/workspaceOps';
 import { CrmClient } from '../generated/CrmClient';
 import { useApplicationId } from './useApplicationId';
 import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
-import { MEMBER_CAPABILITIES } from '../utils/roles';
 import { buildAliasMap } from './useAliases';
 import {
   readActiveNs,
@@ -57,6 +57,20 @@ export interface PipelineEntry {
   contextId: string;
   /** Display name (context label) or a truncated id fallback. */
   name: string;
+}
+
+export interface CreateWorkspaceResult {
+  /** The new namespace, or null when creation failed (`createNamespaceError` says why). */
+  namespaceId: string | null;
+  /**
+   * Set when the workspace was created but is not hosted for invitations yet.
+   * Only an ACCOUNT session sees this: founding through the relay admits a
+   * fleet node for the namespace only for an account linked to a cloud user,
+   * and without one an invitation minted here reaches nobody. Said at
+   * creation, where the person can act on it, rather than as a failed invite
+   * later.
+   */
+  haError: string | null;
 }
 
 export interface UseWorkspaceReturn {
@@ -80,7 +94,7 @@ export interface UseWorkspaceReturn {
    *  UI until this settles, to avoid a flash into the picker. */
   resolvingCallback: boolean;
   selectNamespace: (id: string) => void;
-  createNamespace: (name: string) => Promise<string | null>;
+  createNamespace: (name: string) => Promise<CreateWorkspaceResult>;
   createNamespaceLoading: boolean;
   createNamespaceError: Error | null;
   /** Redeems an invite code; never throws for an ordinary failure. */
@@ -119,9 +133,17 @@ export interface UseWorkspaceReturn {
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
+  // `mero` is the raw client and stays what the CONTRACT is called through
+  // (`CrmClient(mero, ...)` is `mero.rpc`). Every admin call goes through
+  // `admin`, the session-aware one (apps#348): the node's own client on a node
+  // login, and on an account the account admin. On a delegated session
+  // `mero.admin` is the relay's node route under the account's token, which
+  // answered 403 to createNamespace, setGroupMetadata, setDefaultCapabilities,
+  // createContext, setContextMetadata and joinNamespace on prod.
   const {
     mero,
     admin,
+    isDelegated,
     applicationId: authApplicationId,
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
@@ -169,12 +191,12 @@ export function useWorkspace(): UseWorkspaceReturn {
   // clear a render before activeNs catches up, flashing the empty state.
   useEffect(() => {
     if (!callbackContextId) { setResolvingCallback(false); return; }
-    if (!mero) { setResolvingCallback(true); return; }
+    if (!admin) { setResolvingCallback(true); return; }
     let cancelled = false;
     setResolvingCallback(true);
     (async () => {
       try {
-        const gid = await mero.admin.getContextGroup(callbackContextId);
+        const gid = await admin.getContextGroup(callbackContextId);
         if (!cancelled && gid) {
           // Explicit external handoff - persist it like any other selection.
           setActiveNs(gid);
@@ -187,7 +209,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       }
     })();
     return () => { cancelled = true; };
-  }, [mero, callbackContextId]);
+  }, [admin, callbackContextId]);
 
   // Pick a workspace to show on load. A valid persisted/current selection wins;
   // otherwise default to the first namespace (the list is already scoped to this
@@ -234,12 +256,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [pipelineMetaNames, setPipelineMetaNames] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     const ids = contextIdsKey ? contextIdsKey.split(',') : [];
-    if (!mero || !activeNs || ids.length === 0) { setPipelineMetaNames(new Map()); return; }
+    if (!admin || !activeNs || ids.length === 0) { setPipelineMetaNames(new Map()); return; }
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
         ids.map(async (contextId) => {
-          const rec = await mero.admin
+          // An account's read of this record is refused by the relay today
+          // (403, core#4483 fixes it); the catch keeps the local label.
+          const rec = await admin
             .getContextMetadata(activeNs, contextId)
             .catch(() => null);
           const name = rec?.name?.trim();
@@ -250,7 +274,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       setPipelineMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
     })();
     return () => { cancelled = true; };
-  }, [mero, activeNs, contextIdsKey]);
+  }, [admin, activeNs, contextIdsKey]);
 
   const pipelines = useMemo<PipelineEntry[]>(
     () =>
@@ -415,65 +439,44 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);
   const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
   const createNamespace = useCallback(
-    async (name: string): Promise<string | null> => {
-      if (!mero || !applicationId) return null;
+    async (name: string): Promise<CreateWorkspaceResult> => {
+      const failed: CreateWorkspaceResult = { namespaceId: null, haError: null };
+      if (!admin || !applicationId) return failed;
       const trimmed = name.trim();
       if (!trimmed) {
         setCreateNamespaceError(new Error('Workspace name is required'));
-        return null;
+        return failed;
       }
       setCreateNamespaceLoading(true);
       setCreateNamespaceError(null);
       try {
-        // No `upgradePolicy` here: core stopped accepting it on this endpoint
-        // and mero-js 13 dropped it from CreateNamespaceRequest. Upgrades are
-        // driven per-group now (useUpgradeGroup / useGroupUpgradeStatus), not
-        // fixed at namespace creation.
-        const ns = await mero.admin.createNamespace({
+        // Create, pin the name, set the member baseline - through the session's
+        // admin (utils/workspaceOps). For an account this founds the namespace
+        // through the relay, under the app's registry package (the provider
+        // already carries it), and reports `haError` when no fleet node could
+        // be admitted for it.
+        const { namespaceId, haError } = await foundWorkspace(admin, {
           applicationId,
           name: trimmed,
         });
-        if (!ns?.namespaceId) throw new Error('createNamespace returned no namespaceId');
-        // Pin the name into the group's metadata record as well as the create
-        // call. `Namespace.name` is served FROM that record, so the two agree on
-        // a node that honours `createNamespace({name})` — and on one that does
-        // not, this is what stops the workspace from showing up as a hex id.
-        // Best-effort; the create call's name already covers the common case.
-        try {
-          await mero.admin.setGroupMetadata(ns.namespaceId, { name: trimmed });
-        } catch { /* createNamespace's own name stands */ }
-        // What every member of this workspace may do: add a pipeline and invite
-        // people (MEMBER_CAPABILITIES, defined once in utils/roles). This is the
-        // DEFAULT, so it applies to members who join later, not retroactively.
-        try {
-          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
-            defaultCapabilities: MEMBER_CAPABILITIES,
-          });
-        } catch {
-          // Keep core's built-in default. Swallowing this used to be invisible
-          // and permanent: every member invited to the workspace could open it
-          // and do nothing else, forever, with nothing anywhere saying why. The
-          // members page now DETECTS that state and offers to repair it, which
-          // is what makes this catch acceptable rather than a silent failure.
-        }
         await refetchNamespaces();
-        selectNamespace(ns.namespaceId);
-        return ns.namespaceId;
+        selectNamespace(namespaceId);
+        return { namespaceId, haError };
       } catch (err) {
         setCreateNamespaceError(err instanceof Error ? err : new Error(String(err)));
-        return null;
+        return failed;
       } finally {
         setCreateNamespaceLoading(false);
       }
     },
-    [mero, applicationId, refetchNamespaces, selectNamespace],
+    [admin, applicationId, refetchNamespaces, selectNamespace],
   );
 
   const [addPipelineLoading, setAddPipelineLoading] = useState(false);
   const [addPipelineError, setAddPipelineError] = useState<Error | null>(null);
   const addPipeline = useCallback(
     async (name: string, currency: string): Promise<string | null> => {
-      if (!mero || !applicationId || !activeNs) return null;
+      if (!mero || !admin || !applicationId || !activeNs) return null;
       const trimmedName = name.trim();
       const code = currency.trim().toUpperCase();
       if (!trimmedName) {
@@ -483,40 +486,31 @@ export function useWorkspace(): UseWorkspaceReturn {
       setAddPipelineLoading(true);
       setAddPipelineError(null);
       try {
-        const ctx = await mero.admin.createContext({
+        const contextId = await createWorkspaceContext(admin, {
           applicationId,
           groupId: activeNs,
           serviceName: PRIMARY_SERVICE.name,
-          initializationParams: [],
           name: trimmedName,
         });
-        if (!ctx?.contextId) throw new Error('createContext returned no contextId');
         // The pipeline starts in USD. Anything else is written into shared
         // state here; best-effort, because Settings can change it later and a
         // currency is not worth failing an otherwise-created pipeline over.
         if (code && code !== 'USD') {
           try {
-            await new CrmClient(mero, ctx.contextId).setCurrency({ currency: code });
+            await new CrmClient(mero, contextId).setCurrency({ currency: code });
           } catch { /* stays USD until changed in Settings */ }
         }
-        // Publish the name where every OTHER node can read it. `createContext`'s
-        // `name` above is this node's label and travels nowhere; the context
-        // metadata record is a CRDT against the managing group, so it reaches
-        // everyone the namespace does. Without this an invited teammate sees
-        // `a1b2c3d4` where the creator sees the pipeline's name.
-        //
-        // Best-effort: a nameless pipeline still works, and a metadata write is not
-        // worth failing an otherwise-created pipeline over.
-        try {
-          await mero.admin.setContextMetadata(activeNs, ctx.contextId, { name: trimmedName });
-        } catch { /* the local label above still names it here */ }
-        // Best-effort node alias so tools can resolve the pipeline by name.
-        try {
-          await mero.admin.createContextAlias({ alias: trimmedName, contextId: ctx.contextId });
-        } catch { /* convenience only */ }
+        // The replicated name (context metadata) for every other member, and
+        // on a node a local alias too - an account has no node to keep one in,
+        // so the alias is skipped there rather than refused.
+        await publishContextName(
+          admin,
+          { groupId: activeNs, contextId, name: trimmedName },
+          { isDelegated },
+        );
         await refetchContexts();
-        selectPipeline(ctx.contextId);
-        return ctx.contextId;
+        selectPipeline(contextId);
+        return contextId;
       } catch (err) {
         setAddPipelineError(err instanceof Error ? err : new Error(String(err)));
         return null;
@@ -524,7 +518,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         setAddPipelineLoading(false);
       }
     },
-    [mero, applicationId, activeNs, refetchContexts, selectPipeline],
+    [mero, admin, isDelegated, applicationId, activeNs, refetchContexts, selectPipeline],
   );
 
   /**
@@ -555,7 +549,9 @@ export function useWorkspace(): UseWorkspaceReturn {
   }, [activeNs, namespaces, createNamespaceInvitation]);
 
   const join = useCallback(async (code: string): Promise<RedeemOutcome> => {
-    const outcome = await redeemInviteCode(code, mero?.admin ?? null);
+    // `admin`, not `mero.admin` (apps#348): on an account `joinNamespace` is
+    // the account admin's claim through the relay; the node route is a 403.
+    const outcome = await redeemInviteCode(code, admin);
     if (outcome.status === 'failed') return outcome;
     const nsId = outcome.namespaceId;
     // Joined (or already in it); this workspace's pipelines have not replicated yet.
@@ -572,7 +568,7 @@ export function useWorkspace(): UseWorkspaceReturn {
       selectNamespace(nsId);
     }
     return outcome;
-  }, [mero, refetchNamespaces, refetchContexts, selectNamespace]);
+  }, [admin, refetchNamespaces, refetchContexts, selectNamespace]);
 
   // `pipelinesLoading` going false is the signal the pipeline list answered — for the
   // namespace that was active when it did, which is why the id is recorded

@@ -12,6 +12,15 @@ import { resolveApplicationId } from '../utils/appId';
  * this app is installed or removed on that node, which is not something a
  * workspace list needs to poll for, and re-asking on every mount made the list
  * flicker between empty and populated on each navigation.
+ *
+ * On a delegated (account) session there is no node to ask. The listing is
+ * `GET /admin-api/applications`, node-wide, which the relay refuses to an
+ * account's token (403) — and an account has no install of its own to find.
+ * Since mero-react 9.11 the provider resolves the account's application id
+ * from the registry, by this app's package, so `useMero().applicationId` is
+ * the answer there, and the shared-origin worry that rules it out on a node
+ * does not apply: it was resolved for THIS app's package, not inherited from
+ * whichever app last logged in.
  */
 const cache = new Map<string, string>();
 
@@ -25,13 +34,15 @@ export interface ResolvedAppId {
 }
 
 export function useApplicationId(): ResolvedAppId {
-  const { mero, nodeUrl } = useMero();
+  // `admin`, not `mero.admin`: the session-aware client (apps#348). On a node
+  // it is the node's own; on an account the list is never asked for (below).
+  const { admin, nodeUrl, isDelegated, applicationId } = useMero();
   const key = nodeUrl ?? '';
   const [appId, setAppId] = useState<string>(() => cache.get(key) ?? '');
   const [resolving, setResolving] = useState(() => !cache.has(key));
 
   useEffect(() => {
-    if (!mero) return;
+    if (isDelegated || !admin) return;
     const cached = cache.get(key);
     if (cached !== undefined) {
       setAppId(cached);
@@ -40,14 +51,22 @@ export function useApplicationId(): ResolvedAppId {
     }
     let cancelled = false;
     setResolving(true);
-    void resolveApplicationId(mero.admin).then((id) => {
+    void resolveApplicationId(admin).then((id) => {
       if (cancelled) return;
       cache.set(key, id);
       setAppId(id);
       setResolving(false);
     });
     return () => { cancelled = true; };
-  }, [mero, key]);
+  }, [admin, key, isDelegated]);
+
+  if (isDelegated) {
+    // The registry's answer for this package. Until the provider has it the id
+    // is "" and `notInstalled` stays false: an account is never "not
+    // installed", it just has not been told yet.
+    const id = applicationId ?? '';
+    return { appId: id, resolving: false, notInstalled: false };
+  }
 
   return { appId, resolving, notInstalled: !resolving && !appId };
 }
