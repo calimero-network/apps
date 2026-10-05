@@ -189,25 +189,6 @@
         }
       ]
     },
-    "ExportedSeed": {
-      "kind": "record",
-      "doc": "Export payload for cross-device durability. Defined locally (not re-used from\n`battleships-types`) because the wasm-abi emitter resolves types by their\nlocal path and would otherwise not find it.",
-      "fields": [
-        {
-          "name": "board_bytes",
-          "type": {
-            "kind": "bytes"
-          }
-        },
-        {
-          "name": "salt",
-          "type": {
-            "kind": "bytes",
-            "size": 16
-          }
-        }
-      ]
-    },
     "GameConfig": {
       "kind": "record",
       "doc": "Everything fixed when the match is created.",
@@ -308,20 +289,109 @@
         }
       ]
     },
-    "OwnBoardView": {
+    "MatchStateView": {
       "kind": "record",
+      "doc": "The match as every reader derives it, in one read: what a client needs to\nknow whether to commit, answer, reveal, or show a result.",
       "fields": [
         {
-          "name": "size",
+          "name": "standing",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`playing`, `awaiting_reveal`, `won` or `void`."
+        },
+        {
+          "name": "committed",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Players, by key, whose commitment is on record."
+        },
+        {
+          "name": "pending_shot",
+          "type": {
+            "$ref": "PendingShotView"
+          },
+          "nullable": true
+        },
+        {
+          "name": "ended_by",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Why the answers ended it: `sunk`, `equivocation` or\n`impossible_misses`. `None` while playing."
+        },
+        {
+          "name": "loser",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The player the answers say lost, by key."
+        },
+        {
+          "name": "revealed",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Players whose revealed board matched their commitment."
+        },
+        {
+          "name": "audit_failed",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "Players whose revealed board failed the audit — a lie about a shot, or\nan illegal fleet. Revealing is how a cheater is caught."
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "The audited winner, by key. Set only when `standing` is `won`."
+        }
+      ]
+    },
+    "PendingShotView": {
+      "kind": "record",
+      "doc": "The shot waiting for its defender's answer.",
+      "fields": [
+        {
+          "name": "shot_id",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "What `acknowledge_shot` takes: the turn index of this shot, so an\nanswer meant for an earlier shot is refused instead of misfiled."
+        },
+        {
+          "name": "x",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "board",
+          "name": "y",
           "type": {
-            "kind": "bytes"
+            "kind": "u32"
           }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The player who has to answer, by key."
         }
       ]
     },
@@ -391,6 +461,7 @@
     },
     "ShotsView": {
       "kind": "record",
+      "doc": "A grid of the caller's shots (`get_shots`) or of the shots fired at the\ncaller (`get_incoming_shots`): one [`Cell`] byte per square, row-major.",
       "fields": [
         {
           "name": "size",
@@ -410,11 +481,24 @@
   "methods": [
     {
       "name": "acknowledge_shot",
+      "doc": "The defender's answer to the pending shot — `hit` or not — as their\nclient read it off the board on their device. A signed statement in\nshared state, write-once: it is what the reveal is replayed against,\nso a false answer here is the lie the audit catches.\n\n`shot_id` is the pending shot's turn index (see `get_match_state`), so\nan answer composed for one shot cannot land on the next.",
       "params": [
         {
           "name": "match_id",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "shot_id",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
           }
         }
       ],
@@ -424,47 +508,26 @@
       "intent": "mutating"
     },
     {
-      "name": "acknowledge_shot_handler",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
-    },
-    {
-      "name": "export_board_seed",
+      "name": "commit_board",
+      "doc": "File the caller's board commitment: `SHA256(borsh(board) || salt)` as\n64 hex characters, computed on the device that keeps the board and the\nsalt. Whether the board behind it is a legal fleet is settled at the\nreveal, by every reader — a commitment to nonsense is a loss, not a\nrefusal.",
       "params": [
         {
           "name": "match_id",
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "commitment",
+          "type": {
+            "kind": "string"
+          }
         }
       ],
       "returns": {
-        "$ref": "ExportedSeed"
+        "kind": "unit"
       },
-      "intent": "read_only"
+      "intent": "mutating"
     },
     {
       "name": "get_active_match_id",
@@ -492,7 +555,8 @@
       "intent": "read_only"
     },
     {
-      "name": "get_own_board",
+      "name": "get_incoming_shots",
+      "doc": "The opponent's shots at the caller, as a grid — what the client lays\nover the board on the device to draw \"your waters\": the answers the\ncaller gave, and the shot still waiting for one.",
       "params": [
         {
           "name": "match_id",
@@ -502,12 +566,29 @@
         }
       ],
       "returns": {
-        "$ref": "OwnBoardView"
+        "$ref": "ShotsView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_match_state",
+      "doc": "Everything a client needs in one read, so a session on a relay is\nnot four round trips per event.",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "MatchStateView"
       },
       "intent": "read_only"
     },
     {
       "name": "get_shots",
+      "doc": "The caller's shots at the opponent, as a grid.",
       "params": [
         {
           "name": "match_id",
@@ -529,34 +610,6 @@
         "kind": "string"
       },
       "intent": "read_only"
-    },
-    {
-      "name": "import_board_seed",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "board_bytes",
-          "type": {
-            "kind": "bytes"
-          }
-        },
-        {
-          "name": "salt",
-          "type": {
-            "kind": "bytes",
-            "size": 16
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
     },
     {
       "name": "init",
@@ -598,30 +651,6 @@
       }
     },
     {
-      "name": "place_ships",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "ships",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "propose_shot",
       "params": [
         {
@@ -650,12 +679,25 @@
     },
     {
       "name": "reveal_board",
-      "doc": "Publish the caller's board for every reader to audit. Only once the\nmatch is over: a board opened mid-game is a board handed to the\nopponent.",
+      "doc": "Publish the caller's `(board, salt)` for every reader to audit, and\nreport how the audit went. Only once the match is over: a board opened\nmid-game is a board handed to the opponent.\n\n`board_bytes` is `borsh(Vec<u8>)` of the 100 pristine cells (water or\nship), exactly what was hashed into the commitment. A pair that does\nnot hash to the commitment is refused, so the player can retry with\nthe right board; a pair that does is on record for good, and if the\nanswers the player gave do not match it, every reader marks them a\ncheater and the game goes to the opponent.",
       "params": [
         {
           "name": "match_id",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "board_bytes",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
           }
         }
       ],
@@ -663,23 +705,6 @@
         "kind": "unit"
       },
       "intent": "mutating"
-    },
-    {
-      "name": "reveal_board_handler",
-      "doc": "Runs on the other player's node when the answers end the match, so\nboth boards are opened without either player having to ask.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "handler": true
     }
   ],
   "events": [

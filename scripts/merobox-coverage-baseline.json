@@ -2,9 +2,7 @@
   "battleships": [
     "get_current_user",
     "get_history",
-    "get_players",
-    "import_board_seed",
-    "reveal_board_handler"
+    "get_players"
   ],
   "mero-blocks": [
     "heartbeat",

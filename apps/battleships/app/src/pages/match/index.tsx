@@ -7,7 +7,18 @@ import {
 } from '@calimero-network/mero-react';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
 import type { ContextRole } from '../../features/kv/api';
+import { CalimeroBytes } from '../../generated/game/GameClient';
+import type { MatchStateView } from '../../generated/game/GameClient';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../../generated/lobby/LobbyClient';
+import {
+  cellsFromShips,
+  computeCommitment,
+  encodeBoardBytes,
+  overlayOwnBoard,
+  randomSalt,
+  resolveShot,
+} from '../../lib/board';
+import { loadBoard, saltBytes, saltHex, saveBoard } from '../../lib/boardStore';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
@@ -113,13 +124,20 @@ export default function MatchPage() {
   const [shotsBoard, setShotsBoard] = useState<number[]>([]);
   const [placed, setPlaced] = useState<boolean>(false);
   /**
-   * The opponent has not deployed yet.
-   *
-   * ⚠️ LEARNED FROM A REFUSAL, not queried. The contract keeps `placed_p1` /
-   * `placed_p2` but exposes no getter for them, and the opponent's board is
-   * `#[app::private]` by design — so this is the only thing the client can
-   * actually know. Set when a shot is refused for that reason, cleared as soon
-   * as one lands. Without it you can fire into the same refusal all day.
+   * The match as the contract derives it from the rows — standing, who has
+   * committed, the pending shot, who has revealed — in one read per refresh.
+   */
+  const [matchState, setMatchState] = useState<MatchStateView | null>(null);
+  /**
+   * This device holds no board for a match this player committed to: it was
+   * placed on another device, or the store was cleared. Shots cannot be
+   * answered from here and the board cannot be revealed from here.
+   */
+  const [boardMissing, setBoardMissing] = useState<boolean>(false);
+  /**
+   * The opponent has not deployed yet: `get_match_state` lists who has
+   * committed. Also set when a shot is refused for that reason, in case the
+   * read and the refusal disagree for a moment.
    */
   const [opponentNotReady, setOpponentNotReady] = useState<boolean>(false);
   const [currentTurn, setCurrentTurn] = useState<string | null>(null);
@@ -157,10 +175,25 @@ export default function MatchPage() {
   // `MatchEnded` / `Winner` event can be dropped when its state-delta arrives
   // via periodic sync instead of gossipsub broadcast (see calimero core #2139),
   // so we fall back to reading the lobby's authoritative `status` / `winner`.
+  /**
+   * The key the match names this player by, and the key the board on this
+   * device is filed under. The same value on a node and on an account: it is
+   * what `init` was given as `player1` / `player2`, and what the contract
+   * reports in `committed`, `pending_shot.target` and `winner`.
+   */
+  const boardOwner = lobby.executorPublicKey ?? contextIdentity ?? currentUser;
+
   const currentMatch = myMatches.find((m) => m.match_id === effectiveMatchId);
-  const matchFinished = currentMatch?.status === 'Finished';
-  const matchWinner = currentMatch?.winner ?? null;
+  // The game context's own standing is read directly too: it ends on the
+  // answers before the lobby hears of it, and the reveal that decides it is
+  // ours to make while the lobby still says Active.
+  const standing = matchState?.standing ?? 'playing';
+  const matchFinished = currentMatch?.status === 'Finished' || standing !== 'playing';
+  const matchWinner = currentMatch?.winner ?? matchState?.winner ?? null;
   const isWinner = matchFinished && matchWinner !== null && matchWinner === currentUser;
+  const awaitingReveal = standing === 'awaiting_reveal';
+  const ownRevealed = Boolean(boardOwner && matchState?.revealed.includes(boardOwner));
+  const auditFailed = matchState?.audit_failed ?? [];
 
   // ---------------------------------------------------------------------------
   // Utilities
@@ -234,22 +267,113 @@ export default function MatchPage() {
   // Board & turn loading
   // ---------------------------------------------------------------------------
 
+  // The last shot this device answered, and whether a reveal is in flight:
+  // a refresh can run several times while one write is still on its way, and
+  // a second answer to the same shot (or a second reveal) is at best a
+  // refused call and at worst, with a different value, an equivocation.
+  const answeredShotRef = useRef<number | null>(null);
+  const revealingRef = useRef<boolean>(false);
+
+  /**
+   * Answer the pending shot from the board on this device, if it is ours to
+   * answer. Automatic: the defender never sees a prompt, the contract records
+   * the answer as their signed statement, and the reveal at the end is
+   * replayed against it.
+   */
+  const answerPendingShot = useCallback(
+    async (state: MatchStateView, cells: number[]): Promise<boolean> => {
+      if (!matchApi || !effectiveMatchId || !boardOwner) return false;
+      const shot = state.pending_shot;
+      if (!shot || shot.target !== boardOwner || state.standing !== 'playing') return false;
+      if (answeredShotRef.current === shot.shot_id) return false;
+      answeredShotRef.current = shot.shot_id;
+      try {
+        await matchApi.acknowledgeShot({
+          match_id: effectiveMatchId,
+          shot_id: shot.shot_id,
+          hit: resolveShot(cells, shot.x, shot.y, size),
+        });
+        return true;
+      } catch (e) {
+        // Let a later refresh try again — unless the row is in, in which
+        // case the next read shows no pending shot and nothing retries.
+        answeredShotRef.current = null;
+        console.warn('[match] acknowledge_shot failed', e);
+        return false;
+      }
+    },
+    [matchApi, effectiveMatchId, boardOwner, size],
+  );
+
+  /**
+   * Open this device's board once the answers have ended the match and the
+   * contract has not seen ours yet. Every reader audits it; the win is not a
+   * win until the winner's board has passed.
+   */
+  const revealIfDue = useCallback(
+    async (state: MatchStateView, cells: number[], salt: Uint8Array): Promise<boolean> => {
+      if (!matchApi || !effectiveMatchId || !boardOwner) return false;
+      if (state.standing === 'playing' || state.revealed.includes(boardOwner)) return false;
+      if (revealingRef.current) return false;
+      revealingRef.current = true;
+      try {
+        await matchApi.revealBoard({
+          match_id: effectiveMatchId,
+          board_bytes: new CalimeroBytes(encodeBoardBytes(cells)),
+          salt: new CalimeroBytes(salt),
+        });
+        return true;
+      } catch (e) {
+        console.warn('[match] reveal_board failed', e);
+        return false;
+      } finally {
+        revealingRef.current = false;
+      }
+    },
+    [matchApi, effectiveMatchId, boardOwner],
+  );
+
   const loadBoards = useCallback(async () => {
     if (!matchApi || !effectiveMatchId) return;
     try {
-      const own = await matchApi.getOwnBoard({ match_id: effectiveMatchId });
+      const state = await matchApi.getMatchState({ match_id: effectiveMatchId });
       const shots = await matchApi.getShots({ match_id: effectiveMatchId });
-      setSize(own.size);
-      const ownArr = own.board.toArray();
-      const shotsArr = shots.shots.toArray();
-      setOwnBoard(ownArr);
-      setShotsBoard(shotsArr);
-      const anyShip = ownArr.some((v) => v === 1 || v === 2 || v === 3);
-      setPlaced(anyShip);
+      const incoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
+      setSize(shots.size);
+      setMatchState(state);
+      setShotsBoard(shots.shots.toArray());
+
+      const committed = boardOwner ? state.committed.includes(boardOwner) : false;
+      setPlaced(committed);
+      setOpponentNotReady(committed && state.committed.length < 2);
+
+      const stored = boardOwner ? loadBoard(boardOwner, effectiveMatchId) : null;
+      setBoardMissing(committed && !stored);
+      if (!stored) {
+        setOwnBoard([]);
+        return;
+      }
+      setOwnBoard(overlayOwnBoard(stored.cells, incoming.shots.toArray()));
+
+      // Our move, if it is ours: answer the shot, then open the board if that
+      // answer (or an earlier one) ended the match. Each writes a row that
+      // changes what the reads above said, so read again after each.
+      let latest = state;
+      if (await answerPendingShot(latest, stored.cells)) {
+        latest = await matchApi.getMatchState({ match_id: effectiveMatchId });
+      }
+      if (await revealIfDue(latest, stored.cells, saltBytes(stored))) {
+        latest = await matchApi.getMatchState({ match_id: effectiveMatchId });
+      }
+      if (latest !== state) {
+        const nextIncoming = await matchApi.getIncomingShots({ match_id: effectiveMatchId });
+        setMatchState(latest);
+        setOwnBoard(overlayOwnBoard(stored.cells, nextIncoming.shots.toArray()));
+      }
     } catch {
       // board not yet available
     }
-  }, [matchApi, effectiveMatchId]);
+  }, [matchApi, effectiveMatchId, boardOwner, answerPendingShot, revealIfDue]);
 
   const loadTurnInfo = useCallback(async () => {
     if (!matchApi || !effectiveMatchId) return;
@@ -349,11 +473,16 @@ export default function MatchPage() {
   // lobby's authoritative match list every 5s while a game is active lets the
   // UI transition to the finish state within the poll interval even when the
   // event is dropped.
+  //
+  // The boards are re-read on the same poll: a shot to answer or a reveal to
+  // make is this client's job now, and a dropped `ShotProposed` or
+  // `RevealRequested` would otherwise leave the opponent waiting on a device
+  // that never looked.
   useEffect(() => {
     if (view !== 'game' || !lobbyApi) return;
-    const interval = setInterval(() => { refreshMatchList(); }, 5000);
+    const interval = setInterval(() => { refreshMatchList(); loadBoards(); }, 5000);
     return () => clearInterval(interval);
-  }, [view, lobbyApi, refreshMatchList]);
+  }, [view, lobbyApi, refreshMatchList, loadBoards]);
 
   const handleGameEvent = useCallback(
     (event: AllGameEvents) => {
@@ -758,8 +887,22 @@ export default function MatchPage() {
       if (groups.length === 0) { show({ title: 'Place ships on the grid', variant: 'error' }); loadingRef.current = false; return; }
       const fleetError = validateFleetPayload(groups);
       if (fleetError) { show({ title: fleetError, variant: 'error' }); loadingRef.current = false; return; }
+      if (!boardOwner) { show({ title: 'No player identity yet — try again in a moment', variant: 'warning' }); loadingRef.current = false; return; }
+
+      // The board never leaves this device. What the contract gets is the
+      // commitment; the cells and the salt are saved here FIRST, so a request
+      // that fails after the node recorded it cannot leave a commitment with
+      // nothing to answer shots from or reveal at the end.
+      const cells = cellsFromShips(groups, size);
+      const salt = randomSalt();
+      const commitment = await computeCommitment(cells, salt);
+      if (!saveBoard(boardOwner, effectiveMatchId, { cells, salt: saltHex(salt), commitment })) {
+        show({ title: 'This browser refuses to store your board, so a fleet placed here could not answer shots', variant: 'error' });
+        loadingRef.current = false;
+        return;
+      }
       await ensureMatchContextReady(matchApi);
-      await matchApi.placeShips({ match_id: effectiveMatchId, ships: groups });
+      await matchApi.commitBoard({ match_id: effectiveMatchId, commitment });
       show({ title: 'Fleet deployed', variant: 'success' });
       await loadBoards();
       await loadTurnInfo();
@@ -769,7 +912,7 @@ export default function MatchPage() {
     } finally {
       loadingRef.current = false;
     }
-  }, [matchApi, matchApiReady, effectiveMatchId, grid, size, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
+  }, [matchApi, matchApiReady, effectiveMatchId, boardOwner, grid, size, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
 
   // ---------------------------------------------------------------------------
   // Shooting logic
@@ -895,6 +1038,10 @@ export default function MatchPage() {
     setMatchContextId(null);
     setMatchApi(null);
     setPlaced(false);
+    setMatchState(null);
+    setBoardMissing(false);
+    setOpponentNotReady(false);
+    answeredShotRef.current = null;
     setOwnBoard([]);
     setShotsBoard([]);
     setCurrentTurn(null);
@@ -1025,6 +1172,11 @@ export default function MatchPage() {
                 <span className="mono-sm">
                   {placed ? 'Fleet deployed' : 'Deploy your fleet to begin'}
                 </span>
+                {boardMissing && (
+                  <span className="mono-sm" style={{ color: 'var(--select-cyan)' }} data-testid="board-missing">
+                    Your board for this match is not on this device — shots cannot be answered from here.
+                  </span>
+                )}
                 {matchContextId && (
                   <div className="info-pair">
                     <span className="info-label">CTX</span>
@@ -1121,7 +1273,9 @@ export default function MatchPage() {
                   <div className="naval-card-title">
                     Enemy Waters
                     {matchFinished ? (
-                      <span className="badge badge-live">{isWinner ? 'Victory' : 'Defeat'}</span>
+                      <span className="badge badge-live">
+                        {awaitingReveal ? 'Auditing' : isWinner ? 'Victory' : 'Defeat'}
+                      </span>
                     ) : (
                       isMyTurn && <span className="badge badge-live">Your Turn</span>
                     )}
@@ -1147,8 +1301,33 @@ export default function MatchPage() {
                       }}
                     >
                       <div className="mono" style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
-                        {isWinner ? '🏆 You won this match.' : 'Match over.'}
+                        {awaitingReveal
+                          ? 'Match over on the answers — auditing the boards.'
+                          : isWinner
+                            ? '🏆 You won this match.'
+                            : 'Match over.'}
                       </div>
+                      {awaitingReveal && (
+                        <div className="mono-sm" style={{ opacity: 0.75 }}>
+                          {ownRevealed
+                            ? 'Your board is revealed. Waiting for your opponent to reveal theirs.'
+                            : boardMissing
+                              ? 'Your board is not on this device, so it cannot be revealed from here.'
+                              : 'Revealing your board…'}
+                        </div>
+                      )}
+                      {auditFailed.length > 0 && (
+                        <div className="mono-sm" style={{ opacity: 0.75, wordBreak: 'break-all' }}>
+                          {auditFailed.includes(currentUser ?? '')
+                            ? 'Your answers did not match your revealed board. The game goes to your opponent.'
+                            : 'Your opponent’s answers did not match their revealed board. The game is yours.'}
+                        </div>
+                      )}
+                      {standing === 'void' && (
+                        <div className="mono-sm" style={{ opacity: 0.75 }}>
+                          Both boards failed the audit. Nobody wins this one.
+                        </div>
+                      )}
                       {matchWinner && (
                         <div className="mono-sm" style={{ opacity: 0.75, wordBreak: 'break-all' }}>
                           Winner: {matchWinner}

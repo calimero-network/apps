@@ -205,6 +205,7 @@ describe('isLobbyEvent / isMatchEvent', () => {
       commitment: 'a'.repeat(64),
     },
     { type: 'BoardRevealed', id: 'x', player: 'pk' },
+    { type: 'RevealRequested', id: 'x' },
     { type: 'AuditPassed', id: 'x', player: 'pk' },
     {
       type: 'AuditFailed',
@@ -248,6 +249,16 @@ describe('CRDT-migration event parsers', () => {
       player: 'pk-1',
       commitment: 'a'.repeat(64),
     });
+  });
+
+  it('parses RevealRequested from an execution event record', () => {
+    expect(
+      parseSubscriptionEvent({
+        kind: 'RevealRequested',
+        data: Array.from(new TextEncoder().encode(JSON.stringify({ id: 'm-1' }))),
+      }),
+    ).toEqual({ type: 'RevealRequested', id: 'm-1' });
+    expect(parseSubscriptionEvent({ event_type: 'RevealRequested' })).toBeNull();
   });
 
   it('parses AuditPassed and AuditFailed', () => {
@@ -309,14 +320,18 @@ describe('CRDT-migration event parsers', () => {
       }),
     ).toEqual({ board: 'none', turn: 'none' });
 
-    // BoardRevealed runs the audit; also doesn't change view-layer data.
+    // The match ended on the answers: the board refresh is what makes this
+    // device reveal, and a reveal from the other side changes the standing.
+    expect(
+      getGameEventEffects({ type: 'RevealRequested', id: 'm-1' }),
+    ).toEqual({ board: 'immediate', turn: 'immediate' });
     expect(
       getGameEventEffects({
         type: 'BoardRevealed',
         id: 'm-1',
         player: 'pk-1',
       }),
-    ).toEqual({ board: 'none', turn: 'none' });
+    ).toEqual({ board: 'immediate', turn: 'immediate' });
 
     expect(
       getGameEventEffects({

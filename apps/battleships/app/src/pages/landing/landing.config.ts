@@ -22,21 +22,21 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
-  trust: ["Boards never leave your node", "Commit-reveal placement", "No accounts"],
+  trust: ["Boards never leave your device", "Commit-reveal placement", "Node or account"],
   explainer: [
-    "Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives in private, node-local storage, so your opponent’s node never holds a copy of it at any point.",
+    "Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.",
     "Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby service handles matchmaking and a separate game service runs each match.",
   ],
   features: [
     {
       icon: EyeOff,
       title: "A board your opponent cannot read",
-      body: "Ships live in `#[app::private]` storage that never replicates. There is no copy on their node to inspect.",
+      body: "Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy on any node to inspect.",
     },
     {
       icon: LockCheck,
       title: "Commit-reveal placement",
-      body: "You commit to a fleet before play and reveal it after. Neither player can change their board mid-game.",
+      body: "You commit to a fleet before play and reveal it after. Every answer you gave is replayed against it, so a lie costs the game.",
     },
     {
       icon: Target,
@@ -51,7 +51,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: ExternalLink,
       title: "Invite by link",
-      body: "Recursive namespace invitations. No sign-up, no account, no email address.",
+      body: "Recursive namespace invitations. Play from a node you run, or from a Calimero account through its relay.",
     },
   ],
   animation: Animation,
@@ -65,7 +65,7 @@ export const CONFIG: LandingConfig = {
       concepts: [
         { term: "Namespace", def: "A lobby. You create one, invite the people you want to play against, and every match you play together is recorded in it." },
         { term: "Context", def: "One match. It is created when a game starts and holds only that game — the shots fired, whose turn it is, and the result." },
-        { term: "Private storage", def: "Where your fleet lives. Declared `#[app::private]`, which means it is never replicated: your opponent’s node has no copy of your board to inspect, at any point in the game." },
+        { term: "Board on the device", def: "Where your fleet lives: in this browser’s storage, keyed by you and the match. The contract records only its hash, so no node — yours, your opponent’s, or a relay — has a copy to inspect at any point in the game." },
         { term: "Commit-reveal", def: "You commit to a board layout before the first shot and reveal it at the end. The commitment is what stops either side quietly moving a ship after seeing where the shots land." },
       ],
     },
@@ -73,17 +73,17 @@ export const CONFIG: LandingConfig = {
       id: "start",
       heading: "Getting started",
       steps: [
-        { title: "Connect a node", body: "Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup." },
+        { title: "Connect", body: "Press Connect to node — the Calimero desktop app bundles one, or enter your own node’s URL — or sign in with a Calimero account to play through its relay." },
         { title: "Create or join a lobby", body: "A new lobby is a namespace you own. Joining someone else’s means opening their invite link." },
-        { title: "Place your fleet", body: "Drag ships onto your grid. This is written to private storage on your own node and committed before play begins." },
-        { title: "Take turns", body: "Fire at a square; the result comes back as a hit or a miss. The match ends when one fleet is gone, and the lobby records who won." },
+        { title: "Place your fleet", body: "Drag ships onto your grid. The board is saved on this device and only its commitment is sent before play begins." },
+        { title: "Take turns", body: "Fire at a square; your opponent’s app answers hit or miss from the board on their device. When one fleet is gone, both boards are revealed and audited, and the lobby records who won." },
       ],
     },
     {
       id: "sharing",
       heading: "Playing with someone else",
       paragraphs: [
-        "Invitations are links, scoped to the lobby you created. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining.",
+        "Invitations are links, scoped to the lobby you created. There is no email address and no sign-up: opening the link and connecting — a node, or an account — is the whole of joining.",
         "An invitation carries the namespace and the permissions it grants. Because it is recursive, a player you invite to the lobby can be added to the matches inside it without a second invitation for each game.",
       ],
     },
@@ -93,7 +93,7 @@ export const CONFIG: LandingConfig = {
       bullets: [
         "The lobby stores a map of matches, a per-player win/loss record, and a history of finished matches. All of it replicates to lobby members.",
         "Each match stores its own shots and turn order in its own context, and nothing else.",
-        "Your fleet placement is private, node-local, and never replicated. It is the one thing in the app the other player’s node cannot hold.",
+        "Your fleet placement lives in this browser’s storage and nowhere else until the match ends. The contract holds its hash, then the reveal. Clearing site data mid-match loses the board — and with it the ability to answer shots or reveal.",
       ],
     },
     {
@@ -111,13 +111,14 @@ export const CONFIG: LandingConfig = {
         { term: "The opponent’s shots are not arriving", def: "Both nodes must be reachable to each other. Check the connection indicator; on two nodes on one machine, confirm they were started with peer discovery enabled." },
         { term: "The invite link does nothing", def: "An invitation is tied to the lobby that minted it and expires. Ask for a fresh one rather than reusing an old link." },
         { term: "You cannot see the other player’s board", def: "That is the design, not a fault. It is revealed at the end of the match." },
+        { term: "Your board is not on this device", def: "You placed the fleet in another browser, or this one cleared its storage. Shots can only be answered, and the board only revealed, from where it was placed." },
       ],
     },
   ],
   previewSteps: [
-    { title: "Two grids, one private", body: "Your fleet on the left, their water on the right. Yours is drawn from node-local storage that never replicates." },
+    { title: "Two grids, one private", body: "Your fleet on the left, their water on the right. Yours is drawn from this device’s storage; no node holds it." },
     { title: "A shot is taken", body: "Firing writes to the match context. Both nodes converge on the same grid without a referee deciding who shot first." },
-    { title: "Hit or miss comes back", body: "The result is derived from the committed board, so it cannot be fudged after the fact." },
+    { title: "Hit or miss comes back", body: "Their app answers from the board on their device. The answer is on record, and the reveal at the end is replayed against it." },
     { title: "The lobby records it", body: "When a fleet is gone, the match reports the result back to the lobby as a cross-context call." },
   ],
   loginPopup: LoginPopup,
