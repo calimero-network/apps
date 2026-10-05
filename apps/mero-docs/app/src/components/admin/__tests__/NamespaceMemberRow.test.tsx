@@ -38,7 +38,8 @@ const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({
-    mero: { admin: { setMemberCapabilities: setMemberCapabilitiesMock } },
+    mero: {},
+    admin: { setMemberCapabilities: setMemberCapabilitiesMock },
   }),
   useUpdateMemberRole: () => ({
     updateMemberRole: updateMemberRoleMock,

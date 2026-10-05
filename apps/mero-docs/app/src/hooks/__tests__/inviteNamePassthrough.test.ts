@@ -29,13 +29,13 @@ const createNamespaceInvitation = vi.fn();
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
-    mero: {
-      admin: {
-        joinNamespace,
-        joinGroup,
-        createGroupInvitation,
-        createNamespaceInvitation,
-      },
+    // The hooks write through the session-aware `admin`, never `mero.admin`.
+    mero: { admin: {} },
+    admin: {
+      joinNamespace,
+      joinGroup,
+      createGroupInvitation,
+      createNamespaceInvitation,
     },
   }),
 }));

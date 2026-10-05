@@ -9,7 +9,7 @@ const listGroupMembers = vi.fn();
 const removeGroupMembers = vi.fn();
 
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({ mero: { admin: { listGroupMembers, removeGroupMembers } } }),
+  useMero: () => ({ mero: {}, admin: { listGroupMembers, removeGroupMembers } }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({

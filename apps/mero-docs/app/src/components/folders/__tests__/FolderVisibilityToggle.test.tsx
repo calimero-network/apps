@@ -22,14 +22,14 @@ const workspace: { folders: { id: string; parent_id: string | null; visibility?:
 vi.mock('@calimero-network/mero-react', () => ({
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
   useMero: () => ({
-    mero: {
-      admin: {
-        listGroupMembers,
-        addGroupMembers,
-        updateMemberRole,
-        setMemberCapabilities,
-        getMemberCapabilities,
-      },
+    mero: {},
+    // The session-aware admin (`useMero().admin`) is what the code writes through.
+    admin: {
+      listGroupMembers,
+      addGroupMembers,
+      updateMemberRole,
+      setMemberCapabilities,
+      getMemberCapabilities,
     },
   }),
 }));

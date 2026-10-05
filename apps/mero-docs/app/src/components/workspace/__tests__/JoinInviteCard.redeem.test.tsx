@@ -16,7 +16,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
-    mero: { admin: h.admin },
+    mero: { admin: {} },
+    admin: h.admin,
+    isDelegated: false,
     isAuthenticated: true,
     isLoading: false,
   }),

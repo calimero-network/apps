@@ -5,7 +5,7 @@
 // Visibility is owned by Calimero core, not the
 // app-layer registry. Open subgroups inherit membership from the
 // parent namespace via core's parent-walk; Restricted subgroups
-// require explicit invites. We call mero.admin.setSubgroupVisibility
+// require explicit invites. We call admin.setSubgroupVisibility
 // (via the useSetSubgroupVisibility hook) rather than the old
 // registry.setVisibility - the registry no longer carries this field.
 
@@ -46,7 +46,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
     registryClient,
     namespaceMemberNames,
   } = useDriveWorkspace();
-  const { mero } = useMero();
+  const { admin } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const confirm = useConfirm();
@@ -60,13 +60,13 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   // A role set in this folder or its Open sub-folders left a direct row there,
   // which outlasts the switch; the grant's join bit shows the row is direct.
   const keptNote = async (): Promise<string> => {
-    if (!mero || !registryClient) return '';
+    if (!admin || !registryClient) return '';
     const kept = new Set<string>();
     for (const id of [folderId, ...openConnected(folders, folderId).open]) {
       for (const { member } of await registryClient.listFolderRoles({
         folder_id: FolderId(id),
       })) {
-        const { capabilities } = await mero.admin.getMemberCapabilities(
+        const { capabilities } = await admin.getMemberCapabilities(
           id,
           member,
         );
@@ -107,9 +107,9 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       });
       const parent = folders.find((f) => f.id === folderId)?.parent_id;
       const failed =
-        next === 'Open' && parent && mero && registryClient
+        next === 'Open' && parent && admin && registryClient
           ? await inheritReadOnlyDown(
-              { admin: mero.admin, registry: registryClient },
+              { admin: admin, registry: registryClient },
               folders,
               folderId,
               parent,

@@ -51,7 +51,7 @@ export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
 /** Default capability bitmask granted to members who join a workspace
  *  (namespace) by invite - the "Editor" preset: join open folders +
  *  create folders + create document contexts. Set via
- *  `mero.admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
+ *  `admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
  *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
  *  and re-used as the Editor grant in `WORKSPACE_ROLE_GRANTS`. Equals 37
  *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).

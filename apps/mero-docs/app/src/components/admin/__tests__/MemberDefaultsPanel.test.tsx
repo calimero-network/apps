@@ -43,7 +43,8 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
   }),
   useMero: () => ({
-    mero: { admin: { setMemberCapabilities: setMemberCapabilitiesMock } },
+    mero: {},
+    admin: { setMemberCapabilities: setMemberCapabilitiesMock },
   }),
 }));
 vi.mock('@/components/ui/confirm-dialog', () => ({

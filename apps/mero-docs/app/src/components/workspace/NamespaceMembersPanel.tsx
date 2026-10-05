@@ -37,7 +37,7 @@ export function NamespaceMembersPanel() {
     registryAdmin,
     folders,
   } = useDriveWorkspace();
-  const { mero } = useMero();
+  const { admin } = useMero();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
   const memberIds = useMemo(
@@ -84,12 +84,12 @@ export function NamespaceMembersPanel() {
   const onRemove = async (identity: string, label: string) => {
     setRemoveError(null);
     try {
-      if (!mero || !rootGroupId) throw new Error('Workspace not ready');
+      if (!admin || !rootGroupId) throw new Error('Workspace not ready');
       // The admin client throws on a refusal, where the mero-react hook would not.
-      await mero.admin.removeGroupMembers(rootGroupId, { members: [identity] });
+      await admin.removeGroupMembers(rootGroupId, { members: [identity] });
       await membership.refetch();
       if (identity === selfIdentity) return;
-      const failed = await removeFromFolders(mero.admin, folders, identity);
+      const failed = await removeFromFolders(admin, folders, identity);
       if (failed.length > 0) {
         setRemoveError(
           `Removed ${label} from the workspace, but not from ${folderNames(folders, failed)}. Ask the owner of each to remove them.`,

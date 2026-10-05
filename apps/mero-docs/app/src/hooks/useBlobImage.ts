@@ -59,20 +59,20 @@ export function useBlobImage(
   ref: string,
   contextId: string | null,
 ): { image: BlobImage; retry: () => void } {
-  const { mero } = useMero();
+  const { admin } = useMero();
   const blobId = parseBlobRef(ref);
   const [image, setImage] = useState<BlobImage>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!blobId) return;
-    if (!mero || !contextId) {
+    if (!admin || !contextId) {
       setImage({ status: 'loading' });
       return;
     }
     setImage({ status: 'loading' });
     const entry = acquire(`${contextId}/${blobId}`, async () => {
-      const bytes = new Uint8Array(await mero.admin.getBlob(blobId, { contextId }));
+      const bytes = new Uint8Array(await admin.getBlob(blobId, { contextId }));
       const type = sniffImageType(bytes);
       if (!type) throw new NotAnImage();
       return URL.createObjectURL(new Blob([bytes], { type }));
@@ -86,7 +86,7 @@ export function useBlobImage(
       live = false;
       release(entry);
     };
-  }, [mero, blobId, contextId, attempt]);
+  }, [admin, blobId, contextId, attempt]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { image: blobId ? image : { status: 'broken' }, retry };

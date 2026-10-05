@@ -38,7 +38,11 @@ export function JoinInviteCard({
   secondaryAction,
   onJoiningChange,
 }: Props) {
-  const { mero, isAuthenticated, isLoading } = useMero();
+  // `admin`, not `mero.admin`: the session-aware client (apps#348). On an
+  // account the raw client's `listNamespaces` is the relay's route under the
+  // account's token, which lists only what the token may - the account admin
+  // is built for exactly that caller.
+  const { admin, isAuthenticated, isLoading } = useMero();
   // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
   // namespaces scoped by application id, and the provider's id belongs to
   // whichever app last logged in on this origin - so on a shared dev origin
@@ -82,8 +86,8 @@ export function JoinInviteCard({
         joinNamespace: joinNs,
         joinFolder: joinGroup,
         listNamespaces: async () => {
-          if (!mero) throw new Error('Mero client not ready');
-          return mero.admin.listNamespaces();
+          if (!admin) throw new Error('Mero client not ready');
+          return admin.listNamespaces();
         },
       });
       if (outcome.status === 'failed') {

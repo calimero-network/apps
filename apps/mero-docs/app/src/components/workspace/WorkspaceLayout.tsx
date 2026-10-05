@@ -83,7 +83,7 @@ export function WorkspaceLayout() {
     syncStatus,
     refetch,
   } = useDriveWorkspace();
-  const { mero, nodeUrl, logout } = useMero();
+  const { admin, nodeUrl, logout } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
@@ -93,21 +93,21 @@ export function WorkspaceLayout() {
   // user staring at a stuck "syncing" state re-fires the sync instead of
   // re-joining. Best-effort: the SSE stream + refetch surface the outcome.
   const onRetrySync = useCallback(() => {
-    // `mero` is null until the provider has a session. The button can only be
+    // `admin` is null until the provider has a session. The button can only be
     // pressed from a rendered workspace, so this is defensive - but an
     // unguarded call here would throw inside an onClick and take the layout
     // down with it rather than doing nothing.
-    if (!mero) return;
+    if (!admin) return;
     const ids = [namespaceId, registryContextId].filter(
       (id): id is string => !!id,
     );
     for (const id of ids) {
-      mero.admin.syncContext(id).catch((err: unknown) => {
+      admin.syncContext(id).catch((err: unknown) => {
         console.warn('retry syncContext failed', id, err);
       });
     }
     void refetch();
-  }, [mero, namespaceId, registryContextId, refetch]);
+  }, [admin, namespaceId, registryContextId, refetch]);
   // Per-folder permission probe. caps=null while fetching; caps=0
   // means "not a member" (or genuinely no caps). See RestrictedFolderCard
   // branch below for how we distinguish from "still loading".

@@ -27,15 +27,15 @@ vi.mock('@calimero-network/mero-react', () => ({
   // so they're mocked on `mero.admin` rather than their own `use*` export.
   useMero: () => ({
     nodeUrl: 'http://node',
-    mero: {
-      admin: {
-        setGroupMetadata,
-        addGroupMembers,
-        listGroupMembers,
-        updateMemberRole,
-        setMemberCapabilities,
-        getMemberCapabilities: async () => ({ capabilities: 0 }),
-      },
+    mero: {},
+    // The session-aware admin (`useMero().admin`) is what the code writes through.
+    admin: {
+      setGroupMetadata,
+      addGroupMembers,
+      listGroupMembers,
+      updateMemberRole,
+      setMemberCapabilities,
+      getMemberCapabilities: async () => ({ capabilities: 0 }),
     },
   }),
 }));

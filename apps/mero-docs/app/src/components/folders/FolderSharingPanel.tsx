@@ -68,7 +68,7 @@ export function FolderSharingPanel({ folderId }: Props) {
     registryClient,
     rootGroupId,
   } = useDriveWorkspace();
-  const { mero } = useMero();
+  const { admin } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, refetch } =
     useFolderMembership(folderId);
@@ -151,16 +151,16 @@ export function FolderSharingPanel({ folderId }: Props) {
   const reapplyReadOnly = perms.canManagePermissions && !!parentId && isOpenFolder;
   const reappliedFor = useRef<string | null>(null); // once per folder per mount
   useEffect(() => {
-    if (!reapplyReadOnly || !parentId || !mero || !registryClient) return;
+    if (!reapplyReadOnly || !parentId || !admin || !registryClient) return;
     if (reappliedFor.current === folderId) return;
     reappliedFor.current = folderId;
-    const writer = { admin: mero.admin, registry: registryClient };
+    const writer = { admin: admin, registry: registryClient };
     // An admin who only inherits the folder is refused at the first core write,
     // before the registry row or caps are touched.
     inheritReadOnly(writer, parentId, folderId).catch((e: unknown) =>
       console.warn('[FolderSharingPanel] Read only not re-applied', e),
     );
-  }, [reapplyReadOnly, parentId, folderId, mero, registryClient]);
+  }, [reapplyReadOnly, parentId, folderId, admin, registryClient]);
 
   // Who an Open folder has removed: core bans them from it until an admin adds them back.
   const removedParent = folder?.parent_id ?? rootGroupId;
@@ -168,25 +168,25 @@ export function FolderSharingPanel({ folderId }: Props) {
   const [removed, setRemoved] = useState<string[]>([]);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const refreshRemoved = useCallback(async () => {
-    if (!showRemoved || !mero || !removedParent) return;
+    if (!showRemoved || !admin || !removedParent) return;
     try {
-      const next = await removedFrom(mero.admin, removedParent, folderId);
+      const next = await removedFrom(admin, removedParent, folderId);
       setRemoved((prev) => (prev.join() === next.join() ? prev : next));
     } catch (e: unknown) {
       console.warn('[FolderSharingPanel] removed members not read', e);
     }
-  }, [showRemoved, mero, removedParent, folderId]);
+  }, [showRemoved, admin, removedParent, folderId]);
   const memberKey = members.map((m) => m.identity).join();
   useEffect(() => {
     void refreshRemoved();
   }, [refreshRemoved, memberKey]);
 
   const onRestore = async (id: string) => {
-    if (!mero || !registryClient || !removedParent) return;
+    if (!admin || !registryClient || !removedParent) return;
     setRestoringId(id);
     try {
       await restoreTo(
-        { admin: mero.admin, registry: registryClient },
+        { admin: admin, registry: registryClient },
         folders,
         removedParent,
         folderId,
@@ -229,12 +229,12 @@ export function FolderSharingPanel({ folderId }: Props) {
     setRemovingId(id);
     setRemoveError(null);
     try {
-      if (!mero) throw new Error('Workspace not ready');
+      if (!admin) throw new Error('Workspace not ready');
       // The admin client throws on a refusal, where the mero-react hook would not.
-      await mero.admin.removeGroupMembers(folderId, { members: [id] });
+      await admin.removeGroupMembers(folderId, { members: [id] });
       await refetch();
       if (id !== selfIdentity) {
-        const failed = await clearOpenSubtree(mero.admin, folders, folderId, id);
+        const failed = await clearOpenSubtree(admin, folders, folderId, id);
         if (failed.length > 0) {
           setRemoveError({ identity: id, message: `still in ${folderNames(folders, failed)}` });
         }

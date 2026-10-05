@@ -30,13 +30,13 @@ const listGroupMembers = vi.fn(byFolder);
 
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
-    mero: {
-      admin: {
-        updateMemberRole,
-        addGroupMembers,
-        listGroupMembers,
-        setMemberCapabilities: setCapabilities,
-      },
+    mero: {},
+    // The session-aware admin (`useMero().admin`) is what the code writes through.
+    admin: {
+      updateMemberRole,
+      addGroupMembers,
+      listGroupMembers,
+      setMemberCapabilities: setCapabilities,
     },
   }),
   useGroupCapabilities: () => ({

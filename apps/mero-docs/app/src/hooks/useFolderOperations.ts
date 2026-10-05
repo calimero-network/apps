@@ -9,7 +9,7 @@
 // members and add them to each new folder.
 //
 // Mutations go through mero-react hooks, except rename and member adds: those
-// hooks resolve a failed call to null, so they call `mero.admin`, which throws.
+// hooks resolve a failed call to null, so they call `admin`, which throws.
 
 import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';
@@ -74,12 +74,12 @@ export function useFolderOperations(
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
-  const { mero, nodeUrl } = useMero();
+  const { admin, nodeUrl } = useMero();
   const inFlightRef = useRef<Promise<string[]> | null>(null);
 
   const createInternal = useCallback(
     async (input: CreateFolderInput): Promise<string[]> => {
-      if (!registryClient || !rootGroupId || !mero) {
+      if (!registryClient || !rootGroupId || !admin) {
         throw new Error('workspace not bootstrapped');
       }
       // Empty applicationId makes admin-api reject the context
@@ -100,7 +100,7 @@ export function useFolderOperations(
       // A leaked docs context with no registry entry is the artifact
       // nothing else can recover, so rolling back the context on later
       // failures is the most valuable of the three.
-      const writer = { admin: mero.admin, registry: registryClient };
+      const writer = { admin: admin, registry: registryClient };
       const openChild =
         input.parentGroupId !== rootGroupId && input.visibility === 'Open';
       let createdGroupId: string | null = null;
@@ -152,7 +152,7 @@ export function useFolderOperations(
 
         // Now the name op encrypts on the namespace key chain for
         // Open subgroups; on the subgroup key for Restricted.
-        await mero.admin.setGroupMetadata(newId, { name: input.alias });
+        await admin.setGroupMetadata(newId, { name: input.alias });
 
         const ctx = await createContext({
           applicationId,
@@ -225,7 +225,7 @@ export function useFolderOperations(
         let failedMembers: string[] = [];
         if (input.members && input.members.length > 0) {
           try {
-            await mero.admin.addGroupMembers(createdGroupId, {
+            await admin.addGroupMembers(createdGroupId, {
               members: input.members.map((identity) => ({
                 identity,
                 role: 'Member',
@@ -261,7 +261,7 @@ export function useFolderOperations(
       rootGroupId,
       applicationId,
       refetch,
-      mero,
+      admin,
       nodeUrl,
       createGroupInNamespace,
       setSubgroupVisibility,
@@ -287,8 +287,8 @@ export function useFolderOperations(
 
   const rename = useCallback(
     async (folderId: string, alias: string) => {
-      if (!mero) throw new Error('workspace not connected');
-      await mero.admin.setGroupMetadata(folderId, { name: alias });
+      if (!admin) throw new Error('workspace not connected');
+      await admin.setGroupMetadata(folderId, { name: alias });
       // The group rename is what the user asked for; the registry copy (see
       // create) is best-effort and only names the folder on no-access cards.
       await registryClient
@@ -298,7 +298,7 @@ export function useFolderOperations(
         );
       await refetch();
     },
-    [mero, registryClient, refetch],
+    [admin, registryClient, refetch],
   );
 
   const remove = useCallback(

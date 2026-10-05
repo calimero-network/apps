@@ -38,7 +38,7 @@ function resumeTypingAfter(editor: DriveEditor, imageId: string): void {
 }
 
 export function useAddImages(editor: DriveEditor | null, contextId: string | null): AddImages {
-  const { mero } = useMero();
+  const { admin } = useMero();
   return useCallback(
     async (files, near) => {
       if (!editor) return;
@@ -54,8 +54,8 @@ export function useAddImages(editor: DriveEditor | null, contextId: string | nul
         }
         const id = toast.loading(`Adding ${file.name}…`);
         try {
-          if (!mero || !contextId) throw new Error('not connected to the folder yet');
-          const { blobId } = await mero.admin.uploadBlob({ data: file, contextId });
+          if (!admin || !contextId) throw new Error('not connected to the folder yet');
+          const { blobId } = await admin.uploadBlob({ data: file, contextId });
           const url = blobRef(blobId);
           if (!parseBlobRef(url)) throw new Error(`unusable blob id ${blobId}`);
           anchor = place(editor, anchor, { name: file.name, url });
@@ -69,6 +69,6 @@ export function useAddImages(editor: DriveEditor | null, contextId: string | nul
       }
       if (placed) resumeTypingAfter(editor, anchor);
     },
-    [editor, mero, contextId],
+    [editor, admin, contextId],
   );
 }
