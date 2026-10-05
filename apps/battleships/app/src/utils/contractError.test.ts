@@ -31,6 +31,30 @@ describe('parseContractError', () => {
     });
   });
 
+  it('reads the text core rc.81 sends behind the prefix', () => {
+    const NODE1_TEXT =
+      'the method call returned an error: {"data":"both players must place ships first","kind":"Invalid"}';
+    expect(parseContractError(new Error(NODE1_TEXT))).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+    expect(parseContractError(new Error(NODE1_TEXT))).toEqual(
+      parseContractError(new Error(NODE1_BYTES)),
+    );
+  });
+
+  it('reads the payload off the `data` of the RpcError mero-js throws, even when the message carries a coordinate list', () => {
+    const err = Object.assign(new Error('FunctionCallError'), {
+      name: 'RpcError',
+      type: 'FunctionCallError',
+      data: 'the method call returned an error: {"data":"shot at [3, 4] is off the board","kind":"Invalid"}',
+    });
+    expect(parseContractError(err)).toEqual({
+      data: 'shot at [3, 4] is off the board',
+      kind: 'Invalid',
+    });
+  });
+
   it('reads a plain JSON body', () => {
     expect(parseContractError(new Error('{"data":"not your turn","kind":"Forbidden"}'))).toEqual({
       data: 'not your turn',

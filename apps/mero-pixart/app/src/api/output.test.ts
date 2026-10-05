@@ -22,6 +22,32 @@ describe("decodeContractError", () => {
     expect(decodeContractError(REAL_PAYLOAD).startsWith('"')).toBe(false);
   });
 
+  // From core rc.81 the node renders the same message as text, not bytes.
+  const REAL_TEXT =
+    "the method call returned an error: \"that member hasn't opened this document yet, so their account is unknown — ask them to open it once, then set the role\"";
+
+  it("decodes the text rc.81 sends for the same abort", () => {
+    expect(decodeContractError(REAL_TEXT)).toBe(
+      "that member hasn't opened this document yet, so their account is unknown — ask them to open it once, then set the role",
+    );
+  });
+
+  it("reads the same message whether the node sent text or bytes", () => {
+    expect(decodeContractError(REAL_TEXT)).toBe(decodeContractError(REAL_PAYLOAD));
+  });
+
+  it("shows a plain message behind the prefix without the prefix", () => {
+    expect(decodeContractError('the method call returned an error: method "x" not found')).toBe(
+      'method "x" not found',
+    );
+  });
+
+  it("does not mistake a number list inside an rc.81 text message for bytes", () => {
+    expect(decodeContractError('the method call returned an error: "layer [3, 4] is locked"')).toBe(
+      "layer [3, 4] is locked",
+    );
+  });
+
   it("passes through a message with no byte array", () => {
     expect(decodeContractError("plain failure")).toBe("plain failure");
   });

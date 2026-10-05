@@ -68,6 +68,21 @@ describe("decodeContractError", () => {
       .toBe("that key is frozen");
   });
 
+  it("decodes the text an app::bail! arrives as from core rc.81", () => {
+    expect(decodeContractError('the method call returned an error: "that key is frozen"'))
+      .toBe("that key is frozen");
+  });
+
+  it("reads the same message whether the node sent text or bytes", () => {
+    const encoded = bytes("that key is frozen").join(", ");
+    expect(decodeContractError(`the method call returned an error: [${encoded}]`))
+      .toBe(decodeContractError('the method call returned an error: "that key is frozen"'));
+  });
+
+  it("shows a plain message behind the prefix without the prefix", () => {
+    expect(decodeContractError("the method call returned an error: unauthorized")).toBe("unauthorized");
+  });
+
   it("leaves a plain message alone", () => {
     expect(decodeContractError("unauthorized")).toBe("unauthorized");
   });

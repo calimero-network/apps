@@ -9,10 +9,16 @@
  *     { type: "FunctionCallError",
  *       data: "the method call returned an error: [34, 111, 110, ...]" }
  *
- * The bytes are the contract's own `app::bail!` message, JSON-encoded. This
- * reads `data`, decodes the bytes, and rewrites the few messages that name a
- * node condition rather than a mistake by the user.
+ * The bytes are the contract's own `app::bail!` message, JSON-encoded. From
+ * core rc.81 the same message arrives as text instead:
+ *
+ *     data: "the method call returned an error: \"only a vault Admin can do that\""
+ *
+ * This reads `data`, decodes the bytes when there are any, and rewrites the
+ * few messages that name a node condition rather than a mistake by the user.
  */
+
+const CORE_PREFIX = 'the method call returned an error: ';
 
 /** Bytes → text, or null when the list is not UTF-8 bytes. */
 function decodeBytes(list: string): string | null {
@@ -51,6 +57,18 @@ function unwrapBody(body: string): string {
   return body;
 }
 
+/**
+ * The message behind the node's prefix: decoded from a byte list when an
+ * older node sent one, else the text rc.81 sends. Null without the prefix.
+ */
+function methodError(data: string): string | null {
+  const at = data.indexOf(CORE_PREFIX);
+  if (at === -1) return null;
+  const rest = data.slice(at + CORE_PREFIX.length).trim();
+  if (!rest) return null;
+  return unwrapBody(decodeBytes(rest) ?? rest);
+}
+
 /** The raw reason the node gave, before any rewording. */
 export function rawReason(e: unknown): string {
   if (e == null) return '';
@@ -58,6 +76,8 @@ export function rawReason(e: unknown): string {
   const o = e as { data?: unknown; type?: unknown; message?: unknown };
   const data = o.data;
   if (typeof data === 'string' && data) {
+    const direct = methodError(data);
+    if (direct) return direct;
     const bytes = /\[[\d,\s]+\]/.exec(data);
     const decoded = bytes ? decodeBytes(bytes[0]) : null;
     return decoded ? unwrapBody(decoded) : data;

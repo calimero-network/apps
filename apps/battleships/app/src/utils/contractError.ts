@@ -156,7 +156,12 @@ function search(value: unknown, depth: number): ContractError | null {
     return text ? search(text, depth + 1) : null;
   }
 
-  if (value instanceof Error) return search(value.message, depth + 1);
+  if (value instanceof Error) {
+    const hit = search(value.message, depth + 1);
+    if (hit) return hit;
+    // mero-js throws `RpcError extends Error` with the type as `message` and
+    // the node's payload in `data`, so an Error is also searched as an object.
+  }
 
   if (typeof value === 'object') {
     const direct = asContractError(value);
