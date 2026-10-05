@@ -1,5 +1,20 @@
-import { getAccessToken, getNodeUrl, nodeEndpoint } from "../lib/mero";
+import { HTTPError, type AdminApiClient } from "@calimero-network/mero-js";
+import { getAccessToken, getMeroClient } from "../lib/mero";
 import { requireHexId } from "./ids";
+
+// ── Admin API, through mero-js ───────────────────────────────────────────────
+//
+// Every function here used to be a `fetch` to `{nodeUrl}/admin-api/…` with the
+// bearer token read out of localStorage. They now call the SDK's
+// `AdminApiClient` (`getMeroClient().admin`) — the same routes and bodies on
+// the wire, so the Playwright suite's `page.route()` mocks keep matching, but
+// one implementation of URL joining, auth and token refresh, and no raw node
+// HTTP in the app.
+//
+// What is kept from the hand-rolled version is the part the SDK does not do:
+// the 401 → "sign out" hook that `App.tsx` installs, the readable error text
+// (the node's own words, with Rust debug noise stripped), and the tolerant
+// readers for responses whose shape has moved between node versions.
 
 let _onUnauthorized: (() => void) | null = null;
 
@@ -42,47 +57,40 @@ function parseAdminError(status: number, body: string): string {
   return msg ? `${label}: ${msg}` : `${label} (${status})`;
 }
 
-async function adminFetch(path: string, opts?: RequestInit): Promise<unknown> {
-  const baseUrl = getNodeUrl();
-  const token = getAccessToken();
-  if (!baseUrl) throw new Error("Node URL not set — connect to a node first");
-  if (!token) throw new Error("Not authenticated — no access token");
+/** The signed-in admin client, or a thrown explanation of what is missing. */
+function admin(): AdminApiClient {
+  const client = getMeroClient();
+  if (!client) throw new Error("Node URL not set — connect to a node first");
+  // Token presence, not validity: an expired-but-refreshable token is the SDK's
+  // to refresh on the 401, not ours to refuse up front.
+  if (!getAccessToken()) throw new Error("Not authenticated — no access token");
+  return client.admin;
+}
 
-  // Naive `${baseUrl}${path}` concatenation produced `//admin-api/...` whenever
-  // the stored node URL ended in a slash. `nodeEndpoint` normalises the base and
-  // preserves a path prefix.
-  const res = await fetch(nodeEndpoint(baseUrl, path.replace(/^\//, "")), {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(opts?.headers ?? {}),
-    },
-  });
-
-  if (res.status === 401) {
-    notifyUnauthorized();
-    throw new Error("Unauthorized");
+/**
+ * Run one admin call, turning the SDK's `HTTPError` into the message this app
+ * has always shown and firing the sign-out hook on a 401.
+ */
+async function adminCall<T>(fn: (api: AdminApiClient) => Promise<T>): Promise<T> {
+  try {
+    return await fn(admin());
+  } catch (err) {
+    if (err instanceof HTTPError) {
+      if (err.status === 401) {
+        notifyUnauthorized();
+        throw new Error("Unauthorized");
+      }
+      throw new Error(parseAdminError(err.status, err.bodyText ?? ""));
+    }
+    throw err;
   }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(parseAdminError(res.status, text));
-  }
-
-  const contentType = res.headers.get("content-type") ?? "";
-  if (res.status === 204 || !contentType.includes("application/json")) {
-    return undefined;
-  }
-  return res.json();
 }
 
 // ─── Contexts ────────────────────────────────────────────────────────────────
 
 export async function listContexts(): Promise<ContextRecord[]> {
-  const body = await adminFetch("/admin-api/contexts") as {
-    data?: { contexts?: ContextRecord[] };
-  };
-  return body?.data?.contexts ?? [];
+  const body = await adminCall((api) => api.getContexts());
+  return (body?.contexts ?? []).map((c) => ({ id: c.id, applicationId: c.applicationId }));
 }
 
 export async function createContext(
@@ -93,32 +101,22 @@ export async function createContext(
   // `init` parameter set looks like, so ruling the id out first keeps those two
   // apart.
   const appId = requireHexId("applicationId", applicationId);
-  const body = await adminFetch("/admin-api/contexts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      applicationId: appId,
-      groupId,
-      initializationParams: [],
-    }),
-  }) as { data?: { contextId?: string } };
-  const contextId = body?.data?.contextId;
+  const body = await adminCall((api) =>
+    api.createContext({ applicationId: appId, groupId, initializationParams: [] }),
+  );
+  const contextId = body?.contextId;
   if (!contextId) throw new Error(`createContext: no contextId in response: ${JSON.stringify(body)}`);
   return { contextId };
 }
 
 export async function getContextIdentities(contextId: string): Promise<string[]> {
-  const body = await adminFetch(`/admin-api/contexts/${contextId}/identities-owned`) as {
-    data?: { identities?: string[] };
-  };
-  return body?.data?.identities ?? [];
+  const body = await adminCall((api) => api.getContextIdentitiesOwned(contextId));
+  return body?.identities ?? [];
 }
 
 export async function getAllContextIdentities(contextId: string): Promise<string[]> {
-  const body = await adminFetch(`/admin-api/contexts/${contextId}/identities`) as {
-    data?: { identities?: string[] };
-  };
-  return body?.data?.identities ?? [];
+  const body = await adminCall((api) => api.getContextIdentities(contextId));
+  return body?.identities ?? [];
 }
 
 // `createContextInvitation` (POST /admin-api/contexts/{id}/invitations) and
@@ -134,19 +132,11 @@ export async function getAllContextIdentities(contextId: string): Promise<string
 // Join a context directly by ID (after already being a namespace member).
 // Node B calls this after joinNamespace() to become a context member.
 export async function joinContextById(contextId: string): Promise<void> {
-  await adminFetch(`/admin-api/contexts/${contextId}/join`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
+  await adminCall((api) => api.joinContext(contextId));
 }
 
 export async function deleteContext(contextId: string): Promise<void> {
-  await adminFetch(`/admin-api/contexts/${contextId}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
+  await adminCall((api) => api.deleteContext(contextId));
 }
 
 // ─── Groups ───────────────────────────────────────────────────────────────────
@@ -159,11 +149,23 @@ export interface GroupRecord {
 }
 
 export async function listGroups(namespaceId: string): Promise<GroupRecord[]> {
-  const body = await adminFetch(`/admin-api/namespaces/${namespaceId}/groups`) as {
-    data?: GroupRecord[] | { groups?: GroupRecord[] };
-  };
-  if (Array.isArray(body?.data)) return body.data as GroupRecord[];
-  return (body?.data as { groups?: GroupRecord[] })?.groups ?? [];
+  // The SDK types this as `SubgroupEntry[]`; older nodes wrapped it in
+  // `{ groups }` and spelled the name `alias`, so read it tolerantly.
+  const body = await adminCall((api) => api.listNamespaceGroups(namespaceId)) as unknown;
+  const arr = Array.isArray(body)
+    ? body
+    : ((body as { groups?: unknown[] } | null)?.groups ?? []);
+  return arr.flatMap((raw) => {
+    const g = (raw ?? {}) as Record<string, unknown>;
+    if (typeof g.groupId !== "string") return [];
+    const alias = g.alias ?? g.name;
+    return [{
+      groupId: g.groupId,
+      ...(typeof alias === "string" ? { alias } : {}),
+      ...(typeof g.memberCount === "number" ? { memberCount: g.memberCount } : {}),
+      ...(typeof g.contextCount === "number" ? { contextCount: g.contextCount } : {}),
+    }];
+  });
 }
 
 // The body is `groupName` and/or `visibility` — `CreateGroupInNamespaceBody`,
@@ -175,22 +177,19 @@ export async function createGroup(
   namespaceId: string,
   groupName?: string,
 ): Promise<{ groupId: string }> {
-  const body = await adminFetch(`/admin-api/namespaces/${namespaceId}/groups`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(groupName ? { groupName, visibility: "open" } : { visibility: "open" }),
-  }) as { data?: { groupId?: string } };
-  const groupId = body?.data?.groupId;
+  const body = await adminCall((api) =>
+    api.createGroupInNamespace(
+      namespaceId,
+      groupName ? { groupName, visibility: "open" } : { visibility: "open" },
+    ),
+  );
+  const groupId = body?.groupId;
   if (!groupId) throw new Error(`createGroup: no groupId in response: ${JSON.stringify(body)}`);
   return { groupId };
 }
 
 export async function deleteGroup(groupId: string): Promise<void> {
-  await adminFetch(`/admin-api/groups/${groupId}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
+  await adminCall((api) => api.deleteGroup(groupId));
 }
 
 // ─── Applications ─────────────────────────────────────────────────────────────
@@ -211,8 +210,7 @@ export interface ApplicationRecord {
  * I" and failing to answer must not take the page down with it.
  */
 export async function listApplications(): Promise<ApplicationRecord[]> {
-  const body = await adminFetch("/admin-api/applications") as unknown;
-  const data = (body as { data?: unknown })?.data ?? body;
+  const data = await adminCall((api) => api.listApplications()) as unknown;
   const obj = (data ?? {}) as Record<string, unknown>;
   const arr = Array.isArray(data)
     ? data
@@ -230,10 +228,8 @@ export async function listApplications(): Promise<ApplicationRecord[]> {
 // ─── Namespaces ───────────────────────────────────────────────────────────────
 
 export async function listNamespaces(): Promise<NamespaceRecord[]> {
-  const body = await adminFetch("/admin-api/namespaces") as {
-    data?: NamespaceRecord[];
-  };
-  return body?.data ?? [];
+  const body = await adminCall((api) => api.listNamespaces()) as unknown;
+  return Array.isArray(body) ? (body as NamespaceRecord[]) : [];
 }
 
 // No `upgradePolicy` in the body: core#3393 deleted the upgrade policy concept
@@ -249,22 +245,14 @@ export async function createNamespace(
   // "applicationId: expected 64 hex characters (32 bytes) at line 1 column 28",
   // which names a JSON column and not the text box the value came from.
   const appId = requireHexId("applicationId", applicationId);
-  const body = await adminFetch("/admin-api/namespaces", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ applicationId: appId }),
-  }) as { data?: { namespaceId?: string } };
-  const namespaceId = body?.data?.namespaceId;
+  const body = await adminCall((api) => api.createNamespace({ applicationId: appId }));
+  const namespaceId = body?.namespaceId;
   if (!namespaceId) throw new Error(`createNamespace: no namespaceId in response: ${JSON.stringify(body)}`);
   return { namespaceId };
 }
 
 export async function deleteNamespace(namespaceId: string): Promise<void> {
-  await adminFetch(`/admin-api/namespaces/${namespaceId}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
+  await adminCall((api) => api.deleteNamespace(namespaceId));
 }
 
 // Generate a namespace invitation for another node to join.
@@ -272,12 +260,10 @@ export async function deleteNamespace(namespaceId: string): Promise<void> {
 export async function createNamespaceInvitation(
   namespaceId: string,
 ): Promise<object> {
-  const body = await adminFetch(`/admin-api/namespaces/${namespaceId}/invite`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  }) as { data?: { invitation?: object } };
-  const invitation = body?.data?.invitation ?? body?.data;
+  const body = await adminCall((api) => api.createNamespaceInvitation(namespaceId)) as
+    | { invitation?: object }
+    | undefined;
+  const invitation = body?.invitation ?? body;
   if (!invitation) throw new Error(`createNamespaceInvitation: no invitation in response: ${JSON.stringify(body)}`);
   return invitation as object;
 }
@@ -288,9 +274,9 @@ export async function joinNamespace(
   namespaceId: string,
   invitation: object,
 ): Promise<void> {
-  await adminFetch(`/admin-api/namespaces/${namespaceId}/join`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invitation }),
-  });
+  await adminCall((api) =>
+    api.joinNamespace(namespaceId, {
+      invitation: invitation as Parameters<AdminApiClient["joinNamespace"]>[1]["invitation"],
+    }),
+  );
 }

@@ -15,6 +15,7 @@
 // The new vocabulary is used throughout, so this file reads like the equivalent
 // module in mero-pixart or mero-design rather than like a translation layer.
 
+import { MeroJs } from "@calimero-network/mero-js";
 import {
   clearAllStorage,
   DEFAULT_LOCAL_NODE_PORTS,
@@ -69,6 +70,64 @@ const tokens = new LocalStorageTokenStore();
 /** Bearer token for admin-api / JSON-RPC calls, or "" when signed out. */
 export function getAccessToken(): string {
   return tokens.getTokens()?.access_token ?? "";
+}
+
+// ── The node client ──────────────────────────────────────────────────────────
+//
+// `api/rpc.ts`, `api/adminApi.ts` and `utils/blobUtils.ts` used to build their
+// own `fetch` calls to `{nodeUrl}/jsonrpc` and `{nodeUrl}/admin-api/…`, each
+// re-reading the token and re-deriving the URL join and the 401 handling. They
+// now share one mero-js `MeroJs` instance: the SDK's `rpc` for contract calls,
+// its `admin` for contexts, namespaces, groups and blobs. Same routes on the
+// wire — the Playwright suite's `page.route()` mocks still see `/jsonrpc` and
+// `/admin-api/blobs` — but one implementation of URL joining, bearer auth and
+// token refresh, and no raw node HTTP left in the app.
+//
+// Why a module-level instance and not `useMero()`: these modules are plain
+// functions (`kvStore.ts` alone exports dozens), called from sections, the
+// Setup Wizard and the Test Runner, not hooks. The instance is keyed by node
+// URL AND access token because `MeroJs` snapshots the token store at
+// construction — a client built before login would keep sending no token.
+// A refresh performed by the SDK writes the rotated pair back into the same
+// `LocalStorageTokenStore`, so the next call simply picks up a new instance.
+
+/**
+ * Per-request budget for every node call.
+ *
+ * Set by the slowest legitimate request, a blob read: core's blob discovery
+ * sweep runs to a **30 s deadline before the transfer starts** (probe-based
+ * discovery, rc.39 / core#3831). The SDK's 10 s default would cancel a fetch
+ * that was about to succeed and report it as a failure — in precisely the case
+ * discovery exists for, a blob held by a peer and not by us. No budget at all
+ * is not the answer either; a stalled node should fail, just not before core
+ * has finished looking.
+ */
+export const NODE_REQUEST_TIMEOUT_MS = 35_000;
+
+let cached: { key: string; client: MeroJs } | null = null;
+
+/**
+ * The mero-js client for the selected node, or null when no node is selected.
+ *
+ * Shares `MeroProvider`'s token store, so it is signed in exactly when the
+ * provider is.
+ */
+export function getMeroClient(): MeroJs | null {
+  const nodeUrl = getNodeUrl();
+  if (!nodeUrl) return null;
+  const key = `${nodeUrl}\u0000${getAccessToken()}`;
+  if (!cached || cached.key !== key) {
+    cached = {
+      key,
+      client: new MeroJs({ baseUrl: nodeUrl, tokenStore: tokens, timeoutMs: NODE_REQUEST_TIMEOUT_MS }),
+    };
+  }
+  return cached.client;
+}
+
+/** Test seam: forget the memoised client. */
+export function resetMeroClient(): void {
+  cached = null;
 }
 
 /** Persist a token pair — used by the SSO hash bootstrap before React mounts. */

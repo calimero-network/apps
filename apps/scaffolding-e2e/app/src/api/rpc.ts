@@ -1,7 +1,8 @@
 // ── JSON-RPC to the contract ─────────────────────────────────────────────────
 //
-// The node's `execute` endpoint, with the same envelope handling every mero app
-// uses (mero-pixart's `api/rpc.ts` is the sibling of this file).
+// The node's `execute` endpoint, through mero-js's `rpc.execute` (the shared
+// client in `lib/mero.ts`), with the same envelope handling every mero app
+// uses (mero-pixart's `api/output.ts` is the sibling of this file).
 //
 // Two details that are easy to get wrong and expensive to debug:
 //
@@ -13,7 +14,8 @@
 //     — the message itself as a byte array. Decoding it is the difference between
 //     showing "that key is frozen" and showing a wall of numbers.
 
-import { getAccessToken, getContextId, getNodeUrl, nodeEndpoint } from "../lib/mero";
+import { RpcError } from "@calimero-network/mero-js";
+import { getContextId, getMeroClient } from "../lib/mero";
 
 /**
  * The node's JSON-RPC envelope, with `output` parsed.
@@ -160,8 +162,8 @@ export async function rpcRaw<T = unknown>(
   argsJson: Record<string, unknown> = {},
   contextId = getContextId() ?? "",
 ): Promise<RpcEnvelope<T>> {
-  const nodeUrl = getNodeUrl();
-  if (!nodeUrl) throw new RpcCallError("No node selected — connect to a node first.", method);
+  const client = getMeroClient();
+  if (!client) throw new RpcCallError("No node selected — connect to a node first.", method);
   if (!contextId) {
     throw new RpcCallError(
       "No context selected — create or pick one in the Setup Wizard first.",
@@ -169,32 +171,36 @@ export async function rpcRaw<T = unknown>(
     );
   }
 
-  // `nodeEndpoint`, not a hand-rolled join: it normalises the base first, so a
-  // node URL carrying a path prefix (a NODE_PATH_PREFIX deployment like
-  // `http://host/node1`) keeps that segment instead of losing it.
-  const response = await fetch(nodeEndpoint(nodeUrl, "jsonrpc"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getAccessToken()}`,
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "execute",
-      params: { contextId, method, argsJson },
-    }),
-  });
-
-  if (!response.ok) {
-    throw new RpcCallError(`Request failed (${response.status})`, method);
+  // mero-js's `rpc.execute` POSTs the same `execute` envelope to `/jsonrpc`
+  // (bearer token, URL join that keeps a NODE_PATH_PREFIX, token refresh on
+  // 401) and unwraps it: `result.output` on success, a thrown `RpcError` for
+  // the node's `error`. The scaffold wants the envelope back — its sections
+  // show exactly what the node said and `ResultBox` colours by the `error`
+  // key — so the two outcomes are folded back into one here.
+  let output: unknown;
+  try {
+    output = await client.rpc.execute<unknown>({ contextId, method, argsJson });
+  } catch (err) {
+    if (err instanceof RpcError) {
+      // The node's `error` object, as `jsonRpcCall` normalised it. `data` is
+      // where a contract `app::bail!` lives (as a byte array in prose);
+      // `type` is e.g. `FunctionCallError`.
+      return {
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.type !== undefined ? { type: err.type } : {}),
+          ...(err.data !== undefined ? { data: err.data } : {}),
+        },
+      };
+    }
+    const status = (err as { status?: unknown })?.status;
+    if (typeof status === "number") {
+      throw new RpcCallError(`Request failed (${status})`, method);
+    }
+    throw new RpcCallError(err instanceof Error ? err.message : String(err), method);
   }
-
-  const body = (await response.json()) as RpcEnvelope;
-  if (body.result && "output" in body.result) {
-    return { ...body, result: { ...body.result, output: parseRpcOutput<T>(body.result.output) } };
-  }
-  return body as RpcEnvelope<T>;
+  return { result: { output: parseRpcOutput<T>(output) } };
 }
 
 /**

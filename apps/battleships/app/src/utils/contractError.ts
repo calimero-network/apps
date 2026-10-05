@@ -17,8 +17,11 @@
  *
  * This module unwraps that, structurally:
  *
- *   1. walk the thrown value for payload candidates — it may be an `Error`, a
- *      string, the envelope object itself, or an axios-style `{ response }`
+ *   1. walk the thrown value for payload candidates — it may be a mero-js
+ *      `RpcError` (the node's `error` object: the prose above in `data`,
+ *      `type` in `type`), a mero-js `HTTPError` (a non-2xx reply: the raw
+ *      body in `bodyText`, the node's own words in `message`), a plain
+ *      `Error`, a string, or the envelope object itself
  *   2. inside a candidate string, find a BALANCED `{...}` or a byte array and
  *      decode it
  *   3. recurse, because a byte array decodes to JSON which may itself be an
@@ -37,10 +40,10 @@ export interface ContractError {
 /**
  * Depth cap — purely a termination guard, not a model of the shape.
  *
- * One hop is cheap and the nesting is deeper than it looks: an axios error
- * wrapping the envelope, whose `error.data` is prose, holding a byte array,
- * which decodes to JSON that is parsed and searched again, is already eight
- * levels. Set it by what terminates, not by what is expected — too tight and a
+ * One hop is cheap and the nesting is deeper than it looks: an `HTTPError`
+ * whose `bodyText` is the envelope, whose `error.data` is prose, holding a
+ * byte array, which decodes to JSON that is parsed and searched again, is
+ * already eight levels. Set it by what terminates, not by what is expected — too tight and a
  * real error silently reads as "no contract error".
  */
 const MAX_DEPTH = 16;
@@ -166,11 +169,12 @@ function search(value: unknown, depth: number): ContractError | null {
   if (typeof value === 'object') {
     const direct = asContractError(value);
     if (direct) return direct;
-    // The shapes an error arrives in: the JSON-RPC envelope, an axios
-    // response, a wrapped cause. Named rather than walked generically, so an
+    // The shapes an error arrives in: the JSON-RPC envelope, an `HTTPError`
+    // serialised with `toJSON()` (`bodyText`), a wrapped `{ response }` or
+    // `{ body }`, a wrapped cause. Named rather than walked generically, so an
     // unrelated field cannot be mistaken for the payload.
     const o = value as Record<string, unknown>;
-    for (const key of ['error', 'data', 'response', 'body', 'message', 'cause']) {
+    for (const key of ['error', 'data', 'response', 'body', 'bodyText', 'message', 'cause']) {
       const hit = search(o[key], depth + 1);
       if (hit) return hit;
     }

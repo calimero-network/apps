@@ -2,12 +2,22 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { decodeContractError, parseRpcOutput, rpcCall, rpcRaw, RpcCallError } from "./rpc";
 import { setContextId, setNodeUrl } from "../lib/mero";
 
-/** Reply to the next fetch with a JSON-RPC body. */
-function reply(body: unknown, ok = true, status = 200) {
-  return vi.fn().mockResolvedValue({
-    ok, status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response);
+/**
+ * Reply to the next fetch with a JSON-RPC body.
+ *
+ * A real `Response`, because the call now goes through mero-js's HTTP client,
+ * which reads `headers`, `statusText` and `text()` — not a `{ ok, json }`
+ * stand-in. `ok` is derived from `status`, as it is on the wire.
+ */
+function reply(body: unknown, _ok = true, status = 200) {
+  return vi.fn().mockImplementation(() =>
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      }),
+    ),
+  );
 }
 
 /** A UTF-8 byte array, the shape older nodes return `output` (and errors) as. */
@@ -124,7 +134,9 @@ describe("rpcRaw", () => {
   it("returns a contract error as `error` instead of throwing — the UI shows it", async () => {
     vi.stubGlobal("fetch", reply({ error: { message: "key is frozen" } }));
     const envelope = await rpcRaw("set", { key: "k", value: "v" });
-    expect(envelope.error).toEqual({ message: "key is frozen" });
+    // mero-js normalises the node's `error` into an `RpcError`; the envelope
+    // carries it back as an `error` object with the node's message intact.
+    expect(envelope.error).toMatchObject({ message: "key is frozen" });
     expect(envelope.result).toBeUndefined();
   });
 
@@ -184,7 +196,19 @@ describe("rpcCall", () => {
   });
 
   it("returns null when the node answers with no output", async () => {
-    vi.stubGlobal("fetch", reply({ result: { logs: [] } }));
+    vi.stubGlobal("fetch", reply({ result: { output: null, logs: [] } }));
     await expect(rpcCall("clear")).resolves.toBeNull();
+  });
+
+  it("keeps the node's `data` on a contract error, where the bail message lives", async () => {
+    const encoded = bytes("nope").join(", ");
+    vi.stubGlobal("fetch", reply({
+      error: { type: "FunctionCallError", data: `the method call returned an error: [${encoded}]` },
+    }));
+    const envelope = await rpcRaw("set");
+    expect(envelope.error).toMatchObject({
+      type: "FunctionCallError",
+      data: expect.stringContaining("the method call returned an error"),
+    });
   });
 });
