@@ -123,6 +123,8 @@ function toGameEvent(
       if (!id || !player) return null;
       return { type: 'BoardRevealed', id, player };
     }
+    case 'RevealRequested':
+      return id ? { type: 'RevealRequested', id } : null;
     case 'AuditPassed': {
       const player = typeof payload.player === 'string' ? payload.player : '';
       if (!id || !player) return null;
@@ -213,12 +215,16 @@ export function getGameEventEffects(event: AllGameEvents): {
       return { board: 'debounced', turn: 'none' };
     case 'ShotProposed':
     case 'ShotFired':
+    // The match just ended on the answers: the board refresh is what reveals
+    // this device's board, and a reveal from the other side changes the
+    // standing, so neither waits for the debounce.
+    case 'RevealRequested':
+    case 'BoardRevealed':
       return { board: 'immediate', turn: 'immediate' };
     case 'MatchListUpdated':
     case 'PlayerStatsUpdated':
     case 'MatchIdCollision':
     case 'BoardCommitted':
-    case 'BoardRevealed':
     case 'AuditPassed':
     case 'AuditFailed':
       return { board: 'none', turn: 'none' };

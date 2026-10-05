@@ -18,6 +18,7 @@ export type MatchEventType =
   | 'BoardRevealed'
   | 'AuditPassed'
   | 'AuditFailed'
+  | 'RevealRequested'
   | 'ShotProposed'
   | 'ShotFired'
   | 'Winner'
@@ -95,6 +96,15 @@ export interface BoardCommittedEvent extends GameEvent {
   commitment: string;
 }
 
+/**
+ * The answers ended the match. Both clients open the board on their device
+ * with `reveal_board`; nothing counts until the winner's has been audited.
+ */
+export interface RevealRequestedEvent extends GameEvent {
+  type: 'RevealRequested';
+  id: string;
+}
+
 /** A player ran `reveal_board` and the lobby successfully recorded the reveal. */
 export interface BoardRevealedEvent extends GameEvent {
   type: 'BoardRevealed';
@@ -127,6 +137,7 @@ export type MatchEvent =
   | ShipsPlacedEvent
   | BoardCommittedEvent
   | BoardRevealedEvent
+  | RevealRequestedEvent
   | AuditPassedEvent
   | AuditFailedEvent
   | ShotProposedEvent

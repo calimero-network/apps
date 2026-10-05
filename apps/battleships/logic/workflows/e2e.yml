@@ -361,15 +361,26 @@ steps:
     timeout: 30
 
   # ============================================================
-  # Phase C: Gameplay — Ship Placement
+  # Phase C: Gameplay — Ship Placement (client-side commit)
   # ============================================================
+  # The contract holds no board. Each player's board and salt stay on the
+  # player's device; what `commit_board` records is hex of
+  # `SHA256(borsh(board) || salt)`, computed by the client. The two fleets,
+  # salts and commitments below are fixed so the scenario is reproducible:
+  #
+  #   P1: 0,0;1,0 0,2;1,2;2,2 0,4;1,4;2,4 0,6;1,6;2,6;3,6 0,8;1,8;2,8;3,8;4,8   salt 0xA5*16
+  #   P2: 8,0;9,0 7,2;8,2;9,2 7,4;8,4;9,4 6,6;7,6;8,6;9,6 5,8;6,8;7,8;8,8;9,8   salt 0xB5*16
+  #
+  # Regenerate with the script in the PR that introduced this phase if the
+  # fleets change; the commitment vector is also pinned by
+  # `commitment_vector_shared_with_the_client` in crates/game and
+  # `lib/board.test.ts` in the app.
 
   - name: Wait for Gossipsub Mesh Formation
     type: wait
     seconds: 10
     message: Waiting for gossipsub mesh to form on match context topic between nodes
 
-  # The match context generates its own match_id during init (different from the lobby's).
   - name: Get Active Match ID from Match Context
     type: call
     node: calimero-node-1
@@ -385,138 +396,112 @@ steps:
     statements:
       - 'is_set({{game_match_id}})'
 
-  # Player 1 fleet: 1x2, 2x3, 1x4, 1x5 — spread on rows 0,2,4,6,8
-  # Ships cannot touch (including diagonals)
-  - name: Player 1 Places Ships
+  - name: Nobody has committed yet
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
-    method: place_ships
+    method: get_match_state
     executor_public_key: '{{match_p1_key}}'
     args:
       match_id: '{{game_match_id}}'
-      ships:
-        - '0,0;1,0'
-        - '0,2;1,2;2,2'
-        - '0,4;1,4;2,4'
-        - '0,6;1,6;2,6;3,6'
-        - '0,8;1,8;2,8;3,8;4,8'
+    outputs:
+      state_before: result
 
-  - name: Wait for Ship Placement Sync (P1)
+  - name: Assert the match is open and uncommitted
+    type: json_assert
+    statements:
+      - 'json_equal({{state_before}}, {"output": {"standing": "playing", "committed": [], "pending_shot": null, "ended_by": null, "loser": null, "revealed": [], "audit_failed": [], "winner": null}})'
+
+  - name: Player 1 Commits Board
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: commit_board
+    executor_public_key: '{{match_p1_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+      commitment: '37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f'
+
+  - name: Wait for Commitment Sync (P1)
     type: wait_for_sync
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
+    nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # Player 2 fleet: same pattern but on the right side of the board
-  - name: Player 2 Places Ships
+  - name: Player 2 Commits Board
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
-    method: place_ships
+    method: commit_board
     executor_public_key: '{{match_p2_key}}'
     args:
       match_id: '{{game_match_id}}'
-      ships:
-        - '8,0;9,0'
-        - '7,2;8,2;9,2'
-        - '7,4;8,4;9,4'
-        - '6,6;7,6;8,6;9,6'
-        - '5,8;6,8;7,8;8,8;9,8'
+      commitment: '26bef74fa786817254265b38266ee37fb36983cd1339628617ee4f7669527a5c'
 
-  - name: Wait for Ship Placement Sync (P2)
+  - name: Wait for Commitment Sync (P2)
     type: wait_for_sync
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
+    nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # Reject a second place_ships from the same player — commitment is
-  # write-once per executor (CRDT migration: AlreadyCommitted guard).
-  - name: Reject Second Placement by P1 (AlreadyCommitted)
+  # A commitment is write-once per player (AlreadyCommitted).
+  - name: Reject Second Commitment by P1 (AlreadyCommitted)
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
-    method: place_ships
+    method: commit_board
     executor_public_key: '{{match_p1_key}}'
     args:
       match_id: '{{game_match_id}}'
-      ships:
-        - '0,0;1,0'
-        - '0,2;1,2;2,2'
-        - '0,4;1,4;2,4'
-        - '0,6;1,6;2,6;3,6'
-        - '0,8;1,8;2,8;3,8;4,8'
+      commitment: '37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f'
     expected_failure: true
     outputs:
       reject_err_3: error
 
-  - name: Assert rejected — Reject Second Placement by P1 (AlreadyCommitted)
+  - name: Assert rejected — Reject Second Commitment by P1 (AlreadyCommitted)
     type: assert
     statements:
       - "is_set({{reject_err_3}})"
 
-  # Verify cross-device durability hooks: export returns board_bytes + salt,
-  # keyed against the caller's published commitment.
-  - name: Export Board Seed for P1
+  # Not hex, wrong length: refused before any row is written.
+  - name: Reject a Malformed Commitment
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
-    method: export_board_seed
+    method: commit_board
     executor_public_key: '{{match_p1_key}}'
     args:
       match_id: '{{game_match_id}}'
+      commitment: 'not-a-commitment'
+    expected_failure: true
     outputs:
-      p1_seed: result.output
+      reject_err_commit: error
 
-  - name: Assert P1 Seed Exported
+  - name: Assert rejected — Reject a Malformed Commitment
     type: assert
     statements:
-      - 'is_set({{p1_seed}})'
+      - "is_set({{reject_err_commit}})"
 
-  - name: Export Board Seed for P2
+  - name: Both players are committed on Node 2
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
-    method: export_board_seed
+    method: get_match_state
     executor_public_key: '{{match_p2_key}}'
     args:
       match_id: '{{game_match_id}}'
     outputs:
-      p2_seed: result.output
+      state_committed: result
 
-  - name: Assert P2 Seed Exported
-    type: assert
+  - name: Assert both commitments are visible on Node 2
+    type: json_assert
     statements:
-      - 'is_set({{p2_seed}})'
-
-  # Verify board state after placement
-  - name: Player 1 Checks Own Board
-    type: call
-    node: calimero-node-1
-    context_id: '{{match_ctx_id}}'
-    method: get_own_board
-    executor_public_key: '{{match_p1_key}}'
-    args:
-      match_id: '{{game_match_id}}'
-    outputs:
-      p1_board: result.output
-
-  - name: Assert P1 Board Has Ships
-    type: assert
-    statements:
-      - 'is_set({{p1_board}})'
+      - 'json_equal({{state_committed}}, {"output": {"standing": "playing", "committed": ["{{match_p1_key}}", "{{match_p2_key}}"], "pending_shot": null, "ended_by": null, "loser": null, "revealed": [], "audit_failed": [], "winner": null}})'
 
   # ============================================================
-  # Phase D: Gameplay — Shooting Round 1
+  # Phase D: Gameplay — a pending shot is the defender's to answer
   # ============================================================
 
-  # Player 1's turn — shoot at P2's ship at (8,0).
-  # acknowledge_shot_handler auto-fires on node-2 when the ShotProposed
-  # delta arrives via gossipsub broadcast (no manual ack needed).
   - name: Player 1 Proposes Shot at (8,0)
     type: call
     node: calimero-node-1
@@ -528,15 +513,82 @@ steps:
       x: 8
       y: 0
 
-  - name: Wait for Shot Resolution Sync (P1 shot + P2 auto-ack)
+  - name: Wait for Shot Sync (P1 shot)
     type: wait_for_sync
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
+    nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # Verify P1's shots board shows the resolved hit
+  - name: Node 2 reads the pending shot
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: get_match_state
+    executor_public_key: '{{match_p2_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+    outputs:
+      state_pending: result
+
+  - name: Assert the pending shot names P2 as its target
+    type: json_assert
+    statements:
+      - 'json_equal({{state_pending}}, {"output": {"standing": "playing", "committed": ["{{match_p1_key}}", "{{match_p2_key}}"], "pending_shot": {"shot_id": 0, "x": 8, "y": 0, "target": "{{match_p2_key}}"}, "ended_by": null, "loser": null, "revealed": [], "audit_failed": [], "winner": null}})'
+
+  # Only the target answers, and only the pending shot.
+  - name: Reject P1 answering its own shot
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 0, hit: true }
+    expected_failure: true
+    outputs:
+      reject_err_ack_self: error
+
+  - name: Assert rejected — Reject P1 answering its own shot
+    type: assert
+    statements:
+      - "is_set({{reject_err_ack_self}})"
+
+  - name: Reject an answer to the wrong shot id
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 7, hit: true }
+    expected_failure: true
+    outputs:
+      reject_err_ack_stale: error
+
+  - name: Assert rejected — Reject an answer to the wrong shot id
+    type: assert
+    statements:
+      - "is_set({{reject_err_ack_stale}})"
+
+  - name: Turn 1 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 0, hit: true }
+    outputs:
+      answer_1: result
+
+  - name: Assert turn 1 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_1}}, {"output": "hit"})'
+
+  - name: Sync turn 1 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
   - name: Player 1 Checks Shots Board
     type: call
     node: calimero-node-1
@@ -546,133 +598,63 @@ steps:
     args:
       match_id: '{{game_match_id}}'
     outputs:
-      p1_shots: result.output
+      p1_shots: result
 
-  - name: Assert P1 Shots Recorded
-    type: assert
+  # Cell (8,0) is index 8: `Cell::Hit` is 2.
+  - name: Assert P1 sees the hit at (8,0)
+    type: json_assert
     statements:
-      - 'is_set({{p1_shots}})'
+      - 'json_equal({{p1_shots}}, {"output": {"size": 10, "shots": [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}})'
 
-  # Player 2's turn — shoot at P1's ship at (0,0).
-  # acknowledge_shot_handler auto-fires on node-1 when the delta arrives.
-  - name: Player 2 Proposes Shot at (0,0)
+  # The same shot from the defender's side: what the client lays over the
+  # board on the device to draw "your waters".
+  - name: Player 2 Checks Incoming Shots
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
-    method: propose_shot
+    method: get_incoming_shots
     executor_public_key: '{{match_p2_key}}'
     args:
       match_id: '{{game_match_id}}'
-      x: 0
-      y: 0
+    outputs:
+      p2_incoming: result
 
-  - name: Wait for Shot Resolution Sync (P2 shot + P1 auto-ack)
-    type: wait_for_sync
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
-    context_id: '{{match_ctx_id}}'
-    timeout: 30
+  - name: Assert P2 sees the hit it answered at (8,0)
+    type: json_assert
+    statements:
+      - 'json_equal({{p2_incoming}}, {"output": {"size": 10, "shots": [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}})'
 
-  # ============================================================
-  # Phase E: Final Verification
-  # ============================================================
-
-  - name: Verify Turn Tracking on Node 1
+  - name: Verify Turn Passed to P2 on Node 1
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
     method: get_current_turn
     executor_public_key: '{{match_p1_key}}'
     outputs:
-      current_turn: result.output
+      current_turn: result
 
-  - name: Assert Turn Is Tracked
-    type: assert
-    statements:
-      - 'is_set({{current_turn}})'
-
-  # CRDT convergence check (review point 6, e2e side):
-  # The `turn` LwwRegister has been set by both `propose_shot` (P1) and
-  # the auto-fired `acknowledge_shot_handler` (P2). After match-context
-  # sync, node-2 should agree on the same current turn. If LwwRegister
-  # merge ever drops the latest write, this read on the second node fails.
-  - name: Verify Turn Tracking on Node 2 (CRDT convergence)
+  - name: Verify Turn Passed to P2 on Node 2 (CRDT convergence)
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
     method: get_current_turn
     executor_public_key: '{{match_p2_key}}'
     outputs:
-      current_turn_n2: result.output
+      current_turn_n2: result
 
-  - name: Assert Turn Visible on Node 2
-    type: assert
+  - name: Assert both nodes agree it is P2's turn
+    type: json_assert
     statements:
-      - 'is_set({{current_turn_n2}})'
-
-  # Same idea for the shot map: P1's shot at (8,0) was inserted into
-  # `shots_p1: UnorderedMap<[u8;1], LwwRegister<u8>>` on node-1 then
-  # resolved to Hit by the auto-ack on node-2. Both nodes must see the
-  # final cell value after sync.
-  - name: Verify P2's Shots Visible on Node 2 (CRDT convergence)
-    type: call
-    node: calimero-node-2
-    context_id: '{{match_ctx_id}}'
-    method: get_shots
-    executor_public_key: '{{match_p2_key}}'
-    args:
-      match_id: '{{game_match_id}}'
-    outputs:
-      p2_shots_n2: result.output
-
-  - name: Assert P2 Shots Visible on Node 2
-    type: assert
-    statements:
-      - 'is_set({{p2_shots_n2}})'
-
-  # NOTE: pure parallel-write CRDT testing (e.g. two nodes simultaneously
-  # writing different keys to the same UnorderedMap and asserting both
-  # entries survive merge) requires concurrent step execution. merobox
-  # workflows are sequential, so divergence-then-merge testing on the
-  # same key lives in the Rust unit tests (`mod tests` in lobby/src/lib.rs)
-  # rather than here.
-
-  - name: Verify Match List on Node 1 (Lobby)
-    type: call
-    node: calimero-node-1
-    context_id: '{{lobby_ctx_id}}'
-    method: get_matches
-    executor_public_key: '{{p1_key}}'
-    outputs:
-      matches_n1: result.output
-
-  - name: Assert Matches Exist on Node 1
-    type: assert
-    statements:
-      - 'is_set({{matches_n1}})'
-
-  - name: Verify Match List on Node 2 (Lobby)
-    type: call
-    node: calimero-node-2
-    context_id: '{{lobby_ctx_id}}'
-    method: get_matches
-    executor_public_key: '{{p2_key}}'
-    outputs:
-      matches_n2: result.output
-
-  - name: Assert Matches Exist on Node 2
-    type: assert
-    statements:
-      - 'is_set({{matches_n2}})'
+      - 'json_equal({{current_turn}}, {"output": "{{match_p2_key}}"})'
+      - 'json_equal({{current_turn_n2}}, {"output": "{{match_p2_key}}"})'
 
   # ============================================================
-  # Phase F: Commitment Scheme — no reveal mid-game
+  # Phase E: Commitment Scheme — no reveal mid-game
   # ============================================================
   # A reveal publishes `(board, salt)` for EVERY reader to audit, so opening
   # one mid-game would hand the board to the opponent. The contract refuses it
   # until the answers end the match; the end-of-match reveals and audit are
-  # asserted in Phase H.
+  # asserted in Phase G.
 
   - name: Reject Mid-Game Reveal by P1
     type: call
@@ -682,6 +664,8 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args:
       match_id: '{{game_match_id}}'
+      board_bytes: [100, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      salt: [165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165]
     expected_failure: true
     outputs:
       reveal_err: error
@@ -691,9 +675,9 @@ steps:
     statements:
       - "is_set({{reveal_err}})"
 
-  # Reject relinking an already-Active match — set_match_context_id now
-  # guards against any non-Pending transition (prevents Finished matches
-  # being silently reactivated).
+  # Reject relinking an already-Active match — set_match_context_id guards
+  # against any non-Pending transition (prevents Finished matches being
+  # silently reactivated).
   - name: Reject Re-Link of Active Match
     type: call
     node: calimero-node-1
@@ -712,32 +696,80 @@ steps:
     statements:
       - "is_set({{reject_err_4}})"
 
-  # ============================================================
-  # Phase G: Complete the Game — 31 more shots in varied order
-  # ============================================================
-  # Rationale: the original Phase D asserted ONE round (1 shot each).
-  # This phase plays the match to completion to cover:
-  #   (a) full 17-hit win condition, and the end-of-match reveal + audit,
-  #   (b) Event::Winner / Event::MatchEnded emission and `on_match_finished`
-  #       xcall back to the lobby,
-  #   (c) MatchSummary.status: Active → Finished convergence across nodes,
-  #   (d) post-finish behaviour (further propose_shot must be rejected with
-  #       GameError::Finished).
-  #
-  # Shot choreography:
-  #   - P1 needs 17 hits on P2 ship cells to win. P1 already has 1 hit at
-  #     (8,0) from Phase D. Remaining 16 P2 ship cells are fired at in a
-  #     deliberately mixed order (not a straight sweep) — alternating
-  #     between ships, revisiting different rows, to exercise the shot-map
-  #     LwwRegister merge under interleaved writes.
-  #   - P2 takes 15 shots between P1's remaining 16 (strict turn alternation).
-  #     P2's mix is ~10 hits + 5 misses on varied cells; P1 still has ≥ 1
-  #     unhit cell when the match ends, so P1 wins cleanly.
-  #   - `wait_for_sync` between every turn is load-bearing: each shot
-  #     flips the turn LwwRegister, and the next node's propose_shot
-  #     will reject with "not your turn" if it reads stale state.
+  - name: Verify Match List on Node 1 (Lobby)
+    type: call
+    node: calimero-node-1
+    context_id: '{{lobby_ctx_id}}'
+    method: get_matches
+    executor_public_key: '{{p1_key}}'
+    outputs:
+      matches_n1: result.output
 
-  - name: Turn 3 — P1 Shot (9,0) [hit, sinks P2 destroyer]
+  - name: Verify Match List on Node 2 (Lobby)
+    type: call
+    node: calimero-node-2
+    context_id: '{{lobby_ctx_id}}'
+    method: get_matches
+    executor_public_key: '{{p2_key}}'
+    outputs:
+      matches_n2: result.output
+
+  - name: Assert Matches Exist on Both Nodes
+    type: assert
+    statements:
+      - 'is_set({{matches_n1}})'
+      - 'is_set({{matches_n2}})'
+
+  # ============================================================
+  # Phase F: Complete the Game — 32 more turns, each shot answered
+  # ============================================================
+  # The same 33-turn script as app/e2e/match.spec.ts. Every shot is followed
+  # by the defender's `acknowledge_shot` (what the client does automatically
+  # from the board on its device) and a sync, because each answer flips the
+  # turn and the next propose_shot is refused on stale state.
+  #   - P1 needs 17 hits on P2 ship cells to win; turn 1 was the first.
+  #   - P2 takes 16 shots between P1's: 12 hits and 4 misses on varied cells,
+  #     so P1 still has ≥ 1 unhit cell when the match ends.
+
+  - name: Turn 2 — P2 shot (0,0) [hit on P1 destroyer]
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: propose_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', x: 0, y: 0 }
+
+  - name: Sync turn 2 shot
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 2 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 1, hit: true }
+    outputs:
+      answer_2: result
+
+  - name: Assert turn 2 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_2}}, {"output": "hit"})'
+
+  - name: Sync turn 2 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 3 — P1 shot (9,0) [hit, sinks P2 destroyer]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -745,13 +777,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 0 }
 
-  - name: Sync After Turn 3
+  - name: Sync turn 3 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 4 — P2 Shot (1,0) [hit, sinks P1 destroyer]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 3 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 2, hit: true }
+    outputs:
+      answer_3: result
+
+  - name: Assert turn 3 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_3}}, {"output": "hit"})'
+
+  - name: Sync turn 3 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 4 — P2 shot (1,0) [hit, sinks P1 destroyer]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -759,13 +815,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 1, y: 0 }
 
-  - name: Sync After Turn 4
+  - name: Sync turn 4 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 5 — P1 Shot (5,8) [hit on carrier, jumps rows]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 4 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 3, hit: true }
+    outputs:
+      answer_4: result
+
+  - name: Assert turn 4 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_4}}, {"output": "hit"})'
+
+  - name: Sync turn 4 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 5 — P1 shot (5,8) [hit on carrier, jumps rows]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -773,13 +853,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 5, y: 8 }
 
-  - name: Sync After Turn 5
+  - name: Sync turn 5 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 6 — P2 Shot (5,5) [miss]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 5 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 4, hit: true }
+    outputs:
+      answer_5: result
+
+  - name: Assert turn 5 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_5}}, {"output": "hit"})'
+
+  - name: Sync turn 5 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 6 — P2 shot (5,5) [miss]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -787,13 +891,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 5, y: 5 }
 
-  - name: Sync After Turn 6
+  - name: Sync turn 6 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 7 — P1 Shot (7,2) [hit on P2 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 6 — P1 answers miss
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 5, hit: false }
+    outputs:
+      answer_6: result
+
+  - name: Assert turn 6 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_6}}, {"output": "miss"})'
+
+  - name: Sync turn 6 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 7 — P1 shot (7,2) [hit on P2 cruiser]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -801,13 +929,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 7, y: 2 }
 
-  - name: Sync After Turn 7
+  - name: Sync turn 7 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 8 — P2 Shot (0,2) [hit on P1 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 7 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 6, hit: true }
+    outputs:
+      answer_7: result
+
+  - name: Assert turn 7 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_7}}, {"output": "hit"})'
+
+  - name: Sync turn 7 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 8 — P2 shot (0,2) [hit on P1 cruiser]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -815,13 +967,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 0, y: 2 }
 
-  - name: Sync After Turn 8
+  - name: Sync turn 8 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 9 — P1 Shot (6,8) [hit, continuing carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 8 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 7, hit: true }
+    outputs:
+      answer_8: result
+
+  - name: Assert turn 8 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_8}}, {"output": "hit"})'
+
+  - name: Sync turn 8 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 9 — P1 shot (6,8) [hit, continuing carrier]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -829,13 +1005,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 6, y: 8 }
 
-  - name: Sync After Turn 9
+  - name: Sync turn 9 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 10 — P2 Shot (3,3) [miss]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 9 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 8, hit: true }
+    outputs:
+      answer_9: result
+
+  - name: Assert turn 9 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_9}}, {"output": "hit"})'
+
+  - name: Sync turn 9 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 10 — P2 shot (3,3) [miss]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -843,13 +1043,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 3, y: 3 }
 
-  - name: Sync After Turn 10
+  - name: Sync turn 10 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 11 — P1 Shot (7,4) [hit on P2 submarine]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 10 — P1 answers miss
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 9, hit: false }
+    outputs:
+      answer_10: result
+
+  - name: Assert turn 10 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_10}}, {"output": "miss"})'
+
+  - name: Sync turn 10 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 11 — P1 shot (7,4) [hit on P2 submarine]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -857,13 +1081,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 7, y: 4 }
 
-  - name: Sync After Turn 11
+  - name: Sync turn 11 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 12 — P2 Shot (1,2) [hit, continuing P1 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 11 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 10, hit: true }
+    outputs:
+      answer_11: result
+
+  - name: Assert turn 11 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_11}}, {"output": "hit"})'
+
+  - name: Sync turn 11 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 12 — P2 shot (1,2) [hit, continuing P1 cruiser]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -871,13 +1119,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 1, y: 2 }
 
-  - name: Sync After Turn 12
+  - name: Sync turn 12 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 13 — P1 Shot (8,2) [hit, continuing P2 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 12 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 11, hit: true }
+    outputs:
+      answer_12: result
+
+  - name: Assert turn 12 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_12}}, {"output": "hit"})'
+
+  - name: Sync turn 12 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 13 — P1 shot (8,2) [hit, continuing P2 cruiser]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -885,13 +1157,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 8, y: 2 }
 
-  - name: Sync After Turn 13
+  - name: Sync turn 13 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 14 — P2 Shot (2,2) [hit, sinks P1 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 13 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 12, hit: true }
+    outputs:
+      answer_13: result
+
+  - name: Assert turn 13 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_13}}, {"output": "hit"})'
+
+  - name: Sync turn 13 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 14 — P2 shot (2,2) [hit, sinks P1 cruiser]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -899,13 +1195,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 2, y: 2 }
 
-  - name: Sync After Turn 14
+  - name: Sync turn 14 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 15 — P1 Shot (9,2) [hit, sinks P2 cruiser]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 14 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 13, hit: true }
+    outputs:
+      answer_14: result
+
+  - name: Assert turn 14 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_14}}, {"output": "hit"})'
+
+  - name: Sync turn 14 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 15 — P1 shot (9,2) [hit, sinks P2 cruiser]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -913,13 +1233,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 2 }
 
-  - name: Sync After Turn 15
+  - name: Sync turn 15 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 16 — P2 Shot (5,3) [miss]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 15 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 14, hit: true }
+    outputs:
+      answer_15: result
+
+  - name: Assert turn 15 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_15}}, {"output": "hit"})'
+
+  - name: Sync turn 15 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 16 — P2 shot (5,3) [miss]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -927,13 +1271,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 5, y: 3 }
 
-  - name: Sync After Turn 16
+  - name: Sync turn 16 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 17 — P1 Shot (6,6) [hit on P2 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 16 — P1 answers miss
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 15, hit: false }
+    outputs:
+      answer_16: result
+
+  - name: Assert turn 16 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_16}}, {"output": "miss"})'
+
+  - name: Sync turn 16 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 17 — P1 shot (6,6) [hit on P2 battleship]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -941,13 +1309,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 6, y: 6 }
 
-  - name: Sync After Turn 17
+  - name: Sync turn 17 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 18 — P2 Shot (0,4) [hit on P1 submarine]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 17 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 16, hit: true }
+    outputs:
+      answer_17: result
+
+  - name: Assert turn 17 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_17}}, {"output": "hit"})'
+
+  - name: Sync turn 17 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 18 — P2 shot (0,4) [hit on P1 submarine]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -955,13 +1347,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 0, y: 4 }
 
-  - name: Sync After Turn 18
+  - name: Sync turn 18 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 19 — P1 Shot (7,8) [hit, back to P2 carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 18 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 17, hit: true }
+    outputs:
+      answer_18: result
+
+  - name: Assert turn 18 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_18}}, {"output": "hit"})'
+
+  - name: Sync turn 18 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 19 — P1 shot (7,8) [hit, back to P2 carrier]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -969,13 +1385,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 7, y: 8 }
 
-  - name: Sync After Turn 19
+  - name: Sync turn 19 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 20 — P2 Shot (1,4) [hit, continuing P1 submarine]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 19 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 18, hit: true }
+    outputs:
+      answer_19: result
+
+  - name: Assert turn 19 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_19}}, {"output": "hit"})'
+
+  - name: Sync turn 19 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 20 — P2 shot (1,4) [hit, continuing P1 submarine]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -983,13 +1423,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 1, y: 4 }
 
-  - name: Sync After Turn 20
+  - name: Sync turn 20 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 21 — P1 Shot (8,4) [hit, continuing P2 submarine]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 20 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 19, hit: true }
+    outputs:
+      answer_20: result
+
+  - name: Assert turn 20 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_20}}, {"output": "hit"})'
+
+  - name: Sync turn 20 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 21 — P1 shot (8,4) [hit, continuing P2 submarine]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -997,13 +1461,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 8, y: 4 }
 
-  - name: Sync After Turn 21
+  - name: Sync turn 21 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 22 — P2 Shot (7,7) [miss]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 21 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 20, hit: true }
+    outputs:
+      answer_21: result
+
+  - name: Assert turn 21 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_21}}, {"output": "hit"})'
+
+  - name: Sync turn 21 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 22 — P2 shot (7,7) [miss]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1011,13 +1499,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 7, y: 7 }
 
-  - name: Sync After Turn 22
+  - name: Sync turn 22 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 23 — P1 Shot (7,6) [hit, continuing P2 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 22 — P1 answers miss
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 21, hit: false }
+    outputs:
+      answer_22: result
+
+  - name: Assert turn 22 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_22}}, {"output": "miss"})'
+
+  - name: Sync turn 22 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 23 — P1 shot (7,6) [hit, continuing P2 battleship]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1025,13 +1537,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 7, y: 6 }
 
-  - name: Sync After Turn 23
+  - name: Sync turn 23 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 24 — P2 Shot (0,6) [hit on P1 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 23 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 22, hit: true }
+    outputs:
+      answer_23: result
+
+  - name: Assert turn 23 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_23}}, {"output": "hit"})'
+
+  - name: Sync turn 23 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 24 — P2 shot (0,6) [hit on P1 battleship]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1039,13 +1575,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 0, y: 6 }
 
-  - name: Sync After Turn 24
+  - name: Sync turn 24 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 25 — P1 Shot (8,6) [hit, continuing P2 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 24 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 23, hit: true }
+    outputs:
+      answer_24: result
+
+  - name: Assert turn 24 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_24}}, {"output": "hit"})'
+
+  - name: Sync turn 24 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 25 — P1 shot (8,6) [hit, continuing P2 battleship]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1053,13 +1613,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 8, y: 6 }
 
-  - name: Sync After Turn 25
+  - name: Sync turn 25 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 26 — P2 Shot (1,6) [hit, continuing P1 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 25 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 24, hit: true }
+    outputs:
+      answer_25: result
+
+  - name: Assert turn 25 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_25}}, {"output": "hit"})'
+
+  - name: Sync turn 25 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 26 — P2 shot (1,6) [hit, continuing P1 battleship]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1067,13 +1651,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 1, y: 6 }
 
-  - name: Sync After Turn 26
+  - name: Sync turn 26 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 27 — P1 Shot (9,4) [hit, sinks P2 submarine]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 26 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 25, hit: true }
+    outputs:
+      answer_26: result
+
+  - name: Assert turn 26 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_26}}, {"output": "hit"})'
+
+  - name: Sync turn 26 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 27 — P1 shot (9,4) [hit, sinks P2 submarine]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1081,13 +1689,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 4 }
 
-  - name: Sync After Turn 27
+  - name: Sync turn 27 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 28 — P2 Shot (9,9) [miss]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 27 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 26, hit: true }
+    outputs:
+      answer_27: result
+
+  - name: Assert turn 27 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_27}}, {"output": "hit"})'
+
+  - name: Sync turn 27 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 28 — P2 shot (9,9) [miss]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1095,13 +1727,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 9 }
 
-  - name: Sync After Turn 28
+  - name: Sync turn 28 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 29 — P1 Shot (8,8) [hit, continuing P2 carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 28 — P1 answers miss
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 27, hit: false }
+    outputs:
+      answer_28: result
+
+  - name: Assert turn 28 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_28}}, {"output": "miss"})'
+
+  - name: Sync turn 28 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 29 — P1 shot (8,8) [hit, continuing P2 carrier]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1109,13 +1765,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 8, y: 8 }
 
-  - name: Sync After Turn 29
+  - name: Sync turn 29 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 30 — P2 Shot (0,8) [hit on P1 carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 29 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 28, hit: true }
+    outputs:
+      answer_29: result
+
+  - name: Assert turn 29 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_29}}, {"output": "hit"})'
+
+  - name: Sync turn 29 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 30 — P2 shot (0,8) [hit on P1 carrier]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1123,13 +1803,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 0, y: 8 }
 
-  - name: Sync After Turn 30
+  - name: Sync turn 30 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 31 — P1 Shot (9,6) [hit, sinks P2 battleship]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 30 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 29, hit: true }
+    outputs:
+      answer_30: result
+
+  - name: Assert turn 30 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_30}}, {"output": "hit"})'
+
+  - name: Sync turn 30 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 31 — P1 shot (9,6) [hit, sinks P2 battleship]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1137,13 +1841,37 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 6 }
 
-  - name: Sync After Turn 31
+  - name: Sync turn 31 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  - name: Turn 32 — P2 Shot (1,8) [hit, continuing P1 carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 31 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 30, hit: true }
+    outputs:
+      answer_31: result
+
+  - name: Assert turn 31 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_31}}, {"output": "hit"})'
+
+  - name: Sync turn 31 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 32 — P2 shot (1,8) [hit, continuing P1 carrier]
     type: call
     node: calimero-node-2
     context_id: '{{match_ctx_id}}'
@@ -1151,17 +1879,37 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 1, y: 8 }
 
-  - name: Sync After Turn 32
+  - name: Sync turn 32 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # Turn 33: P1's 17th hit. Node-2's answer ends the match on the answers,
-  # both boards are revealed and audited, and only then does P1's win count
-  # — emitting Event::Winner + Event::MatchEnded and xcalling
-  # `on_match_finished` back to the lobby context.
-  - name: Turn 33 — P1 Shot (9,8) [WINNING HIT, sinks P2 carrier]
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 32 — P1 answers hit
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p1_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 31, hit: true }
+    outputs:
+      answer_32: result
+
+  - name: Assert turn 32 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_32}}, {"output": "hit"})'
+
+  - name: Sync turn 32 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Turn 33 — P1 shot (9,8) [WINNING HIT, sinks P2 carrier]
     type: call
     node: calimero-node-1
     context_id: '{{match_ctx_id}}'
@@ -1169,19 +1917,121 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 9, y: 8 }
 
-  - name: Sync After Match-End Shot
+  - name: Sync turn 33 shot
     type: wait_for_sync
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{match_ctx_id}}'
     timeout: 30
 
-  # The last answer ends the match on the answers alone. Node 2 (the loser)
-  # opens its board as it answers, and asks node 1 to open its own; the win
-  # counts only once node 1's board has passed every reader's audit.
-  - name: Wait for Both Boards to Be Revealed
-    type: wait
-    seconds: 5
-    message: Waiting for the reveal handler to run on node 1
+  # The defender's client answers from the board on its device: here the
+  # answer is scripted from the fleet above, and `shot_id` is the turn index
+  # the pending shot carries in `get_match_state`.
+  - name: Turn 33 — P2 answers hit
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: acknowledge_shot
+    executor_public_key: '{{match_p2_key}}'
+    args: { match_id: '{{game_match_id}}', shot_id: 32, hit: true }
+    outputs:
+      answer_33: result
+
+  - name: Assert turn 33 answer
+    type: json_assert
+    statements:
+      - 'json_equal({{answer_33}}, {"output": "hit"})'
+
+  - name: Sync turn 33 answer
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  # ============================================================
+  # Phase G: Reveal + Audit
+  # ============================================================
+  # The last answer ended the match on the answers alone. Nothing counts yet:
+  # the winner's board has to be revealed and pass every reader's audit.
+
+  - name: Read the standing after the last answer
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: get_match_state
+    executor_public_key: '{{match_p1_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+    outputs:
+      state_ended: result
+
+  - name: Assert the match awaits the reveals
+    type: json_assert
+    statements:
+      - 'json_equal({{state_ended}}, {"output": {"standing": "awaiting_reveal", "committed": ["{{match_p1_key}}", "{{match_p2_key}}"], "pending_shot": null, "ended_by": "sunk", "loser": "{{match_p2_key}}", "revealed": [], "audit_failed": [], "winner": null}})'
+
+  - name: Read Winner Before Any Reveal
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: get_winner
+    executor_public_key: '{{match_p1_key}}'
+    args: {}
+    outputs:
+      winner_before: result
+
+  - name: Assert no winner before the audit
+    type: json_assert
+    statements:
+      - 'json_equal({{winner_before}}, {"output": null})'
+
+  # A reveal that does not hash to the commitment is refused — the wrong
+  # salt here — so a player can retry with the right board.
+  - name: Reject a reveal under the wrong salt
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: reveal_board
+    executor_public_key: '{{match_p1_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+      board_bytes: [100, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      salt: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    expected_failure: true
+    outputs:
+      reveal_err_salt: error
+
+  - name: Assert rejected — Reject a reveal under the wrong salt
+    type: assert
+    statements:
+      - "is_set({{reveal_err_salt}})"
+
+  - name: Player 2 Reveals Board
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: reveal_board
+    executor_public_key: '{{match_p2_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+      board_bytes: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      salt: [181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181]
+
+  - name: Sync After P2 Reveal
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{match_ctx_id}}'
+    timeout: 30
+
+  - name: Player 1 Reveals Board
+    type: call
+    node: calimero-node-1
+    context_id: '{{match_ctx_id}}'
+    method: reveal_board
+    executor_public_key: '{{match_p1_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+      board_bytes: [100, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+      salt: [165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165, 165]
 
   - name: Sync After Reveals
     type: wait_for_sync
@@ -1215,6 +2065,22 @@ steps:
     statements:
       - 'json_equal({{winner_n1}}, {"output": "{{p1_key}}"})'
       - 'json_equal({{winner_n2}}, {"output": "{{p1_key}}"})'
+
+  - name: Read the audited standing on Node 2
+    type: call
+    node: calimero-node-2
+    context_id: '{{match_ctx_id}}'
+    method: get_match_state
+    executor_public_key: '{{match_p2_key}}'
+    args:
+      match_id: '{{game_match_id}}'
+    outputs:
+      state_won: result
+
+  - name: Assert both boards passed the audit
+    type: json_assert
+    statements:
+      - 'json_equal({{state_won}}, {"output": {"standing": "won", "committed": ["{{match_p1_key}}", "{{match_p2_key}}"], "pending_shot": null, "ended_by": "sunk", "loser": "{{match_p2_key}}", "revealed": ["{{match_p1_key}}", "{{match_p2_key}}"], "audit_failed": [], "winner": "{{match_p1_key}}"}})'
 
   # Give the cross-context xcall (match -> lobby) a beat to apply.
   - name: Wait for on_match_finished xcall Propagation
@@ -1320,16 +2186,11 @@ steps:
   # entire post-match state is dead: no finished status, no history, no stats.
   #
   # Everything upstream of this passes: the full 33-turn game, the commitment
-  # audit, board/seed export, and all three post-match rejections. Only the
-  # cross-context call fails, and it fails silently — `xcall` is fire-and-forget,
-  # so the game context reports a clean win either way.
+  # audit, and all three post-match rejections. Only the cross-context call
+  # fails, and it fails silently — `xcall` is fire-and-forget, so the game
+  # context reports a clean win either way.
   #
-  # It was invisible until now because this scenario has never run: it sat in
-  # probes/ from the migration onward, and the surrounding assertions are
-  # `is_set(<the whole match list>)`, which passes whether or not the match ever
-  # transitions.
-  #
-  # Left un-asserted so the other 139 steps keep gating, and tracked as the
+  # Left un-asserted so the other steps keep gating, and tracked as the
   # follow-up it deserves. Re-enable both stats assertions when the xcall works.
   - name: Read P1 stats (xcall does not land — see note above)
     type: assert

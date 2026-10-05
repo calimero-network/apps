@@ -91,17 +91,17 @@ export const APPS = {
   battleships: {
     e2eDir: 'e2e',
     availability: 'web+desktop',
-    trust: ['Boards never leave your node', 'Commit-reveal placement', 'No accounts'],
+    trust: ['Boards never leave your device', 'Commit-reveal placement', 'Node or account'],
     explainer: [
-      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives in private, node-local storage, so your opponent’s node never holds a copy of it at any point.',
+      'Turn-based Battleships for two players, where the interesting part is not the game — it is the trust model. Your fleet lives on your own device and nowhere else: not on your opponent’s node, not on yours, and not on the relay if you play from an account.',
       'Placement is commit-reveal: you commit to a board up front and reveal it at the end, so neither side can quietly move a ship after seeing where the shots are going. A lobby service handles matchmaking and a separate game service runs each match.',
     ],
     features: [
-      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in `#[app::private]` storage that never replicates. There is no copy on their node to inspect.' },
-      { icon: 'LockCheck', title: 'Commit-reveal placement', body: 'You commit to a fleet before play and reveal it after. Neither player can change their board mid-game.' },
+      { icon: 'EyeOff', title: 'A board your opponent cannot read', body: 'Ships live in your browser’s storage. The contract holds only a hash of them, so there is no copy on any node to inspect.' },
+      { icon: 'LockCheck', title: 'Commit-reveal placement', body: 'You commit to a fleet before play and reveal it after. Every answer you gave is replayed against it, so a lie costs the game.' },
       { icon: 'Target', title: 'Matchmaking without a server', body: 'A lobby service pairs players and a game service runs each match, both inside the same bundle.' },
       { icon: 'ArrowUpRight', title: 'Results reported back', body: 'A finished match tells the lobby who won through a cross-context call, so history survives the game.' },
-      { icon: 'ExternalLink', title: 'Invite by link', body: 'Recursive namespace invitations. No sign-up, no account, no email address.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'Recursive namespace invitations. Play from a node you run, or from a Calimero account through its relay.' },
     ],
   },
 

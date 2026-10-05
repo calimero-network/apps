@@ -1,4 +1,4 @@
-//! Game service — live match gameplay with private boards.
+//! Game service — live match gameplay with boards that stay on the device.
 //!
 //! ## What holds against a node that does not run this code
 //!
@@ -19,14 +19,27 @@
 //!
 //! ## Hidden information
 //!
-//! Each board stays in node-private storage and only its SHA-256 commitment is
-//! published. The defender answers every shot, so an answer is a claim — and
-//! at match end BOTH players publish `(board, salt)`. Every reader then checks
-//! the reveal against the commitment, checks it is a legal fleet, and replays
-//! every answer its owner gave against it. The declared winner must pass that
-//! audit to win; a winner who lied loses to the player they lied to. And a
-//! defender who answers "miss" forever cannot stall the game: a fleet is 17
-//! cells, so an 84th miss on a 100-cell board is a lie on its face.
+//! The contract never holds a board. Each player's board and salt stay on the
+//! player's own device, and the contract stores only
+//! `SHA256(borsh(board) || salt)`, which the client computes and files with
+//! [`GameState::commit_board`]. The defender's client answers every shot from
+//! that local board ([`GameState::acknowledge_shot`] is a signed statement,
+//! `hit` or `miss`, recorded in shared state), so an answer is a claim — and at
+//! match end BOTH players publish `(board, salt)` with
+//! [`GameState::reveal_board`]. Every reader then checks the reveal against
+//! the commitment, checks it is a legal fleet, and replays every answer its
+//! owner gave against it. The declared winner must pass that audit to win; a
+//! winner who lied loses to the player they lied to. And a defender who
+//! answers "miss" forever cannot stall the game: a fleet is 17 cells, so an
+//! 84th miss on a 100-cell board is a lie on its face.
+//!
+//! Nothing here reads `#[app::private]` storage. An execution on an account's
+//! behalf — a delegated run through a relay — has none (core refuses it with a
+//! typed 400), and a board the contract cannot see is a board the relay cannot
+//! see either. Node and account sessions take the same path.
+//!
+//! What remains open, as before: a player who never answers, or never reveals,
+//! stalls the match. There is no clock in the contract to forfeit them on.
 
 use battleships_types::{GameError, PublicKey};
 use calimero_sdk::abi::AbiType;
@@ -47,7 +60,6 @@ pub mod validation;
 use audit::{AuditFailure, FLEET_CELLS};
 use board::{Cell, BOARD_SIZE};
 use events::Event;
-use players::{PlayerBoard, PrivateBoards};
 
 /// Every cell of the opponent's board, once each: the most shots one player
 /// can fire, so twice that bounds a match.
@@ -61,14 +73,8 @@ const MAX_MISSES: u32 = (BOARD_SIZE as u32) * (BOARD_SIZE as u32) - FLEET_CELLS;
 // API response types
 // ---------------------------------------------------------------------------
 
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct OwnBoardView {
-    pub size: u8,
-    pub board: Vec<u8>,
-}
-
+/// A grid of the caller's shots (`get_shots`) or of the shots fired at the
+/// caller (`get_incoming_shots`): one [`Cell`] byte per square, row-major.
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -77,15 +83,43 @@ pub struct ShotsView {
     pub shots: Vec<u8>,
 }
 
-/// Export payload for cross-device durability. Defined locally (not re-used from
-/// `battleships-types`) because the wasm-abi emitter resolves types by their
-/// local path and would otherwise not find it.
+/// The shot waiting for its defender's answer.
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
-pub struct ExportedSeed {
-    pub board_bytes: Vec<u8>,
-    pub salt: [u8; 16],
+pub struct PendingShotView {
+    /// What `acknowledge_shot` takes: the turn index of this shot, so an
+    /// answer meant for an earlier shot is refused instead of misfiled.
+    pub shot_id: u32,
+    pub x: u8,
+    pub y: u8,
+    /// The player who has to answer, by key.
+    pub target: String,
+}
+
+/// The match as every reader derives it, in one read: what a client needs to
+/// know whether to commit, answer, reveal, or show a result.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct MatchStateView {
+    /// `playing`, `awaiting_reveal`, `won` or `void`.
+    pub standing: String,
+    /// Players, by key, whose commitment is on record.
+    pub committed: Vec<String>,
+    pub pending_shot: Option<PendingShotView>,
+    /// Why the answers ended it: `sunk`, `equivocation` or
+    /// `impossible_misses`. `None` while playing.
+    pub ended_by: Option<String>,
+    /// The player the answers say lost, by key.
+    pub loser: Option<String>,
+    /// Players whose revealed board matched their commitment.
+    pub revealed: Vec<String>,
+    /// Players whose revealed board failed the audit — a lie about a shot, or
+    /// an illegal fleet. Revealing is how a cheater is caught.
+    pub audit_failed: Vec<String>,
+    /// The audited winner, by key. Set only when `standing` is `won`.
+    pub winner: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +318,12 @@ impl GameState {
 
     // ---- Game API ----
 
-    pub fn place_ships(&mut self, match_id: &str, ships: Vec<String>) -> app::Result<()> {
+    /// File the caller's board commitment: `SHA256(borsh(board) || salt)` as
+    /// 64 hex characters, computed on the device that keeps the board and the
+    /// salt. Whether the board behind it is a legal fleet is settled at the
+    /// reveal, by every reader — a commitment to nonsense is a loss, not a
+    /// refusal.
+    pub fn commit_board(&mut self, match_id: &str, commitment: String) -> app::Result<()> {
         let role = self.caller_role(match_id)?;
         let derived = self.derive()?;
         if derived.standing != Standing::Playing {
@@ -293,38 +332,12 @@ impl GameState {
         if derived.placed(role) {
             app::bail!(GameError::AlreadyCommitted);
         }
-
-        // Populate the private board (existing validation flow).
-        let mut priv_boards = PrivateBoards::private_load_or_default()?;
-        let mut priv_mut = priv_boards.as_mut();
-        let key = PrivateBoards::key(match_id, &caller_account());
-        // `get` hands back a `ValueRef`, so deref out before defaulting — both
-        // arms have to be the same owned type.
-        let mut pb = priv_mut
-            .boards
-            .get(&key)?
-            .map(|v| (*v).clone())
-            .unwrap_or_default();
-        pb.place_ships(ships)?;
-        // Snapshot the pristine board NOW — `own` will be mutated as shots
-        // resolve, but the commitment hash must always match placement state.
-        pb.capture_pristine();
-
-        // Generate salt, compute commitment.
-        let mut salt = [0u8; 16];
-        calimero_sdk::env::random_bytes(&mut salt);
-        pb.set_salt(salt);
-        let board_bytes = calimero_sdk::borsh::to_vec(&pb.pristine().to_vec())
-            .map_err(|e| AppError::msg(format!("serialize board: {e}")))?;
-        let commitment = compute_commitment(&board_bytes, &salt);
+        let commitment = parse_commitment(&commitment)?;
 
         // Publish the commitment: written once, by its owner, for good.
         let account = hex::encode(caller_account());
         let row = Self::free_key(&self.commitments, |nonce| format!("{account}/{nonce}"))?;
         self.commitments.insert(row, commitment)?;
-
-        // Persist private board.
-        priv_mut.boards.insert(key, pb)?;
 
         let commitment_hex = hex_encode(&commitment);
         let caller_hex = self.player(role)?.key.to_hex();
@@ -370,14 +383,27 @@ impl GameState {
         let row = Self::free_key(&self.shots, |nonce| turn_key(&account, turn, nonce))?;
         self.shots.insert(row, Shot { x, y })?;
 
-        app::emit!((
-            Event::ShotProposed { id: match_id, x, y },
-            "acknowledge_shot_handler"
-        ));
+        // A plain event: the defender's CLIENT answers, from the board on its
+        // device. No handler, because a handler runs in the contract, which
+        // has no board to answer from — on any node, and on a relay least of
+        // all.
+        app::emit!(Event::ShotProposed { id: match_id, x, y });
         Ok(())
     }
 
-    pub fn acknowledge_shot(&mut self, match_id: &str) -> app::Result<String> {
+    /// The defender's answer to the pending shot — `hit` or not — as their
+    /// client read it off the board on their device. A signed statement in
+    /// shared state, write-once: it is what the reveal is replayed against,
+    /// so a false answer here is the lie the audit catches.
+    ///
+    /// `shot_id` is the pending shot's turn index (see `get_match_state`), so
+    /// an answer composed for one shot cannot land on the next.
+    pub fn acknowledge_shot(
+        &mut self,
+        match_id: &str,
+        shot_id: u32,
+        hit: bool,
+    ) -> app::Result<String> {
         let role = self.caller_role(match_id)?;
         let derived = self.derive()?;
         if derived.standing != Standing::Playing {
@@ -389,33 +415,19 @@ impl GameState {
         if pending.shooter == role {
             app::bail!(GameError::Forbidden("not the target".into()));
         }
+        let turn = derived.turns.len() - 1;
+        if usize::try_from(shot_id).ok() != Some(turn) {
+            app::bail!(GameError::Invalid(format!(
+                "shot {shot_id} is not the pending shot ({turn})"
+            )));
+        }
         let (x, y) = (pending.x, pending.y);
 
-        // Resolve against the caller's private board.
-        let mut priv_boards = PrivateBoards::private_load_or_default()?;
-        let mut priv_mut = priv_boards.as_mut();
-        let key = PrivateBoards::key(match_id, &caller_account());
-        let mut pb = priv_mut
-            .boards
-            .get(&key)?
-            .map(|v| (*v).clone())
-            .ok_or_else(|| AppError::from(GameError::Invalid("target board unavailable".into())))?;
-        let is_hit = pb.get_board().get(BOARD_SIZE, x, y) == Cell::Ship;
-        let resolved = if is_hit { Cell::Hit } else { Cell::Miss };
-        pb.get_board_mut().set(BOARD_SIZE, x, y, resolved);
-        if is_hit {
-            pb.decrement_ships();
-        }
-        priv_mut.boards.insert(key, pb)?;
-        drop(priv_mut);
-        drop(priv_boards);
-
-        let turn = derived.turns.len() - 1;
         let account = hex::encode(caller_account());
         let row = Self::free_key(&self.answers, |nonce| turn_key(&account, turn, nonce))?;
-        self.answers.insert(row, Answer { hit: is_hit })?;
+        self.answers.insert(row, Answer { hit })?;
 
-        let result_str = if is_hit { "hit" } else { "miss" };
+        let result_str = if hit { "hit" } else { "miss" };
         app::emit!(Event::ShotFired {
             id: match_id,
             x,
@@ -423,112 +435,94 @@ impl GameState {
             result: result_str,
         });
 
-        // The answers now say the match is over: open this board, and ask the
-        // other player's node to open theirs. Neither result counts until the
-        // winner's board has been audited by every reader.
+        // The answers now say the match is over. Both clients open their
+        // boards on seeing this; neither result counts until the winner's
+        // board has been audited by every reader.
         if self.derive()?.ended.is_some() {
-            self.publish_reveal(match_id, role)?;
-            app::emit!((
-                Event::RevealRequested { id: match_id },
-                "reveal_board_handler"
-            ));
-            self.announce_if_decided(match_id)?;
+            app::emit!(Event::RevealRequested { id: match_id });
         }
         Ok(result_str.to_string())
     }
 
-    /// Publish the caller's board for every reader to audit. Only once the
-    /// match is over: a board opened mid-game is a board handed to the
-    /// opponent.
-    pub fn reveal_board(&mut self, match_id: &str) -> app::Result<()> {
-        let role = self.caller_role(match_id)?;
-        if self.derive()?.ended.is_none() {
-            app::bail!(GameError::Invalid(
-                "the match is still being played — a board is revealed when it ends".into()
-            ));
-        }
-        self.publish_reveal(match_id, role)?;
-        self.announce_if_decided(match_id)
-    }
-
-    pub fn export_board_seed(&self, match_id: &str) -> app::Result<ExportedSeed> {
-        let priv_boards = PrivateBoards::private_load_or_default()?;
-        let pb = priv_boards
-            .boards
-            .get(&PrivateBoards::key(match_id, &caller_account()))?
-            .ok_or_else(|| AppError::from(GameError::BoardNotFound))?;
-        // Export the pristine-board snapshot so the commitment recomputation
-        // on re-import always matches regardless of mid-game mutations.
-        let pristine = pb.pristine().to_vec();
-        let board_bytes = calimero_sdk::borsh::to_vec(&pristine)
-            .map_err(|e| AppError::msg(format!("serialize board: {e}")))?;
-        Ok(ExportedSeed {
-            board_bytes,
-            salt: *pb.salt(),
-        })
-    }
-
-    pub fn import_board_seed(
+    /// Publish the caller's `(board, salt)` for every reader to audit, and
+    /// report how the audit went. Only once the match is over: a board opened
+    /// mid-game is a board handed to the opponent.
+    ///
+    /// `board_bytes` is `borsh(Vec<u8>)` of the 100 pristine cells (water or
+    /// ship), exactly what was hashed into the commitment. A pair that does
+    /// not hash to the commitment is refused, so the player can retry with
+    /// the right board; a pair that does is on record for good, and if the
+    /// answers the player gave do not match it, every reader marks them a
+    /// cheater and the game goes to the opponent.
+    pub fn reveal_board(
         &mut self,
         match_id: &str,
         board_bytes: Vec<u8>,
         salt: [u8; 16],
     ) -> app::Result<()> {
         let role = self.caller_role(match_id)?;
-        let Some(expected_hash) = self.derive()?.commitment[role] else {
-            app::bail!(GameError::Invalid("no commitment for caller".into()));
-        };
-        if !audit::verify_commitment(&board_bytes, &salt, &expected_hash) {
-            app::bail!(GameError::CommitmentMismatch);
+        if self.derive()?.ended.is_none() {
+            app::bail!(GameError::Invalid(
+                "the match is still being played — a board is revealed when it ends".into()
+            ));
         }
-        let board: board::Board = calimero_sdk::borsh::from_slice(&board_bytes)
-            .map_err(|e| AppError::msg(format!("deserialize board: {e}")))?;
-        let ship_count = board.0.iter().filter(|&&c| is_ship_cell(c)).count() as u64;
-        let mut priv_boards = PrivateBoards::private_load_or_default()?;
-        let mut priv_mut = priv_boards.as_mut();
-        priv_mut.boards.insert(
-            PrivateBoards::key(match_id, &caller_account()),
-            PlayerBoard::new_with_salt(board, ship_count, true, salt),
-        )?;
-        Ok(())
+        self.publish_reveal(match_id, role, board_bytes, salt)?;
+        self.announce_if_decided(match_id)
     }
 
-    pub fn get_own_board(&self, match_id: &str) -> app::Result<OwnBoardView> {
-        let role = self.caller_role(match_id)?;
-        let priv_boards = PrivateBoards::private_load_or_default()?;
-        let pb = priv_boards
-            .boards
-            .get(&PrivateBoards::key(match_id, &caller_account()))?
-            .ok_or_else(|| AppError::from(GameError::NotFound(match_id.to_string())))?;
-        let mut board = pb.get_board().0.clone();
-        if let Some(p) = self.derive()?.pending() {
-            if p.shooter != role {
-                let idx = (p.y as usize) * (BOARD_SIZE as usize) + (p.x as usize);
-                if idx < board.len() {
-                    board[idx] = Cell::Pending.to_u8();
-                }
-            }
-        }
-        Ok(OwnBoardView {
-            size: BOARD_SIZE,
-            board,
-        })
-    }
-
+    /// The caller's shots at the opponent, as a grid.
     pub fn get_shots(&self, match_id: &str) -> app::Result<ShotsView> {
         let role = self.caller_role(match_id)?;
-        let mut shots = vec![0u8; (BOARD_SIZE as usize) * (BOARD_SIZE as usize)];
-        for turn in self.derive()?.turns.iter().filter(|t| t.shooter == role) {
-            let cell = match turn.hit {
-                None => Cell::Pending,
-                Some(true) => Cell::Hit,
-                Some(false) => Cell::Miss,
-            };
-            shots[(turn.y as usize) * (BOARD_SIZE as usize) + (turn.x as usize)] = cell.to_u8();
-        }
-        Ok(ShotsView {
-            size: BOARD_SIZE,
-            shots,
+        let derived = self.derive()?;
+        Ok(Self::shots_grid(&derived, |turn| turn.shooter == role))
+    }
+
+    /// The opponent's shots at the caller, as a grid — what the client lays
+    /// over the board on the device to draw "your waters": the answers the
+    /// caller gave, and the shot still waiting for one.
+    pub fn get_incoming_shots(&self, match_id: &str) -> app::Result<ShotsView> {
+        let role = self.caller_role(match_id)?;
+        let derived = self.derive()?;
+        Ok(Self::shots_grid(&derived, |turn| turn.shooter != role))
+    }
+
+    /// Everything a client needs in one read, so a session on a relay is
+    /// not four round trips per event.
+    pub fn get_match_state(&self, match_id: &str) -> app::Result<MatchStateView> {
+        let _ = self.caller_role(match_id)?;
+        let derived = self.derive()?;
+        let key = |role: usize| self.player(role).map(|p| p.key.to_hex());
+        let by_role = |keep: &dyn Fn(usize) -> bool| -> app::Result<Vec<String>> {
+            (0..2).filter(|&role| keep(role)).map(key).collect()
+        };
+        let pending_shot = match derived.pending() {
+            Some(turn) => Some(PendingShotView {
+                shot_id: u32::try_from(derived.turns.len() - 1)
+                    .map_err(|_| AppError::msg("turn index overflow"))?,
+                x: turn.x,
+                y: turn.y,
+                target: key(1 - turn.shooter)?,
+            }),
+            None => None,
+        };
+        let (standing, winner) = match derived.standing {
+            Standing::Playing => ("playing", None),
+            Standing::AwaitingReveal => ("awaiting_reveal", None),
+            Standing::Won { winner } => ("won", Some(key(winner)?)),
+            Standing::Void => ("void", None),
+        };
+        Ok(MatchStateView {
+            standing: standing.to_owned(),
+            committed: by_role(&|role| derived.placed(role))?,
+            pending_shot,
+            ended_by: derived.ended.map(|(_, why)| why.to_owned()),
+            loser: match derived.ended {
+                Some((loser, _)) => Some(key(loser)?),
+                None => None,
+            },
+            revealed: by_role(&|role| derived.audit[role].is_some())?,
+            audit_failed: by_role(&|role| matches!(derived.audit[role], Some(Err(_))))?,
+            winner,
         })
     }
 
@@ -563,20 +557,6 @@ impl GameState {
 
     pub fn get_current_user(&self) -> app::Result<String> {
         Ok(hex::encode(calimero_sdk::env::device_id()))
-    }
-
-    #[allow(unused_variables)]
-    #[app::handler]
-    pub fn acknowledge_shot_handler(&mut self, id: &str, x: u8, y: u8) -> app::Result<()> {
-        self.acknowledge_shot(id)?;
-        Ok(())
-    }
-
-    /// Runs on the other player's node when the answers end the match, so
-    /// both boards are opened without either player having to ask.
-    #[app::handler]
-    pub fn reveal_board_handler(&mut self, id: &str) -> app::Result<()> {
-        self.reveal_board(id)
     }
 }
 
@@ -746,21 +726,35 @@ impl GameState {
         audit::check_answers(&cells, answers)
     }
 
+    /// A grid of the turns `keep` selects: pending, hit or miss per cell.
+    fn shots_grid(derived: &Derived, keep: impl Fn(&Turn) -> bool) -> ShotsView {
+        let mut shots = vec![0u8; (BOARD_SIZE as usize) * (BOARD_SIZE as usize)];
+        for turn in derived.turns.iter().filter(|turn| keep(turn)) {
+            let cell = match turn.hit {
+                None => Cell::Pending,
+                Some(true) => Cell::Hit,
+                Some(false) => Cell::Miss,
+            };
+            shots[(turn.y as usize) * (BOARD_SIZE as usize) + (turn.x as usize)] = cell.to_u8();
+        }
+        ShotsView {
+            size: BOARD_SIZE,
+            shots,
+        }
+    }
+
     /// Open the caller's own board — once — and report how its audit went.
-    fn publish_reveal(&mut self, match_id: &str, role: usize) -> app::Result<()> {
+    fn publish_reveal(
+        &mut self,
+        match_id: &str,
+        role: usize,
+        board_bytes: Vec<u8>,
+        salt: [u8; 16],
+    ) -> app::Result<()> {
         let derived = self.derive()?;
         let Some(commitment) = derived.commitment[role] else {
             app::bail!(GameError::Invalid("no commitment for caller".into()));
         };
-        let priv_boards = PrivateBoards::private_load_or_default()?;
-        let pb = priv_boards
-            .boards
-            .get(&PrivateBoards::key(match_id, &caller_account()))?
-            .ok_or_else(|| AppError::from(GameError::BoardNotFound))?;
-        let board_bytes = calimero_sdk::borsh::to_vec(&pb.pristine().to_vec())
-            .map_err(|e| AppError::msg(format!("serialize board: {e}")))?;
-        let salt = *pb.salt();
-        drop(priv_boards);
         let caller_hex = self.player(role)?.key.to_hex();
         if !audit::verify_commitment(&board_bytes, &salt, &commitment) {
             app::emit!(Event::AuditFailed {
@@ -910,7 +904,18 @@ fn hex_encode(bytes: &[u8; 32]) -> String {
     s
 }
 
-/// Helper used by the audit routine and seed import.
+/// A commitment as the client files it: 64 hex characters of SHA-256.
+fn parse_commitment(encoded: &str) -> app::Result<[u8; 32]> {
+    let bytes = hex::decode(encoded.trim())
+        .map_err(|e| AppError::from(GameError::Invalid(format!("commitment is not hex: {e}"))))?;
+    <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| {
+        AppError::from(GameError::Invalid(
+            "a commitment is 32 bytes (64 hex characters)".into(),
+        ))
+    })
+}
+
+/// Helper used by the audit routine.
 pub fn is_ship_cell(value: u8) -> bool {
     Cell::from_u8(value) == Cell::Ship
 }
@@ -920,6 +925,7 @@ mod tests {
     use calimero_sdk::testing::TestHost;
 
     use super::*;
+    use players::PlayerBoard;
 
     const ALICE_DEVICE: [u8; 32] = [0xA2; 32];
     const BOB: [u8; 32] = [0xB0; 32];
@@ -941,6 +947,8 @@ mod tests {
         "6,6;7,6;8,6;9,6",
         "5,8;6,8;7,8;8,8;9,8",
     ];
+    const ALICE_SALT: [u8; 16] = [0xA5; 16];
+    const BOB_SALT: [u8; 16] = [0xB5; 16];
 
     fn cells(fleet: &[&str]) -> Vec<(u8, u8)> {
         fleet
@@ -958,6 +966,25 @@ mod tests {
         (0..10u8)
             .flat_map(|y| (0..4u8).map(move |x| (x, y)))
             .collect()
+    }
+
+    /// What the client keeps on the device: the 100 pristine cells of a
+    /// fleet, laid out by the same rules the placement grid enforces.
+    fn board(fleet: &[&str]) -> Vec<u8> {
+        let mut pb = PlayerBoard::new();
+        pb.place_ships(fleet.iter().map(|s| (*s).to_owned()).collect())
+            .expect("a legal fleet");
+        pb.get_board().0.clone()
+    }
+
+    /// What the client sends: `borsh(Vec<u8>)` of the cells.
+    fn board_bytes(cells: &[u8]) -> Vec<u8> {
+        calimero_sdk::borsh::to_vec(&cells.to_vec()).expect("borsh")
+    }
+
+    /// What the client files: hex of `SHA256(borsh(board) || salt)`.
+    fn commitment(cells: &[u8], salt: &[u8; 16]) -> String {
+        hex_encode(&compute_commitment(&board_bytes(cells), salt))
     }
 
     /// A match created by the host's default account (Alice, player 1)
@@ -979,13 +1006,14 @@ mod tests {
 
     fn placed() -> (TestHost<GameState>, [u8; 32]) {
         let (mut app, alice) = game();
-        let fleet = |f: [&str; 5]| f.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
         app.call_as_account(alice, ALICE_DEVICE, |s| {
-            s.place_ships(MATCH, fleet(ALICE_FLEET))
+            s.commit_board(MATCH, commitment(&board(&ALICE_FLEET), &ALICE_SALT))
         })
-        .expect("alice places");
-        app.call_as_account(BOB, BOB_DEVICE, |s| s.place_ships(MATCH, fleet(BOB_FLEET)))
-            .expect("bob places");
+        .expect("alice commits");
+        app.call_as_account(BOB, BOB_DEVICE, |s| {
+            s.commit_board(MATCH, commitment(&board(&BOB_FLEET), &BOB_SALT))
+        })
+        .expect("bob commits");
         (app, alice)
     }
 
@@ -994,13 +1022,69 @@ mod tests {
             .unwrap_or_else(|e| panic!("shot ({x},{y}): {e:?}"));
     }
 
-    fn answer(app: &mut TestHost<GameState>, account: [u8; 32], device: [u8; 32]) -> String {
-        app.call_as_account(account, device, |s| s.acknowledge_shot(MATCH))
-            .expect("answer")
+    /// The pending shot, as the client reads it.
+    fn pending(app: &TestHost<GameState>) -> PendingShotView {
+        app.view(|s| s.get_match_state(MATCH))
+            .expect("state")
+            .pending_shot
+            .expect("a pending shot")
+    }
+
+    /// Answer the pending shot the way an honest client does: from the
+    /// fleet on the device.
+    fn answer(
+        app: &mut TestHost<GameState>,
+        account: [u8; 32],
+        device: [u8; 32],
+        fleet: &[&str],
+    ) -> String {
+        let shot = pending(app);
+        let hit = cells(fleet).contains(&(shot.x, shot.y));
+        app.call_as_account(account, device, |s| {
+            s.acknowledge_shot(MATCH, shot.shot_id, hit)
+        })
+        .expect("answer")
+    }
+
+    fn reveal(
+        app: &mut TestHost<GameState>,
+        account: [u8; 32],
+        device: [u8; 32],
+        fleet: &[&str],
+        salt: [u8; 16],
+    ) -> app::Result<()> {
+        let bytes = board_bytes(&board(fleet));
+        app.call_as_account(account, device, |s| s.reveal_board(MATCH, bytes, salt))
     }
 
     fn standing(app: &TestHost<GameState>) -> Standing {
         app.view(|s| s.derive()).expect("derive").standing
+    }
+
+    fn state(app: &TestHost<GameState>) -> MatchStateView {
+        app.view(|s| s.get_match_state(MATCH)).expect("state")
+    }
+
+    /// Alice sinks Bob's fleet, both answering honestly, up to the answer
+    /// that ends it on the answers alone.
+    fn play_to_the_end(app: &mut TestHost<GameState>, alice: [u8; 32]) {
+        let targets = cells(&BOB_FLEET);
+        let water = cells(&[
+            "5,1;6,1;7,1;8,1;9,1",
+            "5,3;6,3;7,3;8,3;9,3",
+            "5,5;6,5;7,5;8,5;9,5",
+            "5,7",
+        ]);
+        for (i, &(x, y)) in targets.iter().enumerate() {
+            shoot(app, alice, ALICE_DEVICE, x, y);
+            assert_eq!(answer(app, BOB, BOB_DEVICE, &BOB_FLEET), "hit");
+            if i + 1 == targets.len() {
+                break;
+            }
+            let (wx, wy) = water[i];
+            shoot(app, BOB, BOB_DEVICE, wx, wy);
+            assert_eq!(answer(app, alice, ALICE_DEVICE, &ALICE_FLEET), "miss");
+        }
     }
 
     #[test]
@@ -1021,6 +1105,22 @@ mod tests {
         h.update(salt);
         let expected: [u8; 32] = h.finalize().into();
         assert_eq!(compute_commitment(&board_bytes, &salt), expected);
+    }
+
+    /// The vector the client test (`lib/commitment.test.ts`) pins to: the
+    /// borsh framing is a 4-byte little-endian length, and the salt follows
+    /// the bytes. A client that frames differently commits to a board it can
+    /// never reveal.
+    #[test]
+    fn commitment_vector_shared_with_the_client() {
+        let cells = board(&ALICE_FLEET);
+        let bytes = board_bytes(&cells);
+        assert_eq!(&bytes[..4], &100u32.to_le_bytes());
+        assert_eq!(&bytes[4..], &cells[..]);
+        assert_eq!(
+            commitment(&cells, &ALICE_SALT),
+            "37188894d025229c47a83365463dbc5e15d7a267aa13ef63f4d963b0d03def4f"
+        );
     }
 
     #[test]
@@ -1060,6 +1160,25 @@ mod tests {
     }
 
     #[test]
+    fn a_commitment_is_the_only_thing_stored_about_a_board() {
+        let (mut app, alice) = game();
+        assert!(state(&app).committed.is_empty());
+        app.call_as_account(alice, ALICE_DEVICE, |s| {
+            s.commit_board(MATCH, commitment(&board(&ALICE_FLEET), &ALICE_SALT))
+        })
+        .expect("alice commits");
+        assert_eq!(state(&app).committed, vec![hex::encode(ALICE_DEVICE)]);
+        // Nothing but 64 hex characters is a commitment.
+        assert!(app
+            .call_as_account(BOB, BOB_DEVICE, |s| s.commit_board(MATCH, "abc".into()))
+            .is_err());
+        assert!(app
+            .call_as_account(BOB, BOB_DEVICE, |s| s.commit_board(MATCH, "zz".repeat(32)))
+            .is_err());
+        assert_eq!(state(&app).committed.len(), 1);
+    }
+
+    #[test]
     fn a_shot_is_answered_and_the_turn_passes() {
         let (mut app, alice) = placed();
         // Not Bob's turn, and not anyone's who is not playing.
@@ -1076,14 +1195,55 @@ mod tests {
                 .is_err(),
             "one shot at a time"
         );
-        assert_eq!(answer(&mut app, BOB, BOB_DEVICE), "hit");
+        let shot = pending(&app);
+        assert_eq!((shot.shot_id, shot.x, shot.y), (0, 8, 0));
+        assert_eq!(shot.target, hex::encode(BOB_DEVICE));
+        assert_eq!(answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET), "hit");
         assert_eq!(
             app.view(|s| s.get_current_turn()).expect("turn"),
             Some(hex::encode(BOB_DEVICE))
         );
+        assert!(state(&app).pending_shot.is_none());
         app.set_account(alice);
         let shots = app.view(|s| s.get_shots(MATCH)).expect("shots");
         assert_eq!(Cell::from_u8(shots.shots[8]), Cell::Hit);
+        app.set_account(BOB);
+        let incoming = app.view(|s| s.get_incoming_shots(MATCH)).expect("incoming");
+        assert_eq!(Cell::from_u8(incoming.shots[8]), Cell::Hit);
+        assert!(app
+            .view(|s| s.get_shots(MATCH))
+            .expect("shots")
+            .shots
+            .iter()
+            .all(|&c| c == 0));
+    }
+
+    #[test]
+    fn only_the_target_answers_and_only_the_pending_shot() {
+        let (mut app, alice) = placed();
+        assert!(
+            app.call_as_account(BOB, BOB_DEVICE, |s| s.acknowledge_shot(MATCH, 0, true))
+                .is_err(),
+            "nothing to answer yet"
+        );
+        shoot(&mut app, alice, ALICE_DEVICE, 8, 0);
+        assert!(
+            app.call_as_account(alice, ALICE_DEVICE, |s| s.acknowledge_shot(MATCH, 0, true))
+                .is_err(),
+            "the shooter does not answer their own shot"
+        );
+        assert!(
+            app.call_as_account(BOB, BOB_DEVICE, |s| s.acknowledge_shot(MATCH, 1, true))
+                .is_err(),
+            "an answer names the shot it is for"
+        );
+        assert!(state(&app).pending_shot.is_some());
+        assert_eq!(answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET), "hit");
+        assert!(
+            app.call_as_account(BOB, BOB_DEVICE, |s| s.acknowledge_shot(MATCH, 0, false))
+                .is_err(),
+            "an answered shot is not answered again"
+        );
     }
 
     #[test]
@@ -1109,7 +1269,7 @@ mod tests {
     fn a_shot_or_answer_cannot_be_rewritten_even_by_its_author() {
         let (mut app, alice) = placed();
         shoot(&mut app, alice, ALICE_DEVICE, 8, 0);
-        answer(&mut app, BOB, BOB_DEVICE);
+        answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET);
         let key = app.view(|s| {
             s.answers
                 .prefix(format!("{}/", hex::encode(BOB)).as_bytes())
@@ -1132,7 +1292,7 @@ mod tests {
     fn a_second_different_answer_is_equivocation_and_loses() {
         let (mut app, alice) = placed();
         shoot(&mut app, alice, ALICE_DEVICE, 8, 0);
-        answer(&mut app, BOB, BOB_DEVICE);
+        answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET);
         // Bob files a second answer to the same shot, a miss this time.
         app.call_as_account(BOB, BOB_DEVICE, |s| {
             s.answers
@@ -1145,14 +1305,18 @@ mod tests {
         assert!(app
             .call_as_account(alice, ALICE_DEVICE, |s| s.propose_shot(MATCH, 9, 0))
             .is_err());
+        let view = state(&app);
+        assert_eq!(view.standing, "awaiting_reveal");
+        assert_eq!(view.ended_by.as_deref(), Some("equivocation"));
+        assert_eq!(view.loser, Some(hex::encode(BOB_DEVICE)));
     }
 
     #[test]
     fn a_second_commitment_is_refused_and_a_forged_one_loses() {
         let (mut app, alice) = placed();
-        let again = ALICE_FLEET.iter().map(|s| (*s).to_owned()).collect();
+        let again = commitment(&board(&ALICE_FLEET), &[1u8; 16]);
         assert!(app
-            .call_as_account(alice, ALICE_DEVICE, |s| s.place_ships(MATCH, again))
+            .call_as_account(alice, ALICE_DEVICE, |s| s.commit_board(MATCH, again))
             .is_err());
         // Around the contract: a second, different commitment, to open
         // whichever board suits at the end. Two is equivocation.
@@ -1170,109 +1334,183 @@ mod tests {
     #[test]
     fn a_board_is_not_revealed_while_the_match_is_on() {
         let (mut app, alice) = placed();
-        assert!(app
-            .call_as_account(alice, ALICE_DEVICE, |s| s.reveal_board(MATCH))
-            .is_err());
+        assert!(reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).is_err());
+        assert!(state(&app).revealed.is_empty());
     }
 
     #[test]
     fn sinking_the_fleet_wins_once_the_winners_board_passes_the_audit() {
         let (mut app, alice) = placed();
-        let targets = cells(&BOB_FLEET);
-        let water = cells(&[
-            "5,1;6,1;7,1;8,1;9,1",
-            "5,3;6,3;7,3;8,3;9,3",
-            "5,5;6,5;7,5;8,5;9,5",
-            "5,7",
-        ]);
-        for (i, &(x, y)) in targets.iter().enumerate() {
-            shoot(&mut app, alice, ALICE_DEVICE, x, y);
-            assert_eq!(answer(&mut app, BOB, BOB_DEVICE), "hit");
-            if i + 1 == targets.len() {
-                break;
-            }
-            let (wx, wy) = water[i];
-            shoot(&mut app, BOB, BOB_DEVICE, wx, wy);
-            assert_eq!(answer(&mut app, alice, ALICE_DEVICE), "miss");
-        }
-        // Bob's last answer opened his board; Alice's has not been opened, so
-        // her win is not a win yet.
+        play_to_the_end(&mut app, alice);
+        // Over on the answers; no board has been opened yet, so the win is
+        // not a win yet — and the client is told whose boards are missing.
         assert_eq!(standing(&app), Standing::AwaitingReveal);
         assert!(app.view(|s| s.get_winner()).expect("winner").is_none());
+        let view = state(&app);
+        assert_eq!(view.standing, "awaiting_reveal");
+        assert_eq!(view.ended_by.as_deref(), Some("sunk"));
+        assert!(view.revealed.is_empty());
 
-        app.call_as_account(alice, ALICE_DEVICE, |s| s.reveal_board(MATCH))
-            .expect("alice reveals");
+        reveal(&mut app, BOB, BOB_DEVICE, &BOB_FLEET, BOB_SALT).expect("bob reveals");
+        assert_eq!(standing(&app), Standing::AwaitingReveal);
+        reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).expect("alice reveals");
         assert_eq!(standing(&app), Standing::Won { winner: 0 });
         assert_eq!(
             app.view(|s| s.get_winner()).expect("winner"),
             Some(hex::encode(ALICE_DEVICE))
         );
+        let view = state(&app);
+        assert_eq!(view.standing, "won");
+        assert_eq!(view.winner, Some(hex::encode(ALICE_DEVICE)));
+        assert_eq!(view.revealed.len(), 2);
+        assert!(view.audit_failed.is_empty());
         assert!(app
             .call_as_account(BOB, BOB_DEVICE, |s| s.propose_shot(MATCH, 0, 0))
             .is_err());
     }
 
     #[test]
-    fn a_winner_who_lied_about_a_hit_loses_the_audit_and_the_game() {
-        // Bob answers Alice's first shot — a hit — with "miss", written
-        // around the contract, then sinks Alice's fleet. Every reader replays
-        // his answers against the board he opens, and the lie costs him the
-        // win.
+    fn the_winner_alone_revealing_decides_it() {
+        // The loser's reveal is not needed for the winner to win — only the
+        // winner's board is audited for the win to count.
+        let (mut app, alice) = placed();
+        play_to_the_end(&mut app, alice);
+        reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).expect("alice reveals");
+        assert_eq!(standing(&app), Standing::Won { winner: 0 });
+    }
+
+    #[test]
+    fn a_reveal_that_does_not_match_the_commitment_is_refused() {
+        let (mut app, alice) = placed();
+        play_to_the_end(&mut app, alice);
+        // The right board under the wrong salt, and the wrong board under
+        // the right salt: neither hashes to what Alice committed to.
+        assert!(reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, [0u8; 16]).is_err());
+        assert!(reveal(&mut app, alice, ALICE_DEVICE, &BOB_FLEET, ALICE_SALT).is_err());
+        assert!(state(&app).revealed.is_empty());
+        assert_eq!(standing(&app), Standing::AwaitingReveal);
+        // The real pair still goes through.
+        reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).expect("alice reveals");
+        assert_eq!(standing(&app), Standing::Won { winner: 0 });
+    }
+
+    #[test]
+    fn a_defender_who_lied_about_a_hit_is_caught_at_the_reveal_and_loses() {
+        // Bob's client answers Alice's first shot — a hit on his destroyer —
+        // with "miss", through the API, then goes on to sink Alice's fleet.
+        // Every reader replays his answers against the board he reveals, and
+        // the lie costs him the win.
         let (mut app, alice) = placed();
         shoot(&mut app, alice, ALICE_DEVICE, 8, 0);
-        app.call_as_account(BOB, BOB_DEVICE, |s| {
-            s.answers
-                .insert(turn_key(&hex::encode(BOB), 0, 1), Answer { hit: false })
-                .expect("his own row");
-        });
+        let shot = pending(&app);
+        assert_eq!(
+            app.call_as_account(BOB, BOB_DEVICE, |s| s.acknowledge_shot(
+                MATCH,
+                shot.shot_id,
+                false
+            ))
+            .expect("bob lies"),
+            "miss"
+        );
         let water = bob_water();
         for (i, (x, y)) in cells(&ALICE_FLEET).into_iter().enumerate() {
             shoot(&mut app, BOB, BOB_DEVICE, x, y);
-            assert_eq!(answer(&mut app, alice, ALICE_DEVICE), "hit");
+            assert_eq!(answer(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET), "hit");
             if i + 1 < 17 {
                 let (wx, wy) = water[i];
                 shoot(&mut app, alice, ALICE_DEVICE, wx, wy);
-                assert_eq!(answer(&mut app, BOB, BOB_DEVICE), "miss");
+                assert_eq!(answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET), "miss");
             }
         }
-        // Alice's last answer ended it and opened her (honest) board.
-        assert_eq!(standing(&app), Standing::AwaitingReveal);
-        app.call_as_account(BOB, BOB_DEVICE, |s| s.reveal_board(MATCH))
-            .expect("bob reveals");
+        // Alice's last answer ended it, against her.
+        let view = state(&app);
+        assert_eq!(view.standing, "awaiting_reveal");
+        assert_eq!(view.loser, Some(hex::encode(ALICE_DEVICE)));
+
+        reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).expect("alice reveals");
+        assert_eq!(
+            standing(&app),
+            Standing::AwaitingReveal,
+            "bob's board decides it"
+        );
+        // Bob reveals the board he actually committed to — the one with a
+        // ship at (8,0) — and the replay finds the answer that does not fit.
+        reveal(&mut app, BOB, BOB_DEVICE, &BOB_FLEET, BOB_SALT).expect("bob reveals");
+        let view = state(&app);
+        assert_eq!(view.audit_failed, vec![hex::encode(BOB_DEVICE)]);
+        assert_eq!(view.standing, "won");
+        assert_eq!(view.winner, Some(hex::encode(ALICE_DEVICE)));
         assert_eq!(standing(&app), Standing::Won { winner: 0 });
+    }
+
+    #[test]
+    fn a_match_both_players_cheated_in_is_void() {
+        // Bob answers "miss" to a hit on his destroyer; Alice answers "hit"
+        // to a shot into open water. Bob then sinks Alice's fleet — 16 real
+        // hits plus the one she invented end it against her. Both reveal the
+        // honest boards they committed to, both fail the replay: nobody wins.
+        let (mut app, alice) = placed();
+        shoot(&mut app, alice, ALICE_DEVICE, 8, 0);
+        let shot = pending(&app);
+        app.call_as_account(BOB, BOB_DEVICE, |s| {
+            s.acknowledge_shot(MATCH, shot.shot_id, false)
+        })
+        .expect("bob lies");
+        shoot(&mut app, BOB, BOB_DEVICE, 5, 5);
+        let shot = pending(&app);
+        app.call_as_account(alice, ALICE_DEVICE, |s| {
+            s.acknowledge_shot(MATCH, shot.shot_id, true)
+        })
+        .expect("alice lies");
+        let water = bob_water();
+        for (i, (x, y)) in cells(&ALICE_FLEET).into_iter().take(16).enumerate() {
+            let (wx, wy) = water[i];
+            shoot(&mut app, alice, ALICE_DEVICE, wx, wy);
+            assert_eq!(answer(&mut app, BOB, BOB_DEVICE, &BOB_FLEET), "miss");
+            shoot(&mut app, BOB, BOB_DEVICE, x, y);
+            assert_eq!(answer(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET), "hit");
+        }
+        let view = state(&app);
+        assert_eq!(view.standing, "awaiting_reveal");
+        assert_eq!(view.ended_by.as_deref(), Some("sunk"));
+        assert_eq!(view.loser, Some(hex::encode(ALICE_DEVICE)));
+        reveal(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET, ALICE_SALT).expect("alice reveals");
+        reveal(&mut app, BOB, BOB_DEVICE, &BOB_FLEET, BOB_SALT).expect("bob reveals");
+        let view = state(&app);
+        assert_eq!(view.standing, "void");
+        assert_eq!(view.audit_failed.len(), 2);
+        assert!(view.winner.is_none());
+        assert_eq!(standing(&app), Standing::Void);
     }
 
     #[test]
     fn a_defender_who_never_admits_a_hit_runs_out_of_misses() {
         // A fleet is 17 cells, so on a 100-cell board the 84th miss is a lie
-        // no reveal is needed to see. Bob answers "miss" to everything,
-        // around the contract; Alice keeps shooting every cell.
+        // no reveal is needed to see. Bob's client answers "miss" to
+        // everything; Alice keeps shooting every cell.
         let (mut app, alice) = placed();
-        let bob = hex::encode(BOB);
         let alice_ships = cells(&ALICE_FLEET);
         let mut alice_water = (0..10u8)
             .flat_map(|y| (0..10u8).map(move |x| (x, y)))
             .filter(|c| !alice_ships.contains(c));
-        let mut turn = 0;
         'game: for y in 0..10u8 {
             for x in 0..10u8 {
                 shoot(&mut app, alice, ALICE_DEVICE, x, y);
+                let shot = pending(&app);
                 app.call_as_account(BOB, BOB_DEVICE, |s| {
-                    s.answers
-                        .insert(turn_key(&bob, turn, 1), Answer { hit: false })
-                        .expect("his own row");
-                });
-                turn += 1;
+                    s.acknowledge_shot(MATCH, shot.shot_id, false)
+                })
+                .expect("bob answers");
                 if app.view(|s| s.derive()).expect("derive").ended.is_some() {
                     break 'game;
                 }
                 let (wx, wy) = alice_water.next().expect("water left");
                 shoot(&mut app, BOB, BOB_DEVICE, wx, wy);
-                answer(&mut app, alice, ALICE_DEVICE);
-                turn += 1;
+                answer(&mut app, alice, ALICE_DEVICE, &ALICE_FLEET);
             }
         }
         let derived = app.view(|s| s.derive()).expect("derive");
         assert_eq!(derived.ended, Some((1, "impossible_misses")));
+        assert_eq!(state(&app).ended_by.as_deref(), Some("impossible_misses"));
     }
 }

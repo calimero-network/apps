@@ -66,16 +66,6 @@ export interface Event_Winner {
 }
 
 /**
- * Export payload for cross-device durability. Defined locally (not re-used from
- * `battleships-types`) because the wasm-abi emitter resolves types by their
- * local path and would otherwise not find it.
- */
-export interface ExportedSeed {
-  board_bytes: CalimeroBytes;
-  salt: CalimeroBytes;
-}
-
-/**
  * Everything fixed when the match is created.
  */
 export interface GameConfig {
@@ -98,9 +88,59 @@ export interface GameState {
   reveals: Record<string, Reveal>;
 }
 
-export interface OwnBoardView {
-  size: number;
-  board: CalimeroBytes;
+/**
+ * The match as every reader derives it, in one read: what a client needs to
+ * know whether to commit, answer, reveal, or show a result.
+ */
+export interface MatchStateView {
+  /**
+   * `playing`, `awaiting_reveal`, `won` or `void`.
+   */
+  standing: string;
+  /**
+   * Players, by key, whose commitment is on record.
+   */
+  committed: string[];
+  pending_shot: PendingShotView | null;
+  /**
+   * Why the answers ended it: `sunk`, `equivocation` or
+   * `impossible_misses`. `None` while playing.
+   */
+  ended_by: string | null;
+  /**
+   * The player the answers say lost, by key.
+   */
+  loser: string | null;
+  /**
+   * Players whose revealed board matched their commitment.
+   */
+  revealed: string[];
+  /**
+   * Players whose revealed board failed the audit — a lie about a shot, or
+   * an illegal fleet. Revealing is how a cheater is caught.
+   */
+  audit_failed: string[];
+  /**
+   * The audited winner, by key. Set only when `standing` is `won`.
+   */
+  winner: string | null;
+}
+
+/**
+ * The shot waiting for its defender's answer.
+ */
+export interface PendingShotView {
+  /**
+   * What `acknowledge_shot` takes: the turn index of this shot, so an
+   * answer meant for an earlier shot is refused instead of misfiled.
+   */
+  shot_id: number;
+  x: number;
+  y: number;
+  /**
+   * The player who has to answer, by key.
+   */
+  target: string;
 }
 
 /**
@@ -139,6 +179,10 @@ export interface Shot {
   y: number;
 }
 
+/**
+ * A grid of the caller's shots (`get_shots`) or of the shots fired at the
+ * caller (`get_incoming_shots`): one [`Cell`] byte per square, row-major.
+ */
 export interface ShotsView {
   size: number;
   shots: CalimeroBytes;
@@ -313,33 +357,35 @@ export class GameClient {
   /**
    * acknowledge_shot
    *
+   * The defender's answer to the pending shot — `hit` or not — as their
+   * client read it off the board on their device. A signed statement in
+   * shared state, write-once: it is what the reveal is replayed against,
+   * so a false answer here is the lie the audit catches.
+   *
+   * `shot_id` is the pending shot's turn index (see `get_match_state`), so
+   * an answer composed for one shot cannot land on the next.
+   *
    * @intent mutating
    */
-  public async acknowledgeShot(params: { match_id: string }): Promise<string> {
+  public async acknowledgeShot(params: { match_id: string; shot_id: number; hit: boolean }): Promise<string> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'acknowledge_shot', argsJson: params });
     return response as string;
   }
 
   /**
-   * acknowledge_shot_handler
+   * commit_board
    *
-   * @remarks handler
+   * File the caller's board commitment: `SHA256(borsh(board) || salt)` as
+   * 64 hex characters, computed on the device that keeps the board and the
+   * salt. Whether the board behind it is a legal fleet is settled at the
+   * reveal, by every reader — a commitment to nonsense is a loss, not a
+   * refusal.
    *
    * @intent mutating
    */
-  public async acknowledgeShotHandler(params: { id: string; x: number; y: number }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'acknowledge_shot_handler', argsJson: params });
+  public async commitBoard(params: { match_id: string; commitment: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'commit_board', argsJson: params });
     return response as void;
-  }
-
-  /**
-   * export_board_seed
-   *
-   * @intent read_only
-   */
-  public async exportBoardSeed(params: { match_id: string }): Promise<ExportedSeed> {
-    const response: any = await this._transport.execute({ contextId: this._contextId, method: 'export_board_seed', argsJson: params });
-    return (response == null ? null : ({ ...response, board_bytes: new CalimeroBytes(response['board_bytes']), salt: new CalimeroBytes(response['salt']) })) as ExportedSeed;
   }
 
   /**
@@ -375,17 +421,36 @@ export class GameClient {
   }
 
   /**
-   * get_own_board
+   * get_incoming_shots
+   *
+   * The opponent's shots at the caller, as a grid — what the client lays
+   * over the board on the device to draw "your waters": the answers the
+   * caller gave, and the shot still waiting for one.
    *
    * @intent read_only
    */
-  public async getOwnBoard(params: { match_id: string }): Promise<OwnBoardView> {
-    const response: any = await this._transport.execute({ contextId: this._contextId, method: 'get_own_board', argsJson: params });
-    return (response == null ? null : ({ ...response, board: new CalimeroBytes(response['board']) })) as OwnBoardView;
+  public async getIncomingShots(params: { match_id: string }): Promise<ShotsView> {
+    const response: any = await this._transport.execute({ contextId: this._contextId, method: 'get_incoming_shots', argsJson: params });
+    return (response == null ? null : ({ ...response, shots: new CalimeroBytes(response['shots']) })) as ShotsView;
+  }
+
+  /**
+   * get_match_state
+   *
+   * Everything a client needs in one read, so a session on a relay is
+   * not four round trips per event.
+   *
+   * @intent read_only
+   */
+  public async getMatchState(params: { match_id: string }): Promise<MatchStateView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_match_state', argsJson: params });
+    return response as MatchStateView;
   }
 
   /**
    * get_shots
+   *
+   * The caller's shots at the opponent, as a grid.
    *
    * @intent read_only
    */
@@ -409,30 +474,10 @@ export class GameClient {
   }
 
   /**
-   * import_board_seed
-   *
-   * @intent mutating
-   */
-  public async importBoardSeed(params: { match_id: string; board_bytes: CalimeroBytes; salt: CalimeroBytes }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'import_board_seed', argsJson: convertCalimeroBytesForWasm(params) });
-    return response as void;
-  }
-
-  /**
    * init
    */
   public async init(params: { player1: string; player2: string; player2_account: string; lobby_context_id: string | null; match_id: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'init', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * place_ships
-   *
-   * @intent mutating
-   */
-  public async placeShips(params: { match_id: string; ships: string[] }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'place_ships', argsJson: params });
     return response as void;
   }
 
@@ -449,29 +494,21 @@ export class GameClient {
   /**
    * reveal_board
    *
-   * Publish the caller's board for every reader to audit. Only once the
-   * match is over: a board opened mid-game is a board handed to the
-   * opponent.
+   * Publish the caller's `(board, salt)` for every reader to audit, and
+   * report how the audit went. Only once the match is over: a board opened
+   * mid-game is a board handed to the opponent.
+   *
+   * `board_bytes` is `borsh(Vec<u8>)` of the 100 pristine cells (water or
+   * ship), exactly what was hashed into the commitment. A pair that does
+   * not hash to the commitment is refused, so the player can retry with
+   * the right board; a pair that does is on record for good, and if the
+   * answers the player gave do not match it, every reader marks them a
+   * cheater and the game goes to the opponent.
    *
    * @intent mutating
    */
-  public async revealBoard(params: { match_id: string }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * reveal_board_handler
-   *
-   * Runs on the other player's node when the answers end the match, so
-   * both boards are opened without either player having to ask.
-   *
-   * @remarks handler
-   *
-   * @intent mutating
-   */
-  public async revealBoardHandler(params: { id: string }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'reveal_board_handler', argsJson: params });
+  public async revealBoard(params: { match_id: string; board_bytes: CalimeroBytes; salt: CalimeroBytes }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: convertCalimeroBytesForWasm(params) });
     return response as void;
   }
 

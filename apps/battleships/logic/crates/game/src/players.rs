@@ -1,25 +1,20 @@
 //! # Players Module
 //!
-//! This module contains all types and functionality related to player management,
-//! player boards, and private data storage in the battleship game.
+//! This module contains the board-building and fleet-validation helpers of
+//! the battleship game.
 //!
 //! ## Key Types
 //!
-//! - **`PublicKey`** - Represents a player's public key for identification
-//! - **`PlayerBoard`** - Represents a player's private board and ship data
-//! - **`PrivateBoards`** - Repository for storing player board data privately
+//! - **`PlayerBoard`** - A board with a fleet placed on it, by the rules the
+//!   placement grid enforces.
 //!
-//! ## Player Management
+//! ## Where boards live
 //!
-//! Players are identified by their public keys, which are derived from the
-//! Calimero executor ID or provided as Base58-encoded strings. Each player
-//! has their own private board where they place their ships.
-//!
-//! ## Private Data Storage
-//!
-//! Player boards are stored privately using the Calimero SDK's private storage
-//! system. This ensures that only the player can see their own ship placements
-//! until they are hit by the opponent.
+//! Nowhere in the contract. A player's board and salt stay on the player's
+//! device; the contract records only the commitment and, at match end, the
+//! reveal. `PlayerBoard` is the reference placement — what the client's
+//! `lib/board.ts` mirrors — and what the tests build commitments from. It is
+//! not read or written by any contract method.
 //!
 //! ⚠️ The examples below are `ignore`d. They were never compiled — the
 //! standalone repo did not run `cargo test --doc` — and they describe an API
@@ -57,7 +52,6 @@ use battleships_types::GameError;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_storage::collections::UnorderedMap;
 
 /// Represents a player's private board and ship data
 ///
@@ -235,34 +229,6 @@ impl PlayerBoard {
         if self.ships > 0 {
             self.ships = self.ships.saturating_sub(1);
         }
-    }
-}
-
-// ============================================================================
-// REPOSITORY PATTERN - Data access abstraction
-// ============================================================================
-
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[calimero_sdk::app::private]
-pub struct PrivateBoards {
-    pub boards: UnorderedMap<String, PlayerBoard>,
-}
-
-impl Default for PrivateBoards {
-    fn default() -> PrivateBoards {
-        PrivateBoards {
-            boards: UnorderedMap::new(),
-        }
-    }
-}
-
-impl PrivateBoards {
-    /// Keyed by the person as well as the match: private storage is per node,
-    /// and one node can hold both players' identities (two accounts on one
-    /// machine, or a test host), which would otherwise share one board.
-    pub fn key(match_id: &str, account: &[u8; 32]) -> String {
-        format!("{match_id}/{}", hex::encode(account))
     }
 }
 
