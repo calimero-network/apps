@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
-import type { GroupMember } from '@calimero-network/mero-js';
+import type { AdminApiClient, GroupMember } from '@calimero-network/mero-js';
 import {
   ROLE_ADMIN,
   ROLE_MEMBER,
@@ -25,6 +25,42 @@ import {
   effectiveCapabilities,
   repairedDefault,
 } from '../utils/roles';
+
+/** The admin reads behind the group default, narrowed. */
+export type DefaultCapabilitiesAdmin = Pick<AdminApiClient, 'getDefaultCapabilities' | 'getGroupInfo'>;
+
+/**
+ * The group's `defaultCapabilities`, or null when it could not be read.
+ *
+ * Null rather than 0 on failure: 0 is a real value meaning "members may do
+ * nothing", and showing that when we simply could not read would offer a
+ * repair for a problem that is not there.
+ *
+ * Two reads, not one. `getDefaultCapabilities` is mero-js's thin wrapper over
+ * `getGroupInfo`, but on an account session the two do not have to answer
+ * alike: the account admin serves reads from the relay, and a refused or
+ * reshaped wrapper left `defaultCapabilities` null for every Member of a
+ * workspace an account opened - so their effective mask read 0 and the Add
+ * pipeline / Invite controls vanished for people the default plainly grants
+ * them to. The group info record is the source the wrapper reads from, so it
+ * is asked directly before giving up.
+ */
+export async function readDefaultCapabilities(
+  admin: DefaultCapabilitiesAdmin,
+  namespaceId: string,
+): Promise<number | null> {
+  try {
+    const value = await admin.getDefaultCapabilities(namespaceId);
+    if (typeof value === 'number') return value;
+  } catch { /* fall through to the record it is read from */ }
+  try {
+    const info = await admin.getGroupInfo(namespaceId);
+    const value = (info as { defaultCapabilities?: unknown } | null)?.defaultCapabilities;
+    return typeof value === 'number' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface UseMemberRolesReturn {
   /** account -> `GroupMember.role`. */
@@ -66,7 +102,12 @@ export function useMemberRoles(
    */
   refetchMembers: () => Promise<void>,
 ): UseMemberRolesReturn {
-  const { mero } = useMero();
+  // `admin`, NOT `mero.admin`: the session-aware admin (apps#348). On a
+  // delegated (account) session the raw client's admin is the relay's node
+  // route under the account's token, and `updateMemberRole`,
+  // `setMemberCapabilities` and `setDefaultCapabilities` all answered 403
+  // there; the account admin signs them as governance ops instead.
+  const { admin } = useMero();
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
   const [defaultCapabilities, setDefaultCapabilities] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +132,7 @@ export function useMemberRoles(
   refetchMembersRef.current = refetchMembers;
 
   const load = useCallback(async () => {
-    if (!mero || !namespaceId) {
+    if (!admin || !namespaceId) {
       setOverrides(new Map());
       setDefaultCapabilities(null);
       return;
@@ -103,11 +144,7 @@ export function useMemberRoles(
       // that changed a role is invisible until this lands.
       await refetchMembersRef.current().catch(() => {});
       const [groupDefault, entries] = await Promise.all([
-        // A thin read over getGroupInfo. Null rather than 0 on failure: 0 is a
-        // real value meaning "members may do nothing", and showing that when we
-        // simply could not read would offer a repair for a problem that is not
-        // there.
-        mero.admin.getDefaultCapabilities(namespaceId).catch(() => null),
+        readDefaultCapabilities(admin, namespaceId),
         // ⚠️ This endpoint 500s for a member the roster lists but the raw
         // membership store has no row for, and that is not an edge case:
         // `list_group_members` answers from the ephemeral PROJECTION unioned
@@ -120,10 +157,13 @@ export function useMemberRoles(
         //
         // Treated as "no override" rather than as an error: the role is the
         // primary authority anyway (Admin bypasses the mask entirely), and an
-        // unreadable override must not make somebody look powerless.
+        // unreadable override must not make somebody look powerless. The same
+        // holds for an account reading its OWN row, which the relay refuses
+        // today (403, core#4483 fixes it): "no override" falls back to the
+        // group default above, which is what the account actually holds.
         Promise.all(
           accounts.map(async (account) => {
-            const caps = await mero.admin
+            const caps = await admin
               .getMemberCapabilities(namespaceId, account)
               .catch(() => null);
             return [account, caps?.capabilities ?? 0] as const;
@@ -135,7 +175,7 @@ export function useMemberRoles(
     } finally {
       setLoading(false);
     }
-  }, [mero, namespaceId, accountsKey]);
+  }, [admin, namespaceId, accountsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,32 +217,32 @@ export function useMemberRoles(
 
   const setRole = useCallback(
     async (account: string, role: WorkspaceRole) => {
-      if (!mero || !namespaceId) throw new Error('Workspace not ready');
+      if (!admin || !namespaceId) throw new Error('Workspace not ready');
       // ROLE ONLY. `Admin` bypasses the capability mask, so writing a mask here
       // would grant nothing — and it would survive a later demote, silently
       // leaving an ex-admin with an admin's bits. See `utils/roles`.
-      await mero.admin.updateMemberRole(namespaceId, account, { role });
+      await admin.updateMemberRole(namespaceId, account, { role });
       await load();
     },
-    [mero, namespaceId, load],
+    [admin, namespaceId, load],
   );
 
   const setCapabilities = useCallback(
     async (account: string, capabilities: number) => {
-      if (!mero || !namespaceId) throw new Error('Workspace not ready');
-      await mero.admin.setMemberCapabilities(namespaceId, account, { capabilities });
+      if (!admin || !namespaceId) throw new Error('Workspace not ready');
+      await admin.setMemberCapabilities(namespaceId, account, { capabilities });
       await load();
     },
-    [mero, namespaceId, load],
+    [admin, namespaceId, load],
   );
 
   const repairDefaultCapabilities = useCallback(async () => {
-    if (!mero || !namespaceId) throw new Error('Workspace not ready');
-    await mero.admin.setDefaultCapabilities(namespaceId, {
+    if (!admin || !namespaceId) throw new Error('Workspace not ready');
+    await admin.setDefaultCapabilities(namespaceId, {
       defaultCapabilities: repairedDefault(defaultCapabilities),
     });
     await load();
-  }, [mero, namespaceId, defaultCapabilities, load]);
+  }, [admin, namespaceId, defaultCapabilities, load]);
 
   return {
     roles,
