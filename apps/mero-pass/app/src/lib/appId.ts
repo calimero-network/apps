@@ -1,4 +1,4 @@
-import type { MeroJs } from '@calimero-network/mero-js';
+import type { AdminApiClient } from '@calimero-network/mero-js';
 
 /**
  * Resolving Mero Pass's OWN application id.
@@ -78,7 +78,7 @@ export function pickApplicationId(apps: readonly InstalledApp[]): string {
 
 /** Ask the node which of its installed applications is this one. */
 export async function resolveApplicationId(
-  admin: MeroJs['admin'],
+  admin: Pick<AdminApiClient, 'listApplications'>,
 ): Promise<string> {
   try {
     const res = await admin.listApplications();

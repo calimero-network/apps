@@ -25,7 +25,13 @@ const admin = {
   joinNamespace: vi.fn(),
   listNamespaces: vi.fn(),
 };
-const SESSION = { mero: { admin } };
+// The RAW client's admin: the node route, a 403 for an account. The prompt
+// must redeem through the session-aware `admin` and never reach this one.
+const rawAdmin = {
+  joinNamespace: vi.fn(),
+  listNamespaces: vi.fn(),
+};
+const SESSION = { mero: { admin: rawAdmin }, admin, isDelegated: true };
 vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => SESSION,
 }));
@@ -84,6 +90,10 @@ describe('InvitationPrompt', () => {
     await waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
     expect(navigate).toHaveBeenCalledWith(`/teams/${NS}`);
     expect(admin.joinNamespace).toHaveBeenCalledTimes(1);
+    // On an account (this session is delegated) the join went through the
+    // account admin; the raw client's node route was never asked.
+    expect(rawAdmin.joinNamespace).not.toHaveBeenCalled();
+    expect(rawAdmin.listNamespaces).not.toHaveBeenCalled();
   });
 
   it('treats a failed request whose namespace is listed as a success', async () => {

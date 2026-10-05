@@ -53,7 +53,10 @@ export function useVaultSession(
   contextId: string | null,
   team: { namespaceId: string; vaultId: string } | null,
 ): VaultSessionView {
-  const { mero } = useMero();
+  // The session-aware admin: the audience read lists group members, which the
+  // raw client's admin refuses on an account (403), and a null audience here
+  // means no key is ever handed out. See `lib/vaults` `AdminLike`.
+  const { admin } = useMero();
   const client = useVaultClient(contextId);
   const unlocked = useDeviceUnlocked();
   const [session, setSession] = useState<VaultSession | null>(null);
@@ -72,8 +75,7 @@ export function useVaultSession(
     busy.current = true;
     try {
       const s = await session.refreshKeys();
-      const allowed =
-        mero && team ? await vaultAudience(mero.admin, team) : null;
+      const allowed = admin && team ? await vaultAudience(admin, team) : null;
       if (s === 'ready') {
         const recovery = rememberedRecoveryKey();
         if (recovery) await session.adoptRecoveryKey(recovery).catch(() => {});
@@ -96,7 +98,7 @@ export function useVaultSession(
     } finally {
       busy.current = false;
     }
-  }, [session, mero, team]);
+  }, [session, admin, team]);
 
   // Open (or drop) the session as the lock and the client change.
   useEffect(() => {

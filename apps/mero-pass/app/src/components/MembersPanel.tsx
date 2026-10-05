@@ -50,7 +50,9 @@ export default function MembersPanel({
   /** Re-read the caller's own capabilities: demoting yourself is allowed. */
   onRolesChanged: () => void;
 }) {
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`: on an account the raw client's admin is the
+  // relay's node route and refuses every call here. See `lib/vaults`.
+  const { admin } = useMero();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,17 +64,17 @@ export default function MembersPanel({
   const iMayManage = canManageMembers(myCapabilities);
 
   const load = useCallback(async () => {
-    if (!mero) return;
+    if (!admin) return;
     setLoading(true);
     try {
-      setMembers(await listTeamMembers(mero.admin, namespaceId, myAccountId));
+      setMembers(await listTeamMembers(admin, namespaceId, myAccountId));
       setError(null);
     } catch (e) {
       setError(describeError(e));
     } finally {
       setLoading(false);
     }
-  }, [mero, namespaceId, myAccountId]);
+  }, [admin, namespaceId, myAccountId]);
 
   useEffect(() => {
     void load();
@@ -80,13 +82,13 @@ export default function MembersPanel({
 
   const change = useCallback(
     async (member: TeamMember, role: TeamRole) => {
-      if (!mero) return;
+      if (!admin) return;
       setError(null);
       setNotice(null);
       setConfirming(null);
       try {
         const result = await setMemberRole(
-          mero.admin,
+          admin,
           { namespaceId, accountId: member.accountId, role },
           setBusy,
         );
@@ -103,18 +105,18 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [mero, namespaceId, load, onRolesChanged],
+    [admin, namespaceId, load, onRolesChanged],
   );
 
   const remove = useCallback(
     async (member: TeamMember) => {
-      if (!mero) return;
+      if (!admin) return;
       setError(null);
       setNotice(null);
       setRemoving(null);
       setBusy(`Removing ${member.name}…`);
       try {
-        await removeTeamMember(mero.admin, {
+        await removeTeamMember(admin, {
           namespaceId,
           accountId: member.accountId,
         });
@@ -128,7 +130,7 @@ export default function MembersPanel({
         setBusy(null);
       }
     },
-    [mero, namespaceId, teamName, load],
+    [admin, namespaceId, teamName, load],
   );
 
   return (

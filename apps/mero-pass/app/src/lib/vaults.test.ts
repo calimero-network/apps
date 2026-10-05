@@ -189,6 +189,91 @@ describe('createTeam', () => {
       }),
     ).resolves.toEqual({ namespaceId: 'ns-1' });
   });
+
+  // An ACCOUNT founds through the relay, and the account admin's answer says
+  // whether the cloud will host the namespace. When it will not (an account
+  // not yet linked to its cloud user), the team exists but nobody can join it
+  // — and that has to be said at creation, not at the first invitation.
+  it("reports the cloud's hosting refusal from an account founding", async () => {
+    const { admin } = fakeAdmin({
+      createNamespace: () =>
+        Promise.resolve({
+          namespaceId: 'ns-1',
+          haEnabled: false,
+          haError: 'link this account to your cloud user in the wallet',
+        }),
+    });
+    await expect(
+      createTeam(admin, { applicationId: 'app-1', name: 'Acme' }),
+    ).resolves.toEqual({
+      namespaceId: 'ns-1',
+      haError: 'link this account to your cloud user in the wallet',
+    });
+  });
+
+  it('says nothing about hosting when a node founded it', async () => {
+    const { admin } = fakeAdmin();
+    const made = await createTeam(admin, { applicationId: 'app-1', name: 'A' });
+    expect('haError' in made).toBe(false);
+  });
+});
+
+/** What mero-react's account admin throws for a node-only operation. */
+function notForAccount(method: string): Error {
+  const e = new Error(`${method} is a node's operation, not an account's`);
+  e.name = 'NotForAccountError';
+  return e;
+}
+
+describe('on an account, the node-only half of invite-only vaults', () => {
+  it('mintVaultInvite explains the refusal instead of passing it through', async () => {
+    const { admin } = fakeAdmin({
+      createGroupInvitation: () =>
+        Promise.reject(notForAccount('createGroupInvitation')),
+    });
+    await expect(
+      mintVaultInvite(admin, {
+        namespaceId: 'ns-1',
+        vaultId: 'sub-1',
+        restricted: true,
+      }),
+    ).rejects.toThrow(/cannot invite to an invite-only vault yet/);
+  });
+
+  it('mintVaultInvite for an OPEN vault needs no subgroup invitation at all', async () => {
+    const { admin, calls } = fakeAdmin({
+      createGroupInvitation: () =>
+        Promise.reject(notForAccount('createGroupInvitation')),
+    });
+    await expect(
+      mintVaultInvite(admin, { namespaceId: 'ns-1', vaultId: 'sub-1' }),
+    ).resolves.toEqual(expect.any(String));
+    expect(methodsOf(calls)).not.toContain('createGroupInvitation');
+  });
+
+  it('acceptInvite names the vault step as the one an account cannot take', async () => {
+    const joined: string[] = [];
+    const { admin } = fakeAdmin({
+      joinNamespace: (id: string) => {
+        joined.push(id);
+        return Promise.resolve({});
+      },
+      listNamespaces: () => Promise.resolve([]),
+      joinGroup: () => Promise.reject(notForAccount('joinGroup')),
+    });
+    await expect(
+      acceptInvite(admin, {
+        kind: 'vault',
+        invitation: SIGNED,
+        chain: [
+          { groupId: '3f8a91c2', invitation: SIGNED, kind: 'namespace' },
+          { groupId: 'sub-1', invitation: SIGNED, kind: 'vault' },
+        ],
+      } as never),
+    ).rejects.toThrow(/Joined the team, but an account/);
+    // The team step landed before the refusal.
+    expect(joined).toHaveLength(1);
+  });
 });
 
 describe('createVault', () => {
@@ -522,15 +607,26 @@ describe('listTeamMembers', () => {
     ]);
   });
 
-  it('degrades one row to a null mask rather than emptying the list', async () => {
+  it("falls back to the role's own mask for a row whose mask cannot be read", async () => {
+    // An account's read of member records is refused today (403), and a
+    // `null` here rendered every row as "the node has not applied this role".
+    // The role the roster reports is the next-best answer; the list is kept.
     const { admin } = fakeAdmin({
       listGroupMembers: () =>
-        Promise.resolve({ members: [{ identity: 'a', role: 'Member' }] }),
+        Promise.resolve({
+          members: [
+            { identity: 'a', role: 'Member' },
+            { identity: 'b', role: 'Admin' },
+          ],
+        }),
       getMemberCapabilities: () => Promise.reject(new Error('not here yet')),
     });
-    const [row] = await listTeamMembers(admin, 'ns-1', null);
-    expect(row.capabilities).toBeNull();
-    expect(row.name).toBe('Member a…');
+    const rows = await listTeamMembers(admin, 'ns-1', null);
+    expect(rows.map((r) => r.capabilities)).toEqual([
+      MEMBER_CAPABILITIES,
+      ADMIN_CAPABILITIES,
+    ]);
+    expect(rows[0].name).toBe('Member a…');
   });
 });
 
@@ -656,6 +752,53 @@ describe('myCapabilities', () => {
     // closed without asserting the member has nothing.
     const { admin } = fakeAdmin({
       getMemberCapabilities: () => Promise.reject(new Error('offline')),
+    });
+    expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBeNull();
+  });
+
+  // An account's read of its own member record is refused today (403), while
+  // the roster is caller-scoped and answers. The role the roster reports is
+  // the next-best answer, and it is what keeps a team's creator from being
+  // told "You are a Member… an Admin can change that" with nobody to ask.
+  it("falls back to the roster ROLE's mask when the mask read is refused", async () => {
+    let maskReads = 0;
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () => {
+        maskReads += 1;
+        return Promise.reject(
+          Object.assign(new Error('forbidden'), { status: 403 }),
+        );
+      },
+      listGroupMembers: () =>
+        Promise.resolve({
+          members: [
+            { identity: 'acct-a', role: 'Admin' },
+            { identity: 'acct-b', role: 'Member' },
+          ],
+        }),
+    });
+    expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBe(
+      ADMIN_CAPABILITIES,
+    );
+    expect(await myCapabilities(admin, 'ns-1', 'acct-b')).toBe(
+      MEMBER_CAPABILITIES,
+    );
+    // The mask was asked first, every time: the fallback is a fallback.
+    expect(maskReads).toBe(2);
+  });
+
+  it('prefers the mask when the node answers it', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () => Promise.resolve({ capabilities: 4 }),
+    });
+    expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBe(4);
+    expect(methodsOf(calls)).not.toContain('listGroupMembers');
+  });
+
+  it('stays null when the roster does not list this account either', async () => {
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () => Promise.reject(new Error('forbidden')),
+      listGroupMembers: () => Promise.resolve({ members: [] }),
     });
     expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBeNull();
   });

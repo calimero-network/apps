@@ -13,6 +13,16 @@ import { resolveApplicationId } from '../lib/appId';
  * this app is installed or removed, which is not something a picker needs to
  * poll for, and re-asking on every mount made the vault list flicker between
  * empty and populated on each navigation.
+ *
+ * ── On an ACCOUNT (a delegated session through a relay) ────────────────────
+ *
+ * There is no node to ask. `GET /admin-api/applications` is a node-wide
+ * listing that the relay refuses to an account's token (403), and an account
+ * has no install of its own to find. Since mero-react 9.11 the provider
+ * resolves the account's application id from the REGISTRY, by this app's
+ * package, and hands it out as `useMero().applicationId` — so that is the
+ * answer there, and the shared-origin worry above does not apply to it: it
+ * was resolved for THIS app's package, not inherited from the last login.
  */
 const cache = new Map<string, string>();
 
@@ -26,13 +36,15 @@ export interface ResolvedAppId {
 }
 
 export function useApplicationId(): ResolvedAppId {
-  const { mero, nodeUrl } = useMero();
+  // `admin`, not `mero.admin`: the session-aware client. On a node it is the
+  // node's own; on an account the listing is never asked for (below).
+  const { admin, nodeUrl, isDelegated, applicationId } = useMero();
   const key = nodeUrl ?? '';
   const [appId, setAppId] = useState<string>(() => cache.get(key) ?? '');
   const [resolving, setResolving] = useState(() => !cache.has(key));
 
   useEffect(() => {
-    if (!mero) return;
+    if (isDelegated || !admin) return;
     const cached = cache.get(key);
     if (cached !== undefined) {
       setAppId(cached);
@@ -41,7 +53,7 @@ export function useApplicationId(): ResolvedAppId {
     }
     let cancelled = false;
     setResolving(true);
-    resolveApplicationId(mero.admin).then((id) => {
+    resolveApplicationId(admin).then((id) => {
       if (cancelled) return;
       cache.set(key, id);
       setAppId(id);
@@ -50,7 +62,19 @@ export function useApplicationId(): ResolvedAppId {
     return () => {
       cancelled = true;
     };
-  }, [mero, key]);
+  }, [admin, key, isDelegated]);
+
+  if (isDelegated) {
+    // The registry's answer for this package. Until the provider has it the
+    // id is "", which is "not yet", never "not installed": an account is not
+    // installed anywhere, so that verdict would be meaningless and would hide
+    // the create controls behind a message that cannot be acted on.
+    return {
+      appId: applicationId ?? '',
+      resolving: false,
+      notInstalled: false,
+    };
+  }
 
   return { appId, resolving, notInstalled: !resolving && !appId };
 }

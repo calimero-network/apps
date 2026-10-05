@@ -51,7 +51,10 @@
 // An invitation grants namespace membership. Nothing else travels in it: no
 // secret, no vault contents, no derived key material. See `lib/inviteCodec`.
 
-import type { MeroJs } from '@calimero-network/mero-js';
+import type {
+  AdminApiClient,
+  CreateNamespaceResponseData,
+} from '@calimero-network/mero-js';
 import {
   ADMIN_CAPABILITIES,
   MEMBER_CAPABILITIES,
@@ -77,8 +80,49 @@ import { vaultApiFor } from './vaultApi';
 import { type VaultApi, VaultSession } from './vaultSession';
 import { rawReason } from './errors';
 
-/** The admin client, as `useMero().mero.admin` provides it. */
-export type AdminLike = MeroJs['admin'];
+/**
+ * The admin client, as `useMero().admin` provides it.
+ *
+ * ⚠️ `admin`, NEVER `mero.admin`. The raw client's admin is the node's own
+ * route under whatever token the session holds. For a node login the two are
+ * the same object; for an ACCOUNT (a delegated session through a relay) the
+ * raw admin answers 403 to every call — `listApplications`,
+ * `listNamespacesForApplication`, `getContextIdentitiesOwned`, every write —
+ * and the app dead-ends at "not installed". `useMero().admin` is the account
+ * admin on an account: it founds namespaces through the relay, creates
+ * contexts by delegation, and reads caller-scoped. The shape is the same, so
+ * everything in this module takes it by this type and never asks which it is.
+ */
+export type AdminLike = AdminApiClient;
+
+/**
+ * What the account admin's `createNamespace` adds to the node's answer: whether
+ * the cloud agreed to HOST the namespace (so invitees have somewhere to join),
+ * and why not when it did not. A node's own answer carries neither.
+ */
+type FoundedNamespace = CreateNamespaceResponseData & {
+  haEnabled?: boolean;
+  haError?: string;
+};
+
+/**
+ * Why a freshly founded team cannot be joined yet, in words a person can act
+ * on, or undefined when hosting is fine (or not in question — a node login).
+ *
+ * Surfaced right after creation rather than at invite time: an account that
+ * is not linked to its cloud user founds the namespace fine and only finds out
+ * that nobody can join it when the first invitation is minted, which is the
+ * wrong moment and the wrong screen.
+ */
+function hostingProblem(ns: FoundedNamespace): string | undefined {
+  if (ns.haEnabled === false && ns.haError) return ns.haError;
+  return undefined;
+}
+
+/** The account admin refuses a node-only operation by this name (mero-react). */
+function isNotForAccount(e: unknown): boolean {
+  return e instanceof Error && e.name === 'NotForAccountError';
+}
 
 /**
  * Progress sink. Every flow in here is several round-trips deep, and a single
@@ -371,12 +415,16 @@ export async function createTeam(
   admin: AdminLike,
   opts: { applicationId: string; name: string; accountId?: string | null },
   onStatus: StatusFn = noop,
-): Promise<{ namespaceId: string }> {
+): Promise<{ namespaceId: string; haError?: string }> {
   onStatus('Creating the team…');
   // `name` on the wire, at creation. Passing it here is the difference between
   // everyone seeing the name and everyone seeing a hex stub; an app that keeps
   // the name client-side instead has already lost it for every invitee.
-  const ns = await admin.createNamespace({
+  //
+  // On an account this founds through the relay (the account admin names the
+  // app by the provider's package) and also says whether the cloud will host
+  // it — see `hostingProblem`.
+  const ns: FoundedNamespace = await admin.createNamespace({
     applicationId: opts.applicationId,
     name: opts.name,
   });
@@ -460,7 +508,10 @@ export async function createTeam(
     .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: 'open' })
     .catch(() => {});
 
-  return { namespaceId: ns.namespaceId };
+  const haError = hostingProblem(ns);
+  return haError
+    ? { namespaceId: ns.namespaceId, haError }
+    : { namespaceId: ns.namespaceId };
 }
 
 // ── Vaults (subgroup + context) ──────────────────────────────────────────────
@@ -841,9 +892,20 @@ export async function mintVaultInvite(
   let chain: InviteChainEntry[] | undefined;
   if (opts.restricted) {
     onStatus('Minting the vault invitation…');
-    const vaultRes = await admin.createGroupInvitation(opts.vaultId, {
-      expirationTimestamp,
-    });
+    // ⚠️ A node's operation only. A subgroup invitation has no account form
+    // yet (mero-react signs namespace invitations for an account, not vault
+    // ones), so the account admin refuses this by name. The UI hides the path
+    // on an account; this is the reason, for whoever reaches the library.
+    const vaultRes = await admin
+      .createGroupInvitation(opts.vaultId, { expirationTimestamp })
+      .catch((e: unknown) => {
+        if (isNotForAccount(e)) {
+          throw new Error(
+            'An account signed in through the cloud cannot invite to an invite-only vault yet — only a node can mint a vault invitation. Invite them to the team, or mint this from a node sign-in.',
+          );
+        }
+        throw e;
+      });
     const vaultInvitation = unwrapInvitation(vaultRes);
     if (!vaultInvitation) {
       throw new Error(
@@ -991,8 +1053,17 @@ export async function acceptInvite(
         await admin.joinGroup({ invitation: step.invitation as never });
       } catch (e) {
         // Walking a chain routinely re-joins something already held.
-        if (!isAlreadyMember(e)) throw e;
-        onStatus(`Already in the ${label} — continuing…`);
+        if (isAlreadyMember(e)) {
+          onStatus(`Already in the ${label} — continuing…`);
+        } else if (isNotForAccount(e)) {
+          // The team step above already landed; only the vault step has no
+          // account form yet. Say which, rather than a bare refusal.
+          throw new Error(
+            `Joined the team, but an account signed in through the cloud cannot accept an invite-only vault's invitation yet — open the vault from a node sign-in, or ask for the vault to be made open.`,
+          );
+        } else {
+          throw e;
+        }
       }
     }
     if (step.kind === 'namespace') result.namespaceId = signedId;
@@ -1295,6 +1366,8 @@ export async function findVaultByContext(
   vaultName: string;
   /** True when this vault's namespace is the caller's personal one. */
   personal: boolean;
+  /** Invite-only, as `listVaults` read it. */
+  restricted: boolean;
 } | null> {
   const teams = await listTeams(admin, applicationId).catch(() => []);
   for (const team of teams) {
@@ -1307,6 +1380,7 @@ export async function findVaultByContext(
         teamName: team.name,
         vaultName: hit.name,
         personal: team.personal,
+        restricted: hit.restricted,
       };
     }
   }
@@ -1367,10 +1441,16 @@ export async function listTeamMembers(
   const members = res.members ?? [];
   return Promise.all(
     members.map(async (m) => {
+      // The mask when the node will say; the role's own mask when it will not
+      // (an account's read of member records is refused today — see
+      // `myCapabilities`). Without the fallback every row reads as "the node
+      // has not applied this role" on an account, which is false.
       const capabilities = await admin
         .getMemberCapabilities(namespaceId, m.identity)
-        .then((r) => r?.capabilities ?? null)
-        .catch(() => null);
+        .then(
+          (r) => r?.capabilities ?? capabilitiesForRole(normaliseRole(m.role)),
+        )
+        .catch(() => capabilitiesForRole(normaliseRole(m.role)));
       return {
         accountId: m.identity,
         name: displayName([m.name], m.identity, 'Member'),
@@ -1383,16 +1463,46 @@ export async function listTeamMembers(
   );
 }
 
-/** This node's own capabilities in a team, or null when they cannot be read. */
+/**
+ * This account's own capabilities in a team, or null when they cannot be read.
+ *
+ * ⚠️ TWO READS, in order. The mask (`getMemberCapabilities`) is the truth and
+ * is asked first. But an ACCOUNT's read of its own member record answers 403
+ * on today's relays (core narrows that route to the node's operator; the fix
+ * is tracked in core#4483), and a `null` here closes every gate in the UI —
+ * the creator of a team sees "You are a Member… An Admin can change that",
+ * with nobody to ask. So when the mask cannot be read, fall back to the ROLE
+ * the roster reports for this account and the mask that role is defined as
+ * (`lib/roles`): `listGroupMembers` is caller-scoped and does answer an
+ * account. That is a weaker answer — a mask can lag a role — and it is only
+ * reached when the stronger one is refused. Null stays null when the roster
+ * does not list us either: unknown, not "nothing".
+ */
 export async function myCapabilities(
   admin: AdminLike,
   namespaceId: string,
   accountId: string,
 ): Promise<number | null> {
-  return admin
+  const mask = await admin
     .getMemberCapabilities(namespaceId, accountId)
     .then((r) => r?.capabilities ?? null)
     .catch(() => null);
+  if (mask !== null) return mask;
+  return roleMaskOf(admin, namespaceId, accountId);
+}
+
+/** The mask this account's roster ROLE is defined as, or null when unlisted. */
+async function roleMaskOf(
+  admin: AdminLike,
+  namespaceId: string,
+  accountId: string,
+): Promise<number | null> {
+  const row = await admin
+    .listGroupMembers(namespaceId)
+    .then((r) => (r.members ?? []).find((m) => m.identity === accountId))
+    .catch(() => undefined);
+  if (!row) return null;
+  return capabilitiesForRole(normaliseRole(row.role));
 }
 
 /** What `setMemberRole` managed to do, reported honestly. */
@@ -1525,28 +1635,39 @@ export async function vaultAudience(
 
 // ── Every vault this browser can open ────────────────────────────────────────
 
-type VaultMero = { admin: AdminLike } & ConstructorParameters<
-  typeof MeroPassClient
->[0];
+/**
+ * What the whole-account walks below need: the session-aware `admin` to list
+ * teams and vaults, and the raw client's `rpc` to execute on each vault's
+ * contract. Two different objects on an account (`useMero().admin` and
+ * `useMero().mero.rpc`), one on a node — so they are passed apart, never as
+ * the raw client.
+ */
+export type VaultMero = {
+  admin: AdminLike;
+  rpc: ConstructorParameters<typeof MeroPassClient>[0];
+};
 
 /**
  * Run `fn` on the contract of every vault of this app the node has joined.
  * Returns the sum of what `fn` returned.
  */
 export async function forEachJoinedVault(
-  mero: VaultMero,
+  conn: VaultMero,
   applicationId: string,
   fn: (api: VaultApi, vault: VaultRow) => Promise<number>,
   onStatus: StatusFn = noop,
 ): Promise<number> {
   let total = 0;
-  const teams = await listTeams(mero.admin, applicationId);
+  const teams = await listTeams(conn.admin, applicationId);
   for (const team of teams) {
-    const vaults = await listVaults(mero.admin, team.namespaceId);
+    const vaults = await listVaults(conn.admin, team.namespaceId);
     for (const v of vaults) {
       if (!v.contextId || !v.joined) continue;
       onStatus(`${v.name}…`);
-      total += await fn(vaultApiFor(new MeroPassClient(mero, v.contextId)), v);
+      total += await fn(
+        vaultApiFor(new MeroPassClient(conn.rpc, v.contextId)),
+        v,
+      );
     }
   }
   return total;
@@ -1558,7 +1679,7 @@ export async function forEachJoinedVault(
  * skipped; any other failure throws.
  */
 export async function forEachOpenVault(
-  mero: VaultMero,
+  conn: VaultMero,
   applicationId: string,
   as: { device: DeviceKeyPair; fingerprint: string },
   label: string,
@@ -1566,7 +1687,7 @@ export async function forEachOpenVault(
   onStatus: StatusFn = noop,
 ): Promise<number> {
   return forEachJoinedVault(
-    mero,
+    conn,
     applicationId,
     async (api, v) => {
       const session = new VaultSession(api, as.device, as.fingerprint, label);
@@ -1593,7 +1714,7 @@ export async function forEachOpenVault(
  * aborts and the old key stays.
  */
 export async function migrateDevice(
-  mero: VaultMero,
+  conn: VaultMero,
   applicationId: string,
   old: { device: DeviceKeyPair; fingerprint: string },
   next: { device: DeviceKeyPair; fingerprint: string },
@@ -1601,7 +1722,7 @@ export async function migrateDevice(
   onStatus: StatusFn = noop,
 ): Promise<number> {
   return forEachOpenVault(
-    mero,
+    conn,
     applicationId,
     old,
     label,

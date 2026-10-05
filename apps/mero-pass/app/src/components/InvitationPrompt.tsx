@@ -32,7 +32,9 @@ import styles from './InvitationPrompt.module.css';
  * which reads as the app nagging rather than as durability.
  */
 export default function InvitationPrompt() {
-  const { mero } = useMero();
+  // Only to know whether there is a session to redeem against; the redeem
+  // itself goes through `useRedeemInvitation`, on the session-aware admin.
+  const { admin } = useMero();
   const [pending, setPending] = useState<{
     captured: CapturedInvitation;
     payload: PassInvitePayload;
@@ -130,7 +132,7 @@ export default function InvitationPrompt() {
           type="button"
           className={styles.accept}
           onClick={() => void accept()}
-          disabled={busy || !mero}
+          disabled={busy || !admin}
           data-testid="invite-accept"
         >
           {busy ? 'Joining…' : 'Join'}

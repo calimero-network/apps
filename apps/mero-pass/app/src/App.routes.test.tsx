@@ -9,6 +9,9 @@ vi.mock('@calimero-network/mero-react', () => ({
   useMero: () => ({
     ...session,
     mero: null,
+    admin: null,
+    isDelegated: false,
+    applicationId: null,
     nodeUrl: 'http://localhost:2528',
     logout: () => {},
   }),

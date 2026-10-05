@@ -31,6 +31,9 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 // harness carries a note about.
 const SESSION = {
   mero: { admin: {} },
+  // The session-aware admin the page reaches for (never `mero.admin`).
+  admin: {},
+  isDelegated: false,
   isAuthenticated: true,
   isLoading: false,
   logout: () => {},

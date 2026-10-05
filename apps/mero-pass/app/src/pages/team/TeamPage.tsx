@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
@@ -39,8 +44,19 @@ type Tab = 'vaults' | 'people';
  */
 export default function TeamPage() {
   const { teamId } = useParams<{ teamId: string }>();
-  const { mero } = useMero();
+  // `admin`, never `mero.admin`: the session-aware client (see `lib/vaults`
+  // `AdminLike`). `isDelegated` hides the two things an ACCOUNT cannot do yet:
+  // a subgroup invitation has no account form in mero-react, so an invite-only
+  // vault can neither be invited to nor, for an account, usefully created.
+  const { admin, isDelegated } = useMero();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Handed over by the teams screen right after `createTeam`: why the cloud
+  // would not host this team, in words a person can act on. Only an account
+  // founding through a relay ever has one.
+  const hostingNotice =
+    (location.state as { hostingNotice?: string } | null)?.hostingNotice ??
+    null;
   const [params, setParams] = useSearchParams();
   const { appId, notInstalled } = useApplicationId();
   const {
@@ -88,10 +104,10 @@ export default function TeamPage() {
   });
 
   const load = useCallback(async () => {
-    if (!mero || !teamId) return;
+    if (!admin || !teamId) return;
     setLoading(true);
     try {
-      setVaults(await listVaults(mero.admin, teamId));
+      setVaults(await listVaults(admin, teamId));
       // A real answer, empty or not — that is what ends the sync gate.
       setListedForTeam(teamId);
       setError(null);
@@ -100,16 +116,16 @@ export default function TeamPage() {
     } finally {
       setLoading(false);
     }
-  }, [mero, teamId]);
+  }, [admin, teamId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    if (!mero || !appId || !teamId) return;
+    if (!admin || !appId || !teamId) return;
     let cancelled = false;
-    listTeams(mero.admin, appId)
+    listTeams(admin, appId)
       .then((rows) => {
         if (!cancelled) {
           setTeamName(rows.find((r) => r.namespaceId === teamId)?.name ?? '');
@@ -121,15 +137,15 @@ export default function TeamPage() {
     return () => {
       cancelled = true;
     };
-  }, [mero, appId, teamId]);
+  }, [admin, appId, teamId]);
 
   const create = useCallback(async () => {
     const name = newName.trim();
-    if (!mero || !appId || !teamId || !name) return;
+    if (!admin || !appId || !teamId || !name) return;
     setError(null);
     try {
       await createVault(
-        mero.admin,
+        admin,
         { applicationId: appId, namespaceId: teamId, name, restricted },
         setBusy,
       );
@@ -141,15 +157,15 @@ export default function TeamPage() {
     } finally {
       setBusy(null);
     }
-  }, [mero, appId, teamId, newName, restricted, load]);
+  }, [admin, appId, teamId, newName, restricted, load]);
 
   const open = useCallback(
     async (vault: VaultRow) => {
-      if (!mero || !vault.contextId) return;
+      if (!admin || !vault.contextId) return;
       setError(null);
       try {
         await enterVaultContext(
-          mero.admin,
+          admin,
           {
             vaultId: vault.vaultId,
             contextId: vault.contextId,
@@ -171,15 +187,15 @@ export default function TeamPage() {
         setBusy(null);
       }
     },
-    [mero, navigate, teamId],
+    [admin, navigate, teamId],
   );
 
   const inviteToTeam = useCallback(async () => {
-    if (!mero || !teamId) return;
+    if (!admin || !teamId) return;
     setError(null);
     try {
       const code = await mintTeamInvite(
-        mero.admin,
+        admin,
         { namespaceId: teamId, teamName: heading, validForSecs: validFor },
         setBusy,
       );
@@ -193,15 +209,15 @@ export default function TeamPage() {
     } finally {
       setBusy(null);
     }
-  }, [mero, teamId, heading, validFor, validLabel]);
+  }, [admin, teamId, heading, validFor, validLabel]);
 
   const inviteToVault = useCallback(
     async (vault: VaultRow) => {
-      if (!mero || !teamId) return;
+      if (!admin || !teamId) return;
       setError(null);
       try {
         const code = await mintVaultInvite(
-          mero.admin,
+          admin,
           {
             namespaceId: teamId,
             vaultId: vault.vaultId,
@@ -229,7 +245,7 @@ export default function TeamPage() {
         setBusy(null);
       }
     },
-    [mero, teamId, heading, validFor, validLabel],
+    [admin, teamId, heading, validFor, validLabel],
   );
 
   return (
@@ -306,6 +322,11 @@ export default function TeamPage() {
           </p>
         )}
         {busy && <p className={styles.status}>{busy}</p>}
+        {hostingNotice && (
+          <p className={styles.status} data-testid="hosting-notice">
+            This team exists, but nobody can join it yet: {hostingNotice}.
+          </p>
+        )}
 
         {tab === 'vaults' ? (
           <>
@@ -319,20 +340,27 @@ export default function TeamPage() {
                   onKeyDown={(e) => e.key === 'Enter' && void create()}
                   data-testid="vault-name"
                 />
-                <label className={styles.rowSub}>
-                  <input
-                    type="checkbox"
-                    checked={restricted}
-                    onChange={(e) => setRestricted(e.target.checked)}
-                    data-testid="vault-restricted"
-                  />{' '}
-                  Invite-only
-                </label>
+                {/* Not offered to an account: an invite-only vault is only
+                    reachable by a vault invitation, and minting one is a
+                    node's operation (`createGroupInvitation` has no account
+                    form yet). An account would create a vault nobody else
+                    could ever be let into. */}
+                {!isDelegated && (
+                  <label className={styles.rowSub}>
+                    <input
+                      type="checkbox"
+                      checked={restricted}
+                      onChange={(e) => setRestricted(e.target.checked)}
+                      data-testid="vault-restricted"
+                    />{' '}
+                    Invite-only
+                  </label>
+                )}
                 <button
                   type="button"
                   className={styles.btn}
                   onClick={() => void create()}
-                  disabled={!mero || !appId || !newName.trim() || !!busy}
+                  disabled={!admin || !appId || !newName.trim() || !!busy}
                   data-testid="vault-create"
                 >
                   Create
@@ -386,21 +414,28 @@ export default function TeamPage() {
                           : ' · syncing'}
                       </span>
                     </button>
-                    {mayInvite && vault.contextId && (
-                      <button
-                        type="button"
-                        className={styles.menuBtn}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void inviteToVault(vault);
-                        }}
-                        title={`Invite someone to ${vault.name}`}
-                        aria-label={`Invite someone to ${vault.name}`}
-                        data-testid="vault-invite"
-                      >
-                        ＋
-                      </button>
-                    )}
+                    {/* An open vault's invitation is a TEAM invitation with
+                        routing hints, which an account can mint. An
+                        invite-only vault's needs a subgroup invitation too,
+                        which only a node can — so that path is hidden on an
+                        account rather than failing at the mint. */}
+                    {mayInvite &&
+                      vault.contextId &&
+                      !(isDelegated && vault.restricted) && (
+                        <button
+                          type="button"
+                          className={styles.menuBtn}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void inviteToVault(vault);
+                          }}
+                          title={`Invite someone to ${vault.name}`}
+                          aria-label={`Invite someone to ${vault.name}`}
+                          data-testid="vault-invite"
+                        >
+                          ＋
+                        </button>
+                      )}
                   </div>
                 ))}
               </div>
