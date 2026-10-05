@@ -10,14 +10,18 @@
  * failed when it is on record.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AdminApiClient, type DelegatedSession } from '@calimero-network/mero-js';
 
 import {
+  admitterBaseUrl,
   claimAccountWithCloud,
   createContextThroughRelay,
   describeCreation,
   explainCreationFailure,
   findAccountRelays,
+  readContext,
   readInvitation,
+  sendJoin,
 } from './flow.js';
 import type { DeviceIdentity } from './identity.js';
 
@@ -42,8 +46,17 @@ vi.mock('@calimero-network/mero-js', async (importOriginal) => {
       }
     }
   }
-  return { ...actual, RelayClient: SwitchableRelayClient };
+  // The join op is borsh over a real signed invitation; the admit tests are
+  // about where the op goes, not how it is encoded, so they script the signer.
+  const signMemberJoinOp: typeof actual.signMemberJoinOp = (input) =>
+    join.fake ? join.fake(input) : actual.signMemberJoinOp(input);
+  return { ...actual, RelayClient: SwitchableRelayClient, signMemberJoinOp };
 });
+
+/** A switch on `signMemberJoinOp`; `fake` null means the real one. */
+const join = vi.hoisted(() => ({
+  fake: null as null | ((input: unknown) => Promise<string>),
+}));
 
 /** Sealing would attest a real relay; a marker is enough to see it was asked for. */
 const sealedFetch = vi.hoisted(() => (() => Promise.reject(new Error('sealed'))) as typeof fetch);
@@ -57,14 +70,16 @@ const ACCOUNT_ID = 'ca7645ffd4d0621d00c6c88743aeace5797135ab298c49e77de066206090
 const ROOT_PUBLIC_KEY = 'a021d221f1e7601e8d280c857f8a667383e3923dda13b55f21ca2d928b79c70c';
 
 /** Answer a scripted queue and record what was asked. */
-function scriptFetch(responses: Array<{ status?: number; body?: unknown }>) {
+function scriptFetch(responses: Array<{ status?: number; body?: unknown; text?: string }>) {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const queue = [...responses];
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ url: String(input), init });
     const next = queue.shift();
     if (!next) throw new Error('unexpected extra fetch');
-    return new Response(JSON.stringify(next.body ?? {}), {
+    // `text` is the body verbatim, for a refusal whose exact wording a test
+    // expects to see quoted back.
+    return new Response(next.text ?? JSON.stringify(next.body ?? {}), {
       status: next.status ?? 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -390,6 +405,44 @@ describe('delegated context creation', () => {
     });
   });
 
+  it('puts the service name in the warrant when given, and nothing when not', async () => {
+    const createFn = vi.fn(async () => ({
+      contextId: 'cc'.repeat(32),
+      groupId: GROUP,
+      memberPublicKey: 'dd'.repeat(32),
+    }));
+    relay.fake = () => ({
+      describeCreation: async () => ({
+        executorAccount: '33'.repeat(32),
+        groupId: GROUP,
+        canCreateOnBehalf: true,
+        authorMayCreate: true,
+      }),
+      createContext: createFn,
+    });
+
+    await createContextThroughRelay(
+      'https://relay.example',
+      IDENTITY,
+      { groupId: GROUP, applicationId: APP, initArgs: {}, serviceName: 'docs' },
+      { seal: false },
+    );
+    expect(createFn).toHaveBeenLastCalledWith({
+      groupId: GROUP,
+      applicationId: APP,
+      initArgs: {},
+      serviceName: 'docs',
+    });
+
+    await createContextThroughRelay(
+      'https://relay.example',
+      IDENTITY,
+      { groupId: GROUP, applicationId: APP, initArgs: {}, serviceName: '' },
+      { seal: false },
+    );
+    expect(createFn).toHaveBeenLastCalledWith({ groupId: GROUP, applicationId: APP, initArgs: {} });
+  });
+
   it('asks about no author when there is no identity', async () => {
     const describeFn = vi.fn(async () => ({
       executorAccount: '33'.repeat(32),
@@ -488,5 +541,190 @@ describe('explainCreationFailure', () => {
     expect(explainCreationFailure(Object.assign(new Error('x'), { status: 0 }))).toBeNull();
     expect(explainCreationFailure(new Error('no status'))).toBeNull();
     expect(explainCreationFailure('text')).toBeNull();
+  });
+});
+
+/**
+ * The read and the admit were the last two legs POSTed with a bare `fetch`.
+ * Both now go through mero-js's `AdminApiClient`; what these tests pin is
+ * that they do — the call reaches the client method, the client reaches the
+ * node — and that every refusal still reads exactly as it did.
+ */
+describe('readContext', () => {
+  const CONTEXT = 'ab'.repeat(32);
+  const SESSION = { accessToken: 'tok-123' } as unknown as DelegatedSession;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reads through AdminApiClient.queryContext with the session as bearer', async () => {
+    const query = vi.spyOn(AdminApiClient.prototype, 'queryContext');
+    const calls = scriptFetch([{ body: { data: { returns: { value: 'v' } } } }]);
+
+    const result = await readContext('https://node.example/', SESSION, CONTEXT, 'get', {
+      key: 'k',
+    });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(CONTEXT, { method: 'get', argsJson: { key: 'k' } });
+    expect(result).toEqual({ returns: { value: 'v' }, raw: { returns: { value: 'v' } } });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`https://node.example/admin-api/contexts/${CONTEXT}/query`);
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBe('Bearer tok-123');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ method: 'get', argsJson: { key: 'k' } });
+  });
+
+  it.each([
+    [
+      401,
+      'expired',
+      'the session was refused (401): expired. The token may have expired — open a new session.',
+    ],
+    [
+      403,
+      'not a member',
+      'the node served the session but refused the read (403): not a member. ' +
+        'This account is not a member of that context: it has to be invited and join.',
+    ],
+    [
+      404,
+      '',
+      'no such context on this node (404). Check the context id, and that this node has joined it.',
+    ],
+    [500, 'boom', 'the read failed (HTTP 500): boom'],
+  ])('explains a %i the way it always did', async (status, text, expected) => {
+    scriptFetch([{ status, text }]);
+    await expect(
+      readContext('https://node.example', SESSION, CONTEXT, 'get', {}),
+    ).rejects.toThrow(expected);
+  });
+
+  it('leaves a node that never answered unexplained', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await expect(
+      readContext('https://node.example', SESSION, CONTEXT, 'get', {}),
+    ).rejects.not.toThrow(/the read failed/);
+  });
+});
+
+describe('sendJoin', () => {
+  const NAMESPACE = 'ab'.repeat(32);
+  const ADMIT_URL = `https://admitter.example/admin-api/namespaces/${NAMESPACE}/admit`;
+  const INVITATION = {
+    invitation: { group_id: NAMESPACE, admitters: ['aa'.repeat(32)] },
+    inviter_signature: 'sig',
+  };
+  const IDENTITY = {
+    accountId: '22'.repeat(32),
+    credential: 'cafe',
+    deviceSecret: '07'.repeat(32),
+    devicePublicKey: 'ea'.repeat(32),
+  } as unknown as DeviceIdentity;
+
+  afterEach(() => {
+    join.fake = null;
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('presents the join through AdminApiClient.admitJoin, with no credential', async () => {
+    join.fake = async () => 'deadbeef';
+    const admit = vi.spyOn(AdminApiClient.prototype, 'admitJoin');
+    const calls = scriptFetch([{ body: { data: { published: true } } }]);
+
+    const result = await sendJoin(ADMIT_URL, IDENTITY, JSON.stringify(INVITATION));
+
+    expect(result).toEqual({ published: true, namespaceId: NAMESPACE });
+    expect(admit).toHaveBeenCalledTimes(1);
+    expect(admit).toHaveBeenCalledWith(NAMESPACE, { invitation: INVITATION, signedOp: 'deadbeef' });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(ADMIT_URL);
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(new Headers(calls[0]?.init?.headers).get('authorization')).toBeNull();
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      invitation: INVITATION,
+      signedOp: 'deadbeef',
+    });
+  });
+
+  it('reports a join the node accepted but did not publish', async () => {
+    join.fake = async () => 'deadbeef';
+    scriptFetch([{ body: { data: { published: false } } }]);
+    await expect(sendJoin(ADMIT_URL, IDENTITY, JSON.stringify(INVITATION))).resolves.toEqual({
+      published: false,
+      namespaceId: NAMESPACE,
+    });
+  });
+
+  it.each([
+    [
+      400,
+      'bad op',
+      'the node refused the op as malformed (400): bad op. The signature covers the ' +
+        'invitation exactly as sent, so a re-serialised or edited invitation fails here.',
+    ],
+    [
+      403,
+      'not an admitter',
+      'the node refused to carry this join (403): not an admitter. Either it is not in the ' +
+        'invitation’s signed `admitters` list — being live and listed by the cloud is not ' +
+        'the same thing — or the invitation itself was rejected as expired or not the ' +
+        'inviter’s to issue.',
+    ],
+    [
+      409,
+      '',
+      'that node holds no device of its own, so it cannot endorse anyone (409). ' +
+        'Pick another admitter.',
+    ],
+    [502, 'bad gateway', 'the join was not published (HTTP 502): bad gateway'],
+  ])('explains a %i the way it always did', async (status, text, expected) => {
+    join.fake = async () => 'deadbeef';
+    scriptFetch([{ status, text }]);
+    await expect(sendJoin(ADMIT_URL, IDENTITY, JSON.stringify(INVITATION))).rejects.toThrow(
+      expected,
+    );
+  });
+
+  it('refuses an admitter URL for another namespace before signing anything', async () => {
+    join.fake = vi.fn(async () => 'deadbeef');
+    const calls = scriptFetch([]);
+    await expect(
+      sendJoin(
+        `https://admitter.example/admin-api/namespaces/${'cd'.repeat(32)}/admit`,
+        IDENTITY,
+        JSON.stringify(INVITATION),
+      ),
+    ).rejects.toThrow(/does not end in/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe('admitterBaseUrl', () => {
+  const NS = 'ab'.repeat(32);
+
+  it('is the cloud-issued URL with the route taken off', () => {
+    expect(admitterBaseUrl(`https://node.example/admin-api/namespaces/${NS}/admit`, NS)).toBe(
+      'https://node.example',
+    );
+    expect(admitterBaseUrl(`https://node.example:2428/admin-api/namespaces/${NS}/admit/`, NS)).toBe(
+      'https://node.example:2428',
+    );
+    expect(
+      admitterBaseUrl(`https://node.example/relay/admin-api/namespaces/${NS.toUpperCase()}/admit`, NS),
+    ).toBe('https://node.example/relay');
+  });
+
+  it('refuses a URL that is not that route, or is only the route', () => {
+    expect(() => admitterBaseUrl('https://node.example/admin-api/namespaces/x/admit', NS)).toThrow(
+      /does not end in/,
+    );
+    expect(() => admitterBaseUrl(`/admin-api/namespaces/${NS}/admit`, NS)).toThrow(/names no node/);
   });
 });
