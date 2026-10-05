@@ -36,7 +36,7 @@ describe('DisplayNameGate across a namespace switch', () => {
     });
     const mero = { admin: { getMemberMetadata } };
     const ui = () => (
-      <MeroContext.Provider value={{ mero } as any}>
+      <MeroContext.Provider value={{ mero, admin: mero.admin } as any}>
         <DisplayNameGate />
       </MeroContext.Provider>
     );

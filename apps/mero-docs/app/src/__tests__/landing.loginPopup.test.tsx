@@ -1,12 +1,18 @@
 // The landing page's connect dialog offers BOTH ways in. `LoginModal` has no
 // tabs unless it is handed `cloud`, and this popup used to mount it bare, so
 // an app whose front door is the landing page had no account sign-in on it.
-// The real `LoginModal` renders here; only the two hooks are stood in, the
-// way the other suites stand in `useMero`.
+// The real `LoginModal` renders here; only `useAccountEnrolment` is stood in.
+//
+// Since mero-react 9.10 `LoginModal` calls `useAccountEnrolment` ITSELF (with
+// `enabled: false` when, as here, it is handed `cloud`), and that in-bundle
+// call reaches the real `useMero`, not the module export a `vi.mock` would
+// replace. So the popup is mounted under a stub `MeroContext.Provider`, the
+// way the workspace suites do, instead of stubbing `useMero`.
 
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MeroContext } from '@calimero-network/mero-react';
 
 import LoginPopup from '../pages/landing/loginPopup';
 
@@ -18,16 +24,25 @@ const enrolment = {
   customWallet: false,
 };
 const connectToNode = vi.fn();
+const connectWithAccount = vi.fn();
 
 vi.mock('@calimero-network/mero-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@calimero-network/mero-react')>();
   return {
     ...actual,
-    useMero: () => ({ connectToNode }),
     useAccountEnrolment: () => enrolment,
   };
 });
 
+function mount(props: { isOpen: boolean; onClose: () => void }) {
+  return render(
+    <MeroContext.Provider
+      value={{ connectToNode, connectWithAccount, cloudBaseUrl: 'https://cloud.example' } as any}
+    >
+      <LoginPopup {...props} />
+    </MeroContext.Provider>,
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -37,7 +52,7 @@ afterEach(() => {
 
 describe('landing login popup', () => {
   it('offers a Node tab and a Cloud tab, Node first', () => {
-    render(<LoginPopup isOpen onClose={() => {}} />);
+    mount({ isOpen: true, onClose: () => {} });
     const node = screen.getByRole('tab', { name: 'Node' });
     const cloud = screen.getByRole('tab', { name: 'Cloud' });
     expect(node.getAttribute('aria-selected')).toBe('true');
@@ -45,7 +60,7 @@ describe('landing login popup', () => {
   });
 
   it('the Cloud tab starts enrolment at the wallet', () => {
-    render(<LoginPopup isOpen onClose={() => {}} />);
+    mount({ isOpen: true, onClose: () => {} });
     fireEvent.click(screen.getByRole('tab', { name: 'Cloud' }));
     fireEvent.click(screen.getByRole('button', { name: 'Enrol with your account' }));
     expect(enrolment.goToWallet).toHaveBeenCalled();
@@ -56,7 +71,7 @@ describe('landing login popup', () => {
     enrolment.note = 'Connected, but this account has no relay yet.';
     const onClose = vi.fn();
     // The landing page has NOT opened it: this is the page load after the redirect.
-    render(<LoginPopup isOpen={false} onClose={onClose} />);
+    mount({ isOpen: false, onClose });
     expect(screen.getByRole('tab', { name: 'Cloud' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText(enrolment.note)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
@@ -65,7 +80,7 @@ describe('landing login popup', () => {
   });
 
   it('stays closed when the landing has not opened it and nothing came back', () => {
-    render(<LoginPopup isOpen={false} onClose={() => {}} />);
+    mount({ isOpen: false, onClose: () => {} });
     expect(screen.queryByRole('tab', { name: 'Cloud' })).toBeNull();
   });
 });

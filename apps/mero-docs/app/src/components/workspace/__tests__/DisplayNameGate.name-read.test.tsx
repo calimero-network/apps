@@ -30,7 +30,7 @@ vi.mock('@/hooks/useContextEvents', () => ({
 function renderGate(getMemberMetadata: () => Promise<unknown>) {
   const mero = { admin: { getMemberMetadata } };
   return render(
-    <MeroContext.Provider value={{ mero } as any}>
+    <MeroContext.Provider value={{ mero, admin: mero.admin } as any}>
       <DisplayNameGate />
     </MeroContext.Provider>,
   );
