@@ -10,7 +10,11 @@
  * failed when it is on record.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AdminApiClient, type DelegatedSession } from '@calimero-network/mero-js';
+import {
+  AdminApiClient,
+  signGroupInvitation,
+  type DelegatedSession,
+} from '@calimero-network/mero-js';
 
 import {
   admitterBaseUrl,
@@ -253,6 +257,55 @@ describe('readInvitation', () => {
 
     expect(parsed.namespaceId).toBe(NS);
     expect(parsed.admitters).toEqual(['aa', 'bb']);
+  });
+
+  it('reads the namespace out of an invitation an account minted (bytes, not hex)', async () => {
+    // What a browser-held key produces: mero-js's `signGroupInvitation`, the
+    // same JSON shape a node's `createGroupInvitation` returns -- and in it
+    // `group_id` is the 32-byte array core's wire type is, not 64 hex. On prod
+    // this parsed as "no `group_id`" and the join legs were never reached.
+    const inviterAccount = '11'.repeat(32);
+    const admitter = '22'.repeat(32);
+    const signed = await signGroupInvitation({
+      groupId: NS,
+      inviterAccount,
+      deviceSecret: '7f'.repeat(32),
+      admitters: [admitter],
+      now: 1_700_000_000,
+    });
+    // The premise of the test: the installed mero-js really does spell it as bytes.
+    expect(Array.isArray(signed.invitation.group_id)).toBe(true);
+    expect(signed.invitation.group_id).toHaveLength(32);
+
+    const parsed = readInvitation(JSON.stringify(signed));
+
+    expect(parsed.namespaceId).toBe(NS);
+    expect(parsed.admitters).toEqual([admitter]);
+  });
+
+  it('reads admitters spelled as bytes the same way', () => {
+    const bytes = Array.from({ length: 32 }, (_, i) => i);
+    const hex = bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const parsed = readInvitation(
+      JSON.stringify({ invitation: { group_id: bytes, admitters: [bytes, 'aa'.repeat(32)] } }),
+    );
+
+    expect(parsed.namespaceId).toBe(hex);
+    expect(parsed.admitters).toEqual([hex, 'aa'.repeat(32)]);
+  });
+
+  it('refuses a byte array that is not a 32-byte id', () => {
+    expect(() =>
+      readInvitation(JSON.stringify({ invitation: { group_id: [1, 2, 3] } })),
+    ).toThrow(/no `group_id`/);
+    expect(() =>
+      readInvitation(
+        JSON.stringify({ invitation: { group_id: [...Array(31).fill(0), 256] } }),
+      ),
+    ).toThrow(/no `group_id`/);
+    expect(() =>
+      readInvitation(JSON.stringify({ invitation: { group_id: [...Array(31).fill(0), 'ff'] } })),
+    ).toThrow(/no `group_id`/);
   });
 
   it('accepts an invitation naming no admitters', () => {
