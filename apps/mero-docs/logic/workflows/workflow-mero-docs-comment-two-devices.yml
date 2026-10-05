@@ -19,7 +19,7 @@ e2e_mode: true
 # allocate ports dynamically, and a later start_node reconnects on base_port.
 nodes:
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.79
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.80
   devices-node-1:
     port: 3970
     rpc_port: 3971
