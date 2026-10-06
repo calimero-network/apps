@@ -286,7 +286,11 @@ export async function listGroupContexts(groupId: string): Promise<GroupContextIn
  * `visibility`, nothing else, and is `deny_unknown_fields`.
  */
 export async function createSubgroup(namespaceId: string, groupName: string): Promise<string> {
-  const data = await getApi().admin.createGroupInNamespace(namespaceId, { groupName });
+  // Born Open, not flipped to it: created Restricted, core admits the TEE with
+  // an op sealed under the subgroup's own key, and the later Open flip cites
+  // it - a namespace member outside the subgroup can read the flip but never
+  // that ancestry, so their node stops applying the namespace's governance.
+  const data = await getApi().admin.createGroupInNamespace(namespaceId, { groupName, visibility: "open" });
   const raw = data as unknown as { groupId?: string; group_id?: string; id?: string };
   return raw.groupId ?? raw.group_id ?? raw.id ?? "";
 }

@@ -268,7 +268,7 @@ describe("projects", () => {
   it("createSubgroup sends only groupName", async () => {
     admin.createGroupInNamespace.mockResolvedValue({ groupId: "g1" });
     expect(await createSubgroup("ns1", "Landing")).toBe("g1");
-    expect(admin.createGroupInNamespace).toHaveBeenCalledWith("ns1", { groupName: "Landing" });
+    expect(admin.createGroupInNamespace).toHaveBeenCalledWith("ns1", { groupName: "Landing", visibility: "open" });
   });
 
   it("createContext sends the request as given and returns the id", async () => {

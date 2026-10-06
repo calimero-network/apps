@@ -259,6 +259,7 @@ describe("RoomsPage on an account session", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("/live"));
     expect(admin.createGroupInNamespace).toHaveBeenCalledWith("ns1", {
       groupName: "Standup",
+      visibility: "open",
     });
     expect(admin.setSubgroupVisibility).toHaveBeenCalledWith("room1", {
       subgroupVisibility: "open",

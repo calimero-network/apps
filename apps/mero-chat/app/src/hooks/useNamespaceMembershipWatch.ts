@@ -6,6 +6,33 @@ import { useToast } from "../contexts/ToastContext";
 import { log } from "../utils/logger";
 
 const POLL_INTERVAL_MS = 30_000;
+/** Polls in a row that must say "removed" before the user is bounced. */
+export const REMOVAL_CONFIRMATIONS = 2;
+
+/**
+ * What one poll says about the caller's membership.
+ *
+ * - `member`: the caller's row resolved.
+ * - `removed`: core refused the caller as a non-member (403 "not a member"),
+ *   or listed the members without the caller's row (the 404 the data source
+ *   returns when nothing resolves).
+ * - `unknown`: anything else, including core's 404 "group '<id>' not found".
+ *   That one means this node has not applied the namespace's governance yet -
+ *   it is lagging or stuck - and says nothing about the caller, so it must
+ *   never read as a removal.
+ */
+export function classifyMembershipCheck(resp: {
+  data?: { memberIdentity?: string } | null;
+  error?: { code?: number; message?: string } | null;
+}): "member" | "removed" | "unknown" {
+  if (resp.data?.memberIdentity) return "member";
+  const code = resp.error?.code;
+  const message = resp.error?.message ?? "";
+  if (code === 404 && /group '[^']*' not found/i.test(message)) return "unknown";
+  if (code === 404) return "removed";
+  if (code === 403 && /not a member/i.test(message)) return "removed";
+  return "unknown";
+}
 
 /**
  * Detect when the current user has been removed from the active namespace
@@ -21,15 +48,19 @@ const POLL_INTERVAL_MS = 30_000;
  * `listMembers` returns 405 on older merods (that fallback path is meant
  * for "workspace entry on older nodes" and would mask a real removal).
  * After the first successful resolution we mark `everHadIdentity = true`;
- * a subsequent 404 from that point means the server has cascaded us out.
+ * from then on, REMOVAL_CONFIRMATIONS polls in a row that say "removed"
+ * (see classifyMembershipCheck) mean the server has cascaded us out. One poll
+ * is not enough: a member list still catching up can briefly lack our row.
  *
- * On transient errors (any non-404), we do nothing — we'd rather miss a
- * tick than redirect on a flaky network.
+ * Anything else - a transient error, or a node that has not applied the
+ * namespace yet ("group not found") - does nothing and resets the count:
+ * we'd rather miss a tick than log someone out who was never removed.
  */
 export function useNamespaceMembershipWatch(): void {
   const { addToast } = useToast();
   const everHadIdentity = useRef(false);
   const removedRef = useRef(false);
+  const removalSignals = useRef(0);
 
   useEffect(() => {
     const groupId = getGroupId();
@@ -67,13 +98,18 @@ export function useNamespaceMembershipWatch(): void {
       const resp = await api.resolveCurrentMemberIdentity(groupId, "");
       if (cancelled || removedRef.current) return;
 
-      if (resp.data?.memberIdentity) {
+      const verdict = classifyMembershipCheck(resp);
+      if (verdict === "member") {
         everHadIdentity.current = true;
+        removalSignals.current = 0;
         return;
       }
-      if (everHadIdentity.current && resp.error?.code === 404) {
-        handleRemoval();
+      if (verdict === "unknown" || !everHadIdentity.current) {
+        removalSignals.current = 0;
+        return;
       }
+      removalSignals.current += 1;
+      if (removalSignals.current >= REMOVAL_CONFIRMATIONS) handleRemoval();
     };
 
     void check();
