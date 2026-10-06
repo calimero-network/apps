@@ -78,6 +78,7 @@ export function WorkspaceLayout() {
     registryFolders,
     resolvedFolderIds,
     hiddenFolderIds,
+    unsyncedFolderIds,
     selfIdentity,
     stage,
     syncStatus,
@@ -88,6 +89,10 @@ export function WorkspaceLayout() {
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+  // Listed by the registry, but this node has not applied the folder's group
+  // yet, so it is withheld from `folders`. Reached only by a direct link.
+  const selectedFolderUnsynced =
+    !!selectedFolderId && !!unsyncedFolderIds?.has(selectedFolderId);
 
   // Explicit re-trigger for a stalled post-join sync - a real action so a
   // user staring at a stuck "syncing" state re-fires the sync instead of
@@ -472,6 +477,12 @@ export function WorkspaceLayout() {
               <QuietLoading />
             ) : !selectedFolderId ? (
               <HomePage />
+            ) : selectedFolderUnsynced ? (
+              <EmptyState title="This folder hasn't synced to your node yet">
+                <Button variant="outline" onClick={onRetrySync}>
+                  Try again
+                </Button>
+              </EmptyState>
             ) : !selectedFolder ? (
               // A folder IS selected (selectedFolderId set) but its object
               // isn't in the recomputed `folders` list yet - a transient gap

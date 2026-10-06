@@ -93,7 +93,7 @@ import {
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
-import { isGroupAccessDenied } from '@/utils/accessDenied';
+import { isGroupAccessDenied, isGroupNotOnNode } from '@/utils/accessDenied';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -238,6 +238,10 @@ export interface DriveWorkspaceState {
   resolvedFolderIds: Set<string>;
   /** Folder ids hidden from this caller: restricted folders it isn't a member of. */
   hiddenFolderIds: Set<string>;
+  /** Registry folders whose group this node has not applied yet. Withheld
+   *  from `folders`: until the group arrives the node cannot tell an Open
+   *  folder from a Restricted one it was never invited to. */
+  unsyncedFolderIds: Set<string>;
   /** Registry owner/managers - fetched once here, read by
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
   registryAdmin: RegistryAdminSlice;
@@ -976,6 +980,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const [hiddenFolderIds, setHiddenFolderIds] = useState<Set<string>>(
     new Set(),
   );
+  // Folders the registry lists but whose group this node does not hold:
+  // getGroupInfo answers 404 "group '<id>' not found". Withheld from the rail
+  // rather than shown, since nothing says whether the caller may see them.
+  const [unsyncedFolderIds, setUnsyncedFolderIds] = useState<Set<string>>(
+    new Set(),
+  );
   // Folders whose access has been *resolved* by the fan-out below
   // (getGroupInfo settled - success, access-denied, or transient).
   // The folder list is gated on this so a restricted folder the caller
@@ -1006,6 +1016,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setAliases(new Map());
       setVisibilities(new Map());
       setHiddenFolderIds(new Set());
+      setUnsyncedFolderIds(new Set());
       setResolvedFolderIds(new Set());
       return;
     }
@@ -1021,11 +1032,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
                 info?.metadata?.name ?? null,
                 info?.subgroupVisibility ?? null,
                 false, // not access-denied
+                false, // the group is on this node
               ] as const,
           )
           .catch(async (e) => {
+            if (isGroupNotOnNode(e)) return [id, null, null, false, true] as const;
             const denied = await isGroupAccessDenied(admin, id, e);
-            return [id, null, null, denied] as const;
+            return [id, null, null, denied, false] as const;
           }),
       ),
     ).then((entries) => {
@@ -1037,8 +1050,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       const nextAliases = new Map<string, string>();
       const nextVis = new Map<string, 'Open' | 'Restricted'>();
       const nextHidden = new Set<string>();
-      for (const [id, alias, vis, denied] of entries) {
+      const nextUnsynced = new Set<string>();
+      for (const [id, alias, vis, denied, unsynced] of entries) {
         if (denied) nextHidden.add(id);
+        if (unsynced) nextUnsynced.add(id);
         if (alias) nextAliases.set(id, alias);
         // Core returns lowercase ("open" / "restricted"); accept both casings
         // so the toggle's optimistic uppercase write also lands cleanly.
@@ -1053,6 +1068,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setAliases(nextAliases);
       setVisibilities(nextVis);
       setHiddenFolderIds(nextHidden);
+      setUnsyncedFolderIds(nextUnsynced);
       // Mark every folder in this batch resolved. Updated atomically on
       // completion so a re-fan (e.g. SSE refetch with the same ids)
       // keeps the previous resolved set applied meanwhile - no flicker.
@@ -1103,7 +1119,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // resolvedFolderIds across re-fans, so when a new folder arrives
       // only that folder is withheld until it resolves - the existing
       // rows keep rendering, never blanked.
-    ).folders.filter((f) => resolvedFolderIds.has(f.id));
+    ).folders.filter(
+      (f) => resolvedFolderIds.has(f.id) && !unsyncedFolderIds.has(f.id),
+    );
   }, [
     rootGroupId,
     subgroups,
@@ -1112,6 +1130,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     visibilities,
     hiddenFolderIds,
     resolvedFolderIds,
+    unsyncedFolderIds,
   ]);
 
   // Complete, UNFILTERED tree shape (id + parent_id) for structural
@@ -1507,6 +1526,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       registryFolders,
       resolvedFolderIds,
       hiddenFolderIds,
+      unsyncedFolderIds,
       registryAdmin,
 
       selectedFolderId,
@@ -1543,6 +1563,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       registryFolders,
       resolvedFolderIds,
       hiddenFolderIds,
+      unsyncedFolderIds,
       registryAdmin,
       selectedFolderId,
       setSelectedFolder,

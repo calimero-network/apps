@@ -15,6 +15,7 @@ import {
   useDriveWorkspace,
 } from '../useDriveWorkspace';
 import { REGISTRY_CONTEXT_ALIAS } from '@/constants/config';
+import { HTTPError } from '@calimero-network/mero-js';
 
 const stub = vi.hoisted(() => {
   const refetch = () => Promise.resolve();
@@ -26,7 +27,11 @@ const stub = vi.hoisted(() => {
     refetch,
     reads,
     mero: {
-      mero: { admin: { getGroupInfo: () => new Promise(() => {}) } },
+      mero: {
+        admin: {
+          getGroupInfo: (_id: string): Promise<unknown> => new Promise(() => {}),
+        },
+      },
       applicationId: 'app',
       isAuthenticated: true,
       isLoading: false,
@@ -118,7 +123,10 @@ function Probe() {
 
 const folders = () => screen.getByTestId('folders').textContent;
 
+const pending = stub.mero.mero.admin.getGroupInfo;
+
 afterEach(() => {
+  stub.mero.mero.admin.getGroupInfo = pending;
   localStorage.clear();
   for (const key of Object.keys(stub.reads)) delete stub.reads[key];
   captured = null;
@@ -150,5 +158,44 @@ describe('useDriveWorkspace folder reads across a workspace switch', () => {
     });
 
     await waitFor(() => expect(folders()).toBe('b1'));
+  });
+});
+
+function Listed() {
+  const { folders, unsyncedFolderIds } = useDriveWorkspace();
+  return (
+    <>
+      <output data-testid="listed">{folders.map((f) => f.id).join(',')}</output>
+      <output data-testid="unsynced">{[...unsyncedFolderIds].join(',')}</output>
+    </>
+  );
+}
+
+describe('useDriveWorkspace folders whose group is not on this node', () => {
+  it('withholds them from the folder list instead of showing them', async () => {
+    stub.mero.mero.admin.getGroupInfo = (id: string) =>
+      id === 'missing'
+        ? Promise.reject(
+            new HTTPError(
+              404,
+              '',
+              `/admin-api/groups/${id}`,
+              new Headers(),
+              `{"error":"group '${id}' not found"}`,
+            ),
+          )
+        : Promise.resolve({ metadata: { name: id }, subgroupVisibility: 'open' });
+    render(
+      <MemoryRouter initialEntries={['/app/ns1']}>
+        <DriveWorkspaceProvider>
+          <Listed />
+        </DriveWorkspaceProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(stub.reads['reg-ns1']).toHaveLength(1));
+    await act(async () => stub.reads['reg-ns1'][0]([{ id: 'known' }, { id: 'missing' }]));
+
+    await waitFor(() => expect(screen.getByTestId('unsynced').textContent).toBe('missing'));
+    expect(screen.getByTestId('listed').textContent).toBe('known');
   });
 });
