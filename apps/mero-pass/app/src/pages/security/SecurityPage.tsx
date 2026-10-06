@@ -22,6 +22,40 @@ import {
 import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import { describeError, rawReason } from '../../lib/errors';
+import {
+  AlertTriangleIcon,
+  CheckIcon,
+  ClockIcon,
+  KeyIcon,
+  LockIcon,
+  ServerIcon,
+  ShieldIcon,
+} from '../../components/icons';
+
+function PanelHead({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={shell.panelHead}>
+      <span
+        className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <div>
+        <h2 className={shell.panelTitle}>{title}</h2>
+        {children && <p className={shell.panelText}>{children}</p>}
+      </div>
+    </div>
+  );
+}
 
 interface NodeDevice {
   deviceId: string;
@@ -194,26 +228,42 @@ export default function SecurityPage() {
     <div className={shell.root}>
       <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb="Security" />
       <main className={shell.main}>
-        <p className={shell.eyebrow}>This browser</p>
-        <h1 className={shell.title}>Security</h1>
-        <p className={shell.subtitle}>
-          How this browser guards its key, how you get back in if you lose it,
-          and which machines can sign as you.
-        </p>
-        {error && <p className={shell.error}>{error}</p>}
-        {status && <p className={shell.notice}>{status}</p>}
+        <div className={shell.titleRow}>
+          <span className={shell.titleIcon} aria-hidden="true">
+            <ShieldIcon size={22} />
+          </span>
+          <div>
+            <h1 className={shell.title}>Security</h1>
+            <p className={shell.subtitle}>
+              How this browser guards its key, how you get back in if you lose
+              it, and which machines can sign as you.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <p className={shell.error}>
+            <AlertTriangleIcon size={16} />
+            <span>{error}</span>
+          </p>
+        )}
+        {status && (
+          <p className={shell.notice}>
+            <CheckIcon size={16} />
+            <span>{status}</span>
+          </p>
+        )}
 
-        <section className={shell.section}>
-          <h2 className={shell.sectionLabel}>Auto-lock</h2>
-          <p className={shell.sectionHint}>
+        <section className={shell.panel}>
+          <PanelHead icon={<ClockIcon size={16} />} title="Auto-lock">
             Clears every vault key from memory after this long without input.
             Copied passwords are cleared from the clipboard after 30 seconds
             regardless.
-          </p>
+          </PanelHead>
           <select
             className={shell.input}
             value={minutes}
             onChange={(e) => setMinutes(Number(e.target.value))}
+            aria-label="Auto-lock after"
             data-testid="auto-lock"
           >
             {AUTO_LOCK_CHOICES.map((m) => (
@@ -225,9 +275,8 @@ export default function SecurityPage() {
         </section>
 
         <LockGate>
-          <section className={shell.section}>
-            <h2 className={shell.sectionLabel}>This browser</h2>
-            <p className={shell.sectionHint}>
+          <section className={shell.panel}>
+            <PanelHead icon={<LockIcon size={16} />} title="This browser">
               Key{' '}
               <span className={shell.mono}>
                 {deviceKeeper.fingerprint?.slice(0, 16)}…
@@ -237,7 +286,7 @@ export default function SecurityPage() {
                 : protection === 'passkey'
                   ? 'is sealed under a passkey: unlocking needs your authenticator.'
                   : 'is stored non-extractable in this browser, and anyone at this computer can unlock it. Protect it with a passkey or a passphrase.'}
-            </p>
+            </PanelHead>
             <div className={shell.createRow}>
               <button
                 type="button"
@@ -245,12 +294,13 @@ export default function SecurityPage() {
                 onClick={() => void protect('passkey')}
                 data-testid="use-passkey"
               >
+                <KeyIcon size={16} />
                 {protection === 'passkey'
                   ? 'Use a new passkey'
                   : 'Use a passkey'}
               </button>
             </div>
-            <div className={shell.createRow}>
+            <div className={shell.createRow} style={{ marginBottom: 0 }}>
               <input
                 className={shell.input}
                 type="password"
@@ -281,20 +331,34 @@ export default function SecurityPage() {
             </div>
           </section>
 
-          <section className={shell.section}>
-            <h2 className={shell.sectionLabel}>Recovery key</h2>
-            <p className={shell.sectionHint}>
+          <section className={shell.panel}>
+            <PanelHead icon={<KeyIcon size={16} />} title="Recovery key">
               A code that opens every vault it was given, from a browser that
               has nothing else. Write it down or keep it in another password
-              manager: whoever reads it can do the same.{' '}
-              {recovery
-                ? `One is set up (${recovery.fingerprint.slice(0, 12)}…); vaults you open here get it automatically. Creating a new one replaces it in every vault.`
-                : 'None is set up from this browser.'}
+              manager: whoever reads it can do the same.
+            </PanelHead>
+            <p
+              className={recovery ? shell.notice : shell.warn}
+              data-testid="recovery-state"
+            >
+              {recovery ? (
+                <CheckIcon size={16} />
+              ) : (
+                <AlertTriangleIcon size={16} />
+              )}
+              <span>
+                {recovery
+                  ? `One is set up (${recovery.fingerprint.slice(0, 12)}…); vaults you open here get it automatically. Creating a new one replaces it in every vault.`
+                  : 'None is set up from this browser.'}
+              </span>
             </p>
             {shownCode ? (
               <div data-testid="recovery-code">
-                <p className={shell.notice}>
-                  Shown once. Store it now; it is not kept anywhere.
+                <p className={shell.warn}>
+                  <AlertTriangleIcon size={16} />
+                  <span>
+                    Shown once. Store it now; it is not kept anywhere.
+                  </span>
                 </p>
                 <pre className={shell.keyBox}>{shownCode}</pre>
                 <button
@@ -302,7 +366,7 @@ export default function SecurityPage() {
                   className={shell.btn}
                   onClick={() => setShownCode(null)}
                 >
-                  I have stored it
+                  <CheckIcon size={16} />I have stored it
                 </button>
               </div>
             ) : (
@@ -313,14 +377,25 @@ export default function SecurityPage() {
                   onClick={() => void createRecovery()}
                   data-testid="create-recovery"
                 >
+                  <KeyIcon size={16} />
                   {recovery ? 'Replace recovery key' : 'Create recovery key'}
                 </button>
               </div>
             )}
-            <div className={shell.createRow}>
+            <div
+              className={shell.createRow}
+              style={{
+                marginBottom: 0,
+                marginTop: 16,
+                paddingTop: 16,
+                borderTop: '1px solid var(--border)',
+              }}
+            >
               <input
                 className={shell.input}
+                style={{ fontFamily: 'var(--mono)', fontSize: 13 }}
                 placeholder="Recovery code, to restore this browser"
+                aria-label="Recovery code"
                 value={restoreCode}
                 onChange={(e) => setRestoreCode(e.target.value)}
                 autoComplete="off"
@@ -339,12 +414,11 @@ export default function SecurityPage() {
           </section>
         </LockGate>
 
-        <section className={shell.section}>
-          <h2 className={shell.sectionLabel}>Your node devices</h2>
-          <p className={shell.sectionHint}>
+        <section className={shell.panel}>
+          <PanelHead icon={<ServerIcon size={16} />} title="Your node devices">
             Machines that sign as your account. Revoke one you lost; then open
             each vault as an Admin, or ask one to, so its key rotates.
-          </p>
+          </PanelHead>
           {devicesHidden && (
             <p className={shell.empty} data-testid="devices-hidden">
               {isDelegated
@@ -355,32 +429,53 @@ export default function SecurityPage() {
           {!devicesHidden && devices.length === 0 && (
             <p className={shell.empty}>No devices reported.</p>
           )}
-          {devices.map((d) => (
-            <div key={d.deviceId} className={shell.row}>
-              <div className={shell.rowMain}>
-                <div className={shell.rowName}>
-                  <span className={shell.mono}>{d.deviceId.slice(0, 16)}…</span>
-                  {d.isSelf ? ' (this node)' : ''}{' '}
-                  {d.revoked && <span className={shell.badge}>revoked</span>}
+          {devices.length > 0 && (
+            <div className={shell.list}>
+              {devices.map((d) => (
+                <div key={d.deviceId} className={shell.row}>
+                  <span className={shell.rowIcon} aria-hidden="true">
+                    <ServerIcon size={16} />
+                  </span>
+                  <div className={shell.rowMain}>
+                    <div className={shell.rowName}>
+                      <span
+                        className={shell.mono}
+                        style={{ color: 'var(--text)' }}
+                        title={d.deviceId}
+                      >
+                        {d.deviceId.slice(0, 16)}…
+                      </span>
+                      {d.isSelf && (
+                        <span className={`${shell.badge} ${shell.badgeAccent}`}>
+                          This node
+                        </span>
+                      )}
+                      {d.revoked && (
+                        <span className={`${shell.badge} ${shell.badgeDanger}`}>
+                          Revoked
+                        </span>
+                      )}
+                    </div>
+                    <div className={shell.rowSub}>
+                      bound in {d.namespaces.length} team
+                      {d.namespaces.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  {!d.isSelf && !d.revoked && d.namespaces.length > 0 && (
+                    <div className={shell.rowActions}>
+                      <button
+                        type="button"
+                        className={`${shell.btnDanger} ${shell.btnSm}`}
+                        onClick={() => void revoke(d)}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className={shell.rowSub}>
-                  bound in {d.namespaces.length} team
-                  {d.namespaces.length === 1 ? '' : 's'}
-                </div>
-              </div>
-              {!d.isSelf && !d.revoked && d.namespaces.length > 0 && (
-                <div className={shell.rowActions}>
-                  <button
-                    type="button"
-                    className={shell.btnDanger}
-                    onClick={() => void revoke(d)}
-                  >
-                    Revoke
-                  </button>
-                </div>
-              )}
+              ))}
             </div>
-          ))}
+          )}
         </section>
       </main>
     </div>

@@ -5,6 +5,7 @@ import type { Secret, SecretDraft, VaultSession } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';
+import { DownloadIcon, UploadIcon } from './icons';
 
 /**
  * Bring secrets in from Bitwarden, 1Password or a browser, move them between
@@ -100,102 +101,135 @@ export default function ImportExport({
 
   return (
     <section data-testid="import-export">
+      <h2 className={shell.sectionLabel}>Import &amp; export</h2>
+      <p className={shell.sectionHint}>
+        Files are read in this browser. Nothing leaves it until each item is
+        encrypted and added like any other.
+      </p>
       {error && <p className={shell.error}>{error}</p>}
       {status && <p className={shell.status}>{status}</p>}
 
-      <h3 className={shell.sectionLabel}>Import</h3>
-      <div className={styles.toolbar}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,.json,text/csv,application/json"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void read(f);
-            e.target.value = '';
-          }}
-        />
-        <button
-          type="button"
-          className={shell.btnGhost}
-          onClick={() => fileRef.current?.click()}
-          disabled={!session.canWrite}
-        >
-          Choose a file…
-        </button>
-        <span className={shell.rowSub}>
-          Bitwarden, 1Password or Chrome/Edge CSV, or a Mero Pass encrypted
-          export.
-        </span>
+      <div className={shell.panel}>
+        <div className={shell.panelHead}>
+          <span
+            className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+            aria-hidden="true"
+          >
+            <UploadIcon size={16} />
+          </span>
+          <div>
+            <h3 className={shell.panelTitle}>Import</h3>
+            <p className={shell.panelText}>
+              Bitwarden, 1Password or Chrome/Edge CSV, or a Mero Pass encrypted
+              export.
+            </p>
+          </div>
+        </div>
+        <div className={styles.toolbar} style={{ marginBottom: 0 }}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.json,text/csv,application/json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void read(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            className={shell.btnGhost}
+            onClick={() => fileRef.current?.click()}
+            disabled={!session.canWrite}
+          >
+            <UploadIcon size={16} />
+            Choose a file…
+          </button>
+        </div>
+        {pending && (
+          <div className={shell.createRow} style={{ marginTop: 12 }}>
+            <input
+              className={shell.input}
+              type="password"
+              placeholder="Export passphrase"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+            />
+            <button
+              type="button"
+              className={shell.btn}
+              onClick={() => void openExport()}
+            >
+              Open
+            </button>
+          </div>
+        )}
+        {drafts && (
+          <div className={styles.banner} style={{ marginTop: 12 }}>
+            <span style={{ flex: 1 }}>
+              Found {drafts.length} items in a {source} file.
+            </span>
+            <button
+              type="button"
+              className={shell.btnGhost}
+              onClick={() => setDrafts(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={shell.btn}
+              onClick={() => void add()}
+            >
+              Encrypt and add all
+            </button>
+            <p className={shell.rowSub}>
+              Delete the CSV afterwards — it holds every password in plain text.
+            </p>
+          </div>
+        )}
       </div>
-      {pending && (
-        <div className={shell.createRow}>
-          <input
-            className={shell.input}
-            type="password"
-            placeholder="Export passphrase"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-          />
-          <button
-            type="button"
-            className={shell.btn}
-            onClick={() => void openExport()}
-          >
-            Open
-          </button>
-        </div>
-      )}
-      {drafts && (
-        <div className={styles.banner}>
-          Found {drafts.length} items in a {source} file.{' '}
-          <button
-            type="button"
-            className={shell.btn}
-            onClick={() => void add()}
-          >
-            Encrypt and add all
-          </button>{' '}
-          <button
-            type="button"
-            className={shell.btnGhost}
-            onClick={() => setDrafts(null)}
-          >
-            Cancel
-          </button>
-          <p className={shell.rowSub}>
-            Delete the CSV afterwards — it holds every password in plain text.
-          </p>
-        </div>
-      )}
 
-      <h3 className={shell.sectionLabel}>Encrypted backup</h3>
-      <p className={shell.sectionHint}>
-        A file sealed under a passphrase you choose. There is no plain-text
-        export: a readable copy of a password manager outlives every protection
-        this app has.
-      </p>
-      {!pending && (
-        <div className={shell.createRow}>
-          <input
-            className={shell.input}
-            type="password"
-            placeholder="Backup passphrase (8+ characters)"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            data-testid="backup-pass"
-          />
-          <button
-            type="button"
-            className={shell.btnGhost}
-            onClick={() => void backup()}
-            disabled={pass.length < 8 || secrets.length === 0}
+      <div className={shell.panel}>
+        <div className={shell.panelHead}>
+          <span
+            className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+            aria-hidden="true"
           >
-            Download
-          </button>
+            <DownloadIcon size={16} />
+          </span>
+          <div>
+            <h3 className={shell.panelTitle}>Encrypted backup</h3>
+            <p className={shell.panelText}>
+              A file sealed under a passphrase you choose. There is no
+              plain-text export: a readable copy of a password manager outlives
+              every protection this app has.
+            </p>
+          </div>
         </div>
-      )}
+        {!pending && (
+          <div className={shell.createRow} style={{ marginBottom: 0 }}>
+            <input
+              className={shell.input}
+              type="password"
+              placeholder="Backup passphrase (8+ characters)"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              data-testid="backup-pass"
+            />
+            <button
+              type="button"
+              className={shell.btnGhost}
+              onClick={() => void backup()}
+              disabled={pass.length < 8 || secrets.length === 0}
+            >
+              <DownloadIcon size={16} />
+              Download
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

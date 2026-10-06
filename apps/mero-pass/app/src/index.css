@@ -1,30 +1,24 @@
-/* ── Mero Pass, in the calimero.network design language ──────────────────────
+/* ── Mero Pass — light-first Calimero tool UI ────────────────────────────────
  *
- * The same system the Calimero landing, Calimero Cloud, the App Registry and
- * the desktop app share, taken from their CSS rather than re-derived:
- *
- *   * charcoal first (`#131215`), light opt-in through `<html data-theme>`;
- *   * Power Grotesk, self-hosted — light (300) body, 950 uppercase headings,
- *     uppercase tracked labels and buttons;
- *   * square corners and 1px hairlines (`#282828`), flat surfaces, depth only
- *     on menus and dialogs;
- *   * one lime.
+ * The shared Calimero apps spec: a calm, light tool surface in the same family
+ * as the landing, the App Registry and the desktop app — near-black ink, one
+ * lime, hairline borders, flat fills, Power Grotesk only for display type.
+ * Light is the default; `data-theme="dark"` keeps a charcoal variant.
  *
  * ── The lime, by job ─────────────────────────────────────────────────────────
  *
- *   --accent       the FILL (#a5ff11). Always with --accent-ink (#131215) on
- *                  top, in both themes.
- *   --accent-text  lime used as TEXT, an icon or an outline. Lime on charcoal,
- *                  olive #487800 on paper: lime on white measures ~1.2:1.
- *
- * The fill is never text and the text colour is never a fill.
+ *   --accent       the FILL (#a5ff11): primary buttons, active pills, focus
+ *                  halo. Always with --accent-ink (#131215) on top.
+ *   --accent-text  lime-family TEXT / icon colour: olive #4a7300 on paper
+ *                  (AA), lime on charcoal. (The spec calls this --accent-ink;
+ *                  this app's modules have always read it as --accent-text,
+ *                  so the app keeps its own names for these two.)
  *
  * ── Names ────────────────────────────────────────────────────────────────────
  *
- * The variable names (`--page`, `--ink`, `--ink-faint`, …) are the ones every
- * module in this app already reads, so the whole app moves with this file.
- * What they hold is the shared system's: `--page` is the Cloud's `--bg`,
- * `--ink-dim` its `--text-muted`, and so on.
+ * The spec's tokens (--bg, --text, --text-dim, …) are defined first; the names
+ * every module in this app already reads (--page, --ink, --ink-dim, …) are
+ * mapped onto them, so nothing slips through unstyled.
  */
 
 @font-face {
@@ -36,7 +30,7 @@
 @font-face {
   font-family: 'Power Grotesk';
   src: url('/fonts/powerGrotesk/PowerGrotesk-Bold.woff2') format('woff2');
-  font-weight: 700;
+  font-weight: 600 700;
   font-display: swap;
 }
 @font-face {
@@ -66,95 +60,111 @@
   padding: 0;
 }
 
-:root {
-  color-scheme: dark;
-
-  /* Grounds and lines. */
-  --page: #131215;
-  --surface: #1a191c;
-  --surface-2: #211f23;
-  --sunken: #0f0e11;
-  --border: #282828;
-  --border-soft: #282828;
-  --border-strong: #404040;
-  --grid-line: rgba(252, 252, 252, 0.035);
-  --hover-wash: rgba(252, 252, 252, 0.04);
-
-  /* Ink tiers. */
-  --ink: #fcfcfc;
-  --ink-2: #c8c8c8;
-  --ink-dim: #8e8e8e;
-  --ink-faint: #8e8e8e;
-
-  /* The lime. Read the note above before using either of these. */
-  --accent: #a5ff11;
-  --accent-hover: #b8ff4a;
-  --accent-ink: #131215;
-  --accent-text: #a5ff11;
-  --accent-soft: rgba(165, 255, 17, 0.08);
-  --accent-edge: rgba(165, 255, 17, 0.35);
-  --shadow-button: 0 0 20px 0 rgba(165, 255, 17, 0.45);
-
-  --danger: #ff6b6b;
-  --danger-ink: #131215;
-  --danger-soft: rgba(255, 107, 107, 0.1);
-  --danger-edge: rgba(255, 107, 107, 0.35);
-  --success: #5fd68a;
-  --success-soft: rgba(95, 214, 138, 0.1);
-  --warning: #f5b942;
-  --warning-soft: rgba(245, 185, 66, 0.1);
-
-  --scrim: rgba(0, 0, 0, 0.72);
-  --shadow-float: 0 24px 48px rgba(0, 0, 0, 0.5);
-  --logo-filter: none;
-
-  --radius: 0;
-  --radius-lg: 0;
-  --font: 'Power Grotesk', arial, helvetica, sans-serif;
-  --mono:
-    'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
-  --tracking-eyebrow: 0.28em;
-  --tracking-label: 0.16em;
-  --tracking-button: 0.15em;
-}
-
+:root,
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --page: #f5f5f0;
+  /* ── Spec tokens ── */
+  --bg: #f6f6f3;
+  --bg-subtle: #efefeb;
   --surface: #ffffff;
-  --surface-2: #ebebe4;
-  --sunken: #fafaf7;
-  --border: #dcdcd4;
-  --border-soft: #dcdcd4;
-  --border-strong: #b9b9b0;
-  --grid-line: rgba(19, 18, 21, 0.05);
-  --hover-wash: rgba(19, 18, 21, 0.04);
-
-  --ink: #131215;
-  --ink-2: #36353a;
-  --ink-dim: #5e5e5e;
-  --ink-faint: #6b6b70;
-
-  --accent-text: #487800;
-  --accent-soft: rgba(72, 120, 0, 0.08);
-  --accent-edge: rgba(72, 120, 0, 0.4);
-  --shadow-button: 3px 3px 0 0 #131215;
-
+  --surface-hover: #f3f3f0;
+  --surface-sunken: #f1f1ee;
+  --border: #e5e5e0;
+  --border-strong: #d4d4ce;
+  --text: #131215;
+  --text-dim: #4a4a4f;
+  --text-faint: #6b6b70;
+  --accent: #a5ff11;
+  --accent-hover: #b4ff3a;
+  --accent-soft: #f0ffd6;
   --danger: #c62828;
-  --danger-ink: #ffffff;
-  --danger-soft: rgba(198, 40, 40, 0.07);
-  --danger-edge: rgba(198, 40, 40, 0.35);
-  --success: #1b7a3a;
-  --success-soft: rgba(27, 122, 58, 0.08);
-  --warning: #8a5a00;
-  --warning-soft: rgba(138, 90, 0, 0.08);
+  --danger-soft: #fdecec;
+  --warning: #9a5b00;
+  --warning-soft: #fff4e0;
+  --info: #1d5fbf;
+  --info-soft: #eaf1fc;
+  --success: #2f7a00;
+  --success-soft: #eef8e4;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-xs: 0 1px 2px rgba(19, 18, 21, 0.05);
+  --shadow-sm:
+    0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
+  --shadow-md:
+    0 4px 12px rgba(19, 18, 21, 0.06), 0 12px 32px rgba(19, 18, 21, 0.08);
+  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
+  --focus-border: #131215;
+  --font-display:
+    'Power Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter,
+    sans-serif;
+  --font:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
-  --scrim: rgba(19, 18, 21, 0.5);
-  --shadow-float:
-    0 16px 40px rgba(19, 18, 21, 0.12), 0 2px 6px rgba(19, 18, 21, 0.06);
+  /* ── This app's names, mapped onto the spec ── */
+  --page: var(--bg);
+  --surface-2: var(--bg-subtle);
+  --sunken: var(--surface-sunken);
+  --border-soft: var(--border);
+  --grid-line: transparent;
+  --hover-wash: var(--surface-hover);
+  --ink: var(--text);
+  --ink-2: var(--text-dim);
+  --ink-dim: var(--text-faint);
+  --ink-faint: var(--text-faint);
+  --accent-ink: #131215;
+  --accent-text: #4a7300;
+  --accent-edge: rgba(74, 115, 0, 0.35);
+  --danger-ink: #ffffff;
+  --danger-edge: rgba(198, 40, 40, 0.3);
+  --scrim: rgba(19, 18, 21, 0.32);
+  --shadow-float: var(--shadow-md);
+  /* The landing reads this one; kept as it was. */
+  --shadow-button: 3px 3px 0 0 #131215;
   --logo-filter: brightness(0) invert(0.08);
+  --tracking-eyebrow: 0.04em;
+  --tracking-label: 0.04em;
+  --tracking-button: 0;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #131215;
+  --bg-subtle: #1a191c;
+  --surface: #1c1b1f;
+  --surface-hover: #242327;
+  --surface-sunken: #161518;
+  --border: #2a292d;
+  --border-strong: #3b3a3f;
+  --text: #f4f4f2;
+  --text-dim: #c4c4c8;
+  --text-faint: #9a9aa0;
+  --accent-soft: rgba(165, 255, 17, 0.1);
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.1);
+  --warning: #f5b942;
+  --warning-soft: rgba(245, 185, 66, 0.1);
+  --info: #7fb0ff;
+  --info-soft: rgba(127, 176, 255, 0.1);
+  --success: #8fdc5a;
+  --success-soft: rgba(143, 220, 90, 0.1);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --focus-border: #a5ff11;
+
+  --accent-text: #a5ff11;
+  --accent-edge: rgba(165, 255, 17, 0.35);
+  --danger-ink: #131215;
+  --danger-edge: rgba(255, 107, 107, 0.35);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-button: 0 0 20px 0 rgba(165, 255, 17, 0.45);
+  --logo-filter: none;
 }
 
 html,
@@ -171,8 +181,8 @@ body {
   font-family: var(--font);
   font-size: 14px;
   font-weight: 400;
-  line-height: 1.55;
-  letter-spacing: 0.015em;
+  line-height: 1.5;
+  letter-spacing: 0;
   color: var(--ink);
   background: var(--page);
   text-rendering: optimizeLegibility;
@@ -214,22 +224,27 @@ a {
    is how a keyboard user loses their place; `:focus-visible` keeps it off a
    mouse click. */
 :focus-visible {
-  outline: 2px solid var(--accent-text);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--ring);
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
+  border-radius: 999px;
 }
 
 @keyframes mp-slide-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -286,17 +301,30 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
-  border: 1px solid var(--border-strong);
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
-  color: var(--ink-dim);
+  color: var(--text-dim);
   transition:
-    color 0.2s ease,
-    border-color 0.2s ease;
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 .mp-theme-toggle:hover {
-  color: var(--accent-text);
-  border-color: var(--accent-text);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+/* The landing is charcoal whatever the app theme is (see landing.css), so the
+   shared lockup and toggle keep their dark-surface colours inside it. */
+.mp-ld {
+  --ink: #fcfcfc;
+  --ink-dim: #8e8e8e;
+  --text: #fcfcfc;
+  --text-dim: #c8c8c8;
+  --border-strong: #404040;
+  --surface-hover: rgba(252, 252, 252, 0.06);
+  --accent-text: #a5ff11;
 }

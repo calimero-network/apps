@@ -2,19 +2,18 @@
  *
  * Mounted at the app level (see the component doc), so it floats above whatever
  * route the link happened to land on rather than living in one page's layout.
- * Styled as the console's toast: square, a strong line, a lime rule down the
- * left.
+ * A focused white card: icon tile, what you are joining, Not now / Join.
  */
 .wrap {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  /* Above the call's own bars, below a modal dialog's top layer. */
+  /* Above the page, below a modal dialog's top layer. */
   z-index: 60;
   display: flex;
   justify-content: center;
-  padding: 76px 12px 12px;
+  padding: 72px 16px 16px;
   pointer-events: none;
 }
 
@@ -22,21 +21,33 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 14px;
   flex-wrap: wrap;
-  max-width: 760px;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--accent-text);
-  border-radius: 0;
-  background: var(--surface-2);
-  box-shadow: var(--shadow-float);
+  width: min(100%, 640px);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
   font-size: 14px;
-  animation: mp-slide-in 0.3s ease-out;
+  animation: mp-slide-in 0.25s ease-out;
 }
 
-.promptError {
-  border-left-color: var(--danger);
+.icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.promptError .icon {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .text {
@@ -44,52 +55,80 @@
   min-width: 200px;
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 2px;
+  color: var(--text);
+}
+.text strong {
+  font-weight: 600;
 }
 
 .sub {
   font-size: 13px;
-  font-weight: 300;
-  color: var(--ink-2);
+  color: var(--text-dim);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .accept,
 .ghost {
-  border-radius: 0;
-  padding: 0.75rem 1.1rem 0.75rem calc(1.1rem + var(--tracking-button));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
   font-family: inherit;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: var(--tracking-button);
-  text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
   transition:
-    box-shadow 0.3s ease-out,
-    color 0.3s ease-out,
-    border-color 0.3s ease-out;
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .accept {
   background: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   color: var(--accent-ink);
 }
 .accept:hover:not(:disabled) {
-  box-shadow: var(--shadow-button);
+  background: var(--accent-hover);
 }
-.accept:disabled {
+.accept:disabled,
+.ghost:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
 .ghost {
   background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--ink-2);
+  border: 1px solid transparent;
+  color: var(--text-dim);
 }
 .ghost:hover:not(:disabled) {
-  color: var(--ink);
-  border-color: var(--ink-dim);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
 }

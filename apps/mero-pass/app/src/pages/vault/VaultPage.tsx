@@ -11,7 +11,19 @@ import LockGate from '../../components/LockGate';
 import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
 import VaultPeople from '../../components/VaultPeople';
-import { PlusIcon } from '../../components/icons';
+import {
+  AlertTriangleIcon,
+  CheckIcon,
+  ClockIcon,
+  InfoIcon,
+  KeyIcon,
+  LockIcon,
+  PlusIcon,
+  ShieldIcon,
+  TrashIcon,
+  UserPlusIcon,
+  VaultIcon,
+} from '../../components/icons';
 import type { AuditView } from '../../generated/MeroPassClient';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useVaultSession } from '../../hooks/useVaultSession';
@@ -306,12 +318,16 @@ function VaultBody() {
   return (
     <main className={styles.main}>
       <div className={styles.bar}>
+        <span className={styles.barIcon} aria-hidden="true">
+          {personal ? <LockIcon size={20} /> : <VaultIcon size={20} />}
+        </span>
         <div className={styles.barTitle}>
           <h1 className={styles.barName} data-testid="vault-heading">
             {vaultName}
           </h1>
-          <p className={styles.barSub} data-testid="vault-scope">
-            {subtitle}
+          <p className={styles.barSub}>
+            <ShieldIcon size={14} />
+            <span data-testid="vault-scope">{subtitle}</span>
           </p>
         </div>
         <div className={styles.barActions}>
@@ -323,6 +339,7 @@ function VaultBody() {
               disabled={minting}
               data-testid="vault-invite"
             >
+              <UserPlusIcon size={16} />
               {minting ? 'Minting…' : 'Invite'}
             </button>
           )}
@@ -333,7 +350,7 @@ function VaultBody() {
             disabled={!canWrite}
             data-testid="secret-add"
           >
-            <PlusIcon size={14} /> New item
+            <PlusIcon size={16} /> New item
           </button>
         </div>
       </div>
@@ -343,9 +360,14 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripError}`}
           data-testid="error"
         >
+          <AlertTriangleIcon size={16} />
           <span className={styles.stripText}>{shownError}</span>
           {state === 'failed' && (
-            <button type="button" className={shell.btnGhost} onClick={retry}>
+            <button
+              type="button"
+              className={`${shell.btnGhost} ${shell.btnSm}`}
+              onClick={retry}
+            >
               Try again
             </button>
           )}
@@ -353,6 +375,7 @@ function VaultBody() {
       )}
       {state === 'loading' && (
         <div className={styles.strip} data-testid="opening">
+          <span className={styles.spinner} aria-hidden="true" />
           <span className={styles.stripText}>
             {notice ? (
               <>
@@ -369,6 +392,7 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripWarn}`}
           data-testid="no-identity"
         >
+          <InfoIcon size={16} />
           <span className={styles.stripText}>
             This node does not hold an identity in this vault yet. Open it from
             its <Link to="/teams">team</Link> to join.
@@ -380,6 +404,7 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripWarn}`}
           data-testid="waiting-for-admission"
         >
+          <ClockIcon size={16} />
           <span className={styles.stripText}>
             <strong>You are in, but not admitted yet.</strong> A vault Admin
             lets you in the next time they open this vault. This page updates by
@@ -392,6 +417,7 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripWarn}`}
           data-testid="waiting-for-approval"
         >
+          <KeyIcon size={16} />
           <span className={styles.stripText}>
             <strong>Approve this browser.</strong> On another device of yours
             that opens this vault, or from a vault Admin, approve the request
@@ -411,6 +437,7 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripWarn}`}
           data-testid="waiting-for-key"
         >
+          <ClockIcon size={16} />
           <span className={styles.stripText}>
             <strong>Waiting for the vault key.</strong> It arrives as soon as a
             member who holds it opens the vault. Nothing to do here.
@@ -419,6 +446,7 @@ function VaultBody() {
       )}
       {state === 'uninitialised' && (
         <div className={`${styles.strip} ${styles.stripWarn}`}>
+          <KeyIcon size={16} />
           <span className={styles.stripText}>
             This vault has no key yet. It is created the first time its Admin
             opens it.
@@ -430,6 +458,7 @@ function VaultBody() {
           className={`${styles.strip} ${styles.stripWarn}`}
           data-testid="single-holder"
         >
+          <AlertTriangleIcon size={16} />
           <span className={styles.stripText}>
             <strong>Only this browser can open this vault.</strong> Lose it and
             the items are gone.{' '}
@@ -439,7 +468,7 @@ function VaultBody() {
         </div>
       )}
       {session && state === 'ready' && approvals.length > 0 && (
-        <div className={styles.strip}>
+        <div className={`${styles.strip} ${styles.stripPlain}`}>
           <div className={styles.stripText}>
             <DeviceApprovals
               session={session}
@@ -538,9 +567,10 @@ function VaultBody() {
                           <button
                             type="button"
                             className={shell.btn}
-                            style={{ marginTop: '1rem' }}
+                            style={{ marginTop: 14 }}
                             onClick={() => setAdding('login')}
                           >
+                            <PlusIcon size={16} />
                             Add your first item
                           </button>
                         )}
@@ -572,11 +602,21 @@ function VaultBody() {
                   />
                 ) : (
                   <div className={styles.detailEmpty}>
-                    {shown.length > 0
-                      ? 'Pick an item to see it here.'
-                      : state === 'ready'
-                        ? 'Everything you add is encrypted in this browser before it leaves.'
-                        : ''}
+                    {(shown.length > 0 || state === 'ready') && (
+                      <span
+                        className={styles.detailEmptyIcon}
+                        aria-hidden="true"
+                      >
+                        <ShieldIcon size={22} />
+                      </span>
+                    )}
+                    <p className={styles.detailEmptyText}>
+                      {shown.length > 0
+                        ? 'Pick an item to see it here.'
+                        : state === 'ready'
+                          ? 'Everything you add is encrypted in this browser before it leaves.'
+                          : ''}
+                    </p>
                   </div>
                 )}
               </section>
@@ -616,6 +656,9 @@ function VaultBody() {
 
       {toast && (
         <div className={styles.toast} role="status" data-testid="toast">
+          <span className={styles.toastIcon} aria-hidden="true">
+            <CheckIcon size={14} />
+          </span>
           {toast}
         </div>
       )}
@@ -637,46 +680,63 @@ function TrashList({
   onPurge: (s: Secret) => void;
 }) {
   if (items.length === 0)
-    return <p className={shell.empty}>The trash is empty.</p>;
+    return (
+      <div className={shell.emptyState}>
+        <span className={shell.emptyIcon} aria-hidden="true">
+          <TrashIcon size={20} />
+        </span>
+        <p className={shell.emptyTitle}>The trash is empty.</p>
+        <p className={shell.emptyText}>
+          Items you move to the trash stay recoverable here until an Admin
+          deletes them for good.
+        </p>
+      </div>
+    );
   return (
     <div data-testid="trash-list">
       <h2 className={shell.sectionLabel}>Trash</h2>
       <p className={shell.sectionHint}>
         Items stay recoverable here until an Admin deletes them for good.
       </p>
-      {items.map((s) => (
-        <div key={s.id} className={shell.row}>
-          <div className={shell.rowMain}>
-            <div className={shell.rowName}>
-              <KindIcon kind={s.kind} size={14} /> {s.name}
+      <div className={shell.list}>
+        {items.map((s) => (
+          <div key={s.id} className={shell.row}>
+            <span
+              className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+              aria-hidden="true"
+            >
+              <KindIcon kind={s.kind} size={16} />
+            </span>
+            <div className={shell.rowMain}>
+              <div className={shell.rowName}>{s.name}</div>
+              <div className={shell.rowSub}>
+                Trashed {asDate(s.trashedAt).toLocaleString()}
+              </div>
             </div>
-            <div className={shell.rowSub}>
-              Trashed {asDate(s.trashedAt).toLocaleString()}
+            <div className={shell.rowActions}>
+              {canWrite && (
+                <button
+                  type="button"
+                  className={`${shell.btnGhost} ${shell.btnSm}`}
+                  onClick={() => onRestore(s)}
+                >
+                  Restore
+                </button>
+              )}
+              {canPurge && (
+                <button
+                  type="button"
+                  className={`${shell.btnDanger} ${shell.btnSm}`}
+                  onClick={() => onPurge(s)}
+                  data-testid="secret-purge"
+                >
+                  Delete forever
+                </button>
+              )}
             </div>
           </div>
-          <div className={shell.rowActions}>
-            {canWrite && (
-              <button
-                type="button"
-                className={shell.btnGhost}
-                onClick={() => onRestore(s)}
-              >
-                Restore
-              </button>
-            )}
-            {canPurge && (
-              <button
-                type="button"
-                className={shell.btnDanger}
-                onClick={() => onPurge(s)}
-                data-testid="secret-purge"
-              >
-                Delete forever
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -692,33 +752,46 @@ function ActivityList({
 }) {
   if (events.length === 0)
     return (
-      <p className={shell.empty} data-testid="activity-empty">
-        Nothing has happened in this vault yet.
-      </p>
+      <div className={shell.emptyState} data-testid="activity-empty">
+        <span className={shell.emptyIcon} aria-hidden="true">
+          <ClockIcon size={20} />
+        </span>
+        <p className={shell.emptyTitle}>
+          Nothing has happened in this vault yet.
+        </p>
+      </div>
     );
   return (
     <div data-testid="activity-list">
       <h2 className={shell.sectionLabel}>Activity</h2>
-      {events.map((e, i) => (
-        <div key={i} className={vault.event}>
-          <span className={vault.eventDot} aria-hidden="true" />
-          <div>
-            <div className={vault.eventAction}>
-              {e.redacted
-                ? 'entry redacted by its author'
-                : e.action.replace(/[_:]/g, ' ')}
-            </div>
-            <div className={vault.eventDetail}>
-              {secrets.find((s) => s.id === e.target)?.name ??
-                e.target.slice(0, 24)}
-            </div>
-            <div className={vault.eventMeta}>
-              {asDate(e.timestamp).toLocaleString()} · {who(e.account, me)} ·
-              device {e.device.slice(0, 8)}
+      <p className={shell.sectionHint}>
+        Every change to this vault, signed by the device that made it.
+      </p>
+      <div className={vault.timeline}>
+        {events.map((e, i) => (
+          <div key={i} className={vault.event}>
+            <span className={vault.eventDot} aria-hidden="true" />
+            <div>
+              <div className={vault.eventAction}>
+                {e.redacted
+                  ? 'entry redacted by its author'
+                  : e.action.replace(/[_:]/g, ' ')}
+              </div>
+              <div className={vault.eventDetail}>
+                {secrets.find((s) => s.id === e.target)?.name ??
+                  e.target.slice(0, 24)}
+              </div>
+              <div className={vault.eventMeta}>
+                {asDate(e.timestamp).toLocaleString()} · {who(e.account, me)} ·
+                device{' '}
+                <span className={vault.eventDevice}>
+                  {e.device.slice(0, 8)}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

@@ -17,6 +17,12 @@ import {
 } from '../lib/vaults';
 import type { TeamMember } from '../lib/vaults';
 import styles from '../styles/shell.module.css';
+import {
+  AlertTriangleIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  RefreshIcon,
+} from './icons';
 import { describeError } from '../lib/errors';
 
 /**
@@ -135,17 +141,37 @@ export default function MembersPanel({
 
   return (
     <section data-testid="members-panel">
-      <p className={styles.sectionHint}>
-        An <strong>Admin</strong> can create vaults, invite people and change
-        roles. A <strong>Member</strong> can open every open vault in {teamName}
-        ; what they may do inside a vault — view or edit — is set on that
-        vault's People tab. Removing someone here also removes them from every
-        vault, and rotates each vault's key the next time its Admin opens it.
-      </p>
+      <div className={styles.sectionHead} style={{ marginTop: 0 }}>
+        <div>
+          <h2 className={styles.sectionTitle}>
+            People
+            {!loading && members.length > 0 && (
+              <span className={styles.count}>{members.length}</span>
+            )}
+          </h2>
+          <p className={styles.sectionHint}>
+            An <strong>Admin</strong> can create vaults, invite people and
+            change roles. A <strong>Member</strong> can open every open vault in{' '}
+            {teamName}; what they may do inside a vault — view or edit — is set
+            on that vault's People tab. Removing someone here also removes them
+            from every vault, and rotates each vault's key the next time its
+            Admin opens it.
+          </p>
+        </div>
+        <button
+          type="button"
+          className={`${styles.btnGhost} ${styles.btnSm}`}
+          onClick={() => void load()}
+        >
+          <RefreshIcon size={14} />
+          Refresh
+        </button>
+      </div>
 
       {error && (
         <p className={styles.error} data-testid="members-error">
-          {error}
+          <AlertTriangleIcon size={16} />
+          <span>{error}</span>
         </p>
       )}
       {notice && (
@@ -153,21 +179,44 @@ export default function MembersPanel({
           {notice}
         </p>
       )}
-      {busy && <p className={styles.status}>{busy}</p>}
+      {busy && (
+        <p className={styles.status}>
+          <span className={styles.spinner} aria-hidden="true" />
+          <span>{busy}</span>
+        </p>
+      )}
       {!iMayManage && !loading && (
         <p className={styles.status} data-testid="read-only-roles">
-          You are a Member, so the roles below are read-only.
+          <InfoIcon size={16} />
+          <span>You are a Member, so the roles below are read-only.</span>
+        </p>
+      )}
+
+      {/* ⚠️ The honest sentence, kept on screen rather than hidden in a
+          confirmation nobody reads twice. Demotion is not revocation and must
+          not be sold as one. */}
+      {confirming && (
+        <p className={styles.warn} data-testid="role-warning">
+          <AlertTriangleIcon size={16} />
+          <span>
+            {members.find((m) => m.accountId === confirming)?.role === 'admin'
+              ? 'Demoting stops them creating vaults, inviting people and changing roles. It does NOT remove them from the team — use Remove for that.'
+              : 'Promoting lets them create vaults, invite anyone into this team and change roles, including yours.'}
+          </span>
         </p>
       )}
 
       {loading ? (
-        <p className={styles.empty}>Loading people…</p>
+        <p className={styles.status}>
+          <span className={styles.spinner} aria-hidden="true" />
+          <span>Loading people…</span>
+        </p>
       ) : members.length === 0 ? (
         <p className={styles.empty} data-testid="members-empty">
           Nobody else is in this team yet. Use Invite to add someone.
         </p>
       ) : (
-        <div data-testid="member-list">
+        <div className={styles.list} data-testid="member-list">
           {members.map((member) => {
             const mismatched = !satisfiesRole(member.capabilities, member.role);
             const target: TeamRole =
@@ -178,18 +227,18 @@ export default function MembersPanel({
                 className={styles.row}
                 data-testid="member-row"
               >
+                <span className={styles.rowIcon} aria-hidden="true">
+                  {initialsOf(member.name)}
+                </span>
                 <div className={styles.rowMain}>
                   <div className={styles.rowName}>
                     {member.name}
-                    {member.isSelf ? ' (you)' : ''}{' '}
+                    {member.isSelf && <span className={styles.you}>(you)</span>}
                     <span
                       className={`${styles.badge} ${member.role === 'admin' ? styles.badgeAccent : ''}`}
                     >
                       {roleLabel(member.role)}
                     </span>
-                  </div>
-                  <div className={styles.mono}>
-                    {member.accountId.slice(0, 16)}…
                   </div>
                   <div className={styles.rowSub}>
                     {canCreateVault(member.capabilities)
@@ -205,7 +254,18 @@ export default function MembersPanel({
                       : 'cannot change roles'}
                   </div>
                   {mismatched && (
-                    <div className={styles.rowSub} data-testid="role-mismatch">
+                    <div
+                      className={`${styles.badge} ${styles.badgeWarn}`}
+                      style={{
+                        height: 'auto',
+                        padding: '4px 10px',
+                        marginTop: 6,
+                        whiteSpace: 'normal',
+                        borderRadius: 8,
+                        textTransform: 'none',
+                      }}
+                      data-testid="role-mismatch"
+                    >
                       Recorded as {roleLabel(member.role)}, but the node has not
                       applied{' '}
                       {missingForRole(member.capabilities, member.role).join(
@@ -214,6 +274,16 @@ export default function MembersPanel({
                       — they cannot use it until it does.
                     </div>
                   )}
+                  <details className={styles.details}>
+                    <summary>
+                      <ChevronRightIcon size={12} />
+                      Details
+                    </summary>
+                    <dl className={styles.detailsBody}>
+                      <dt>Account</dt>
+                      <dd>{member.accountId}</dd>
+                    </dl>
+                  </details>
                 </div>
 
                 {iMayManage && (
@@ -222,49 +292,49 @@ export default function MembersPanel({
                       <>
                         <button
                           type="button"
-                          className={
+                          className={`${styles.btnGhost} ${styles.btnSm}`}
+                          onClick={() => setConfirming(null)}
+                          disabled={!!busy}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className={`${
                             target === 'member' ? styles.btnDanger : styles.btn
-                          }
+                          } ${styles.btnSm}`}
                           onClick={() => void change(member, target)}
                           disabled={!!busy}
                           data-testid="role-confirm"
                         >
                           {target === 'member' ? 'Demote' : 'Promote'}
                         </button>
-                        <button
-                          type="button"
-                          className={styles.btnGhost}
-                          onClick={() => setConfirming(null)}
-                          disabled={!!busy}
-                        >
-                          Cancel
-                        </button>
                       </>
                     ) : removing === member.accountId ? (
                       <>
                         <button
                           type="button"
-                          className={styles.btnDanger}
+                          className={`${styles.btnGhost} ${styles.btnSm}`}
+                          onClick={() => setRemoving(null)}
+                          disabled={!!busy}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.btnDanger} ${styles.btnSm}`}
                           onClick={() => void remove(member)}
                           disabled={!!busy}
                           data-testid="member-remove-confirm"
                         >
                           Remove from team
                         </button>
-                        <button
-                          type="button"
-                          className={styles.btnGhost}
-                          onClick={() => setRemoving(null)}
-                          disabled={!!busy}
-                        >
-                          Cancel
-                        </button>
                       </>
                     ) : (
                       <>
                         <button
                           type="button"
-                          className={styles.btnGhost}
+                          className={`${styles.btnGhost} ${styles.btnSm}`}
                           onClick={() => setConfirming(member.accountId)}
                           disabled={!!busy}
                           data-testid="role-change"
@@ -274,7 +344,7 @@ export default function MembersPanel({
                         {!member.isSelf && (
                           <button
                             type="button"
-                            className={styles.btnGhost}
+                            className={`${styles.btnDanger} ${styles.btnSm}`}
                             onClick={() => setRemoving(member.accountId)}
                             disabled={!!busy}
                             data-testid="member-remove"
@@ -291,27 +361,15 @@ export default function MembersPanel({
           })}
         </div>
       )}
-
-      {/* ⚠️ The honest sentence, kept on screen rather than hidden in a
-          confirmation nobody reads twice. Demotion is not revocation and must
-          not be sold as one. */}
-      {confirming && (
-        <p className={styles.sectionHint} data-testid="role-warning">
-          {members.find((m) => m.accountId === confirming)?.role === 'admin'
-            ? 'Demoting stops them creating vaults, inviting people and changing roles. It does NOT remove them from the team — use Remove for that.'
-            : 'Promoting lets them create vaults, invite anyone into this team and change roles, including yours.'}
-        </p>
-      )}
-
-      <div className={styles.section}>
-        <button
-          type="button"
-          className={styles.btnGhost}
-          onClick={() => void load()}
-        >
-          Refresh
-        </button>
-      </div>
     </section>
   );
+}
+
+/** Two letters for a member's avatar. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0][0] ?? '';
+  const second = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : '';
+  return (first + second).toUpperCase();
 }

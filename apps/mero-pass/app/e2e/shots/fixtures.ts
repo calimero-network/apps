@@ -27,8 +27,8 @@ export const SCENARIOS: Scenario[] = [
   { id: 'vault-waiting', page: 'vault', variant: 'waiting' },
   { id: 'vault-single-holder', page: 'vault', variant: 'personal' },
   { id: 'security', page: 'security' },
-  { id: 'teams-light', page: 'teams', variant: 'light' },
-  { id: 'vault-light', page: 'vault', variant: 'light' },
+  { id: 'teams-dark', page: 'teams', variant: 'dark' },
+  { id: 'vault-dark', page: 'vault', variant: 'dark' },
   { id: 'landing', page: 'landing' },
 ];
 

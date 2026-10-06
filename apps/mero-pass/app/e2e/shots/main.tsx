@@ -17,7 +17,8 @@ const sc = scenarioById(
   new URLSearchParams(location.search).get('s') ?? 'teams',
 );
 
-applyTheme(sc.variant === 'light' ? 'light' : 'dark');
+// Light is the designed-for default; the `-dark` scenarios check the other theme.
+applyTheme(sc.variant === 'dark' ? 'dark' : 'light');
 
 const initial =
   sc.page === 'team'

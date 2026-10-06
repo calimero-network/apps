@@ -4,6 +4,7 @@ import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { type Protection, deviceKeeper } from '../lib/deviceKey';
 import shell from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
+import { LockIcon } from './icons';
 
 /**
  * Nothing inside renders until this browser's device key is unlocked.
@@ -64,14 +65,28 @@ export default function LockGate({ children }: { children: ReactNode }) {
   };
 
   return (
-    <section className={shell.section} data-testid="lock-gate">
-      <h2 className={shell.sectionTitle}>Locked</h2>
-      <p className={shell.sectionHint}>
+    <section
+      className={shell.panel}
+      style={{ maxWidth: 520, margin: '48px auto', textAlign: 'center' }}
+      data-testid="lock-gate"
+    >
+      <span
+        className={shell.emptyIcon}
+        style={{ width: 48, height: 48, margin: '4px auto 12px' }}
+        aria-hidden="true"
+      >
+        <LockIcon size={22} />
+      </span>
+      <h2 className={shell.sectionLabel}>Locked</h2>
+      <p className={shell.sectionHint} style={{ margin: '0 auto 16px' }}>
         Your vault keys were cleared from memory. Nothing is readable on this
         screen until you unlock.
       </p>
       {error && <p className={shell.error}>{error}</p>}
-      <div className={shell.createRow}>
+      <div
+        className={shell.createRow}
+        style={{ justifyContent: 'center', marginBottom: 8 }}
+      >
         {protection === 'passphrase' && (
           <input
             className={shell.input}
@@ -104,11 +119,14 @@ export default function LockGate({ children }: { children: ReactNode }) {
         </button>
       </div>
       {protection !== null && protection !== 'none' && (
-        <div className={shell.createRow}>
+        <div
+          className={shell.createRow}
+          style={{ justifyContent: 'center', marginBottom: 0 }}
+        >
           {!confirmReset ? (
             <button
               type="button"
-              className={shell.btnGhost}
+              className={shell.btnQuiet}
               onClick={() => setConfirmReset(true)}
             >
               Forgot your {protection}?

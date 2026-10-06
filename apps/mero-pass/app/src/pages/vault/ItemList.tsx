@@ -46,7 +46,7 @@ export function ItemTile({
   const cls = `${styles.tile} ${large ? styles.tileLarge : ''}`;
   if (secret.kind === 'login')
     return (
-      <span className={cls} aria-hidden="true">
+      <span className={cls} data-tone={toneOf(secret.name)} aria-hidden="true">
         {monogramOf(secret.name)}
       </span>
     );
@@ -55,6 +55,13 @@ export function ItemTile({
       <KindIcon kind={secret.kind} size={large ? 24 : 16} />
     </span>
   );
+}
+
+/** A stable soft tint for a login's tile, picked from its name. */
+function toneOf(name: string): number {
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 6;
 }
 
 export const SearchBox = forwardRef<
@@ -128,14 +135,15 @@ export default function ItemList({
   return (
     <>
       <div className={styles.listHead}>
-        {heading} · {items.length}
+        <span>{heading}</span>
+        <span className={styles.listCount}>{items.length}</span>
       </div>
       {items.length === 0 ? (
         <div className={styles.listEmpty} data-testid="secrets-empty">
           {empty}
         </div>
       ) : (
-        <div data-testid="secret-list">
+        <div className={styles.rows} data-testid="secret-list">
           {items.map((s, i) => {
             const copy = quickCopy(s);
             return (

@@ -1,100 +1,111 @@
 /* Secret-specific chrome. Everything structural comes from shell.module.css;
-   only what is genuinely about a SECRET lives here — in the same square,
-   hairline, uppercase-label language as the rest of the app. */
+   only what is genuinely about a SECRET lives here — stats, the activity
+   timeline, the live authenticator code, the shared-secret card. */
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  border-top: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .stat {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem 1.25rem;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
   background: var(--surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .statValue {
-  font-size: 2rem;
-  font-weight: 950;
-  line-height: 1;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .statLabel {
-  font-size: 11px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--ink-dim);
+  font-size: 13px;
+  color: var(--text-faint);
 }
 
 .select {
-  padding: 0.75rem 0.875rem;
+  height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 0;
+  border-radius: 8px;
   font-size: 14px;
-  background: var(--sunken);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--text);
   outline: none;
   min-width: 160px;
   cursor: pointer;
 }
 .select:focus {
-  border-color: var(--accent-text);
-  box-shadow: inset 0 0 0 1px var(--accent-text);
+  border-color: var(--focus-border);
+  box-shadow: var(--ring);
 }
 
-/* The secret list: one bordered column of rows on hairlines, like the
-   console's tables, rather than floating cards. */
+/* The shared-secret card (share page). */
 .secret {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
-  transition: border-color 0.3s ease;
 }
-.secret + .secret {
-  margin-top: -1px;
+
+.secretHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
 }
-.secret:hover {
-  border-color: var(--border-strong);
-  position: relative;
+
+.secretIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .secretName {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   word-break: break-word;
 }
 
 .secretBody {
-  border-top: 1px solid var(--border);
-  padding: 1rem 1.25rem 1.25rem;
-  background: var(--sunken);
+  padding: 4px 0;
 }
 
 .field {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.625rem 0;
+  gap: 16px;
+  min-height: 56px;
+  padding: 8px 10px 8px 18px;
 }
 .field + .field {
   border-top: 1px solid var(--border);
 }
 
 .fieldName {
-  font-size: 11px;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--ink-dim);
+  font-size: 13px;
+  color: var(--text-faint);
   width: 120px;
   flex-shrink: 0;
+  text-transform: capitalize;
 }
 
 /* A revealed value is monospace so an ambiguous character can be read; a
@@ -103,174 +114,205 @@
 .fieldValue {
   flex: 1;
   font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0;
-  color: var(--ink);
+  font-size: 13.5px;
+  color: var(--text);
   word-break: break-all;
   min-width: 0;
 }
 
 .fieldMasked {
-  letter-spacing: 0.2em;
-  color: var(--ink-dim);
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
 }
 
 .fieldActions {
   display: flex;
-  gap: 0.375rem;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .mini {
-  padding: 0.4rem 0.6rem 0.35rem calc(0.6rem + 0.14em);
-  font-size: 10px;
-  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   border: 1px solid var(--border-strong);
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink-2);
-  transition:
-    color 0.2s ease,
-    border-color 0.2s ease;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  transition: background-color 0.15s ease;
 }
 .mini:hover {
-  border-color: var(--accent-text);
-  color: var(--accent-text);
+  background: var(--surface-hover);
 }
 
 .secretFooter {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
+  gap: 10px;
+  padding: 12px 18px;
   border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .secretFooterNote {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-faint);
   margin-right: auto;
 }
 
 /* ── Activity ─────────────────────────────────────────────────────────────── */
 
-.event {
-  display: flex;
-  gap: 1rem;
-  padding: 0.875rem 1.25rem;
+.timeline {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.event {
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
 }
 .event + .event {
-  margin-top: -1px;
+  border-top: 1px solid var(--border);
 }
 
 .eventDot {
-  width: 6px;
-  height: 6px;
-  background: var(--accent-text);
-  margin-top: 0.45rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  margin-top: 7px;
   flex-shrink: 0;
 }
 
 .eventAction {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.eventAction::first-letter {
   text-transform: uppercase;
 }
 
 .eventDetail {
-  font-size: 13px;
-  font-weight: 300;
-  color: var(--ink-2);
+  font-size: 14px;
+  color: var(--text-dim);
 }
 
 .eventMeta {
-  font-size: 11px;
-  color: var(--ink-dim);
-  margin-top: 0.125rem;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.eventDevice {
+  font-family: var(--mono);
 }
 
 /* ── Live authenticator code ─────────────────────────────────────────────── */
 .totp {
   display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 12px;
 }
 .totpDigits {
   font-family: var(--mono);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 500;
-  letter-spacing: 0.12em;
-  color: var(--accent-text);
+  letter-spacing: 0.08em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 .totpLeft {
-  font-size: 11px;
-  color: var(--ink-dim);
-  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── States that are not a list ──────────────────────────────────────────── */
 .banner {
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-text);
-  background: var(--surface);
-  padding: 0.875rem 1.125rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--accent-edge);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  padding: 14px 16px;
   font-size: 14px;
-  font-weight: 300;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin-bottom: 1rem;
+  line-height: 1.55;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.banner > p {
+  flex-basis: 100%;
 }
 .banner strong {
-  font-weight: 700;
-  color: var(--ink);
+  font-weight: 600;
+  color: var(--text);
 }
 .banner a {
-  color: var(--accent-text);
+  color: var(--text);
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 .historyRow {
   display: flex;
-  gap: 0.75rem;
+  gap: 12px;
   align-items: center;
-  font-size: 13px;
-  padding: 0.375rem 0;
+  font-size: 14px;
+  padding: 6px 0;
 }
 .historyMeta {
-  color: var(--ink-dim);
+  color: var(--text-faint);
   min-width: 150px;
   font-size: 12px;
 }
 .healthIssue {
   display: inline-flex;
   align-items: center;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-dim);
+  margin: 2px 4px 0 0;
+}
+.healthIssue::first-letter {
   text-transform: uppercase;
-  padding: 0.25rem 0.45rem;
-  border: 1px solid var(--border-strong);
-  color: var(--ink-2);
-  margin-right: 0.25rem;
 }
 .healthBad {
-  border-color: var(--danger-edge);
   background: var(--danger-soft);
   color: var(--danger);
 }

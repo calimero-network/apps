@@ -7,9 +7,17 @@ import { parseTotp } from '../lib/totp';
 import type { Secret, VaultSession } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from './SecretForm.module.css';
+import { EyeIcon, EyeOffIcon, LockIcon, RefreshIcon, XIcon } from './icons';
 import { describeError } from '../lib/errors';
 
 const STRENGTH_LABEL = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
+const STRENGTH_COLOR = [
+  'var(--danger)',
+  'var(--danger)',
+  'var(--warning)',
+  'var(--success)',
+  'var(--success)',
+];
 
 /**
  * Add or edit one secret.
@@ -116,16 +124,22 @@ export default function SecretForm({
     >
       <div className={styles.body}>
         <header className={styles.head}>
-          <h2 className={styles.title}>
-            {editing ? 'Edit secret' : 'New secret'}
-          </h2>
+          <div className={styles.headText}>
+            <h2 className={styles.title}>
+              {editing ? 'Edit secret' : 'New secret'}
+            </h2>
+            <p className={styles.desc}>
+              <LockIcon size={13} />
+              Encrypted in this browser before it is saved.
+            </p>
+          </div>
           <button
             type="button"
             className={styles.close}
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         </header>
 
@@ -217,8 +231,13 @@ export default function SecretForm({
                         aria-label={
                           visible ? `Hide ${f.label}` : `Show ${f.label}`
                         }
+                        title={visible ? 'Hide' : 'Show'}
                       >
-                        {visible ? 'Hide' : 'Show'}
+                        {visible ? (
+                          <EyeOffIcon size={16} />
+                        ) : (
+                          <EyeIcon size={16} />
+                        )}
                       </button>
                     )}
                     {f.generate && (
@@ -226,15 +245,26 @@ export default function SecretForm({
                         type="button"
                         className={styles.inline}
                         onClick={() => set(generatePassword())}
+                        title="Generate a strong password"
                         data-testid="sf-generate"
                       >
+                        <RefreshIcon size={14} />
                         Generate
                       </button>
                     )}
                   </div>
                 )}
                 {f.generate && value && (
-                  <span className={styles.hint}>
+                  <span className={styles.meter}>
+                    <span className={styles.meterBar}>
+                      <span
+                        className={styles.meterFill}
+                        style={{
+                          width: `${((strengthOf(value) + 1) / 5) * 100}%`,
+                          background: STRENGTH_COLOR[strengthOf(value)],
+                        }}
+                      />
+                    </span>
                     {STRENGTH_LABEL[strengthOf(value)]}
                   </span>
                 )}
@@ -257,8 +287,8 @@ export default function SecretForm({
         </div>
 
         <p className={styles.hint}>
-          Encrypted in this browser before it is saved. Every member of this
-          vault who holds its key can read it, and Editors can change it.
+          Every member of this vault who holds its key can read it, and Editors
+          can change it.
         </p>
 
         <div className={styles.actions}>

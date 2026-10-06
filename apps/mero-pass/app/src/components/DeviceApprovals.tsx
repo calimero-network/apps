@@ -7,6 +7,7 @@ import {
 } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
+import { MonitorIcon } from './icons';
 
 /**
  * Requests from new devices for this vault's key, for a device that may
@@ -57,12 +58,15 @@ export default function DeviceApprovals({
           className={shell.row}
           data-testid="device-request"
         >
+          <span className={shell.rowIcon} aria-hidden="true">
+            <MonitorIcon size={16} />
+          </span>
           <div className={shell.rowMain}>
             <div className={shell.rowName}>
-              {d.label || 'Browser'}{' '}
-              <span className={shell.badge}>
+              {d.label || 'Browser'}
+              <span className={shell.badge} style={{ textTransform: 'none' }}>
                 code{' '}
-                <span className={shell.mono}>
+                <span className={shell.mono} style={{ color: 'var(--text)' }}>
                   {confirmationCode(d.fingerprint)}
                 </span>
               </span>
@@ -77,7 +81,7 @@ export default function DeviceApprovals({
           <div className={shell.rowActions}>
             <button
               type="button"
-              className={shell.btn}
+              className={`${shell.btn} ${shell.btnSm}`}
               disabled={busy !== null}
               onClick={() => void act(d, () => session.approve(d))}
               data-testid="approve-device"
@@ -86,7 +90,7 @@ export default function DeviceApprovals({
             </button>
             <button
               type="button"
-              className={shell.btnGhost}
+              className={`${shell.btnGhost} ${shell.btnSm}`}
               disabled={busy !== null}
               onClick={() => void act(d, () => session.deny(d))}
             >

@@ -223,3 +223,16 @@ export async function vaultAudience() {
 export async function migrateDevice() {
   return 0;
 }
+
+/** Mirrors the real class so `instanceof` checks in useRedeemInvitation bundle. */
+export class InviteRedeemError extends Error {
+  readonly outcome: { status: 'failed'; message: string };
+  constructor(outcome: { status: 'failed'; message: string }) {
+    super(outcome.message);
+    this.name = 'InviteRedeemError';
+    this.outcome = outcome;
+  }
+}
+
+export async function forEachJoinedVault() {}
+export async function forEachOpenVault() {}

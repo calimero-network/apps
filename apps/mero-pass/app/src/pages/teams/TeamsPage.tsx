@@ -4,6 +4,18 @@ import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
+import {
+  AlertTriangleIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  LayersIcon,
+  LinkIcon,
+  LockIcon,
+  MoreIcon,
+  PlusIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useRedeemInvitation } from '../../hooks/useRedeemInvitation';
 import { NOT_AN_INVITATION, parseInvitation } from '../../lib/redeemFlow';
@@ -223,12 +235,28 @@ export default function TeamsPage() {
       <AppHeader />
 
       <main className={styles.main}>
-        <p className={styles.eyebrow}>Mero Pass</p>
-        <h1 className={styles.title}>Your vaults</h1>
-        <p className={styles.subtitle}>
-          Keep credentials to yourself in your private vault, or share them with
-          people you invite to a team.
-        </p>
+        <div className={styles.titleRow}>
+          <div>
+            <h1 className={styles.title}>Your vaults</h1>
+            <p className={styles.subtitle}>
+              Keep credentials to yourself in your private vault, or share them
+              with people you invite to a team.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <p className={styles.error} data-testid="error">
+            <AlertTriangleIcon size={16} />
+            <span>{error}</span>
+          </p>
+        )}
+        {busy && (
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span>{busy}</span>
+          </p>
+        )}
 
         {/* ── Private ──────────────────────────────────────────────────────
             Above the teams, because it is the one vault that is always yours
@@ -237,9 +265,19 @@ export default function TeamsPage() {
             moment a screen renders races a second device doing the same, and
             this app has already been bitten by lazy-create minting duplicates.
         */}
-        <h2 className={styles.sectionTitle}>Private</h2>
+        <div className={styles.sectionHead}>
+          <div>
+            <h2 className={styles.sectionTitle}>Private</h2>
+            <p className={styles.sectionHint}>
+              Only your own devices can open it.
+            </p>
+          </div>
+        </div>
         {loading ? (
-          <p className={styles.empty}>Loading…</p>
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span>Loading…</span>
+          </p>
         ) : personalTeam ? (
           <div className={styles.grid}>
             <button
@@ -254,13 +292,34 @@ export default function TeamsPage() {
               }
               data-testid="personal-card"
             >
-              <span className={styles.cardName}>{personalTeam.name}</span>
-              <span className={styles.cardSub}>Only you · never shared</span>
+              <span className={styles.cardHead}>
+                <span
+                  className={`${styles.cardIcon} ${styles.cardIconAccent}`}
+                  aria-hidden="true"
+                >
+                  <LockIcon size={18} />
+                </span>
+                <span className={styles.cardTitles}>
+                  <span className={styles.cardName}>{personalTeam.name}</span>
+                  <span className={styles.cardSub}>
+                    Only you · never shared
+                  </span>
+                </span>
+              </span>
+              <span className={styles.cardFoot}>
+                <span className={styles.badge}>Private vault</span>
+                <span className={styles.chev} aria-hidden="true">
+                  <ChevronRightIcon size={16} />
+                </span>
+              </span>
             </button>
           </div>
         ) : (
-          <div className={styles.createRow}>
-            <p className={`${styles.empty} ${styles.emptyInline}`}>
+          <div className={`${styles.panel} ${styles.createRow}`}>
+            <span className={styles.cardIcon} aria-hidden="true">
+              <LockIcon size={18} />
+            </span>
+            <p className={styles.panelText} style={{ flex: 1, minWidth: 200 }}>
               A vault only you can open, synced across your own devices.
             </p>
             <button
@@ -270,21 +329,32 @@ export default function TeamsPage() {
               disabled={!admin || !appId || !!busy}
               data-testid="personal-create"
             >
+              <PlusIcon size={16} />
               Create private vault
             </button>
           </div>
         )}
 
-        <h2 className={styles.sectionTitle}>Teams</h2>
-        <p className={styles.subtitle}>
-          A team is the people. Every vault inside it is readable by everyone
-          you invite.
-        </p>
+        <div className={styles.sectionHead}>
+          <div>
+            <h2 className={styles.sectionTitle}>
+              Teams
+              {!loading && sharedTeams.length > 0 && (
+                <span className={styles.count}>{sharedTeams.length}</span>
+              )}
+            </h2>
+            <p className={styles.sectionHint}>
+              A team is the people. Every vault inside it is readable by
+              everyone you invite.
+            </p>
+          </div>
+        </div>
 
         <div className={styles.createRow}>
           <input
             className={styles.input}
             placeholder="New team name…"
+            aria-label="New team name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void create()}
@@ -297,33 +367,42 @@ export default function TeamsPage() {
             disabled={!admin || !appId || !newName.trim() || !!busy}
             data-testid="team-create"
           >
-            Create
+            <PlusIcon size={16} />
+            Create team
           </button>
         </div>
 
-        {error && (
-          <p className={styles.error} data-testid="error">
-            {error}
-          </p>
-        )}
-        {busy && <p className={styles.status}>{busy}</p>}
-
         {notInstalled ? (
-          <p className={styles.empty} data-testid="not-installed">
-            Mero Pass is not installed on this node. Install it from the app
-            registry, then reload.
-          </p>
+          <div className={styles.emptyState} data-testid="not-installed">
+            <span className={styles.emptyIcon} aria-hidden="true">
+              <InfoIcon size={20} />
+            </span>
+            <p className={styles.emptyTitle}>Mero Pass is not installed</p>
+            <p className={styles.emptyText}>
+              Mero Pass is not installed on this node. Install it from the app
+              registry, then reload.
+            </p>
+          </div>
         ) : loading ? (
-          <p className={styles.empty}>Loading…</p>
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span>Loading…</span>
+          </p>
         ) : sharedTeams.length === 0 ? (
           // ⚠️ Only when the load SUCCEEDED and came back empty. A failed list
           // is not evidence of no teams, and saying "No teams yet" under a 503
           // tells someone their data is gone when the node merely did not
           // answer.
           error ? null : (
-            <p className={styles.empty} data-testid="teams-empty">
-              No teams yet. Create one above, or paste an invitation below.
-            </p>
+            <div className={styles.emptyState} data-testid="teams-empty">
+              <span className={styles.emptyIcon} aria-hidden="true">
+                <LayersIcon size={20} />
+              </span>
+              <p className={styles.emptyTitle}>No teams yet.</p>
+              <p className={styles.emptyText}>
+                Create one above, or paste an invitation below.
+              </p>
+            </div>
           )
         ) : (
           <div className={styles.grid} data-testid="team-grid">
@@ -339,10 +418,25 @@ export default function TeamsPage() {
                   onClick={() => navigate(`/teams/${team.namespaceId}`)}
                   data-testid="team-card"
                 >
-                  <span className={styles.cardName}>{team.name}</span>
-                  <span className={styles.cardSub}>
-                    {team.vaultCount} vault{team.vaultCount === 1 ? '' : 's'} ·{' '}
-                    {team.memberCount} member{team.memberCount === 1 ? '' : 's'}
+                  <span className={styles.cardHead}>
+                    <span className={styles.cardIcon} aria-hidden="true">
+                      <LayersIcon size={18} />
+                    </span>
+                    <span className={styles.cardTitles}>
+                      <span className={styles.cardName}>{team.name}</span>
+                      <span className={styles.cardSub}>
+                        {team.vaultCount} vault
+                        {team.vaultCount === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className={styles.cardFoot}>
+                    <UsersIcon size={14} />
+                    {team.memberCount} member
+                    {team.memberCount === 1 ? '' : 's'}
+                    <span className={styles.chev} aria-hidden="true">
+                      <ChevronRightIcon size={16} />
+                    </span>
                   </span>
                 </button>
                 <button
@@ -354,14 +448,20 @@ export default function TeamsPage() {
                       menuOpenId === team.namespaceId ? null : team.namespaceId,
                     );
                   }}
+                  onKeyDown={(e) => e.key === 'Escape' && setMenuOpenId(null)}
                   title="More options"
                   aria-label={`More options for ${team.name}`}
+                  aria-expanded={menuOpenId === team.namespaceId}
                   data-testid="team-menu"
                 >
-                  ⋯
+                  <MoreIcon size={18} />
                 </button>
                 {menuOpenId === team.namespaceId && (
-                  <div className={styles.dropdown} data-testid="team-dropdown">
+                  <div
+                    className={styles.dropdown}
+                    data-testid="team-dropdown"
+                    onKeyDown={(e) => e.key === 'Escape' && setMenuOpenId(null)}
+                  >
                     <button
                       type="button"
                       className={styles.dropdownItem}
@@ -370,6 +470,7 @@ export default function TeamsPage() {
                         navigate(`/teams/${team.namespaceId}`);
                       }}
                     >
+                      <LayersIcon size={16} />
                       Open
                     </button>
                     <button
@@ -377,6 +478,7 @@ export default function TeamsPage() {
                       className={styles.dropdownItem}
                       onClick={() => void inviteTo(team)}
                     >
+                      <UserPlusIcon size={16} />
                       Invite someone
                     </button>
                     <button
@@ -387,6 +489,7 @@ export default function TeamsPage() {
                         navigate(`/teams/${team.namespaceId}?tab=people`);
                       }}
                     >
+                      <UsersIcon size={16} />
                       People
                     </button>
                   </div>
@@ -402,12 +505,30 @@ export default function TeamsPage() {
             doing one is not half-doing the other. Same placement as Mero
             Sign's workspaces screen.
         */}
-        <div className={styles.section} data-testid="join-section">
-          <p className={styles.sectionLabel}>Got an invitation? Join a team.</p>
-          <div className={styles.createRow}>
+        <div
+          className={styles.panel}
+          style={{ marginTop: 32 }}
+          data-testid="join-section"
+        >
+          <div className={styles.panelHead}>
+            <span className={styles.cardIcon} aria-hidden="true">
+              <LinkIcon size={18} />
+            </span>
+            <div>
+              <p className={styles.panelTitle}>
+                Got an invitation? Join a team.
+              </p>
+              <p className={styles.panelText}>
+                Opening the link works too — you only need this if it arrived as
+                text. Joining a team gives you every vault in it.
+              </p>
+            </div>
+          </div>
+          <div className={styles.createRow} style={{ marginBottom: 0 }}>
             <input
               className={styles.input}
               placeholder="Paste the link or code you were sent…"
+              aria-label="Invitation link or code"
               value={joinCode}
               onChange={(e) => {
                 setJoinCode(e.target.value);
@@ -421,7 +542,7 @@ export default function TeamsPage() {
             />
             <button
               type="button"
-              className={styles.btn}
+              className={styles.btnGhost}
               onClick={() => void join()}
               disabled={!admin || !joinCode.trim() || redeemer.busy}
               data-testid="join-submit"
@@ -429,17 +550,21 @@ export default function TeamsPage() {
               {redeemer.busy ? 'Joining…' : 'Join'}
             </button>
           </div>
-          <p className={styles.sectionHint}>
-            Opening the link works too — you only need this if it arrived as
-            text. Joining a team gives you every vault in it.
-          </p>
           {redeemer.status && (
-            <p className={styles.status} data-testid="join-status">
+            <p
+              className={styles.status}
+              style={{ marginTop: 12, marginBottom: 0 }}
+              data-testid="join-status"
+            >
               {redeemer.status}
             </p>
           )}
           {redeemer.error && (
-            <p className={styles.error} data-testid="join-error">
+            <p
+              className={styles.error}
+              style={{ marginTop: 12, marginBottom: 0 }}
+              data-testid="join-error"
+            >
               {redeemer.error}
             </p>
           )}

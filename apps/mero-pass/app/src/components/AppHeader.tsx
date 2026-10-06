@@ -1,17 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
-import { Lock } from '@calimero-network/mero-icons';
 
 import ThemeToggle from './ThemeToggle';
-import { LogOutIcon, ShieldIcon } from './icons';
-import Wordmark from './Wordmark';
+import { ChevronRightIcon, LockIcon, LogOutIcon, ShieldIcon } from './icons';
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { deviceKeeper } from '../lib/deviceKey';
 import styles from '../styles/shell.module.css';
 
 /**
- * The app bar: the Calimero lockup, a trail, and a way out. 64px on a
- * hairline, the same bar as the Calimero Cloud console.
+ * The app bar: the Mero Pass mark, a breadcrumb trail, and a way out. 56px,
+ * white, on a hairline — the Calimero apps' shared header.
  *
  * ── What was removed, and why ────────────────────────────────────────────────
  *
@@ -58,40 +56,60 @@ export default function AppHeader({
         type="button"
         className={styles.brand}
         onClick={() => navigate('/teams')}
+        aria-label="Mero Pass — your vaults"
         data-testid="brand"
       >
-        <Wordmark size="sm" />
+        <span className={styles.brandTile} aria-hidden="true">
+          <LockIcon size={15} strokeWidth={2} />
+        </span>
+        <span className={styles.brandName}>Mero Pass</span>
       </button>
 
-      {back && (
-        <button
-          type="button"
-          className={styles.back}
-          onClick={() => navigate(back.to)}
-          data-testid="back"
-        >
-          ← {back.label}
-        </button>
+      {(back || crumb) && (
+        <nav className={styles.crumbs} aria-label="Breadcrumb">
+          {back && (
+            <button
+              type="button"
+              className={styles.back}
+              onClick={() => navigate(back.to)}
+              data-testid="back"
+            >
+              {back.label}
+            </button>
+          )}
+          {back && crumb && (
+            <span className={styles.crumbSep} aria-hidden="true">
+              <ChevronRightIcon size={14} />
+            </span>
+          )}
+          {crumb && (
+            <span className={styles.crumb} aria-current="page">
+              {crumb}
+            </span>
+          )}
+        </nav>
       )}
-      {crumb && <span className={styles.crumb}>{crumb}</span>}
 
       <div className={styles.headerRight}>
         {host && (
-          <span className={styles.nodeChip} title={nodeUrl ?? ''}>
-            {host}
+          <span
+            className={styles.nodeChip}
+            title={`Connected to ${nodeUrl ?? ''}`}
+          >
+            <span className={styles.dot} aria-hidden="true" />
+            <span className={styles.nodeChipText}>{host}</span>
           </span>
         )}
-        <ThemeToggle />
         {unlocked && (
           <button
             type="button"
             className={styles.logoutBtn}
             onClick={() => deviceKeeper.lock()}
-            title="Clear vault keys from memory"
+            title="Lock — clear vault keys from memory"
             aria-label="Lock"
             data-testid="lock-now"
           >
-            <Lock size={16} className={styles.headerIcon} />
+            <LockIcon size={16} className={styles.headerIcon} />
             <span className={styles.headerLabel}>Lock</span>
           </button>
         )}
@@ -99,12 +117,15 @@ export default function AppHeader({
           type="button"
           className={styles.logoutBtn}
           onClick={() => navigate('/security')}
+          title="Security — recovery key and devices"
           aria-label="Security"
           data-testid="security"
         >
           <ShieldIcon size={16} className={styles.headerIcon} />
           <span className={styles.headerLabel}>Security</span>
         </button>
+        <span className={styles.headerDivider} aria-hidden="true" />
+        <ThemeToggle />
         <button
           type="button"
           className={styles.logoutBtn}
@@ -115,11 +136,11 @@ export default function AppHeader({
             logout();
             navigate('/', { replace: true });
           }}
+          title="Log out"
           aria-label="Log out"
           data-testid="logout"
         >
           <LogOutIcon size={16} className={styles.headerIcon} />
-          <span className={styles.headerLabel}>Log out</span>
         </button>
       </div>
     </header>

@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff } from '@calimero-network/mero-icons';
-
 import TotpCode from '../../components/TotpCode';
-import { BackIcon, CopyIcon, OpenIcon } from '../../components/icons';
+import {
+  BackIcon,
+  CopyIcon,
+  EditIcon,
+  EyeIcon,
+  EyeOffIcon,
+  HistoryIcon,
+  OpenIcon,
+  ShareIcon,
+  TrashIcon,
+} from '../../components/icons';
 import { strengthOf } from '../../lib/health';
 import { asDate, kindLabel, openableUrl, who } from '../../lib/itemView';
 import {
@@ -94,7 +102,7 @@ export default function ItemDetail({
         className={`${shell.btnGhost} ${styles.back}`}
         onClick={onBack}
       >
-        <BackIcon size={14} /> All items
+        <BackIcon size={16} /> All items
       </button>
 
       <div className={styles.detailHead}>
@@ -103,19 +111,11 @@ export default function ItemDetail({
           <h2 className={styles.detailName} data-testid="item-name">
             {secret.name}
           </h2>
-          <p className={styles.detailKind}>{kindLabel(secret.kind)}</p>
+          <p className={styles.detailKind}>
+            <span className={shell.badge}>{kindLabel(secret.kind)}</span>
+          </p>
         </div>
         <div className={styles.detailActions}>
-          {canWrite && !secret.unreadable && (
-            <button
-              type="button"
-              className={shell.btn}
-              onClick={onEdit}
-              data-testid="secret-edit"
-            >
-              Edit
-            </button>
-          )}
           {!secret.unreadable && (
             <button
               type="button"
@@ -123,7 +123,19 @@ export default function ItemDetail({
               onClick={onShare}
               data-testid="secret-share"
             >
+              <ShareIcon size={16} />
               Share
+            </button>
+          )}
+          {canWrite && !secret.unreadable && (
+            <button
+              type="button"
+              className={shell.btnGhost}
+              onClick={onEdit}
+              data-testid="secret-edit"
+            >
+              <EditIcon size={16} />
+              Edit
             </button>
           )}
         </div>
@@ -142,8 +154,10 @@ export default function ItemDetail({
           const shown = !sensitive || revealed.has(key);
           const url = key === 'url' ? openableUrl(value) : null;
           const multi = isMultiline(secret.kind, key);
-          const strength =
-            key === 'password' && shown ? STRENGTH[strengthOf(value)] : null;
+          // Shown concealed too, as a password manager does: the meter says
+          // how strong it is without saying what it is.
+          const score = key === 'password' ? strengthOf(value) : -1;
+          const strength = score >= 0 ? STRENGTH[score] : null;
           return (
             <div key={key} className={styles.field} data-testid="field">
               <div className={styles.fieldText}>
@@ -162,14 +176,16 @@ export default function ItemDetail({
                 )}
                 {strength && (
                   <span className={styles.meter}>
-                    <span className={styles.meterBar}>
-                      <span
-                        className={styles.meterFill}
-                        style={{
-                          width: `${((strengthOf(value) + 1) / 5) * 100}%`,
-                          background: strength[1],
-                        }}
-                      />
+                    <span className={styles.meterBar} aria-hidden="true">
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <span
+                          key={i}
+                          className={styles.meterSeg}
+                          style={
+                            i <= score ? { background: strength[1] } : undefined
+                          }
+                        />
+                      ))}
                     </span>
                     {strength[0]}
                   </span>
@@ -186,7 +202,7 @@ export default function ItemDetail({
                       title={shown ? 'Hide' : 'Reveal'}
                       data-testid="reveal"
                     >
-                      {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {shown ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
                     </button>
                   )}
                   {url && (
@@ -228,30 +244,37 @@ export default function ItemDetail({
         </div>
       )}
 
-      <div className={styles.meta}>
-        Modified {asDate(secret.updatedAt).toLocaleString()} by{' '}
-        {who(secret.updatedBy, me)}
-        <br />
-        Created {asDate(secret.createdAt).toLocaleString()} by{' '}
-        {who(secret.createdBy, me)}
-      </div>
+      <dl className={styles.meta}>
+        <dt>Modified</dt>
+        <dd>
+          {asDate(secret.updatedAt).toLocaleString()} by{' '}
+          {who(secret.updatedBy, me)}
+        </dd>
+        <dt>Created</dt>
+        <dd>
+          {asDate(secret.createdAt).toLocaleString()} by{' '}
+          {who(secret.createdBy, me)}
+        </dd>
+      </dl>
 
-      <div className={styles.detailActions} style={{ marginTop: '1.25rem' }}>
+      <div className={styles.footActions}>
         <button
           type="button"
-          className={shell.btnGhost}
+          className={`${shell.btnGhost} ${shell.btnSm}`}
           onClick={async () => setHistory(history ? null : await loadHistory())}
           data-testid="secret-history-toggle"
         >
+          <HistoryIcon size={14} />
           {history ? 'Hide history' : 'Previous values'}
         </button>
         {canWrite && (
           <button
             type="button"
-            className={shell.btnDanger}
+            className={`${shell.btnDanger} ${shell.btnSm}`}
             onClick={onTrash}
             data-testid="secret-trash"
           >
+            <TrashIcon size={14} />
             Move to trash
           </button>
         )}
@@ -281,7 +304,7 @@ export default function ItemDetail({
                   {!r.unreadable && canWrite && (
                     <button
                       type="button"
-                      className={shell.btnGhost}
+                      className={`${shell.btnGhost} ${shell.btnSm}`}
                       onClick={() => onRestore(r)}
                     >
                       Restore

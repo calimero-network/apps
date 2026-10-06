@@ -10,6 +10,17 @@ import { useMero } from '@calimero-network/mero-react';
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
 import MembersPanel from '../../components/MembersPanel';
+import {
+  AlertTriangleIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  LayersIcon,
+  LockIcon,
+  PlusIcon,
+  UserPlusIcon,
+  UsersIcon,
+  VaultIcon,
+} from '../../components/icons';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useTeamCapabilities } from '../../hooks/useTeamCapabilities';
 import { canCreateVault, canInvite } from '../../lib/roles';
@@ -254,8 +265,10 @@ export default function TeamPage() {
 
       <main className={styles.mainWide}>
         <div className={styles.titleRow}>
+          <span className={styles.titleIcon} aria-hidden="true">
+            <LayersIcon size={22} />
+          </span>
           <div>
-            <p className={styles.eyebrow}>Team</p>
             <h1 className={styles.title} data-testid="team-heading">
               {heading}
             </h1>
@@ -287,6 +300,7 @@ export default function TeamPage() {
                 disabled={!!busy}
                 data-testid="invite-team"
               >
+                <UserPlusIcon size={16} />
                 Invite
               </button>
             </div>
@@ -302,6 +316,7 @@ export default function TeamPage() {
             onClick={() => setTab('vaults')}
             data-testid="tab-vaults"
           >
+            <VaultIcon size={16} />
             Vaults
           </button>
           <button
@@ -312,19 +327,29 @@ export default function TeamPage() {
             onClick={() => setTab('people')}
             data-testid="tab-people"
           >
+            <UsersIcon size={16} />
             People
           </button>
         </div>
 
         {error && (
           <p className={styles.error} data-testid="error">
-            {error}
+            <AlertTriangleIcon size={16} />
+            <span>{error}</span>
           </p>
         )}
-        {busy && <p className={styles.status}>{busy}</p>}
+        {busy && (
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span>{busy}</span>
+          </p>
+        )}
         {hostingNotice && (
-          <p className={styles.status} data-testid="hosting-notice">
-            This team exists, but nobody can join it yet: {hostingNotice}.
+          <p className={styles.warn} data-testid="hosting-notice">
+            <AlertTriangleIcon size={16} />
+            <span>
+              This team exists, but nobody can join it yet: {hostingNotice}.
+            </span>
           </p>
         )}
 
@@ -335,6 +360,7 @@ export default function TeamPage() {
                 <input
                   className={styles.input}
                   placeholder="New vault name — “Bank logins”, “Production keys”…"
+                  aria-label="New vault name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void create()}
@@ -346,13 +372,13 @@ export default function TeamPage() {
                     form yet). An account would create a vault nobody else
                     could ever be let into. */}
                 {!isDelegated && (
-                  <label className={styles.rowSub}>
+                  <label className={styles.checkLabel}>
                     <input
                       type="checkbox"
                       checked={restricted}
                       onChange={(e) => setRestricted(e.target.checked)}
                       data-testid="vault-restricted"
-                    />{' '}
+                    />
                     Invite-only
                   </label>
                 )}
@@ -363,15 +389,19 @@ export default function TeamPage() {
                   disabled={!admin || !appId || !newName.trim() || !!busy}
                   data-testid="vault-create"
                 >
-                  Create
+                  <PlusIcon size={16} />
+                  Create vault
                 </button>
               </div>
             ) : (
               !capsLoading && (
                 <p className={styles.status} data-testid="member-notice">
-                  You are a Member of this team, so you can open every vault
-                  below but not create new ones. An Admin can change that under
-                  People.
+                  <InfoIcon size={16} />
+                  <span>
+                    You are a Member of this team, so you can open every vault
+                    below but not create new ones. An Admin can change that
+                    under People.
+                  </span>
                 </p>
               )
             )}
@@ -383,14 +413,22 @@ export default function TeamPage() {
             ) : isSyncing ? (
               <JoinSyncBanner show what="vaults" onDismiss={dismissSyncing} />
             ) : loading ? (
-              <p className={styles.empty}>Loading…</p>
-            ) : vaults.length === 0 ? (
-              <p className={styles.empty} data-testid="vaults-empty">
-                No vaults in this team yet.
-                {mayCreateVault
-                  ? ' Create one above — everyone already in the team gets it.'
-                  : ' An Admin can create the first one.'}
+              <p className={styles.status}>
+                <span className={styles.spinner} aria-hidden="true" />
+                <span>Loading…</span>
               </p>
+            ) : vaults.length === 0 ? (
+              <div className={styles.emptyState} data-testid="vaults-empty">
+                <span className={styles.emptyIcon} aria-hidden="true">
+                  <VaultIcon size={20} />
+                </span>
+                <p className={styles.emptyTitle}>No vaults in this team yet.</p>
+                <p className={styles.emptyText}>
+                  {mayCreateVault
+                    ? 'Create one above — everyone already in the team gets it.'
+                    : 'An Admin can create the first one.'}
+                </p>
+              </div>
             ) : (
               <div className={styles.gridWide} data-testid="vault-grid">
                 {vaults.map((vault) => (
@@ -402,16 +440,44 @@ export default function TeamPage() {
                       disabled={!vault.contextId || !!busy}
                       data-testid="vault-card"
                     >
-                      <span className={styles.cardName}>{vault.name}</span>
-                      <span className={styles.cardSub}>
-                        {vault.restricted ? 'Invite-only · ' : ''}
-                        {vault.memberCount} member
-                        {vault.memberCount === 1 ? '' : 's'}
-                        {vault.contextId
-                          ? vault.joined
-                            ? ' · you are in'
-                            : ' · not joined'
-                          : ' · syncing'}
+                      <span className={styles.cardHead}>
+                        <span className={styles.cardIcon} aria-hidden="true">
+                          {vault.restricted ? (
+                            <LockIcon size={18} />
+                          ) : (
+                            <VaultIcon size={18} />
+                          )}
+                        </span>
+                        <span className={styles.cardTitles}>
+                          <span className={styles.cardName}>{vault.name}</span>
+                          <span className={styles.cardSub}>
+                            {vault.restricted ? 'Invite-only · ' : ''}
+                            {vault.memberCount} member
+                            {vault.memberCount === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                      </span>
+                      <span className={styles.cardFoot}>
+                        {vault.contextId ? (
+                          vault.joined ? (
+                            <span
+                              className={`${styles.badge} ${styles.badgeAccent}`}
+                            >
+                              You are in
+                            </span>
+                          ) : (
+                            <span className={styles.badge}>Not joined</span>
+                          )
+                        ) : (
+                          <span
+                            className={`${styles.badge} ${styles.badgeWarn}`}
+                          >
+                            Syncing
+                          </span>
+                        )}
+                        <span className={styles.chev} aria-hidden="true">
+                          <ChevronRightIcon size={16} />
+                        </span>
                       </span>
                     </button>
                     {/* An open vault's invitation is a TEAM invitation with
@@ -433,7 +499,7 @@ export default function TeamPage() {
                           aria-label={`Invite someone to ${vault.name}`}
                           data-testid="vault-invite"
                         >
-                          ＋
+                          <UserPlusIcon size={16} />
                         </button>
                       )}
                   </div>

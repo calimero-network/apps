@@ -5,6 +5,7 @@ import type { Secret } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
 import { describeError } from '../lib/errors';
+import { AlertTriangleIcon, CheckIcon, ShieldIcon } from './icons';
 
 const ISSUE_TEXT: Record<string, string> = {
   weak: 'weak',
@@ -43,6 +44,10 @@ export default function HealthPanel({
 
   return (
     <section data-testid="health-panel">
+      <h2 className={shell.sectionLabel}>Password health</h2>
+      <p className={shell.sectionHint}>
+        Weak, reused and old passwords in this vault. Checked in this browser.
+      </p>
       <div className={styles.stats}>
         <div className={styles.stat}>
           <span className={styles.statValue}>{rows.length}</span>
@@ -61,6 +66,7 @@ export default function HealthPanel({
           disabled={checking}
           data-testid="breach-check"
         >
+          <ShieldIcon size={16} />
           {checking
             ? 'Checking…'
             : checked
@@ -74,36 +80,55 @@ export default function HealthPanel({
       </div>
       {error && <p className={shell.error}>{error}</p>}
       {flagged.length === 0 ? (
-        <p className={shell.empty}>
-          {rows.length ? 'Nothing to fix.' : 'No passwords in this vault yet.'}
-        </p>
+        <div className={shell.emptyState}>
+          <span className={shell.emptyIcon} aria-hidden="true">
+            <CheckIcon size={20} />
+          </span>
+          <p className={shell.emptyTitle}>
+            {rows.length
+              ? 'Nothing to fix.'
+              : 'No passwords in this vault yet.'}
+          </p>
+        </div>
       ) : (
-        flagged.map((r) => (
-          <div key={r.id} className={shell.row}>
-            <div className={shell.rowMain}>
-              <div className={shell.rowName}>{r.name}</div>
-              <div>
-                {r.issues.map((i) => (
-                  <span
-                    key={i}
-                    className={`${styles.healthIssue} ${i === 'breached' || i === 'weak' ? styles.healthBad : ''}`}
-                  >
-                    {ISSUE_TEXT[i]}
-                  </span>
-                ))}
+        <div className={shell.list}>
+          {flagged.map((r) => (
+            <div key={r.id} className={shell.row}>
+              <span
+                className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+                style={{
+                  background: 'var(--warning-soft)',
+                  color: 'var(--warning)',
+                }}
+                aria-hidden="true"
+              >
+                <AlertTriangleIcon size={16} />
+              </span>
+              <div className={shell.rowMain}>
+                <div className={shell.rowName}>{r.name}</div>
+                <div>
+                  {r.issues.map((i) => (
+                    <span
+                      key={i}
+                      className={`${styles.healthIssue} ${i === 'breached' || i === 'weak' ? styles.healthBad : ''}`}
+                    >
+                      {ISSUE_TEXT[i]}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className={shell.rowActions}>
+                <button
+                  type="button"
+                  className={`${shell.btnGhost} ${shell.btnSm}`}
+                  onClick={() => onOpen(r.id)}
+                >
+                  Open
+                </button>
               </div>
             </div>
-            <div className={shell.rowActions}>
-              <button
-                type="button"
-                className={shell.btnGhost}
-                onClick={() => onOpen(r.id)}
-              >
-                Open
-              </button>
-            </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
     </section>
   );

@@ -9,6 +9,15 @@ import {
 } from '../../lib/shareLink';
 import shell from '../../styles/shell.module.css';
 import styles from '../vault/vault.module.css';
+import {
+  AlertTriangleIcon,
+  ClockIcon,
+  CopyIcon,
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  ShieldIcon,
+} from '../../components/icons';
 
 /**
  * Opens a share link. Public — no node, no login — because the whole secret is
@@ -52,15 +61,39 @@ export default function SharePage() {
 
   return (
     <div className={shell.root}>
-      <main className={shell.main}>
-        <p className={shell.eyebrow}>Mero Pass</p>
-        <h1 className={shell.title}>Shared with you</h1>
-        <p className={shell.subtitle}>
-          Someone sent you a secret through Mero Pass. It was decrypted in this
-          browser; nothing was fetched from a server.
-        </p>
-        {!fragment && <p className={shell.error}>This link is empty.</p>}
-        {error && <p className={shell.error}>{error}</p>}
+      <header className={shell.header}>
+        <span className={shell.brand}>
+          <span className={shell.brandTile} aria-hidden="true">
+            <LockIcon size={15} strokeWidth={2} />
+          </span>
+          <span className={shell.brandName}>Mero Pass</span>
+        </span>
+      </header>
+      <main className={shell.main} style={{ maxWidth: 640 }}>
+        <div className={shell.titleRow}>
+          <span className={shell.titleIcon} aria-hidden="true">
+            <ShieldIcon size={22} />
+          </span>
+          <div>
+            <h1 className={shell.title}>Shared with you</h1>
+            <p className={shell.subtitle}>
+              Someone sent you a secret through Mero Pass. It was decrypted in
+              this browser; nothing was fetched from a server.
+            </p>
+          </div>
+        </div>
+        {!fragment && (
+          <p className={shell.error}>
+            <AlertTriangleIcon size={16} />
+            <span>This link is empty.</span>
+          </p>
+        )}
+        {error && (
+          <p className={shell.error}>
+            <AlertTriangleIcon size={16} />
+            <span>{error}</span>
+          </p>
+        )}
         {fragment && needsPass && !secret && (
           <div className={shell.createRow}>
             <input
@@ -83,14 +116,21 @@ export default function SharePage() {
         )}
         {secret && (
           <div className={styles.secret}>
-            <div className={styles.secretBody}>
+            <div className={styles.secretHead}>
+              <span className={styles.secretIcon} aria-hidden="true">
+                <LockIcon size={18} />
+              </span>
               <div className={styles.secretName}>{secret.name}</div>
+            </div>
+            <div className={styles.secretBody}>
               {Object.entries(secret.fields).map(([k, v]) => (
                 <div key={k} className={styles.field}>
                   <span className={styles.fieldName}>
                     {k.replace(/_/g, ' ')}
                   </span>
-                  <span className={styles.fieldValue}>
+                  <span
+                    className={`${styles.fieldValue} ${revealed ? '' : styles.fieldMasked}`}
+                  >
                     {revealed ? v : '••••••••••••'}
                   </span>
                   <span className={styles.fieldActions}>
@@ -99,24 +139,27 @@ export default function SharePage() {
                       className={styles.mini}
                       onClick={() => void copySecret(v)}
                     >
+                      <CopyIcon size={14} />
                       Copy
                     </button>
                   </span>
                 </div>
               ))}
-              <div className={styles.secretFooter}>
-                <button
-                  type="button"
-                  className={styles.mini}
-                  onClick={() => setRevealed((r) => !r)}
-                >
-                  {revealed ? 'Hide' : 'Reveal'}
-                </button>
-                <span className={styles.secretFooterNote}>
-                  This link stops opening{' '}
-                  {new Date(secret.expiresAt).toLocaleString()}.
-                </span>
-              </div>
+            </div>
+            <div className={styles.secretFooter}>
+              <span className={styles.secretFooterNote}>
+                <ClockIcon size={14} />
+                This link stops opening{' '}
+                {new Date(secret.expiresAt).toLocaleString()}.
+              </span>
+              <button
+                type="button"
+                className={styles.mini}
+                onClick={() => setRevealed((r) => !r)}
+              >
+                {revealed ? <EyeOffIcon size={14} /> : <EyeIcon size={14} />}
+                {revealed ? 'Hide' : 'Reveal'}
+              </button>
             </div>
           </div>
         )}

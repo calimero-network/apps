@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { copySecret } from '../lib/clipboard';
 import { parseTotp, secondsRemaining, totpCode } from '../lib/totp';
 import styles from '../pages/vault/vault.module.css';
+import { CopyIcon } from './icons';
 
 /** A live authenticator code with its countdown, computed in the browser. */
 export default function TotpCode({ seed }: { seed: string }) {
@@ -48,6 +49,7 @@ export default function TotpCode({ seed }: { seed: string }) {
         className={styles.mini}
         onClick={() => code && void copySecret(code, params.period * 1000)}
       >
+        <CopyIcon size={14} />
         Copy
       </button>
     </span>

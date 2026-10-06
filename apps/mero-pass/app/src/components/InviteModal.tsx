@@ -2,6 +2,13 @@ import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { shareableInvitation } from '../lib/inviteLink';
 import { useDialogOpen } from '../hooks/useDialogOpen';
 import styles from './InviteModal.module.css';
+import {
+  ChevronRightIcon,
+  CopyIcon,
+  LinkIcon,
+  UserPlusIcon,
+  XIcon,
+} from './icons';
 
 /**
  * An invitation, as a modal you copy and dismiss.
@@ -65,17 +72,14 @@ export default function InviteModal({
     }
   }, [share, onClose]);
 
-  const copyQuietly = useCallback(
-    async (value: string, label: string) => {
-      try {
-        await navigator.clipboard.writeText(value);
-        setNote(`${label} copied.`);
-      } catch {
-        setNote('Could not reach the clipboard — select it and copy.');
-      }
-    },
-    [],
-  );
+  const copyQuietly = useCallback(async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setNote(`${label} copied.`);
+    } catch {
+      setNote('Could not reach the clipboard — select it and copy.');
+    }
+  }, []);
 
   // After the hooks, never before: an early return above them would change the
   // hook order between renders.
@@ -95,7 +99,15 @@ export default function InviteModal({
     >
       <div className={styles.body}>
         <header className={styles.head}>
-          <h2 className={styles.title}>Invitation ready</h2>
+          <span className={styles.headIcon} aria-hidden="true">
+            <UserPlusIcon size={18} />
+          </span>
+          <div className={styles.headText}>
+            <h2 className={styles.title}>Invitation ready</h2>
+            <p className={styles.scope} data-testid="invite-scope">
+              {scope}
+            </p>
+          </div>
           <button
             type="button"
             className={styles.close}
@@ -103,33 +115,27 @@ export default function InviteModal({
             aria-label="Close"
             data-testid="invite-modal-close"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         </header>
 
-        <p className={styles.scope} data-testid="invite-scope">
-          {scope}
-        </p>
+        <span className={styles.fieldLabel}>Invitation link</span>
 
         {/* One line by default; `showRaw` is also the "clipboard failed" state,
             where the characters have to be selectable. */}
-        <code
-          className={styles.link}
-          title={share.link}
-          data-full={showRaw ? 'true' : 'false'}
-          data-testid="invite-link"
-        >
-          {share.link}
-        </code>
-
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={copyAndClose}
-          data-testid="invite-copy"
-        >
-          Copy link
-        </button>
+        <div className={styles.linkRow}>
+          <span className={styles.linkIcon} aria-hidden="true">
+            <LinkIcon size={16} />
+          </span>
+          <code
+            className={styles.link}
+            title={share.link}
+            data-full={showRaw ? 'true' : 'false'}
+            data-testid="invite-link"
+          >
+            {share.link}
+          </code>
+        </div>
 
         {note && (
           <p className={styles.hint} data-testid="invite-note">
@@ -137,7 +143,7 @@ export default function InviteModal({
           </p>
         )}
 
-        {hint && <p className={styles.hint}>{hint}</p>}
+        {hint && <p className={styles.hintBox}>{hint}</p>}
 
         <button
           type="button"
@@ -146,6 +152,7 @@ export default function InviteModal({
           aria-expanded={showRaw}
           data-testid="invite-more"
         >
+          <ChevronRightIcon size={14} />
           {showRaw ? 'Fewer options' : 'Other ways to send this'}
         </button>
 
@@ -166,6 +173,7 @@ export default function InviteModal({
                 onClick={() => void copyQuietly(share.deepLink, 'Desktop link')}
                 data-testid="invite-copy-deep"
               >
+                <CopyIcon size={14} />
                 Copy
               </button>
             </div>
@@ -184,11 +192,27 @@ export default function InviteModal({
                 onClick={() => void copyQuietly(share.code, 'Code')}
                 data-testid="invite-copy-code"
               >
+                <CopyIcon size={14} />
                 Copy
               </button>
             </div>
           </div>
         )}
+
+        <footer className={styles.foot}>
+          <button type="button" className={styles.secondary} onClick={onClose}>
+            Done
+          </button>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={copyAndClose}
+            data-testid="invite-copy"
+          >
+            <CopyIcon size={16} />
+            Copy link
+          </button>
+        </footer>
       </div>
     </dialog>
   );

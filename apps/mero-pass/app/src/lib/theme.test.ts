@@ -15,9 +15,9 @@ describe('theme', () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it('defaults to dark without reading the OS preference', () => {
-    expect(DEFAULT_THEME).toBe('dark');
-    expect(getStoredTheme()).toBe('dark');
+  it('defaults to light without reading the OS preference', () => {
+    expect(DEFAULT_THEME).toBe('light');
+    expect(getStoredTheme()).toBe('light');
   });
 
   it('applying a theme does not save it', () => {
@@ -34,6 +34,6 @@ describe('theme', () => {
 
   it('ignores a stored value it does not know', () => {
     localStorage.setItem(THEME_KEY, 'sepia');
-    expect(getStoredTheme()).toBe('dark');
+    expect(getStoredTheme()).toBe('light');
   });
 });

@@ -11,6 +11,7 @@ import type {
 import { vaultAudience } from '../lib/vaults';
 import shell from '../styles/shell.module.css';
 import { describeError } from '../lib/errors';
+import { KeyIcon, MonitorIcon, UserIcon } from './icons';
 
 const ROLE_HELP: Record<string, string> = {
   admin: 'can change roles, rotate the key and permanently delete',
@@ -108,6 +109,7 @@ export default function VaultPeople({
 
   return (
     <section data-testid="vault-people">
+      <h2 className={shell.sectionLabel}>People &amp; devices</h2>
       <p className={shell.sectionHint}>
         The vault key is wrapped to each device below. Removing someone or
         revoking a device rotates the key, so nothing written afterwards is
@@ -116,118 +118,157 @@ export default function VaultPeople({
         those passwords.
       </p>
       {error && <p className={shell.error}>{error}</p>}
-      {status && <p className={shell.status}>{status}</p>}
+      {status && (
+        <p className={shell.status}>
+          <span className={shell.spinner} aria-hidden="true" />
+          <span>{status}</span>
+        </p>
+      )}
 
       <h3 className={shell.sectionLabel}>People</h3>
-      {members.map((m) => (
-        <div key={m.account} className={shell.row} data-testid="vault-member">
-          <div className={shell.rowMain}>
-            <div className={shell.rowName}>
-              <span className={shell.mono}>{m.account.slice(0, 16)}…</span>
-              {m.account === me ? ' (you)' : ''}{' '}
-              <span
-                className={`${shell.badge} ${m.role === 'admin' ? shell.badgeAccent : ''}`}
-              >
-                {m.role}
-              </span>
-            </div>
-            <div className={shell.rowSub}>
-              {ROLE_HELP[m.role] ?? ''} · {m.devices} device
-              {m.devices === 1 ? '' : 's'}
-            </div>
-          </div>
-          {isAdmin && m.account !== me && (
-            <div className={shell.rowActions}>
-              <select
-                className={shell.input}
-                value={
-                  m.role === 'pending' || m.role === 'removed' ? '' : m.role
-                }
-                onChange={(e) =>
-                  void act('Changing role…', () =>
-                    client.setRole({
-                      account: m.account,
-                      role: e.target.value,
-                    }),
-                  )
-                }
-                aria-label="Role"
-              >
-                <option value="" disabled>
-                  Set role…
-                </option>
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
-                <option value="admin">Admin</option>
-              </select>
-              {m.role !== 'removed' && (
-                <button
-                  type="button"
-                  className={shell.btnDanger}
-                  onClick={() => void remove(m.account)}
-                  data-testid="vault-remove"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
-
-      <h3 className={shell.sectionLabel}>Devices holding the key</h3>
-      {devices.map((d) => {
-        const mine = d.fingerprint === deviceKeeper.fingerprint;
-        return (
-          <div
-            key={d.fingerprint}
-            className={shell.row}
-            data-testid="vault-device"
-          >
+      <div className={shell.list}>
+        {members.map((m) => (
+          <div key={m.account} className={shell.row} data-testid="vault-member">
+            <span className={shell.rowIcon} aria-hidden="true">
+              <UserIcon size={16} />
+            </span>
             <div className={shell.rowMain}>
               <div className={shell.rowName}>
-                {d.label || 'Browser'}
-                {mine ? ' (this browser)' : ''}{' '}
-                {d.revoked && <span className={shell.badge}>revoked</span>}
+                <span className={shell.mono} style={{ color: 'var(--text)' }}>
+                  {m.account.slice(0, 16)}…
+                </span>
+                {m.account === me && <span className={shell.you}>(you)</span>}
+                <span
+                  className={`${shell.badge} ${m.role === 'admin' ? shell.badgeAccent : m.role === 'pending' ? shell.badgeWarn : m.role === 'removed' ? shell.badgeDanger : ''}`}
+                >
+                  {m.role.charAt(0).toUpperCase() + m.role.slice(1)}
+                </span>
               </div>
               <div className={shell.rowSub}>
-                <span className={shell.mono}>
-                  {d.fingerprint.slice(0, 16)}…
-                </span>{' '}
-                · {d.account === me ? 'yours' : `${d.account.slice(0, 10)}…`}
+                {ROLE_HELP[m.role] ?? ''} · {m.devices} device
+                {m.devices === 1 ? '' : 's'}
               </div>
             </div>
-            {!d.revoked && (isAdmin || d.account === me) && (
+            {isAdmin && m.account !== me && (
               <div className={shell.rowActions}>
-                <button
-                  type="button"
-                  className={shell.btnGhost}
-                  onClick={() =>
-                    void act('Revoking…', async () => {
-                      await client.revokeDevice({ fingerprint: d.fingerprint });
-                      if (isAdmin) {
-                        const allowed =
-                          admin && team
-                            ? await vaultAudience(admin, team)
-                            : null;
-                        await session.rotate(allowed);
-                      }
-                    })
+                <select
+                  className={shell.input}
+                  value={
+                    m.role === 'pending' || m.role === 'removed' ? '' : m.role
                   }
+                  onChange={(e) =>
+                    void act('Changing role…', () =>
+                      client.setRole({
+                        account: m.account,
+                        role: e.target.value,
+                      }),
+                    )
+                  }
+                  aria-label="Role"
                 >
-                  Revoke
-                </button>
+                  <option value="" disabled>
+                    Set role…
+                  </option>
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                {m.role !== 'removed' && (
+                  <button
+                    type="button"
+                    className={`${shell.btnDanger} ${shell.btnSm}`}
+                    onClick={() => void remove(m.account)}
+                    data-testid="vault-remove"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             )}
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      <h3 className={shell.sectionLabel}>Devices holding the key</h3>
+      <div className={shell.list}>
+        {devices.map((d) => {
+          const mine = d.fingerprint === deviceKeeper.fingerprint;
+          return (
+            <div
+              key={d.fingerprint}
+              className={shell.row}
+              data-testid="vault-device"
+            >
+              <span
+                className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+                aria-hidden="true"
+              >
+                <MonitorIcon size={16} />
+              </span>
+              <div className={shell.rowMain}>
+                <div className={shell.rowName}>
+                  {d.label || 'Browser'}
+                  {mine && <span className={shell.you}>(this browser)</span>}
+                  {d.revoked && (
+                    <span className={`${shell.badge} ${shell.badgeDanger}`}>
+                      Revoked
+                    </span>
+                  )}
+                </div>
+                <div className={shell.rowSub}>
+                  <span className={shell.mono}>
+                    {d.fingerprint.slice(0, 16)}…
+                  </span>{' '}
+                  · {d.account === me ? 'yours' : `${d.account.slice(0, 10)}…`}
+                </div>
+              </div>
+              {!d.revoked && (isAdmin || d.account === me) && (
+                <div className={shell.rowActions}>
+                  <button
+                    type="button"
+                    className={`${shell.btnGhost} ${shell.btnSm}`}
+                    onClick={() =>
+                      void act('Revoking…', async () => {
+                        await client.revokeDevice({
+                          fingerprint: d.fingerprint,
+                        });
+                        if (isAdmin) {
+                          const allowed =
+                            admin && team
+                              ? await vaultAudience(admin, team)
+                              : null;
+                          await session.rotate(allowed);
+                        }
+                      })
+                    }
+                  >
+                    Revoke
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {isAdmin && (
-        <div className={shell.section}>
-          <h3 className={shell.sectionLabel}>Admin</h3>
-          <div className={shell.createRow}>
-            <label className={shell.rowSub} htmlFor="default-role">
+        <div className={shell.panel} style={{ marginTop: 28 }}>
+          <div className={shell.panelHead}>
+            <span
+              className={`${shell.rowIcon} ${shell.rowIconSquare}`}
+              aria-hidden="true"
+            >
+              <KeyIcon size={16} />
+            </span>
+            <div>
+              <h3 className={shell.panelTitle}>Admin</h3>
+              <p className={shell.panelText}>
+                The role newcomers get, and a manual key rotation.
+              </p>
+            </div>
+          </div>
+          <div className={shell.createRow} style={{ marginBottom: 0 }}>
+            <label className={shell.checkLabel} htmlFor="default-role">
               Newcomers join as
             </label>
             <select
@@ -247,7 +288,9 @@ export default function VaultPeople({
               type="button"
               className={shell.btnGhost}
               onClick={() => void rotate()}
+              style={{ marginLeft: 'auto' }}
             >
+              <KeyIcon size={16} />
               Rotate vault key
             </button>
           </div>

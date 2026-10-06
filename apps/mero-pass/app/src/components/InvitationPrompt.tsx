@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { decodeInvite, type PassInvitePayload } from '../lib/inviteCodec';
-import {
-  onInvitation,
-  type CapturedInvitation,
-} from "@calimero-apps/invite";
+import { onInvitation, type CapturedInvitation } from '@calimero-apps/invite';
 import { useRedeemInvitation } from '../hooks/useRedeemInvitation';
 import styles from './InvitationPrompt.module.css';
+import { AlertTriangleIcon, UserPlusIcon, XIcon } from './icons';
 
 /**
  * "You have been invited to X" — for an invitation that arrived as a link.
@@ -94,14 +92,17 @@ export default function InvitationPrompt() {
     return error ? (
       <div className={styles.wrap}>
         <div className={`${styles.prompt} ${styles.promptError}`}>
+          <span className={styles.icon} aria-hidden="true">
+            <AlertTriangleIcon size={18} />
+          </span>
           <span className={styles.text}>{error}</span>
           <button
             type="button"
-            className={styles.ghost}
+            className={styles.close}
             onClick={() => setError(null)}
             aria-label="Dismiss"
           >
-            ✕
+            <XIcon size={16} />
           </button>
         </div>
       </div>
@@ -114,6 +115,9 @@ export default function InvitationPrompt() {
   return (
     <div className={styles.wrap}>
       <div className={styles.prompt} data-testid="invite-prompt">
+        <span className={styles.icon} aria-hidden="true">
+          <UserPlusIcon size={18} />
+        </span>
         <span className={styles.text}>
           <strong>You have been invited to {name}</strong>
           <span className={styles.sub}>
@@ -128,24 +132,26 @@ export default function InvitationPrompt() {
                 : 'Joining gives you access to the team and every vault in it.')}
           </span>
         </span>
-        <button
-          type="button"
-          className={styles.accept}
-          onClick={() => void accept()}
-          disabled={busy || !admin}
-          data-testid="invite-accept"
-        >
-          {busy ? 'Joining…' : 'Join'}
-        </button>
-        <button
-          type="button"
-          className={styles.ghost}
-          onClick={decline}
-          disabled={busy}
-          data-testid="invite-decline"
-        >
-          Not now
-        </button>
+        <span className={styles.actions}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={decline}
+            disabled={busy}
+            data-testid="invite-decline"
+          >
+            Not now
+          </button>
+          <button
+            type="button"
+            className={styles.accept}
+            onClick={() => void accept()}
+            disabled={busy || !admin}
+            data-testid="invite-accept"
+          >
+            {busy ? 'Joining…' : 'Join'}
+          </button>
+        </span>
       </div>
     </div>
   );

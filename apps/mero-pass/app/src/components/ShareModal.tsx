@@ -6,6 +6,13 @@ import { createShareFragment, shareUrl } from '../lib/shareLink';
 import type { Secret } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from './SecretForm.module.css';
+import {
+  AlertTriangleIcon,
+  CopyIcon,
+  LinkIcon,
+  ShareIcon,
+  XIcon,
+} from './icons';
 
 const EXPIRY = [
   { ms: 60 * 60 * 1000, label: '1 hour' },
@@ -84,46 +91,59 @@ export default function ShareModal({
     >
       <div className={styles.body}>
         <header className={styles.head}>
-          <h2 className={styles.title}>Share “{secret.name}”</h2>
+          <span className={styles.headIcon} aria-hidden="true">
+            <ShareIcon size={18} />
+          </span>
+          <div className={styles.headText}>
+            <h2 className={styles.title}>Share “{secret.name}”</h2>
+            <p className={styles.descPlain}>
+              An encrypted, self-contained link. No account needed.
+            </p>
+          </div>
           <button
             type="button"
             className={styles.close}
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         </header>
 
-        <p className={styles.hint}>
-          The link carries the secret itself, encrypted, after the{' '}
-          <code>#</code> — the part a browser never sends to any server. It
-          needs no account and no invitation. It{' '}
-          <strong>cannot be revoked</strong> once sent: if it reaches the wrong
-          person, change the password.
+        <p className={styles.callout}>
+          <AlertTriangleIcon size={16} />
+          <span>
+            The link carries the secret itself, encrypted, after the{' '}
+            <code>#</code> — the part a browser never sends to any server. It
+            needs no account and no invitation. It{' '}
+            <strong>cannot be revoked</strong> once sent: if it reaches the
+            wrong person, change the password.
+          </span>
         </p>
 
         {error && <p className={styles.error}>{error}</p>}
 
         <div className={styles.field}>
           <span className={styles.label}>Include</span>
-          {Object.keys(secret.fields).map((f) => (
-            <label key={f} className={styles.hint}>
-              <input
-                type="checkbox"
-                checked={fields.has(f)}
-                onChange={(e) =>
-                  setFields((s) => {
-                    const n = new Set(s);
-                    if (e.target.checked) n.add(f);
-                    else n.delete(f);
-                    return n;
-                  })
-                }
-              />{' '}
-              {f.replace(/_/g, ' ')}
-            </label>
-          ))}
+          <div className={styles.checks}>
+            {Object.keys(secret.fields).map((f) => (
+              <label key={f} className={styles.check}>
+                <input
+                  type="checkbox"
+                  checked={fields.has(f)}
+                  onChange={(e) =>
+                    setFields((s) => {
+                      const n = new Set(s);
+                      if (e.target.checked) n.add(f);
+                      else n.delete(f);
+                      return n;
+                    })
+                  }
+                />{' '}
+                {f.replace(/_/g, ' ')}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className={styles.field}>
@@ -144,7 +164,7 @@ export default function ShareModal({
           </select>
         </div>
 
-        <label className={styles.hint}>
+        <label className={styles.check}>
           <input
             type="checkbox"
             checked={usePass}
@@ -166,12 +186,17 @@ export default function ShareModal({
         {link && (
           <div className={styles.field}>
             <span className={styles.label}>Link</span>
-            <input
-              className={styles.input}
-              readOnly
-              value={link}
-              data-testid="share-link"
-            />
+            <div className={styles.inputRow}>
+              <span className={styles.inputIcon} aria-hidden="true">
+                <LinkIcon size={16} />
+              </span>
+              <input
+                className={`${styles.input} ${styles.inputMono}`}
+                readOnly
+                value={link}
+                data-testid="share-link"
+              />
+            </div>
           </div>
         )}
 
@@ -185,6 +210,7 @@ export default function ShareModal({
               className={shell.btn}
               onClick={() => void copySecret(link, 5 * 60_000)}
             >
+              <CopyIcon size={16} />
               Copy link
             </button>
           ) : (
@@ -195,6 +221,7 @@ export default function ShareModal({
               disabled={fields.size === 0}
               data-testid="share-create"
             >
+              <LinkIcon size={16} />
               Create link
             </button>
           )}

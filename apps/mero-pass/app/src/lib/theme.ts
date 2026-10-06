@@ -3,8 +3,9 @@
 // The App Registry's rules, kept deliberately identical so every Calimero
 // surface behaves the same:
 //
-//   * dark is the default, and `prefers-color-scheme` is NOT consulted — the
-//     products are charcoal first, and light is a choice someone makes;
+//   * light is the default for the app (the Calimero apps' light-first tool
+//     UI), and `prefers-color-scheme` is NOT consulted — dark is a choice
+//     someone makes;
 //   * the choice is `data-theme` on `<html>`, which `src/index.css` keys off;
 //   * it is saved only when the toggle is pressed, never on mount, so a
 //     visit that changed nothing records nothing;
@@ -14,7 +15,7 @@
 export type ThemeMode = 'light' | 'dark';
 
 export const THEME_KEY = 'mero-pass:theme';
-export const DEFAULT_THEME: ThemeMode = 'dark';
+export const DEFAULT_THEME: ThemeMode = 'light';
 
 /** What the toggle last saved, or the default. */
 export function getStoredTheme(): ThemeMode {
@@ -29,7 +30,7 @@ export function getStoredTheme(): ThemeMode {
 /** The mode the page is showing right now. */
 export function currentTheme(): ThemeMode {
   if (typeof document === 'undefined') return DEFAULT_THEME;
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 /** Show `mode`, and tell the browser chrome to match. */

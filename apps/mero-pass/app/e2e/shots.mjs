@@ -192,13 +192,13 @@ const SCENARIOS = [
     'Lock, recovery key and devices',
     '[data-testid="create-recovery"]',
   ],
-  ['teams-light', 'Teams, light theme', '[data-testid="team-card"]'],
+  ['teams-dark', 'Teams, dark theme', '[data-testid="team-card"]'],
   [
-    'vault-light',
-    'A vault, light theme',
+    'vault-dark',
+    'A vault, dark theme',
     '[data-testid="item-detail"]',
     {
-      scenario: 'vault-light',
+      scenario: 'vault-dark',
       click: '[data-testid="secret-row"]:has-text("GitHub")',
     },
   ],
