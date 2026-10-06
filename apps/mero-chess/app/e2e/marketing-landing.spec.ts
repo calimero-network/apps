@@ -179,6 +179,21 @@ test.describe('Mero Chess landing page', () => {
   });
 
 
+
+  // ── Overview extras ─────────────────────────────────────────────────────
+  test('the overview carries its extra sections', async ({ page }) => {
+    await expect(page.locator('.cal-lp-headline')).toHaveText("Chess between two nodes. No server in the middle.");
+    for (const id of ["compare","start"]) {
+      await expect(page.locator(`#${id}`)).toBeVisible();
+    }
+    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(5);
+  });
+
+  test('the closing call to action replaces the low desktop band', async ({ page }) => {
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('.cal-lp-band')).toHaveCount(0);
+  });
+
   test('offers the desktop download', async ({ page }) => {
     await expect(
       page.locator('a[href="https://calimero.network/download"]').first(),

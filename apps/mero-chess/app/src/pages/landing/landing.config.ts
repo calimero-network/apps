@@ -54,6 +54,22 @@ export const CONFIG: LandingConfig = {
       body: "One link opens the table. No sign-up, no account, no email address — and whoever opens it can play or watch.",
     },
   ],
+  overview: {
+    headline: "Chess between two nodes. No server in the middle.",
+    comparison: {
+      heading: "Online chess, without the site in the middle",
+      sub: "The board you expect from a chess app. The difference is who holds the game, and who referees it.",
+      themLabel: "A typical online chess site",
+      rows: [
+        { label: "Where the game lives", them: "In the site’s database", us: "On your node and your opponent’s, nobody else’s" },
+        { label: "Who enforces the rules", them: "The site’s server", us: "The contract, on both players’ nodes" },
+        { label: "Starting a game", them: "An account, then matchmaking", us: "One invite link. No sign-up, no email" },
+        { label: "Your game history", them: "Kept as long as the site keeps it", us: "Every game at the table, on your own node" },
+        { label: "If the site goes away", them: "Your games may go with it", us: "Your node still has every move" },
+      ],
+    },
+    closing: { title: "Set up a board", body: "Connect a node, or install the desktop app that bundles one, then send your opponent the link." },
+  },
   faq: [
     {
       q: "Can my opponent cheat with a modified client?",

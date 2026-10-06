@@ -84,21 +84,48 @@ export function piecesFromFen(fen: string): (Piece | null)[] {
   return squares;
 }
 
-const GLYPHS: Record<PieceColor, Record<string, string>> = {
-  white: { k: "♔", q: "♕", r: "♖", b: "♗", n: "♘", p: "♙" },
-  black: { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" },
-};
+/** What a full side starts with, and what each piece is worth. */
+const START_COUNT: Record<string, number> = { q: 1, r: 2, b: 2, n: 2, p: 8 };
+const VALUE: Record<string, number> = { q: 9, r: 5, b: 3, n: 3, p: 1 };
+
+/** Order a captured row is drawn in: the heavy pieces first, the way every board app does. */
+const CAPTURE_ORDER = ["q", "r", "b", "n", "p"];
+
+export interface Material {
+  /** The kinds this side has TAKEN from the other, heaviest first. */
+  captured: Record<PieceColor, string[]>;
+  /** Points ahead, by the usual 9/5/3/3/1 count. Zero for the side behind. */
+  lead: Record<PieceColor, number>;
+}
 
 /**
- * The Unicode chess glyph for a piece.
+ * Who has taken what, read off the board.
  *
- * Text rather than images: it scales to any board size, needs no asset
- * pipeline, and inherits the page's own colours. The CSS gives both sides a
- * fill and a stroke so the black and white glyphs stay legible on both square
- * colours, which a raw glyph does not manage on its own.
+ * Display only — the same counting every chess app shows beside the players.
+ * It is derived from the placement alone, so it never has to agree with
+ * anything: a promoted queen simply reads as one pawn fewer and one queen more,
+ * and a count that goes negative (two queens) is clamped rather than shown.
  */
-export function glyphFor(piece: Piece): string {
-  return GLYPHS[piece.color][piece.kind] ?? "";
+export function materialFromSquares(squares: (Piece | null)[]): Material {
+  const onBoard: Record<PieceColor, Record<string, number>> = { white: {}, black: {} };
+  for (const piece of squares) {
+    if (piece) onBoard[piece.color][piece.kind] = (onBoard[piece.color][piece.kind] ?? 0) + 1;
+  }
+  const missing = (color: PieceColor) =>
+    CAPTURE_ORDER.flatMap((kind) =>
+      Array.from(
+        { length: Math.max(0, (START_COUNT[kind] ?? 0) - (onBoard[color][kind] ?? 0)) },
+        () => kind,
+      ),
+    );
+  const points = (color: PieceColor) =>
+    Object.entries(onBoard[color]).reduce((sum, [kind, n]) => sum + (VALUE[kind] ?? 0) * n, 0);
+  const diff = points("white") - points("black");
+  return {
+    // White's captures are the BLACK pieces missing from the board.
+    captured: { white: missing("black"), black: missing("white") },
+    lead: { white: Math.max(0, diff), black: Math.max(0, -diff) },
+  };
 }
 
 const PIECE_NAMES: Record<string, string> = {
