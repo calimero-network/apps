@@ -57,7 +57,7 @@ describe('LinkTargetCard', () => {
 
   it('shows the doc-worded deleted copy by default', () => {
     render(<LinkTargetCard kind="deleted" onGoHome={vi.fn()} linkUrl="https://x/doc" />);
-    expect(screen.getByText('This document was deleted or moved')).toBeTruthy();
+    expect(screen.getByText("This document isn't available")).toBeTruthy();
   });
 
   it('shows the folder-worded deleted copy when the folder itself is gone', () => {
@@ -69,7 +69,7 @@ describe('LinkTargetCard', () => {
         linkUrl="https://x/doc"
       />,
     );
-    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
+    expect(screen.getByText("This folder isn't available")).toBeTruthy();
   });
 
   it('shows the not-in-workspace copy', () => {

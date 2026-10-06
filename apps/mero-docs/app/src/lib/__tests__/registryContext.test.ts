@@ -150,7 +150,7 @@ describe('duplicates: adopt the one holding the data', () => {
         pin: null,
         listed,
         reportedCount: 3,
-        folderCounts: { [A]: 0, [B]: 2, [C]: 0 },
+        dataCounts: { [A]: 0, [B]: 2, [C]: 0 },
       },
       REG,
     );
@@ -163,7 +163,7 @@ describe('duplicates: adopt the one holding the data', () => {
         pin: null,
         listed,
         reportedCount: 3,
-        folderCounts: { [A]: 1, [B]: 5, [C]: 2 },
+        dataCounts: { [A]: 1, [B]: 5, [C]: 2 },
       },
       REG,
     );
@@ -176,7 +176,7 @@ describe('duplicates: adopt the one holding the data', () => {
         pin: null,
         listed,
         reportedCount: 3,
-        folderCounts: { [A]: 2, [B]: 2, [C]: 2 },
+        dataCounts: { [A]: 2, [B]: 2, [C]: 2 },
       },
       REG,
     );
@@ -193,12 +193,12 @@ describe('duplicates: adopt the one holding the data', () => {
     const answers = orders.map(
       (o) =>
         resolveRegistryContext(
-          { pin: null, listed: o, reportedCount: 3, folderCounts: counts },
+          { pin: null, listed: o, reportedCount: 3, dataCounts: counts },
           REG,
         ).status === 'resolved' &&
         (
           resolveRegistryContext(
-            { pin: null, listed: o, reportedCount: 3, folderCounts: counts },
+            { pin: null, listed: o, reportedCount: 3, dataCounts: counts },
             REG,
           ) as { contextId: string }
         ).contextId,
@@ -213,7 +213,7 @@ describe('duplicates: adopt the one holding the data', () => {
         pin: null,
         listed,
         reportedCount: 3,
-        folderCounts: { [A]: 0, [B]: 2, [C]: 0 },
+        dataCounts: { [A]: 0, [B]: 2, [C]: 0 },
       },
       REG,
     );
@@ -229,7 +229,7 @@ describe('duplicates with no data anywhere', () => {
         pin: null,
         listed: [ctx(A), ctx(B, REG)],
         reportedCount: 2,
-        folderCounts: { [A]: 0, [B]: 0 },
+        dataCounts: { [A]: 0, [B]: 0 },
       },
       REG,
     );
@@ -242,7 +242,7 @@ describe('duplicates with no data anywhere', () => {
         pin: null,
         listed: [ctx(C), ctx(B), ctx(A)],
         reportedCount: 3,
-        folderCounts: { [A]: 0, [B]: 0, [C]: 0 },
+        dataCounts: { [A]: 0, [B]: 0, [C]: 0 },
       },
       REG,
     );

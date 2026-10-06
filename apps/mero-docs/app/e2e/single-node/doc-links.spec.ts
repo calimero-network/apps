@@ -275,9 +275,7 @@ test.describe('Doc links (single-node)', () => {
 
     await editor.docLink('Pricing notes').click();
     await expect.poll(() => pathOf(page)).toBe(pricingPath);
-    await expect(
-      page.getByText('This document was deleted or moved'),
-    ).toBeVisible({
+    await expect(page.getByText("This document isn't available")).toBeVisible({
       timeout: 30_000,
     });
   });

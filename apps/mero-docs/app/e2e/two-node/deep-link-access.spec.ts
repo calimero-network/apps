@@ -1,6 +1,6 @@
-// A link into a restricted folder shows a card naming it; the same link
-// opens the doc once the folder owner adds the visitor, and a doc link to it
-// says on hover that the folder cannot be opened.
+// A link into a restricted folder the visitor was not added to says only that
+// it is not available - never its name, nor that it exists - and opens the doc
+// once the folder owner adds them. A doc link to it says the same on hover.
 
 import { test, expect } from '../fixtures/two-user';
 
@@ -26,14 +26,10 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.page.goto(docPath);
 
-    await expect(bob.page.getByText('This document is in Finance')).toBeVisible(
-      { timeout: 30_000 },
-    );
     await expect(
-      bob.page.getByText(
-        'Finance is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.',
-      ),
-    ).toBeVisible();
+      bob.page.getByRole('heading', { name: "This document isn't available" }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(bob.page.getByText('Finance')).toHaveCount(0);
 
     await alice.openFolderInfo('Finance');
     await alice.sharing.addMember('bob');
@@ -49,7 +45,7 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     );
   });
 
-  test("Bob's link to the folder itself says it is restricted", async ({
+  test("Bob's link to the folder itself names nothing", async ({
     alice,
     bob,
   }) => {
@@ -67,13 +63,9 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     await bob.page.goto(folderPath);
 
     await expect(
-      bob.page.getByRole('heading', { name: 'Finance is a restricted folder' }),
+      bob.page.getByRole('heading', { name: "This folder isn't available" }),
     ).toBeVisible({ timeout: 60_000 });
-    await expect(
-      bob.page.getByText(
-        'You are not a member yet. Ask a folder manager to add you, then open this link again.',
-      ),
-    ).toBeVisible();
+    await expect(bob.page.getByText('Finance')).toHaveCount(0);
   });
 
   test("Bob's doc link into a folder he cannot open says so (L-21)", async ({
@@ -109,14 +101,14 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     await expect(link).toBeVisible({ timeout: 60_000 });
     await link.hover();
     await expect(bob.editor.linkCard()).toHaveText(
-      'This is in a folder you cannot open',
+      "This document isn't available",
       { timeout: 30_000 },
     );
 
     await link.click();
     await expect.poll(() => pathOf(bob.page)).toBe(ledgerPath);
-    await expect(bob.page.getByText('This document is in Finance')).toBeVisible(
-      { timeout: 30_000 },
-    );
+    await expect(
+      bob.page.getByRole('heading', { name: "This document isn't available" }),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

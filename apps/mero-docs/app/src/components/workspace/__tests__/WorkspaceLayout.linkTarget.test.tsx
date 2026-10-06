@@ -228,7 +228,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
 
   it('shows the doc-worded deleted card for an unknown doc in a real folder', async () => {
     renderAt('/app/ns/f/f1/d/gone');
-    expect(await screen.findByText('This document was deleted or moved')).toBeTruthy();
+    expect(await screen.findByText("This document isn't available")).toBeTruthy();
     // Only after a fresh read, not straight off the cached list.
     expect(docsRefetch).toHaveBeenCalledTimes(1);
   });
@@ -241,7 +241,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
   it('waits (never a premature deleted) while the folder list has not loaded', async () => {
     workspace.registryFolders = null;
     renderAt('/app/ns/f/f1/d/doc-1');
-    expect(screen.queryByText('This document was deleted or moved')).toBeNull();
+    expect(screen.queryByText("This document isn't available")).toBeNull();
     expect(screen.queryByTestId('editor')).toBeNull();
     expect(await screen.findByText('Loading…')).toBeTruthy();
   });
@@ -272,7 +272,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
 
   it('keeps an absent folder link and shows the folder-worded card', () => {
     renderAt('/app/ns/f/gone/d/doc-1');
-    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
+    expect(screen.getByText("This folder isn't available")).toBeTruthy();
     expect(screen.getByTestId('url').textContent).toBe('/app/ns/f/gone/d/doc-1');
   });
 
@@ -286,13 +286,13 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
       </MemoryRouter>
     );
     const { rerender } = render(tree(), { wrapper: ConfirmProvider });
-    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
+    expect(screen.getByText("This folder isn't available")).toBeTruthy();
     workspace.registryFolders = [
       { id: 'late', parent_id: null, color: null, alias: 'Late' },
     ];
     workspace.resolvedFolderIds = new Set(['late']);
     rerender(tree());
-    expect(screen.queryByText('This folder was deleted or moved')).toBeNull();
+    expect(screen.queryByText("This folder isn't available")).toBeNull();
   });
 
   it('words the no-access card for a folder link', () => {

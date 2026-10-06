@@ -32,7 +32,7 @@ test.describe('Deep-link cards (single-node)', () => {
     await alice.page.goto(`${folderPath}/d/does-not-exist`);
 
     await expect(
-      alice.page.getByText('This document was deleted or moved'),
+      alice.page.getByText("This document isn't available"),
     ).toBeVisible({ timeout: 30_000 });
     await alice.page.getByRole('button', { name: 'Go to Home' }).click();
     await expect.poll(() => pathOf(alice.page)).toBe(home);
@@ -47,7 +47,7 @@ test.describe('Deep-link cards (single-node)', () => {
     await alice.page.goto(link);
 
     await expect(
-      alice.page.getByText('This folder was deleted or moved'),
+      alice.page.getByText("This folder isn't available"),
     ).toBeVisible({ timeout: 30_000 });
     expect(pathOf(alice.page)).toBe(link);
     await alice.page.getByRole('button', { name: 'Go to Home' }).click();

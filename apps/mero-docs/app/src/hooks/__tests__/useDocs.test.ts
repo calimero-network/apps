@@ -26,15 +26,24 @@ const docsClientStub = {
 // Per-context clients for tests that switch folders; others share the stub.
 const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
 const workspace = { selfIdentity: 'me' as string | null };
-const registryClient = { getFolderContext }; // stable, like the provider's memoized client
+// A folder's docs context is the one context core lists in its subgroup;
+// `getFolderContext` names it per folder. Stable, like the session's admin.
+const meroStub = {
+  admin: {
+    listGroupContexts: async (folderId: string) => {
+      const contextId = await getFolderContext({ folder_id: folderId });
+      return contextId ? [{ contextId }] : [];
+    },
+  },
+};
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useJoinContext: () => ({ joinContext, loading: false, error: null }),
+  useMero: () => meroStub,
 }));
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
-    registryClient,
     selfIdentity: workspace.selfIdentity,
   }),
 }));

@@ -337,7 +337,7 @@ async function expectLinks(bob: WorkspaceDriver, pair: Pair, sight: Sight) {
     });
   } else {
     await expect(editor.linkCard()).toHaveText(
-      'This is in a folder you cannot open',
+      "This document isn't available",
       { timeout: 30_000 },
     );
   }
