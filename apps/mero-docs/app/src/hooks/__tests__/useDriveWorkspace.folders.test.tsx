@@ -27,11 +27,11 @@ const stub = vi.hoisted(() => {
     refetch,
     reads,
     mero: {
-      mero: {
-        admin: {
-          getGroupInfo: (_id: string): Promise<unknown> => new Promise(() => {}),
-        },
-      },
+      mero: { admin: { getGroupInfo: () => new Promise(() => {}) } },
+      // The session admin the hook reads; absent, the access fan-out stays off.
+      admin: undefined as
+        | { getGroupInfo: (id: string) => Promise<unknown> }
+        | undefined,
       applicationId: 'app',
       isAuthenticated: true,
       isLoading: false,
@@ -123,10 +123,8 @@ function Probe() {
 
 const folders = () => screen.getByTestId('folders').textContent;
 
-const pending = stub.mero.mero.admin.getGroupInfo;
-
 afterEach(() => {
-  stub.mero.mero.admin.getGroupInfo = pending;
+  stub.mero.admin = undefined;
   localStorage.clear();
   for (const key of Object.keys(stub.reads)) delete stub.reads[key];
   captured = null;
@@ -173,18 +171,23 @@ function Listed() {
 
 describe('useDriveWorkspace folders whose group is not on this node', () => {
   it('withholds them from the folder list instead of showing them', async () => {
-    stub.mero.mero.admin.getGroupInfo = (id: string) =>
-      id === 'missing'
-        ? Promise.reject(
-            new HTTPError(
-              404,
-              '',
-              `/admin-api/groups/${id}`,
-              new Headers(),
-              `{"error":"group '${id}' not found"}`,
-            ),
-          )
-        : Promise.resolve({ metadata: { name: id }, subgroupVisibility: 'open' });
+    stub.mero.admin = {
+      getGroupInfo: (id: string) =>
+        id === 'missing'
+          ? Promise.reject(
+              new HTTPError(
+                404,
+                '',
+                `/admin-api/groups/${id}`,
+                new Headers(),
+                `{"error":"group '${id}' not found"}`,
+              ),
+            )
+          : Promise.resolve({
+              metadata: { name: id },
+              subgroupVisibility: 'open',
+            }),
+    };
     render(
       <MemoryRouter initialEntries={['/app/ns1']}>
         <DriveWorkspaceProvider>
@@ -193,9 +196,13 @@ describe('useDriveWorkspace folders whose group is not on this node', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(stub.reads['reg-ns1']).toHaveLength(1));
-    await act(async () => stub.reads['reg-ns1'][0]([{ id: 'known' }, { id: 'missing' }]));
+    await act(async () =>
+      stub.reads['reg-ns1'][0]([{ id: 'known' }, { id: 'missing' }]),
+    );
 
-    await waitFor(() => expect(screen.getByTestId('unsynced').textContent).toBe('missing'));
+    await waitFor(() =>
+      expect(screen.getByTestId('unsynced').textContent).toBe('missing'),
+    );
     expect(screen.getByTestId('listed').textContent).toBe('known');
   });
 });
