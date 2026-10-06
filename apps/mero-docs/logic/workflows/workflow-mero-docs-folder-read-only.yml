@@ -1,7 +1,7 @@
 name: Mero Docs - a folder's Read only member cannot write its docs
 description: >
   The app's "Read only" folder role writes the core group role ReadOnly for the
-  member in that folder's group (plus the registry Viewer row the UI reads).
+  member in that folder's group; folder roles are core roles and capabilities.
   Core then refuses the member's doc writes on every node: the calls return
   success, but nothing is written on the member's node or on any peer.
 
@@ -83,17 +83,11 @@ steps:
     group_id: '{{folder}}'
     visibility: Restricted
 
-  - name: Register the Restricted folder
-    type: call
+  - name: Name the Restricted folder (subgroup metadata)
+    type: set_group_metadata
     node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{folder}}'
-      parent_id: null
-      color: null
-      alias: Private
+    group_id: '{{folder}}'
+    record_name: Private
 
   - name: Alice creates the Restricted folder's Docs context
     type: create_context
@@ -104,16 +98,6 @@ steps:
     outputs:
       docs_ctx: contextId
       alice_docs_key: memberPublicKey
-
-  - name: Bind it
-    type: call
-    node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder}}'
-      context_id: '{{docs_ctx}}'
 
   - name: Alice creates a doc
     type: call
@@ -170,13 +154,6 @@ steps:
     group_id: '{{namespace_id}}'
     timeout: 60
 
-  - name: Bob joins the Registry context
-    type: join_context
-    node: curo-node-2
-    context_id: '{{reg_ctx}}'
-    outputs:
-      bob_reg_key: memberPublicKey
-
   - name: Alice adds Bob and Carol to the Restricted folder
     type: add_group_members
     node: curo-node-1
@@ -221,40 +198,6 @@ steps:
     group_id: '{{folder}}'
     member_id: '{{bob_account}}'
     role: ReadOnly
-
-  - name: Alice sets Bob's registry folder role to Viewer
-    type: call
-    node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
-  - name: Sync the registry to Bob
-    type: wait_for_sync
-    nodes: [curo-node-1, curo-node-2]
-    context_id: '{{reg_ctx}}'
-    timeout: 30
-
-  - name: Bob reads back his folder role
-    type: call
-    node: curo-node-2
-    context_id: '{{reg_ctx}}'
-    method: get_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{folder}}'
-      member: '{{bob_account}}'
-    outputs:
-      bob_role: result.output
-
-  - name: Bob's registry row says Viewer
-    type: assert
-    statements:
-      - "equal({{bob_role}}, 'Viewer')"
 
   - name: Sync Bob's Read only role to every node
     type: wait_for_sync
@@ -416,17 +359,6 @@ steps:
     member_id: '{{bob_account}}'
     role: Member
 
-  - name: Alice sets Bob's registry folder role back to Editor
-    type: call
-    node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder}}'
-      member: '{{bob_account}}'
-      role: Editor
-
   - name: Sync Bob's restored role to every node
     type: wait_for_sync
     nodes: [curo-node-1, curo-node-2, curo-node-3]
@@ -481,17 +413,11 @@ steps:
     group_id: '{{open_folder}}'
     visibility: Open
 
-  - name: Register the Open folder
-    type: call
+  - name: Name the Open folder (subgroup metadata)
+    type: set_group_metadata
     node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{open_folder}}'
-      parent_id: null
-      color: null
-      alias: Open
+    group_id: '{{open_folder}}'
+    record_name: Open
 
   - name: Alice creates the Open folder's Docs context
     type: create_context
@@ -502,16 +428,6 @@ steps:
     outputs:
       open_ctx: contextId
       alice_open_key: memberPublicKey
-
-  - name: Bind the Open folder
-    type: call
-    node: curo-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{open_folder}}'
-      context_id: '{{open_ctx}}'
 
   - name: Alice creates a doc in the Open folder
     type: call

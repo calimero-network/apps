@@ -29,14 +29,6 @@ async function keepBobAnEditor(page: Page) {
   await page.route('**/admin-api/groups/*/members', (route) =>
     rewrite(route, 'role', 'ReadOnly', 'Member'),
   );
-  await page.route('**/jsonrpc', (route) => {
-    const call = route.request().postDataJSON() as {
-      params?: { method?: string };
-    } | null;
-    return call?.params?.method === 'get_folder_role'
-      ? rewrite(route, 'output', 'Viewer', 'Editor')
-      : route.continue();
-  });
 }
 
 // Bob's own core role in the folder his page shows, as his node reports it.
@@ -67,7 +59,7 @@ test.describe('Folder Read only (two-node)', () => {
   }) => {
     await shareOpenDoc(alice, bob, 'Read only WS');
     await setBobsRole(alice, 'Read only');
-    // Core, not the registry row, is what refuses his writes.
+    // Core's ReadOnly role is what refuses his writes.
     await expect
       .poll(() => bobsCoreRole(bob.page), { timeout: SYNC_MS })
       .toBe('ReadOnly');

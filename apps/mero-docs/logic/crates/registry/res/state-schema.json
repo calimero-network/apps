@@ -1,120 +1,9 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "ContextId": {
-      "kind": "alias",
-      "doc": "Wrapper around a Calimero context id. Same rationale as `FolderId`.",
-      "target": {
-        "kind": "string"
-      }
-    },
-    "FolderRecord": {
-      "kind": "record",
-      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.",
-      "fields": [
-        {
-          "name": "parent_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "Parent folder id, or None for top-level folders. Stored as an\nLWW index; admin-API remains the source of truth for the tree."
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "`#rrggbb` color, or empty string for \"no color\"."
-        },
-        {
-          "name": "alias",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "Display name. Mirrored from admin-API's group alias so namespace\nmembers who can't read the subgroup yet (Restricted folder before\ninvite) can still see folder names. Empty string means \"no\nregistry-side alias - fall back to the admin-API alias or a\ntruncated id stub on the client\"."
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "Visibility"
-            }
-          },
-          "doc": "Inherit = namespace-member cascade descends through this folder.\nRestricted = explicit-invite wall; cascade stops here."
-        }
-      ]
-    },
     "RegistryState": {
       "kind": "record",
       "fields": [
-        {
-          "name": "folders",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "FolderRecord"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both.\n\nKeys are per owner (core rc.57): two accounts registering one id hold\ntwo entries, and a key-only `get`/`contains`/`owner_of` answers for the\nCALLER only. Every read by id goes through `folder_holder`, which takes\nthe entry of the lowest account holding the id, the same pick on every\nnode; `register_folder` refuses an id any account is known to hold."
-        },
-        {
-          "name": "folder_contexts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ContextId"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "folder_id (string) → Docs context id bound to that folder. Written\nonce, by the folder's registrant; nobody can rebind or remove it, so a\nfolder cannot be pointed at someone else's context after the fact.\nA binding counts only while its writer owns the folder (see\n`binding_of`)."
-        },
-        {
-          "name": "sort_order",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "list",
-                "items": {
-                  "kind": "string"
-                }
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "parent_id-or-empty → LWW list of child folder ids in display order.\nDeliberately public: display order is collaborative, and a bad order\nis corrected by the next reorder."
-        },
         {
           "name": "owner",
           "type": {
@@ -142,30 +31,6 @@
           "doc": "The registry's managers, as holders of the `MANAGER` role. The owner is\nits only admin, so only the owner grants or revokes it, on every node."
         },
         {
-          "name": "folder_roles",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "record",
-                "fields": [],
-                "crdt_type": "lww_register",
-                "inner_type": {
-                  "$ref": "Role"
-                }
-              },
-              "crdt_type": "sorted_map"
-            }
-          },
-          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nThe owner administers it; managers may write and delete rows (see `sync_admins`)."
-        },
-        {
           "name": "tags",
           "type": {
             "kind": "map",
@@ -177,7 +42,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "tag key → TagRecord. Public, like `sort_order`: any member may name,\nrecolour or delete a tag; which roles may is the app's to gate."
+          "doc": "tag key → TagRecord. Public: any member may name, recolour or delete\na tag; which roles may is the app's to gate."
         },
         {
           "name": "views",
@@ -206,24 +71,6 @@
             "crdt_type": "authored_map"
           },
           "doc": "saved-view id → created_at, written once by the view's creator. Its\nowner stamp is who created the view, and nobody can rewrite either."
-        }
-      ]
-    },
-    "Role": {
-      "kind": "variant",
-      "doc": "Per-folder collaborator role. Local copy of `mero_docs_types::Role`\n(same variants, same bytes); keep the two definitions in sync.",
-      "variants": [
-        {
-          "name": "Viewer",
-          "doc": "Read only in the web app; enforced only by the member's `ReadOnly` role in the folder's group."
-        },
-        {
-          "name": "Editor",
-          "doc": "Reads and edits documents; the role of a member with no explicit row."
-        },
-        {
-          "name": "Manager",
-          "doc": "Edits, and manages the folder's members."
         }
       ]
     },
@@ -291,20 +138,6 @@
             }
           },
           "doc": "The saved search text."
-        }
-      ]
-    },
-    "Visibility": {
-      "kind": "variant",
-      "doc": "Per-folder cascade flag. `Inherit` = namespace-member cascade descends\nthrough this folder (Open subgroup); `Restricted` = explicit-invite wall,\ncascade stops here. Mirrors the admin-API subgroup_visibility concept but\nis stored in the registry so clients can read it without a per-folder\nadmin-API call.",
-      "variants": [
-        {
-          "name": "Inherit",
-          "doc": "Namespace members inherit access to the folder."
-        },
-        {
-          "name": "Restricted",
-          "doc": "Members must be added to the folder explicitly."
         }
       ]
     }

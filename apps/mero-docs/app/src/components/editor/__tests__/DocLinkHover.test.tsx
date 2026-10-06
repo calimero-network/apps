@@ -162,10 +162,11 @@ describe('docLinkCardProps (L-18 to L-22)', () => {
     });
   });
 
-  it('says the doc was deleted when its folder is gone', () => {
+  // Gone and Restricted-to-others look the same from here, so neither is named.
+  it('says only that the doc is unavailable when its folder is not listed', () => {
     expect(
       docLinkCardProps({ ...target, folder: 'gone' }, data(), NOW),
-    ).toEqual({ state: 'deleted' });
+    ).toEqual({ state: 'no-access' });
   });
 
   it('says a folder that failed to load is unavailable, with a retry', () => {

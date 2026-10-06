@@ -1,8 +1,8 @@
-// Folder CRUD. Creates a subgroup under a parent, attaches a fresh
-// docs context, registers the folder in the namespace registry, and
-// sets `subgroup_visibility` on the new subgroup (Open by default -
-// namespace members inherit membership via core's parent-walk;
-// Restricted for explicit-invite-only folders).
+// Folder CRUD, in core alone. A folder is a subgroup under its parent, with
+// its name and colour in the subgroup's metadata and one docs context inside
+// it; `subgroup_visibility` is Open (namespace members inherit membership via
+// core's parent-walk) or Restricted (explicit-invite-only). Nothing is written
+// to the namespace-wide registry, which every workspace member replicates.
 //
 // The previous app-layer membership cascade is gone: core handles
 // inheritance natively now, so we don't need to enumerate namespace
@@ -21,17 +21,8 @@ import {
   useSetSubgroupVisibility,
   useMero,
 } from '@calimero-network/mero-react';
-// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point -
-// this fleet has had folder ids, context ids and account ids all be bare
-// 64-hex strings that type-check in each other's slots.
-import {
-  ContextId,
-  FolderId,
-} from '../generated/registry/RegistryClient';
-import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
-import { descendantsOf } from '../utils/ancestry';
+import { FOLDER_COLOR_KEY } from '../lib/coreFolders';
 import { inheritReadOnly, readOnlyRowsBeforeOpen } from '../lib/applyFolderRole';
 
 const READ_ONLY_NOT_CARRIED = "Couldn't make the parent folder's Read only members read only here."; // shown after create
@@ -59,7 +50,6 @@ export interface FolderOperations {
 }
 
 export function useFolderOperations(
-  registryClient: RegistryClient | null,
   rootGroupId: string | null,
   applicationId: string | null,
   // Called after a successful create/rename/remove to refresh the
@@ -73,12 +63,12 @@ export function useFolderOperations(
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
-  const { admin, nodeUrl } = useMero();
+  const { admin } = useMero();
   const inFlightRef = useRef<Promise<string[]> | null>(null);
 
   const createInternal = useCallback(
     async (input: CreateFolderInput): Promise<string[]> => {
-      if (!registryClient || !rootGroupId || !admin) {
+      if (!rootGroupId || !admin) {
         throw new Error('workspace not bootstrapped');
       }
       // Empty applicationId makes admin-api reject the context
@@ -90,22 +80,15 @@ export function useFolderOperations(
         );
       }
 
-      // Best-effort compensating actions on partial failure. The
-      // sequence is inherently non-transactional across three
-      // backends (admin groups, contexts, registry WASM), so we track
-      // what we successfully did and reverse it in the catch. The
-      // registry side is reversible via unregisterFolder, the admin
-      // side via deleteGroup, and the context side via deleteContext.
-      // A leaked docs context with no registry entry is the artifact
-      // nothing else can recover, so rolling back the context on later
-      // failures is the most valuable of the three.
-      const writer = { admin: admin, registry: registryClient };
+      // Best-effort compensating actions on partial failure. The sequence is
+      // non-transactional (a group, then a context in it), so we track what we
+      // did and reverse it in the catch: deleteContext, then deleteGroup.
+      const writer = { admin };
       const openChild =
         input.parentGroupId !== rootGroupId && input.visibility === 'Open';
       let createdGroupId: string | null = null;
       let createdContextId: string | null = null;
-      let registryEntryCreated = false;
-      // Flips true once the folder + docs context exist and are bound.
+      // Flips true once the folder + docs context exist.
       // Past this point a failure (e.g. adding members) must NOT roll
       // back a perfectly good folder - it should surface instead.
       let folderReady = false;
@@ -173,7 +156,11 @@ export function useFolderOperations(
 
         // Now the name op encrypts on the namespace key chain for
         // Open subgroups; on the subgroup key for Restricted.
-        await admin.setGroupMetadata(newId, { name: input.alias });
+        // The colour rides in the same record, sealed with the name.
+        await admin.setGroupMetadata(newId, {
+          name: input.alias,
+          data: input.color ? { [FOLDER_COLOR_KEY]: input.color } : {},
+        });
 
         const ctx = await createContext({
           applicationId,
@@ -181,9 +168,7 @@ export function useFolderOperations(
           serviceName: DOCS_SERVICE_ID,
           initializationParams: [],
           // The folder's own name, on the context too. `listGroupContexts`
-          // returns this label to every member of the subgroup, so anyone who
-          // joins the folder by invite can tell what its docs context is
-          // without holding the registry entry that names it.
+          // returns this label to every member of the subgroup.
           name: input.alias,
         });
         if (!ctx?.contextId) {
@@ -191,36 +176,14 @@ export function useFolderOperations(
         }
         createdContextId = ctx.contextId;
 
-        await registryClient.registerFolder({
-          id: FolderId(newId),
-          parent_id:
-            input.parentGroupId === rootGroupId
-              ? null
-              : FolderId(input.parentGroupId),
-          color: input.color ?? null,
-          // Mirrors the group name for members who can't read a restricted
-          // folder's metadata, so a link card can still name it.
-          alias: input.alias,
-        });
-        registryEntryCreated = true;
-
-        await registryClient.bindFolderContext({
-          folder_id: FolderId(newId),
-          context_id: ContextId(ctx.contextId),
-        });
         folderReady = true;
       } catch (err) {
         // Only genuine *creation-step* failures reach here (everything
-        // up to and including bindFolderContext). Roll back the
+        // up to and including the docs context). Roll back the
         // half-built folder, reversing creation order. Each cleanup is
         // try/catch-wrapped and logged so one cleanup failure doesn't
         // mask the original error - the caller still sees the real
         // cause via the outer rethrow.
-        if (registryEntryCreated && createdGroupId) {
-          await registryClient
-            .unregisterFolder({ id: FolderId(createdGroupId) })
-            .catch((e) => console.warn('rollback: unregisterFolder failed', e));
-        }
         if (createdContextId) {
           await deleteContext(createdContextId).catch((e) =>
             console.warn('rollback: deleteContext failed', e),
@@ -278,12 +241,10 @@ export function useFolderOperations(
       throw new Error('folder creation did not complete');
     },
     [
-      registryClient,
       rootGroupId,
       applicationId,
       refetch,
       admin,
-      nodeUrl,
       createGroupInNamespace,
       setSubgroupVisibility,
       createContext,
@@ -309,64 +270,26 @@ export function useFolderOperations(
   const rename = useCallback(
     async (folderId: string, alias: string) => {
       if (!admin) throw new Error('workspace not connected');
-      await admin.setGroupMetadata(folderId, { name: alias });
-      // The group rename is what the user asked for; the registry copy (see
-      // create) is best-effort and only names the folder on no-access cards.
-      await registryClient
-        ?.setFolderAlias({ id: FolderId(folderId), alias })
-        .catch((e: unknown) =>
-          console.warn('folder renamed, but its registry name is stale', folderId, e),
-        );
+      // A metadata write replaces the whole record, so carry the colour over.
+      const { metadata } = await admin.getGroupInfo(folderId);
+      await admin.setGroupMetadata(folderId, {
+        name: alias,
+        data: metadata?.data ?? {},
+      });
       await refetch();
     },
-    [admin, registryClient, refetch],
+    [admin, refetch],
   );
 
+  // Core deletes a folder's whole subtree in one op - every descendant group,
+  // every context in them - Restricted descendants this caller cannot see
+  // included, which no tree it could read would name.
   const remove = useCallback(
     async (folderId: string) => {
-      if (!registryClient) throw new Error('registry not ready');
-      // Compute the cascade from the COMPLETE registry tree, not a
-      // display list. The workspace `folders` list is filtered to what
-      // the caller can see (hidden restricted folders are dropped), so
-      // using it here would miss a hidden restricted child under a
-      // visible parent - `descendantsOf` wouldn't enumerate it, and
-      // `deleteGroup(parent)` would then fail server-side ("live
-      // subgroups"). The registry owns the authoritative tree shape, so
-      // re-read it here.
-      const all = await registryClient.getFolders();
-      const tree = all.map((f) => ({
-        id: f.id,
-        parent_id: f.parent_id ?? null,
-      }));
-      // `descendantsOf` from utils/ancestry already returns leaf-first
-      // (post-order) - deepest first, root last - which is exactly
-      // what the admin API's "no deletes with live subgroups"
-      // invariant needs. Append the folder itself at the end so it's
-      // deleted after all of its children.
-      const victims = [...descendantsOf(tree, folderId), folderId];
-      for (const id of victims) {
-        // Read the bound docs context before unregistering drops the binding.
-        // A folder with no binding (older data) returns null and skips it.
-        const boundContextId = await registryClient
-          .getFolderContext({ folder_id: FolderId(id) })
-          .catch(() => null);
-        await registryClient.unregisterFolder({ id: FolderId(id) });
-        // Delete the docs context BEFORE the group that contains it.
-        // The context is the resource living inside the group; if the
-        // group is removed first, core may cascade-delete (or refuse
-        // to resolve) the context, leaving `deleteContext` to fail or
-        // no-op. This also matches the create-path rollback order
-        // (context before group).
-        if (boundContextId) {
-          await deleteContext(boundContextId).catch((e) =>
-            console.warn('failed to delete bound docs context', boundContextId, e),
-          );
-        }
-        await deleteGroup(id);
-      }
+      await deleteGroup(folderId);
       await refetch();
     },
-    [registryClient, deleteGroup, deleteContext, refetch],
+    [deleteGroup, refetch],
   );
 
   return { create, rename, remove };

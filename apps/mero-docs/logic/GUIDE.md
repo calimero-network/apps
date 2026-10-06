@@ -8,7 +8,9 @@ A document is a title plus an ordered list of blocks (paragraph, heading, bullet
 
 The bundle has two services, and every context runs exactly one of them:
 
-- `registry` is the workspace's table of contents: the folder tree, which docs context belongs to which folder, folder colours and names, roles, managers, tags and saved searches.
+- `registry` holds workspace-level data only: the registry owner, its managers, the tags and the saved searches.
+  Every workspace member replicates it, so it holds nothing about folders.
+  Folders are core groups: the tree, names, colours, docs contexts and roles all live in core.
 - `docs` holds the documents, comments and document tags of one folder.
 
 `describe_app` and `select_app` show one service's methods at a time: pass `service` to `describe_app` (`registry` or `docs`), or pass a `context` to `select_app` and the service follows from the context.
@@ -26,8 +28,9 @@ mero-mcp generates no per-method tools for a bundle with two services, so run ev
   This is the rule agents most often get wrong: one docs context per folder, never one per document, and never a docs context in the root group.
 - Documents live inside their folder's docs context.
   Two documents in one folder share a context; documents in different folders never do.
-- The registry row for a folder (`get_folders`) is the link between the two: its `id` is the group id and its `context_id` is the docs context.
-  `register_folder` creates the row and `bind_folder_context` sets `context_id`, once.
+- A folder's docs context is the one context in the folder's group: nothing else links the two.
+- A folder's name and colour are its group's metadata: `name`, and `color` (`#rrggbb`) in its `data`.
+- A folder's roles are core group roles and capabilities in the folder's group, not registry data.
 - A folder is `open` (every workspace member can join it) or `restricted` (members must be added to the folder's group).
 - People are named by account id, 64 hex characters, as `list_group_members` shows them.
 
@@ -53,10 +56,11 @@ The JSON examples below show only the method's own arguments.
 1. `list_namespaces` and pick the workspace by `name`.
 2. `list_contexts` with `application` set to the package.
    The registry is the context whose `serviceName` is `registry` and whose `groupId` is the namespace id.
-3. `select_app` with `app` set to the package and `context` set to the registry context id, then `call` `get_folders`.
-4. Each row gives `id`, `parent_id` (the tree), `alias` (the name), `color` and `context_id` (the docs context).
-   A `parent_id` of `null` is a top-level folder.
-5. `select_app` with `context` set to a folder's `context_id` to work in that folder's documents.
+   Every context whose `serviceName` is `docs` is a folder's docs context, and its `groupId` is the folder id.
+3. `select_app` with `context` set to a docs context id to work in that folder's documents.
+
+The web app finds the folder tree by walking core's subgroup listing down from the root group, and reads each folder's name and colour from its group metadata.
+`list_contexts` shows only the contexts this node holds, so a folder you have not joined is not in it.
 
 ### Create a folder
 
@@ -67,21 +71,13 @@ Do the steps in this order, and stop at the first failure.
    Keep the returned `groupId`: it is the folder id.
 2. `set_group_metadata` with `group` set to the folder id and `name` set to the folder name.
    Naming after the visibility is set keeps the name readable to every workspace member of an open folder.
+   For a colour, also pass `data` set to `{"color": "#3b82f6"}`.
 3. `create_context` with `application`, `group` set to the folder id, `service` set to `docs` and `name` set to the folder name.
    It takes no `args`.
-   Keep the returned `contextId`.
-4. With the registry handle, `call` `register_folder`:
+   Keep the returned `contextId`: being the one context in the folder's group is what makes it the folder's docs context.
 
-   ```json
-   {"id": "<folder id>", "parent_id": null, "color": "#3b82f6", "alias": "<folder name>"}
-   ```
-
-   Set `parent_id` to the parent folder's id for a subfolder.
-   `color` is `#rrggbb` or `null`.
-5. `call` `bind_folder_context` with `folder_id` set to the folder id and `context_id` set to the docs context id.
-
+Nothing is written to the registry.
 The web app refuses folders nested deeper than 8 levels and names longer than 128 characters; stay within both.
-If step 4 or 5 answers that the id is taken or the folder is already bound, an earlier attempt landed: read `get_folder` and carry on rather than repeating.
 If a step fails for another reason, the group and context from the earlier steps remain; reuse them on the retry instead of creating new ones, because this tool set cannot delete a group.
 
 ### Write a document
@@ -179,19 +175,20 @@ A tag is workspace-wide, but the tag list lives in the registry and each documen
 
 ### Rename or recolour a folder
 
-- Rename: `set_group_metadata` with the folder id and the new `name`, then the registry's `set_folder_alias`, so members who cannot read a restricted folder still see the name.
-- Recolour: `set_color` with `#rrggbb`, or an empty string to clear.
-- Both registry calls work only for the member who registered the folder.
+- `set_group_metadata` with the folder id, the `name` and `data` set to `{"color": "#rrggbb"}`, or without `color` to clear it.
+  `data` replaces the whole record, so pass the name and the colour together.
+- It takes the permission to change the folder group's metadata; nothing is written to the registry.
 
 ### Remove a folder
 
-1. Remove subfolders first, deepest first.
-2. With the registry handle, read the docs context id from `get_folder_context`, then `unregister_folder` with the folder id.
-3. `delete_context` with that docs context id.
-   This removes the context and its documents from this node.
+The web app removes a folder with one core group delete, which removes its subfolders and their docs contexts with it.
+This tool set cannot delete a group, so the closest it comes is:
 
-This tool set cannot delete the folder's group, so the empty group stays in the namespace.
-There is no tool to move a folder under another parent: the registry's `move_folder` changes only the registry's record, not the group tree, so do not use it.
+1. Remove subfolders first, deepest first.
+2. `delete_context` with the folder's docs context id (from `list_contexts`).
+   This removes the context and its documents from this node; the empty group stays in the namespace.
+
+There is no tool to move a folder under another parent.
 
 ### Invite someone and share folders
 
@@ -201,39 +198,34 @@ There is no tool to move a folder under another parent: the registry's `move_fol
    Passing the whole object as `invitation` is refused.
    The answer's `memberAccount` is the invitee's account id, which the inviter needs to assign roles.
    Then `join_context` with the registry context id.
-3. For every folder the invitee should open, top-down so a subfolder follows its parent: for an `open` folder, `join_open_group` with the folder's group id, then `join_context` with the folder's `context_id` (from `get_folders`).
+3. For every folder the invitee should open, top-down so a subfolder follows its parent: for an `open` folder, `join_open_group` with the folder's group id, then `join_context` with the folder's docs context id (from `list_contexts` on a node that holds it, such as the inviter's).
 4. A `restricted` folder cannot be self-joined: an admin of the folder's group calls `add_group_members` with `group` set to the folder id and `members` set to `[{"identity": "<account id>", "role": "Member"}]`, and only then does the invitee call `join_context`, which otherwise hangs until it times out.
 
 ### Make a member Read only on a folder
 
 A Read only member can open the folder's documents but not change them or comment; the node refuses each write.
-The node enforces core's `ReadOnly` group role, not the registry role, so do both steps.
+Folder roles are core group roles: the node enforces the member's `ReadOnly` role in the folder's group, and nothing about roles is stored in the registry.
 
-1. In the registry, a registry admin calls `set_folder_role` with `folder_id`, `member` and `role` set to `Viewer`.
-2. An admin of the folder's group calls `add_group_members` with `group` set to the folder id and `members` set to `[{"identity": "<account id>", "role": "ReadOnly"}]`.
+1. An admin of the folder's group calls `add_group_members` with `group` set to the folder id and `members` set to `[{"identity": "<account id>", "role": "ReadOnly"}]`.
    This adds the row or changes an existing one.
-3. Repeat both steps for every `open` sub-folder reached from this folder through `open` folders only.
+2. Repeat it for every `open` sub-folder reached from this folder through `open` folders only.
    A `restricted` sub-folder keeps the member's own role there.
    This tool set cannot read a group's visibility, so go by the visibility each folder was created with.
 
-To end it, do the same steps with `Editor` and `Member`.
+To end it, do the same steps with `Member`.
 
 ## Rules and limits
 
 - Ids (documents, blocks, comments, tokens, anchors) are opaque strings: take them from a result and pass them back unchanged.
 - The registry owner is whoever created the registry context.
-  The owner adds and removes managers with `add_manager` and `remove_manager`; owner and managers are the registry admins, who set folder roles and can remove any folder.
-- Only the account that registered a folder can change it or bind its context, so create a folder and register it from the same account.
-- `set_folder_role` records `Viewer` (Read only in the web app), `Editor` (the default) or `Manager` for a member on a folder.
-  On its own it stops nothing: a write is refused only for a member whose role in the folder's group is `ReadOnly`, as under "Make a member Read only on a folder".
-  The web app also sets the member's group capabilities, which this tool set cannot, so `Manager` set from here does not let the member manage the folder.
+  Only the owner adds and removes managers, with `add_manager` and `remove_manager`.
+- The web app's folder roles are core's: Read only is the `ReadOnly` group role, and a folder Manager also holds group capabilities, which this tool set cannot set.
 - Tags, colours and names have the limits stated on their methods; a value outside them is refused.
 - A document title is at most 1024 characters, a block's text at most 100000 and a comment at most 10000; a write that goes past one is refused and nothing is stored.
 - Retrying is safe only where a method says so.
 - `create_doc`, `insert_block`, `split_block` and `add_comment` create a second item on a repeat, so check `list_docs`, `list_blocks` or `list_comments` first.
-- `register_folder` and `bind_folder_context` fail on a repeat because the first attempt landed, so read `get_folder` instead.
 - This tool set cannot set the default permissions the web app gives new members, delete a group, or move a group.
   A member invited from here cannot create folders: the node refuses their `create_group` until an admin grants them the permission in the web app.
 - `set_group_metadata` replaces the whole metadata record.
-  On a folder that is only the name; on the namespace root it carries the registry pin from Getting started.
+  On a folder that is the name and `data.color`; on the namespace root it carries the registry pin from Getting started.
 - `delete_doc`, `delete_block`, `delete_comment`, `delete_tag` and `delete_view` cannot be undone: confirm before running them.

@@ -3,39 +3,14 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { HTTPError } from '@calimero-network/mero-js';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
-import type { Role } from '../../generated/registry/RegistryClient';
+import { MANAGER_FOLDER_CAPS } from '../../lib/roles';
 
-// The registry-Role layer (useFolderRole) is mocked so each test can
-// pin a role / loading / error / registry-availability independently of
-// the (no-op without a registryClient) real hook. The owner-or-manager
-// flag now lives on useDriveWorkspace().registryAdmin (hoisted) - pinned
-// via the useDriveWorkspace mock below. useMemberCaps stays real - it's
-// what drives the cap-derived booleans.
-const folderRoleState: {
-  role: Role | null;
-  loading: boolean;
-  error: Error | null;
-  registryAvailable: boolean;
-} = {
-  role: 'Editor',
-  loading: false,
-  error: null,
-  registryAvailable: true,
-};
+// The owner-or-manager flag lives on useDriveWorkspace().registryAdmin
+// (hoisted) - pinned via the useDriveWorkspace mock below. useMemberCaps
+// stays real: it's what drives every boolean, the documents role included.
 const registryAdminState: { isOwnerOrManager: boolean } = {
   isOwnerOrManager: false,
 };
-vi.mock('../useFolderRole', () => ({
-  useFolderRole: () => ({
-    role: folderRoleState.role,
-    loading: folderRoleState.loading,
-    error: folderRoleState.error,
-    registryAvailable: folderRoleState.registryAvailable,
-    setRole: vi.fn(),
-    clearRole: vi.fn(),
-    refetch: vi.fn(),
-  }),
-}));
 
 // useFolderPermissions delegates to useMemberCaps, which fetches both
 // role and capabilities directly via mero.admin (no dependency on
@@ -95,10 +70,6 @@ describe('useFolderPermissions', () => {
       members: [{ identity: 'me', role: 'Member' }],
     });
     getMemberCapsMock.mockResolvedValue({ capabilities: 0 });
-    folderRoleState.role = 'Editor';
-    folderRoleState.loading = false;
-    folderRoleState.error = null;
-    folderRoleState.registryAvailable = true;
     registryAdminState.isOwnerOrManager = false;
   });
 
@@ -216,53 +187,33 @@ describe('useFolderPermissions', () => {
     expect(result.current.canManageGroup).toBe(false);
   });
 
-  it("role 'Viewer' → canEditDocs false even for a folder member", async () => {
-    folderRoleState.role = 'Viewer';
+  it('a folder member core does not hold ReadOnly can edit, as an Editor', async () => {
     const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.isMember).toBe(true);
-    expect(result.current.canEditDocs).toBe(false);
-  });
-
-  it("role 'Editor' → canEditDocs true for a folder member", async () => {
-    folderRoleState.role = 'Editor';
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.role).toBe('Editor');
     expect(result.current.canEditDocs).toBe(true);
   });
 
-  it("role 'Manager' → canEditDocs true for a folder member", async () => {
-    folderRoleState.role = 'Manager';
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+  it('the folder Manager caps read as a Manager, who can edit', async () => {
+    const { result } = renderWithCaps(MANAGER_FOLDER_CAPS | C.CAN_JOIN_OPEN_SUBGROUPS);
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.role).toBe('Manager');
     expect(result.current.canEditDocs).toBe(true);
   });
 
   // Core discards a ReadOnly member's writes, so the UI must not offer one.
-  it('core ReadOnly on the folder → canEditDocs false whatever the registry role', async () => {
-    folderRoleState.role = 'Editor';
+  it('core ReadOnly on the folder → a Viewer, and canEditDocs false', async () => {
     listMembersMock.mockResolvedValue({
       members: [{ identity: 'me', role: 'ReadOnly' }],
     });
     const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.isMember).toBe(true);
+    expect(result.current.role).toBe('Viewer');
     expect(result.current.canEditDocs).toBe(false);
   });
 
-  it('core ReadOnly on the folder → canEditDocs false with no Registry context', async () => {
-    folderRoleState.registryAvailable = false;
-    folderRoleState.role = null;
-    listMembersMock.mockResolvedValue({
-      members: [{ identity: 'me', role: 'ReadOnly' }],
-    });
-    const { result } = renderWithCaps(0);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canEditDocs).toBe(false);
-  });
-
-  it("isAdmin → canEditDocs true regardless of role ('Viewer')", async () => {
-    folderRoleState.role = 'Viewer';
+  it('isAdmin → canEditDocs true', async () => {
     listMembersMock.mockResolvedValue({
       members: [{ identity: 'me', role: 'Admin' }],
     });
@@ -270,64 +221,11 @@ describe('useFolderPermissions', () => {
     await waitFor(() => expect(result.current.canEditDocs).toBe(true));
   });
 
-  it('role still loading (registry exists) → canEditDocs false for a member', async () => {
-    // Conservative default: until the registry Role *definitively*
-    // resolves, a folder member is read-only - autosave must not
-    // persist a would-be Viewer's edits during the resolve window.
-    folderRoleState.role = null;
-    folderRoleState.loading = true;
-    folderRoleState.registryAvailable = true;
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.isMember).toBe(true);
+  it('caps still loading → canEditDocs false, role unknown', () => {
+    getMemberCapsMock.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     expect(result.current.roleLoading).toBe(true);
-    expect(result.current.canEditDocs).toBe(false);
-  });
-
-  it('a refetch of an already-resolved Editor role keeps canEditDocs true', async () => {
-    // Registry events refetch the role on every sync; flipping read-only for
-    // each one drops the caret and the keystrokes typed meanwhile.
-    folderRoleState.role = 'Editor';
-    folderRoleState.loading = true;
-    folderRoleState.registryAvailable = true;
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canEditDocs).toBe(true);
-  });
-
-  it('role-fetch error (registry exists) → canEditDocs false for a member', async () => {
-    folderRoleState.role = null;
-    folderRoleState.loading = false;
-    folderRoleState.error = new Error('getFolderRole failed');
-    folderRoleState.registryAvailable = true;
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.isMember).toBe(true);
-    expect(result.current.roleError).not.toBeNull();
-    expect(result.current.canEditDocs).toBe(false);
-  });
-
-  it('no Registry context at all → canEditDocs falls back to membership', async () => {
-    // registryAvailable false ⇒ there's no Role to wait on; role stays
-    // null forever, roleLoading stays false. A folder member can edit.
-    folderRoleState.role = null;
-    folderRoleState.loading = false;
-    folderRoleState.error = null;
-    folderRoleState.registryAvailable = false;
-    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.isMember).toBe(true);
-    expect(result.current.canEditDocs).toBe(true);
-  });
-
-  it('no Registry context + non-member → canEditDocs false', async () => {
-    folderRoleState.registryAvailable = false;
-    folderRoleState.role = null;
-    const boom = new Error('caps service unavailable');
-    getMemberCapsMock.mockRejectedValue(boom);
-    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-z'));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.isMember).toBe(false);
+    expect(result.current.role).toBeNull();
     expect(result.current.canEditDocs).toBe(false);
   });
 
@@ -355,38 +253,13 @@ describe('useFolderPermissions', () => {
     expect(result.current.canManageGroup).toBe(true);
   });
 
-  it("canDelete: CAN_DELETE_SUBGROUP + role 'Manager' → true", async () => {
-    folderRoleState.role = 'Manager';
+  it('canDelete: CAN_DELETE_SUBGROUP → true', async () => {
     const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.canDelete).toBe(true);
   });
 
-  it("canDelete: CAN_DELETE_SUBGROUP + role 'Editor' → false", async () => {
-    folderRoleState.role = 'Editor';
-    const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canDelete).toBe(false);
-  });
-
-  it('canDelete: CAN_DELETE_SUBGROUP + no Registry context → true (fall back to cap-only)', async () => {
-    // Mirrors the canEditDocs no-registry fallback: when there's no
-    // Registry context to read roles from, the Manager-role gate has
-    // nothing to resolve and would otherwise stay false forever. Fall
-    // back to the cap-only check so a non-admin with CAN_DELETE_SUBGROUP
-    // can still delete folders in a workspace without a registry.
-    folderRoleState.registryAvailable = false;
-    folderRoleState.role = null;
-    const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canDelete).toBe(true);
-  });
-
-  it('canDelete: no CAN_DELETE_SUBGROUP + no Registry context → false (cap is still required)', async () => {
-    // The fallback only relaxes the role gate, NOT the cap gate. A
-    // member without the delete cap must still be denied.
-    folderRoleState.registryAvailable = false;
-    folderRoleState.role = null;
+  it('canDelete: no CAN_DELETE_SUBGROUP → false', async () => {
     const { result } = renderWithCaps(0);
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.canDelete).toBe(false);

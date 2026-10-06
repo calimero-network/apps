@@ -1,9 +1,8 @@
 // Namespace-admin settings surface. One section:
 //
-//   1. Registry owner & managers - the fail-closed authorization roots
-//      for the per-folder Role API (set_folder_role / add_manager all
-//      require owner-or-manager). The owner can add/remove managers;
-//      managers (and non-owner admins) see the list read-only.
+//   1. Registry owner & managers. The owner can add/remove managers;
+//      managers (and non-owner admins) see the list read-only. Folder
+//      roles are not here: they are core group roles + capabilities.
 //
 // Admin-only - the panel returns null for non-admins so the settings
 // surface doesn't advertise actions the caller can't take.

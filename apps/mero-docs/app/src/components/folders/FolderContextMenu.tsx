@@ -61,7 +61,6 @@ export function FolderContextMenu({
   const {
     namespaceId,
     rootGroupId,
-    registryClient,
     applicationId,
     refetch,
     folders,
@@ -74,7 +73,6 @@ export function FolderContextMenu({
   const folderAlias = folderLabel(folder?.alias);
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
-    registryClient,
     rootGroupId,
     applicationId,
     refetch,

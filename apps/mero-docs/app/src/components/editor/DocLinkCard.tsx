@@ -4,7 +4,6 @@ import {
   ExternalLink,
   FileText,
   FileX2,
-  Lock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -35,7 +34,10 @@ const UNAVAILABLE: Record<
 > = {
   unavailable: [CircleAlert, "Couldn't load this document"],
   deleted: [FileX2, 'This document was deleted'],
-  'no-access': [Lock, 'This is in a folder you cannot open'],
+  // Also a folder this node does not hold: a Restricted folder the reader was
+  // never added to is indistinguishable from a deleted one, and saying it is
+  // locked would tell them it exists.
+  'no-access': [FileX2, "This document isn't available"],
   'other-workspace': [ExternalLink, 'This links to another workspace'],
 };
 

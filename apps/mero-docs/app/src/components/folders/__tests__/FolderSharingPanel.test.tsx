@@ -13,7 +13,6 @@ const listGroupMembers = vi.fn();
 const addGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
-const setFolderRole = vi.fn();
 const removeGroupMembers = vi.fn();
 const getMemberCapabilities = vi.fn();
 const workspace = { parentId: null as string | null, visibility: 'Restricted', self: null as string | null };
@@ -31,7 +30,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     ],
     selfIdentity: workspace.self,
     registryContextId: null,
-    registryClient: { setFolderRole, getFolderRole: async () => 'Editor' },
+    registryClient: {},
     namespaceMemberNames: { [NAMED]: 'Bob', [PICKED]: 'Carol' },
   }),
 }));
@@ -111,7 +110,7 @@ beforeEach(() => {
   workspace.parentId = null;
   workspace.self = null;
   workspace.visibility = 'Restricted';
-  for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, setFolderRole, removeGroupMembers]) {
+  for (const fn of [addMember, addGroupMembers, updateMemberRole, setMemberCapabilities, removeGroupMembers]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
   listGroupMembers.mockReset().mockResolvedValue({ members: [] });
@@ -247,7 +246,6 @@ describe('folder roles', () => {
     render(<FolderSharingPanel folderId="f1" />);
     await waitFor(() => expect(updateMemberRole).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(setFolderRole).not.toHaveBeenCalled();
     expect(setMemberCapabilities).not.toHaveBeenCalled();
   });
 

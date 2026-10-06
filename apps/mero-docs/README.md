@@ -5,9 +5,9 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
 ## What ships in this repo
 
 - **`logic/`** - Rust workspace (v9) that compiles to a **multi-service WASM bundle** (`.mpk`)
-  - `crates/registry` - folder metadata & the group-context registry for a namespace
+  - `crates/registry` - workspace-level data for a namespace: owner, managers, tags, saved views (no folders; see below)
   - `crates/docs` - document CRUD + tags + archive inside a folder context
-  - `crates/types` - shared types (`FolderId`, `ContextId`, `Visibility`, `DriveError`) + ABI-stable constants
+  - `crates/types` - shared types (`DriveError`) + ABI-stable constants
 - **`app/`** - React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
 - **`logic/workflows/`** - the merobox scenarios CI runs (see [CI](#ci))
 
@@ -63,8 +63,8 @@ mero-docs/
 │   ├── Cargo.toml                  # workspace root; [workspace.metadata.calimero] drives `cargo mero bundle`
 │   ├── assets/                     # bundle icon (keep in sync with app/public/icons/)
 │   └── crates/
-│       ├── types/                  # FolderId, ContextId, Visibility, DriveError
-│       ├── registry/               # per-namespace folder registry
+│       ├── types/                  # DriveError, tag-key rules
+│       ├── registry/               # per-namespace owner, managers, tags, saved views
 │       └── docs/                   # per-folder document store
 ├── app/
 │   └── src/
@@ -103,16 +103,16 @@ Events: `DocCreated`, `DocEdited`, `DocArchived`, `DocUnarchived`, `DocDeleted`,
 
 ### Registry service - one context per namespace
 
+Every workspace member replicates the registry context, so it holds workspace-level data only. It stores **no folder data**: a folder is a core subgroup, its name and colour are the subgroup's metadata (`name`, `data.color`), its docs context is the one context in the subgroup, its roles are core roles + capabilities, the tree is read by walking `listSubgroups` from the root group, and deleting a folder is one core `deleteGroup`, which cascades.
+
 | Method | Description |
 |---|---|
-| `register_folder(id, alias, parent?, color?, visibility)` | Announce a folder in the namespace registry |
-| `unregister_folder(id)` | Drop a folder from the registry |
-| `get_folder(id)` / `get_folders()` | Read one or all folder records |
-| `bind_folder_context(folder_id, context_id)` | Attach a Calimero context to a folder entry |
-| `get_folder_context(folder_id)` | Resolve folder → context |
-| `set_visibility(id, Inherit \| Restricted)` | Change member-inheritance behavior |
-| `set_color(id, color)` | Set the UI color accent |
-| `move_folder(id, new_parent?)` / `reorder(...)` / `get_sort_order(...)` | Tree structural ops |
+| `get_owner()` | The registry owner (who created the registry context) |
+| `add_manager(member)` / `remove_manager(member)` / `list_managers()` | Manager list; only the owner writes it |
+| `set_tag(key, name, color)` / `delete_tag(key)` / `list_tags()` | Workspace tags (delete is a permanent tombstone) |
+| `save_view(id, name, query)` / `delete_view(id)` / `list_views()` | Workspace saved views |
+
+Events: `ManagerAdded`, `ManagerRemoved`, `TagChanged`, `ViewChanged`.
 
 ### Admin-API surface (via Calimero node, not this bundle)
 
@@ -137,8 +137,8 @@ Two-axis authorization, enforced server-side in `calimero-network/core`:
 
 Admin-only operations (`update_member_role`, `add_group_members` admin path, `set_member_capabilities` itself) require role=Admin; they cannot be delegated via capability bits. Cap-delegatable operations (`create_group_invitation`, `create_context`) pass if the caller is Admin OR has the relevant bit.
 
-One layer sits on top: the per-folder **document role** (`Viewer` / `Editor` / `Manager`, stored in the registry service).
-The docs service never reads it, so the sharing panel's "Read only" also makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
+The per-folder **document role** (`Viewer` / `Editor` / `Manager`) the app shows is derived from core alone (the folder group's role + capabilities); nothing about it is stored in the registry.
+The sharing panel's "Read only" makes the member core `ReadOnly` in the folder's group, and in each Open sub-folder reached through it, stopping at a Restricted sub-folder.
 A Restricted sub-folder someone was invited to directly keeps the role its admin gave them.
 Core reads only the direct row of each folder's group, so a member who only inherits an Open folder gets a direct `ReadOnly` row there.
 While the member holds those rows, nodes refuse their writes to those folders' docs, comments included, with a `ReadOnlyWriteRefused` error; an editor page that still offered the edit drops it and shows the node's text.
@@ -217,10 +217,9 @@ Since core 0.11.0-rc.57 every owned collection (`Authored…`, `WriteOnce`, `Mod
 independent entries, and a key-only `get`, `contains`, `owner_of`, `owned_by_me` or `remove`
 acts on the CALLER's own entry only. This app was migrated:
 
-- **Registry.** Every read of a folder by id goes through the entry of the **lowest
-  account** holding it, and its context binding is that account's own (`get_by`).
-  `register_folder` refuses an id **any** account holds (it used to rely on the key being
-  taken). A moderator's `unregister_folder` removes every holder's entry with `remove_by`.
+- **Registry.** A saved view's creator is the one account holding its `view_origins`
+  entry; with several holders the creator is unknown. (The registry no longer stores
+  folders, so the per-owner folder reads it used to need are gone.)
 - **Docs.** A doc's creator is the one origin entry whose owner carries the doc id's
   account tag; with none or several the doc has no known creator. Comments are read by id
   through the lowest holder, a listed comment's author is matched among its id's holders,

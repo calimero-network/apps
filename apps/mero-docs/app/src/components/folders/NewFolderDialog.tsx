@@ -51,14 +51,12 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     namespaceId,
     rootGroupId,
     allFolderNodes,
-    registryClient,
     applicationId,
     refetch,
     selfIdentity,
     namespaceMemberNames,
   } = useDriveWorkspace();
   const ops = useFolderOperations(
-    registryClient,
     rootGroupId,
     applicationId,
     refetch,

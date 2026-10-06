@@ -54,7 +54,6 @@ import {
   useGroupMetadata,
   useSetGroupMetadata,
   useNodeIdentity,
-  useSubgroups,
   type GroupMember,
   type Namespace,
 } from '@calimero-network/mero-react';
@@ -80,10 +79,7 @@ import {
   type RegistryResolution,
 } from '@/lib/registryContext';
 import {
-  mergeAdminAndRegistry,
-  type AdminSubgroup,
   type MergedFolder,
-  type RegistryFolderShape,
 } from './useWorkspaceTree';
 import {
   DEFAULT_NEW_MEMBER_CAPS,
@@ -93,7 +89,8 @@ import {
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
-import { isGroupAccessDenied } from '@/utils/accessDenied';
+import { loadCoreFolders, type CoreFolder } from '@/lib/coreFolders';
+import { folderLabel } from '@/lib/folderLabel';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -169,6 +166,11 @@ function clearNamespaceJustJoined(namespaceId: string): void {
   sessionStorage.setItem(JUST_JOINED_KEY, JSON.stringify([...set]));
 }
 
+/** How often the folder tree is re-read while the window is in view: core
+ *  sends no event for another member's folder changes. */
+const FOLDER_TREE_REFRESH_MS = 30_000;
+const NO_FOLDERS: Set<string> = new Set();
+
 export interface DriveWorkspaceState {
   // identity
   applicationId: string | null;
@@ -232,7 +234,7 @@ export interface DriveWorkspaceState {
   allFolderNodes: { id: string; parent_id: string | null }[];
   /** Raw registry rows for the active workspace (unfiltered by access),
    *  null until the first load completes for the current registry client. */
-  registryFolders: RegistryFolderShape[] | null;
+  registryFolders: CoreFolder[] | null;
   /** Folder ids whose access fan-out has settled; hiddenFolderIds is only
    *  trustworthy for ids in this set. */
   resolvedFolderIds: Set<string>;
@@ -468,11 +470,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     selectedNsId ?? undefined,
   );
 
-  // Folder counts per candidate, probed ONLY when there is more than one
-  // candidate - i.e. only for a namespace that already has duplicates. Picking
-  // the context that actually holds folders is what stops a recovery from
-  // orphaning the data the user already created.
-  const [folderCounts, setFolderCounts] = useState<Record<
+  // Row counts (tags + saved views) per candidate, probed ONLY when there is
+  // more than one candidate - i.e. only for a namespace that already has
+  // duplicates. Picking the context that actually holds data is what stops a
+  // recovery from orphaning what the user already created. Folders are not
+  // in the registry; they are core's.
+  const [dataCounts, setDataCounts] = useState<Record<
     string,
     number
   > | null>(null);
@@ -488,7 +491,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (!mero || !selfIdentity) return;
     const ids = candidateKey ? candidateKey.split(',') : [];
     if (ids.length < 2) {
-      setFolderCounts(null);
+      setDataCounts(null);
       return;
     }
     let cancelled = false;
@@ -497,8 +500,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       await Promise.all(
         ids.map(async (id) => {
           try {
-            const rows = await new RegistryClient(mero, id).getFolders();
-            counts[id] = Array.isArray(rows) ? rows.length : 0;
+            const client = new RegistryClient(mero, id);
+            const [tags, views] = await Promise.all([client.listTags(), client.listViews()]);
+            counts[id] =
+              (Array.isArray(tags) ? tags.length : 0) + (Array.isArray(views) ? views.length : 0);
           } catch {
             // A context we cannot read contributes no evidence. Counting it as
             // 0 is right: we must not adopt a registry we cannot query.
@@ -506,7 +511,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           }
         }),
       );
-      if (!cancelled) setFolderCounts(counts);
+      if (!cancelled) setDataCounts(counts);
     })();
     return () => {
       cancelled = true;
@@ -525,7 +530,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         pin: readPin(nsMetadata),
         listed: contexts.map((c) => ({ contextId: c.contextId, name: c.name })),
         reportedCount: nsGroupInfo?.contextCount ?? null,
-        folderCounts,
+        dataCounts,
       },
       REGISTRY_CONTEXT_ALIAS,
     );
@@ -537,7 +542,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     nsMetadata,
     contexts,
     nsGroupInfo,
-    folderCounts,
+    dataCounts,
   ]);
 
   // ⚠️ STICKY, and this is load-bearing for far more than tidiness.
@@ -876,43 +881,37 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     refetchRegAdmin,
   ]);
 
-  // --- Subgroups (admin-side folder tree) ---
-  const {
-    subgroups,
-    loading: subLoading,
-    refetch: refetchSubgroups,
-  } = useSubgroups(selectedNsId ?? undefined);
-
-  // --- Registry-side folder metadata ---
-  const [regFolders, setRegFolders] = useState<RegistryFolderShape[]>([]);
+  // --- Folders, from core ---
+  //
+  // The tree is core's alone (lib/coreFolders): a walk of the namespace's
+  // subgroups, each folder's name and colour from its subgroup metadata and
+  // its docs context the subgroup's one context. Core lists a Restricted
+  // folder only to its members and the admins above it, so a folder this
+  // caller was not added to never comes back - nothing to hide afterwards, and
+  // nothing about it on this caller's disk. The namespace-wide registry, which
+  // every member replicates, holds no folder at all.
+  const [regFolders, setRegFolders] = useState<CoreFolder[]>([]);
   const [regLoading, setRegLoading] = useState(false);
   const [regError, setRegError] = useState<Error | null>(null);
 
-  // Extracted so `refetch()` can re-run it after mutations. Without
-  // this, creating / renaming / deleting a folder mutates the registry
-  // WASM but the local cache stays stale and the UI doesn't reflect
-  // the change until the page is reloaded.
-  // Bumped per call so a slow response can't land after a newer one.
-  // Without it, switching namespaces mid-flight lets the old namespace's
-  // folders populate under the new one, from where they feed the
-  // getGroupInfo fan-out and useFolderOperations' delete cascade.
+  // Bumped per call so a slow walk can't land after a newer one. Without it,
+  // switching namespaces mid-flight lets the old namespace's folders populate
+  // under the new one, from where they feed useFolderOperations' delete cascade.
   const regSeqRef = useRef(0);
-  // Which client `regFolders` was fetched with, so a folder URL is judged only
+  // Which workspace `regFolders` was read for, so a folder URL is judged only
   // against this workspace's loaded list, never the empty initial one.
-  const [regFoldersFor, setRegFoldersFor] = useState<RegistryClient | null>(
-    null,
-  );
+  const [regFoldersFor, setRegFoldersFor] = useState<string | null>(null);
 
   // The workspace on screen; a load captured before a switch must neither run nor win.
-  const registryClientRef = useRef(registryClient);
-  registryClientRef.current = registryClient;
+  const rootGroupIdRef = useRef(rootGroupId);
+  rootGroupIdRef.current = rootGroupId;
 
   const loadRegFolders = useCallback(async () => {
-    if (registryClient !== registryClientRef.current) return;
+    if (rootGroupId !== rootGroupIdRef.current) return;
     const seq = ++regSeqRef.current;
     const stale = () =>
-      regSeqRef.current !== seq || registryClient !== registryClientRef.current;
-    if (!registryClient) {
+      regSeqRef.current !== seq || rootGroupId !== rootGroupIdRef.current;
+    if (!admin || !rootGroupId) {
       setRegFolders([]);
       setRegLoading(false);
       return;
@@ -920,31 +919,22 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     setRegLoading(true);
     setRegError(null);
     try {
-      const fs = await registryClient.getFolders();
+      const fs = await loadCoreFolders(admin, rootGroupId, applicationId ?? null);
       if (stale()) return;
-      const mapped = fs.map((f) => ({
-        id: f.id,
-        parent_id: f.parent_id ?? null,
-        color: f.color ?? null,
-        alias: f.alias ?? null,
-        context_id: f.context_id ?? null,
-      }));
-      // Keep the previous array identity when the fetched content is
-      // byte-identical, so the `folders`/`allFolderNodes` memos (and the
-      // whole folder tree) don't get a fresh identity on every refetch.
-      // JSON compare is fine for these small flat rows; if the folder set
-      // grows large, switch to a shallow per-field compare.
+      // Keep the previous array identity when the walk read the same tree, so
+      // the `folders`/`allFolderNodes` memos (and the whole folder tree) don't
+      // get a fresh identity on every refresh.
       setRegFolders((prev) =>
-        JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
+        JSON.stringify(prev) === JSON.stringify(fs) ? prev : fs,
       );
-      setRegFoldersFor(registryClient);
+      setRegFoldersFor(rootGroupId);
     } catch (e: unknown) {
       if (stale()) return;
       setRegError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       if (!stale()) setRegLoading(false);
     }
-  }, [registryClient]);
+  }, [admin, rootGroupId, applicationId]);
 
   useEffect(() => {
     // Cancellation is handled by regSeqRef inside loadRegFolders: the next
@@ -952,172 +942,49 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     void loadRegFolders();
   }, [loadRegFolders]);
 
-  // --- Alias lookup (per-folder getGroupInfo) ---
-  //
-  // The human-readable name lives at `metadata.name` on `getGroupInfo`. We
-  // fan out one getGroupInfo per folder and cache by id.
-  //
-  // `aliasRevision` bumps on refetch() so rename flows re-fetch even
-  // though the folder id set hasn't changed.
-  // Per-folder getGroupInfo also supplies subgroup_visibility (Open /
-  // Restricted), which the registry does not store. Both maps come from
-  // the same fetch to keep it cheap.
-  const [aliases, setAliases] = useState<Map<string, string>>(new Map());
-  const [visibilities, setVisibilities] = useState<
-    Map<string, 'Open' | 'Restricted'>
-  >(new Map());
-  // Folders the caller may NOT see - their getGroupInfo came back
-  // "not a member" (core rejects non-members of restricted subgroups,
-  // crates/context/.../get_group_info.rs). These are filtered out of
-  // the rail. A folder leaves this set automatically once the caller
-  // is added: the SSE-driven refetch re-runs this fan-out and the
-  // getGroupInfo then succeeds. Only a *definitive* access-denied
-  // hides a folder; transient (5xx/network) errors keep it visible.
-  const [hiddenFolderIds, setHiddenFolderIds] = useState<Set<string>>(
-    new Set(),
-  );
-  // Folders whose access has been *resolved* by the fan-out below
-  // (getGroupInfo settled - success, access-denied, or transient).
-  // The folder list is gated on this so a restricted folder the caller
-  // can't see never flashes in the rail during the async window before
-  // hiddenFolderIds is populated (the fan-out is NOT part of the
-  // `loading`/`stage` derivation, so without this gate the rail renders
-  // with a stale/empty hidden set on initial load + namespace switch).
-  const [resolvedFolderIds, setResolvedFolderIds] = useState<Set<string>>(
-    new Set(),
-  );
-  // Always-current namespace, read inside the fan-out's async tail. The
-  // fan-out effect doesn't depend on selectedNsId, so on a namespace
-  // switch an in-flight fan-out from the OLD namespace could resolve
-  // *after* the clear effect below runs and repopulate resolvedFolderIds
-  // with stale ids. Comparing the namespace captured at fan-out start
-  // against this ref lets us drop such a stale resolution.
-  const selectedNsIdRef = useRef(selectedNsId);
-  selectedNsIdRef.current = selectedNsId;
-  const [aliasRevision, setAliasRevision] = useState(0);
+  // Core emits no event when another member creates, renames or moves a
+  // folder, or adds this caller to one, so the tree is re-read while the
+  // window is in view and whenever it comes back into view.
   useEffect(() => {
-    if (!admin) return;
-    const ids = regFolders.map((f) => f.id);
-    // Capture via the ref (not a direct `selectedNsId` read) so this
-    // stays out of the dependency array - the effect intentionally
-    // re-runs on regFolders/aliasRevision, not on namespace.
-    const nsAtStart = selectedNsIdRef.current;
-    if (ids.length === 0) {
-      setAliases(new Map());
-      setVisibilities(new Map());
-      setHiddenFolderIds(new Set());
-      setResolvedFolderIds(new Set());
-      return;
-    }
-    let alive = true;
-    Promise.all(
-      ids.map((id) =>
-        admin
-          .getGroupInfo(id)
-          .then(
-            (info) =>
-              [
-                id,
-                info?.metadata?.name ?? null,
-                info?.subgroupVisibility ?? null,
-                false, // not access-denied
-              ] as const,
-          )
-          .catch(async (e) => {
-            const denied = await isGroupAccessDenied(admin, id, e);
-            return [id, null, null, denied] as const;
-          }),
-      ),
-    ).then((entries) => {
-      // Drop the result if this effect was torn down, OR if the active
-      // namespace changed while the fan-out was in flight - otherwise a
-      // stale old-namespace batch would repopulate resolvedFolderIds
-      // after the namespace-switch clear effect.
-      if (!alive || selectedNsIdRef.current !== nsAtStart) return;
-      const nextAliases = new Map<string, string>();
-      const nextVis = new Map<string, 'Open' | 'Restricted'>();
-      const nextHidden = new Set<string>();
-      for (const [id, alias, vis, denied] of entries) {
-        if (denied) nextHidden.add(id);
-        if (alias) nextAliases.set(id, alias);
-        // Core returns lowercase ("open" / "restricted"); accept both casings
-        // so the toggle's optimistic uppercase write also lands cleanly.
-        const norm =
-          vis === 'Open' || vis === 'open'
-            ? 'Open'
-            : vis === 'Restricted' || vis === 'restricted'
-              ? 'Restricted'
-              : null;
-        if (norm) nextVis.set(id, norm);
-      }
-      setAliases(nextAliases);
-      setVisibilities(nextVis);
-      setHiddenFolderIds(nextHidden);
-      // Mark every folder in this batch resolved. Updated atomically on
-      // completion so a re-fan (e.g. SSE refetch with the same ids)
-      // keeps the previous resolved set applied meanwhile - no flicker.
-      setResolvedFolderIds(new Set(ids));
-    });
-    return () => {
-      alive = false;
+    if (!rootGroupId) return;
+    const visible = () => document.visibilityState === 'visible';
+    const onVisible = () => {
+      if (visible()) void loadRegFolders();
     };
-    // aliasRevision is intentional - bumping it forces this effect to
-    // re-run after a rename even if regFolders is referentially stable.
-  }, [admin, regFolders, aliasRevision]);
+    const timer = setInterval(onVisible, FOLDER_TREE_REFRESH_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [rootGroupId, loadRegFolders]);
 
-  // Re-arm the first-paint gate on namespace switch: clear the resolved
-  // set so the new workspace's folders aren't rendered (with a stale
-  // hidden set) before their access is known. Keyed on selectedNsId
-  // ONLY - a same-namespace SSE refetch must not reset this, or the rail
-  // would blank on every event.
-  useEffect(() => {
-    setResolvedFolderIds(new Set());
-  }, [selectedNsId]);
+  // Every listed folder is one this caller may see: core listed it.
+  const hiddenFolderIds = NO_FOLDERS;
+  const resolvedFolderIds = useMemo(
+    () => new Set(regFolders.map((f) => f.id)),
+    [regFolders],
+  );
 
-  // --- Merge admin subgroups with registry metadata ---
-  // Registry is the source of truth for existence + tree shape;
-  // aliases come from the per-folder getGroupInfo cache above, with the
-  // `subgroups` list (from mero-react) as a secondary alias source.
-  const folders = useMemo<MergedFolder[]>(() => {
-    if (!rootGroupId) return [];
-    const admin: AdminSubgroup[] = regFolders.map((f) => {
-      const aliasFromCache = aliases.get(f.id);
-      const nameFromSubgroups = (subgroups ?? []).find(
-        (s) => s.groupId === f.id,
-      )?.name;
-      return {
-        groupId: f.id,
-        parent_id: f.parent_id,
-        name: aliasFromCache ?? nameFromSubgroups,
-      };
-    });
-    return mergeAdminAndRegistry(
-      admin,
-      regFolders,
-      rootGroupId,
-      visibilities,
-      hiddenFolderIds,
-      // Gate: only surface folders whose access the fan-out has
-      // resolved, so a restricted folder never flashes before
-      // hiddenFolderIds is known. Already-resolved folders persist in
-      // resolvedFolderIds across re-fans, so when a new folder arrives
-      // only that folder is withheld until it resolves - the existing
-      // rows keep rendering, never blanked.
-    ).folders.filter((f) => resolvedFolderIds.has(f.id));
-  }, [
-    rootGroupId,
-    subgroups,
-    regFolders,
-    aliases,
-    visibilities,
-    hiddenFolderIds,
-    resolvedFolderIds,
-  ]);
+  const folders = useMemo<MergedFolder[]>(
+    () =>
+      rootGroupId
+        ? regFolders.map((f) => ({
+            id: f.id,
+            parent_id: f.parent_id,
+            alias: folderLabel(f.alias),
+            visibility: f.visibility,
+            color: f.color,
+            shared: f.shared,
+          }))
+        : [],
+    [rootGroupId, regFolders],
+  );
 
-  // Complete, UNFILTERED tree shape (id + parent_id) for structural
-  // operations that must account for hidden/unresolved folders - e.g.
-  // the new-folder depth cap, which would undercount through a hidden
-  // ancestor if it used the filtered `folders` above.
+  // The tree's shape (id + parent_id) for structural operations - e.g. the
+  // new-folder depth cap. Folders this caller cannot see are not in it.
   const allFolderNodes = useMemo(
     () => regFolders.map((f) => ({ id: f.id, parent_id: f.parent_id })),
     [regFolders],
@@ -1129,10 +996,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       id ? goFolder(id, opts) : goHome(undefined, opts),
     [goFolder, goHome],
   );
-  // Raw registry rows, unfiltered by access; null until the first load
-  // completes. Lets resolveLinkTarget tell hidden-but-real from deleted.
-  const registryFolders =
-    registryClient && regFoldersFor === registryClient ? regFolders : null;
+  // The walked folders; null until the first walk of this workspace lands.
+  const registryFolders = regFoldersFor === rootGroupId ? regFolders : null;
 
   // --- Mutations ---
   const [createLoading, setCreateLoading] = useState(false);
@@ -1263,18 +1128,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     await Promise.all([
       refetchNamespaces(),
       refetchContexts(),
-      refetchSubgroups(),
       refetchNsMembers(),
       loadRegFolders(),
     ]);
     refetchRegAdmin();
-    // Force the per-folder getGroupInfo effect to re-run so a rename
-    // surfaces in the tree even though the folder id set is unchanged.
-    setAliasRevision((r) => r + 1);
   }, [
     refetchNamespaces,
     refetchContexts,
-    refetchSubgroups,
     refetchNsMembers,
     loadRegFolders,
     refetchRegAdmin,
@@ -1423,18 +1283,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     refetchNamespaces,
   ]);
 
-  // First-paint gate: we have folders to show but NONE have been
-  // resolved by the getGroupInfo fan-out yet. Keep the rail in
-  // "Loading folders…" rather than rendering an empty (and potentially
-  // leaky) list. This fires only on the *initial* paint of a folder set
-  // - on first load and on namespace switch (the effect above clears
-  // resolvedFolderIds keyed on selectedNsId). It does NOT fire when a
-  // single new folder arrives mid-session: resolvedFolderIds is already
-  // non-empty then, so the memo's `.filter` keeps the existing rows
-  // visible while only the new folder is withheld until it resolves.
-  const awaitingFirstFolderResolve =
-    regFolders.length > 0 && resolvedFolderIds.size === 0;
-
   // --- Stage derivation for loading-indicator UX ---
   // The rule (and why it exists) lives in `lib/driveStage`, where it can be
   // asserted; this is just the wiring.
@@ -1450,10 +1298,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     membersLoading,
     identityLoading,
     hasSelfIdentity: !!selfIdentity,
-    subLoading,
+    // The walk lists and describes folders in one read, so nothing is
+    // listed before its access is known.
+    subLoading: false,
     regLoading,
     hasLoadedFoldersForNs,
-    awaitingFirstFolderResolve,
+    awaitingFirstFolderResolve: false,
     isJustJoined,
   });
 

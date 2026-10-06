@@ -32,7 +32,7 @@ test.describe('Deep-link cards (single-node)', () => {
     await alice.page.goto(`${folderPath}/d/does-not-exist`);
 
     await expect(
-      alice.page.getByText('This document was deleted or moved'),
+      alice.page.getByText("This document isn't available"),
     ).toBeVisible({ timeout: 30_000 });
     await alice.page.getByRole('button', { name: 'Go to Home' }).click();
     await expect.poll(() => pathOf(alice.page)).toBe(home);
@@ -42,12 +42,30 @@ test.describe('Deep-link cards (single-node)', () => {
     alice,
   }) => {
     const home = homePathOf(alice.page);
+    const link = `${home}/f/does-not-exist`;
+
+    await alice.page.goto(link);
+
+    await expect(
+      alice.page.getByText("This folder isn't available"),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(pathOf(alice.page)).toBe(link);
+    await alice.page.getByRole('button', { name: 'Go to Home' }).click();
+    await expect.poll(() => pathOf(alice.page)).toBe(home);
+  });
+
+  // A folder this node does not list may be Restricted to others, so a doc
+  // link into it reads exactly like one into a folder that never existed.
+  test('a doc link into an unknown folder keeps its URL and shows the doc-worded card', async ({
+    alice,
+  }) => {
+    const home = homePathOf(alice.page);
     const link = `${home}/f/does-not-exist/d/does-not-exist`;
 
     await alice.page.goto(link);
 
     await expect(
-      alice.page.getByText('This folder was deleted or moved'),
+      alice.page.getByText("This document isn't available"),
     ).toBeVisible({ timeout: 30_000 });
     expect(pathOf(alice.page)).toBe(link);
     await alice.page.getByRole('button', { name: 'Go to Home' }).click();

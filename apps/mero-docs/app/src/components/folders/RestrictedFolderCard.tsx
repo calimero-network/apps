@@ -42,14 +42,10 @@ import {
 import {
   useJoinSubgroupInheritance,
   useJoinContext,
+  useMero,
 } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
-// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point -
-// this fleet has had folder ids, context ids and account ids all be bare
-// 64-hex strings that type-check in each other's slots.
-import { FolderId } from '../../generated/registry/RegistryClient';
+import { folderDocsContext } from '@/lib/coreFolders';
 
 interface Props {
   /** Folder subgroup id - the join target. */
@@ -87,7 +83,7 @@ export function RestrictedFolderCard({
   const [joining, setJoining] = useState(false);
   const { joinSubgroupInheritance } = useJoinSubgroupInheritance();
   const { joinContext } = useJoinContext();
-  const { registryClient } = useDriveWorkspace();
+  const { admin } = useMero();
 
   const isRestricted = visibility === 'Restricted';
   const isSyncing = visibility === undefined;
@@ -124,12 +120,12 @@ export function RestrictedFolderCard({
       //    `joinContext` writes that identity AND awaits core's
       //    internal context subscribe + sync, so once it resolves the
       //    docs context is queryable on this node.
-      if (!registryClient) {
+      if (!admin) {
         throw new Error("The workspace isn't ready yet. Try again in a moment.");
       }
-      const docsContextId = await registryClient.getFolderContext({
-        folder_id: FolderId(folderId),
-      });
+      // Its one context; readable now that the join made this node a member.
+      const docsContextId = await folderDocsContext(admin, folderId);
+      if (!docsContextId) throw new Error('The folder has no docs context yet');
       await joinContext(docsContextId);
 
       // Success: refetch workspace state AND the per-folder

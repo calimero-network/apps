@@ -22,7 +22,7 @@ import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { inheritReadOnlyDown } from '@/lib/applyFolderRole';
 import { openConnected } from '@/utils/ancestry';
 import { CAPABILITIES, hasCap } from '@/constants/config';
-import { FolderId } from '@/generated/registry/RegistryClient';
+import { isTeeRole, parseGroupRole } from '@/lib/roles';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 
 const READ_ONLY_NOT_CARRIED =
@@ -43,7 +43,6 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
     namespaceId,
     refetch,
     folders,
-    registryClient,
     namespaceMemberNames,
   } = useDriveWorkspace();
   const { admin } = useMero();
@@ -59,13 +58,16 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
 
   // A role set in this folder or its Open sub-folders left a direct row there,
   // which outlasts the switch; the grant's join bit shows the row is direct.
+  // Only direct rows are listed: an inheritor of an Open folder has none.
   const keptNote = async (): Promise<string> => {
-    if (!admin || !registryClient) return '';
+    if (!admin) return '';
     const kept = new Set<string>();
     for (const id of [folderId, ...openConnected(folders, folderId).open]) {
-      for (const { member } of await registryClient.listFolderRoles({
-        folder_id: FolderId(id),
-      })) {
+      for (const { identity: member, role } of (await admin.listGroupMembers(id))
+        .members) {
+        // The owner and TEE replicas keep access by being who they are.
+        const core = parseGroupRole(role);
+        if (core === 'Admin' || isTeeRole(core)) continue;
         const { capabilities } = await admin.getMemberCapabilities(
           id,
           member,
@@ -107,9 +109,9 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
       });
       const parent = folders.find((f) => f.id === folderId)?.parent_id;
       const failed =
-        next === 'Open' && parent && admin && registryClient
+        next === 'Open' && parent && admin
           ? await inheritReadOnlyDown(
-              { admin: admin, registry: registryClient },
+              { admin },
               folders,
               folderId,
               parent,

@@ -9,7 +9,7 @@ import { subscribeDocsRefetch, useDocs } from '../useDocs';
 // subgroup-scoped), the one-attempt heal cap, and error surfacing.
 // All dependencies are mocked so each path is driven directly.
 const listDocs = vi.fn();
-const getFolderContext = vi.fn();
+const subgroupContext = vi.fn();
 const joinContext = vi.fn();
 
 const docsClientStub = {
@@ -26,15 +26,24 @@ const docsClientStub = {
 // Per-context clients for tests that switch folders; others share the stub.
 const clientsByContext = new Map<string, { listDocs: typeof listDocs }>();
 const workspace = { selfIdentity: 'me' as string | null };
-const registryClient = { getFolderContext }; // stable, like the provider's memoized client
+// A folder's docs context is the one context core lists in its subgroup;
+// `subgroupContext` names it per folder. Stable, like the session's admin.
+const meroStub = {
+  admin: {
+    listGroupContexts: async (folderId: string) => {
+      const contextId = await subgroupContext({ folder_id: folderId });
+      return contextId ? [{ contextId }] : [];
+    },
+  },
+};
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useJoinContext: () => ({ joinContext, loading: false, error: null }),
+  useMero: () => meroStub,
 }));
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
-    registryClient,
     selfIdentity: workspace.selfIdentity,
   }),
 }));
@@ -76,7 +85,7 @@ describe('useDocs', () => {
     vi.clearAllMocks();
     clientsByContext.clear();
     workspace.selfIdentity = 'me';
-    getFolderContext.mockResolvedValue('docs-ctx-1');
+    subgroupContext.mockResolvedValue('docs-ctx-1');
     listDocs.mockResolvedValue([]);
     joinContext.mockResolvedValue({});
   });
@@ -122,10 +131,10 @@ describe('useDocs', () => {
   });
 
   it('surfaces a docs-context resolution failure', async () => {
-    getFolderContext.mockRejectedValue(new Error('registry down'));
+    subgroupContext.mockRejectedValue(new Error('core down'));
     const { result } = renderHook(() => useDocs('folder-1'));
     await waitFor(() => expect(result.current.error).not.toBeNull());
-    expect(result.current.error?.message).toMatch(/registry down/);
+    expect(result.current.error?.message).toMatch(/core down/);
     expect(listDocs).not.toHaveBeenCalled();
   });
 
@@ -181,7 +190,7 @@ describe('useDocs', () => {
     });
 
     it('is true for a folder with no docs binding at all', async () => {
-      getFolderContext.mockResolvedValue(null);
+      subgroupContext.mockResolvedValue(null);
       const { result } = renderHook(() => useDocs('folder-1'));
       await waitFor(() => expect(result.current.listed).toBe(true));
       expect(listDocs).not.toHaveBeenCalled();
@@ -208,7 +217,7 @@ describe('useDocs', () => {
       clientsByContext.set('ctx-b', {
         listDocs: vi.fn().mockResolvedValue([{ id: 'b1', title: 'B', updated_at: 1 }]),
       });
-      getFolderContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
+      subgroupContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
         Promise.resolve(folder_id === 'a' ? 'ctx-a' : 'ctx-b'),
       );
       const { result, rerender } = renderHook(({ f }) => useDocs(f), {
@@ -227,7 +236,7 @@ describe('useDocs', () => {
       clientsByContext.set('ctx-a', {
         listDocs: vi.fn().mockResolvedValue([{ id: 'a1', title: 'A', updated_at: 1 }]),
       });
-      getFolderContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
+      subgroupContext.mockImplementation(({ folder_id }: { folder_id: string }) =>
         Promise.resolve(folder_id === 'a' ? 'ctx-a' : null),
       );
       const { result, rerender } = renderHook(({ f }) => useDocs(f), {
@@ -243,16 +252,16 @@ describe('useDocs', () => {
     });
 
     it('re-reads the docs context when retried after that read failed', async () => {
-      getFolderContext.mockRejectedValueOnce(new Error('registry down'));
+      subgroupContext.mockRejectedValueOnce(new Error('core down'));
       const { result } = renderHook(() => useDocs('folder-1'));
       await waitFor(() => expect(result.current.error).not.toBeNull());
       await result.current.refetch();
       await waitFor(() => expect(result.current.listed).toBe(true));
-      expect(getFolderContext).toHaveBeenCalledTimes(2);
+      expect(subgroupContext).toHaveBeenCalledTimes(2);
     });
 
     it('stays false when the docs-context resolution itself fails', async () => {
-      getFolderContext.mockRejectedValue(new Error('registry down'));
+      subgroupContext.mockRejectedValue(new Error('core down'));
       const { result } = renderHook(() => useDocs('folder-1'));
       await waitFor(() => expect(result.current.error).not.toBeNull());
       expect(result.current.listed).toBe(false);

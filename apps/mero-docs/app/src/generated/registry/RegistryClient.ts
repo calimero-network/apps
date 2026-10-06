@@ -6,50 +6,6 @@ import type {
 
 // Generated types
 
-/**
- * Wrapper around a Calimero context id. Same rationale as `FolderId`.
- */
-export type ContextId = string & { readonly __brand: 'ContextId' };
-export const ContextId = (value: string): ContextId => value as ContextId;
-
-export interface Event_FolderAliasChanged {
-  id: string;
-}
-
-export interface Event_FolderColorChanged {
-  id: string;
-}
-
-export interface Event_FolderContextBound {
-  folder_id: string;
-  context_id: string;
-}
-
-export interface Event_FolderParentChanged {
-  id: string;
-}
-
-export interface Event_FolderRegistered {
-  id: string;
-}
-
-export interface Event_FolderRoleChanged {
-  folder_id: string;
-  member: string;
-}
-
-export interface Event_FolderSortOrderChanged {
-  parent_id: string;
-}
-
-export interface Event_FolderUnregistered {
-  id: string;
-}
-
-export interface Event_FolderVisibilityChanged {
-  id: string;
-}
-
 export interface Event_ManagerAdded {
   member: string;
 }
@@ -66,116 +22,7 @@ export interface Event_ViewChanged {
   id: string;
 }
 
-/**
- * Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.
- */
-export interface FolderDto {
-  /**
-   * The folder's group id.
-   */
-  id: FolderId;
-  /**
-   * The parent folder's group id; `None` for a top-level folder.
-   */
-  parent_id: FolderId | null;
-  /**
-   * `None` when color is unset / empty.
-   */
-  color: string | null;
-  /**
-   * `None` when no Docs context has been bound to this folder yet.
-   */
-  context_id: ContextId | null;
-  /**
-   * `None` when no registry-side alias is stored (older folders,
-   * or folders created before the alias field existed). Clients
-   * fall back to the admin-API alias or a truncated id stub.
-   */
-  alias: string | null;
-  /**
-   * A registry-side flag the app no longer writes, so it reads `Inherit`; the folder group's visibility decides who can join.
-   */
-  visibility: Visibility;
-}
-
-/**
- * Wrapper around a folder / group id string. Newtype so the generated TS
- * client surfaces `FolderId` instead of a bare `string`.
- */
-export type FolderId = string & { readonly __brand: 'FolderId' };
-export const FolderId = (value: string): FolderId => value as FolderId;
-
-/**
- * Per-folder record inside the registry map. All fields are LWW so
- * concurrent updates resolve deterministically.
- */
-export interface FolderRecord {
-  /**
-   * Parent folder id, or None for top-level folders. Stored as an
-   * LWW index; admin-API remains the source of truth for the tree.
-   */
-  parent_id: string;
-  /**
-   * `#rrggbb` color, or empty string for "no color".
-   */
-  color: string;
-  /**
-   * Display name. Mirrored from admin-API's group alias so namespace
-   * members who can't read the subgroup yet (Restricted folder before
-   * invite) can still see folder names. Empty string means "no
-   * registry-side alias - fall back to the admin-API alias or a
-   * truncated id stub on the client".
-   */
-  alias: string;
-  /**
-   * Inherit = namespace-member cascade descends through this folder.
-   * Restricted = explicit-invite wall; cascade stops here.
-   */
-  visibility: Visibility;
-}
-
-/**
- * One explicit per-member role row for a folder (what `list_folder_roles`
- * returns). Members not present have the implicit `Editor` role.
- */
-export interface FolderRoleEntry {
-  /**
-   * The member's account id as 64 hex characters.
-   */
-  member: string;
-  /**
-   * The member's role on the folder.
-   */
-  role: Role;
-}
-
 export interface RegistryState {
-  /**
-   * folder_id (string) → FolderRecord. Owned by whoever registered the
-   * folder, who alone edits it; the registry admins (owner and managers)
-   * are its moderators and may also remove it. Every node enforces both.
-   *
-   * Keys are per owner (core rc.57): two accounts registering one id hold
-   * two entries, and a key-only `get`/`contains`/`owner_of` answers for the
-   * CALLER only. Every read by id goes through `folder_holder`, which takes
-   * the entry of the lowest account holding the id, the same pick on every
-   * node; `register_folder` refuses an id any account is known to hold.
-   */
-  folders: Record<string, FolderRecord>;
-  /**
-   * folder_id (string) → Docs context id bound to that folder. Written
-   * once, by the folder's registrant; nobody can rebind or remove it, so a
-   * folder cannot be pointed at someone else's context after the fact.
-   * A binding counts only while its writer owns the folder (see
-   * `binding_of`).
-   */
-  folder_contexts: Record<string, ContextId>;
-  /**
-   * parent_id-or-empty → LWW list of child folder ids in display order.
-   * Deliberately public: display order is collaborative, and a bad order
-   * is corrected by the next reorder.
-   */
-  sort_order: Record<string, string[]>;
   /**
    * Hex account of the registry owner: whoever created the registry
    * context (a namespace admin). Frozen at `init`; nobody can change it.
@@ -187,13 +34,8 @@ export interface RegistryState {
    */
   access: Record<string, boolean>;
   /**
-   * `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
-   * The owner administers it; managers may write and delete rows (see `sync_admins`).
-   */
-  folder_roles: Record<string, Role>;
-  /**
-   * tag key → TagRecord. Public, like `sort_order`: any member may name,
-   * recolour or delete a tag; which roles may is the app's to gate.
+   * tag key → TagRecord. Public: any member may name, recolour or delete
+   * a tag; which roles may is the app's to gate.
    */
   tags: Record<string, TagRecord>;
   /**
@@ -206,12 +48,6 @@ export interface RegistryState {
    */
   view_origins: Record<string, number>;
 }
-
-/**
- * Per-folder collaborator role. Local copy of `mero_docs_types::Role`
- * (same variants, same bytes); keep the two definitions in sync.
- */
-export type Role = 'Viewer' | 'Editor' | 'Manager';
 
 /**
  * Flat projection of a `TagRecord`. Deleted rows are included so clients
@@ -293,92 +129,11 @@ export interface ViewRecord {
   query: string;
 }
 
-/**
- * Per-folder cascade flag. `Inherit` = namespace-member cascade descends
- * through this folder (Open subgroup); `Restricted` = explicit-invite wall,
- * cascade stops here. Mirrors the admin-API subgroup_visibility concept but
- * is stored in the registry so clients can read it without a per-folder
- * admin-API call.
- */
-export type Visibility = 'Inherit' | 'Restricted';
-
-
-
-
-
-
-
-
-
-
 
 
 
 
 export type AbiEvent =
-  | {
-    /**
-     * A folder's display name changed.
-     */
-    name: "FolderAliasChanged";
-    payload: Event_FolderAliasChanged;
-  }
-  | {
-    /**
-     * A folder's colour changed.
-     */
-    name: "FolderColorChanged";
-    payload: Event_FolderColorChanged;
-  }
-  | {
-    /**
-     * A docs context was bound to a folder.
-     */
-    name: "FolderContextBound";
-    payload: Event_FolderContextBound;
-  }
-  | {
-    /**
-     * A folder's recorded parent changed.
-     */
-    name: "FolderParentChanged";
-    payload: Event_FolderParentChanged;
-  }
-  | {
-    /**
-     * A folder was added to the registry.
-     */
-    name: "FolderRegistered";
-    payload: Event_FolderRegistered;
-  }
-  | {
-    /**
-     * A folder's per-member role was set or cleared (UI re-fetches the row).
-     */
-    name: "FolderRoleChanged";
-    payload: Event_FolderRoleChanged;
-  }
-  | {
-    /**
-     * The display order of a parent's child folders changed.
-     */
-    name: "FolderSortOrderChanged";
-    payload: Event_FolderSortOrderChanged;
-  }
-  | {
-    /**
-     * A folder was removed from the registry.
-     */
-    name: "FolderUnregistered";
-    payload: Event_FolderUnregistered;
-  }
-  | {
-    /**
-     * A folder's registry visibility flag changed.
-     */
-    name: "FolderVisibilityChanged";
-    payload: Event_FolderVisibilityChanged;
-  }
   | {
     /**
      * A manager was added.
@@ -426,7 +181,7 @@ export class RegistryClient {
   /**
    * add_manager
    *
-   * Makes a member a registry manager, which lets them set folder roles and remove any folder from the registry.
+   * Makes a member a registry manager. The registry gates none of its own methods on the role; the app reads `list_managers` to decide who may administer the workspace.
    * Only the registry owner may do this.
    *
    * @param params.member The member's account id as 64 hex characters, as listed by `list_group_members`.
@@ -435,40 +190,6 @@ export class RegistryClient {
    */
   public async addManager(params: { member: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'add_manager', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * bind_folder_context
-   *
-   * Attaches a folder's docs context to its registry record.
-   * Allowed once per folder and only for the folder's registrant; the binding can never be changed or removed.
-   * Not idempotent: a retry after a lost response fails as already bound, so check `get_folder_context` before repeating.
-   *
-   * @param params.folder_id The folder's group id.
-   * @param params.context_id The id of the context created with service `docs` inside the folder's group.
-   *
-   * @intent mutating
-   */
-  public async bindFolderContext(params: { folder_id: FolderId; context_id: ContextId }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'bind_folder_context', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * clear_folder_role
-   *
-   * Resets a member's role on a folder to the default `Editor`.
-   * Only a registry admin may do this; clearing a member who has no role row is not an error.
-   *
-   * @param params.folder_id The folder's group id.
-   * @param params.member The member's account id as 64 hex characters.
-   * @remarks destructive
-   *
-   * @intent mutating
-   */
-  public async clearFolderRole(params: { folder_id: FolderId; member: string }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params });
     return response as void;
   }
 
@@ -505,68 +226,6 @@ export class RegistryClient {
   }
 
   /**
-   * get_folder
-   *
-   * Returns one folder's registry record, including the docs context bound to it.
-   * Fails when the folder is not registered.
-   *
-   * @param params.id The folder's group id.
-   * @returns The folder row.
-   *
-   * @intent read_only
-   */
-  public async getFolder(params: { id: FolderId }): Promise<FolderDto> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_folder', argsJson: params });
-    return response as FolderDto;
-  }
-
-  /**
-   * get_folder_context
-   *
-   * Returns the docs context bound to a folder.
-   *
-   * @param params.folder_id The folder's group id.
-   * @returns The context id, or `null` when the folder is unknown or no context is bound yet.
-   *
-   * @intent read_only
-   */
-  public async getFolderContext(params: { folder_id: FolderId }): Promise<ContextId> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_folder_context', argsJson: params });
-    return response as ContextId;
-  }
-
-  /**
-   * get_folder_role
-   *
-   * Returns a member's role on a folder, `Editor` when none was set.
-   *
-   * @param params.folder_id The folder's group id.
-   * @param params.member The member's account id as 64 hex characters.
-   * @returns The member's role.
-   *
-   * @intent read_only
-   */
-  public async getFolderRole(params: { folder_id: FolderId; member: string }): Promise<Role> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_folder_role', argsJson: params });
-    return response as Role;
-  }
-
-  /**
-   * get_folders
-   *
-   * Lists every folder registered in the workspace, one row per folder, in no guaranteed order.
-   * The list is not filtered by access: a restricted folder the caller cannot open is still listed, with its docs context id.
-   *
-   * @returns The folder rows; `parent_id` gives the tree and `context_id` the docs context of each folder.
-   *
-   * @intent read_only
-   */
-  public async getFolders(): Promise<FolderDto[]> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_folders', argsJson: {} });
-    return response as FolderDto[];
-  }
-
-  /**
    * get_owner
    *
    * Returns the registry owner: the account of the member who created the registry context.
@@ -582,41 +241,11 @@ export class RegistryClient {
   }
 
   /**
-   * get_sort_order
-   *
-   * Returns the stored display order of one parent's child folders.
-   *
-   * @param params.parent_id The parent folder's group id; `null` for the top level.
-   * @returns The child folder ids in display order; empty when no order was stored.
-   *
-   * @intent read_only
-   */
-  public async getSortOrder(params: { parent_id: FolderId | null }): Promise<FolderId[]> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'get_sort_order', argsJson: params });
-    return response as FolderId[];
-  }
-
-  /**
    * init
    */
   public async init(): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
-  }
-
-  /**
-   * list_folder_roles
-   *
-   * Lists the members who have an explicit role on a folder; everyone else is an `Editor`.
-   *
-   * @param params.folder_id The folder's group id.
-   * @returns One row per member with a role.
-   *
-   * @intent read_only
-   */
-  public async listFolderRoles(params: { folder_id: FolderId }): Promise<FolderRoleEntry[]> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'list_folder_roles', argsJson: params });
-    return response as FolderRoleEntry[];
   }
 
   /**
@@ -663,43 +292,6 @@ export class RegistryClient {
   }
 
   /**
-   * move_folder
-   *
-   * Changes the parent recorded in the registry.
-   * It does not move the folder's group in the namespace's group tree, and the Mero Docs app never calls it.
-   * Only the folder's registrant may do this.
-   *
-   * @param params.id The folder's group id.
-   * @param params.new_parent The new parent folder's group id; `null` for top level.
-   *
-   * @intent mutating
-   */
-  public async moveFolder(params: { id: FolderId; new_parent: FolderId | null }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'move_folder', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * register_folder
-   *
-   * Adds a folder to the workspace registry so the workspace lists it, and makes the caller its registrant.
-   * Only the registrant can later change or bind the folder; a registry admin can also remove it.
-   * Create the folder's group first and pass its group id as `id`.
-   * Not idempotent: a retry after a lost response fails because the id is already taken, so check `get_folder` before repeating.
-   *
-   * @param params.id The folder's group id.
-   * @param params.parent_id The parent folder's group id; `null` for a top-level folder, whose group sits directly under the namespace.
-   * @param params.color Accent colour as `#rrggbb`; `null` or an empty string for none.
-   * @param params.alias The folder's display name; `null` for none.
-   *
-   * @intent mutating
-   */
-  public async registerFolder(params: { id: FolderId; parent_id: FolderId | null; color: string | null; alias: string | null }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'register_folder', argsJson: params });
-    return response as void;
-  }
-
-  /**
    * remove_manager
    *
    * Takes manager rights away from a member.
@@ -712,23 +304,6 @@ export class RegistryClient {
    */
   public async removeManager(params: { member: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_manager', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * reorder
-   *
-   * Stores the display order of one parent's child folders.
-   * Every id must be a registered folder whose recorded parent is `parent_id`.
-   * Any member may reorder; the last write wins.
-   *
-   * @param params.parent_id The parent folder's group id; `null` for the top level.
-   * @param params.folder_ids The child folders' group ids in the order to show them.
-   *
-   * @intent mutating
-   */
-  public async reorder(params: { parent_id: FolderId | null; folder_ids: FolderId[] }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'reorder', argsJson: params });
     return response as void;
   }
 
@@ -750,58 +325,6 @@ export class RegistryClient {
   }
 
   /**
-   * set_color
-   *
-   * Sets a folder's accent colour.
-   * Only the folder's registrant may do this.
-   *
-   * @param params.id The folder's group id.
-   * @param params.color Accent colour as `#rrggbb`; an empty string clears it.
-   *
-   * @intent mutating
-   */
-  public async setColor(params: { id: FolderId; color: string }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_color', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * set_folder_alias
-   *
-   * Sets the display name the registry holds for a folder.
-   * The registry copy lets members who cannot read a restricted folder's group still see its name, so keep it equal to the group's name (`set_group_metadata`).
-   * Only the folder's registrant may do this.
-   *
-   * @param params.id The folder's group id.
-   * @param params.alias The display name; an empty string clears it.
-   *
-   * @intent mutating
-   */
-  public async setFolderAlias(params: { id: FolderId; alias: string }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_folder_alias', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * set_folder_role
-   *
-   * Sets a member's role on a folder: `Viewer`, `Editor` (the default) or `Manager`.
-   * Only a registry admin may do this. A registry admin is the registry owner or a manager.
-   * This records the role only: core refuses a member's writes when they hold `ReadOnly` in the folder's group, so pair `Viewer` with that group role.
-   * The web app sets both, on the folder and on every Open sub-folder reached through it.
-   *
-   * @param params.folder_id The folder's group id.
-   * @param params.member The member's account id as 64 hex characters.
-   * @param params.role The role to set.
-   *
-   * @intent mutating
-   */
-  public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params });
-    return response as void;
-  }
-
-  /**
    * set_tag
    *
    * Creates a workspace tag or changes an existing tag's name and colour.
@@ -816,40 +339,6 @@ export class RegistryClient {
    */
   public async setTag(params: { key: string; name: string; color: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_tag', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * set_visibility
-   *
-   * Records a visibility flag on the folder's registry record.
-   * The Mero Docs app does not write or read this flag; who can join a folder is decided by the group's visibility, set with `set_group_visibility`.
-   * Only the folder's registrant may do this.
-   *
-   * @param params.id The folder's group id.
-   * @param params.visibility `Inherit` or `Restricted`.
-   *
-   * @intent mutating
-   */
-  public async setVisibility(params: { id: FolderId; visibility: Visibility }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * unregister_folder
-   *
-   * Removes a folder from the registry, together with its per-member role rows when the caller is a registry admin.
-   * The folder's group, its docs context and its documents are not touched; delete the context and group separately.
-   * Only the folder's registrant or a registry admin may do this. A registry admin is the registry owner or a manager.
-   *
-   * @param params.id The folder's group id.
-   * @remarks destructive
-   *
-   * @intent mutating
-   */
-  public async unregisterFolder(params: { id: FolderId }): Promise<void> {
-    const response = await this._transport.execute({ contextId: this._contextId, method: 'unregister_folder', argsJson: params });
     return response as void;
   }
 
