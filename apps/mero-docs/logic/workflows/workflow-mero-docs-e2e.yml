@@ -858,6 +858,17 @@ steps:
   # and Bob (reading on a separate node) must see the new parent.
   # =================================================================
 
+  # Backend is Restricted (created with no visibility), and core lists a
+  # Restricted folder only to its members - the privacy the app relies on.
+  # Bob is made a member, so the move is one he is meant to see.
+  - name: Add Bob to Backend, so he may see where it goes
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{backend_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
   - name: Alice moves Backend under Design (cross-session)
     type: reparent_group
     node: calimero-node-1
