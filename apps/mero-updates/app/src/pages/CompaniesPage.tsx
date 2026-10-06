@@ -17,6 +17,20 @@ import InviteModal from "../components/InviteModal";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
+import AppHeader from "../components/AppHeader";
+import {
+  AlertIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  InfoIcon,
+  LayersIcon,
+  LinkIcon,
+  LogOutIcon,
+  MoreIcon,
+  PlusIcon,
+  TrashIcon,
+  UserPlusIcon,
+} from "../components/icons";
 import styles from "./CompaniesPage.module.css";
 
 /**
@@ -274,59 +288,115 @@ export default function CompaniesPage() {
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
+  const copyId = (id: string) => {
+    void navigator.clipboard
+      ?.writeText(id)
+      .then(() => showToast("Company ID copied."))
+      .catch(() => showToast("Could not reach the clipboard.", "error"));
+  };
+
   return (
     <div className={styles.root}>
-      <header className={styles.header}>
-        <span className={styles.logo}>Mero Updates</span>
-        <div className={styles.headerRight}>
-          <span className={styles.nodeTag}>{nodeLabel}</span>
-          <button className={styles.logoutBtn} onClick={logout}>
-            Logout
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        crumbs={[{ label: "Companies", icon: <LayersIcon size={14} /> }]}
+        right={
+          <>
+            {nodeLabel && (
+              <span className={styles.nodeTag} title={nodeUrl ?? undefined}>
+                <span className={styles.nodeDot} aria-hidden />
+                {nodeLabel}
+              </span>
+            )}
+            <button className={styles.logoutBtn} onClick={logout} title="Sign out of this node">
+              <LogOutIcon size={15} />
+              Logout
+            </button>
+          </>
+        }
+      />
 
       <main className={styles.main}>
-        <h1 className={styles.title}>Your companies</h1>
-
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="Your company’s name — e.g. Acme Inc."
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            data-testid="space-name-input"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) create();
-            }}
-          />
-          <button
-            className={styles.btn}
-            onClick={create}
-            disabled={pending === "create" || !name.trim() || !appId}
-            data-testid="create-space"
-          >
-            {pending === "create" ? "Creating…" : "Create"}
-          </button>
+        <div className={styles.pageHead}>
+          <div>
+            <h1 className={styles.title}>Your companies</h1>
+            <p className={styles.sub}>
+              A company is a private space for investor relations. Invite someone once and they can read every
+              audience inside it.
+            </p>
+          </div>
         </div>
 
-        {status && <p className={styles.empty}>{status}</p>}
-        {error && <p className={styles.joinError}>{error}</p>}
+        <section className={styles.createCard}>
+          <label className={styles.label} htmlFor="new-company">
+            New company
+          </label>
+          <div className={styles.createRow}>
+            <input
+              id="new-company"
+              className={styles.input}
+              placeholder="Your company’s name — e.g. Acme Inc."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="space-name-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) create();
+              }}
+            />
+            <button
+              className={styles.btn}
+              onClick={create}
+              disabled={pending === "create" || !name.trim() || !appId}
+              data-testid="create-space"
+            >
+              {pending !== "create" && <PlusIcon size={16} />}
+              {pending === "create" ? "Creating…" : "Create"}
+            </button>
+          </div>
+        </section>
+
+        {status && (
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden />
+            {status}
+          </p>
+        )}
+        {error && (
+          <p className={styles.joinError} role="alert">
+            <AlertIcon size={15} />
+            {error}
+          </p>
+        )}
 
         {notInstalled && (
-          <p className={styles.empty}>
+          <p className={styles.notice}>
+            <InfoIcon size={16} />
             Mero Updates is not installed on this node. Install it from the
             marketplace, then reload — companies are listed per application.
           </p>
         )}
 
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>Companies</h2>
+          {!listing && namespaces.length > 0 && <span className={styles.count}>{namespaces.length}</span>}
+        </div>
+
         {listing || resolvingAppId ? (
-          <p className={styles.empty}>Loading…</p>
+          <div className={styles.grid} aria-busy="true">
+            <div className={styles.skeleton} />
+            <div className={styles.skeleton} />
+            <div className={styles.skeleton} />
+          </div>
         ) : namespaces.length === 0 ? (
           !notInstalled && (
-            <p className={styles.empty} data-testid="spaces-empty">
-              No companies yet. Founders: create yours above. Investors: paste the invitation a founder sent you below.
-            </p>
+            <div className={styles.emptyCard} data-testid="spaces-empty">
+              <span className={styles.emptyTile} aria-hidden>
+                <LayersIcon size={20} />
+              </span>
+              <strong>No companies yet</strong>
+              <span>
+                Founders: create yours above. Investors: paste the invitation a founder sent you below.
+              </span>
+            </div>
           )
         ) : (
           <div className={styles.grid}>
@@ -341,16 +411,24 @@ export default function CompaniesPage() {
                   data-testid="space-row"
                   onClick={() => navigate(`/companies/${ns.namespaceId}`)}
                 >
-                  <span className={styles.cardName}>{ns.name}</span>
-                  <span className={styles.cardSub}>
-                    {ns.audienceCount} audience{ns.audienceCount === 1 ? "" : "s"} ·{" "}
-                    {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                  <span className={styles.cardTile} aria-hidden>
+                    <LayersIcon size={18} />
                   </span>
+                  <span className={styles.cardText}>
+                    <span className={styles.cardName}>{ns.name}</span>
+                    <span className={styles.cardSub}>
+                      {ns.audienceCount} audience{ns.audienceCount === 1 ? "" : "s"} ·{" "}
+                      {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <ChevronRightIcon size={16} className={styles.cardChevron} />
                 </button>
                 <button
                   className={styles.menuBtn}
                   data-testid="space-menu"
                   title="More options"
+                  aria-label="More options"
+                  aria-expanded={menuOpenId === ns.namespaceId}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
@@ -358,10 +436,14 @@ export default function CompaniesPage() {
                     );
                   }}
                 >
-                  ⋯
+                  <MoreIcon size={16} />
                 </button>
                 {menuOpenId === ns.namespaceId && (
-                  <div className={styles.dropdown}>
+                  <div
+                    className={styles.dropdown}
+                    role="menu"
+                    onKeyDown={(e) => e.key === "Escape" && setMenuOpenId(null)}
+                  >
                     {/* Gated on hosting: a space the cloud refused to host
                         cannot be invited to, and the button says why instead
                         of failing on the click. */}
@@ -375,23 +457,41 @@ export default function CompaniesPage() {
                       title={hostingNote(ns.namespaceId) ?? undefined}
                       data-testid="invite-btn"
                     >
+                      <UserPlusIcon size={15} />
                       {hostingNote(ns.namespaceId) ? "Invite (not hosted yet)" : "Invite"}
+                    </button>
+                    <button
+                      className={styles.dropdownItem}
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        copyId(ns.namespaceId);
+                      }}
+                    >
+                      <CopyIcon size={15} />
+                      Copy company ID
                     </button>
                     {/* Deleting a namespace is a node's own operation — the
                         account admin refuses it by name (NotForAccountError).
                         Hidden rather than shown-and-failing. */}
                     {!isDelegated && (
-                      <button
-                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          setPendingDelete(ns);
-                        }}
-                        data-testid="delete-space"
-                      >
-                        Delete
-                      </button>
+                      <>
+                        <div className={styles.dropdownSep} />
+                        <button
+                          className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            setPendingDelete(ns);
+                          }}
+                          data-testid="delete-space"
+                        >
+                          <TrashIcon size={15} />
+                          Delete
+                        </button>
+                      </>
                     )}
+                    <div className={styles.dropdownMeta} title={ns.namespaceId}>
+                      ID <code>{ns.namespaceId}</code>
+                    </div>
                   </div>
                 )}
               </div>
@@ -399,29 +499,36 @@ export default function CompaniesPage() {
           </div>
         )}
 
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Invited by a founder? Paste the link to join their updates.</p>
-          <div className={styles.joinRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste an invitation link or code…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              data-testid="join-input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && joinCode.trim()) acceptCode(joinCode);
-              }}
-            />
-            <button
-              className={styles.btn}
-              onClick={() => acceptCode(joinCode)}
-              disabled={pending === "join" || !joinCode.trim()}
-              data-testid="join-btn"
-            >
-              {pending === "join" ? "Joining…" : "Join"}
-            </button>
+        <section className={styles.joinSection}>
+          <span className={styles.joinTile} aria-hidden>
+            <LinkIcon size={18} />
+          </span>
+          <div className={styles.joinBody}>
+            <h2 className={styles.joinTitle}>Join with an invitation</h2>
+            <p className={styles.joinLabel}>Invited by a founder? Paste the link to join their updates.</p>
+            <div className={styles.joinRow}>
+              <input
+                className={styles.input}
+                aria-label="Invitation link or code"
+                placeholder="Paste an invitation link or code…"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                data-testid="join-input"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && joinCode.trim()) acceptCode(joinCode);
+                }}
+              />
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => acceptCode(joinCode)}
+                disabled={pending === "join" || !joinCode.trim()}
+                data-testid="join-btn"
+              >
+                {pending === "join" ? "Joining…" : "Join"}
+              </button>
+            </div>
           </div>
-        </div>
+        </section>
       </main>
 
       {/* A confirm step rather than `window.confirm`: deleting a space deletes
@@ -432,7 +539,12 @@ export default function CompaniesPage() {
         className={styles.confirmDialog}
         onClose={() => setPendingDelete(null)}
       >
-        <h2 className={styles.confirmTitle}>Delete this company?</h2>
+        <div className={styles.confirmHead}>
+          <span className={styles.dangerTile} aria-hidden>
+            <AlertIcon size={18} />
+          </span>
+          <h2 className={styles.confirmTitle}>Delete this company?</h2>
+        </div>
         <p className={styles.confirmText}>
           <strong>{pendingDelete?.name}</strong> and the{" "}
           <strong>
@@ -445,18 +557,18 @@ export default function CompaniesPage() {
         </p>
         <div className={styles.confirmRow}>
           <button
+            className={`${styles.btn} ${styles.btnSecondary}`}
+            onClick={() => setPendingDelete(null)}
+          >
+            Cancel
+          </button>
+          <button
             className={`${styles.btn} ${styles.btnDanger}`}
             onClick={() => pendingDelete && removeSpace(pendingDelete)}
             disabled={pending === `delete:${pendingDelete?.namespaceId}`}
             data-testid="confirm-delete-space"
           >
-            Delete
-          </button>
-          <button
-            className={styles.logoutBtn}
-            onClick={() => setPendingDelete(null)}
-          >
-            Cancel
+            Delete company
           </button>
         </div>
       </dialog>

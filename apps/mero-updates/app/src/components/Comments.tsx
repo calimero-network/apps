@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { CommentView } from "../generated/UpdatesClient";
 import { personLabel, timeAgo, useLive, useSelfAccount, useUpdatesClient } from "../lib/updates";
 import { Avatar } from "./bits";
+import { MessageIcon, SendIcon } from "./icons";
 
 /**
  * The reply thread under an update or question.
@@ -45,7 +46,8 @@ export default function Comments({
 
   return (
     <section className="thread" aria-label="Replies">
-      <h2 className="sectionLabel">
+      <h2 className="sectionTitle">
+        <MessageIcon size={16} />
         {comments.length === 0 ? "Replies" : `${comments.length} repl${comments.length === 1 ? "y" : "ies"}`}
       </h2>
       <ReplyBox placeholder={placeholder} onSubmit={(b) => post(b, null)} testId="reply-box" />
@@ -164,6 +166,7 @@ function ReplyBox({
         {error && <span className="errorText">{error}</span>}
         <span className="hint">⌘/Ctrl + Enter</span>
         <button className="primary small" disabled={busy || !body.trim()} onClick={() => void send()}>
+          {!busy && <SendIcon size={14} />}
           {busy ? "Sending…" : "Send"}
         </button>
       </div>

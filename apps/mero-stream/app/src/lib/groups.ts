@@ -485,8 +485,13 @@ export async function createRoom(
   // unknown ones, so the old spelling is a 400 rather than a silently ignored
   // key. (The value still does not persist — see the note below — but the
   // request has to be well-formed either way.)
+  // Born Open, not flipped to it: created Restricted, core admits the TEE with
+  // an op sealed under the subgroup's own key, and the later Open flip cites
+  // it - a namespace member outside the subgroup can read the flip but never
+  // that ancestry, so their node stops applying the namespace's governance.
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
     groupName: opts.name,
+    visibility: "open",
   });
 
   // `createGroupInNamespace`'s `name` does NOT persist on rc.19: the subgroup

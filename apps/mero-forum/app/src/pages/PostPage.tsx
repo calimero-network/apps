@@ -3,16 +3,49 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import CommentRow from "../components/CommentRow";
 import SessionMenu from "../components/SessionMenu";
-import { Byline, VoteColumn } from "../components/PostCard";
+import {
+  AuthorAvatar,
+  Byline,
+  ShareButton,
+  VoteColumn,
+} from "../components/PostCard";
+import {
+  Avatar,
+  Menu,
+  NavItem,
+  Shell,
+  SideCard,
+  TechDetails,
+} from "../components/chrome";
+import {
+  ArrowLeftIcon,
+  HomeIcon,
+  MessageIcon,
+  TrashIcon,
+} from "../components/icons";
 import type { PostView } from "../generated/ForumClient";
 import {
+  fullDate,
   timeAgo,
   useComments,
   useForumClient,
   useSelfAccount,
 } from "../lib/forum";
 import { useNickname } from "../lib/nickname";
-import { getForumName, getContextId } from "../lib/session";
+import {
+  getActiveNamespaceId,
+  getForumName,
+  getContextId,
+} from "../lib/session";
+
+/** Focus the reply box from the rail / action bar. Presentation only. */
+function focusReply() {
+  const el = document.getElementById("reply-box");
+  if (el) {
+    el.scrollIntoView({ block: "center" });
+    el.focus();
+  }
+}
 
 export default function PostPage() {
   const { postId } = useParams<{ postId: string }>();
@@ -105,124 +138,226 @@ export default function PostPage() {
   };
 
   return (
-    <>
-      <div className="top">
-        <span className="brand">{forumName || "Forum"}</span>
-        <div className="grow" />
-        <SessionMenu />
-      </div>
-
-      <Link className="back" to="/f">
-        Back to the feed
-      </Link>
-
+    <Shell
+      nav={
+        <NavItem
+          icon={<HomeIcon size={24} />}
+          label="Home"
+          onClick={() => navigate("/f")}
+        />
+      }
+      cta={
+        <button
+          type="button"
+          className="ui-btn ui-btn-primary x-ctaBtn"
+          onClick={focusReply}
+          aria-label="Write a reply"
+        >
+          <span className="x-ctaIcon">
+            <MessageIcon size={22} />
+          </span>
+          <span className="x-ctaLabel">Reply</span>
+        </button>
+      }
+      account={<SessionMenu name={nickname.name} />}
+      header={
+        <div className="x-headRow">
+          <Link
+            className="x-headBack back"
+            to="/f"
+            aria-label="Back to the feed"
+            title="Back to the feed"
+          >
+            <ArrowLeftIcon size={20} />
+          </Link>
+          <div className="x-headText">
+            <span className="x-headTitle">Post</span>
+            <span className="x-headSub">in {forumName || "Forum"}</span>
+          </div>
+        </div>
+      }
+      aside={
+        <SideCard title="About this forum">
+          <p className="x-sideText">
+            <strong>{forumName || "This forum"}</strong> lives on the members'
+            own nodes — replies replicate peer to peer, with no server in
+            between.
+          </p>
+          <TechDetails
+            rows={[
+              { label: "Post ID", value: post?.id },
+              { label: "Context ID", value: contextId },
+              { label: "Space ID", value: getActiveNamespaceId() },
+            ]}
+          />
+        </SideCard>
+      }
+    >
       {error && <div className="error">{error}</div>}
 
       {!post && !error && <div className="skeleton" />}
 
       {post && (
         <>
-          <article className="card">
-            <VoteColumn
-              score={post.score}
-              myVote={post.my_vote}
-              onVote={(v) => void vote(v)}
-            />
-            <div className="body">
-              <h1 className="title">{post.title}</h1>
-              <div className="meta">
+          <article className="card thread">
+            <div className="threadHead">
+              <AuthorAvatar
+                account={post.author}
+                authorName={post.author_name}
+                size={48}
+              />
+              <div className="threadWho">
                 <Byline
                   account={post.author}
                   authorName={post.author_name}
                   selfAccount={selfAccount}
                 />
-                <span>·</span>
-                <span>{timeAgo(post.created_at)}</span>
-                {post.edited_at > post.created_at && (
-                  <>
-                    <span>·</span>
-                    <span>edited</span>
-                  </>
-                )}
-                {mine && (
-                  <>
-                    <span>·</span>
+              </div>
+              {mine && (
+                <Menu label="Post actions">
+                  {(close) => (
                     <button
-                      className="linkBtn danger"
+                      type="button"
+                      role="menuitem"
+                      className="ui-menuItem"
+                      data-danger="true"
                       data-testid="delete-post"
-                      onClick={() => void deletePost()}
+                      onClick={() => {
+                        close();
+                        void deletePost();
+                      }}
                     >
+                      <TrashIcon size={17} />
                       Delete
                     </button>
-                  </>
-                )}
-              </div>
-              <p className="excerpt">{post.body}</p>
+                  )}
+                </Menu>
+              )}
+            </div>
+            <h1 className="title">{post.title}</h1>
+            <p className="excerpt">{post.body}</p>
+            <div className="threadStamp">
+              <span>{fullDate(post.created_at)}</span>
+              <span aria-hidden="true">·</span>
+              <span>{timeAgo(post.created_at)}</span>
+              {post.edited_at > post.created_at && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>edited</span>
+                </>
+              )}
+            </div>
+            <div className="threadStats">
+              <span>
+                <strong>{post.comment_count}</strong>
+                {post.comment_count === 1 ? "Comment" : "Comments"}
+              </span>
+              <span>
+                <strong>{post.score}</strong>Score
+              </span>
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                className="act reply"
+                onClick={focusReply}
+                title="Reply"
+                aria-label="Reply"
+              >
+                <span className="actIcon">
+                  <MessageIcon size={19} />
+                </span>
+              </button>
+              <VoteColumn
+                score={post.score}
+                myVote={post.my_vote}
+                onVote={(v) => void vote(v)}
+              />
+              <ShareButton postId={post.id} />
             </div>
           </article>
 
           <div className="composer">
-            {/* Who this comment will be signed as, said where it is written. */}
-            <p className="composerAs" data-testid="comment-as">
-              {nickname.name ? (
-                <>
-                  You are commenting as <strong>{nickname.name}</strong>
-                </>
-              ) : (
-                <>
-                  You have not picked a name — this will be signed with an
-                  account id
-                </>
-              )}
-            </p>
-            <textarea
-              rows={3}
-              placeholder="Add a comment"
-              aria-label="Add a comment"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+            <Avatar
+              label={nickname.name || "You"}
+              seed={nickname.name || "you"}
             />
-            <button
-              className="primary"
-              disabled={busy || !draft.trim()}
-              onClick={() => void comment()}
-            >
-              {busy ? "Sending…" : "Comment"}
-            </button>
+            <div className="composerMain">
+              <textarea
+                id="reply-box"
+                rows={2}
+                placeholder="Post your reply"
+                aria-label="Add a comment"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              <div className="composerBar">
+                {/* Who this comment will be signed as, said where it is written. */}
+                <p
+                  className="composerAs"
+                  data-testid="comment-as"
+                  data-unset={nickname.name ? undefined : "true"}
+                >
+                  {nickname.name ? (
+                    <>
+                      You are commenting as <strong>{nickname.name}</strong>
+                    </>
+                  ) : (
+                    <>
+                      You have not picked a name — this will be signed with an
+                      account id
+                    </>
+                  )}
+                </p>
+                <span className="grow" />
+                <button
+                  className="primary"
+                  disabled={busy || !draft.trim()}
+                  onClick={() => void comment()}
+                >
+                  {busy ? "Sending…" : "Comment"}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {items.map((c) => (
-            <CommentRow
-              key={c.id}
-              comment={c}
-              selfAccount={selfAccount}
-              onVote={(v) => void voteComment(c.id, v)}
-              onEdit={async (body) => {
-                if (!client) throw new Error("not connected to a node");
-                await client.editComment({ comment_id: c.id, body });
-                reload();
-              }}
-              onDelete={() => {
-                if (!client) return;
-                void client
-                  .deleteComment({ comment_id: c.id })
-                  .catch((e: unknown) =>
-                    setError(e instanceof Error ? e.message : String(e)),
-                  )
-                  .finally(() => reload());
-              }}
-            />
-          ))}
+          <div className="commentList">
+            {items.map((c) => (
+              <CommentRow
+                key={c.id}
+                comment={c}
+                selfAccount={selfAccount}
+                onVote={(v) => void voteComment(c.id, v)}
+                onEdit={async (body) => {
+                  if (!client) throw new Error("not connected to a node");
+                  await client.editComment({ comment_id: c.id, body });
+                  reload();
+                }}
+                onDelete={() => {
+                  if (!client) return;
+                  void client
+                    .deleteComment({ comment_id: c.id })
+                    .catch((e: unknown) =>
+                      setError(e instanceof Error ? e.message : String(e)),
+                    )
+                    .finally(() => reload());
+                }}
+              />
+            ))}
+          </div>
 
           {!loading && items.length === 0 && (
-            <div className="empty">No comments yet.</div>
+            <div className="empty">
+              <MessageIcon size={24} />
+              No comments yet.
+            </div>
           )}
 
           {/* Comments paginate on a button rather than on scroll: the page
               already has an infinite feed behind it, and a thread reads
               forwards, so "load more" is the honest control here. */}
           {hasMore && (
-            <div className="end">
+            <div className="end repliesEnd">
               <button
                 className="ghost"
                 onClick={() => void loadMore()}
@@ -234,6 +369,6 @@ export default function PostPage() {
           )}
         </>
       )}
-    </>
+    </Shell>
   );
 }

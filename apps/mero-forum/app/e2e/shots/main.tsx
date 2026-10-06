@@ -6,7 +6,10 @@ import FeedPage from "../../src/pages/FeedPage";
 import PostPage from "../../src/pages/PostPage";
 import SpacesPage from "../../src/pages/SpacesPage";
 import ForumsPage from "../../src/pages/ForumsPage";
+import InvitationPrompt from "../../src/components/InvitationPrompt";
 import { ToastProvider } from "../../src/contexts/ToastContext";
+import OpenDialog from "./OpenDialog";
+import FocusField from "./FocusField";
 import { scenarioById } from "./fixtures";
 import "../../src/index.css";
 
@@ -29,6 +32,10 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
       <MemoryRouter initialEntries={[initial]}>
+        {/* Mounted above the routes, as in App.tsx. */}
+        <InvitationPrompt />
+        {sc.open && <OpenDialog testId={sc.open} />}
+        {sc.focus && <FocusField label={sc.focus} />}
         {/* ⚠️ `.shell` (a 720px column) wraps ONLY the feed and thread routes in
             App.tsx — the pickers own their full-width layout. The harness used
             to wrap everything, which squeezed the space and forum pages into a

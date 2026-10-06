@@ -984,6 +984,7 @@ export class GroupApiDataSource implements GroupApi {
 
       const body: Record<string, unknown> = {};
       if (requestedName) body.groupName = requestedName;
+      if (request.visibility) body.visibility = request.visibility;
       const data = await getMeroJs().admin.createGroupInNamespace(
         namespaceId,
         body,

@@ -24,7 +24,7 @@ async function waitForPanel(page: Page): Promise<void> {
 }
 
 async function toList(page: Page): Promise<void> {
-  const back = btn(page, "← All polls");
+  const back = btn(page, "All polls");
   if (await back.isVisible()) await back.click();
   await waitForPanel(page);
 }

@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AlertTriangleIcon, CheckIcon } from "../components/icons";
 import styles from "./ToastContext.module.css";
 
 /**
@@ -97,7 +98,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             data-testid={`toast-${t.kind}`}
             title="Dismiss"
           >
-            {t.message}
+            {t.kind === "error" ? (
+              <AlertTriangleIcon size={16} className={styles.icon} />
+            ) : (
+              <CheckIcon size={16} className={styles.icon} />
+            )}
+            <span>{t.message}</span>
           </button>
         ))}
       </div>

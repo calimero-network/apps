@@ -14,12 +14,24 @@ import {
   type NamespaceRow,
 } from "../lib/groups";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
-import { initials } from "../lib/people";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { hostingProblem } from "../lib/hosting";
 import { useDialogOpen } from "../hooks/useDialogOpen";
+import CopyId from "../components/CopyId";
+import {
+  AlertTriangleIcon,
+  ArrowRightIcon,
+  BrandMark,
+  HashIcon,
+  LayersIcon,
+  LinkIcon,
+  PlusIcon,
+  UserPlusIcon,
+  UsersIcon,
+  XIcon,
+} from "../components/icons";
 import styles from "./Manage.module.css";
 
 /**
@@ -225,33 +237,44 @@ export default function StreamsPage() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
+          <BrandMark size={28} />
           <h1 className={styles.brandName}>Mero Stream</h1>
           <span className={styles.version}>v{__APP_VERSION__}</span>
         </div>
         <span className={styles.spacer} />
-        <button
-          type="button"
-          className={styles.ghostBtn}
-          onClick={() => setShowJoin(true)}
-          data-testid="open-join"
-        >
-          Join with a link or code
-        </button>
-        <SessionMenu />
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.ghostBtn}
+            onClick={() => setShowJoin(true)}
+            data-testid="open-join"
+          >
+            <LinkIcon size={16} />
+            Join with a link or code
+          </button>
+          <span className={styles.headerDivider} aria-hidden="true" />
+          <SessionMenu />
+        </div>
       </header>
 
       <main className={styles.content}>
         <div className={styles.heading}>
-          <h2 className={styles.title}>Your streams</h2>
-          <p className={styles.subtitle}>
-            A <strong>stream</strong> is a namespace you invite people to.
-            Inside it, each <strong>room</strong> is one video call — 640×480
-            H.264 carried on ephemeral presence, so nothing is written to
-            replicated state.
-          </p>
+          <div className={styles.headingText}>
+            <h2 className={styles.title}>Your streams</h2>
+            <p
+              className={styles.subtitle}
+              title="Each room is 640×480 H.264 carried on ephemeral presence, so nothing is written to replicated state."
+            >
+              A <strong>stream</strong> is a space you invite people to. Each{" "}
+              <strong>room</strong> inside it is one video call.
+            </p>
+          </div>
         </div>
 
         <div className={styles.toolbar}>
+          <span className={styles.toolbarIcon} aria-hidden="true">
+            <LayersIcon size={18} />
+          </span>
           <input
             className={styles.input}
             placeholder="Name a new stream"
@@ -261,6 +284,7 @@ export default function StreamsPage() {
             maxLength={60}
             disabled={pending === "create"}
             data-testid="stream-name-input"
+            aria-label="New stream name"
           />
           <ActionButton
             onClick={create}
@@ -269,6 +293,7 @@ export default function StreamsPage() {
             disabled={!name.trim() || !admin}
             testId="create-stream"
           >
+            <PlusIcon size={16} />
             Create stream
           </ActionButton>
         </div>
@@ -326,6 +351,9 @@ export default function StreamsPage() {
             and the create would fail for a reason the empty state never named. */}
         {notInstalled && (
           <div className={styles.empty}>
+            <span className={styles.emptyIcon} aria-hidden="true">
+              <AlertTriangleIcon size={20} />
+            </span>
             <span className={styles.emptyTitle}>
               Mero Stream is not installed on this node
             </span>
@@ -342,12 +370,25 @@ export default function StreamsPage() {
           !notInstalled &&
           namespaces.length === 0 && (
             <div className={styles.empty}>
+              <span className={styles.emptyIcon} aria-hidden="true">
+                <LayersIcon size={20} />
+              </span>
               <span className={styles.emptyTitle}>No streams yet</span>
               <span className={styles.emptyHint}>
                 Create one above to start a call, or use{" "}
                 <strong>Join with a link or code</strong> if someone invited
                 you.
               </span>
+              <div className={styles.emptyActions}>
+                <button
+                  type="button"
+                  className={styles.ghostBtn}
+                  onClick={() => setShowJoin(true)}
+                >
+                  <LinkIcon size={16} />
+                  Join with an invitation
+                </button>
+              </div>
             </div>
           )}
 
@@ -361,8 +402,11 @@ export default function StreamsPage() {
                 data-namespace={ns.namespaceId}
               >
                 <div className={styles.cardTop}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {initials(ns.name)}
+                  <span
+                    className={`${styles.avatar} ${styles.avatarActive}`}
+                    aria-hidden="true"
+                  >
+                    <LayersIcon size={18} />
                   </span>
                   <span className={styles.cardText}>
                     <span className={styles.cardName} title={ns.name}>
@@ -370,18 +414,18 @@ export default function StreamsPage() {
                     </span>
                     <span className={styles.cardMeta}>
                       <span className={styles.pill}>
+                        <HashIcon size={12} />
                         {ns.roomCount} room{ns.roomCount === 1 ? "" : "s"}
                       </span>
                       <span className={styles.pill}>
+                        <UsersIcon size={12} />
                         {ns.memberCount} member
                         {ns.memberCount === 1 ? "" : "s"}
                       </span>
                     </span>
                   </span>
                 </div>
-                <span className={styles.cardId} title={ns.namespaceId}>
-                  {ns.namespaceId}
-                </span>
+                <CopyId value={ns.namespaceId} label="stream ID" />
                 <div className={styles.cardActions}>
                   <button
                     type="button"
@@ -390,6 +434,7 @@ export default function StreamsPage() {
                     data-testid="open-stream"
                   >
                     Open
+                    <ArrowRightIcon size={16} />
                   </button>
                   {/* Outside any wrapping button: nested interactive elements are
                       invalid HTML and the inner click does not reliably fire. */}
@@ -403,6 +448,7 @@ export default function StreamsPage() {
                     pending={pending === `invite:${ns.namespaceId}`}
                     pendingLabel="Minting…"
                     variant="secondary"
+                    size="small"
                     testId="invite-btn"
                     disabled={!!hostingProblem(ns.namespaceId)}
                     title={
@@ -410,6 +456,7 @@ export default function StreamsPage() {
                       "Invite someone to this whole stream"
                     }
                   >
+                    <UserPlusIcon size={16} />
                     Invite
                   </ActionButton>
                 </div>
@@ -426,20 +473,31 @@ export default function StreamsPage() {
         onClose={() => setShowJoin(false)}
       >
         <div className={styles.dialogHead}>
-          <h2 className={styles.dialogTitle}>Join a stream or room</h2>
+          <div>
+            <h2 className={styles.dialogTitle}>Join a stream or room</h2>
+            <p className={styles.dialogDesc}>
+              Paste the invitation someone sent you.
+            </p>
+          </div>
           <span className={styles.spacer} />
           <button
             type="button"
-            className={styles.ghostBtn}
+            className={styles.iconBtn}
             onClick={() => setShowJoin(false)}
             data-testid="join-dialog-close"
+            aria-label="Close"
+            title="Close"
           >
-            Close
+            <XIcon size={18} />
           </button>
         </div>
         <div className={styles.dialogBody}>
+          <label className={styles.dialogLabel} htmlFor="join-code">
+            Invitation link or code
+          </label>
           <div className={styles.dialogRow}>
             <input
+              id="join-code"
               className={styles.dialogInput}
               placeholder="Paste an invite link or code"
               value={joinCode}
@@ -449,15 +507,6 @@ export default function StreamsPage() {
               data-testid="join-code-input"
               aria-label="Invite link or code"
             />
-            <ActionButton
-              onClick={join}
-              pending={pending === "join"}
-              pendingLabel="Joining…"
-              disabled={!joinCode.trim() || !admin}
-              testId="join-submit"
-            >
-              Join
-            </ActionButton>
           </div>
           <p className={styles.help}>
             An invite <strong>link</strong> normally just needs opening — it
@@ -466,6 +515,20 @@ export default function StreamsPage() {
             is one long line of base58 with no spaces, and any mero app&apos;s
             code works here.
           </p>
+        </div>
+        <div className={styles.dialogFoot}>
+          <ActionButton onClick={() => setShowJoin(false)} variant="secondary">
+            Cancel
+          </ActionButton>
+          <ActionButton
+            onClick={join}
+            pending={pending === "join"}
+            pendingLabel="Joining…"
+            disabled={!joinCode.trim() || !admin}
+            testId="join-submit"
+          >
+            Join
+          </ActionButton>
         </div>
       </dialog>
     </div>

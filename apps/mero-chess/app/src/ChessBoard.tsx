@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Piece } from "./pieces";
 import {
-  glyphFor,
+  FILES,
   isDarkSquare,
   pieceName,
   piecesFromFen,
@@ -8,6 +9,7 @@ import {
   squareIndex,
   squareName,
   targetsFrom,
+  type PieceColor,
 } from "./utils/board";
 
 export interface ChessBoardProps {
@@ -23,6 +25,8 @@ export interface ChessBoardProps {
   onMove: (uci: string) => void;
   /** Origin and target of the last move played, highlighted. */
   lastMove?: string;
+  /** The side whose king is in check, as the contract reported it — lit red. */
+  inCheck?: PieceColor;
 }
 
 /**
@@ -42,11 +46,15 @@ export function ChessBoard({
   interactive,
   onMove,
   lastMove,
+  inCheck,
 }: ChessBoardProps) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [promoting, setPromoting] = useState<{ from: string; to: string; kinds: string[] } | null>(
-    null,
-  );
+  const [promoting, setPromoting] = useState<{
+    from: string;
+    to: string;
+    kinds: string[];
+    color: PieceColor;
+  } | null>(null);
 
   const squares = piecesFromFen(fen);
   const targets = selected ? targetsFrom(legalMoves, selected) : new Set<string>();
@@ -68,7 +76,8 @@ export function ChessBoard({
         // Ask, rather than assuming a queen. Underpromotion is rare and it is
         // occasionally the only move that wins; a board that silently queens
         // takes that away with no way to notice.
-        setPromoting({ from: selected, to: square, kinds });
+        const mover = squares[squareIndex(selected) ?? -1];
+        setPromoting({ from: selected, to: square, kinds, color: mover?.color ?? "white" });
         return;
       }
       onMove(`${selected}${square}`);
@@ -92,9 +101,14 @@ export function ChessBoard({
 
   const lastFrom = lastMove?.slice(0, 2);
   const lastTo = lastMove?.slice(2, 4);
+  // The edge squares carry the coordinates, inside the board the way every
+  // modern board does it — a rank digit down the left, a file letter along the
+  // bottom, whichever way round the board is.
+  const leftFile = flipped ? 7 : 0;
+  const bottomRank = flipped ? 7 : 0;
 
   return (
-    <div className="board-wrap">
+    <div className={`board-wrap${promoting ? " is-promoting" : ""}`}>
       <div
         className="board"
         role="grid"
@@ -105,16 +119,21 @@ export function ChessBoard({
           const name = squareName(index);
           const piece = squares[index];
           const isTarget = targets.has(name);
+          const checked = piece?.kind === "k" && piece.color === inCheck;
           const classes = [
             "square",
             isDarkSquare(index) ? "dark" : "light",
             selected === name ? "selected" : "",
             isTarget ? (piece ? "capture" : "target") : "",
             name === lastFrom || name === lastTo ? "last" : "",
+            checked ? "check" : "",
+            interactive && movable.has(name) ? "movable" : "",
           ]
             .filter(Boolean)
             .join(" ");
           const label = piece ? `${name}, ${pieceName(piece)}` : name;
+          const file = index % 8;
+          const rank = Math.floor(index / 8);
           return (
             <button
               key={name}
@@ -130,57 +149,56 @@ export function ChessBoard({
               disabled={!interactive || (!isTarget && !movable.has(name) && selected === null)}
               onClick={() => choose(name)}
             >
-              {piece && (
-                <span className={`piece ${piece.color}`} aria-hidden="true">
-                  {glyphFor(piece)}
+              {file === leftFile && (
+                <span className="coord rank" aria-hidden="true">
+                  {rank + 1}
                 </span>
               )}
-              {isTarget && !piece && <span className="dot" aria-hidden="true" />}
+              {rank === bottomRank && (
+                <span className="coord file" aria-hidden="true">
+                  {FILES[file]}
+                </span>
+              )}
+              {piece && <Piece className="piece" color={piece.color} kind={piece.kind} />}
+              {isTarget && !piece && <span className="move-hint" aria-hidden="true" />}
             </button>
           );
         })}
       </div>
 
-      {/* Coordinates outside the grid, so they are never mistaken for a piece
-          and never inflate a square's accessible name. */}
-      <div className="files" aria-hidden="true">
-        {(flipped ? ["h", "g", "f", "e", "d", "c", "b", "a"] : ["a", "b", "c", "d", "e", "f", "g", "h"]).map(
-          (file) => (
-            <span key={file}>{file}</span>
-          ),
-        )}
-      </div>
-
       {promoting && (
         <div className="promotion" role="dialog" aria-label="choose a promotion">
-          <span className="empty">Promote to</span>
-          {promoting.kinds.map((kind) => (
+          <div className="promotion-card">
+            <p className="promotion-title">Promote to</p>
+            <div className="promotion-choices">
+              {promoting.kinds.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className="promotion-choice"
+                  data-testid={`promote-${kind}`}
+                  onClick={() => {
+                    onMove(`${promoting.from}${promoting.to}${kind}`);
+                    setPromoting(null);
+                    setSelected(null);
+                  }}
+                >
+                  <Piece className="piece" color={promoting.color} kind={kind} />
+                  <span>{PROMOTION_NAMES[kind] ?? kind}</span>
+                </button>
+              ))}
+            </div>
             <button
-              key={kind}
               type="button"
-              data-testid={`promote-${kind}`}
+              className="ghost small"
               onClick={() => {
-                onMove(`${promoting.from}${promoting.to}${kind}`);
                 setPromoting(null);
                 setSelected(null);
               }}
             >
-              <span className="piece white" aria-hidden="true">
-                {glyphFor({ color: "white", kind })}
-              </span>
-              {PROMOTION_NAMES[kind] ?? kind}
+              Cancel
             </button>
-          ))}
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setPromoting(null);
-              setSelected(null);
-            }}
-          >
-            Cancel
-          </button>
+          </div>
         </div>
       )}
     </div>

@@ -184,7 +184,14 @@ export default function ProjectsPage() {
       // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
       // whole create. On an account the subgroup is created as a governance op
       // signed by the account, through the same `admin`.
-      const sgData = await admin.createGroupInNamespace(teamId, { groupName: newName.trim() });
+      // Born Open, not flipped to it: created Restricted, core admits the TEE with
+      // an op sealed under the subgroup's own key, and the later Open flip cites
+      // it - a namespace member outside the subgroup can read the flip but never
+      // that ancestry, so their node stops applying the namespace's governance.
+      const sgData = await admin.createGroupInNamespace(teamId, {
+        groupName: newName.trim(),
+        visibility: "open",
+      });
       const subgroupId = sgData?.groupId ?? "";
 
       if (subgroupId) {

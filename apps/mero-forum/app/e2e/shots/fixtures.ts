@@ -8,6 +8,10 @@ export interface Scenario {
   /** Nobody has picked a name — the state the nickname bar calls out. */
   unnamed?: boolean;
   empty?: boolean;
+  /** data-testid of a control to click after mount (opens a dialog). */
+  open?: string;
+  /** aria-label of a field to focus after mount. */
+  focus?: string;
 }
 
 export const SCENARIOS: Scenario[] = [
@@ -26,6 +30,29 @@ export const SCENARIOS: Scenario[] = [
     page: "post",
   },
   { id: "dark", title: "Dark theme", page: "post", theme: "dark" },
+  {
+    id: "spaces-empty",
+    title: "No spaces yet",
+    page: "spaces",
+    empty: true,
+  },
+  {
+    id: "invite",
+    title: "Invite dialog for a space",
+    page: "forums",
+    open: "invite-space",
+  },
+  {
+    id: "composer",
+    title: "Writing a new post",
+    page: "feed",
+    focus: "Start a discussion",
+  },
+  {
+    id: "invitation",
+    title: "An invitation link landed",
+    page: "spaces",
+  },
 ];
 
 export function scenarioById(id: string): Scenario {

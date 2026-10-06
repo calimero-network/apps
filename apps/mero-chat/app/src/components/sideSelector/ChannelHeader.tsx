@@ -139,9 +139,12 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
     //    user-created channels the alias and the display name are the
     //    same string (and short — UI input is constrained well under
     //    the 64-byte cap).
+    // Born with the chosen visibility: a public channel created Restricted
+    // and flipped Open strands every namespace member outside it.
     const sgResp = await groupApi.createSubgroup(namespaceId, {
       groupName: channelName,
       name: channelName,
+      visibility: isPublic ? "open" : "restricted",
     });
     if (sgResp.error || !sgResp.data) {
       const msg = sgResp.error?.message || "A channel with this name may already exist";

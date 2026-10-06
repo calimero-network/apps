@@ -1,5 +1,6 @@
 import { useMero } from "@calimero-network/mero-react";
 import { clearActiveRoom } from "../lib/session";
+import { LogOutIcon, ServerIcon } from "./icons";
 import styles from "./SessionMenu.module.css";
 
 /**
@@ -15,7 +16,12 @@ import styles from "./SessionMenu.module.css";
  * machine, "which node am I on" is the first question when something looks
  * empty, and the answer used to be nowhere on screen.
  */
-export default function SessionMenu() {
+export default function SessionMenu({
+  variant = "inline",
+}: {
+  /** `inline` for a page header; `menu` for rows inside a dropdown. */
+  variant?: "inline" | "menu";
+} = {}) {
   const { nodeUrl, logout } = useMero();
 
   // The active room is OUR state, not the SDK's — `logout()` clears tokens and
@@ -39,10 +45,46 @@ export default function SessionMenu() {
     }
   })();
 
+  if (variant === "menu") {
+    return (
+      <div className={styles.menuRoot}>
+        {host && (
+          <span
+            className={styles.menuNode}
+            title={nodeUrl ?? undefined}
+            data-testid="session-node"
+          >
+            <ServerIcon size={16} />
+            <span className={styles.menuNodeText}>
+              <span className={styles.menuNodeLabel}>Connected node</span>
+              <span className={styles.menuNodeHost}>{host}</span>
+            </span>
+          </span>
+        )}
+        <button
+          type="button"
+          role="menuitem"
+          className={styles.menuLogout}
+          onClick={signOut}
+          data-testid="logout"
+          title="Sign out of this node"
+        >
+          <LogOutIcon size={16} />
+          Log out
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.root}>
       {host && (
-        <span className={styles.node} title={nodeUrl ?? undefined} data-testid="session-node">
+        <span
+          className={styles.node}
+          title={nodeUrl ?? undefined}
+          data-testid="session-node"
+        >
+          <span className={styles.nodeDot} aria-hidden="true" />
           {host}
         </span>
       )}
@@ -52,8 +94,10 @@ export default function SessionMenu() {
         onClick={signOut}
         data-testid="logout"
         title="Sign out of this node"
+        aria-label="Log out"
       >
-        Log out
+        <LogOutIcon size={16} />
+        <span className={styles.logoutText}>Log out</span>
       </button>
     </div>
   );

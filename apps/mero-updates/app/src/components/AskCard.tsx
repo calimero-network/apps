@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 
 import type { AskView } from "../generated/UpdatesClient";
 import { askKind, personLabel, timeAgo, useUpdatesClient } from "../lib/updates";
+import { Avatar } from "./bits";
+import { AskKindIcon, CheckIcon, FileTextIcon, HandIcon } from "./icons";
 
 /**
  * One ask, from whichever side you are on.
@@ -48,19 +50,23 @@ export default function AskCard({
     <article className="ask" data-status={ask.status} data-testid="ask">
       <div className="askHead">
         <span className="askKind" title={kind.hint}>
-          <span aria-hidden>{kind.icon}</span> {kind.label}
+          <AskKindIcon kind={ask.kind} /> {kind.label}
         </span>
         {!open && <span className="pill ok">Resolved</span>}
         <span className="grow" />
-        <span className="muted small">
+        <span className="offerCount" data-has={ask.offer_count > 0}>
+          <HandIcon size={13} />
           {ask.offer_count} offer{ask.offer_count === 1 ? "" : "s"}
         </span>
       </div>
       <h3 className="askTitle">{ask.title}</h3>
       {ask.detail && <p className="askDetail">{ask.detail}</p>}
       {showPost && (
-        <p className="muted small">
-          From <Link to={`/a/p/${ask.post_id}`}>{ask.post_title}</Link> · {timeAgo(ask.created_at)}
+        <p className="askSource">
+          <FileTextIcon size={13} />
+          <span>
+            From <Link to={`/a/p/${ask.post_id}`}>{ask.post_title}</Link> · {timeAgo(ask.created_at)}
+          </span>
         </p>
       )}
 
@@ -69,11 +75,12 @@ export default function AskCard({
           {ask.my_offer && !offering ? (
             <div className="row wrap">
               <span className="pill ok" data-testid="offered">
+                {ask.my_offer.status !== "declined" && <CheckIcon size={13} />}
                 {ask.my_offer.status === "accepted"
-                  ? "✓ The team accepted your offer"
+                  ? "The team accepted your offer"
                   : ask.my_offer.status === "declined"
                     ? "The team has this covered — thank you"
-                    : "✓ You offered to help"}
+                    : "You offered to help"}
               </span>
               <button className="linkBtn" onClick={() => setOffering(true)}>
                 Edit note
@@ -129,7 +136,8 @@ export default function AskCard({
                   })
                 }
               >
-                🙋 I can help
+                <HandIcon size={14} />
+                I can help
               </button>
               <button className="ghost small" onClick={() => setOffering(true)}>
                 Help with a note
@@ -146,11 +154,12 @@ export default function AskCard({
               {ask.offers.map((o) => (
                 <li key={o.account} className="offer" data-status={o.status}>
                   <div className="offerWho">
+                    <Avatar name={o.name} account={o.account} />
                     <strong>{personLabel(o.name, o.account)}</strong>
                     {o.firm && <span className="muted"> · {o.firm}</span>}
                     <span className="muted small"> · {timeAgo(o.created_at)}</span>
                   </div>
-                  {o.note && <p className="offerNote">“{o.note}”</p>}
+                  {o.note && <p className="offerNote">{o.note}</p>}
                   <div className="row small">
                     {o.status === "offered" ? (
                       <>

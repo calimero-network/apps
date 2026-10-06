@@ -835,6 +835,9 @@ describe('createPersonalVault', () => {
       'sub-1',
       { subgroupVisibility: 'restricted' },
     ]);
+    expect(argsOf(calls, 'createGroupInNamespace')?.[1]).toMatchObject({
+      visibility: 'restricted',
+    });
   });
 
   it('grants an arriving member nothing', async () => {

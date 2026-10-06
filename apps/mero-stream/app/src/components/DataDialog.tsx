@@ -5,6 +5,7 @@ import { upstreamBitsPerSecond } from "../lib/capacity";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { fmt } from "../lib/format";
 import { MetricValue } from "./MetricValue";
+import { AlertTriangleIcon, DownloadIcon, RefreshIcon, XIcon } from "./icons";
 import styles from "./DataDialog.module.css";
 
 const RAW_FRAME_BYTES = LIVE_WIDTH * LIVE_HEIGHT;
@@ -139,15 +140,22 @@ export default function DataDialog({
       onClose={onClose}
     >
       <div className={styles.head}>
-        <h2 className={styles.headTitle}>Session data</h2>
+        <div className={styles.headText}>
+          <h2 className={styles.headTitle}>Call details</h2>
+          <p className={styles.headSub}>
+            Capacity, live measurements, encoder settings and replicated state.
+          </p>
+        </div>
         <span className={styles.headSpacer} />
         <button
           type="button"
           className={styles.closeBtn}
           onClick={onClose}
           data-testid="data-dialog-close"
+          aria-label="Close"
+          title="Close"
         >
-          Close
+          <XIcon size={18} />
         </button>
       </div>
 
@@ -194,103 +202,114 @@ export default function DataDialog({
               testId="slots-detail"
             />
           </div>
-          <p className={styles.note}>
-            <strong>
-              The send loop is usually the first thing to run out.
-            </strong>{" "}
-            Fragments are published <em>serially</em> — the node assigns the
-            per-author LWW sequence when it accepts the call, so firing them
-            concurrently races that assignment and lets the channel drop a
-            fragment of a frame that was fully published. So{" "}
-            <code>{budget.slicesPerSecond.toFixed(1)}</code> publishes a second
-            have to fit in one second: above{" "}
-            <code>{budget.maxSustainableRttMs.toFixed(0)} ms</code> per publish,
-            frames drop no matter how much bandwidth is free. This ceiling does
-            not depend on how many people are in the call.
-          </p>
-          <p className={styles.note}>
-            <strong>
-              Upstream is not what caps the broadcaster count — frame loss is.
-            </strong>{" "}
-            The cap comes from a four-node measurement (96% of frames delivered
-            with one broadcaster, 43% with two, 22% with three); the bandwidth
-            model below allowed four and was wrong by 2&times;. It still bounds
-            what is worth trying, so it is still here. core runs gossipsub with{" "}
-            <code>flood_publish</code> and <code>mesh_n = 4</code>, so a
-            publisher sends its own frames to every subscribed peer while
-            forwarding of everyone else&apos;s follows the mesh. Two
-            consequences worth knowing: the forwarding term stops growing past 5
-            participants (so spectators are cheap to add, while each extra
-            person taxes every broadcaster another{" "}
-            {(s.effectiveBitrate / 1_000_000).toFixed(1)} Mbps), and a spectator
-            still uploads nearly a broadcaster&apos;s worth — gossipsub makes
-            every node a relay, so spectating saves the camera and the encoder,
-            not the uplink.
-          </p>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Participants</th>
-                  <th>Broadcasters</th>
-                  <th>Broadcaster up</th>
-                  <th>Spectator up</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Broadcaster counts are DERIVED, never listed. They used to
-                    be hardcoded up to 4, from when the cap was 4 — so once the
-                    measurement moved it to 2 this table showed rows like "8
-                    people, 4 broadcasting" that no room can ever reach, in the
-                    one panel a person reads to understand their own call.
-                    Capping each row at maxBroadcasters keeps every row
-                    reachable, and still shows the shape that matters: the
-                    broadcaster column climbing with participants while the
-                    spectator column goes flat past five. */}
-                {rows.map(([n, sc]) => (
-                  <tr
-                    key={`${n}-${sc}`}
-                    className={n === participants ? styles.rowHere : undefined}
-                  >
-                    <td>{n}</td>
-                    <td>{sc}</td>
-                    <td>
-                      {(
-                        upstreamBitsPerSecond({
-                          participants: n,
-                          broadcasters: sc,
-                          bitrate: 1_500_000,
-                          broadcasting: true,
-                        }) / 1_000_000
-                      ).toFixed(1)}{" "}
-                      Mbps
-                    </td>
-                    <td>
-                      {(
-                        upstreamBitsPerSecond({
-                          participants: n,
-                          broadcasters: sc,
-                          bitrate: 1_500_000,
-                          broadcasting: false,
-                        }) / 1_000_000
-                      ).toFixed(1)}{" "}
-                      Mbps
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className={styles.note}>
-            ⚠️ All of that is for <strong>directly connected</strong> peers.
-            Behind a relay the whole call crosses one circuit — 18 Mbps at the
-            2-broadcaster cap with 6 people, and 36 Mbps at the 4 the bandwidth
-            model once allowed, which is the &quot;resource limit exceeded&quot;
-            collapse on record from the 2026-08-07 cross-network call. The
-            browser cannot tell whether it is relayed (libp2p transport state is
-            not exposed to the page), so publish latency above is the only
-            signal there is.
-          </p>
+          <details className={styles.explain}>
+            <summary className={styles.explainSummary}>
+              Why the broadcaster cap is what it is
+            </summary>
+            <div className={styles.explainBody}>
+              <p className={styles.note}>
+                <strong>
+                  The send loop is usually the first thing to run out.
+                </strong>{" "}
+                Fragments are published <em>serially</em> — the node assigns the
+                per-author LWW sequence when it accepts the call, so firing them
+                concurrently races that assignment and lets the channel drop a
+                fragment of a frame that was fully published. So{" "}
+                <code>{budget.slicesPerSecond.toFixed(1)}</code> publishes a
+                second have to fit in one second: above{" "}
+                <code>{budget.maxSustainableRttMs.toFixed(0)} ms</code> per
+                publish, frames drop no matter how much bandwidth is free. This
+                ceiling does not depend on how many people are in the call.
+              </p>
+              <p className={styles.note}>
+                <strong>
+                  Upstream is not what caps the broadcaster count — frame loss
+                  is.
+                </strong>{" "}
+                The cap comes from a four-node measurement (96% of frames
+                delivered with one broadcaster, 43% with two, 22% with three);
+                the bandwidth model below allowed four and was wrong by
+                2&times;. It still bounds what is worth trying, so it is still
+                here. core runs gossipsub with <code>flood_publish</code> and{" "}
+                <code>mesh_n = 4</code>, so a publisher sends its own frames to
+                every subscribed peer while forwarding of everyone else&apos;s
+                follows the mesh. Two consequences worth knowing: the forwarding
+                term stops growing past 5 participants (so spectators are cheap
+                to add, while each extra person taxes every broadcaster another{" "}
+                {(s.effectiveBitrate / 1_000_000).toFixed(1)} Mbps), and a
+                spectator still uploads nearly a broadcaster&apos;s worth —
+                gossipsub makes every node a relay, so spectating saves the
+                camera and the encoder, not the uplink.
+              </p>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Participants</th>
+                      <th>Broadcasters</th>
+                      <th>Broadcaster up</th>
+                      <th>Spectator up</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Broadcaster counts are DERIVED, never listed. They used to
+                      be hardcoded up to 4, from when the cap was 4 — so once the
+                      measurement moved it to 2 this table showed rows like "8
+                      people, 4 broadcasting" that no room can ever reach, in the
+                      one panel a person reads to understand their own call.
+                      Capping each row at maxBroadcasters keeps every row
+                      reachable, and still shows the shape that matters: the
+                      broadcaster column climbing with participants while the
+                      spectator column goes flat past five. */}
+                    {rows.map(([n, sc]) => (
+                      <tr
+                        key={`${n}-${sc}`}
+                        className={
+                          n === participants ? styles.rowHere : undefined
+                        }
+                      >
+                        <td>{n}</td>
+                        <td>{sc}</td>
+                        <td>
+                          {(
+                            upstreamBitsPerSecond({
+                              participants: n,
+                              broadcasters: sc,
+                              bitrate: 1_500_000,
+                              broadcasting: true,
+                            }) / 1_000_000
+                          ).toFixed(1)}{" "}
+                          Mbps
+                        </td>
+                        <td>
+                          {(
+                            upstreamBitsPerSecond({
+                              participants: n,
+                              broadcasters: sc,
+                              bitrate: 1_500_000,
+                              broadcasting: false,
+                            }) / 1_000_000
+                          ).toFixed(1)}{" "}
+                          Mbps
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className={styles.note}>
+                <AlertTriangleIcon size={16} className={styles.noteIcon} />
+                All of that is for <strong>directly connected</strong> peers.
+                Behind a relay the whole call crosses one circuit — 18 Mbps at
+                the 2-broadcaster cap with 6 people, and 36 Mbps at the 4 the
+                bandwidth model once allowed, which is the &quot;resource limit
+                exceeded&quot; collapse on record from the 2026-08-07
+                cross-network call. The browser cannot tell whether it is
+                relayed (libp2p transport state is not exposed to the page), so
+                publish latency above is the only signal there is.
+              </p>
+            </div>
+          </details>
         </section>
 
         {/* ── Probe ────────────────────────────────────────────────────────── */}
@@ -304,6 +323,7 @@ export default function DataDialog({
                 onClick={s.downloadCsv}
                 data-testid="download-csv"
               >
+                <DownloadIcon size={14} />
                 Download CSV ({p.framesRenderedTotal})
               </button>
               <button
@@ -312,6 +332,7 @@ export default function DataDialog({
                 onClick={s.resetProbe}
                 data-testid="reset-probe"
               >
+                <RefreshIcon size={14} />
                 Reset
               </button>
             </div>
@@ -360,15 +381,22 @@ export default function DataDialog({
               testId="post-errors"
             />
           </div>
-          <p className={styles.note}>
-            <strong>Latency spans two clocks</strong> — the sender&apos;s{" "}
-            <code>createdAt</code> and this machine&apos;s render — so trust it
-            only where both nodes share a host clock. Publish RTT is the
-            skew-proof figure. And <strong>measure after Reset</strong>: a
-            receiver&apos;s first drain stamps a whole backlog within a few
-            milliseconds, which reports decode rates in the thousands and
-            understates latency for those frames.
-          </p>
+          <details className={styles.explain}>
+            <summary className={styles.explainSummary}>
+              How latency is measured
+            </summary>
+            <div className={styles.explainBody}>
+              <p className={styles.note}>
+                <strong>Latency spans two clocks</strong> — the sender&apos;s{" "}
+                <code>createdAt</code> and this machine&apos;s render — so trust
+                it only where both nodes share a host clock. Publish RTT is the
+                skew-proof figure. And <strong>measure after Reset</strong>: a
+                receiver&apos;s first drain stamps a whole backlog within a few
+                milliseconds, which reports decode rates in the thousands and
+                understates latency for those frames.
+              </p>
+            </div>
+          </details>
         </section>
 
         {/* ── Encoder ──────────────────────────────────────────────────────── */}
@@ -422,32 +450,41 @@ export default function DataDialog({
               </span>
             </div>
           </div>
-          <p className={styles.note}>
-            The defaults — <strong>640×480, 25 fps, 1.5 Mbps</strong> — are what
-            the app ships with and what the numbers above were taken at. Raising
-            the frame rate does <em>not</em> raise the byte rate: the encoder
-            targets a fixed bitrate, so more frames means fewer bytes each. It
-            does cost send-loop budget, because every frame is its own publish.
-          </p>
-          <p className={styles.note}>
-            <strong>Capturing at</strong> is that ceiling{" "}
-            <em>divided among the live broadcasters</em>, and the division is
-            measured rather than cautious. A four-node run published a real 25
-            fps stream from one, two, three and four nodes and counted what a
-            subscriber received: <strong>96%</strong> of frames at one
-            broadcaster, <strong>43%</strong> at two, <strong>22%</strong> at
-            three. At two the send side was healthy — 24.5 of 25 fps published,
-            zero errors — so the loss is the transport, not the sender: presence
-            is a single-writer LWW register, the node drops an envelope whose
-            sequence is at or below the highest already applied, and gossip
-            reordering gets likelier as the aggregate publish rate rises.
-            Aggregate rate is the variable, so two people at ~13 fps put the
-            same load on the wire as one at 25.
-          </p>
-          <p className={styles.note}>
-            <strong>Actually encoding at</strong> is a separate mechanism:
-            congestion control backing off on measured publish latency.
-          </p>
+          <details className={styles.explain}>
+            <summary className={styles.explainSummary}>
+              About the encoder settings
+            </summary>
+            <div className={styles.explainBody}>
+              <p className={styles.note}>
+                The defaults — <strong>640×480, 25 fps, 1.5 Mbps</strong> — are
+                what the app ships with and what the numbers above were taken
+                at. Raising the frame rate does <em>not</em> raise the byte
+                rate: the encoder targets a fixed bitrate, so more frames means
+                fewer bytes each. It does cost send-loop budget, because every
+                frame is its own publish.
+              </p>
+              <p className={styles.note}>
+                <strong>Capturing at</strong> is that ceiling{" "}
+                <em>divided among the live broadcasters</em>, and the division
+                is measured rather than cautious. A four-node run published a
+                real 25 fps stream from one, two, three and four nodes and
+                counted what a subscriber received: <strong>96%</strong> of
+                frames at one broadcaster, <strong>43%</strong> at two,{" "}
+                <strong>22%</strong> at three. At two the send side was healthy
+                — 24.5 of 25 fps published, zero errors — so the loss is the
+                transport, not the sender: presence is a single-writer LWW
+                register, the node drops an envelope whose sequence is at or
+                below the highest already applied, and gossip reordering gets
+                likelier as the aggregate publish rate rises. Aggregate rate is
+                the variable, so two people at ~13 fps put the same load on the
+                wire as one at 25.
+              </p>
+              <p className={styles.note}>
+                <strong>Actually encoding at</strong> is a separate mechanism:
+                congestion control backing off on measured publish latency.
+              </p>
+            </div>
+          </details>
         </section>
 
         {/* ── DAG proof ────────────────────────────────────────────────────── */}
@@ -478,24 +515,33 @@ export default function DataDialog({
               testId="sender-count"
             />
           </div>
-          <p className={styles.note}>
-            <strong>These should all be zero while the tiles are moving</strong>{" "}
-            — that is the measurement, not a broken read. Frames ride an
-            ephemeral-presence slice: encrypted under the context group key,
-            signed, gossiped, never persisted, never in the DAG, swept by the
-            node after 7 s. There is no <code>get_chunks</code> round-trip
-            either, because the bytes arrive in the event itself. A non-zero
-            counter here means something wrote chunks through the contract — the{" "}
-            <code>/stream</code> route, or an older client.
-          </p>
-          <p className={styles.note}>
-            What it costs: a slice is capped at 16 KiB, so a keyframe is
-            fragmented, and the channel is a single-writer register — an
-            envelope arriving after a newer one is dropped. A delta frame is one
-            fragment and unaffected; a keyframe that loses a fragment is never
-            shown, and the next keyframe is the retry. <strong>Seq gaps</strong>{" "}
-            counts exactly that.
-          </p>
+          <details className={styles.explain}>
+            <summary className={styles.explainSummary}>
+              Why these should be zero
+            </summary>
+            <div className={styles.explainBody}>
+              <p className={styles.note}>
+                <strong>
+                  These should all be zero while the tiles are moving
+                </strong>{" "}
+                — that is the measurement, not a broken read. Frames ride an
+                ephemeral-presence slice: encrypted under the context group key,
+                signed, gossiped, never persisted, never in the DAG, swept by
+                the node after 7 s. There is no <code>get_chunks</code>{" "}
+                round-trip either, because the bytes arrive in the event itself.
+                A non-zero counter here means something wrote chunks through the
+                contract — the <code>/stream</code> route, or an older client.
+              </p>
+              <p className={styles.note}>
+                What it costs: a slice is capped at 16 KiB, so a keyframe is
+                fragmented, and the channel is a single-writer register — an
+                envelope arriving after a newer one is dropped. A delta frame is
+                one fragment and unaffected; a keyframe that loses a fragment is
+                never shown, and the next keyframe is the retry.{" "}
+                <strong>Seq gaps</strong> counts exactly that.
+              </p>
+            </div>
+          </details>
         </section>
       </div>
     </dialog>

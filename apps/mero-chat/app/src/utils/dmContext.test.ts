@@ -106,6 +106,7 @@ describe("dmContext", () => {
     expect(result.alias).toBe(expectedAlias);
     expect(createSubgroup).toHaveBeenCalledWith("namespace-1", {
       groupName: expectedAlias,
+      visibility: "restricted",
     });
     // The name it sends must be one the server will accept.
     expect(groupNameError(expectedAlias)).toBeNull();

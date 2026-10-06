@@ -7,6 +7,8 @@ import {
   generateInvitationUrl,
   serializeInvitationPayload,
 } from "./utils/invitation";
+import { CheckIcon, CopyIcon, LinkIcon, UserPlusIcon } from "./icons";
+import { IconTile } from "./ui";
 
 /**
  * Mint a shareable invitation to this context.
@@ -79,26 +81,27 @@ export function InviteCard({ contextId }: { contextId: string }) {
 
   return (
     <div className="card">
-      <h2>Invite someone</h2>
-      <p className="empty" style={{ marginBottom: 14 }}>
+      <div className="card-head">
+        <IconTile accent>
+          <UserPlusIcon size={18} />
+        </IconTile>
+        <div className="grow">
+          <h2>Invite someone</h2>
+          <div className="meta">Members can vote and audit every tally</div>
+        </div>
+      </div>
+      <p className="hint">
         One link. Opens the web app, or hands off to Calimero Desktop on a
-        machine that has it. Whoever opens it joins this group, sees its polls,
-        and can vote and audit every tally.
+        machine that has it. Whoever opens it joins this group and sees its polls.
       </p>
 
       {groupLoading && <p className="empty">Resolving this context&apos;s namespace…</p>}
       {groupError && <pre className="err">{groupError.message}</pre>}
 
-      <div className="row">
-        <button onClick={mint} disabled={busy || !namespaceId}>
-          {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
-        </button>
-        {link && (
-          <button className="ghost" onClick={copy}>
-            {copied ? "Copied" : "Copy"}
-          </button>
-        )}
-      </div>
+      <button className={link ? "ghost" : ""} onClick={mint} disabled={busy || !namespaceId} style={{ width: "100%" }}>
+        <LinkIcon size={16} />
+        {busy ? "Creating…" : link ? "Create another" : "Create invite link"}
+      </button>
 
       {link && (
         <>
@@ -118,16 +121,22 @@ export function InviteCard({ contextId }: { contextId: string }) {
             input semantics are avoided deliberately: a `<code>` stays selectable
             without becoming a form control the tab order has to visit.
           */}
-          <code className="invite-link mono" title={link}>
-            {link}
-          </code>
+          <div className="link-field">
+            <code className="invite-link mono" title={link}>
+              {link}
+            </code>
+            <button className="sm" onClick={copy}>
+              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
           {/*
             Said plainly rather than hidden, because it is the difference between
             "this link is broken" and "this app is not deployed yet". The desktop
             resolves a link to an installed app and then reads the bundle's
             `links.frontend`; with that field absent it forgets the link.
           */}
-          <p className="empty">
+          <p className="help" style={{ marginTop: 10 }}>
             The link carries the invitation and works when pasted into this app.
             Opening it in a browser or the desktop app additionally needs this
             app&apos;s published bundle to declare a <code>links.frontend</code>{" "}

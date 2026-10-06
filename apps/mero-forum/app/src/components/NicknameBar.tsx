@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Nickname } from "../lib/nickname";
+import { Avatar } from "./chrome";
 
 /**
  * "You are posting as …", and the one control that changes it.
@@ -56,40 +57,49 @@ export default function NicknameBar({ nickname }: { nickname: Nickname }) {
           }}
           data-testid="nickname-input"
         />
-        <button
-          className="primary"
-          onClick={() => void save()}
-          disabled={nickname.saving}
-        >
-          {nickname.saving ? "Saving…" : "Save"}
-        </button>
-        <button
-          className="ghost"
-          onClick={() => {
-            setDraft(nickname.name);
-            setEditing(false);
-          }}
-        >
-          Cancel
-        </button>
         {nickname.error && <span className="error">{nickname.error}</span>}
+        <div className="row">
+          <button
+            className="primary"
+            onClick={() => void save()}
+            disabled={nickname.saving}
+          >
+            {nickname.saving ? "Saving…" : "Save"}
+          </button>
+          <button
+            className="ghost"
+            onClick={() => {
+              setDraft(nickname.name);
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="namebar" data-testid="nickname-bar">
-      {nickname.name ? (
-        <span className="namebarText">
-          You are posting as <strong>{nickname.name}</strong>
-        </span>
-      ) : (
-        <span className="namebarText" data-unset="true">
-          You have not picked a name — your posts will show an account id
-        </span>
-      )}
+      <div className="namebarWho">
+        <Avatar
+          label={nickname.name || "?"}
+          seed={nickname.name || "?"}
+          size={48}
+        />
+        {nickname.name ? (
+          <span className="namebarText">
+            You are posting as <strong>{nickname.name}</strong>
+          </span>
+        ) : (
+          <span className="namebarText" data-unset="true">
+            You have not picked a name — your posts will show an account id
+          </span>
+        )}
+      </div>
       <button
-        className="ghost"
+        className={nickname.name ? "ghost" : "primary"}
         onClick={() => setEditing(true)}
         data-testid="nickname-edit"
       >

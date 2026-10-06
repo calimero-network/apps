@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAudience } from "../components/AudienceShell";
 import { CategoryChip } from "../components/bits";
+import { CheckIcon, PlusIcon } from "../components/icons";
 import type { CategoryView } from "../generated/UpdatesClient";
 import { CATEGORY_COLORS, useLive, useUpdatesClient } from "../lib/updates";
 
@@ -72,8 +73,17 @@ export default function SettingsPage() {
 
   return (
     <>
+      <div className="pageHead">
+        <div>
+          <h1 className="pageTitle">Settings</h1>
+          <p className="pageSub">How the company appears to investors, and how updates are filed.</p>
+        </div>
+      </div>
       <section className="card form" data-testid="settings">
-        <h2 className="sectionLabel">Company</h2>
+        <div className="cardHead">
+          <h2 className="cardTitle">Company</h2>
+          <p className="muted small">Shown at the top of every update and in your investors' sidebar.</p>
+        </div>
         <label className="fieldLabel" htmlFor="company">
           Company name
         </label>
@@ -88,13 +98,18 @@ export default function SettingsPage() {
             </option>
           ))}
         </select>
-        <p className="muted small">
+        <p className="helpText">
           Drives the “next update due” reminder on the team's home screen. Regular beats long: investors trust the
           founder who writes every month, good news or not.
         </p>
         <div className="row end">
           {error && <span className="errorText">{error}</span>}
-          {saved && <span className="okText">Saved</span>}
+          {saved && (
+            <span className="okText">
+              <CheckIcon size={14} />
+              Saved
+            </span>
+          )}
           <button className="primary small" onClick={() => void saveSettings()}>
             Save
           </button>
@@ -102,17 +117,20 @@ export default function SettingsPage() {
       </section>
 
       <section className="card form">
-        <h2 className="sectionLabel">Categories</h2>
-        <p className="muted small">
-          File every update under one. Investors filter by category and can mute the ones they don't need.
-        </p>
+        <div className="cardHead">
+          <h2 className="cardTitle">Categories</h2>
+          <p className="muted small">
+            File every update under one. Investors filter by category and can mute the ones they don't need.
+          </p>
+        </div>
         {categories.map((c) => (
           <CategoryEditor key={c.id} category={c} onChanged={reload} />
         ))}
         <NewCategory onCreated={reload} />
         {categories.length === 0 && (
-          <button className="ghost small" onClick={() => void addStarters()} data-testid="starter-categories">
-            + Add starter set (Monthly, Fundraising, Product, Hiring, Board)
+          <button className="secondary small starterBtn" onClick={() => void addStarters()} data-testid="starter-categories">
+            <PlusIcon size={14} />
+            Add starter set (Monthly, Fundraising, Product, Hiring, Board)
           </button>
         )}
       </section>
@@ -160,7 +178,7 @@ function NewCategory({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="categoryEditor">
       <div className="row">
-        <input className="emojiInput" aria-label="Emoji" placeholder="🙂" value={emoji} maxLength={8} onChange={(e) => setEmoji(e.target.value)} />
+        <input className="emojiInput" aria-label="Emoji" placeholder="Emoji" value={emoji} maxLength={8} onChange={(e) => setEmoji(e.target.value)} />
         <input
           aria-label="New category name"
           placeholder="New category…"

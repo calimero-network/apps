@@ -15,7 +15,35 @@ import {
 } from "../lib/groups";
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import styles from "./ForumsPage.module.css";
+import {
+  AccountChip,
+  Avatar,
+  NavItem,
+  Shell,
+  SideCard,
+  TechDetails,
+} from "../components/chrome";
+import {
+  AlertIcon,
+  CopyIcon,
+  HashIcon,
+  LayersIcon,
+  MoreIcon,
+  PlusIcon,
+  TrashIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "../components/icons";
+import styles from "./Picker.module.css";
+
+/** Focus the create field from the rail's call to action. Presentation only. */
+function focusCreate() {
+  const el = document.getElementById("forum-name");
+  if (el) {
+    el.scrollIntoView({ block: "center" });
+    el.focus();
+  }
+}
 import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
 /**
@@ -40,7 +68,16 @@ import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 export default function ForumsPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero, logout } = useMero();
+  const { mero, logout, nodeUrl } = useMero();
+  const nodeLabel = (() => {
+    if (!nodeUrl) return "";
+    try {
+      const u = new URL(nodeUrl);
+      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+    } catch {
+      return nodeUrl;
+    }
+  })();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId } = useApplicationId();
@@ -264,35 +301,121 @@ export default function ForumsPage() {
     [mero, run, load, showToast],
   );
 
+  const spaceName = nsName || "Space";
+  const joinedCount = forums.filter((f) => f.joined).length;
+
   return (
-    <div className={styles.root}>
-      <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate("/spaces")}>
-          ← Spaces
-        </button>
-        <span className={styles.logo}>{nsName || "Space"}</span>
-        <div className={styles.headerRight}>
+    <>
+      <Shell
+        nav={
+          <>
+            <NavItem
+              icon={<LayersIcon size={24} />}
+              label="Spaces"
+              onClick={() => navigate("/spaces")}
+            />
+            <NavItem icon={<HashIcon size={24} />} label="Forums" active />
+            <NavItem
+              icon={<UserPlusIcon size={24} />}
+              label={pending === "invite-ns" ? "Inviting…" : "Invite people"}
+              onClick={inviteToNamespace}
+              disabled={pending === "invite-ns"}
+              testId="invite-space"
+            />
+          </>
+        }
+        cta={
           <button
-            className={styles.logoutBtn}
-            onClick={inviteToNamespace}
-            disabled={pending === "invite-ns"}
-            data-testid="invite-space"
+            type="button"
+            className="ui-btn ui-btn-primary x-ctaBtn"
+            onClick={focusCreate}
+            aria-label="New forum"
           >
-            {pending === "invite-ns" ? "Inviting…" : "Invite"}
+            <span className="x-ctaIcon">
+              <PlusIcon size={22} />
+            </span>
+            <span className="x-ctaLabel">New forum</span>
           </button>
-          <button className={styles.logoutBtn} onClick={logout}>
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <main className={styles.main}>
-        <h1 className={styles.title}>Forums</h1>
-
+        }
+        account={
+          <AccountChip
+            host={nodeLabel || null}
+            hostTitle={nodeUrl ?? undefined}
+            onLogout={logout}
+          />
+        }
+        header={
+          <div className="x-headRow">
+            <div className="x-headText">
+              <h1 className="x-headTitle">Forums</h1>
+              <span className="x-headSub">
+                <LayersIcon size={13} />
+                {spaceName}
+              </span>
+            </div>
+          </div>
+        }
+        aside={
+          <>
+            <SideCard>
+              <div className={styles.aboutHead}>
+                <Avatar label={spaceName} seed={namespaceId} square size={48} />
+                <div style={{ minWidth: 0 }}>
+                  <p className={styles.bigName}>{spaceName}</p>
+                  <span className="x-headSub">Space</span>
+                </div>
+              </div>
+              <p className="x-sideText">
+                Everyone invited to this space can open any forum in it,
+                including forums made later.
+              </p>
+              <div className="x-sideStats">
+                <span>
+                  <strong>{forums.length}</strong>
+                  {forums.length === 1 ? "forum" : "forums"}
+                </span>
+                <span>
+                  <strong>{joinedCount}</strong>joined
+                </span>
+              </div>
+              <TechDetails rows={[{ label: "Space ID", value: namespaceId }]} />
+            </SideCard>
+            <SideCard title="Invite people">
+              <p className="x-sideText">
+                One link joins <strong>{spaceName}</strong> and every forum in
+                it. To drop someone straight into one forum, use Invite from
+                that forum's menu.
+              </p>
+              <div className="x-sideForm">
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-dark ui-btn-block"
+                  style={{ height: 40 }}
+                  onClick={inviteToNamespace}
+                  disabled={pending === "invite:namespace"}
+                >
+                  <UserPlusIcon size={16} />
+                  {pending === "invite:namespace"
+                    ? "Creating link…"
+                    : "Create invite link"}
+                </button>
+              </div>
+            </SideCard>
+          </>
+        }
+      >
         <div className={styles.createRow}>
+          <Avatar
+            label="+"
+            seed="forum-x"
+            square
+            icon={<PlusIcon size={20} />}
+          />
           <input
-            className={styles.input}
-            placeholder="New forum name…"
+            id="forum-name"
+            className={styles.createInput}
+            placeholder="Name a new forum…"
+            aria-label="New forum name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             data-testid="forum-name-input"
@@ -301,80 +424,178 @@ export default function ForumsPage() {
             }}
           />
           <button
-            className={styles.btn}
+            className="ui-btn ui-btn-primary"
             onClick={create}
             disabled={pending === "create" || !name.trim() || !appId}
             data-testid="create-forum"
           >
+            {pending === "create" && <span className="ui-spinner" />}
             {pending === "create" ? "Creating…" : "Create"}
           </button>
         </div>
 
-        {status && <p className={styles.empty}>{status}</p>}
-        {error && <p className={styles.joinError}>{error}</p>}
+        {status && (
+          <p className={styles.note} role="status">
+            <span className="ui-spinner" />
+            {status}
+          </p>
+        )}
+        {error && (
+          <p className={`${styles.note} ${styles.noteError}`} role="alert">
+            <AlertIcon size={16} />
+            {error}
+          </p>
+        )}
 
         {isSyncing ? (
-          <JoinSyncBanner show what="forums" onDismiss={dismissSyncing} />
+          <div style={{ padding: 16 }}>
+            <JoinSyncBanner show what="forums" onDismiss={dismissSyncing} />
+          </div>
         ) : listing ? (
-          <p className={styles.empty}>Loading…</p>
+          <div aria-label="Loading…">
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+          </div>
         ) : forums.length === 0 ? (
-          <p className={styles.empty} data-testid="forums-empty">
-            No forums yet. Create one above.
-          </p>
+          <div className={styles.empty} data-testid="forums-empty">
+            <Avatar
+              label="#"
+              seed="forum-x"
+              square
+              size={56}
+              icon={<HashIcon size={26} />}
+            />
+            <span className={styles.emptyTitle}>No forums yet</span>
+            Create one above to start the first board in this space.
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary"
+              style={{ marginTop: 14 }}
+              onClick={focusCreate}
+            >
+              <PlusIcon size={16} />
+              New forum
+            </button>
+          </div>
         ) : (
-          <div className={styles.grid}>
+          <div className={styles.list}>
             {forums.map((forum) => (
               <div
                 key={forum.forumId}
-                className={styles.cardWrap}
+                className={styles.row}
                 ref={menuOpenId === forum.forumId ? menuRef : null}
               >
                 <button
-                  className={styles.card}
+                  className={styles.rowMain}
                   data-testid="forum-row"
                   disabled={!forum.contextId}
                   onClick={() => enter(forum)}
                 >
-                  <span className={styles.cardName}>{forum.name}</span>
-                  <span className={styles.cardSub}>
-                    {forum.contextId
-                      ? `${forum.memberCount} member${forum.memberCount === 1 ? "" : "s"}${forum.joined ? "" : " · not joined"}`
-                      : "syncing…"}
+                  <Avatar
+                    label={forum.name}
+                    seed={forum.forumId}
+                    square
+                    size={44}
+                    icon={<HashIcon size={20} />}
+                  />
+                  <span className={styles.rowText}>
+                    <span className={styles.rowName}>
+                      {forum.name}
+                      {forum.contextId && forum.joined && (
+                        <span className="ui-badge ui-badge-accent">Joined</span>
+                      )}
+                    </span>
+                    <span className={styles.rowMeta}>
+                      {forum.contextId ? (
+                        <span className={styles.metaItem}>
+                          <UsersIcon size={14} />
+                          {`${forum.memberCount} member${forum.memberCount === 1 ? "" : "s"}${forum.joined ? "" : " · not joined"}`}
+                        </span>
+                      ) : (
+                        <span className={styles.metaItem}>
+                          Syncing to this node — refresh in a moment
+                        </span>
+                      )}
+                    </span>
                   </span>
+                  {!forum.contextId ? (
+                    <span className={`${styles.pill} ${styles.pillMuted}`}>
+                      <span className="ui-spinner" />
+                      syncing…
+                    </span>
+                  ) : pending === `enter:${forum.forumId}` ? (
+                    <span className={`${styles.pill} ${styles.pillMuted}`}>
+                      <span className="ui-spinner" />
+                      Opening
+                    </span>
+                  ) : forum.joined ? (
+                    <span className={styles.pill}>Open</span>
+                  ) : (
+                    <span className={`${styles.pill} ${styles.pillOutline}`}>
+                      Join
+                    </span>
+                  )}
                 </button>
-                <button
-                  className={styles.menuBtn}
-                  data-testid="forum-menu"
-                  title="More options"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpenId(
-                      menuOpenId === forum.forumId ? null : forum.forumId,
-                    );
-                  }}
-                >
-                  ⋯
-                </button>
+                <div className={styles.menuCell}>
+                  <button
+                    className="ui-iconBtn"
+                    data-testid="forum-menu"
+                    title="More options"
+                    aria-label="More options"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpenId === forum.forumId}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId(
+                        menuOpenId === forum.forumId ? null : forum.forumId,
+                      );
+                    }}
+                  >
+                    <MoreIcon size={18} />
+                  </button>
+                </div>
                 {menuOpenId === forum.forumId && (
-                  <div className={styles.dropdown}>
+                  <div className={styles.dropdown} role="menu">
                     <button
-                      className={styles.dropdownItem}
+                      className="ui-menuItem"
+                      role="menuitem"
                       data-testid="invite-forum"
                       onClick={() => {
                         setMenuOpenId(null);
                         inviteToForum(forum);
                       }}
                     >
+                      <UserPlusIcon size={17} />
                       Invite
                     </button>
+                    {forum.contextId && (
+                      <button
+                        className="ui-menuItem"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          void navigator.clipboard
+                            ?.writeText(forum.contextId ?? "")
+                            .then(() => showToast("Context ID copied."))
+                            .catch(() => undefined);
+                        }}
+                      >
+                        <CopyIcon size={17} />
+                        Copy context ID
+                      </button>
+                    )}
                     <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                      className="ui-menuItem"
+                      role="menuitem"
+                      data-danger="true"
                       data-testid="delete-forum"
                       onClick={() => {
                         setMenuOpenId(null);
                         setPendingDelete(forum);
                       }}
                     >
+                      <TrashIcon size={17} />
                       Delete
                     </button>
                   </div>
@@ -383,7 +604,7 @@ export default function ForumsPage() {
             ))}
           </div>
         )}
-      </main>
+      </Shell>
 
       <dialog
         ref={deleteDialogRef}
@@ -398,17 +619,14 @@ export default function ForumsPage() {
         </p>
         <div className={styles.confirmRow}>
           <button
-            className={`${styles.btn} ${styles.btnDanger}`}
+            className="ui-btn ui-btn-dangerSolid"
             onClick={() => pendingDelete && removeForum(pendingDelete)}
             disabled={pending === `delete:${pendingDelete?.forumId}`}
             data-testid="confirm-delete-forum"
           >
             Delete
           </button>
-          <button
-            className={styles.logoutBtn}
-            onClick={() => setPendingDelete(null)}
-          >
+          <button className="ui-btn" onClick={() => setPendingDelete(null)}>
             Cancel
           </button>
         </div>
@@ -418,8 +636,9 @@ export default function ForumsPage() {
         open={!!invite}
         code={invite?.code ?? ""}
         scope={invite?.scope ?? ""}
+        hint={invite?.hint}
         onClose={() => setInvite(null)}
       />
-    </div>
+    </>
   );
 }

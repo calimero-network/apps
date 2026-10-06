@@ -1,6 +1,7 @@
 import { useMero } from "@calimero-network/mero-react";
 import { clearActiveAudience } from "../lib/session";
 import styles from "./SessionMenu.module.css";
+import { LogOutIcon } from "./icons";
 
 /**
  * Who you are connected as, and the way out.
@@ -47,6 +48,7 @@ export default function SessionMenu() {
           title={nodeUrl ?? undefined}
           data-testid="session-node"
         >
+          <span className={styles.dot} aria-hidden />
           {host}
         </span>
       )}
@@ -57,6 +59,7 @@ export default function SessionMenu() {
         data-testid="logout"
         title="Sign out of this node"
       >
+        <LogOutIcon size={15} />
         Log out
       </button>
     </div>

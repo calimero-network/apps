@@ -65,7 +65,8 @@ function PlayPage() {
 
   if (isLoading) {
     return (
-      <div className="card">
+      <div className="loading-state">
+        <span className="spinner" aria-hidden="true" />
         <p className="empty">Connecting…</p>
       </div>
     );
@@ -73,28 +74,35 @@ function PlayPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="card">
-        <h2>Connect a node</h2>
-        <p className="empty" style={{ marginBottom: 14 }}>
-          Mero Chess plays through your own Calimero node. The login modal finds
-          one on the usual local ports, and accepts a URL directly.
-        </p>
-        <ConnectButton />
-      </div>
+      <section className="connect">
+        <div className="connect-card">
+          <img className="connect-mark" src="/favicon.svg" alt="" />
+          <h1>Connect a node</h1>
+          <p className="lede">
+            Mero Chess plays through your own Calimero node. The login modal finds
+            one on the usual local ports, and accepts a URL directly.
+          </p>
+          <ConnectButton />
+          <ul className="connect-points">
+            <li>No game server</li>
+            <li>Rules run in the contract</li>
+            <li>No accounts</li>
+          </ul>
+        </div>
+      </section>
     );
   }
 
   if (!contextId) {
     return (
-      <>
-        <ContextPicker applicationId={applicationId} />
+      <ContextPicker applicationId={applicationId}>
         <JoinCard
           state={joinState}
           onSubmit={redeemPasted}
           onConfirm={confirmJoin}
           onDecline={declineJoin}
         />
-      </>
+      </ContextPicker>
     );
   }
 
@@ -120,28 +128,36 @@ function AppShell() {
   const { isAuthenticated, nodeUrl, logout } = useMero();
   const navigate = useNavigate();
   return (
-    <div className="wrap">
-      <header>
-        <button
-          type="button"
-          className="brand"
-          // `state.fromApp` is what lets the logo reach the marketing page
-          // without `RedirectIfAuthed` bouncing a signed-in player straight
-          // back. See the guard for why this is router state and not a query.
-          onClick={() => navigate("/", { state: { fromApp: true } })}
-        >
-          <span aria-hidden="true">♞</span> Mero Chess
-        </button>
-        {isAuthenticated && (
-          <div className="session">
-            <span className="empty mono">{nodeUrl ?? ""}</span>
-            <button className="ghost" onClick={logout}>
-              Log out
-            </button>
-          </div>
-        )}
+    <div className="shell">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <button
+            type="button"
+            className="brand"
+            // `state.fromApp` is what lets the logo reach the marketing page
+            // without `RedirectIfAuthed` bouncing a signed-in player straight
+            // back. See the guard for why this is router state and not a query.
+            onClick={() => navigate("/", { state: { fromApp: true } })}
+          >
+            <img src="/favicon.svg" alt="" width={28} height={28} />
+            <span>Mero Chess</span>
+          </button>
+          {isAuthenticated && (
+            <div className="session">
+              <span className="node-pill" title={nodeUrl ?? ""}>
+                <span className="presence online" aria-hidden="true" />
+                <span className="mono">{nodeUrl ?? ""}</span>
+              </span>
+              <button className="ghost small" onClick={logout}>
+                Log out
+              </button>
+            </div>
+          )}
+        </div>
       </header>
-      <PlayPage />
+      <main className="wrap">
+        <PlayPage />
+      </main>
     </div>
   );
 }

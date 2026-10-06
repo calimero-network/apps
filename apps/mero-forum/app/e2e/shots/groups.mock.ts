@@ -70,7 +70,7 @@ const CODE =
   "7CsW3RmT9xKp2QvLnZbA4aY1cWeUf6gJd5NqSvXhKrM8Kd8mQvR2xLnT9pZbA4aYcWeUf6gJd3NsSvXhKrM8tBzQ";
 
 export async function listSpaceNamespaces(): Promise<NamespaceRow[]> {
-  return sc().id === "streams-empty" ? [] : NAMESPACES;
+  return sc().empty ? [] : NAMESPACES;
 }
 
 export async function listForums(): Promise<ForumRow[]> {
@@ -115,4 +115,9 @@ export async function deleteSpace() {
 
 export async function deleteForum() {
   /* as above */
+}
+
+/** Mirrors the real helper's shape; the shots never drive a failed join. */
+export function redeemFailureMessage(outcome: { message?: string }): string {
+  return outcome.message ?? "Could not join.";
 }

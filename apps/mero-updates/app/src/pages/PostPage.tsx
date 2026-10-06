@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import AskCard from "../components/AskCard";
 import { useAudience } from "../components/AudienceShell";
-import { CategoryChip, Reactions } from "../components/bits";
+import { Avatar, CategoryChip, DeltaIcon, Reactions } from "../components/bits";
+import { deltaDir } from "../components/delta";
+import { ChevronLeftIcon, EditIcon, EyeIcon, CheckCircleIcon, TrashIcon, HandIcon } from "../components/icons";
 import Comments from "../components/Comments";
 import type { MetricSeries, PostView } from "../generated/UpdatesClient";
 import {
@@ -80,28 +82,86 @@ export default function PostPage() {
     reloadShell();
   };
 
+  const tools = (isTeam || (isQuestion && card.author === me?.account)) && (
+    <div className="postTools">
+      {isTeam && !isQuestion && (
+        <Link className="ghost small" to={`/a/compose?edit=${postId}`}>
+          <EditIcon size={14} />
+          Edit
+        </Link>
+      )}
+      {isTeam && isQuestion && (
+        <button
+          className="secondary small"
+          onClick={() => void setStatus(card.status === "answered" ? "open" : "answered")}
+        >
+          <CheckCircleIcon size={14} />
+          {card.status === "answered" ? "Re-open" : "Mark answered"}
+        </button>
+      )}
+      {confirmDelete ? (
+        <>
+          <span className="muted small">Delete for everyone?</span>
+          <button className="danger small" onClick={() => void remove()}>
+            Delete
+          </button>
+          <button className="ghost small" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button className="ghost small dangerGhost" onClick={() => setConfirmDelete(true)}>
+          <TrashIcon size={14} />
+          Delete
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <article className="post" data-testid="post">
-      <Link className="back" to={isQuestion ? "/a/questions" : "/a"}>
-        {isQuestion ? "Q&A" : "Updates"}
-      </Link>
-
-      <div className="meta">
-        {isQuestion && (
-          <span className={`pill ${card.status === "answered" ? "ok" : "warn"}`}>
-            {card.status === "answered" ? "Answered" : "Open question"}
-          </span>
-        )}
-        {cat && <CategoryChip category={cat} />}
-        <span>{formatDate(card.created_at)}</span>
-        <span>· {personLabel(card.author_name, card.author)}</span>
-        {card.edited_at > card.created_at + 1000 && <span>· edited</span>}
-        {isTeam && !isQuestion && (
-          <span title="Members who opened it, including the team">· 👁 {card.read_count} read</span>
-        )}
+      <div className="postNav">
+        <Link className="back" to={isQuestion ? "/a/questions" : "/a"}>
+          <ChevronLeftIcon size={14} />
+          {isQuestion ? "Q&A" : "Updates"}
+        </Link>
+        <span className="grow" />
+        {tools}
       </div>
-      <h1 className="postTitle">{card.title}</h1>
-      {card.summary && <p className="tldr">{card.summary}</p>}
+
+      <header className="postHead">
+        <div className="meta">
+          {isQuestion && (
+            <span className={`pill ${card.status === "answered" ? "ok" : "warn"}`}>
+              {card.status === "answered" ? "Answered" : "Open question"}
+            </span>
+          )}
+          {cat && <CategoryChip category={cat} />}
+        </div>
+        <h1 className="postTitle">{card.title}</h1>
+        <div className="postByline">
+          <Avatar name={card.author_name} account={card.author} team={card.author_is_team} />
+          <div className="postBylineText">
+            <span className="author">{personLabel(card.author_name, card.author)}</span>
+            <span className="muted">
+              {formatDate(card.created_at)}
+              {card.edited_at > card.created_at + 1000 && <> · edited</>}
+            </span>
+          </div>
+          {isTeam && !isQuestion && (
+            <span className="readCount" title="Members who opened it, including the team">
+              <EyeIcon size={14} /> {card.read_count} read
+            </span>
+          )}
+        </div>
+      </header>
+
+      {card.summary && (
+        <p className="tldr">
+          <span className="tldrLabel">TL;DR</span>
+          {card.summary}
+        </p>
+      )}
 
       {p.metrics.length > 0 && <KpiTiles post={p} series={metrics.data ?? []} />}
 
@@ -114,7 +174,9 @@ export default function PostPage() {
 
       {p.asks.length > 0 && (
         <section className="postAsks">
-          <h2 className="sectionLabel">How you can help</h2>
+          <h2 className="sectionTitle">
+            <HandIcon size={16} /> How you can help
+          </h2>
           {p.asks.map((a) => (
             <AskCard key={a.id} ask={a} isTeam={isTeam} onChanged={post.reload} />
           ))}
@@ -122,39 +184,6 @@ export default function PostPage() {
       )}
 
       <Reactions reactions={card.reactions} onToggle={(e, on) => void toggleReaction(e, on)} />
-
-      {(isTeam || (isQuestion && card.author === me?.account)) && (
-        <div className="row wrap postTools">
-          {isTeam && !isQuestion && (
-            <Link className="ghost small" to={`/a/compose?edit=${postId}`}>
-              Edit
-            </Link>
-          )}
-          {isTeam && isQuestion && (
-            <button
-              className="ghost small"
-              onClick={() => void setStatus(card.status === "answered" ? "open" : "answered")}
-            >
-              {card.status === "answered" ? "Re-open" : "Mark answered"}
-            </button>
-          )}
-          {confirmDelete ? (
-            <>
-              <span className="muted small">Delete for everyone?</span>
-              <button className="danger small" onClick={() => void remove()}>
-                Delete
-              </button>
-              <button className="ghost small" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button className="ghost small" onClick={() => setConfirmDelete(true)}>
-              Delete
-            </button>
-          )}
-        </div>
-      )}
 
       <Comments
         postId={postId}
@@ -194,8 +223,12 @@ function KpiTiles({ post, series }: { post: PostView; series: MetricSeries[] }) 
               {m.unit && <small> {m.unit}</small>}
             </span>
             {delta && (
-              <span className="kpiDelta" data-dir={delta.startsWith("+") ? "up" : delta.startsWith("−") ? "down" : "flat"}>
-                {delta} <span className="muted">vs {prev!.value}</span>
+              <span className="kpiFoot">
+                <span className="kpiDelta" data-dir={deltaDir(delta)}>
+                  <DeltaIcon delta={delta} />
+                  {delta}
+                </span>
+                <span className="muted">vs {prev!.value}</span>
               </span>
             )}
           </div>

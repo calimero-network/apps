@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import styles from "./ToastContext.module.css";
+import { AlertIcon, CheckCircleIcon } from "../components/icons";
 
 /**
  * Transient outcome messages.
@@ -97,7 +98,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             data-testid={`toast-${t.kind}`}
             title="Dismiss"
           >
-            {t.message}
+            <span className={styles.icon}>
+              {t.kind === "error" ? (
+                <AlertIcon size={18} />
+              ) : (
+                <CheckCircleIcon size={18} />
+              )}
+            </span>
+            <span className={styles.message}>{t.message}</span>
           </button>
         ))}
       </div>

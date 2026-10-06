@@ -5,6 +5,31 @@ import { APP_PACKAGE } from "../../src/lib/appId";
 /** The id `pickApplicationId` should settle on for the fixture node. */
 const APP_ID = "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq";
 
+// Module-level so its identity is stable: pages key effects on `admin`.
+const ADMIN = {
+  getNamespace: async () => ({ name: "Engineering standup" }),
+  getContexts: async () => ({ contexts: [] }),
+  listNamespacesForApplication: async () => [],
+  listNamespaceGroups: async () => [],
+  // `useApplicationId` asks the NODE which installed app is this one and
+  // matches on the package — see src/lib/appId. Without this the resolve
+  // fails closed to "", every page renders its "not installed" empty
+  // state, and the harness photographs that instead of the app. Carrying
+  // a second, wrong-package install here is the point: it proves the
+  // filter in the shot, rather than a one-app list that would pass even
+  // if the matching were dropped.
+  listApplications: async () => ({
+    apps: [
+      {
+        id: "designs-own-id",
+        package: "com.calimero.mero-design",
+        version: "1.4.0",
+      },
+      { id: APP_ID, package: APP_PACKAGE, version: "1.2.0" },
+    ],
+  }),
+};
+
 export function useMero() {
   return {
     mero: {
@@ -13,33 +38,18 @@ export function useMero() {
       // undefined and the rooms page caught its own TypeError as "could not load
       // rooms" — a blank list rather than a crash, which is why the harness's
       // landmark wait caught it and a pageerror check would not have.
-      admin: {
-        getNamespace: async () => ({ name: "Engineering standup" }),
-        getContexts: async () => ({ contexts: [] }),
-        listNamespacesForApplication: async () => [],
-        listNamespaceGroups: async () => [],
-        // `useApplicationId` asks the NODE which installed app is this one and
-        // matches on the package — see src/lib/appId. Without this the resolve
-        // fails closed to "", every page renders its "not installed" empty
-        // state, and the harness photographs that instead of the app. Carrying
-        // a second, wrong-package install here is the point: it proves the
-        // filter in the shot, rather than a one-app list that would pass even
-        // if the matching were dropped.
-        listApplications: async () => ({
-          apps: [
-            { id: "designs-own-id", package: "com.calimero.mero-design", version: "1.4.0" },
-            { id: APP_ID, package: APP_PACKAGE, version: "1.2.0" },
-          ],
-        }),
-      },
+      admin: ADMIN,
       ephemeral: { set: async () => {}, subscribe: () => () => {} },
     },
     // SessionMenu shows the node it is talking to and offers a way out. Both
     // come off `useMero()`, so both have to exist here or the menu throws.
+    // The session-aware admin the pages read (`const { admin } = useMero()`).
+    admin: ADMIN,
     nodeUrl: "http://localhost:2528",
     logout: () => {},
     applicationId: APP_ID,
     isAuthenticated: true,
+    isDelegated: false,
     isLoading: false,
   };
 }
@@ -50,4 +60,9 @@ export function useExecute() {
 
 export function useSubscription() {
   return undefined;
+}
+
+/** useMyId reads this on account (delegated) sessions; the harness is a node session. */
+export function readDelegatedCredential() {
+  return null;
 }

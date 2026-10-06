@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { JoinState } from "./useJoinFromInvitation";
 import { parseInvitationInput } from "./utils/invitation";
+import { BoxIcon, LayersIcon, LinkIcon, UserPlusIcon } from "./icons";
+import { IconTile, IdField } from "./ui";
 
 /**
  * Paste-an-invitation, and the status of one arriving by deep link.
@@ -35,11 +37,18 @@ export function JoinCard({
 
   return (
     <div className="card">
-      <h2>Join with an invitation</h2>
-      <p className="empty" style={{ marginBottom: 14 }}>
-        Paste a link or an invitation code. A link that opened this app is
-        redeemed automatically — this is for one that arrived some other way.
-      </p>
+      <div className="card-head">
+        <IconTile>
+          <LinkIcon size={18} />
+        </IconTile>
+        <div className="grow">
+          <h2>Join with an invitation</h2>
+          <div className="meta">
+            Paste a link or an invitation code. A link that opened this app is
+            redeemed automatically — this is for one that arrived some other way.
+          </div>
+        </div>
+      </div>
 
       <div className="row">
         <input
@@ -64,32 +73,44 @@ export function JoinCard({
       )}
 
       {state.status === "confirm" && (
-        <div style={{ marginTop: 16 }}>
+        <div className="invite-prompt">
           {/*
             The prompt exists because following a link must not act on the
             user's behalf: joining binds their identity to a namespace someone
             else chose and switches their active context. Show WHAT, then ask.
           */}
-          <p style={{ marginBottom: 8 }}>
-            An invitation is waiting. Joining adds this node to:
-          </p>
-          <table>
-            <tbody>
-              <tr>
-                <th>namespace</th>
-                <td className="mono">{state.payload.namespaceId}</td>
-              </tr>
-              <tr>
-                <th>context</th>
-                <td className="mono">{state.payload.contextId}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button onClick={onConfirm}>Join</button>
-            <button className="ghost" onClick={onDecline}>
+          <div className="lead">
+            <IconTile accent>
+              <UserPlusIcon size={18} />
+            </IconTile>
+            <div>
+              <strong>You&apos;ve been invited to a voting group</strong>
+              <p className="empty">An invitation is waiting. Joining adds this node to:</p>
+            </div>
+          </div>
+          <dl className="kv">
+            <dt>
+              <span className="row" style={{ gap: 6 }}>
+                <LayersIcon size={14} /> Namespace
+              </span>
+            </dt>
+            <dd>
+              <IdField value={state.payload.namespaceId} label="namespace id" />
+            </dd>
+            <dt>
+              <span className="row" style={{ gap: 6 }}>
+                <BoxIcon size={14} /> Context
+              </span>
+            </dt>
+            <dd>
+              <IdField value={state.payload.contextId} label="context id" />
+            </dd>
+          </dl>
+          <div className="row end" style={{ marginTop: 14 }}>
+            <button className="plain" onClick={onDecline}>
               Not now
             </button>
+            <button onClick={onConfirm}>Join</button>
           </div>
         </div>
       )}
@@ -115,7 +136,7 @@ export function JoinCard({
             was never captured there, so "will be retried" would be a lie for
             the very path this card exists for.
           */}
-          <p className="empty">
+          <p className="empty" style={{ marginTop: 8 }}>
             {!state.retryable
               ? "This invitation cannot succeed; ask for a new one."
               : state.fromLink

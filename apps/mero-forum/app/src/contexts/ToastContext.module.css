@@ -1,7 +1,5 @@
-/* Bottom-centre, above every dialog. `<dialog>` in its top layer outranks any
-   z-index, so a toast raised by an action inside the invite modal would be
-   painted behind it — hence `position: fixed` on a container that is a sibling
-   of the app root, and a value high enough to sit above non-dialog chrome. */
+/* Bottom-centre, above every dialog (`position: fixed` sibling of the app
+   root, high z-index). Near-black pill, like X's toasts, with a status icon. */
 .stack {
   position: fixed;
   left: 50%;
@@ -12,39 +10,53 @@
   flex-direction: column;
   gap: 8px;
   align-items: center;
-  /* The container spans the viewport so toasts centre, but must not eat clicks
-     on the page beneath it. Each toast re-enables pointer events for itself. */
+  /* Spans the width so toasts centre, but must not eat clicks beneath it. */
   pointer-events: none;
   width: min(92vw, 460px);
 }
 
 .toast {
   pointer-events: auto;
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 8px);
-  padding: 11px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px 12px 12px;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.4;
   text-align: left;
   cursor: pointer;
-  box-shadow: var(--shadow, 0 10px 34px rgba(19, 18, 21, 0.1));
+  background: #131215;
+  color: #fcfcfc;
+  box-shadow: var(--shadow-md);
   animation: toast-in 160ms ease-out;
 }
-
-.success {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--accent-ink);
-  border-left: 3px solid var(--accent);
+:root[data-theme="dark"] .toast {
+  background: #fcfcfc;
+  color: #131215;
 }
-
-.error {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--danger, #c62828);
-  border-left: 3px solid var(--danger, #c62828);
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.message {
+  min-width: 0;
+}
+.success .icon {
+  color: #a5ff11;
+}
+:root[data-theme="dark"] .success .icon {
+  color: #4a7300;
+}
+.error .icon {
+  color: #ff8a80;
+}
+:root[data-theme="dark"] .error .icon {
+  color: #c62828;
 }
 
 @keyframes toast-in {
@@ -57,9 +69,6 @@
     transform: translateY(0);
   }
 }
-
-/* Respect a reduced-motion preference: the slide is decoration, and the toast
-   still needs to appear. */
 @media (prefers-reduced-motion: reduce) {
   .toast {
     animation: none;

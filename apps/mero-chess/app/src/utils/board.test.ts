@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   claimLabel,
-  glyphFor,
   isDarkSquare,
+  materialFromSquares,
   movePairs,
   movableSquares,
   pieceName,
@@ -68,10 +68,38 @@ describe("reading a FEN", () => {
     expect(piecesFromFen("").filter(Boolean)).toHaveLength(0);
   });
 
-  it("names and draws its pieces", () => {
-    expect(glyphFor({ color: "white", kind: "n" })).toBe("♘");
-    expect(glyphFor({ color: "black", kind: "k" })).toBe("♚");
+  it("names its pieces", () => {
     expect(pieceName({ color: "black", kind: "r" })).toBe("black rook");
+  });
+});
+
+describe("counting material", () => {
+  const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+  it("shows nothing taken and nobody ahead at the start", () => {
+    const m = materialFromSquares(piecesFromFen(START));
+    expect(m.captured).toEqual({ white: [], black: [] });
+    expect(m.lead).toEqual({ white: 0, black: 0 });
+  });
+
+  it("credits a capture to the side that made it, heaviest first", () => {
+    // White has taken Black's queen and a pawn; Black has taken a knight.
+    const m = materialFromSquares(
+      piecesFromFen("rnb1kbnr/ppp1pppp/8/8/8/8/PPPPPPPP/R1BQKBNR w KQkq - 0 1"),
+    );
+    expect(m.captured.white).toEqual(["q", "p"]);
+    expect(m.captured.black).toEqual(["n"]);
+    expect(m.lead).toEqual({ white: 7, black: 0 });
+  });
+
+  it("does not show a promoted piece as a negative capture", () => {
+    // The h-pawn promoted and took the h1 rook's place: two queens, a rook
+    // and a pawn short — shown as those two taken, never as "-1 queen".
+    const m = materialFromSquares(
+      piecesFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPP1/RNBQKBNQ w - - 0 1"),
+    );
+    expect(m.captured.black).toEqual(["r", "p"]);
+    expect(m.lead.white).toBe(3);
   });
 });
 

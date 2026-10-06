@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shortAuthor, timeAgo } from "./forum";
+import { fullDate, shortAuthor, timeAgo, toMs } from "./forum";
 
 describe("timeAgo", () => {
   const now = 1_700_000_000_000;
@@ -15,6 +15,25 @@ describe("timeAgo", () => {
     // Timestamps come from whichever node wrote the post, so one running a
     // little ahead is normal and must not produce "-3m ago".
     expect(timeAgo(now + 60_000, now)).toBe("just now");
+  });
+});
+
+describe("contract timestamps are nanoseconds", () => {
+  const now = Date.UTC(2026, 9, 6, 12, 0, 0);
+  const ns = (ms: number) => ms * 1e6;
+
+  it("scales a nanosecond time to milliseconds and leaves milliseconds alone", () => {
+    expect(toMs(ns(now))).toBe(now);
+    expect(toMs(now)).toBe(now);
+  });
+
+  it("ages a nanosecond time instead of calling everything 'just now'", () => {
+    expect(timeAgo(ns(now - 3 * 3_600_000), now)).toBe("3h ago");
+  });
+
+  it("formats a nanosecond time as a real date", () => {
+    expect(fullDate(ns(now))).not.toBe("Invalid Date");
+    expect(fullDate(ns(now))).toBe(new Date(now).toLocaleString());
   });
 });
 

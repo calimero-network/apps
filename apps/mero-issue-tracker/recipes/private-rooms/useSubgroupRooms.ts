@@ -55,11 +55,16 @@ export function useSubgroupRooms(namespaceId: string | null, applicationId: stri
   ): Promise<SubgroupRoom | null> => {
     if (!mero || !namespaceId || !applicationId) return null;
 
-    // 1. Subgroup + propagated name.
-    const { groupId } = await mero.admin.createGroupInNamespace(namespaceId, { name });
+    // 1. Subgroup, born with its visibility (the privacy switch), + name.
+    //    Created Restricted and flipped Open, a public room strands every
+    //    namespace member outside it - so choose at birth, never flip.
+    const { groupId } = await mero.admin.createGroupInNamespace(namespaceId, {
+      groupName: name,
+      visibility: isPublic ? 'open' : 'restricted',
+    });
     await mero.admin.setGroupMetadata(groupId, { name });
 
-    // 2. Visibility = the privacy switch.
+    // 2. Visibility again, as a guard against a node that ignored it at birth.
     await mero.admin.setSubgroupVisibility(groupId, {
       subgroupVisibility: isPublic ? 'open' : 'restricted',
     });

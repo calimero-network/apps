@@ -18,6 +18,17 @@ import {
 } from "./crypto/protocol";
 import { errText, short } from "./useMeroVote";
 import {
+  AlertTriangleIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  DownloadIcon,
+  KeyIcon,
+  UploadIcon,
+  XIcon,
+} from "./icons";
+import { Callout, IconTile, IdField } from "./ui";
+import {
   backupFileName,
   loadTrusteeKey,
   parseTrusteeKey,
@@ -199,107 +210,178 @@ export function TrusteePanel({
 
   // ── render ───────────────────────────────────────────────────────────────
 
-  const cell = (done: boolean, pending: string) => (done ? "✓" : pending);
+  /** Done / waiting / not applicable, as an icon plus a word — never a glyph. */
+  const cell = (done: boolean, pending: string, doneText = "Done") =>
+    done ? (
+      <span className="status done">
+        <CheckIcon size={14} />
+        {doneText}
+      </span>
+    ) : pending === "waiting" ? (
+      <span className="status wait">
+        <ClockIcon size={14} />
+        Waiting
+      </span>
+    ) : (
+      <span className="status none" aria-label="not applicable">
+        —
+      </span>
+    );
 
   return (
     <div className="card">
-      <h2>Trustees</h2>
-      <p className="hint">
-        {n === 1 ? (
-          <>One trustee holds the whole decryption key — fine for a quick poll, not for a secret one.</>
-        ) : (
-          <>
-            Any <strong className="text">{t}</strong> of these {n} can decrypt the totals together; fewer than {t}{" "}
-            learn nothing, and no one ever holds the whole key.
-          </>
-        )}
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>trustee</th>
-            <th>transport key</th>
-            <th>shares dealt</th>
-            <th>decryption</th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.trustees.map((x) => (
-            <tr key={x.account}>
-              <td>
-                {label(x.account)}
-                {x.account === me && " (you)"}
-              </td>
-              <td>{cell(x.transport_published, "waiting")}</td>
-              <td>
-                {x.qualified === false
-                  ? x.complaints_against > 0
-                    ? "✗ disqualified"
-                    : "— not in key"
-                  : x.complaints_against > 0
-                    ? `✗ ${x.complaints_against} complaint${x.complaints_against > 1 ? "s" : ""}`
-                    : cell(x.dealing_published, phase === "KeyCeremony" ? "waiting" : "—")}
-              </td>
-              <td>{x.partial_published ? "✓" : phase === "Closed" ? "waiting" : "—"}</td>
+      <div className="card-head">
+        <IconTile accent={phase === "KeyCeremony"}>
+          <KeyIcon size={18} />
+        </IconTile>
+        <div className="grow">
+          <h2>Trustees</h2>
+          <div className="meta">
+            {n === 1 ? (
+              <>One trustee holds the whole decryption key — fine for a quick poll, not for a secret one.</>
+            ) : (
+              <>
+                Any <strong className="text">{t}</strong> of these {n} can decrypt the totals together; fewer than {t}{" "}
+                learn nothing, and no one ever holds the whole key.
+              </>
+            )}
+          </div>
+        </div>
+        <span className="badge tnum">
+          {t} of {n}
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Trustee</th>
+              <th>Transport key</th>
+              <th>Shares dealt</th>
+              <th>Decryption</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {view.trustees.map((x) => (
+              <tr key={x.account}>
+                <td>
+                  <span className="who" title={x.account}>
+                    <span className={`avatar ${x.account === me ? "me" : ""}`}>{label(x.account).slice(0, 1)}</span>
+                    {label(x.account)}
+                    {x.account === me && <span className="muted">(you)</span>}
+                  </span>
+                </td>
+                <td>{cell(x.transport_published, "waiting", "Published")}</td>
+                <td>
+                  {x.qualified === false ? (
+                    x.complaints_against > 0 ? (
+                      <span className="badge danger">
+                        <XIcon size={12} strokeWidth={2.5} />
+                        Disqualified
+                      </span>
+                    ) : (
+                      <span className="badge">Not in key</span>
+                    )
+                  ) : x.complaints_against > 0 ? (
+                    <span className="badge danger">
+                      <AlertTriangleIcon size={12} />
+                      {x.complaints_against} complaint{x.complaints_against > 1 ? "s" : ""}
+                    </span>
+                  ) : (
+                    cell(x.dealing_published, phase === "KeyCeremony" ? "waiting" : "—", "Dealt")
+                  )}
+                </td>
+                <td>{cell(x.partial_published, phase === "Closed" ? "waiting" : "—", "Published")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {amTrustee && (
         <div className="trustee-box">
           {phase === "KeyCeremony" && !mine?.transport_published && (
-            <>
+            <div className="trustee-step">
+              <span className="step-title">
+                <span className="badge accent">Step 1 of 2</span>
+                Publish a transport key
+              </span>
               <p className="hint">
-                Step 1 of 2: publish a transport key, so the other trustees can send you your share privately. Its
+                Publish a transport key so the other trustees can send you your share privately. Its
                 secret stays in this browser.
               </p>
               <button onClick={() => void publishTransport()} disabled={!!busy}>
+                <KeyIcon size={16} />
                 {busy === "transport" ? "Publishing…" : "Publish my transport key"}
               </button>
-            </>
+            </div>
           )}
           {phase === "KeyCeremony" && mine?.transport_published && !mine.dealing_published && (
-            <>
+            <div className="trustee-step">
+              <span className="step-title">
+                <span className="badge accent">Step 2 of 2</span>
+                Deal key shares
+              </span>
               <p className="hint">
-                Step 2 of 2: deal shares of a fresh random secret to every trustee.
+                Deal shares of a fresh random secret to every trustee.
                 {!allTransport && " Waiting for every trustee's transport key."}
               </p>
               <button onClick={() => void publishDealing()} disabled={!!busy || !allTransport || !ceremony || !trusteeKey}>
                 {busy === "deal" ? "Dealing…" : "Deal my key shares"}
               </button>
-            </>
+            </div>
           )}
           {phase === "KeyCeremony" && received.length > 0 && (
-            <ul className="received">
-              {received.map((r) => (
-                <li key={r.dealer} className={r.ok ? "ok" : "bad"}>
-                  {r.ok ? "✓" : "✗"} share from {label(r.dealer)}
-                  {!r.ok && !r.complained && (
-                    <button className="ghost danger-text" onClick={() => void complain(r.dealer)} disabled={!!busy}>
-                      File complaint
-                    </button>
-                  )}
-                  {r.complained && <span className="empty"> — complaint filed</span>}
-                </li>
-              ))}
-            </ul>
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>
+                Shares dealt to you
+              </div>
+              <ul className="received">
+                {received.map((r) => (
+                  <li key={r.dealer} className={r.ok ? "ok" : "bad"}>
+                    {r.ok ? <CheckIcon size={16} /> : <XIcon size={16} />}
+                    <span>
+                      <span className="sr-only">{r.ok ? "Valid:" : "Invalid:"} </span>
+                      share from {label(r.dealer)}
+                    </span>
+                    {!r.ok && !r.complained && (
+                      <button className="ghost sm danger-text" onClick={() => void complain(r.dealer)} disabled={!!busy}>
+                        File complaint
+                      </button>
+                    )}
+                    {r.complained && <span className="empty"> — complaint filed</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {mine?.transport_published && !trusteeKey && !mine.partial_published && (
-            <p className="hint warn">
+            <Callout tone="warning">
               This browser does not hold your trustee key. Restore it from your backup file, or you cannot take part
               in the decryption.
-            </p>
+            </Callout>
+          )}
+          {phase === "Closed" && !mine?.partial_published && trusteeKey && (
+            <div className="trustee-step">
+              <span className="step-title">Your decryption share is needed</span>
+              <p className="hint">It decrypts only the per-option totals, never a single ballot.</p>
+              <button onClick={() => void publishPartial()} disabled={!!busy}>
+                <KeyIcon size={16} />
+                {busy === "partial" ? "Decrypting…" : "Publish my decryption share"}
+              </button>
+            </div>
           )}
           <div className="row">
             {trusteeKey && (
-              <button className="ghost" onClick={() => download(backupFileName(trusteeKey), JSON.stringify(trusteeKey, null, 2))}>
+              <button className="ghost sm" onClick={() => download(backupFileName(trusteeKey), JSON.stringify(trusteeKey, null, 2))}>
+                <DownloadIcon size={14} />
                 Download key backup
               </button>
             )}
             {mine?.transport_published && !mine.partial_published && (
               <>
-                <button className="ghost" onClick={() => restoreRef.current?.click()}>
+                <button className="ghost sm" onClick={() => restoreRef.current?.click()}>
+                  <UploadIcon size={14} />
                   Restore key from backup
                 </button>
                 <input
@@ -312,22 +394,11 @@ export function TrusteePanel({
               </>
             )}
           </div>
-          {phase === "Closed" && !mine?.partial_published && trusteeKey && (
-            <button onClick={() => void publishPartial()} disabled={!!busy}>
-              {busy === "partial" ? "Decrypting…" : "Publish my decryption share"}
-            </button>
-          )}
         </div>
       )}
 
       {isCreator && phase === "KeyCeremony" && (
-        <div className="row" style={{ marginTop: 12 }}>
-          <button
-            onClick={() => void act("open", () => client!.openVoting({ poll_id: pollId }), "Voting is open. The election key is frozen.")}
-            disabled={!allTransport || qualifiedNow < t || !!busy}
-          >
-            {busy === "open" ? "Opening…" : "Open voting"}
-          </button>
+        <div className="creator-bar">
           <span className="empty">
             {!allTransport
               ? "Waiting for every trustee's transport key."
@@ -337,18 +408,42 @@ export function TrusteePanel({
                   ? `Ready. ${n - qualifiedNow} trustee${n - qualifiedNow === 1 ? " hasn't" : "s haven't"} dealt — waiting for them adds their randomness to the key.`
                   : "Every trustee has dealt."}
           </span>
+          <button
+            onClick={() => void act("open", () => client!.openVoting({ poll_id: pollId }), "Voting is open. The election key is frozen.")}
+            disabled={!allTransport || qualifiedNow < t || !!busy}
+          >
+            {busy === "open" ? "Opening…" : "Open voting"}
+          </button>
         </div>
       )}
       {election && election.disqualified.length > 0 && (
-        <p className="hint warn">
+        <Callout tone="warning">
           Left out of the key by proven complaint: {election.disqualified.map(label).join(", ")}.
-        </p>
+        </Callout>
       )}
       {election && phase !== "KeyCeremony" && (
-        <p className="empty">
-          Key from {election.qualified.length} dealing{election.qualified.length === 1 ? "" : "s"}:{" "}
-          <code className="mono">{short(election.key)}</code>
-        </p>
+        <details className="tech">
+          <summary>
+            <ChevronRightIcon size={14} />
+            Show technical details
+          </summary>
+          <div className="tech-body">
+            <div>
+              Key from {election.qualified.length} dealing{election.qualified.length === 1 ? "" : "s"}:{" "}
+              <code className="mono" title={election.key}>{short(election.key)}</code>
+            </div>
+            <dl className="kv">
+              <dt>Election key</dt>
+              <dd>
+                <IdField value={election.key} label="election key" />
+              </dd>
+              <dt>Poll id</dt>
+              <dd>
+                <IdField value={pollId} label="poll id" />
+              </dd>
+            </dl>
+          </div>
+        </details>
       )}
     </div>
   );

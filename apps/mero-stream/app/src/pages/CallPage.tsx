@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useMeroStream } from "../hooks/useMeroStream";
 import { useLiveStream } from "../hooks/useLiveStream";
 import { fmt } from "../lib/format";
@@ -9,12 +16,30 @@ import { buildRoster, initials, shortId } from "../lib/people";
 import { JOIN_DEADLINE_MS, retryUntilValue } from "../lib/joinRetry";
 import SessionMenu from "../components/SessionMenu";
 import { useNavigate } from "react-router-dom";
-import { getActiveNamespaceId, getUsername, setUsername } from "../lib/session";
+import {
+  getActiveNamespaceId,
+  getRoomName,
+  getUsername,
+  setUsername,
+} from "../lib/session";
 import {
   DEGRADED_DELIVERY_PERCENT,
   DEGRADED_FROM_BROADCASTERS,
   MAX_BROADCASTERS,
 } from "../lib/slots";
+import {
+  ActivityIcon,
+  AlertTriangleIcon,
+  BrandMark,
+  ChevronLeftIcon,
+  InfoIcon,
+  MoreHorizontalIcon,
+  PhoneOffIcon,
+  UsersIcon,
+  VideoIcon,
+  VideoOffIcon,
+  XIcon,
+} from "../components/icons";
 import styles from "./CallPage.module.css";
 
 /**
@@ -26,10 +51,11 @@ import styles from "./CallPage.module.css";
  * (decoding every broadcaster, publishing nothing). The cap is derived from
  * gossipsub's fan-out, not chosen: see lib/slots.ts.
  *
- * Everything that is not needed to run the call — the §4 probe, the encoder
- * knobs, the replicated-state proof, the capacity budget — is behind "See more
- * data". Four numbers stay on the bar, because they are how you tell a working
- * call from a broken one and you should not have to open a panel for that.
+ * Laid out like a video call app, not a dashboard: the tiles own the screen
+ * and the bar carries only call controls. Everything that is not needed to run
+ * the call — the live health strip, the §4 probe, the encoder knobs, the
+ * replicated-state proof, the capacity budget, the node — is behind the "…"
+ * menu and the Call details panel.
  */
 /** The strip's flavour of {@link MetricValue}: inline, with the strip's classes. */
 function Stat(props: {
@@ -238,6 +264,11 @@ export default function CallPage() {
     [members, me, effectiveName, liveIds, s.running],
   );
 
+  const roomName = stream.contextId ? getRoomName(stream.contextId) : "";
+  const backLabel = namespaceId ? "Rooms" : "Streams";
+  const leave = () =>
+    navigate(namespaceId ? `/streams/${namespaceId}` : "/streams");
+
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
@@ -250,20 +281,39 @@ export default function CallPage() {
           <button
             type="button"
             className={styles.backBtn}
-            onClick={() =>
-              navigate(namespaceId ? `/streams/${namespaceId}` : "/streams")
-            }
+            onClick={leave}
             data-testid="back-to-rooms"
             title={
               namespaceId ? "Back to the room list" : "Back to your streams"
             }
           >
-            ← {namespaceId ? "Rooms" : "Streams"}
+            <ChevronLeftIcon size={16} />
+            {backLabel}
           </button>
-          <h1 className={styles.title}>Mero Stream</h1>
-          <span className={styles.roomId} title={stream.contextId ?? ""}>
-            {stream.contextId ? `${stream.contextId.slice(0, 10)}…` : "no room"}
+          <span className={styles.divider} aria-hidden="true" />
+          <BrandMark size={24} />
+          <div className={styles.roomText}>
+            <h1 className={styles.title} title={stream.contextId ?? ""}>
+              {roomName ||
+                (stream.contextId
+                  ? `Room ${stream.contextId.slice(0, 6)}`
+                  : "No room")}
+            </h1>
+          </div>
+          <span
+            className={`${styles.slotsPill} ${s.slots.full ? styles.slotsPillFull : ""}`}
+            data-testid="slots-readout"
+            data-occupied={s.slots.occupied}
+            data-free={s.slots.free}
+            title={`${s.slots.occupied} of ${MAX_BROADCASTERS} broadcast slots in use`}
+          >
+            <span
+              className={`${styles.dot} ${s.slots.occupied > 0 ? styles.dotLive : ""}`}
+            />
+            {s.slots.occupied}/{MAX_BROADCASTERS} broadcasting
+            {!s.running && s.slots.full ? " · spectating" : ""}
           </span>
+          <CallTimer className={styles.timer} />
         </div>
         <span className={styles.spacer} />
         <div className={styles.topbarRight}>
@@ -294,263 +344,310 @@ export default function CallPage() {
               <span className={styles.identityFlag}>set name</span>
             )}
           </button>
-          <SessionMenu />
         </div>
       </header>
 
-      <div className={styles.notices}>
-        {s.supported === false && (
-          <div
-            className={`${styles.banner} ${styles.bannerError}`}
-            data-testid="unsupported"
-          >
-            <span className={styles.bannerText}>
-              This browser has no WebCodecs <code>VideoEncoder</code>. Chrome or
-              Edge works; Safari needs 16.4+. You can still spectate — decoding
-              is unaffected — but you cannot broadcast.
-            </span>
-          </div>
-        )}
-        {s.yielded && (
-          <div
-            className={`${styles.banner} ${styles.bannerWarn}`}
-            data-testid="yielded-notice"
-          >
-            <span className={styles.bannerText}>
-              <strong>
-                All {MAX_BROADCASTERS} broadcast slots were taken, so your
-                camera stopped.
-              </strong>{" "}
-              Someone else started before you did. You are still receiving
-              everyone — &quot;Go live&quot; re-enables itself as soon as a slot
-              frees up.
-            </span>
-            <button
-              type="button"
-              className={styles.bannerClose}
-              onClick={s.clearYielded}
-              aria-label="Dismiss"
+      <div className={styles.stageWrap}>
+        <div className={styles.notices}>
+          {s.supported === false && (
+            <div
+              className={`${styles.banner} ${styles.bannerError}`}
+              data-testid="unsupported"
+              role="alert"
             >
-              ✕
-            </button>
-          </div>
-        )}
-        {/* Measured, not defensive: a second broadcaster loses roughly 40% of
-            its frames on this transport, and no client-side pacing fixes it (the
-            rate-share experiment is in the ladder, and it failed). Saying so is
-            better than letting someone conclude their camera or network is
-            broken. Shown once two are live, and not as an error, because the
-            call is working as well as the transport allows. */}
-        {s.slots.occupied >= DEGRADED_FROM_BROADCASTERS && (
-          <div className={styles.banner} data-testid="degraded-notice">
-            <span className={styles.bannerText}>
-              <strong>
-                {s.slots.occupied} people are broadcasting, so every stream is
-                choppier.
-              </strong>{" "}
-              Frame rate is shared, and this transport delivers about{" "}
-              {DEGRADED_DELIVERY_PERCENT}% of frames with{" "}
-              {DEGRADED_FROM_BROADCASTERS} senders and less beyond that —
-              measured, and not something the app can tune away. One broadcaster
-              at a time is smooth. See <strong>See more data</strong> for the
-              numbers.
-            </span>
-          </div>
-        )}
-        {s.error && (
-          <div
-            className={`${styles.banner} ${styles.bannerError}`}
-            data-testid="live-error"
-          >
-            <span className={styles.bannerText}>{s.error}</span>
-          </div>
-        )}
-      </div>
-
-      <main
-        className={styles.stage}
-        data-count={Math.min(tileCount, 6)}
-        data-many={tileCount > 6}
-        data-testid="stage"
-      >
-        {tileCount === 0 && (
-          <div className={styles.empty} data-testid="no-peers">
-            <span className={styles.emptyTitle}>
-              Nobody is broadcasting yet
-            </span>
-            <span className={styles.emptyHint}>
-              {canGoLive
-                ? `Hit “Go live” to share your camera. Up to ${MAX_BROADCASTERS} people can broadcast at once; everyone else watches.`
-                : s.slots.full
-                  ? `All ${MAX_BROADCASTERS} slots are taken.`
-                  : "Waiting to join the room…"}
-            </span>
-          </div>
-        )}
-
-        {/* Local preview. Muted + playsInline: this is the encoder's source, not
-            a monitor. It is always mounted — an unmounted <video> loses its
-            srcObject, so remounting it on every start/stop would drop the camera
-            stream the encoder is reading from — and only shown while running. */}
-        <figure
-          className={`${styles.tile} ${styles.tileSelf}`}
-          data-testid="self-tile"
-          hidden={!s.running}
-        >
-          <video
-            ref={s.localVideoRef}
-            className={styles.media}
-            data-testid="local-video"
-            muted
-            playsInline
-          />
-          <figcaption className={styles.tileLabel}>
-            <span className={styles.dot + " " + styles.dotLive} />
-            <span className={styles.tileName}>You</span>
-            <span className={styles.tileMeta}>
-              {s.slots.myRank !== null ? `slot ${s.slots.myRank + 1}` : ""}
-            </span>
-          </figcaption>
-        </figure>
-
-        {/* One tile PER REMOTE SENDER. A single canvas fed by a single decoder
-            cannot work beyond one sender: each is an independent H.264 bitstream
-            and interleaving them into one decoder produces an error or a smear. */}
-        {s.remotePeers.map((peer) => (
-          <figure
-            key={peer.from}
-            className={styles.tile}
-            data-testid="peer-tile"
-            data-peer={peer.from}
-          >
-            {/* STABLE ref callback, memoized per peer. An inline
-                `ref={(el) => attach(peer.from, el)}` is a NEW function on every
-                render, so React detaches (null) and reattaches on each one — and
-                the detach path closes that peer's decoder. Since the stats tick
-                re-renders every second, the decoder was destroyed every second
-                and each peer only ever decoded the keyframe after it: decode rate
-                collapsed to ~3/s against 25/s posted, with 571 seq gaps, and the
-                picture never advanced. */}
-            <canvas
-              ref={peerCanvasRef(peer.from)}
-              className={styles.media}
-              data-testid="remote-canvas"
-              data-peer={peer.from}
-            />
-            {!peer.decoding && (
-              <span className={styles.tileWaiting}>
-                waiting for a keyframe…
+              <AlertTriangleIcon size={18} className={styles.bannerIcon} />
+              <span className={styles.bannerText}>
+                This browser has no WebCodecs <code>VideoEncoder</code>. Chrome
+                or Edge works; Safari needs 16.4+. You can still spectate —
+                decoding is unaffected — but you cannot broadcast.
               </span>
-            )}
-            <figcaption className={styles.tileLabel}>
-              <span className={styles.dot + " " + styles.dotLive} />
-              <span className={styles.tileName}>
-                {names[peer.from] ?? shortId(peer.from)}
+            </div>
+          )}
+          {s.yielded && (
+            <div
+              className={`${styles.banner} ${styles.bannerWarn}`}
+              data-testid="yielded-notice"
+              role="status"
+            >
+              <AlertTriangleIcon size={18} className={styles.bannerIcon} />
+              <span className={styles.bannerText}>
+                <strong>
+                  All {MAX_BROADCASTERS} broadcast slots were taken, so your
+                  camera stopped.
+                </strong>{" "}
+                Someone else started before you did. You are still receiving
+                everyone — &quot;Go live&quot; re-enables itself as soon as a
+                slot frees up.
               </span>
-              <span className={styles.tileMeta}>
-                {peer.width}×{peer.height}
+              <button
+                type="button"
+                className={styles.bannerClose}
+                onClick={s.clearYielded}
+                aria-label="Dismiss"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+          )}
+          {/* Measured, not defensive: a second broadcaster loses roughly 40% of
+              its frames on this transport, and no client-side pacing fixes it.
+              Saying so is better than letting someone conclude their camera or
+              network is broken. A compact chip, not an essay over the video:
+              the full explanation is one click away in Call details. */}
+          {s.slots.occupied >= DEGRADED_FROM_BROADCASTERS && (
+            <div
+              className={`${styles.banner} ${styles.bannerChip}`}
+              data-testid="degraded-notice"
+              title={`Frame rate is shared, and this transport delivers about ${DEGRADED_DELIVERY_PERCENT}% of frames with ${DEGRADED_FROM_BROADCASTERS} senders and less beyond that — measured, and not something the app can tune away. One broadcaster at a time is smooth.`}
+            >
+              <InfoIcon size={16} className={styles.bannerIcon} />
+              <span className={styles.bannerText}>
+                <strong>
+                  {s.slots.occupied} people are broadcasting, so every stream is
+                  choppier.
+                </strong>
               </span>
-            </figcaption>
-          </figure>
-        ))}
-      </main>
-
-      <footer className={styles.controls}>
-        <button
-          type="button"
-          className={s.running ? styles.stopBtn : styles.primaryBtn}
-          data-testid="capture-toggle"
-          data-running={s.running}
-          onClick={() => (s.running ? s.stop() : s.start())}
-          disabled={s.running ? false : !canGoLive}
-          title={
-            s.running
-              ? undefined
-              : !joined
-                ? "Joining the room…"
-                : s.slots.full
-                  ? `All ${MAX_BROADCASTERS} broadcast slots are taken`
-                  : undefined
-          }
-        >
-          {s.running ? "Stop broadcasting" : "Go live"}
-        </button>
-
-        <span
-          className={`${styles.slotsPill} ${s.slots.full ? styles.slotsPillFull : ""}`}
-          data-testid="slots-readout"
-          data-occupied={s.slots.occupied}
-          data-free={s.slots.free}
-        >
-          <span
-            className={`${styles.dot} ${s.slots.occupied > 0 ? styles.dotLive : ""}`}
-          />
-          {s.slots.occupied}/{MAX_BROADCASTERS} broadcasting
-          {!s.running && s.slots.full ? " · spectating" : ""}
-        </span>
-
-        <span className={styles.spacer} />
-
-        <div className={styles.status}>
-          <Stat
-            label="Decode"
-            value={fmt(p.renderFps, 1)}
-            suffix="/s"
-            testId="decode-rate"
-          />
-          <Stat
-            label="Latency"
-            value={fmt(p.latencyMsP50, 0)}
-            suffix="ms"
-            testId="latency-strip"
-          />
-          <Stat
-            label="Ingest"
-            value={fmt(p.encodedBytesPerSec / 1024, 0)}
-            suffix=" KiB/s"
-            testId="ingest-strip"
-          />
-          <Stat
-            label="Capture"
-            value={s.effectiveFps}
-            suffix=" fps"
-            testId="capture-fps"
-            className={
-              s.effectiveFps < s.fps ? styles.pressureTight : undefined
-            }
-          />
-          <Stat
-            label="Send load"
-            value={duty > 0 ? (duty * 100).toFixed(0) : undefined}
-            suffix="%"
-            testId="load-strip"
-            className={
-              load === "over"
-                ? styles.pressureOver
-                : load === "tight"
-                  ? styles.pressureTight
-                  : styles.pressureOk
-            }
-          />
+              <button
+                type="button"
+                className={styles.bannerLink}
+                onClick={() => setShowData(true)}
+              >
+                Why?
+              </button>
+            </div>
+          )}
+          {s.error && (
+            <div
+              className={`${styles.banner} ${styles.bannerError}`}
+              data-testid="live-error"
+              role="alert"
+            >
+              <AlertTriangleIcon size={18} className={styles.bannerIcon} />
+              <span className={styles.bannerText}>{s.error}</span>
+            </div>
+          )}
         </div>
 
-        <button
-          type="button"
-          className={styles.ghostBtn}
-          onClick={() => setShowPeople(true)}
-          data-testid="people-toggle"
+        <main
+          className={styles.stage}
+          data-count={Math.min(tileCount, 6)}
+          data-many={tileCount > 6}
+          data-testid="stage"
         >
-          People · {people.length}
-        </button>
-        <button
-          type="button"
-          className={styles.ghostBtn}
-          onClick={() => setShowData(true)}
-          data-testid="details-toggle"
-        >
-          See more data
-        </button>
-      </footer>
+          {tileCount === 0 && (
+            <div className={styles.empty} data-testid="no-peers">
+              <span className={styles.emptyAvatar} aria-hidden="true">
+                {initials(effectiveName)}
+              </span>
+              <span className={styles.emptyTitle}>
+                Nobody is broadcasting yet
+              </span>
+              <span className={styles.emptyHint}>
+                {canGoLive
+                  ? `Hit “Go live” to share your camera. Up to ${MAX_BROADCASTERS} people can broadcast at once; everyone else watches.`
+                  : s.slots.full
+                    ? `All ${MAX_BROADCASTERS} slots are taken.`
+                    : "Waiting to join the room…"}
+              </span>
+            </div>
+          )}
+
+          {/* Local preview. Muted + playsInline: this is the encoder's source,
+              not a monitor. It is always mounted — an unmounted <video> loses
+              its srcObject, so remounting it on every start/stop would drop the
+              camera stream the encoder is reading from — and only shown while
+              running. */}
+          <figure
+            className={`${styles.tile} ${styles.tileSelf}`}
+            data-testid="self-tile"
+            hidden={!s.running}
+          >
+            <video
+              ref={s.localVideoRef}
+              className={styles.media}
+              data-testid="local-video"
+              muted
+              playsInline
+            />
+            <figcaption
+              className={styles.tileLabel}
+              title={
+                s.slots.myRank !== null ? `slot ${s.slots.myRank + 1}` : ""
+              }
+            >
+              <VideoIcon size={14} className={styles.tileIcon} />
+              <span className={styles.tileName}>You</span>
+            </figcaption>
+          </figure>
+
+          {/* One tile PER REMOTE SENDER. A single canvas fed by a single decoder
+              cannot work beyond one sender: each is an independent H.264
+              bitstream and interleaving them into one decoder produces an error
+              or a smear. */}
+          {s.remotePeers.map((peer) => (
+            <figure
+              key={peer.from}
+              className={styles.tile}
+              data-testid="peer-tile"
+              data-peer={peer.from}
+            >
+              {/* STABLE ref callback, memoized per peer. An inline
+                  `ref={(el) => attach(peer.from, el)}` is a NEW function on
+                  every render, so React detaches (null) and reattaches on each
+                  one — and the detach path closes that peer's decoder. Since the
+                  stats tick re-renders every second, the decoder was destroyed
+                  every second and each peer only ever decoded the keyframe after
+                  it. */}
+              <canvas
+                ref={peerCanvasRef(peer.from)}
+                className={styles.media}
+                data-testid="remote-canvas"
+                data-peer={peer.from}
+              />
+              {!peer.decoding && (
+                <span className={styles.tileWaiting}>
+                  <span className={styles.spinner} aria-hidden="true" />
+                  waiting for a keyframe…
+                </span>
+              )}
+              <figcaption
+                className={styles.tileLabel}
+                title={`${peer.width}×${peer.height}`}
+              >
+                <VideoIcon size={14} className={styles.tileIcon} />
+                <span className={styles.tileName}>
+                  {names[peer.from] ?? shortId(peer.from)}
+                </span>
+              </figcaption>
+            </figure>
+          ))}
+        </main>
+
+        <footer className={styles.controls}>
+          {s.running ? (
+            <button
+              type="button"
+              className={`${styles.roundBtn} ${styles.roundBtnOn}`}
+              data-testid="capture-toggle"
+              data-running={s.running}
+              onClick={() => s.stop()}
+              title="Stop broadcasting"
+            >
+              <VideoIcon size={20} />
+              <span className={styles.srOnly}>Stop broadcasting</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.goLiveBtn}
+              data-testid="capture-toggle"
+              data-running={s.running}
+              onClick={() => s.start()}
+              disabled={!canGoLive}
+              title={
+                !joined
+                  ? "Joining the room…"
+                  : s.slots.full
+                    ? `All ${MAX_BROADCASTERS} broadcast slots are taken`
+                    : "Share your camera with the room"
+              }
+            >
+              <VideoOffIcon size={18} />
+              Go live
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.roundBtn}
+            onClick={() => setShowPeople(true)}
+            data-testid="people-toggle"
+            title="People"
+          >
+            <UsersIcon size={20} />
+            <span className={styles.countBadge} aria-hidden="true">
+              {people.length}
+            </span>
+            <span className={styles.srOnly}>People · {people.length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={styles.roundBtn}
+            onClick={() => setShowData(true)}
+            data-testid="details-toggle"
+            title="Call details and statistics"
+          >
+            <InfoIcon size={20} />
+            <span className={styles.srOnly}>See more data</span>
+          </button>
+
+          <MoreMenu
+            onDetails={() => setShowData(true)}
+            onPeople={() => setShowPeople(true)}
+            onBack={leave}
+            backLabel={`Back to ${backLabel.toLowerCase()}`}
+          >
+            {/* The live strip. Kept in the DOM while the menu is closed — the
+                browser e2e reads these `data-value`s — but out of sight: it is
+                how you tell a working call from a broken one, not something to
+                stare at during one. */}
+            <div className={styles.status}>
+              <Stat
+                label="Decode"
+                value={fmt(p.renderFps, 1)}
+                suffix="/s"
+                testId="decode-rate"
+              />
+              <Stat
+                label="Latency"
+                value={fmt(p.latencyMsP50, 0)}
+                suffix="ms"
+                testId="latency-strip"
+              />
+              <Stat
+                label="Ingest"
+                value={fmt(p.encodedBytesPerSec / 1024, 0)}
+                suffix=" KiB/s"
+                testId="ingest-strip"
+              />
+              <Stat
+                label="Capture"
+                value={s.effectiveFps}
+                suffix=" fps"
+                testId="capture-fps"
+                className={
+                  s.effectiveFps < s.fps ? styles.pressureTight : undefined
+                }
+              />
+              <Stat
+                label="Send load"
+                value={duty > 0 ? (duty * 100).toFixed(0) : undefined}
+                suffix="%"
+                testId="load-strip"
+                className={
+                  load === "over"
+                    ? styles.pressureOver
+                    : load === "tight"
+                      ? styles.pressureTight
+                      : styles.pressureOk
+                }
+              />
+            </div>
+          </MoreMenu>
+
+          <button
+            type="button"
+            className={styles.leaveBtn}
+            onClick={leave}
+            title="Leave call"
+            aria-label="Leave call"
+            data-testid="leave-call"
+          >
+            <PhoneOffIcon size={20} />
+          </button>
+        </footer>
+      </div>
 
       <PeopleDialog
         open={showPeople}
@@ -568,6 +665,127 @@ export default function CallPage() {
         participants={people.length}
         maxBroadcasters={MAX_BROADCASTERS}
       />
+    </div>
+  );
+}
+
+/** Time in the call, from when this page mounted. Presentation only. */
+function CallTimer({ className }: { className?: string }) {
+  const [start] = useState(() => Date.now());
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - start) / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const sec = secs % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    <span className={className} title="Time in this call">
+      {h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`}
+    </span>
+  );
+}
+
+/**
+ * The "…" menu: everything that is not the call itself — live health numbers,
+ * the full data panel, the roster, the node this session talks to and the way
+ * out of it. Open/closed is presentation state only; the children stay mounted
+ * so readouts inside keep their `data-value`s for drivers.
+ */
+function MoreMenu({
+  onDetails,
+  onPeople,
+  onBack,
+  backLabel,
+  children,
+}: {
+  onDetails: () => void;
+  onPeople: () => void;
+  onBack: () => void;
+  backLabel: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pick = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+
+  return (
+    <div className={styles.moreRoot} ref={rootRef}>
+      <button
+        type="button"
+        className={`${styles.roundBtn} ${open ? styles.roundBtnActive : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More options"
+        data-testid="more-menu-toggle"
+      >
+        <MoreHorizontalIcon size={20} />
+        <span className={styles.srOnly}>More options</span>
+      </button>
+      <div
+        className={styles.menu}
+        role="menu"
+        hidden={!open}
+        data-testid="more-menu"
+      >
+        <div className={styles.menuSection}>
+          <span className={styles.menuEyebrow}>
+            <ActivityIcon size={14} /> Call health
+          </span>
+          {children}
+        </div>
+        <div className={styles.menuSep} />
+        <button
+          type="button"
+          role="menuitem"
+          className={styles.menuItem}
+          onClick={pick(onDetails)}
+        >
+          <InfoIcon size={16} /> Call details and statistics
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={styles.menuItem}
+          onClick={pick(onPeople)}
+        >
+          <UsersIcon size={16} /> People and your name
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className={styles.menuItem}
+          onClick={pick(onBack)}
+        >
+          <ChevronLeftIcon size={16} /> {backLabel}
+        </button>
+        <div className={styles.menuSep} />
+        <SessionMenu variant="menu" />
+      </div>
     </div>
   );
 }

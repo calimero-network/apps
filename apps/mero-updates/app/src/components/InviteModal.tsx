@@ -3,6 +3,7 @@ import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
+import { ChevronDownIcon, CopyIcon, LinkIcon, UserPlusIcon, XIcon } from "./icons";
 
 /**
  * An invitation, as a modal you copy and dismiss.
@@ -102,7 +103,15 @@ export default function InviteModal({
     >
       <div className={styles.body}>
         <header className={styles.head}>
-          <h2 className={styles.title}>Invitation ready</h2>
+          <span className={styles.tile} aria-hidden>
+            <UserPlusIcon size={18} />
+          </span>
+          <div className={styles.headText}>
+            <h2 className={styles.title}>Invitation ready</h2>
+            <p className={styles.scope} data-testid="invite-scope">
+              {scope}
+            </p>
+          </div>
           <button
             type="button"
             className={styles.close}
@@ -110,16 +119,15 @@ export default function InviteModal({
             aria-label="Close"
             data-testid="invite-modal-close"
           >
-            ✕
+            <XIcon size={16} />
           </button>
         </header>
 
-        <p className={styles.scope} data-testid="invite-scope">
-          {scope}
-        </p>
-
+        <span className={styles.fieldLabel}>Invitation link</span>
         {/* One line by default; `showRaw` is also the "clipboard failed" state,
             where the characters have to be selectable. */}
+        <div className={styles.linkField}>
+        <LinkIcon size={14} className={styles.linkIcon} />
         <code
           className={styles.link}
           title={share.link}
@@ -128,6 +136,7 @@ export default function InviteModal({
         >
           {share.link}
         </code>
+        </div>
 
         <button
           type="button"
@@ -135,6 +144,7 @@ export default function InviteModal({
           onClick={copyAndClose}
           data-testid="invite-copy"
         >
+          <CopyIcon size={16} />
           Copy link
         </button>
 
@@ -148,6 +158,7 @@ export default function InviteModal({
           data-testid="invite-more"
         >
           {showRaw ? "Fewer options" : "Other ways to send this"}
+          <ChevronDownIcon size={14} className={styles.disclosureChevron} />
         </button>
 
         {showRaw && (
@@ -167,6 +178,7 @@ export default function InviteModal({
                 onClick={() => void copyQuietly(share.deepLink, "Desktop link")}
                 data-testid="invite-copy-deep"
               >
+                <CopyIcon size={14} />
                 Copy
               </button>
             </div>
@@ -185,6 +197,7 @@ export default function InviteModal({
                 onClick={() => void copyQuietly(share.code, "Code")}
                 data-testid="invite-copy-code"
               >
+                <CopyIcon size={14} />
                 Copy
               </button>
             </div>

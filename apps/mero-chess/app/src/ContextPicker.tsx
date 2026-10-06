@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   setContextId,
   useApplicationContexts,
@@ -6,6 +6,7 @@ import {
   useCreateNamespace,
   useNamespacesForApplication,
 } from "@calimero-network/mero-react";
+import { Piece } from "./pieces";
 
 /**
  * Choose which context this session talks to, or make one.
@@ -37,7 +38,14 @@ function shortId(id: string) {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
-export function ContextPicker({ applicationId }: { applicationId: string | null }) {
+export function ContextPicker({
+  applicationId,
+  children,
+}: {
+  applicationId: string | null;
+  /** Drawn in the side column — the join-by-invitation card. */
+  children?: ReactNode;
+}) {
   const {
     contexts: reportedContexts,
     loading,
@@ -155,138 +163,168 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
   const nsList = (namespaces ?? []) as unknown[];
 
   return (
-    <>
-      <div className="card">
-        <h2>Choose a table</h2>
-        <p className="empty" style={{ marginBottom: 14 }}>
-          A table is one Calimero context: two seats, a move list, and every
-          member converging on the same game.
-        </p>
-
-        {loading && <p className="empty">Loading contexts…</p>}
-        {error && <pre className="err">{error.message}</pre>}
-
-        {!loading && !applicationId && (
-          <p className="empty">
-            Waiting for this session to report which application it is bound to —
-            until it does, there is no way to tell this app&apos;s contexts from
-            any other app&apos;s on this node.
+    <div className="lobby">
+      <section className="lobby-hero">
+        <div className="lobby-copy">
+          <p className="eyebrow">Lobby</p>
+          <h1>Sit down at a table</h1>
+          <p className="lede">
+            A table is one Calimero context: two seats, a move list, and both
+            players&apos; nodes converging on the same game. No server in the
+            middle.
           </p>
-        )}
+          <div className="row">
+            {/*
+              Kept as the one-click path, and kept FIRST, because on a fresh node
+              it is the only one that can succeed — there is no namespace to add a
+              context to yet. The two-step controls below are for everything after
+              that.
+            */}
+            <button className="large" onClick={makeBoth} disabled={busy !== null || !applicationId}>
+              {busy === "both" ? "Creating…" : "New table"}
+            </button>
+            <button
+              className="ghost large"
+              onClick={() => {
+                void refetch();
+                void refetchNamespaces();
+              }}
+              disabled={loading || nsLoading}
+            >
+              Refresh
+            </button>
+          </div>
+          {note && <p className="hint">{note}</p>}
+          {failed && <pre className="err">{failed}</pre>}
+        </div>
+        <MiniBoard />
+      </section>
 
-        {!loading && applicationId && contexts.length === 0 && (
-          <p className="empty">No tables on this node yet — start one below.</p>
-        )}
+      <div className="lobby-grid">
+        <div className="card tables-card">
+          <div className="card-head">
+            <h2>Choose a table</h2>
+            {contexts.length > 0 && <span className="count">{contexts.length}</span>}
+          </div>
 
-        {contexts.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>table</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {contexts.map((c) => (
-                <tr key={c.contextId}>
-                  <td className="mono">{c.contextId}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <button onClick={() => select(c.contextId)}>Open</button>
-                  </td>
-                </tr>
+          {loading && <p className="empty">Loading contexts…</p>}
+          {error && <pre className="err">{error.message}</pre>}
+
+          {!loading && !applicationId && (
+            <p className="empty">
+              Waiting for this session to report which application it is bound to —
+              until it does, there is no way to tell this app&apos;s contexts from
+              any other app&apos;s on this node. If it never arrives, install the
+              app on the node first.
+            </p>
+          )}
+
+          {!loading && applicationId && contexts.length === 0 && (
+            <div className="empty-state">
+              <Piece className="empty-piece" color="white" kind="n" />
+              <p>No tables on this node yet.</p>
+              <p className="hint">Start one with New table, or join one with an invitation.</p>
+            </div>
+          )}
+
+          {contexts.length > 0 && (
+            <ul className="table-list">
+              {contexts.map((c, i) => (
+                <li key={c.contextId}>
+                  <button className="table-item" onClick={() => select(c.contextId)}>
+                    <span className={`table-icon ${i % 2 ? "alt" : ""}`} aria-hidden="true">
+                      <Piece color={i % 2 ? "black" : "white"} kind={TABLE_ICONS[i % TABLE_ICONS.length] ?? "n"} />
+                    </span>
+                    <span className="table-text">
+                      <span className="table-title">Table {i + 1}</span>
+                      <span className="table-id mono" title={c.contextId}>
+                        {c.contextId}
+                      </span>
+                    </span>
+                    <span className="open">Open</span>
+                  </button>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-
-        <div className="row" style={{ marginTop: 16 }}>
-          {/*
-            Kept as the one-click path, and kept FIRST, because on a fresh node
-            it is the only one that can succeed — there is no namespace to add a
-            context to yet. The two-step controls below are for everything after
-            that.
-          */}
-          <button onClick={makeBoth} disabled={busy !== null || !applicationId}>
-            {busy === "both" ? "Creating…" : "New table"}
-          </button>
-          <button
-            className="ghost"
-            onClick={() => {
-              void refetch();
-              void refetchNamespaces();
-            }}
-            disabled={loading || nsLoading}
-          >
-            Refresh
-          </button>
+            </ul>
+          )}
         </div>
 
-        {!applicationId && (
-          <p className="empty" style={{ marginTop: 12 }}>
-            No application id in this session — install the app on the node first.
-          </p>
-        )}
-        {note && <p className="empty" style={{ marginTop: 12 }}>{note}</p>}
-        {failed && <pre className="err">{failed}</pre>}
-      </div>
+        <div className="lobby-side">
+          {children}
 
-      <div className="card">
-        <h2>Namespaces</h2>
-        <p className="empty" style={{ marginBottom: 14 }}>
-          A table must live in a namespace, and a namespace can hold several —
-          so one namespace is a club and each context in it is a board. Members
-          are invited to the <em>namespace</em>, which is why one invite link
-          lets someone into every table in it.
-        </p>
+          <div className="card ns-card">
+            <div className="card-head">
+              <h2>Namespaces</h2>
+              <button
+                className="ghost small"
+                onClick={makeNamespace}
+                disabled={busy !== null || !applicationId}
+              >
+                {busy === "namespace" ? "Creating…" : "Create namespace"}
+              </button>
+            </div>
+            <p className="hint">
+              A namespace is a club and each context in it is a board. Members are
+              invited to the <em>namespace</em>, which is why one invite link lets
+              someone into every table in it.
+            </p>
 
-        {nsLoading && <p className="empty">Loading namespaces…</p>}
-        {nsError && <pre className="err">{nsError.message}</pre>}
+            {nsLoading && <p className="empty">Loading namespaces…</p>}
+            {nsError && <pre className="err">{nsError.message}</pre>}
 
-        {!nsLoading && nsList.length === 0 && (
-          <p className="empty">No namespaces yet — create one below, or use the one-click button above.</p>
-        )}
+            {!nsLoading && nsList.length === 0 && (
+              <p className="empty">No namespaces yet — New table creates one for you.</p>
+            )}
 
-        {nsList.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>namespace</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {nsList.map((ns, i) => {
-                const id = namespaceIdOf(ns);
-                if (!id) return null;
-                return (
-                  <tr key={id ?? i}>
-                    <td className="mono">{id}</td>
-                    <td style={{ textAlign: "right" }}>
+            {nsList.length > 0 && (
+              <ul className="ns-list">
+                {nsList.map((ns, i) => {
+                  const id = namespaceIdOf(ns);
+                  if (!id) return null;
+                  return (
+                    <li key={id ?? i}>
+                      <span className="mono ns-id" title={id}>
+                        {id}
+                      </span>
                       <button
-                        className="ghost"
+                        className="ghost small"
                         disabled={busy !== null}
                         onClick={() => void makeContextIn(id)}
                       >
                         {busy === id ? "Creating…" : "Add table"}
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        <div className="row" style={{ marginTop: 16 }}>
-          <button
-            className="ghost"
-            onClick={makeNamespace}
-            disabled={busy !== null || !applicationId}
-          >
-            {busy === "namespace" ? "Creating…" : "Create namespace"}
-          </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
-    </>
+    </div>
+  );
+}
+
+/** Pieces the table list cycles through, so neighbouring rows are told apart at a glance. */
+const TABLE_ICONS = ["n", "b", "r", "q", "k", "p"];
+
+/** The opening position, decorative: what the lobby is about. */
+function MiniBoard() {
+  const back = ["r", "n", "b", "q", "k", "b", "n", "r"];
+  const cells = [];
+  for (let rank = 7; rank >= 0; rank -= 1) {
+    for (let file = 0; file < 8; file += 1) {
+      const kind = rank === 0 || rank === 7 ? back[file] : rank === 1 || rank === 6 ? "p" : null;
+      cells.push(
+        <span key={`${file}${rank}`} className={(file + rank) % 2 === 0 ? "dark" : "light"}>
+          {kind && <Piece color={rank < 2 ? "white" : "black"} kind={kind} />}
+        </span>,
+      );
+    }
+  }
+  return (
+    <div className="mini-board" aria-hidden="true">
+      {cells}
+    </div>
   );
 }

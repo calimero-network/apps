@@ -66,6 +66,10 @@ const SCENARIOS = [
     '[data-testid="comment"]',
   ],
   ["dark", "Dark theme", '[data-testid="comment"]'],
+  ["spaces-empty", "No spaces yet", '[data-testid="spaces-empty"]'],
+  ["invite", "Invite dialog for a space", '[data-testid="invite-modal"]'],
+  ["composer", "Writing a new post", '[data-testid="composer-as"]'],
+  ["invitation", "An invitation link landed", '[data-testid="invite-prompt"]'],
 ];
 
 const MIME = {

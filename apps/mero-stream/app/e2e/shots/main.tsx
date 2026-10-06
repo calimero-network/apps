@@ -10,7 +10,9 @@ import { scenarioById } from "./fixtures";
 import { setUsername } from "../../src/lib/session";
 import "../../src/index.css";
 
-const sc = scenarioById(new URLSearchParams(location.search).get("s") ?? "idle");
+const sc = scenarioById(
+  new URLSearchParams(location.search).get("s") ?? "idle",
+);
 if (sc.theme) document.documentElement.dataset.theme = sc.theme;
 
 // CallPage nudges the identity dialog open ONCE for anyone who has never picked
@@ -38,7 +40,13 @@ createRoot(document.getElementById("root")!).render(
     </MemoryRouter>
     {sc.dialog ? (
       <OpenDialog
-        testId={sc.dialog === "people" ? "people-toggle" : "details-toggle"}
+        testId={
+          sc.dialog === "people"
+            ? "people-toggle"
+            : sc.dialog === "menu"
+              ? "more-menu-toggle"
+              : "details-toggle"
+        }
       />
     ) : null}
     {sc.invite ? <OpenDialog testId="invite-btn" /> : null}

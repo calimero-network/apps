@@ -9,6 +9,7 @@ import {
   type CapturedInvitation,
 } from "@calimero-apps/invite";
 import { setActiveRoom, setRoomName } from "../lib/session";
+import { AlertTriangleIcon, HashIcon, LayersIcon, XIcon } from "./icons";
 import styles from "./InvitationPrompt.module.css";
 
 /**
@@ -119,14 +120,20 @@ export default function InvitationPrompt() {
     return error ? (
       <div className={styles.wrap}>
         <div className={`${styles.prompt} ${styles.promptError}`}>
+          <span
+            className={`${styles.icon} ${styles.iconError}`}
+            aria-hidden="true"
+          >
+            <AlertTriangleIcon size={18} />
+          </span>
           <span className={styles.text}>{error}</span>
           <button
             type="button"
-            className={styles.ghost}
+            className={styles.dismiss}
             onClick={() => setError(null)}
             aria-label="Dismiss"
           >
-            ✕
+            <XIcon size={16} />
           </button>
         </div>
       </div>
@@ -139,6 +146,13 @@ export default function InvitationPrompt() {
   return (
     <div className={styles.wrap}>
       <div className={styles.prompt} data-testid="invite-prompt">
+        <span className={styles.icon} aria-hidden="true">
+          {pending.payload.roomName ? (
+            <HashIcon size={18} />
+          ) : (
+            <LayersIcon size={18} />
+          )}
+        </span>
         <span className={styles.text}>
           <strong>You have been invited to {name}</strong>
           <span className={styles.sub}>

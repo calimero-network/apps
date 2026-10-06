@@ -8,7 +8,7 @@ const sc = () =>
 export type Sort = "new" | "top";
 
 // Explicit `.ts` — see nickname.mock.ts for why.
-export { timeAgo } from "../../src/lib/forum.ts";
+export { fullDate, timeAgo, toMs } from "../../src/lib/forum.ts";
 
 /** A client object that is non-null (so the pages render) and never dials out. */
 const CLIENT = {

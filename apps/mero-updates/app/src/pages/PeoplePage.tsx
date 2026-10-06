@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useAudience } from "../components/AudienceShell";
 import { Avatar, CategoryChip } from "../components/bits";
+import { CheckCircleIcon, ChevronDownIcon, CircleIcon, EditIcon } from "../components/icons";
 import type { EngagementRow, PersonView } from "../generated/UpdatesClient";
 import { formatDate, personLabel, timeAgo, useLive, useUpdatesClient } from "../lib/updates";
 
@@ -24,20 +25,33 @@ export default function PeoplePage() {
 
   return (
     <>
+      <div className="pageHead">
+        <div>
+          <h1 className="pageTitle">People</h1>
+          <p className="pageSub">
+            {isTeam
+              ? "Who is in this audience, and who is engaged with your updates."
+              : "The team and the other members of this audience."}
+          </p>
+        </div>
+      </div>
+
       <MyProfile onSaved={reloadShell} />
 
-      <h2 className="sectionLabel">Team</h2>
+      <h2 className="sectionTitle">
+        Team <span className="countBadge">{team.length}</span>
+      </h2>
       <div className="peopleList">
         {team.map((p) => (
           <PersonRow key={p.account} person={p} isAdmin={!!me?.is_admin} self={me?.account} onChanged={people.reload} />
         ))}
       </div>
 
-      <h2 className="sectionLabel">
-        Investors &amp; advisors <span className="muted">({investors.length})</span>
+      <h2 className="sectionTitle">
+        Investors &amp; advisors <span className="countBadge">{investors.length}</span>
       </h2>
       {investors.length === 0 && (
-        <p className="muted">Nobody yet. Invite people from the audiences page — anyone with the link joins as a reader.</p>
+        <p className="muted emptyLine">Nobody yet. Invite people from the audiences page — anyone with the link joins as a reader.</p>
       )}
       <div className="peopleList">
         {investors.map((p) => (
@@ -54,10 +68,12 @@ export default function PeoplePage() {
 
       {isTeam && (engagement.data?.length ?? 0) > 0 && (
         <>
-          <h2 className="sectionLabel">Who read what</h2>
-          {engagement.data!.map((row) => (
-            <EngagementCard key={row.post_id} row={row} />
-          ))}
+          <h2 className="sectionTitle">Who read what</h2>
+          <div className="stack">
+            {engagement.data!.map((row) => (
+              <EngagementCard key={row.post_id} row={row} />
+            ))}
+          </div>
         </>
       )}
     </>
@@ -100,28 +116,31 @@ function PersonRow({
     <div className="person" data-testid="person">
       <Avatar name={person.name} account={person.account} team={person.is_team} />
       <div className="personMain">
-        <div>
+        <div className="personName">
           <strong>{personLabel(person.name, person.account)}</strong>
           {person.account === self && <span className="youTag"> (you)</span>}
           {person.firm && <span className="muted"> · {person.firm}</span>}
           {person.is_admin && <span className="teamTag">Admin</span>}
         </div>
         {showEngagement && (
-          <div className="muted small">
+          <div className="muted small personStats">
             Read {person.updates_read}/{person.updates_total} ({pct}%) · last read {timeAgo(person.last_read_at)} ·{" "}
             {person.comments} repl{person.comments === 1 ? "y" : "ies"} · {person.offers} offer
             {person.offers === 1 ? "" : "s"}
             {person.accepted_offers > 0 && ` (${person.accepted_offers} accepted)`}
           </div>
         )}
-        {showEngagement && (
-          <div className="bar" aria-hidden>
+      </div>
+      {showEngagement && (
+        <div className="personPct" aria-hidden>
+          <span className="personPctNum">{pct}%</span>
+          <div className="bar">
             <span style={{ width: `${pct}%` }} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
       {isAdmin && !person.is_admin && (
-        <button className="ghost small" disabled={busy} onClick={() => void toggleTeam()}>
+        <button className="secondary small" disabled={busy} onClick={() => void toggleTeam()}>
           {person.is_team ? "Remove from team" : "Make teammate"}
         </button>
       )}
@@ -139,29 +158,38 @@ function EngagementCard({ row }: { row: EngagementRow }) {
   return (
     <details className="engagement">
       <summary>
-        <strong>{row.title}</strong>
-        <span className="muted small">
-          {" "}
-          · {formatDate(row.published_at)} · {row.readers.length}/{total} read · {plural(row.reactions, "reaction")} ·{" "}
-          {plural(row.comments, "reply", "replies")} · {plural(row.offers, "offer")}
+        <div className="engagementHead">
+          <strong>{row.title}</strong>
+          <span className="muted small">
+            {formatDate(row.published_at)} · {plural(row.reactions, "reaction")} ·{" "}
+            {plural(row.comments, "reply", "replies")} · {plural(row.offers, "offer")}
+          </span>
+        </div>
+        <span className="engagementRead">
+          <span className="num">
+            {row.readers.length}/{total}
+          </span>{" "}
+          read
         </span>
+        <ChevronDownIcon size={16} className="summaryChevron" />
       </summary>
       <div className="engagementCols">
         <div>
-          <span className="sectionLabel">Read</span>
+          <span className="eyebrow">Read</span>
           {row.readers.length === 0 && <p className="muted small">Nobody yet.</p>}
           {row.readers.map((r) => (
-            <div key={r.account} className="small">
-              ✓ {personLabel(r.name, r.account)} <span className="muted">· {timeAgo(r.first_at)}</span>
+            <div key={r.account} className="readerRow">
+              <CheckCircleIcon size={14} className="okIcon" /> {personLabel(r.name, r.account)}{" "}
+              <span className="muted">· {timeAgo(r.first_at)}</span>
             </div>
           ))}
         </div>
         <div>
-          <span className="sectionLabel">Not yet — follow up</span>
+          <span className="eyebrow">Not yet — follow up</span>
           {row.not_read.length === 0 && <p className="muted small">Everyone has read it.</p>}
           {row.not_read.map((r) => (
-            <div key={r.account} className="small">
-              ○ {personLabel(r.name, r.account)}
+            <div key={r.account} className="readerRow">
+              <CircleIcon size={14} className="muted" /> {personLabel(r.name, r.account)}
               {r.firm && <span className="muted"> · {r.firm}</span>}
             </div>
           ))}
@@ -199,26 +227,30 @@ function MyProfile({ onSaved }: { onSaved: () => void }) {
           </button>
         </div>
       ) : (
-        <div className="row wrap">
-          <span>
-            You are <strong>{personLabel(me.name, me.account)}</strong>
+        <div className="row wrap myProfileRow">
+          <Avatar name={me.name} account={me.account} team={me.is_team} />
+          <span className="grow">
+            <span className="muted small">Signed in as</span>
+            <br />
+            <strong>{personLabel(me.name, me.account)}</strong>
             {me.firm && <span className="muted"> · {me.firm}</span>}
           </span>
           <button
-            className="linkBtn"
+            className="secondary small"
             onClick={() => {
               setName(me.name);
               setFirm(me.firm);
               setEditing(true);
             }}
           >
+            <EditIcon size={14} />
             Edit
           </button>
         </div>
       )}
       {categories.length > 0 && (
         <>
-          <div className="muted small" style={{ marginTop: 10 }}>
+          <div className="muted small followingLabel">
             Categories you follow — muted ones stop counting as unread:
           </div>
           <div className="following" data-testid="following">
