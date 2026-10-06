@@ -2,6 +2,7 @@
  *
  * Mounted at the app level (see the component doc), so it floats above whatever
  * route the link happened to land on rather than living in one page's layout.
+ * A focused card: what you are joining, Join, Not now.
  */
 .wrap {
   position: fixed;
@@ -12,7 +13,7 @@
   z-index: 20;
   display: flex;
   justify-content: center;
-  padding: 12px;
+  padding: 16px;
   pointer-events: none;
 }
 
@@ -20,19 +21,36 @@
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
-  max-width: 760px;
-  padding: 12px 16px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--bg-elev);
-  box-shadow: var(--shadow);
-  font-size: 0.94rem;
+  width: min(640px, 100%);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  font-size: 14px;
 }
 
 .promptError {
-  border-color: var(--red);
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.iconError {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .text {
@@ -41,21 +59,27 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  line-height: 1.4;
+}
+
+.text strong {
+  font-weight: 600;
 }
 
 .sub {
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
 .accept {
+  height: 36px;
+  padding: 0 18px;
   background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  color: var(--accent-fg);
-  padding: 8px 18px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -65,21 +89,45 @@
 }
 .accept:disabled {
   opacity: 0.5;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .ghost {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   color: var(--text-dim);
-  padding: 8px 14px;
-  font-size: 0.9rem;
+  font-size: 14px;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
 }
 .ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dismiss {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.dismiss:hover {
   background: var(--surface-hover);
   color: var(--text);
 }

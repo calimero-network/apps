@@ -72,7 +72,8 @@ const SCENARIOS = [
     "First time here — pick a name",
     '[data-testid="people-dialog"]',
   ],
-  ["dialog", "See more data", '[data-testid="data-dialog"]'],
+  ["dialog", "Call details panel", '[data-testid="data-dialog"]'],
+  ["more-menu", "The More menu, open", '[data-testid="more-menu"]'],
   ["dark", "Dark theme"],
 ];
 

@@ -41,31 +41,54 @@ export default function WebOnlyNotice() {
         gap: 18,
         padding: 28,
         textAlign: "center",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        background: "#0b0e14",
-        color: "#e6edf3",
+        fontFamily: "var(--font)",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>
+      <h1
+        style={{
+          margin: 0,
+          fontFamily: "var(--font-display)",
+          fontSize: 24,
+          fontWeight: 600,
+        }}
+      >
         Mero Stream runs in your browser
       </h1>
-      <p style={{ margin: 0, maxWidth: 460, fontSize: 15, lineHeight: 1.6, color: "#a9b6c4" }}>
+      <p
+        style={{
+          margin: 0,
+          maxWidth: 460,
+          fontSize: 14,
+          lineHeight: 1.6,
+          color: "var(--text-dim)",
+        }}
+      >
         This desktop window has no camera or microphone API, so a stream opened
         here would have no video or audio to publish. Open Mero Stream in Chrome
         or Safari and everything works, including invites you already have.
       </p>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          justifyContent: "center",
+        }}
+      >
         <a
           data-testid="web-only-open-in-browser"
           href={href}
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            padding: "11px 22px",
-            borderRadius: 7,
-            background: "#4f8cff",
-            color: "#fff",
-            fontWeight: 700,
+            padding: "9px 18px",
+            borderRadius: 8,
+            background: "var(--accent)",
+            color: "var(--accent-text)",
+            border: "1px solid rgba(0, 0, 0, 0.06)",
+            fontWeight: 500,
             textDecoration: "none",
           }}
         >
@@ -75,13 +98,14 @@ export default function WebOnlyNotice() {
           data-testid="web-only-copy-link"
           onClick={copy}
           style={{
-            padding: "11px 22px",
-            borderRadius: 7,
-            border: "1px solid #3a4250",
-            background: "transparent",
+            padding: "9px 18px",
+            borderRadius: 8,
+            border: "1px solid var(--border-strong)",
+            background: "var(--surface)",
             color: "inherit",
+            font: "inherit",
             cursor: "pointer",
-            fontWeight: 700,
+            fontWeight: 500,
           }}
         >
           Copy link

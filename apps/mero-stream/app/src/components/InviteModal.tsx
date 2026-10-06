@@ -2,6 +2,13 @@ import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
+import {
+  ChevronDownIcon,
+  CopyIcon,
+  LinkIcon,
+  UserPlusIcon,
+  XIcon,
+} from "./icons";
 import styles from "./InviteModal.module.css";
 
 /**
@@ -75,7 +82,10 @@ export default function InviteModal({
         await navigator.clipboard.writeText(value);
         showToast(`${label} copied.`, "success");
       } catch {
-        showToast("Could not reach the clipboard — select it and copy.", "error");
+        showToast(
+          "Could not reach the clipboard — select it and copy.",
+          "error",
+        );
       }
     },
     [showToast],
@@ -99,6 +109,9 @@ export default function InviteModal({
     >
       <div className={styles.body}>
         <header className={styles.head}>
+          <span className={styles.headIcon} aria-hidden="true">
+            <UserPlusIcon size={18} />
+          </span>
           <h2 className={styles.title}>Invitation ready</h2>
           <button
             type="button"
@@ -107,7 +120,7 @@ export default function InviteModal({
             aria-label="Close"
             data-testid="invite-modal-close"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         </header>
 
@@ -117,14 +130,17 @@ export default function InviteModal({
 
         {/* One line by default; `showRaw` is also the "clipboard failed" state,
             where the characters have to be selectable. */}
-        <code
-          className={styles.link}
-          title={share.link}
-          data-full={showRaw ? "true" : "false"}
-          data-testid="invite-link"
-        >
-          {share.link}
-        </code>
+        <div className={styles.linkField}>
+          <LinkIcon size={16} className={styles.linkIcon} />
+          <code
+            className={styles.link}
+            title={share.link}
+            data-full={showRaw ? "true" : "false"}
+            data-testid="invite-link"
+          >
+            {share.link}
+          </code>
+        </div>
 
         <button
           type="button"
@@ -132,6 +148,7 @@ export default function InviteModal({
           onClick={copyAndClose}
           data-testid="invite-copy"
         >
+          <CopyIcon size={16} />
           Copy link
         </button>
 
@@ -144,6 +161,10 @@ export default function InviteModal({
           aria-expanded={showRaw}
           data-testid="invite-more"
         >
+          <ChevronDownIcon
+            size={16}
+            className={showRaw ? styles.chevronOpen : styles.chevron}
+          />
           {showRaw ? "Fewer options" : "Other ways to send this"}
         </button>
 

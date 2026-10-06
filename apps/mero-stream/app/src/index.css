@@ -24,68 +24,81 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #fcfcfc;
+  /* Shared Calimero light palette (apps redesign). Old token names are kept
+     and mapped onto it, so nothing that still reads them slips unstyled. */
+  --bg: #f6f6f3;
+  --bg-subtle: #efefeb;
   --bg-elev: #ffffff;
   --surface: #ffffff;
-  --surface-hover: #f2f2f3;
-  --surface-strong: #e9e9eb;
-  --border: #e4e4e6;
-  --border-strong: #c8c8c8;
+  --surface-hover: #f3f3f0;
+  --surface-sunken: #f1f1ee;
+  --surface-strong: #e9e9e4;
+  --border: #e5e5e0;
+  --border-strong: #d4d4ce;
 
   --text: #131215;
-  --text-dim: #404040;
-  /* Was #8e8e8e, which measures 3.3:1 on white — below AA for the small labels
-     it is used for (STAT captions, room ids, helper lines). See the contrast
-     test in index.contrast.test.ts. */
-  --text-faint: #6e6e6e;
+  --text-dim: #4a4a4f;
+  /* Held to AA on --surface-hover, the darkest light surface it sits on. See
+     the contrast test in index.contrast.test.ts. */
+  --text-faint: #6b6b70;
 
   --accent: #a5ff11;
-  --accent-hover: #b6ff3d;
-  --accent-soft: rgba(165, 255, 17, 0.18);
+  --accent-hover: #b4ff3a;
+  --accent-soft: #f0ffd6;
   /* Text ON the green fill. */
   --accent-text: #131215;
-  /* Accent-coloured TEXT on the page background — deepened to stay legible.
-     "Deepened" was not deep ENOUGH: #5f9400 measures 3.7:1 on white, which
-     clears AA for large text only, and every use of it here is small. */
-  --accent-ink: #4e7a00;
+  /* Accent-coloured TEXT on light surfaces — the fill itself is ~1.5:1. */
+  --accent-ink: #4a7300;
   /* Kept as an alias: older rules use --accent-fg for "text on the accent". */
   --accent-fg: #131215;
 
-  /* #4f9a00 measured 3.2:1 and #b26a00 4.2:1 — both read as a status WORD
-     ("19%", "2/2 broadcasting"), so both are held to the 4.5:1 body rule. */
-  --green: #407d00;
+  --success: #2f7a00;
+  --success-soft: #eef8e4;
+  --warning: #9a5b00;
+  --warning-soft: #fff4e0;
+  --info: #1d5fbf;
+  --info-soft: #eaf1fc;
+  --danger: #c62828;
+  --danger-soft: #fdecec;
+
+  /* Legacy status names, read as status WORDS, so held to the body rule. */
+  --green: #2f7a00;
   --red: #c62828;
-  /* Text ON the red fill, the way --accent-text is text on the green.
-     `.stopBtn` was using --accent-fg (near-black, correct on the bright green)
-     on the red too: 3.3:1 here. The right ink FLIPS between themes — white
-     clears on light's deep red and fails on dark's bright one, and near-black
-     does the reverse — so it cannot be one shared constant. */
+  /* Text ON the red fill, the way --accent-text is text on the green. The
+     right ink FLIPS between themes, so it cannot be one shared constant. */
   --red-text: #ffffff;
   --red-hover: #a51d1d;
-  --danger: #c62828;
-  --amber: #a05f00;
+  --amber: #9a5b00;
 
+  /* The video stage stays dark in both themes: a white surround makes a
+     correctly decoded frame look wrong. Everything AROUND it is light. */
   --stage: #131215;
   --tile: #000000;
-  /* Text that sits ON the stage, and therefore does NOT follow the theme: the
-     stage is dark in light mode too (see the note at the top of this file), so
-     a light-mode ink darkened for white would disappear on it. */
+  --tile-bg: #222126;
   --stage-text: #e8e8ea;
-  --stage-text-faint: #8e8e8e;
+  --stage-text-faint: #9a9aa0;
 
-  --radius-sm: 7px;
+  --radius-sm: 6px;
   --radius: 10px;
-  --radius-lg: 16px;
-  --shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
-  --shadow: 0 10px 34px rgba(19, 18, 21, 0.1);
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-xs: 0 1px 2px rgba(19, 18, 21, 0.05);
+  --shadow-sm: 0 1px 2px rgba(19, 18, 21, 0.04), 0 2px 8px rgba(19, 18, 21, 0.05);
+  --shadow-md: 0 4px 12px rgba(19, 18, 21, 0.06), 0 12px 32px rgba(19, 18, 21, 0.08);
+  --shadow: var(--shadow-md);
+  --ring: 0 0 0 3px rgba(165, 255, 17, 0.45);
+  --overlay: rgba(19, 18, 21, 0.32);
 
-  --scrollbar: #c8c8c8;
-  --scrollbar-hover: #a8a8a8;
+  --scrollbar: #d4d4ce;
+  --scrollbar-hover: #b4b4ae;
 
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display:
+    "Power Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+    sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
 }
 
 :root[data-theme="dark"] {
@@ -133,6 +146,33 @@
 
   --scrollbar: #3a3940;
   --scrollbar-hover: #4a4952;
+
+  --bg-subtle: #26252b;
+  --surface-sunken: #161519;
+  --tile-bg: #222126;
+  --success: #a5ff11;
+  --success-soft: rgba(165, 255, 17, 0.12);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --info: #7aa7ff;
+  --info-soft: rgba(122, 167, 255, 0.14);
+  --danger-soft: rgba(239, 68, 68, 0.14);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --overlay: rgba(0, 0, 0, 0.55);
+}
+
+@font-face {
+  font-family: "Power Grotesk";
+  src: url("/fonts/powerGrotesk/PowerGrotesk-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Power Grotesk";
+  src: url("/fonts/powerGrotesk/PowerGrotesk-Bold.woff2") format("woff2");
+  font-weight: 600 700;
+  font-display: swap;
 }
 
 * {
@@ -151,6 +191,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -160,8 +202,8 @@ button {
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
@@ -172,4 +214,22 @@ button {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-hover);
   background-clip: padding-box;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Visually hidden, still announced. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
