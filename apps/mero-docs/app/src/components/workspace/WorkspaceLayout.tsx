@@ -481,6 +481,21 @@ export function WorkspaceLayout() {
               <EmptyState title="Loading folder…" />
             ) : selectedFolderPerms.loading ? (
               <EmptyState title="Checking access…" />
+            ) : selectedFolderPerms.notSynced ? (
+              // Listed by the registry, but this node has not applied the
+              // folder's group yet - saying "not a member" here sends people
+              // asking for an invite they already have.
+              <EmptyState title="This folder hasn't synced to your node yet">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    onRetrySync();
+                    selectedFolderPerms.refetch();
+                  }}
+                >
+                  Try again
+                </Button>
+              </EmptyState>
             ) : lacksFolderAccess(selectedFolderPerms) ? (
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="mx-auto max-w-3xl">

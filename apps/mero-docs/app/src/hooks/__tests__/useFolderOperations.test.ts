@@ -156,6 +156,40 @@ describe('useFolderOperations.create - Read only', () => {
   });
 });
 
+describe('useFolderOperations.create - visibility', () => {
+  it('creates a top-level Open folder Open, with no visibility flip', async () => {
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Open one',
+      visibility: 'Open',
+    });
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', { visibility: 'open' });
+    expect(setSubgroupVisibility).not.toHaveBeenCalled();
+    expect(setGroupMetadata).toHaveBeenCalledWith('new-folder', { name: 'Open one' });
+  });
+
+  it('still flips a nested Open folder after reparenting it', async () => {
+    const { result } = renderHook(() =>
+      useFolderOperations(makeRegistry(), ROOT, 'app-1', vi.fn().mockResolvedValue(undefined)),
+    );
+    await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: 'parent-folder',
+      alias: 'Nested',
+      visibility: 'Open',
+    });
+    expect(createGroupInNamespace).toHaveBeenCalledWith('ns-1', { visibility: 'restricted' });
+    expect(setSubgroupVisibility).toHaveBeenCalledWith('new-folder', { subgroupVisibility: 'open' });
+    expect(reparentGroup.mock.invocationCallOrder[0]).toBeLessThan(
+      setSubgroupVisibility.mock.invocationCallOrder[0],
+    );
+  });
+});
+
 describe('useFolderOperations.create - members', () => {
   it('adds each chosen member (core role "Member") after the folder is bound', async () => {
     const registry = makeRegistry();

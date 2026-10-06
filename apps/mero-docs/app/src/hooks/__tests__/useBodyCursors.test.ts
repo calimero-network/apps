@@ -5,7 +5,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import type { DocNode } from '@/components/editor/presence/geometry';
 import type { DocPresence } from '@/lib/rich/presence';
-import { useBodyCursors, type CursorEditor } from '../useBodyCursors';
+import { useBodyCursors, type CursorEditor, type UseBodyCursorsOptions } from '../useBodyCursors';
 
 const dispatched: unknown[] = [];
 
@@ -98,7 +98,10 @@ const client = {
 };
 
 const publish = vi.fn();
-const identity = { toBackendId: (id: string) => id, toEditorId: (id: string) => id };
+const identity: Pick<UseBodyCursorsOptions, 'toBackendId' | 'toEditorId' | 'isConfirmed'> = {
+  toBackendId: (id: string) => id,
+  toEditorId: (id: string) => id,
+};
 
 function mount(
   peers: Map<string, DocPresence>,
@@ -320,6 +323,24 @@ describe('useBodyCursors - publishing our own caret', () => {
     });
     expect(client.anchorAt).toHaveBeenCalledWith({ doc: DOC, block: 'node-1', position: 0, before: true });
     expect(publish).toHaveBeenCalledWith({ blockId: 'node-1', anchor: 'anc-mine', head: 'anc-mine' });
+  });
+
+  it('waits for a block typed here to confirm before anchoring on it', async () => {
+    vi.useFakeTimers();
+    try {
+      let confirmed = false;
+      await act(async () => {
+        mount(new Map(), fakeEditor(2, 2), { ...minted, isConfirmed: () => confirmed });
+      });
+      expect(client.anchorAt).not.toHaveBeenCalled();
+      confirmed = true;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(client.anchorAt).toHaveBeenCalledWith({ doc: DOC, block: 'node-1', position: 0, before: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('withdraws the caret when the editor goes away', async () => {

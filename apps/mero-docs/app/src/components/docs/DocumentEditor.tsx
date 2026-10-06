@@ -165,6 +165,7 @@ export function DocumentEditor({
     revision: body.revision,
     toBackendId: body.backendIdOf,
     toEditorId: body.editorIdOf,
+    isConfirmed: body.isConfirmed,
   });
 
   useEffect(() => {
