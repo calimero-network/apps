@@ -102,7 +102,10 @@ describe("ProjectsPage on a delegated session", () => {
     fireEvent.click(screen.getByTestId("create-project-btn"));
 
     await waitFor(() => expect(stub.admin.createContext).toHaveBeenCalledTimes(1));
-    expect(stub.admin.createGroupInNamespace).toHaveBeenCalledWith(TEAM, { groupName: "Poster 2" });
+    expect(stub.admin.createGroupInNamespace).toHaveBeenCalledWith(TEAM, {
+      groupName: "Poster 2",
+      visibility: "open",
+    });
     expect(stub.admin.setSubgroupVisibility).toHaveBeenCalledWith("sg-new", { subgroupVisibility: "open" });
     expect(stub.admin.createContext).toHaveBeenCalledWith(
       expect.objectContaining({ applicationId: "app", groupId: "sg-new", name: "Poster 2" }),
