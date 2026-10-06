@@ -102,7 +102,10 @@ catalog:
   # 9.11.4 (#97): memberPublicKey is the account on an account's createContext,
   # invitations fall back to the admitting relay when the cloud has no route,
   # and reads go through the relay's query route instead of warrants.
-  "@calimero-network/mero-react": ^9.11.4
+  # 9.12.0 (#99): inside a Calimero Desktop window the connect dialog has no
+  # Cloud tab — the window is already bound to the desktop's node, and the
+  # wallet redirect would navigate it off to another origin. Browsers unchanged.
+  "@calimero-network/mero-react": ^9.12.0
   # 1.5.2 (design-system#26): the RichTextEditor carries one ProseMirror. 1.5.1
   # inlined Tiptap's core but loaded @tiptap/extensions from the app, so every
   # editor mount threw "Adding different instances of a keyed plugin (plugin$)"
