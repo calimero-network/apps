@@ -1,81 +1,138 @@
-/* ── "See more data" dialog ─────────────────────────────────────────────────
+/* ── Call details panel ──────────────────────────────────────────────────────
  *
- * Everything that used to be laid out under the video tiles: the §4 probe
- * measurements, the encoder controls, the replicated-state proof, the capacity
- * budget, and the CSV export.
+ * Everything that is not the call: capacity, the §4 probe measurements, the
+ * encoder controls, the replicated-state proof and the CSV export. Presented as
+ * a side sheet sliding over the right edge of the call, so the tiles stay in
+ * view while you read it.
  *
- * A native <dialog> rather than a hand-rolled overlay, because `showModal()`
- * brings focus trapping, Escape-to-close, inertness of the page behind it and
- * the top layer for free — all of which a div would have to reimplement, and
- * usually only partly.
+ * Still a native <dialog> opened with `showModal()`: focus trapping,
+ * Escape-to-close, inertness behind it and the top layer come for free.
  */
 .dialog {
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elev);
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100%;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  background: var(--surface);
   color: var(--text);
   font-family: var(--font);
-  padding: 0;
-  width: min(920px, calc(100vw - 32px));
-  max-height: min(86vh, 900px);
-  box-shadow: var(--shadow);
+  font-size: 14px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 180ms ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] {
+    animation: none;
+  }
+}
+
 .dialog::backdrop {
-  background: rgba(19, 18, 21, 0.38);
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
 }
 
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 20px 20px 16px 24px;
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  background: var(--bg-elev);
+  flex: none;
+}
+
+.headText {
+  min-width: 0;
 }
 
 .headTitle {
   margin: 0;
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 18px;
   font-weight: 600;
+  line-height: 1.3;
+}
+
+.headSub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 .headSpacer {
   flex: 1;
 }
 
+.closeBtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.closeBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
 .body {
-  padding: 18px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  max-height: calc(min(86vh, 900px) - 60px);
+  padding: 20px 24px 32px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 28px;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .sectionHead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
 .sectionTitle {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 15px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .sectionActions {
@@ -86,9 +143,9 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 1px;
-  background: var(--border);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -100,18 +157,21 @@
   gap: 2px;
   padding: 10px 12px;
   background: var(--surface);
+  /* Hairlines between cells without painting the empty tail of a row. */
+  box-shadow: 1px 1px 0 var(--border);
 }
 
 .metricValue {
   font-family: var(--mono);
-  font-size: 1rem;
+  font-size: 15px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .metricLabel {
-  font-size: 0.7rem;
+  font-size: 12px;
   color: var(--text-faint);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .ok {
@@ -124,45 +184,106 @@
   color: var(--red);
 }
 
+/* ── Explanations, folded away ────────────────────────────────────────────── */
+.explain {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.explainSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.explainSummary::-webkit-details-marker {
+  display: none;
+}
+.explainSummary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  flex: none;
+}
+.explain[open] > .explainSummary::before {
+  transform: rotate(45deg);
+}
+.explainSummary:hover {
+  color: var(--text);
+}
+
+.explainBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
 .note {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 13px;
   line-height: 1.55;
   color: var(--text-dim);
 }
 
+.noteIcon {
+  vertical-align: -3px;
+  margin-right: 4px;
+  color: var(--warning);
+}
+
 .note code {
   font-family: var(--mono);
-  font-size: 0.78rem;
-  background: var(--surface);
+  font-size: 12px;
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 1px 4px;
+  padding: 0 4px;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: 13px;
 }
 
 .table th,
 .table td {
-  text-align: left;
-  padding: 6px 10px;
+  text-align: right;
+  padding: 0 12px;
+  height: 36px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .table th {
-  color: var(--text-faint);
+  background: var(--bg-subtle);
+  color: var(--text-dim);
   font-weight: 500;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
 }
 
 .table td {
-  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -170,52 +291,62 @@
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .rowHere {
   background: var(--accent-soft);
 }
 
+/* ── Encoder controls ─────────────────────────────────────────────────────── */
 .controlRow {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .control {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 200px;
-  flex: 1;
 }
 
 .controlLabel {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.78rem;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-dim);
 }
 
 .controlValue {
   font-family: var(--mono);
+  font-weight: 500;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .control input[type="range"] {
-  accent-color: var(--accent);
+  accent-color: var(--text);
   width: 100%;
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   color: var(--text);
-  padding: 6px 12px;
-  font-size: 0.82rem;
+  font-size: 13px;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -224,17 +355,12 @@
   background: var(--surface-hover);
 }
 
-.closeBtn {
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  color: var(--accent-fg);
-  padding: 6px 14px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-.closeBtn:hover {
-  background: var(--accent-hover);
+@media (max-width: 600px) {
+  .dialog {
+    border-radius: 0;
+    border-left: 0;
+  }
+  .body {
+    padding: 16px 16px 24px;
+  }
 }

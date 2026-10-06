@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { initials, type Person } from "../lib/people";
+import { CheckIcon, XIcon } from "./icons";
 import styles from "./PeopleDialog.module.css";
 
 /**
@@ -68,15 +69,20 @@ export default function PeopleDialog({
       onClose={onClose}
     >
       <div className={styles.head}>
-        <h2 className={styles.headTitle}>You and the room</h2>
+        <div>
+          <h2 className={styles.headTitle}>People</h2>
+          <p className={styles.headSub}>Your name, and who else is here.</p>
+        </div>
         <span className={styles.headSpacer} />
         <button
           type="button"
           className={styles.closeBtn}
           onClick={onClose}
           data-testid="people-dialog-close"
+          aria-label="Close"
+          title="Close"
         >
-          Close
+          <XIcon size={18} />
         </button>
       </div>
 
@@ -122,6 +128,7 @@ export default function PeopleDialog({
           )}
           {saved && (
             <span className={styles.saved} data-testid="nickname-saved">
+              <CheckIcon size={14} />
               Saved — everyone sees it within a few seconds.
             </span>
           )}
@@ -129,8 +136,10 @@ export default function PeopleDialog({
 
         <div className={styles.field}>
           <h3 className={styles.sectionTitle}>
-            In this room · {people.length} ·{" "}
-            {`${live}/${maxBroadcasters} broadcasting`}
+            <span>In this room · {people.length}</span>
+            <span className={styles.sectionMeta}>
+              {`${live}/${maxBroadcasters} broadcasting`}
+            </span>
           </h3>
           {people.length === 0 ? (
             <p className={styles.empty}>
@@ -179,7 +188,7 @@ export default function PeopleDialog({
           <p className={styles.help}>
             Anyone can watch. Only {maxBroadcasters} people can broadcast at
             once — the limit is what the network carries, not a policy. See{" "}
-            <strong>See more data</strong> for the numbers.
+            <strong>Call details</strong> for the numbers.
           </p>
         </div>
       </div>

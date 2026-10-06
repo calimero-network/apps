@@ -17,13 +17,23 @@ import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { hostingProblem } from "../lib/hosting";
 import { useMyId } from "../hooks/useMyId";
-import { initials } from "../lib/people";
 import {
   labelMembers,
   summariseMembers,
   type RoomMemberLabel,
 } from "../lib/roomMembers";
 import type { Member } from "../types";
+import {
+  AlertTriangleIcon,
+  BrandMark,
+  ChevronRightIcon,
+  HashIcon,
+  PlusIcon,
+  RefreshIcon,
+  UserPlusIcon,
+  UsersIcon,
+  VideoIcon,
+} from "../components/icons";
 import styles from "./Manage.module.css";
 import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
@@ -307,36 +317,13 @@ export default function RoomsPage() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          <h1 className={styles.brandName}>Mero Stream</h1>
+          <BrandMark size={28} />
+          <h1 className={`${styles.brandName} ${styles.hideNarrow}`}>
+            Mero Stream
+          </h1>
         </div>
-        <span className={styles.spacer} />
-        <ActionButton
-          onClick={inviteToNamespace}
-          pending={pending === "invite:namespace"}
-          pendingLabel="Minting…"
-          variant="secondary"
-          size="small"
-          testId="invite-namespace"
-          disabled={!!hostingNote}
-          title={hostingNote ?? "Invite someone to this whole stream"}
-        >
-          Invite to stream
-        </ActionButton>
-        <ActionButton
-          onClick={() => void load()}
-          pending={listing}
-          pendingLabel="Refreshing…"
-          variant="secondary"
-          size="small"
-          testId="refresh-rooms"
-        >
-          Refresh
-        </ActionButton>
-        <SessionMenu />
-      </header>
-
-      <main className={styles.content}>
         <nav className={styles.crumbs} aria-label="Breadcrumb">
+          <ChevronRightIcon size={16} className={styles.crumbSep} />
           <button
             type="button"
             className={styles.crumbLink}
@@ -345,22 +332,58 @@ export default function RoomsPage() {
           >
             All streams
           </button>
-          <span aria-hidden="true">/</span>
-          <span>{nsName || "…"}</span>
+          <ChevronRightIcon size={16} className={styles.crumbSep} />
+          <span className={styles.crumbCurrent}>{nsName || "…"}</span>
         </nav>
+        <span className={styles.spacer} />
+        <div className={styles.headerActions}>
+          <ActionButton
+            onClick={() => void load()}
+            pending={listing}
+            pendingLabel="Refreshing…"
+            variant="secondary"
+            size="small"
+            testId="refresh-rooms"
+            title="Refresh the room list"
+          >
+            <RefreshIcon size={16} />
+            <span className={styles.hideNarrow}>Refresh</span>
+          </ActionButton>
+          <span className={styles.headerDivider} aria-hidden="true" />
+          <SessionMenu />
+        </div>
+      </header>
 
+      <main className={styles.content}>
         <div className={styles.heading}>
-          <h2 className={styles.title}>
-            {nsName || <span className={styles.muteInline}>Loading…</span>}
-          </h2>
-          <p className={styles.subtitle}>
-            Each <strong>room</strong> is one video call. Everyone invited to
-            this stream can join any room in it — a room link just drops them
-            straight into that call.
-          </p>
+          <div className={styles.headingText}>
+            <h2 className={styles.title}>
+              {nsName || <span className={styles.muteInline}>Loading…</span>}
+            </h2>
+            <p className={styles.subtitle}>
+              Each <strong>room</strong> is one video call. Everyone invited to
+              this stream can join any room in it — a room link just drops them
+              straight into that call.
+            </p>
+          </div>
+          <ActionButton
+            onClick={inviteToNamespace}
+            pending={pending === "invite:namespace"}
+            pendingLabel="Minting…"
+            variant="secondary"
+            testId="invite-namespace"
+            disabled={!!hostingNote}
+            title={hostingNote ?? "Invite someone to this whole stream"}
+          >
+            <UserPlusIcon size={16} />
+            Invite to stream
+          </ActionButton>
         </div>
 
         <div className={styles.toolbar}>
+          <span className={styles.toolbarIcon} aria-hidden="true">
+            <HashIcon size={18} />
+          </span>
           <input
             className={styles.input}
             placeholder="Name a new room"
@@ -370,6 +393,7 @@ export default function RoomsPage() {
             maxLength={60}
             disabled={pending === "create"}
             data-testid="room-name-input"
+            aria-label="New room name"
           />
           <ActionButton
             onClick={create}
@@ -378,6 +402,7 @@ export default function RoomsPage() {
             disabled={!name.trim() || !admin}
             testId="create-room"
           >
+            <PlusIcon size={16} />
             Create room
           </ActionButton>
         </div>
@@ -423,6 +448,9 @@ export default function RoomsPage() {
 
         {notInstalled && (
           <div className={styles.empty}>
+            <span className={styles.emptyIcon} aria-hidden="true">
+              <AlertTriangleIcon size={20} />
+            </span>
             <span className={styles.emptyTitle}>
               Mero Stream is not installed on this node
             </span>
@@ -442,6 +470,9 @@ export default function RoomsPage() {
           !notInstalled &&
           rooms.length === 0 && (
             <div className={styles.empty}>
+              <span className={styles.emptyIcon} aria-hidden="true">
+                <HashIcon size={20} />
+              </span>
               <span className={styles.emptyTitle}>No rooms in this stream</span>
               <span className={styles.emptyHint}>
                 Create one above to start a call. Everyone already in the stream
@@ -461,8 +492,11 @@ export default function RoomsPage() {
                 data-joined={room.joined}
               >
                 <div className={styles.cardTop}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {initials(room.name)}
+                  <span
+                    className={`${styles.avatar} ${room.joined ? styles.avatarActive : ""}`}
+                    aria-hidden="true"
+                  >
+                    <HashIcon size={18} />
                   </span>
                   <span className={styles.cardText}>
                     <span className={styles.cardName} title={room.name}>
@@ -470,6 +504,7 @@ export default function RoomsPage() {
                     </span>
                     <span className={styles.cardMeta}>
                       <span className={styles.pill}>
+                        <UsersIcon size={12} />
                         {room.memberCount} member
                         {room.memberCount === 1 ? "" : "s"}
                       </span>
@@ -481,10 +516,12 @@ export default function RoomsPage() {
                         <span
                           className={`${styles.pill} ${styles.pillWaiting}`}
                         >
+                          <span className={styles.pillDot} />
                           syncing
                         </span>
                       ) : room.joined ? (
                         <span className={`${styles.pill} ${styles.pillJoined}`}>
+                          <span className={styles.pillDot} />
                           joined
                         </span>
                       ) : (
@@ -498,7 +535,7 @@ export default function RoomsPage() {
                     back to the id only while the roster is unknown (not
                     joined, or still loading). */}
                 <span
-                  className={styles.cardId}
+                  className={`${styles.cardId} ${!roomRoster(room)?.length && room.contextId ? styles.cardIdMono : ""}`}
                   title={
                     roomRoster(room)
                       ? roomRoster(room)!
@@ -527,10 +564,11 @@ export default function RoomsPage() {
                       <>
                         <Spinner label="Joining" /> joining…
                       </>
-                    ) : room.joined ? (
-                      "Open call"
                     ) : (
-                      "Join call"
+                      <>
+                        <VideoIcon size={16} />
+                        {room.joined ? "Open call" : "Join call"}
+                      </>
                     )}
                   </button>
                   <ActionButton
@@ -538,12 +576,14 @@ export default function RoomsPage() {
                     pending={pending === `invite:${room.roomId}`}
                     pendingLabel="Minting…"
                     variant="secondary"
+                    size="small"
                     testId="invite-room"
                     disabled={!!hostingNote}
                     title={
                       hostingNote ?? "Invite someone straight into this room"
                     }
                   >
+                    <UserPlusIcon size={16} />
                     Invite
                   </ActionButton>
                 </div>

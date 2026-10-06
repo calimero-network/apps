@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMeroStream } from "../hooks/useMeroStream";
 import { useStream, CAPTURE_WIDTH, CAPTURE_HEIGHT } from "../hooks/useStream";
 import { getUsername, setUsername } from "../lib/session";
+import { ChevronLeftIcon } from "../components/icons";
 import styles from "./StreamPage.module.css";
 
 // Raw luma bytes per captured frame (1 byte/pixel) — the denominator for the
@@ -71,7 +72,8 @@ export default function StreamPage() {
             className={styles.switchBtn}
             onClick={() => navigate("/streams")}
           >
-            ← All streams
+            <ChevronLeftIcon size={16} />
+            All streams
           </button>
           <h1 className={styles.title}>
             {stats?.name || "Stream"}{" "}
@@ -105,13 +107,14 @@ export default function StreamPage() {
       <section className={styles.canvases}>
         <figure className={styles.canvasCard}>
           <figcaption className={styles.canvasLabel}>
-            Local capture ({CAPTURE_WIDTH}×{CAPTURE_HEIGHT} luma → contract)
+            Local capture ({CAPTURE_WIDTH}×{CAPTURE_HEIGHT} luma, sent to the
+            contract)
           </figcaption>
           <canvas ref={s.localCanvasRef} className={styles.canvas} />
         </figure>
         <figure className={styles.canvasCard}>
           <figcaption className={styles.canvasLabel}>
-            Remote decoded (get_frame → paint)
+            Remote decoded (get_frame, then paint)
           </figcaption>
           <canvas ref={s.remoteCanvasRef} className={styles.canvas} />
         </figure>
@@ -227,7 +230,7 @@ export default function StreamPage() {
         </div>
         <p className={styles.note}>
           <strong>Latency</strong> spans two clocks (sender{" "}
-          <code>createdAt</code> → this node&apos;s render), so it is only
+          <code>createdAt</code> to this node&apos;s render), so it is only
           trustworthy where both nodes share a host clock — the solo two-node
           harness. <strong>Encode RTT</strong> is measured on one clock and is
           an upper bound on in-WASM encode cost: it also contains JSON

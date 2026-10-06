@@ -5,7 +5,8 @@ import { scenarioById } from "./fixtures";
 
 export type { NamespaceRow, RoomRow } from "../../src/lib/groups";
 
-const sc = () => scenarioById(new URLSearchParams(location.search).get("s") ?? "idle");
+const sc = () =>
+  scenarioById(new URLSearchParams(location.search).get("s") ?? "idle");
 
 /** The identity this node holds in the room it has already joined. */
 const MY_IDENTITY = "8Qk2Hs9vLxTnR4mZbA1cWpYeUf3gJd6NqSvXhKrM8tBz";
@@ -101,7 +102,18 @@ export async function acceptInvite() {
 }
 
 export async function redeemInvite() {
-  return { kind: "namespace" as const, namespaceId: NAMESPACES[0].namespaceId };
+  return {
+    outcome: { status: "joined" as const },
+    landed: {
+      kind: "namespace" as const,
+      namespaceId: NAMESPACES[0].namespaceId,
+    },
+  };
+}
+
+/** Mirrors the real helper's surface; the harness never fails a join. */
+export function redeemFailureMessage(outcome: { message?: string }): string {
+  return outcome.message ?? "Could not join";
 }
 
 export async function enterRoomContext() {

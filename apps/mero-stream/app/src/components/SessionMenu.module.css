@@ -1,47 +1,126 @@
 .root {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* Which node this session talks to: context, not an action. */
 .node {
-  font-size: 0.75rem;
-  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
-  padding: 3px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--bg-elev);
+  background: var(--surface);
   white-space: nowrap;
 }
 
+.nodeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
 .logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-dim);
   background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 8px);
-  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .logout:hover {
   color: var(--text);
-  border-color: var(--border-strong);
   background: var(--surface-hover);
 }
 
 .logout:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--ring);
 }
 
-/* The node pill is context, not an action — drop it before the button when
-   there is no room, rather than letting the header wrap onto two lines. */
-@media (max-width: 560px) {
+/* ── Inside a dropdown ─────────────────────────────────────────────────── */
+.menuRoot {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuNode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  color: var(--text-faint);
+}
+
+.menuNodeText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.menuNodeLabel {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.menuNodeHost {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuLogout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--danger);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.menuLogout:hover {
+  background: var(--danger-soft);
+}
+
+.menuLogout:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Drop the node pill and the word before the header wraps. */
+@media (max-width: 640px) {
   .node {
+    display: none;
+  }
+  .logoutText {
     display: none;
   }
 }

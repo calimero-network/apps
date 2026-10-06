@@ -1,40 +1,79 @@
-/* ── Identity + people ─────────────────────────────────────────────────────
+/* ── People panel ────────────────────────────────────────────────────────────
  *
- * One dialog, two jobs, in the order they matter to someone opening it: set the
- * name other people see, then see who else is here. They were separate ideas and
- * are better together — "who is in this room" and "what am I called in it" are
- * the same question asked from two sides, and a name field on its own gives you
- * no way to check it landed.
+ * One panel, two jobs, in the order they matter: set the name other people
+ * see, then see who else is here — so a rename can be watched landing in the
+ * list underneath it. A side sheet over the call's right edge, like the
+ * participants panel of any call app; still a modal <dialog>.
  */
 .dialog {
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elev);
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  width: min(400px, 100vw);
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100%;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  background: var(--surface);
   color: var(--text);
   font-family: var(--font);
-  padding: 0;
-  width: min(460px, calc(100vw - 32px));
-  max-height: min(80vh, 720px);
-  box-shadow: var(--shadow);
+  font-size: 14px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 180ms ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] {
+    animation: none;
+  }
+}
+
 .dialog::backdrop {
-  background: rgba(19, 18, 21, 0.38);
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
 }
 
 .head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 20px 20px 16px 24px;
   border-bottom: 1px solid var(--border);
+  flex: none;
 }
 
 .headTitle {
   margin: 0;
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 18px;
   font-weight: 600;
+  line-height: 1.3;
+}
+
+.headSub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 .headSpacer {
@@ -42,13 +81,16 @@
 }
 
 .closeBtn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
   color: var(--text-dim);
-  padding: 5px 12px;
-  font-size: 0.85rem;
-  font-family: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
 }
 .closeBtn:hover {
@@ -57,31 +99,32 @@
 }
 
 .body {
-  padding: 18px;
+  flex: 1;
+  min-height: 0;
+  padding: 20px 24px 32px;
   overflow-y: auto;
-  max-height: calc(min(80vh, 720px) - 60px);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
 }
 
 /* ── Name ─────────────────────────────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .label {
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text);
 }
 
 .help {
   margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-dim);
+  font-size: 12px;
+  color: var(--text-faint);
   line-height: 1.5;
 }
 
@@ -93,31 +136,37 @@
 .input {
   flex: 1;
   min-width: 0;
+  height: 38px;
+  padding: 0 12px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   color: var(--text);
-  padding: 9px 11px;
-  font-size: 0.95rem;
+  font-size: 14px;
   font-family: inherit;
+}
+.input::placeholder {
+  color: var(--text-faint);
 }
 .input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--text);
+  box-shadow: var(--ring);
 }
-/* An unset name is the one state worth nudging: the tiles show it to everybody. */
+/* An unset name is the one state worth nudging: the tiles show it to all. */
 .input[data-unset="true"] {
-  border-color: var(--amber);
+  border-color: var(--warning);
 }
 
 .saveBtn {
+  height: 38px;
+  padding: 0 16px;
   background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  color: var(--accent-fg);
-  padding: 9px 18px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -126,23 +175,41 @@
   background: var(--accent-hover);
 }
 .saveBtn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .saved {
-  font-size: 0.8rem;
-  color: var(--green);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--success);
 }
 
 /* ── People ───────────────────────────────────────────────────────────────── */
 .sectionTitle {
   margin: 0;
-  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.sectionMeta {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
   color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .list {
@@ -151,8 +218,6 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -161,31 +226,31 @@
 .person {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 12px;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px;
   background: var(--surface);
-  font-size: 0.92rem;
+  border-bottom: 1px solid var(--border);
+}
+.person:last-child {
+  border-bottom: 0;
 }
 
 .avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: none;
   border-radius: 50%;
-  background: var(--surface-strong);
-  border: 1px solid var(--border);
+  background: var(--bg-subtle);
   color: var(--text-dim);
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
 }
 .avatarSelf {
-  background: var(--accent-soft);
-  border-color: var(--accent-ink);
-  /* Ink, not the fill: bright green on a pale green tint is ~1.5:1. */
-  color: var(--accent-ink);
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .who {
@@ -193,10 +258,11 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .name {
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -204,7 +270,7 @@
 
 .id {
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: 11px;
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -216,17 +282,18 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.74rem;
-  padding: 2px 8px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
+  background: var(--bg-subtle);
   color: var(--text-dim);
   white-space: nowrap;
 }
 .badgeLive {
-  border-color: var(--red);
-  color: var(--red);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .dot {
@@ -238,6 +305,17 @@
 
 .empty {
   margin: 0;
-  font-size: 0.85rem;
+  padding: 16px;
+  font-size: 13px;
   color: var(--text-faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .dialog {
+    border-radius: 0;
+    border-left: 0;
+  }
 }

@@ -16,6 +16,10 @@
 }
 
 .switchBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
   background: none;
   border: none;
   color: var(--text-dim);
@@ -28,8 +32,9 @@
 }
 
 .title {
-  font-size: 1.7rem;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0 0 4px;
 }

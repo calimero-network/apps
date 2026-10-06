@@ -52,7 +52,7 @@ export interface Scenario {
   running: boolean;
   yielded?: boolean;
   error?: string | null;
-  dialog?: "data" | "people";
+  dialog?: "data" | "people" | "menu";
   theme?: "dark" | "light";
   /** Room members, including spectators who are not broadcasting. */
   members: number;
@@ -95,20 +95,14 @@ export const SCENARIOS: Scenario[] = [
   {
     id: "spectator",
     title: "Slots full — you are a spectator",
-    remotes: Array.from(
-      { length: MAX_BROADCASTERS },
-      (_, i) => `peer${i + 1}`,
-    ),
+    remotes: Array.from({ length: MAX_BROADCASTERS }, (_, i) => `peer${i + 1}`),
     running: false,
     members: 9,
   },
   {
     id: "yielded",
     title: "You lost the race for the last slot",
-    remotes: Array.from(
-      { length: MAX_BROADCASTERS },
-      (_, i) => `peer${i + 1}`,
-    ),
+    remotes: Array.from({ length: MAX_BROADCASTERS }, (_, i) => `peer${i + 1}`),
     running: false,
     yielded: true,
     members: 9,
@@ -123,6 +117,16 @@ export const SCENARIOS: Scenario[] = [
     running: true,
     dialog: "data",
     members: 7,
+  },
+  {
+    // The "…" menu open: where the health strip, the node and the way out
+    // live now that the call screen shows only the call.
+    id: "more-menu",
+    title: "The More menu, open",
+    remotes: ["peer1", "peer2"].slice(0, MAX_BROADCASTERS - 1),
+    running: true,
+    dialog: "menu",
+    members: 5,
   },
   {
     // Light is the DEFAULT now, so every other shot in this set is already
