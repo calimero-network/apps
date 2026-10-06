@@ -360,7 +360,12 @@ async function expectDeepLink(
       timeout: 15_000,
     });
   } else {
-    await expect(noAccessCard(bob, doc)).toBeVisible({ timeout: SYNC_MS });
+    // Bob's node does not list the folder, so the card is the one a doc that
+    // never existed gets: nothing names the folder, or says it is there.
+    await expect(page.getByText("This document isn't available")).toBeVisible({
+      timeout: SYNC_MS,
+    });
+    await expect(noAccessCard(bob, doc)).toHaveCount(0);
     await expect(page.locator('.ProseMirror')).toHaveCount(0);
   }
 }
@@ -393,7 +398,12 @@ async function expectOpenDocRevoked(
 
   await revoke();
 
-  await expect(noAccessCard(bob, doc)).toBeVisible({ timeout: SYNC_MS });
+  // The folder drops out of Bob's listing with his access, so he gets the card
+  // an outsider gets, not one naming a folder he can no longer see.
+  await expect(page.getByText("This document isn't available")).toBeVisible({
+    timeout: SYNC_MS,
+  });
+  await expect(noAccessCard(bob, doc)).toHaveCount(0);
   await expect(page.locator('.ProseMirror')).toHaveCount(0);
   expect(new URL(page.url()).pathname).toBe(doc.path);
   expect(
@@ -493,7 +503,8 @@ test.describe('Visibility matrix (two-node)', () => {
       { title: 'Hiring plan', folder: 'Hiring' },
       { title: 'Offsite plan', folder: 'Leadership' },
     );
-    // Filtered to the parent, the view still counts the child's docs for Bob.
+    // Filtered to the parent, the view matches nothing for Bob: his node is not
+    // told where Hiring sits, so counting its docs here would name the parent.
     await shareFolderView(alice, 'Leadership');
     await inviteBob(alice, bob);
     await expand(alice, ['Leadership']);
@@ -503,7 +514,7 @@ test.describe('Visibility matrix (two-node)', () => {
       folders: ['Hiring'],
       docs: { 'Hiring plan': 'Hiring' },
       folderOptions: { Hiring: 1 },
-      view: ['Hiring plan'],
+      view: [],
       readable: false,
     });
   });
