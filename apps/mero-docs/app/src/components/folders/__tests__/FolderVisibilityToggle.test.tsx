@@ -10,7 +10,6 @@ const listGroupMembers = vi.fn();
 const addGroupMembers = vi.fn();
 const updateMemberRole = vi.fn();
 const setMemberCapabilities = vi.fn();
-const setFolderRole = vi.fn();
 const BASE = [
   { id: 'parent', parent_id: null, visibility: 'Open' },
   { id: 'child', parent_id: 'parent', visibility: 'Restricted' },
@@ -37,7 +36,6 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
     refetch: vi.fn().mockResolvedValue(undefined),
-    registryClient: { setFolderRole, getFolderRole: async () => 'Editor', listFolderRoles },
     namespaceMemberNames: { [BOB]: 'Bob' },
     folders: workspace.folders,
   }),
@@ -47,15 +45,13 @@ vi.mock('@/hooks/useFolderPermissions', () => ({
 }));
 const confirm = vi.fn(async (_opts: { body: unknown }) => true);
 vi.mock('@/components/ui/confirm-dialog', () => ({ useConfirm: () => confirm }));
-const listFolderRoles = vi.fn();
 const getMemberCapabilities = vi.fn();
 
 beforeEach(() => {
   confirm.mockClear();
-  listFolderRoles.mockReset().mockResolvedValue([]);
   getMemberCapabilities.mockReset().mockResolvedValue({ capabilities: 0 });
   workspace.folders = BASE;
-  for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities, setFolderRole]) {
+  for (const fn of [setSubgroupVisibility, addGroupMembers, setMemberCapabilities]) {
     fn.mockReset().mockResolvedValue(undefined);
   }
   updateMemberRole.mockReset().mockRejectedValue(new HTTPError(404, '', '/groups/child', new Headers()));
@@ -101,7 +97,8 @@ describe('FolderVisibilityToggle', () => {
   // Their direct rows outlast the switch, so the warning must not say they lose access.
   it('names who keeps access when a folder is restricted: people with a role set here', async () => {
     workspace.folders = [{ ...BASE[0] }, { ...BASE[1], visibility: 'Open' }];
-    listFolderRoles.mockResolvedValue([{ member: BOB, role: 'Editor' }]);
+    // A direct row: listed by core, with the grant's join bit.
+    listGroupMembers.mockResolvedValue({ members: [{ identity: BOB, role: 'Member' }] });
     getMemberCapabilities.mockResolvedValue({ capabilities: 4 });
     render(<FolderVisibilityToggle folderId="child" current="Open" />);
     fireEvent.click(screen.getByRole('button', { name: 'Make restricted' }));
@@ -114,6 +111,24 @@ describe('FolderVisibilityToggle', () => {
     render(<FolderVisibilityToggle folderId="child" current="Open" />);
     fireEvent.click(screen.getByRole('button', { name: 'Make restricted' }));
     await waitFor(() => expect(setSubgroupVisibility).toHaveBeenCalled());
-    expect(listGroupMembers).not.toHaveBeenCalled();
+    expect(addGroupMembers).not.toHaveBeenCalled();
+    expect(updateMemberRole).not.toHaveBeenCalled();
+    expect(setMemberCapabilities).not.toHaveBeenCalled();
+  });
+
+  it('names neither the owner nor a TEE replica as keeping access', async () => {
+    workspace.folders = [{ ...BASE[0] }, { ...BASE[1], visibility: 'Open' }];
+    listGroupMembers.mockResolvedValue({
+      members: [
+        { identity: 'owner', role: 'Admin' },
+        { identity: 'tee', role: 'RelayTee' },
+      ],
+    });
+    getMemberCapabilities.mockResolvedValue({ capabilities: 4 });
+    render(<FolderVisibilityToggle folderId="child" current="Open" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make restricted' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    const body = render(<>{confirm.mock.calls[0][0].body}</>).container.textContent;
+    expect(body).not.toContain('keeps access');
   });
 });

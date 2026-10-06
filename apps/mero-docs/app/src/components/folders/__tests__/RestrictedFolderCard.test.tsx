@@ -12,7 +12,9 @@ import { RestrictedFolderCard } from '../RestrictedFolderCard';
 // asserted in isolation, without a live node.
 const joinSubgroupInheritance = vi.fn();
 const joinContext = vi.fn();
-const getFolderContext = vi.fn();
+const listGroupContexts = vi.fn();
+// Stable, like the session's admin.
+const meroStub = { admin: { listGroupContexts } };
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
@@ -22,10 +24,7 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
   }),
   useJoinContext: () => ({ joinContext, loading: false, error: null }),
-}));
-
-vi.mock('@/hooks/useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ registryClient: { getFolderContext } }),
+  useMero: () => meroStub,
 }));
 
 const baseProps = {
@@ -38,7 +37,7 @@ describe('RestrictedFolderCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     joinSubgroupInheritance.mockResolvedValue({});
-    getFolderContext.mockResolvedValue('docs-ctx-xyz');
+    listGroupContexts.mockResolvedValue([{ contextId: 'docs-ctx-xyz' }]);
     joinContext.mockResolvedValue({});
   });
 
@@ -51,7 +50,7 @@ describe('RestrictedFolderCard', () => {
         expect(joinContext).toHaveBeenCalledWith('docs-ctx-xyz'),
       );
       expect(joinSubgroupInheritance).toHaveBeenCalledWith('folder-1');
-      expect(getFolderContext).toHaveBeenCalledWith({ folder_id: 'folder-1' });
+      expect(listGroupContexts).toHaveBeenCalledWith('folder-1');
       // Subgroup join must precede the context join - the docs context
       // join is authorised via the (just-materialised) membership.
       expect(

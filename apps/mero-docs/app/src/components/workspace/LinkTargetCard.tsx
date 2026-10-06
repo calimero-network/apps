@@ -47,16 +47,14 @@ function copyFor(
         body: `${name || 'This folder'} is a restricted folder, and you are not a member yet. ${askToJoin}`,
       };
     }
+    // Deleted and private read the same: a node never holds a Restricted
+    // folder it was not added to, so it cannot tell them apart - and saying
+    // which would tell an outsider the folder exists.
     case 'deleted':
-      return subject === 'folder'
-        ? {
-            title: 'This folder was deleted or moved',
-            body: "It's no longer at this link.",
-          }
-        : {
-            title: 'This document was deleted or moved',
-            body: "It's no longer at this link.",
-          };
+      return {
+        title: subject === 'folder' ? "This folder isn't available" : "This document isn't available",
+        body: "It was deleted or moved, or you don't have access to it. If someone shared it with you, ask them to add you.",
+      };
     case 'not-in-workspace':
       return {
         title: 'You are not in this workspace',

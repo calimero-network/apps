@@ -4,9 +4,10 @@ import {
   countAdmins,
   describeRoleChange,
   effectiveHasCap,
+  documentRoleOf,
   folderRoleOf,
-  folderRoleOfRegistryRole,
   FOLDER_ROLE_GRANTS,
+  MANAGER_FOLDER_CAPS,
   FOLDER_ROLES,
   parseGroupRole,
   planDefaultsSweep,
@@ -35,8 +36,8 @@ describe('parseGroupRole', () => {
     expect(parseGroupRole('RelayTee')).toBe('RelayTee');
     expect(workspaceRoleOf('ReadOnlyTee', 0)).toBe('Tee');
     expect(workspaceRoleOf('RelayTee', null)).toBe('Tee');
-    expect(folderRoleOf('RelayTee', 'Editor', 0)).toBe('Tee');
-    expect(folderRoleOfRegistryRole('ReadOnlyTee', 'Editor')).toBe('Tee');
+    expect(folderRoleOf('RelayTee', 0)).toBe('Tee');
+    expect(folderRoleOf('ReadOnlyTee', null)).toBe('Tee');
     expect(roleDisplayLabel('Tee')).toBe('TEE node');
   });
 
@@ -104,38 +105,26 @@ describe('folderRoleOf', () => {
   it('maps every folder role grant back to its role', () => {
     for (const role of FOLDER_ROLES) {
       const g = FOLDER_ROLE_GRANTS[role];
-      expect(folderRoleOf(g.coreRole, g.role, g.folderCaps)).toBe(role);
+      expect(folderRoleOf(g.coreRole, g.folderCaps)).toBe(role);
     }
   });
 
   // Core discards every state write of a ReadOnly member, comments included.
-  it('makes Read only core ReadOnly in the folder, plus the registry Viewer row', () => {
+  it('makes Read only core ReadOnly in the folder', () => {
     expect(FOLDER_ROLE_GRANTS.ReadOnly).toEqual({
       coreRole: 'ReadOnly',
-      role: 'Viewer',
       folderCaps: C.CAN_JOIN_OPEN_SUBGROUPS,
     });
     expect(FOLDER_ROLE_GRANTS.Editor.coreRole).toBe('Member');
     expect(FOLDER_ROLE_GRANTS.Manager.coreRole).toBe('Member');
-    expect(roleDisplayLabel(folderRoleOf('ReadOnly', 'Viewer', 0)!)).toBe('Read only');
-  });
-
-  // Nothing enforces a Viewer row alone, so it must not read as Read only.
-  it('shows a registry Viewer who is still a core Member as Custom', () => {
-    expect(folderRoleOf('Member', 'Viewer', 0)).toBe('Custom');
-    expect(folderRoleOfRegistryRole('Member', 'Viewer')).toBe('Custom');
+    expect(roleDisplayLabel(folderRoleOf('ReadOnly', 0)!)).toBe('Read only');
   });
 
   // "Admin" is workspace vocabulary; in a folder the core admin is its owner.
   it('reads a core admin of the folder as Owner', () => {
-    expect(folderRoleOf('Admin', 'Viewer', 0)).toBe('Owner');
-    expect(folderRoleOfRegistryRole('Admin', 'Editor')).toBe('Owner');
+    expect(folderRoleOf('Admin', 0)).toBe('Owner');
+    expect(folderRoleOf('Admin', null)).toBe('Owner');
     expect(roleDisplayLabel('Owner')).toBe('Owner');
-  });
-
-  it('shows a core ReadOnly member with a non-Viewer registry row as Custom', () => {
-    expect(folderRoleOf('ReadOnly', 'Editor', 0)).toBe('Custom');
-    expect(folderRoleOfRegistryRole('ReadOnly', 'Manager')).toBe('Custom');
   });
 
   // The bit is what reaches the folder's Open sub-folders; every role keeps it.
@@ -144,27 +133,38 @@ describe('folderRoleOf', () => {
       const g = FOLDER_ROLE_GRANTS[role];
       expect(g.folderCaps & C.CAN_JOIN_OPEN_SUBGROUPS).toBe(C.CAN_JOIN_OPEN_SUBGROUPS);
       const without = g.folderCaps & ~C.CAN_JOIN_OPEN_SUBGROUPS;
-      expect(folderRoleOf(g.coreRole, g.role, without)).toBe(role);
+      expect(folderRoleOf(g.coreRole, without)).toBe(role);
     }
   });
 
   it('shows Custom for an off-grant (role, caps) pair', () => {
-    expect(folderRoleOf('Member', 'Editor', 0xff)).toBe('Custom');
-    expect(folderRoleOf('Member', 'Manager', 0)).toBe('Custom');
+    expect(folderRoleOf('Member', 0xff)).toBe('Custom');
+    expect(folderRoleOf('ReadOnly', MANAGER_FOLDER_CAPS)).toBe('Custom');
   });
 
   it('is null while the folder caps are loading', () => {
-    expect(folderRoleOf('Member', 'Editor', null)).toBeNull();
+    expect(folderRoleOf('Member', null)).toBeNull();
   });
 });
 
-// The read-only sharing list has the registry Role but no per-member caps.
-describe('folderRoleOfRegistryRole', () => {
-  it('names the role from the registry Role alone', () => {
-    expect(folderRoleOfRegistryRole('ReadOnly', 'Viewer')).toBe('ReadOnly');
-    expect(folderRoleOfRegistryRole('Member', 'Editor')).toBe('Editor');
-    expect(folderRoleOfRegistryRole('Member', 'Manager')).toBe('Manager');
-    expect(folderRoleOfRegistryRole('Admin', 'Viewer')).toBe('Owner');
+// The documents role is core's; nothing about it is kept in the registry.
+describe('documentRoleOf', () => {
+  it('reads core ReadOnly as a Viewer', () => {
+    expect(documentRoleOf(false, true, C.CAN_JOIN_OPEN_SUBGROUPS)).toBe('Viewer');
+  });
+
+  it('reads the folder Manager caps as a Manager, and anyone else as an Editor', () => {
+    expect(documentRoleOf(false, false, FOLDER_ROLE_GRANTS.Manager.folderCaps)).toBe('Manager');
+    expect(documentRoleOf(false, false, FOLDER_ROLE_GRANTS.Editor.folderCaps)).toBe('Editor');
+    expect(documentRoleOf(false, false, 0)).toBe('Editor');
+  });
+
+  it('makes a core admin a Manager whatever the caps', () => {
+    expect(documentRoleOf(true, false, null)).toBe('Manager');
+  });
+
+  it('is null while the caps load', () => {
+    expect(documentRoleOf(false, false, null)).toBeNull();
   });
 });
 

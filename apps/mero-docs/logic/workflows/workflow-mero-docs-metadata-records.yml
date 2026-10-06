@@ -18,12 +18,11 @@ description: >
     6. Rename round trip: Alice renames the namespace, the folder,
        and her own member record; Bob reads each renamed value
        after sync.
-    7. Registry permissions on the folder: Alice (the owner)
-       registers Shared, and grants/revokes Bob as a manager
-       (add_manager/remove_manager/list_managers). Bob exercises the
-       manager-gated clear_folder_role on himself while a manager,
-       is rejected once revoked, and Alice's set_folder_alias lands
-       on a get_folder read.
+    7. Registry managers: Alice (the registry owner) grants and
+       revokes Bob as a manager (add_manager/remove_manager/
+       list_managers), and Bob joins the Registry context through
+       namespace-root membership. No folder data is stored there:
+       folders are core subgroups named by their metadata.
 
   Step types used: install_application, create_namespace,
   create_context, create_group_in_namespace, set_subgroup_visibility,
@@ -278,21 +277,11 @@ steps:
       - "equal({{alice_name_bob}}, 'Alice Anderson')"
 
   # =================================================================
-  # D2. Registry permissions: add_manager/remove_manager/list_managers,
-  # clear_folder_role (manager-gated), set_folder_alias.
+  # D2. Registry managers: add_manager/remove_manager/list_managers.
+  # The registry holds workspace-level data only; the folder's name and
+  # colour are its subgroup metadata (section B), and its roles are core
+  # roles and capabilities.
   # =================================================================
-  - name: register_folder Shared in the registry
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{folder_id}}'
-      parent_id: null
-      color: '#1f8a4c'
-      alias: Shared
-
   - name: list_managers is empty before any grant
     type: call
     node: calimero-node-1
@@ -330,17 +319,6 @@ steps:
     statements:
       - 'json_equal({{managers_after_add}}, ["{{bob_account}}"])'
 
-  - name: Alice gives Bob an explicit Viewer role on Shared
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
   - name: Bob joins the Registry context via namespace-root membership
     type: join_context
     node: calimero-node-2
@@ -358,33 +336,6 @@ steps:
     nodes: [calimero-node-1, calimero-node-2]
     context_id: '{{reg_ctx}}'
     timeout: 30
-
-  - name: Bob (now a manager) clears his own Shared-folder role
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: clear_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-
-  - name: Bob's Shared-folder role reads back the implicit default
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: get_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-    outputs:
-      bob_role_after_clear: result.output
-
-  - name: Assert clear_folder_role reset Bob to the default Editor
-    type: assert
-    statements:
-      - "equal({{bob_role_after_clear}}, 'Editor')"
 
   - name: Alice removes Bob as a registry manager
     type: call
@@ -408,79 +359,6 @@ steps:
     type: json_assert
     statements:
       - 'json_equal({{managers_after_remove}}, [])'
-
-  # Back the revoked-manager status with a real write attempt - a
-  # require_admin regression could still let a former manager through.
-  - name: Alice gives Bob a Viewer role again, to have something to protect
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
-  - name: Sync the revoked manager status to Bob's node
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{reg_ctx}}'
-    timeout: 30
-
-  - name: Bob (no longer a manager) is rejected clearing his own role
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: clear_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-    expected_failure: true
-
-  - name: Bob's Shared-folder role is still Viewer - the rejected write did not land
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: get_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{folder_id}}'
-      member: '{{bob_account}}'
-    outputs:
-      bob_role_after_rejected_clear: result.output
-
-  - name: Assert the rejected clear_folder_role left Bob's role untouched
-    type: assert
-    statements:
-      - "equal({{bob_role_after_rejected_clear}}, 'Viewer')"
-
-  - name: Alice sets a new alias on Shared
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_alias
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{folder_id}}'
-      alias: Shared Drive
-
-  - name: get_folder shows the new alias
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: get_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{folder_id}}'
-    outputs:
-      shared_after_alias: result.output
-
-  - name: Assert the registry alias updated
-    type: json_assert
-    statements:
-      - 'json_subset({{shared_after_alias}}, {"alias": "Shared Drive"})'
 
   # =================================================================
   # E. Bob sets HIS OWN display name; Alice reads it.

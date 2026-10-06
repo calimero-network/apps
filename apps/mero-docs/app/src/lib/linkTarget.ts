@@ -2,7 +2,6 @@
 // `null` inputs mean "not loaded yet" so a slow read never reads as "gone".
 
 import type { AppRoute } from './routes';
-import type { RegistryFolderShape } from '@/hooks/useWorkspaceTree';
 
 export type LinkTarget = 'ok' | 'syncing' | 'no-access' | 'deleted' | 'not-in-workspace';
 
@@ -13,7 +12,7 @@ export interface LinkTargetInput {
   /** Workspace ids this node belongs to; null while that list hasn't loaded. */
   namespaceIds: string[] | null;
   /** Raw registry rows for the routed workspace; null while its folder list hasn't loaded. */
-  folderRegistry: RegistryFolderShape[] | null;
+  folderRegistry: { id: string }[] | null;
   /** Folder ids whose access this caller has resolved; hiddenFolderIds is only trustworthy for these. */
   resolvedFolderIds: Set<string>;
   /** Folder ids hidden from this caller: restricted folders it isn't a member of. */

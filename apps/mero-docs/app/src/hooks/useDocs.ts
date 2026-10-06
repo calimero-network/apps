@@ -1,11 +1,11 @@
-// Docs facade for a single folder - resolves the folder's bound
-// docs context via the registry, instantiates a DocsClient against
-// it, and exposes list / get / create / edit / delete + SSE-driven
+// Docs facade for a single folder - resolves the folder's docs
+// context from core (the one context in its subgroup), instantiates
+// a DocsClient against it, and exposes list / get / create / edit / delete + SSE-driven
 // refresh. Consumers pass a folderId and get a reactive list of
 // docs plus a typed set of mutations.
 //
 // Split of responsibilities:
-//   - RegistryClient.getFolderContext → resolve the docs context id
+//   - folderDocsContext (core listGroupContexts) → resolve the docs context id
 //   - useDocsClient → instantiate the generated client with MeroJs
 //     + contextId + executor pubkey
 //   - useSubscription-backed useDocEvents → invalidate the list on
@@ -17,22 +17,18 @@
 //   const forExistence = useDocs(folderId, { includeArchived: true });
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useJoinContext } from '@calimero-network/mero-react';
+import { useJoinContext, useMero } from '@calimero-network/mero-react';
 import type { DocDto, DocsClient } from '../generated/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
-// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
-// The generated constructor is the only way to make one, which is the point -
-// this fleet has had folder ids, context ids and account ids all be bare
-// 64-hex strings that type-check in each other's slots.
-import { FolderId } from '../generated/registry/RegistryClient';
+import { folderDocsContext } from '../lib/coreFolders';
 
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
   contextId: string | null;
-  /** True while `getFolderContext` is in flight - distinguishes
-   *  "registry hasn't told us about this folder yet" (transient,
+  /** True while the docs-context read is in flight - distinguishes
+   *  "core hasn't told us about this folder yet" (transient,
    *  show a syncing message) from "folder genuinely has no binding"
    *  (legacy / unbound state, show the static empty copy). */
   contextResolving: boolean;
@@ -168,7 +164,8 @@ export function useDocs(
   opts?: UseDocsOptions,
 ): UseDocsState {
   const includeArchived = !!opts?.includeArchived;
-  const { registryClient, selfIdentity: identity } = useDriveWorkspace();
+  const { selfIdentity: identity } = useDriveWorkspace();
+  const { admin } = useMero();
   const { joinContext } = useJoinContext();
   // Ref-captured so it isn't a `refetch` dependency - useJoinContext's
   // returned fn isn't guaranteed stable, and `refetch` feeds an effect.
@@ -180,10 +177,10 @@ export function useDocs(
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
-  // True while getFolderContext is in flight; seeded from props so the first
+  // True while the docs-context read is in flight; seeded from props so the first
   // paint already says "resolving" instead of flashing the unbound copy.
   const [contextResolving, setContextResolving] = useState<boolean>(
-    () => !!registryClient && !!folderId,
+    () => !!admin && !!folderId,
   );
   // The folder whose context read last succeeded; a null contextId only
   // means "unbound" when this matches the current folder.
@@ -191,11 +188,11 @@ export function useDocs(
   // Bumped by an explicit retry after a failed context read.
   const [resolveAttempt, setResolveAttempt] = useState(0);
 
-  // The registry's folder-to-context binding is authoritative; an unbound
-  // folder settles to contextId=null without retrying.
+  // A folder's docs context is the one context in its subgroup; a folder
+  // with none yet settles to contextId=null without retrying.
   useEffect(() => {
     setResolvedFolder(null);
-    if (!registryClient || !folderId) {
+    if (!admin || !folderId) {
       setContextId(null);
       setResolveError(null);
       setContextResolving(false);
@@ -205,8 +202,7 @@ export function useDocs(
     setContextId(null);
     setResolveError(null);
     setContextResolving(true);
-    registryClient
-      .getFolderContext({ folder_id: FolderId(folderId) })
+    folderDocsContext(admin, folderId)
       .then((ctxId) => {
         if (!alive) return;
         setContextId(ctxId ?? null);
@@ -224,7 +220,7 @@ export function useDocs(
     return () => {
       alive = false;
     };
-  }, [registryClient, folderId, resolveAttempt]);
+  }, [admin, folderId, resolveAttempt]);
 
   const docsClient = useDocsClient(contextId, identity);
 

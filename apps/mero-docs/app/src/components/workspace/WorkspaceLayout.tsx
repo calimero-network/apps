@@ -78,7 +78,6 @@ export function WorkspaceLayout() {
     registryFolders,
     resolvedFolderIds,
     hiddenFolderIds,
-    unsyncedFolderIds,
     selfIdentity,
     stage,
     syncStatus,
@@ -89,10 +88,6 @@ export function WorkspaceLayout() {
   const isOnline = useOnlineStatus();
   usePublishWorkspacePresence(registryContextId, selfIdentity);
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
-  // Listed by the registry, but this node has not applied the folder's group
-  // yet, so it is withheld from `folders`. Reached only by a direct link.
-  const selectedFolderUnsynced =
-    !!selectedFolderId && !!unsyncedFolderIds?.has(selectedFolderId);
 
   // Explicit re-trigger for a stalled post-join sync - a real action so a
   // user staring at a stuck "syncing" state re-fires the sync instead of
@@ -204,9 +199,11 @@ export function WorkspaceLayout() {
     ],
   );
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
-  // A card is about the doc only when its folder is known; an absent folder
-  // keeps its URL so it opens by itself if this node later syncs it.
-  const linkSubject = routedFolder && selectedDocId ? 'doc' : 'folder';
+  // Name what was linked: a doc link reads as a doc whether or not this node
+  // lists its folder, since an unlisted folder may be Restricted to others and
+  // the card must not tell that apart from one that never existed. An absent
+  // folder keeps its URL so it opens by itself if this node later syncs it.
+  const linkSubject = selectedDocId ? 'doc' : 'folder';
   const onLinkTargetGoHome = useCallback(
     () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
     [linkTarget, goWorkspace, goHome],
@@ -477,12 +474,6 @@ export function WorkspaceLayout() {
               <QuietLoading />
             ) : !selectedFolderId ? (
               <HomePage />
-            ) : selectedFolderUnsynced ? (
-              <EmptyState title="This folder hasn't synced to your node yet">
-                <Button variant="outline" onClick={onRetrySync}>
-                  Try again
-                </Button>
-              </EmptyState>
             ) : !selectedFolder ? (
               // A folder IS selected (selectedFolderId set) but its object
               // isn't in the recomputed `folders` list yet - a transient gap

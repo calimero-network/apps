@@ -3,15 +3,20 @@
 
 import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/two-user';
-import { rpcMethod } from '../fixtures/rpc';
+import { parseAppPath } from '../../src/lib/routes';
 
 const SYNC_DEADLINE_MS = 120_000; // core's 10 s interval sync can skip a beat on a loaded machine
 const MAX_REQUESTS_PER_SYNC = 36; // midway between 31 per sync (one refetch per run) and 42 (one per sync phase)
 const MIN_SYNCS = 4; // enough whole sync runs, or the ratio proves nothing
 
 /** Records, in issue order, whether each node request from `page` (the `/sse`
- *  stream aside) is the workspace's `get_folders` read, one per sync it refetches on. */
+ *  stream aside) lists the workspace root's subgroups: the first read of the
+ *  folder-tree walk, one per sync it refetches on. The root group is the
+ *  namespace, which the workspace URL names. */
 function recordNodeRequests(page: Page): boolean[] {
+  const ws = parseAppPath(new URL(page.url()).pathname, '')?.ws;
+  if (!ws) throw new Error('not on a workspace page');
+  const rootSubgroups = `/admin-api/groups/${ws}/subgroups`;
   const origins = new Set(
     [process.env.E2E_NODE_URL, process.env.E2E_NODE_URL_2].map(
       (u) => new URL(u!).origin,
@@ -21,13 +26,13 @@ function recordNodeRequests(page: Page): boolean[] {
   page.on('request', (req) => {
     const url = new URL(req.url());
     if (!origins.has(url.origin) || url.pathname.endsWith('/sse')) return;
-    log.push(rpcMethod(req) === 'get_folders');
+    log.push(req.method() === 'GET' && url.pathname.endsWith(rootSubgroups));
   });
   return log;
 }
 
 /** Requests per sync run, over the whole runs between the first and last
- *  `get_folders`, so a window edge never splits a run from its requests. */
+ *  root subgroups listing, so a window edge never splits a run from its requests. */
 function requestsPerSync(log: boolean[]): { syncs: number; perSync: number } {
   const first = log.indexOf(true);
   const last = log.lastIndexOf(true);

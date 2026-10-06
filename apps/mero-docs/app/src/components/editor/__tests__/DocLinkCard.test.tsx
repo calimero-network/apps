@@ -49,7 +49,7 @@ describe('DocLinkCard', () => {
 
   it.each([
     ['deleted', 'This document was deleted'],
-    ['no-access', 'This is in a folder you cannot open'],
+    ['no-access', "This document isn't available"],
     ['other-workspace', 'This links to another workspace'],
   ] as const)('explains the %s state', (state, text) => {
     render(<DocLinkCard state={state} />);

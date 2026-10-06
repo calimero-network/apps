@@ -81,6 +81,16 @@ export function FolderTree({
     [folders],
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
+  // A folder the caller was added to under one they cannot see has no parent
+  // here; it is listed apart, so it never reads as a top-level workspace folder.
+  const roots = useMemo(
+    () => tree.roots.filter((n) => !byId.get(n.id)?.shared),
+    [tree, byId],
+  );
+  const sharedRoots = useMemo(
+    () => tree.roots.filter((n) => byId.get(n.id)?.shared),
+    [tree, byId],
+  );
 
   // Reveal the routed folder (and an open doc's row) once per route, as soon as
   // it has loaded; a later refetch must not reopen a folder the user closed.
@@ -180,22 +190,49 @@ export function FolderTree({
       {collapsed ? null : tree.roots.length === 0 ? (
         <NoFoldersState onCreateFolder={openCreateFolder} />
       ) : (
-        <ul className="space-y-px px-2 pb-2">
-          {tree.roots.map((n) => (
-            <FolderTreeItem
-              key={n.id}
-              node={n}
-              byId={byId}
-              selectedId={selectedFolderId}
-              onSelect={onSelectFolder}
-              expanded={expanded}
-              onToggleExpanded={toggleExpanded}
-              onExpand={expand}
-              selectedDocId={selectedDocId}
-              onOpenDoc={onOpenDoc}
-            />
-          ))}
-        </ul>
+        <>
+          {roots.length > 0 && (
+            <ul className="space-y-px px-2 pb-2">
+              {roots.map((n) => (
+                <FolderTreeItem
+                  key={n.id}
+                  node={n}
+                  byId={byId}
+                  selectedId={selectedFolderId}
+                  onSelect={onSelectFolder}
+                  expanded={expanded}
+                  onToggleExpanded={toggleExpanded}
+                  onExpand={expand}
+                  selectedDocId={selectedDocId}
+                  onOpenDoc={onOpenDoc}
+                />
+              ))}
+            </ul>
+          )}
+          {sharedRoots.length > 0 && (
+            <section aria-label="Shared with me" className="pb-2">
+              <div className="px-4 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                Shared with me
+              </div>
+              <ul className="space-y-px px-2">
+                {sharedRoots.map((n) => (
+                  <FolderTreeItem
+                    key={n.id}
+                    node={n}
+                    byId={byId}
+                    selectedId={selectedFolderId}
+                    onSelect={onSelectFolder}
+                    expanded={expanded}
+                    onToggleExpanded={toggleExpanded}
+                    onExpand={expand}
+                    selectedDocId={selectedDocId}
+                    onOpenDoc={onOpenDoc}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
       )}
       {creatingFolder && (
         <NewFolderDialog parentFolderId={null} onClose={() => setCreatingFolder(false)} />

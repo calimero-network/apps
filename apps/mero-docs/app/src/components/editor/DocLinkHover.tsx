@@ -89,8 +89,10 @@ export function docLinkCardProps(
   if (d.ws == null) return { state: 'loading' };
   if (target.ws !== d.ws) return { state: 'other-workspace' };
   if (!d.registryFolders) return { state: 'loading' };
+  // A folder this node never lists may be deleted or Restricted to others;
+  // either way the card says only that the doc is not available.
   if (!d.registryFolders.some((f) => f.id === folder))
-    return { state: 'deleted' };
+    return { state: 'no-access' };
   if (!index.foldersKnown) return { state: 'loading' };
   if (!index.folders.some((f) => f.id === folder))
     return { state: 'no-access' };

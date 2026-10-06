@@ -35,9 +35,9 @@
 //
 //   2. THE ONE THAT HOLDS THE DATA. For a legacy namespace with duplicates,
 //      picking by name or by id would be deterministic and would still show the
-//      user an empty workspace, because their folders are in the other one.
-//      Whichever context answers `get_folders()` with the most rows is the one
-//      that was really being used, and adopting it is what makes the existing
+//      user an empty workspace, because their tags and views are in the other
+//      one. Whichever context answers `list_tags()` + `list_views()` with the
+//      most rows is the one that was really being used, and adopting it is what makes the existing
 //      data reappear.
 //
 //   3. NAME, then LOWEST ID. Contexts are created with `name: 'Registry'`, so a
@@ -75,11 +75,11 @@ export interface ResolveInput {
    */
   reportedCount: number | null;
   /**
-   * `get_folders().length` per context id, when it has been probed. Absent
+   * Rows (tags + saved views) per context id, when it has been probed. Absent
    * entries mean "not probed"; probing is only worth it when there is more
    * than one candidate.
    */
-  folderCounts?: Readonly<Record<string, number>> | null;
+  dataCounts?: Readonly<Record<string, number>> | null;
 }
 
 export type RegistryResolution =
@@ -104,20 +104,20 @@ export type RegistryResolution =
 function pickDeterministic(
   candidates: readonly RegistryCandidate[],
   registryName: string,
-  folderCounts?: Readonly<Record<string, number>> | null,
+  dataCounts?: Readonly<Record<string, number>> | null,
 ): { contextId: string; source: RegistrySource } {
   const byId = [...candidates].sort((a, b) =>
     a.contextId < b.contextId ? -1 : a.contextId > b.contextId ? 1 : 0,
   );
 
   // 2. The one that holds the data - adopting beats orphaning.
-  if (folderCounts) {
-    const withData = byId.filter((c) => (folderCounts[c.contextId] ?? 0) > 0);
+  if (dataCounts) {
+    const withData = byId.filter((c) => (dataCounts[c.contextId] ?? 0) > 0);
     if (withData.length > 0) {
       // Most rows wins; `byId` order already breaks the tie deterministically
       // because `reduce` keeps the incumbent on equality.
       const best = withData.reduce((winner, c) =>
-        (folderCounts[c.contextId] ?? 0) > (folderCounts[winner.contextId] ?? 0)
+        (dataCounts[c.contextId] ?? 0) > (dataCounts[winner.contextId] ?? 0)
           ? c
           : winner,
       );
@@ -201,7 +201,7 @@ export function resolveRegistryContext(
     };
   }
 
-  const picked = pickDeterministic(listed, registryName, input.folderCounts);
+  const picked = pickDeterministic(listed, registryName, input.dataCounts);
   return {
     status: 'resolved',
     contextId: picked.contextId,

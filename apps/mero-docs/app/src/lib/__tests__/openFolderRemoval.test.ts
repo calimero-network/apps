@@ -29,11 +29,7 @@ const admin = {
   getMemberCapabilities: vi.fn(async (_g: string, m: string) => ({ capabilities: caps[m] ?? 0 })),
 };
 const api = admin as unknown as AdminApiClient;
-const registry = {
-  setFolderRole: vi.fn(async () => {}),
-  getFolderRole: vi.fn(async () => 'Editor' as const),
-};
-const writer = { admin, registry } as unknown as FolderRoleWriter & { admin: typeof admin };
+const writer = { admin } as unknown as FolderRoleWriter & { admin: typeof admin };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -99,9 +95,9 @@ describe('restoreTo', () => {
       'g',
       { members: [{ identity: BOB, role: 'ReadOnly' }] },
     ]);
-    expect(registry.setFolderRole).toHaveBeenCalledWith(
-      expect.objectContaining({ folder_id: 'g', member: BOB, role: 'Viewer' }),
-    );
+    expect(admin.setMemberCapabilities).toHaveBeenCalledWith('g', BOB, {
+      capabilities: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+    });
   });
 
   // A sub-folder made while they were banned inherits them back once restored,
@@ -127,7 +123,7 @@ describe('restoreTo', () => {
 
   it('fails when the Read only grant could not be finished', async () => {
     lists = { root: [{ identity: BOB, role: 'ReadOnly' }], g: [{ identity: BOB, role: 'ReadOnly' }] };
-    registry.setFolderRole.mockRejectedValueOnce(new Error('registry refused'));
+    admin.setMemberCapabilities.mockRejectedValueOnce(new Error('caps refused'));
     await expect(restoreTo(writer, folders, 'root', 'g', BOB)).rejects.toThrow();
   });
 });
