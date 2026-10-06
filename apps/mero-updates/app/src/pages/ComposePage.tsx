@@ -228,7 +228,6 @@ export default function ComposePage() {
               <option value="">No category</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.emoji ? `${c.emoji} ` : ""}
                   {c.name}
                 </option>
               ))}

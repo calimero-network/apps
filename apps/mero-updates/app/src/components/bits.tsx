@@ -22,7 +22,7 @@ export function CategoryChip({
   const style = { "--chip": category.color || "var(--text-faint)" } as React.CSSProperties;
   const body = (
     <>
-      {category.emoji && <span aria-hidden>{category.emoji}</span>}
+      <span className="chipDot" aria-hidden />
       {category.name}
       {count !== undefined && count > 0 && <span className="chipCount">{count}</span>}
     </>

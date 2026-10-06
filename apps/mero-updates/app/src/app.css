@@ -551,6 +551,13 @@ button.chip:hover {
 .chip[data-active="true"] .chipCount {
   color: inherit;
 }
+.chipDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip);
+}
 
 .avatar {
   flex: none;
