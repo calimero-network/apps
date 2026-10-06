@@ -1,3 +1,34 @@
+/*! @license
+ * Chess piece artwork ("cburnett" set) by Colin M.L. Burnett
+ * https://commons.wikimedia.org/wiki/File:Chess_klt45.svg
+ * Used under the BSD 3-Clause licence, one of the four (GFDL-1.2+, CC BY-SA 3.0,
+ * BSD, GPL-2.0+) the author publishes it under:
+ *
+ * Copyright (c) Colin M.L. Burnett
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ * 3. Neither the name of the author nor the names of its contributors may be
+ *    used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE AUTHOR AND CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 /**
  * The piece set: Colin M.L. Burnett's "cburnett" pieces, the classic set from
  * Wikipedia and lichess, inlined as SVG.
@@ -7,9 +38,12 @@
  * thin outline "white" piece that disappears on a light square. These are drawn
  * once, scale to any square, and look the same everywhere.
  *
- * Artwork © Colin M.L. Burnett, used under the BSD licence it is offered under
- * (the original set on Wikimedia Commons is triple-licensed GFDL / BSD / GPL):
- * https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces
+ * ⚠️ LICENCE: BSD, not GPL. The author offers the set under four licences and
+ * this app takes the BSD one, which is what lets it ship inside a
+ * MIT-OR-Apache-2.0 repo. The notice above is a `/*!` legal comment on purpose:
+ * the minifier keeps those, so the BSD text travels with the built bundle as
+ * clause 2 requires. Do not turn it into an ordinary comment. The same text is
+ * in THIRD_PARTY_NOTICES.md.
  *
  * Inner markup only; `Piece` supplies the 45×45 `<svg>` around it. The strings
  * are constants of this module, never data, which is what makes
