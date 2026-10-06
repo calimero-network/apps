@@ -76,6 +76,9 @@ async function describe(
   };
 }
 
+// Each described group's namespace. Fixed for a group's life, so never stale.
+const NAMESPACE_OF = new Map<string, string>();
+
 /**
  * Every folder of the workspace rooted at `rootId` this caller can see.
  *
@@ -85,11 +88,18 @@ async function describe(
  * cannot see is found instead through its docs context, which a member's node
  * holds; it comes back `shared`, with no parent, and its own subtree is walked
  * from there.
+ *
+ * The node holds the app's contexts for every workspace it is in, so that
+ * search meets other workspaces' groups too. A group never changes namespace,
+ * so `namespaceOf` remembers each one described - by default for the page's
+ * life, shared by every caller - and another workspace's group is asked about
+ * once, not on every refresh.
  */
 export async function loadCoreFolders(
   admin: FolderReader,
   rootId: string,
   applicationId: string | null,
+  namespaceOf: Map<string, string> = NAMESPACE_OF,
 ): Promise<CoreFolder[]> {
   const found = new Map<string, CoreFolder>();
   const seen = new Set<string>([rootId]);
@@ -117,6 +127,7 @@ export async function loadCoreFolders(
       level = [];
       for (const d of described) {
         if (!d) continue;
+        if (d.namespaceId) namespaceOf.set(d.folder.id, d.namespaceId);
         found.set(d.folder.id, d.folder);
         level.push(d.folder.id);
       }
@@ -133,7 +144,10 @@ export async function loadCoreFolders(
       ...new Set(
         contexts
           .map((c) => c.groupId)
-          .filter((g): g is string => !!g && !seen.has(g)),
+          .filter(
+            (g): g is string =>
+              !!g && !seen.has(g) && (namespaceOf.get(g) ?? rootId) === rootId,
+          ),
       ),
     ];
     for (const g of candidates) seen.add(g);
@@ -142,6 +156,7 @@ export async function loadCoreFolders(
     );
     const shared: string[] = [];
     for (const d of described) {
+      if (d?.namespaceId) namespaceOf.set(d.folder.id, d.namespaceId);
       // Another workspace's folder, or the root itself, is not ours to list.
       if (!d || d.namespaceId !== rootId) continue;
       found.set(d.folder.id, d.folder);

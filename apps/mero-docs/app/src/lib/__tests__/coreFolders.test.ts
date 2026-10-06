@@ -74,6 +74,23 @@ describe('loadCoreFolders', () => {
     expect(await loadCoreFolders(admin, ROOT, 'app')).toEqual([]);
   });
 
+  it("asks about another workspace's folder once across refreshes", async () => {
+    const admin = reader({
+      children: { [ROOT]: [] },
+      info: { elsewhere: { name: 'Other', ns: 'other-root' }, inner: { name: 'Shared one' } },
+      held: [{ groupId: 'elsewhere' }, { groupId: 'inner' }],
+    });
+    const namespaceOf = new Map<string, string>();
+    for (let i = 0; i < 3; i++) {
+      const ids = (await loadCoreFolders(admin, ROOT, 'app', namespaceOf)).map((f) => f.id);
+      expect(ids).toEqual(['inner']);
+    }
+    const asked = vi.mocked(admin.getGroupInfo).mock.calls.map(([g]) => g);
+    expect(asked.filter((g) => g === 'elsewhere')).toHaveLength(1);
+    // Our own Shared folder is read every time: its name may change.
+    expect(asked.filter((g) => g === 'inner')).toHaveLength(3);
+  });
+
   it('lists a folder found both ways once, where the tree puts it', async () => {
     const admin = reader({
       children: { [ROOT]: ['a'] },
