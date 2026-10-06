@@ -1,19 +1,43 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Mero Chess — the app behind the landing page.
+
+   One dark theme, the way chess apps are played: a quiet charcoal chrome that
+   recedes, a classic green-and-cream board that is the brightest thing on the
+   screen, and Calimero lime for the one action that matters on each screen.
+   ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #0b0e14;
-  --surface: #131823;
-  --surface-2: #1b2130;
-  --border: #29313f;
-  --text: #e8ecf4;
-  --text-dim: #93a0b5;
-  --accent: #7dd3fc;
-  --danger: #f87171;
-  --online: #4ade80;
-  /* The board. Warm against the cool chrome, so the pieces are the contrast
-     that matters and the UI around them recedes. */
-  --sq-light: #e9dcc3;
-  --sq-dark: #9a7b56;
-  --sq-last: #b8a44c;
-  --sq-select: #5b9bd5;
+  --bg: #0f1013;
+  --bg-glow: #151a12;
+  --surface: #181a1f;
+  --surface-2: #20232a;
+  --surface-3: #2a2e36;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: #eef0f3;
+  --text-dim: #a0a6b1;
+  --text-faint: #6c727d;
+  --accent: #a5ff11;
+  --accent-hover: #bbff4d;
+  --accent-ink: #102000;
+  --accent-soft: rgba(165, 255, 17, 0.12);
+  --danger: #f26d6d;
+  --danger-soft: rgba(242, 109, 109, 0.12);
+  --online: #3ddc84;
+  --warn: #f5b84a;
+
+  /* The board. Classic tournament green: high contrast for both piece colours,
+     and the overlays below are tuned against exactly these two values. */
+  --sq-light: #ebecd0;
+  --sq-dark: #779556;
+  --sq-last: rgba(255, 245, 70, 0.5);
+  --sq-select: rgba(255, 245, 70, 0.62);
+  --sq-hint: rgba(18, 28, 10, 0.2);
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: dark;
 }
 
@@ -21,306 +45,705 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, var(--bg-glow), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.55;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.wrap { max-width: 1060px; margin: 0 auto; padding: 24px 20px 80px; }
+.mono { font-family: var(--mono); }
+:where(.shell) code { font-family: var(--mono); font-size: 0.9em; color: var(--text); }
+:where(.shell) em { font-style: normal; color: var(--text); }
 
-/* ── header ─────────────────────────────────────────────────────────────── */
-header {
+/* ── shell ──────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(15, 16, 19, 0.78);
+  backdrop-filter: saturate(140%) blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  height: 60px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   background: none;
   border: 0;
+  padding: 4px 6px 4px 0;
   color: var(--text);
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  padding: 4px 0;
   cursor: pointer;
 }
-.brand span { color: var(--accent); margin-right: 6px; }
-.session { display: flex; align-items: center; gap: 10px; }
-.session .mono { font-size: 0.78rem; }
+.brand:hover:not(:disabled) { background: none; color: var(--text); }
+.brand img { border-radius: 8px; display: block; }
+.session { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.node-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 280px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.node-pill .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.02em; }
-h2 { font-size: 1rem; margin: 0 0 12px; letter-spacing: -0.01em; }
-.sub { color: var(--text-dim); margin: 0 0 28px; font-size: 0.94rem; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 80px; }
 
+/* ── type ───────────────────────────────────────────────────────────────── */
+:where(.shell) h1 { font-size: clamp(1.8rem, 3.2vw, 2.5rem); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.035em; }
+:where(.shell) h2 { font-size: 0.98rem; margin: 0; letter-spacing: -0.01em; font-weight: 650; }
+.lede { color: var(--text-dim); font-size: 1.02rem; margin: 0 0 22px; max-width: 52ch; }
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.empty { color: var(--text-dim); font-size: 0.9rem; margin: 0; }
+.hint { color: var(--text-faint); font-size: 0.82rem; margin: 12px 0 0; line-height: 1.5; }
+.hint code { color: var(--text-dim); }
+.dim { color: var(--text-dim); }
+.right { text-align: right; }
+
+/* ── cards ──────────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 18px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.card-head + .hint { margin-top: -4px; margin-bottom: 14px; }
+.count {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-input {
+/* ── controls ───────────────────────────────────────────────────────────── */
+:where(.shell) input {
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   color: var(--text);
-  padding: 8px 10px;
+  padding: 9px 12px;
   font: inherit;
   font-size: 0.9rem;
   min-width: 0;
   flex: 1 1 140px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+:where(.shell) input::placeholder { color: var(--text-faint); }
+:where(.shell) input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-button {
+:where(.shell) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   background: var(--accent);
-  color: #06231f;
-  border: 0;
-  border-radius: 6px;
-  padding: 8px 14px;
+  color: var(--accent-ink);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 9px 16px;
   font: inherit;
   font-size: 0.88rem;
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.08s;
 }
-button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
-button:disabled { opacity: 0.5; cursor: default; }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:where(.shell) button:hover:not(:disabled) { background: var(--accent-hover); }
+:where(.shell) button:active:not(:disabled) { transform: translateY(1px); }
+:where(.shell) button.ghost {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+:where(.shell) button.ghost:hover:not(:disabled) { background: var(--surface-3); }
+:where(.shell) button.small { padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; }
+:where(.shell) button.large { padding: 12px 22px; font-size: 0.95rem; border-radius: 11px; }
+:where(.shell) button:disabled { opacity: 0.45; cursor: default; }
+:where(.shell) button:focus-visible, :where(.shell) input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-icon { font-size: 1rem; line-height: 1; opacity: 0.85; }
 
-pre {
-  background: #0b1012;
+/* Destructive: the armed state is filled; the resting state is only tinted. */
+:where(.shell) button.danger { background: var(--danger); color: #2a0b0b; }
+:where(.shell) button.danger:hover:not(:disabled) { background: #ff8585; }
+:where(.shell) button.ghost.danger-text { color: var(--danger); }
+:where(.shell) button.ghost.danger-text:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
+
+:where(.shell) pre {
+  background: #0c0d10;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 12px;
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
   margin: 12px 0 0;
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: 0.8rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
 }
-pre.err { border-color: var(--danger); color: var(--danger); }
+:where(.shell) pre.err { border-color: rgba(242, 109, 109, 0.4); background: var(--danger-soft); color: #ffb3b3; }
 
-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
-th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
-td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.empty { color: var(--text-dim); font-size: 0.88rem; }
+:where(.shell) table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+:where(.shell) th, :where(.shell) td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+:where(.shell) tr:last-child th, :where(.shell) tr:last-child td { border-bottom: 0; }
+:where(.shell) th { color: var(--text-dim); font-weight: 600; }
+:where(.shell) td.mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-all; }
 
-/* ── the invite link ──────────────────────────────────────────────────────
-   An invitation payload is a few hundred base58 characters. Rendered as a
-   wrapping <pre> it became a wall of text taller than the rest of the card, so
-   it is one ellipsised line instead.
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field input { flex: none; }
+.field > span { color: var(--text-dim); font-size: 0.78rem; font-weight: 600; }
 
-   `min-width: 0` is the load-bearing part: this sits in a flex row, and a flex
+/* ── loading / alerts ───────────────────────────────────────────────────── */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 96px 0;
+}
+.spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-3);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+.card.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-color: rgba(242, 109, 109, 0.35);
+}
+.card.alert pre { flex: 1; margin: 0; }
+
+/* ── connect ────────────────────────────────────────────────────────────── */
+.connect { display: grid; place-items: center; padding: 48px 0; }
+.connect-card {
+  width: min(520px, 100%);
+  text-align: center;
+  padding: 40px 32px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+.connect-card .lede { margin-left: auto; margin-right: auto; }
+.connect-mark { width: 64px; height: 64px; border-radius: 16px; margin-bottom: 18px; }
+.connect-points {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  list-style: none;
+  padding: 0;
+  margin: 26px 0 0;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+}
+.connect-points li::before { content: "✓"; color: var(--accent); margin-right: 6px; }
+
+/* ── lobby ──────────────────────────────────────────────────────────────── */
+.lobby-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
+  padding: 24px 0 36px;
+}
+@media (min-width: 860px) {
+  .lobby-hero { grid-template-columns: minmax(0, 1fr) 300px; padding: 32px 0 44px; }
+}
+.lobby-copy pre { max-width: 60ch; }
+.lobby-copy .hint { margin-top: 14px; }
+
+.mini-board {
+  display: none;
+  grid-template-columns: repeat(8, 1fr);
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--border);
+  transform: rotate(-4deg);
+}
+@media (min-width: 860px) { .mini-board { display: grid; } }
+.mini-board > span { display: grid; place-items: center; }
+.mini-board > .light { background: var(--sq-light); }
+.mini-board > .dark { background: var(--sq-dark); }
+.mini-board svg { width: 88%; height: 88%; }
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (min-width: 860px) {
+  .lobby-grid { grid-template-columns: minmax(0, 1fr) 380px; }
+}
+
+.table-list, .ns-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.table-item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 10px 14px 10px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+.table-item:hover:not(:disabled) { background: var(--surface-3); border-color: var(--border-strong); }
+.table-item:hover .open { color: var(--accent-ink); background: var(--accent); }
+.table-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--sq-dark);
+}
+.table-icon.alt { background: var(--sq-light); }
+.table-icon svg { width: 34px; height: 34px; }
+.table-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.table-title { font-weight: 650; }
+.table-id {
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.open {
+  flex: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 650;
+  transition: background 0.15s, color 0.15s;
+}
+
+.empty-state { text-align: center; padding: 28px 12px 18px; }
+.empty-state p { margin: 0; }
+.empty-state .hint { margin-top: 4px; }
+.empty-piece { width: 64px; height: 64px; opacity: 0.85; margin-bottom: 6px; }
+
+.ns-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.ns-id {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-row { margin-top: 2px; }
+.confirm {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(165, 255, 17, 0.35);
+  background: var(--accent-soft);
+}
+.confirm-title { margin: 0 0 8px; font-size: 0.9rem; }
+.kv th { width: 96px; font-size: 0.78rem; }
+.confirm .row { margin-top: 12px; }
+
+/* ── the table: board column beside the side column ─────────────────────── */
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+@media (min-width: 980px) {
+  .game-layout { grid-template-columns: minmax(0, min(calc(100vh - 262px), 660px)) minmax(320px, 1fr); }
+  .side-col { position: sticky; top: 84px; }
+}
+.board-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.side-col { min-width: 0; }
+
+/* ── player bars ────────────────────────────────────────────────────────── */
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.player-bar.to-move { border-color: rgba(165, 255, 17, 0.45); box-shadow: 0 0 0 3px var(--accent-soft); }
+.player-bar.vacant { border-style: dashed; background: transparent; }
+.avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-weight: 750;
+  font-size: 1.05rem;
+}
+.avatar.white { background: #f4f4ef; color: #1b1d22; }
+.avatar.black { background: #2b2f37; color: #f4f4ef; border: 1px solid var(--border-strong); }
+.player-bar.vacant .avatar { background: var(--surface-2); border: 1px dashed var(--border-strong); }
+.avatar svg { width: 30px; height: 30px; opacity: 0.55; }
+.presence {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.presence.online { background: var(--online); box-shadow: 0 0 0 3px rgba(61, 220, 132, 0.15); }
+.avatar .presence {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface);
+  box-shadow: none;
+}
+.player-main { flex: 1; min-width: 0; }
+.player-name { display: flex; align-items: baseline; min-width: 0; }
+.player-name .name {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-name .name.dim { color: var(--text-dim); font-weight: 550; }
+.you { color: var(--text-faint); font-size: 0.85rem; white-space: pre; }
+.player-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text-faint);
+  font-size: 0.76rem;
+}
+.captured { display: inline-flex; align-items: center; }
+.captured-piece { width: 17px; height: 17px; margin-right: -5px; }
+.lead { margin-left: 9px; color: var(--text-dim); font-weight: 650; }
+.player-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.turn-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+/* ── the board ──────────────────────────────────────────────────────────── */
+.board-wrap {
+  position: relative;
+  border-radius: 10px;
+  box-shadow: 0 24px 50px -24px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  container-type: inline-size;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  user-select: none;
+}
+/* Buttons, not divs: a square is a control, so it gets keyboard focus, an
+   accessible name ("e4, white knight") and a disabled state for free. */
+.square {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition: none;
+  /* A disabled square must not look disabled — most of the board is disabled
+     most of the time, and dimming it would turn the position into soup. */
+  opacity: 1;
+}
+.square:disabled { cursor: default; opacity: 1; }
+.square:active:not(:disabled) { transform: none; }
+.square.light, .square.light:hover:not(:disabled) { background: var(--sq-light); }
+.square.dark, .square.dark:hover:not(:disabled) { background: var(--sq-dark); }
+.square.last::before,
+.square.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--sq-last);
+}
+.square.selected::before { background: var(--sq-select); }
+.square.check,
+.square.check:hover:not(:disabled) {
+  background-image: radial-gradient(circle, #ff3b30 0%, rgba(231, 0, 0, 0.75) 32%, rgba(169, 0, 0, 0) 70%);
+}
+.square.movable:hover:not(.selected)::after,
+.square.target:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.55);
+}
+
+.piece {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, 0.22));
+  transition: transform 0.12s ease;
+}
+.square.selected .piece { transform: scale(1.06); }
+
+/* A legal empty target is a dot; a capture is a ring round the victim, because
+   a dot under a piece is invisible. */
+.move-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30%;
+  height: 30%;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--sq-hint);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.square.capture::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(transparent 0 66%, var(--sq-hint) 67%);
+  pointer-events: none;
+}
+.square:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 1; }
+
+/* Coordinates inside the edge squares, in the opposite square colour. */
+.coord {
+  position: absolute;
+  font-size: max(9px, 1.9cqi);
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+.coord.rank { left: 4%; top: 5%; }
+.coord.file { right: 5%; bottom: 4%; }
+.square.light .coord { color: var(--sq-dark); }
+.square.dark .coord { color: var(--sq-light); }
+
+/* ── promotion ──────────────────────────────────────────────────────────── */
+.promotion {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(8, 9, 11, 0.62);
+  backdrop-filter: blur(3px);
+}
+.promotion-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.promotion-title { margin: 0; font-weight: 650; }
+.promotion-choices { display: flex; gap: 10px; }
+.promotion-choice {
+  flex-direction: column;
+  gap: 4px;
+  width: 84px;
+  padding: 8px 6px 10px;
+  background: var(--sq-light);
+  color: #2b2f37;
+  font-size: 0.74rem;
+}
+.promotion-choice:hover:not(:disabled) { background: #fffff0; box-shadow: 0 0 0 3px var(--accent); }
+.promotion-choice .piece { position: static; width: 60px; height: 60px; }
+
+/* ── game card ──────────────────────────────────────────────────────────── */
+.game-card .card-head { margin-bottom: 14px; }
+.game-card h2 { font-size: 1.05rem; }
+.result {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(165, 255, 17, 0.14), rgba(165, 255, 17, 0.03));
+  border: 1px solid rgba(165, 255, 17, 0.25);
+}
+.result .score { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.status-row { display: flex; align-items: center; gap: 10px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--text-faint); }
+.status-row.yours .status-dot { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.status-row.check .status-dot { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+.status-row.done .status-dot { background: var(--text); }
+.status { margin: 0; font-size: 1.02rem; font-weight: 600; }
+.meta { margin: 4px 0 0 20px; color: var(--text-faint); font-size: 0.8rem; }
+
+.seat-prompt {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.seat-prompt .hint { margin-top: 10px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.controls:empty { display: none; }
+.controls > button { flex: 1 1 auto; }
+.pending { color: var(--text-dim); font-size: 0.86rem; align-self: center; }
+.offer {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(165, 255, 17, 0.4);
+  background: var(--accent-soft);
+}
+.offer p { margin: 0 0 10px; font-size: 0.92rem; font-weight: 600; }
+
+/* ── the scoresheet ─────────────────────────────────────────────────────────
+   Three columns — number, White, Black — so the moves line up the way they do
+   on paper. A wrapping sentence of SAN is unreadable at a glance, and glancing
+   is the only thing anyone does with a move list mid-game. */
+.moves-card { padding-bottom: 12px; }
+.scoresheet {
+  list-style: none;
+  margin: 0 -6px;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.scoresheet li {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr 1fr;
+  align-items: center;
+}
+.scoresheet li:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
+.scoresheet .num { color: var(--text-faint); padding: 5px 0 5px 10px; font-size: 0.78rem; }
+.scoresheet .san { padding: 5px 10px; margin: 1px 2px; border-radius: 6px; font-weight: 550; }
+.scoresheet .san.current { background: var(--accent-soft); color: var(--accent); }
+
+/* ── invite ─────────────────────────────────────────────────────────────── */
+.invite-card .row { margin-top: 2px; }
+.link-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+/* `min-width: 0` is the load-bearing part: this sits in a flex row, and a flex
    ITEM defaults to `min-width: auto`, which refuses to shrink below its content
-   — so `text-overflow: ellipsis` would never trigger and the row would simply
-   overflow. Truncation here is purely visual: textContent is still the whole
-   link, so selecting it or copying it yields the full value. */
+   — so `text-overflow: ellipsis` would never trigger. Truncation is purely
+   visual: textContent is still the whole link. */
 .invite-link {
   display: block;
-  margin-top: 12px;
-  padding: 9px 11px;
-  background: #0b1012;
+  flex: 1;
+  padding: 8px 11px;
+  background: #0c0d10;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
 
-/* ── destructive actions ──────────────────────────────────────────────────
-   "Remove all" sits next to Refresh under the entries table, so it needs to
-   read as the dangerous one of the pair without becoming the loudest thing on
-   the page. The armed state is filled; the resting state is only tinted. */
-button.danger {
-  background: var(--danger);
-  color: #2a0b0b;
-}
-button.ghost.danger-text {
-  color: var(--danger);
-}
-button.ghost.danger-text:hover:not(:disabled) {
-  border-color: var(--danger);
-}
-
-/* ── the context bar ──────────────────────────────────────────────────────
-   Slimmer than a normal card: it is a status strip with one action, not a
-   section, and it should not compete with Write/Read/Remove below it. */
-.card.context-bar {
-  padding: 12px 18px;
-}
-.card.context-bar code {
-  color: var(--text);
-  word-break: break-all;
-}
-
-/* ── the table: board beside the panel ────────────────────────────────────
-   One column on a phone, board-then-panel on anything wider. The board is
-   sized in `min()` rather than a fixed pixel width so it fills a narrow screen
-   and stops growing past the point where a piece is comically large. */
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-@media (min-width: 900px) {
-  .layout { grid-template-columns: min(56vh, 520px) minmax(0, 1fr); }
-}
-.panel { min-width: 0; }
-
-/* ── the board ────────────────────────────────────────────────────────────
-   A plain 8×8 grid of buttons. Buttons, not divs: a square is a control, so it
-   gets keyboard focus, an accessible name ("e4, white knight") and a disabled
-   state for free — and a spectator's board is genuinely inert rather than
-   merely ignoring clicks. */
-.board-wrap { position: relative; }
-.board {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  aspect-ratio: 1;
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.square {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  /* A disabled square must not look disabled — most of the board is disabled
-     most of the time, and dimming it would turn the position into soup. */
-  opacity: 1;
-}
-.square:disabled { cursor: default; opacity: 1; }
-.square.light { background: var(--sq-light); }
-.square.dark { background: var(--sq-dark); }
-.square.last::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--sq-last);
-  opacity: 0.35;
-}
-.square.selected { box-shadow: inset 0 0 0 4px var(--sq-select); }
-/* A capture is ringed rather than dotted: a dot under a piece is invisible. */
-.square.capture { box-shadow: inset 0 0 0 4px rgba(248, 113, 113, 0.85); }
-.square .dot {
-  width: 26%;
-  height: 26%;
-  border-radius: 50%;
-  background: rgba(20, 30, 20, 0.35);
-}
-.square:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 1; }
-
-/* Unicode glyphs, not images: they scale to any board size and need no asset
-   pipeline. Both colours are drawn as FILLED glyphs with a contrasting stroke,
-   because the outline ("white") glyphs are nearly invisible on a light square
-   in most system fonts. */
-.piece {
-  font-size: clamp(1.4rem, 7.5vw, 3rem);
-  line-height: 1;
-  user-select: none;
-  position: relative;
-}
-@media (min-width: 900px) {
-  .piece { font-size: min(6.2vh, 3.1rem); }
-}
-.piece.white { color: #fdfdfd; text-shadow: 0 0 1px #111, 0 1px 2px rgba(0, 0, 0, 0.6); }
-.piece.black { color: #14161c; text-shadow: 0 0 1px #e8e8e8, 0 1px 2px rgba(0, 0, 0, 0.35); }
-
-.files {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  color: var(--text-dim);
-  font-size: 0.72rem;
-  text-align: center;
-  padding: 4px 0 0;
-}
-
-/* ── promotion ────────────────────────────────────────────────────────────
-   Over the board rather than beside it: the choice belongs to the move that is
-   half-made, and the board underneath is the context for it. */
-.promotion {
-  position: absolute;
-  inset: auto 0 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.promotion button { display: flex; align-items: center; gap: 6px; }
-.promotion .piece { font-size: 1.2rem; color: #06231f; text-shadow: none; }
-
-/* ── seats, presence, status ──────────────────────────────────────────────── */
-.status { font-size: 1rem; margin: 0 0 4px; }
-.chip {
+/* ── record ─────────────────────────────────────────────────────────────── */
+.record th { font-weight: 600; color: var(--text); }
+.score-chip {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  margin-right: 7px;
-  border: 1px solid var(--border);
-  vertical-align: middle;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 0.78rem;
 }
-.chip.white { background: #fdfdfd; }
-.chip.black { background: #14161c; }
-.dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 7px;
-  background: var(--border);
-}
-.dot.online { background: var(--online); }
 
-.offer {
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
+/* ── small screens ──────────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .wrap { padding: 16px 12px 64px; }
+  .topbar-inner { padding: 0 12px; }
+  .node-pill { display: none; }
+  .card { padding: 15px; }
+  .player-bar { min-height: 52px; }
+  .avatar { width: 36px; height: 36px; }
+  .promotion-choice { width: 64px; }
+  .promotion-choice .piece { width: 46px; height: 46px; }
 }
-.offer p { margin: 0 0 8px; font-size: 0.9rem; }
-
-/* ── the scoresheet ───────────────────────────────────────────────────────
-   Three columns — number, White, Black — so the moves line up the way they do
-   on paper. A wrapping sentence of SAN is unreadable at a glance, and glancing
-   is the only thing anyone does with a move list mid-game. */
-.scoresheet {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 320px;
-  overflow-y: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
-}
-.scoresheet li {
-  display: grid;
-  grid-template-columns: 2.6rem 1fr 1fr;
-  gap: 8px;
-  padding: 3px 4px;
-  border-radius: 4px;
-}
-.scoresheet li:nth-child(odd) { background: var(--surface-2); }
-.scoresheet .num { color: var(--text-dim); }
-
-.table-page { display: block; }

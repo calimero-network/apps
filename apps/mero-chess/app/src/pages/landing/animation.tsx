@@ -1,39 +1,42 @@
 /**
- * Mero Chess — a small, real board with a move list beside it.
+ * Mero Chess — the real board, a move being played, and the move list that IS
+ * the game's stored state arriving on the other player's node.
  *
  * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
  *
  * Shows the actual thing the app shows, the way the other animations in this
- * fleet do: a legal position (after 1.e4 e5 2.Nf3 Nc6 3.Bb5, the Ruy Lopez),
- * the last move lit on both of its squares, and the scoresheet that IS the
- * game's stored state. The caption says the one claim the app exists to make.
+ * fleet do: the same green board and the same piece set as the app, a legal
+ * position (the Ruy Lopez, 1.e4 e5 2.Nf3 Nc6 3.Bb5), the bishop travelling
+ * f1→b5 with both squares lit, and the scoresheet beside it picking up the move
+ * with a "replicated" tick — the one claim the app exists to make.
  *
- * Coordinates are literal pixels against a 495x341 box — see STAGE_DESIGN_W in
- * LandingPage.tsx, which scales the whole box to whatever the frame is.
+ * The board keeps its own cream-and-green in both landing themes on purpose: it
+ * is the board the app draws, and a board that turned grey in dark mode would
+ * be a picture of some other app.
+ *
+ * Coordinates are literal pixels against a 495px-wide box — see STAGE_DESIGN_W
+ * in LandingPage.tsx, which scales the whole box to whatever the frame is.
+ *
+ * Motion follows the shared rule (see `.cal-lp-a-in` in landing.css): every
+ * keyframe ends where it started and nothing uses a fill mode, so a paused
+ * animation — reduced motion, a headless capture — shows the finished position
+ * rather than a half-played one.
  */
+import { Piece } from "../../pieces";
 
-const CELL = 27;
-const BOARD_X = 24;
-const BOARD_Y = 46;
+const CELL = 30;
+const BOARD_X = 22;
+const BOARD_Y = 40;
+const PANEL_X = BOARD_X + 8 * CELL + 18;
+const PANEL_W = 495 - PANEL_X - 20;
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
 /** The position after 3.Bb5, as a FEN placement field. */
 const PLACEMENT = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R";
 
-const GLYPHS: Record<string, string> = {
-  K: "♔",
-  Q: "♕",
-  R: "♖",
-  B: "♗",
-  N: "♘",
-  P: "♙",
-  k: "♚",
-  q: "♛",
-  r: "♜",
-  b: "♝",
-  n: "♞",
-  p: "♟",
-};
+/** The move being animated: the bishop from f1 to b5. */
+const FROM = { file: 5, rank: 0 };
+const TO = { file: 1, rank: 4 };
 
 /** [file, rank, piece] for every man on the board, rank 0 = White's back rank. */
 function pieces(): [number, number, string][] {
@@ -65,112 +68,189 @@ const MOVES: [string, string][] = [
   ["Bb5", ""],
 ];
 
+/**
+ * Chess-only motion. Scoped by the `mc-` prefix, and inside `.cal-lp-a`, so the
+ * shared play-state rule (`.cal-lp-a * { animation-play-state }`) pauses these
+ * exactly like the fleet's own.
+ */
+const STYLE = `
+.mc-board { position: absolute; border-radius: 6px; overflow: hidden; box-shadow: 0 14px 30px -14px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.18); }
+.mc-sq { position: absolute; }
+.mc-sq--l { background: #ebecd0; }
+.mc-sq--d { background: #779556; }
+.mc-lit { position: absolute; background: rgba(255,245,70,.5); }
+.mc-coord { position: absolute; font: 700 7px/1 var(--cal-lp-font); }
+.mc-piece { position: absolute; filter: drop-shadow(0 1.5px 1px rgba(0,0,0,.25)); }
+.mc-slide { animation: mc-slide 6s ease-in-out infinite; }
+@keyframes mc-slide {
+  0%, 100% { transform: none; opacity: 1; }
+  4%       { transform: none; opacity: 0; }
+  6%       { transform: translate(${(FROM.file - TO.file) * CELL}px, ${(TO.rank - FROM.rank) * CELL}px); opacity: 1; }
+  16%      { transform: translate(${(FROM.file - TO.file) * CELL}px, ${(TO.rank - FROM.rank) * CELL}px); }
+  30%      { transform: none; }
+}
+.mc-panel { position: absolute; border-radius: 10px; background: var(--cal-lp-bg-1); border: 1px solid var(--cal-lp-border); box-shadow: var(--cal-lp-shadow-sm); }
+.mc-player { position: absolute; display: flex; align-items: center; gap: 8px; font: 600 10.5px/1.2 var(--cal-lp-font); color: var(--cal-lp-text); }
+.mc-player small { display: block; font-weight: 500; font-size: 8.5px; color: var(--cal-lp-text-dim); }
+.mc-av { position: relative; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; font: 750 10px/1 var(--cal-lp-font); }
+.mc-av--w { background: #f4f4ef; color: #1b1d22; box-shadow: 0 0 0 1px var(--cal-lp-border); }
+.mc-av--b { background: #2b2f37; color: #f4f4ef; }
+.mc-av i { position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 0 1.5px var(--cal-lp-bg-1); }
+.mc-turn { margin-left: auto; padding: 3px 7px; border-radius: 99px; background: var(--cal-lp-accent); color: var(--cal-lp-accent-text); font: 700 8px/1 var(--cal-lp-font); }
+.mc-rule { position: absolute; height: 1px; background: var(--cal-lp-border); }
+.mc-move { position: absolute; display: grid; grid-template-columns: 18px 1fr 1fr; align-items: center; font: 600 10.5px/1 var(--cal-lp-font); color: var(--cal-lp-text); }
+.mc-move span:first-child { color: var(--cal-lp-text-faint); font-weight: 500; font-size: 9px; }
+.mc-move b { font-weight: 600; padding: 4px 6px; border-radius: 4px; }
+.mc-cur { background: var(--cal-lp-accent-soft); color: var(--cal-lp-accent-ink, var(--cal-lp-text)); }
+.mc-tick { position: absolute; display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 99px; background: var(--cal-lp-accent-soft); color: var(--cal-lp-text); font: 600 9px/1 var(--cal-lp-font); }
+.mc-tick i { width: 12px; height: 12px; border-radius: 50%; background: var(--cal-lp-accent); color: var(--cal-lp-accent-text); display: grid; place-items: center; font: 800 8px/1 var(--cal-lp-font); font-style: normal; }
+`;
+
 export default function ChessAnimation() {
   const squares = [];
   for (let rank = 0; rank < 8; rank += 1) {
     for (let file = 0; file < 8; file += 1) {
       const dark = (file + rank) % 2 === 0;
+      const pos = at(file, rank);
       squares.push(
         <span
           key={`sq-${file}-${rank}`}
-          className="cal-lp-a-box"
-          style={{
-            ...at(file, rank),
-            width: CELL,
-            height: CELL,
-            borderRadius: 0,
-            border: 0,
-            // Tokens, never literals: a hard-coded board colour is what breaks
-            // dark mode on the one element that is meant to look like paper.
-            background: dark ? "var(--cal-lp-border)" : "var(--cal-lp-bg-2)",
-          }}
+          className={`mc-sq ${dark ? "mc-sq--d" : "mc-sq--l"}`}
+          style={{ left: pos.left - BOARD_X, top: pos.top - BOARD_Y, width: CELL, height: CELL }}
         />,
       );
     }
   }
 
+  const lit = (sq: { file: number; rank: number }, delay: string) => {
+    const pos = at(sq.file, sq.rank);
+    return (
+      <span
+        className="mc-lit cal-lp-a-blink"
+        style={{
+          left: pos.left - BOARD_X,
+          top: pos.top - BOARD_Y,
+          width: CELL,
+          height: CELL,
+          ["--d" as string]: delay,
+          ["--t" as string]: "6s",
+        }}
+      />
+    );
+  };
+
+  const moveTop = BOARD_Y + 58;
+
   return (
     <div className="cal-lp-a" aria-hidden="true">
+      <style>{STYLE}</style>
+
       <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: BOARD_X, top: 16 }}>
-        White to move · game 1
+        Black to move · game 1
       </span>
 
-      {squares}
-
-      {/* The last move, lit on the square it left and the one it reached —
-          which is exactly what the real board does. */}
-      <span
-        className="cal-lp-a-box cal-lp-a-fill"
-        style={{ ...at(5, 0), width: CELL, height: CELL, borderRadius: 0, border: 0, ["--d" as string]: "0.4s", ["--t" as string]: "6s" }}
-      />
-      <span
-        className="cal-lp-a-box cal-lp-a-fill"
-        style={{ ...at(1, 4), width: CELL, height: CELL, borderRadius: 0, border: 0, ["--d" as string]: "0.6s", ["--t" as string]: "6s" }}
-      />
-
-      {pieces().map(([file, rank, piece]) => {
-        const white = piece === piece.toUpperCase();
-        const pos = at(file, rank);
-        return (
+      <div className="mc-board" style={{ left: BOARD_X, top: BOARD_Y, width: 8 * CELL, height: 8 * CELL }}>
+        {squares}
+        {/* The last move, lit on the square it left and the one it reached —
+            which is exactly what the real board does. */}
+        {lit(FROM, "2s")}
+        {lit(TO, "2s")}
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((rank) => (
           <span
-            key={`p-${file}-${rank}`}
-            className="cal-lp-a-txt"
+            key={`r-${rank}`}
+            className="mc-coord"
             style={{
-              left: pos.left,
-              top: pos.top + 4,
-              width: CELL,
-              textAlign: "center",
-              fontSize: 19,
-              lineHeight: 1,
-              color: white ? "var(--cal-lp-text)" : "var(--cal-lp-text-dim)",
+              left: 2,
+              top: (7 - rank) * CELL + 2,
+              color: rank % 2 === 0 ? "#ebecd0" : "#779556",
             }}
           >
-            {GLYPHS[piece]}
+            {rank + 1}
           </span>
-        );
-      })}
+        ))}
+        {FILES.map((file, i) => (
+          <span
+            key={`f-${file}`}
+            className="mc-coord"
+            style={{ left: i * CELL + CELL - 7, top: 8 * CELL - 9, color: i % 2 === 0 ? "#ebecd0" : "#779556" }}
+          >
+            {file}
+          </span>
+        ))}
+        {pieces().map(([file, rank, piece]) => {
+          const pos = at(file, rank);
+          const moving = file === TO.file && rank === TO.rank;
+          return (
+            <span
+              key={`p-${file}-${rank}`}
+              className={`mc-piece${moving ? " mc-slide" : ""}`}
+              style={{ left: pos.left - BOARD_X, top: pos.top - BOARD_Y, width: CELL, height: CELL }}
+            >
+              <Piece
+                color={piece === piece.toUpperCase() ? "white" : "black"}
+                kind={piece.toLowerCase()}
+              />
+            </span>
+          );
+        })}
+      </div>
 
-      {FILES.map((file, i) => (
-        <span
-          key={`f-${file}`}
-          className="cal-lp-a-txt cal-lp-a-txt--dim"
-          style={{ left: BOARD_X + i * CELL, top: BOARD_Y + 8 * CELL + 6, width: CELL, textAlign: "center", fontSize: 8.5 }}
-        >
-          {file}
+      {/* The side panel: the two people, each on their own node, and the
+          scoresheet between them — the contract's actual state, which is a
+          list of moves and nothing else. */}
+      <span className="mc-panel" style={{ left: PANEL_X, top: BOARD_Y, width: PANEL_W, height: 8 * CELL }} />
+
+      <span className="mc-player" style={{ left: PANEL_X + 12, top: BOARD_Y + 12, width: PANEL_W - 24 }}>
+        <span className="mc-av mc-av--b">
+          M<i />
         </span>
-      ))}
-
-      {/* The scoresheet: the contract's actual state, which is a list of moves
-          and nothing else. */}
-      <span className="cal-lp-a-pane" style={{ left: 268, top: BOARD_Y, width: 200, height: 8 * CELL }} />
-      <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 284, top: BOARD_Y + 14 }}>
-        Moves
+        <span>
+          Magnus
+          <small>their node</small>
+        </span>
+        <span className="mc-turn cal-lp-a-in" style={{ ["--d" as string]: "2.2s", ["--t" as string]: "6s" }}>
+          To move
+        </span>
       </span>
+      <span className="mc-rule" style={{ left: PANEL_X + 12, top: BOARD_Y + 46, width: PANEL_W - 24 }} />
+
       {MOVES.map(([white, black], i) => (
-        <span key={`m-${i}`}>
-          <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 284, top: BOARD_Y + 40 + i * 20 }}>
-            {i + 1}.
-          </span>
-          <span className="cal-lp-a-txt cal-lp-a-txt--val" style={{ left: 310, top: BOARD_Y + 40 + i * 20 }}>
+        <span
+          key={`m-${i}`}
+          className="mc-move"
+          style={{ left: PANEL_X + 12, top: moveTop + i * 22, width: PANEL_W - 24 }}
+        >
+          <span>{i + 1}</span>
+          <b
+            className={i === MOVES.length - 1 ? "mc-cur cal-lp-a-in" : undefined}
+            style={i === MOVES.length - 1 ? { ["--d" as string]: "1.6s", ["--t" as string]: "6s" } : undefined}
+          >
             {white}
-          </span>
-          <span className="cal-lp-a-txt cal-lp-a-txt--val" style={{ left: 372, top: BOARD_Y + 40 + i * 20 }}>
-            {black}
-          </span>
+          </b>
+          <b>{black}</b>
         </span>
       ))}
+
       <span
-        className="cal-lp-a-chip cal-lp-a-in"
-        style={{ left: 284, top: BOARD_Y + 8 * CELL - 46, ["--d" as string]: "1.2s", ["--t" as string]: "6s" }}
+        className="mc-tick cal-lp-a-in"
+        style={{ left: PANEL_X + 12, top: BOARD_Y + 8 * CELL - 86, ["--d" as string]: "2.4s", ["--t" as string]: "6s" }}
       >
-        Bb5 — replicated
-      </span>
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 284, top: BOARD_Y + 8 * CELL - 20, fontSize: 8.5 }}>
-        Both nodes replay it
+        <i>✓</i> Bb5 replicated to Magnus
       </span>
 
-      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: BOARD_X, bottom: 4, fontSize: 8.5 }}>
-        No game server — the move list is the game, and the rules run in the contract
+      <span className="mc-rule" style={{ left: PANEL_X + 12, top: BOARD_Y + 8 * CELL - 46, width: PANEL_W - 24 }} />
+      <span className="mc-player" style={{ left: PANEL_X + 12, top: BOARD_Y + 8 * CELL - 36, width: PANEL_W - 24 }}>
+        <span className="mc-av mc-av--w">
+          A<i />
+        </span>
+        <span>
+          Ada
+          <small>your node</small>
+        </span>
+      </span>
+
+      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: BOARD_X, top: BOARD_Y + 8 * CELL + 10, fontSize: 8.5 }}>
+        No game server — the move list is the game, and the rules run in the contract on both nodes
       </span>
     </div>
   );

@@ -57,6 +57,25 @@ export const APPS = {
   'mero-chess': {
     e2eDir: 'e2e',
     availability: 'web+desktop',
+    overview: {
+      headline: 'Chess between two nodes. No server in the middle.',
+      comparison: {
+        heading: 'Online chess, without the site in the middle',
+        sub: 'The board you expect from a chess app. The difference is who holds the game, and who referees it.',
+        themLabel: 'A typical online chess site',
+        rows: [
+          { label: 'Where the game lives', them: 'In the site’s database', us: 'On your node and your opponent’s, nobody else’s' },
+          { label: 'Who enforces the rules', them: 'The site’s server', us: 'The contract, on both players’ nodes' },
+          { label: 'Starting a game', them: 'An account, then matchmaking', us: 'One invite link. No sign-up, no email' },
+          { label: 'Your game history', them: 'Kept as long as the site keeps it', us: 'Every game at the table, on your own node' },
+          { label: 'If the site goes away', them: 'Your games may go with it', us: 'Your node still has every move' },
+        ],
+      },
+      closing: {
+        title: 'Set up a board',
+        body: 'Connect a node, or install the desktop app that bundles one, then send your opponent the link.',
+      },
+    },
     trust: ['No game server', 'Rules run in the contract', 'No accounts'],
     explainer: [
       'Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players\u2019 own nodes — so a game is a thing the two of you have, not a row in somebody else\u2019s database.',

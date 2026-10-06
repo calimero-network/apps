@@ -34,14 +34,16 @@ export function JoinCard({
   }
 
   return (
-    <div className="card">
-      <h2>Join with an invitation</h2>
-      <p className="empty" style={{ marginBottom: 14 }}>
+    <div className="card join-card">
+      <div className="card-head">
+        <h2>Join with an invitation</h2>
+      </div>
+      <p className="hint">
         Paste a link or an invitation code. A link that opened this app is
         redeemed automatically — this is for one that arrived some other way.
       </p>
 
-      <div className="row">
+      <div className="row input-row">
         <input
           placeholder="https://links.calimero.network/… or a code"
           value={input}
@@ -64,16 +66,14 @@ export function JoinCard({
       )}
 
       {state.status === "confirm" && (
-        <div style={{ marginTop: 16 }}>
+        <div className="confirm">
           {/*
             The prompt exists because following a link must not act on the
             user's behalf: joining binds their identity to a namespace someone
             else chose and switches their active context. Show WHAT, then ask.
           */}
-          <p style={{ marginBottom: 8 }}>
-An invitation is waiting. Joining adds this node to:
-          </p>
-          <table>
+          <p className="confirm-title">An invitation is waiting. Joining adds this node to:</p>
+          <table className="kv">
             <tbody>
               <tr>
                 <th>namespace</th>
@@ -85,7 +85,7 @@ An invitation is waiting. Joining adds this node to:
               </tr>
             </tbody>
           </table>
-          <div className="row" style={{ marginTop: 12 }}>
+          <div className="row">
             <button onClick={onConfirm}>Join</button>
             <button className="ghost" onClick={onDecline}>
               Not now
@@ -95,7 +95,7 @@ An invitation is waiting. Joining adds this node to:
       )}
 
       {state.status === "joining" && (
-        <p className="empty" style={{ marginTop: 12 }}>
+        <p className="empty">
           Joining the namespace, then the context…
         </p>
       )}
