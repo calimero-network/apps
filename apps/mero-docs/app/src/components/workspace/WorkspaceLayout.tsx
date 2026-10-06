@@ -201,7 +201,9 @@ export function WorkspaceLayout() {
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
   // A card is about the doc only when its folder is known; an absent folder
   // keeps its URL so it opens by itself if this node later syncs it.
-  const linkSubject = routedFolder && selectedDocId ? 'doc' : 'folder';
+  // Name what was linked. The card says only "isn't available" either way, and
+  // a doc whose folder this node does not list is still a doc to the reader.
+  const linkSubject = selectedDocId ? 'doc' : 'folder';
   const onLinkTargetGoHome = useCallback(
     () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
     [linkTarget, goWorkspace, goHome],

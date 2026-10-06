@@ -270,9 +270,10 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     expect(screen.getByTestId('url').textContent).toBe('/app');
   });
 
-  it('keeps an absent folder link and shows the folder-worded card', () => {
+  // A doc link names the doc, even when its folder is what this node lacks.
+  it('keeps a doc link into an absent folder and shows the doc-worded card', () => {
     renderAt('/app/ns/f/gone/d/doc-1');
-    expect(screen.getByText("This folder isn't available")).toBeTruthy();
+    expect(screen.getByText("This document isn't available")).toBeTruthy();
     expect(screen.getByTestId('url').textContent).toBe('/app/ns/f/gone/d/doc-1');
   });
 
