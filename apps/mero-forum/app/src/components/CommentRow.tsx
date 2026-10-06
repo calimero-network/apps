@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { Byline, VoteColumn } from "./PostCard";
+import { AuthorAvatar, Byline, VoteColumn } from "./PostCard";
+import { EditIcon, TrashIcon } from "./icons";
 import type { CommentView } from "../generated/ForumClient";
 import { timeAgo } from "../lib/forum";
 
@@ -51,47 +52,34 @@ export default function CommentRow({
 
   return (
     <div className="comment" data-testid="comment">
-      <VoteColumn
-        score={comment.score}
-        myVote={comment.my_vote}
-        onVote={onVote}
-      />
+      <div className="commentRail">
+        <AuthorAvatar
+          account={comment.author}
+          authorName={comment.author_name}
+        />
+      </div>
       <div className="commentBody">
-        <div className="meta">
+        <div className="byRow">
           <Byline
             account={comment.author}
             authorName={comment.author_name}
             selfAccount={selfAccount}
           />
-          <span>·</span>
-          <span>{timeAgo(comment.created_at)}</span>
+          <span className="dot" aria-hidden="true">
+            ·
+          </span>
+          <span
+            className="timeMeta"
+            title={new Date(comment.created_at).toLocaleString()}
+          >
+            {timeAgo(comment.created_at)}
+          </span>
           {comment.edited_at > comment.created_at && (
             <>
-              <span>·</span>
+              <span className="dot" aria-hidden="true">
+                ·
+              </span>
               <span>edited</span>
-            </>
-          )}
-          {mine && !editing && (
-            <>
-              <span>·</span>
-              <button
-                className="linkBtn"
-                data-testid="edit-comment"
-                onClick={() => {
-                  setDraft(comment.body);
-                  setEditing(true);
-                }}
-              >
-                Edit
-              </button>
-              <span>·</span>
-              <button
-                className="linkBtn danger"
-                data-testid="delete-comment"
-                onClick={onDelete}
-              >
-                Delete
-              </button>
             </>
           )}
         </div>
@@ -106,14 +94,8 @@ export default function CommentRow({
               aria-label="Edit comment"
               data-testid="edit-comment-input"
             />
+            {error && <div className="error">{error}</div>}
             <div className="row">
-              <button
-                className="primary"
-                disabled={busy || !draft.trim()}
-                onClick={() => void save()}
-              >
-                {busy ? "Saving…" : "Save"}
-              </button>
               <button
                 className="ghost"
                 disabled={busy}
@@ -125,11 +107,60 @@ export default function CommentRow({
               >
                 Cancel
               </button>
+              <button
+                className="primary"
+                disabled={busy || !draft.trim()}
+                onClick={() => void save()}
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
             </div>
-            {error && <div className="error">{error}</div>}
           </div>
         ) : (
           <p>{comment.body}</p>
+        )}
+
+        {!editing && (
+          <div className="actions">
+            <VoteColumn
+              score={comment.score}
+              myVote={comment.my_vote}
+              onVote={onVote}
+            />
+            {mine ? (
+              <>
+                <button
+                  type="button"
+                  className="act"
+                  data-testid="edit-comment"
+                  title="Edit"
+                  onClick={() => {
+                    setDraft(comment.body);
+                    setEditing(true);
+                  }}
+                >
+                  <span className="actIcon">
+                    <EditIcon size={16} />
+                  </span>
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="act danger"
+                  data-testid="delete-comment"
+                  title="Delete"
+                  onClick={onDelete}
+                >
+                  <span className="actIcon">
+                    <TrashIcon size={16} />
+                  </span>
+                  Delete
+                </button>
+              </>
+            ) : (
+              <span />
+            )}
+          </div>
         )}
       </div>
     </div>

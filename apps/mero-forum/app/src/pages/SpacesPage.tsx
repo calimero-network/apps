@@ -17,7 +17,34 @@ import {
 import InviteModal from "../components/InviteModal";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import styles from "./SpacesPage.module.css";
+import {
+  AccountChip,
+  Avatar,
+  NavItem,
+  Shell,
+  SideCard,
+} from "../components/chrome";
+import {
+  AlertIcon,
+  CopyIcon,
+  HashIcon,
+  LayersIcon,
+  MoreIcon,
+  PlusIcon,
+  TrashIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "../components/icons";
+import styles from "./Picker.module.css";
+
+/** Focus the create field from the rail's call to action. Presentation only. */
+function focusCreate() {
+  const el = document.getElementById("space-name");
+  if (el) {
+    el.scrollIntoView({ block: "center" });
+    el.focus();
+  }
+}
 
 /**
  * Spaces = NAMESPACES. One level up from where this page used to sit.
@@ -253,24 +280,110 @@ export default function SpacesPage() {
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
   return (
-    <div className={styles.root}>
-      <header className={styles.header}>
-        <span className={styles.logo}>Mero Forum</span>
-        <div className={styles.headerRight}>
-          <span className={styles.nodeTag}>{nodeLabel}</span>
-          <button className={styles.logoutBtn} onClick={logout}>
-            Logout
+    <>
+      <Shell
+        nav={<NavItem icon={<LayersIcon size={24} />} label="Spaces" active />}
+        cta={
+          <button
+            type="button"
+            className="ui-btn ui-btn-primary x-ctaBtn"
+            onClick={focusCreate}
+            aria-label="New space"
+          >
+            <span className="x-ctaIcon">
+              <PlusIcon size={22} />
+            </span>
+            <span className="x-ctaLabel">New space</span>
           </button>
-        </div>
-      </header>
-
-      <main className={styles.main}>
-        <h1 className={styles.title}>Your Spaces</h1>
-
+        }
+        account={
+          <AccountChip
+            host={nodeLabel || null}
+            hostTitle={nodeUrl ?? undefined}
+            onLogout={logout}
+          />
+        }
+        header={
+          <div className="x-headRow">
+            <div className="x-headText">
+              <h1 className="x-headTitle">Your Spaces</h1>
+              <span className="x-headSub">
+                Spaces hold forums and the people invited to them
+              </span>
+            </div>
+          </div>
+        }
+        aside={
+          <>
+            <SideCard title="Join a space">
+              <p className="x-sideText">
+                Got an invitation? Paste the link or code you were sent.
+              </p>
+              <div className="x-sideForm">
+                <input
+                  className="ui-input"
+                  placeholder="Paste an invitation link or code…"
+                  aria-label="Invitation link or code"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  data-testid="join-input"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && joinCode.trim())
+                      acceptCode(joinCode);
+                  }}
+                />
+                <button
+                  className="ui-btn ui-btn-dark ui-btn-block"
+                  onClick={() => acceptCode(joinCode)}
+                  disabled={pending === "join" || !joinCode.trim()}
+                  data-testid="join-btn"
+                  style={{ height: 40 }}
+                >
+                  {pending === "join" ? "Joining…" : "Join"}
+                </button>
+              </div>
+            </SideCard>
+            <SideCard title="How it works">
+              <ul className={styles.howList}>
+                <li className={styles.howItem}>
+                  <span className={styles.howTile}>
+                    <LayersIcon size={16} />
+                  </span>
+                  <span>
+                    <strong>Spaces</strong>
+                    Invite people once; they can read every forum inside.
+                  </span>
+                </li>
+                <li className={styles.howItem}>
+                  <span className={styles.howTile}>
+                    <HashIcon size={16} />
+                  </span>
+                  <span>
+                    <strong>Forums</strong>
+                    Each forum is its own board of posts and replies.
+                  </span>
+                </li>
+                <li className={styles.howItem}>
+                  <span className={styles.howTile}>
+                    <UsersIcon size={16} />
+                  </span>
+                  <span>
+                    <strong>Peer to peer</strong>
+                    Everything lives on members' nodes — no central server.
+                  </span>
+                </li>
+              </ul>
+            </SideCard>
+          </>
+        }
+      >
         <div className={styles.createRow}>
+          <Avatar label="+" seed="space" square icon={<PlusIcon size={20} />} />
           <input
-            className={styles.input}
-            placeholder="New space name…"
+            id="space-name"
+            className={styles.createInput}
+            placeholder="Name a new space…"
+            aria-label="New space name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             data-testid="space-name-input"
@@ -279,85 +392,157 @@ export default function SpacesPage() {
             }}
           />
           <button
-            className={styles.btn}
+            className="ui-btn ui-btn-primary"
             onClick={create}
             disabled={pending === "create" || !name.trim() || !appId}
             data-testid="create-space"
           >
+            {pending === "create" && <span className="ui-spinner" />}
             {pending === "create" ? "Creating…" : "Create"}
           </button>
         </div>
 
-        {status && <p className={styles.empty}>{status}</p>}
-        {error && <p className={styles.joinError}>{error}</p>}
+        {status && (
+          <p className={styles.note} role="status">
+            <span className="ui-spinner" />
+            {status}
+          </p>
+        )}
+        {error && (
+          <p className={`${styles.note} ${styles.noteError}`} role="alert">
+            <AlertIcon size={16} />
+            {error}
+          </p>
+        )}
 
         {notInstalled && (
-          <p className={styles.empty}>
+          <p className={`${styles.note} ${styles.noteWarn}`}>
+            <AlertIcon size={16} />
             Mero Forum is not installed on this node. Install it from the
             marketplace, then reload — spaces are listed per application.
           </p>
         )}
 
         {listing || resolvingAppId ? (
-          <p className={styles.empty}>Loading…</p>
+          <div aria-label="Loading…">
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+          </div>
         ) : namespaces.length === 0 ? (
           !notInstalled && (
-            <p className={styles.empty} data-testid="spaces-empty">
-              No spaces yet. Create one above.
-            </p>
+            <div className={styles.empty} data-testid="spaces-empty">
+              <Avatar
+                label="S"
+                seed="space"
+                square
+                size={56}
+                icon={<LayersIcon size={26} />}
+              />
+              <span className={styles.emptyTitle}>No spaces yet</span>
+              Create one above, or join one with an invitation.
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary"
+                style={{ marginTop: 14 }}
+                onClick={focusCreate}
+              >
+                <PlusIcon size={16} />
+                New space
+              </button>
+            </div>
           )
         ) : (
-          <div className={styles.grid}>
+          <div className={styles.list}>
             {namespaces.map((ns) => (
               <div
                 key={ns.namespaceId}
-                className={styles.cardWrap}
+                className={styles.row}
                 ref={menuOpenId === ns.namespaceId ? menuRef : null}
               >
                 <button
-                  className={styles.card}
+                  className={styles.rowMain}
                   data-testid="space-row"
                   onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
                 >
-                  <span className={styles.cardName}>{ns.name}</span>
-                  <span className={styles.cardSub}>
-                    {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"} ·{" "}
-                    {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                  <Avatar
+                    label={ns.name}
+                    seed={ns.namespaceId}
+                    square
+                    size={44}
+                  />
+                  <span className={styles.rowText}>
+                    <span className={styles.rowName}>{ns.name}</span>
+                    <span className={styles.rowMeta}>
+                      <span className={styles.metaItem}>
+                        <HashIcon size={14} />
+                        {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
+                      </span>
+                      <span className={styles.metaItem}>
+                        <UsersIcon size={14} />
+                        {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                      </span>
+                    </span>
                   </span>
+                  <span className={styles.pill}>Open</span>
                 </button>
-                <button
-                  className={styles.menuBtn}
-                  data-testid="space-menu"
-                  title="More options"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpenId(
-                      menuOpenId === ns.namespaceId ? null : ns.namespaceId,
-                    );
-                  }}
-                >
-                  ⋯
-                </button>
+                <div className={styles.menuCell}>
+                  <button
+                    className="ui-iconBtn"
+                    data-testid="space-menu"
+                    title="More options"
+                    aria-label="More options"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpenId === ns.namespaceId}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId(
+                        menuOpenId === ns.namespaceId ? null : ns.namespaceId,
+                      );
+                    }}
+                  >
+                    <MoreIcon size={18} />
+                  </button>
+                </div>
                 {menuOpenId === ns.namespaceId && (
-                  <div className={styles.dropdown}>
+                  <div className={styles.dropdown} role="menu">
                     <button
-                      className={styles.dropdownItem}
+                      className="ui-menuItem"
+                      role="menuitem"
                       onClick={() => {
                         setMenuOpenId(null);
                         mintInvite(ns);
                       }}
                       data-testid="invite-btn"
                     >
+                      <UserPlusIcon size={17} />
                       Invite
                     </button>
                     <button
-                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                      className="ui-menuItem"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        void navigator.clipboard
+                          ?.writeText(ns.namespaceId)
+                          .then(() => showToast("Space ID copied."))
+                          .catch(() => undefined);
+                      }}
+                    >
+                      <CopyIcon size={17} />
+                      Copy space ID
+                    </button>
+                    <button
+                      className="ui-menuItem"
+                      role="menuitem"
+                      data-danger="true"
                       onClick={() => {
                         setMenuOpenId(null);
                         setPendingDelete(ns);
                       }}
                       data-testid="delete-space"
                     >
+                      <TrashIcon size={17} />
                       Delete
                     </button>
                   </div>
@@ -366,31 +551,7 @@ export default function SpacesPage() {
             ))}
           </div>
         )}
-
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Got an invitation? Join a space!</p>
-          <div className={styles.joinRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste an invitation link or code…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              data-testid="join-input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && joinCode.trim()) acceptCode(joinCode);
-              }}
-            />
-            <button
-              className={styles.btn}
-              onClick={() => acceptCode(joinCode)}
-              disabled={pending === "join" || !joinCode.trim()}
-              data-testid="join-btn"
-            >
-              {pending === "join" ? "Joining…" : "Join"}
-            </button>
-          </div>
-        </div>
-      </main>
+      </Shell>
 
       {/* A confirm step rather than `window.confirm`: deleting a space deletes
           every forum in it, for everyone, and a native dialog has no room to
@@ -413,17 +574,14 @@ export default function SpacesPage() {
         </p>
         <div className={styles.confirmRow}>
           <button
-            className={`${styles.btn} ${styles.btnDanger}`}
+            className="ui-btn ui-btn-dangerSolid"
             onClick={() => pendingDelete && removeSpace(pendingDelete)}
             disabled={pending === `delete:${pendingDelete?.namespaceId}`}
             data-testid="confirm-delete-space"
           >
             Delete
           </button>
-          <button
-            className={styles.logoutBtn}
-            onClick={() => setPendingDelete(null)}
-          >
+          <button className="ui-btn" onClick={() => setPendingDelete(null)}>
             Cancel
           </button>
         </div>
@@ -435,6 +593,6 @@ export default function SpacesPage() {
         scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
         onClose={() => setInvite(null)}
       />
-    </div>
+    </>
   );
 }

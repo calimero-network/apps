@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MoreIcon } from "./icons";
 
 import styles from "../pages/Shell.module.css";
 
@@ -72,7 +73,7 @@ export default function CardMenu({
         data-testid={testId}
         onClick={() => setOpen((v) => !v)}
       >
-        ⋯
+        <MoreIcon size={18} />
       </button>
       {open && (
         <div className={styles.dropdown} role="menu">

@@ -3,6 +3,7 @@ import { shareableInvitation } from "../lib/inviteLink";
 import { useToast } from "../contexts/ToastContext";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./InviteModal.module.css";
+import { ChevronDownIcon, CopyIcon, LinkIcon, XIcon } from "./icons";
 
 /**
  * An invitation, as a modal you copy and dismiss.
@@ -102,21 +103,30 @@ export default function InviteModal({
     >
       <div className={styles.body}>
         <header className={styles.head}>
-          <h2 className={styles.title}>Invitation ready</h2>
           <button
             type="button"
             className={styles.close}
             onClick={onClose}
             aria-label="Close"
+            title="Close"
             data-testid="invite-modal-close"
           >
-            ✕
+            <XIcon size={20} />
           </button>
+          <h2 className={styles.title}>Invitation ready</h2>
         </header>
 
-        <p className={styles.scope} data-testid="invite-scope">
-          {scope}
-        </p>
+        <div className={styles.hero}>
+          <span className={styles.heroIcon} aria-hidden="true">
+            <LinkIcon size={22} />
+          </span>
+          <div className={styles.heroText}>
+            <span className={styles.heroLead}>Share this link</span>
+            <p className={styles.scope} data-testid="invite-scope">
+              {scope}
+            </p>
+          </div>
+        </div>
 
         {/* One line by default; `showRaw` is also the "clipboard failed" state,
             where the characters have to be selectable. */}
@@ -135,6 +145,7 @@ export default function InviteModal({
           onClick={copyAndClose}
           data-testid="invite-copy"
         >
+          <CopyIcon size={18} />
           Copy link
         </button>
 
@@ -148,6 +159,7 @@ export default function InviteModal({
           data-testid="invite-more"
         >
           {showRaw ? "Fewer options" : "Other ways to send this"}
+          <ChevronDownIcon size={15} className={styles.chev} />
         </button>
 
         {showRaw && (
