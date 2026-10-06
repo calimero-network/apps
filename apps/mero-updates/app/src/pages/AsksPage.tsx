@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import AskCard from "../components/AskCard";
 import { useAudience } from "../components/AudienceShell";
-import { Empty } from "../components/bits";
+import { Avatar, Empty } from "../components/bits";
+import { AskKindIcon, HandIcon } from "../components/icons";
 import { askKind, formatDate, personLabel, useLive } from "../lib/updates";
 
 /**
@@ -22,6 +23,16 @@ export default function AsksPage() {
 
   return (
     <>
+      <div className="pageHead">
+        <div>
+          <h1 className="pageTitle">Asks</h1>
+          <p className="pageSub">
+            {isTeam
+              ? "Every request for help across your updates, and the offers that came in."
+              : "Specific ways you can help the team right now."}
+          </p>
+        </div>
+      </div>
       <div className="tabs" role="tablist" aria-label="Status">
         {(["open", "resolved"] as const).map((s) => (
           <button key={s} role="tab" className="tab" aria-selected={status === s} onClick={() => setStatus(s)}>
@@ -31,11 +42,13 @@ export default function AsksPage() {
       </div>
 
       {asks.error && <div className="error">{asks.error}</div>}
-      {items.map((a) => (
-        <AskCard key={a.id} ask={a} isTeam={isTeam} showPost onChanged={asks.reload} />
-      ))}
+      <div className="stack">
+        {items.map((a) => (
+          <AskCard key={a.id} ask={a} isTeam={isTeam} showPost onChanged={asks.reload} />
+        ))}
+      </div>
       {!asks.loading && items.length === 0 && (
-        <Empty title={status === "open" ? "No open asks." : "Nothing resolved yet."}>
+        <Empty icon={<HandIcon size={20} />} title={status === "open" ? "No open asks." : "Nothing resolved yet."}>
           {isTeam
             ? "Add asks to an update — intros, hires, customers, advice. They collect here."
             : "When the team asks for help, it shows up here."}
@@ -44,15 +57,22 @@ export default function AsksPage() {
 
       {(contributions.data?.length ?? 0) > 0 && (
         <section className="ledger">
-          <h2 className="sectionLabel">Contributions</h2>
+          <h2 className="sectionTitle">Contributions</h2>
           <p className="muted small">Accepted offers of help. The composer can thank everyone since the last update in one click.</p>
-          <ul>
+          <ul className="ledgerList">
             {contributions.data!.map((c) => (
               <li key={`${c.ask_id}|${c.account}`}>
-                <span aria-hidden>{askKind(c.ask_kind).icon}</span>{" "}
-                <strong>{personLabel(c.name, c.account)}</strong>
-                {c.firm && <span className="muted"> · {c.firm}</span>} — {c.ask_title}
-                <span className="muted small"> · {formatDate(c.accepted_at)}</span>
+                <Avatar name={c.name} account={c.account} />
+                <div className="ledgerMain">
+                  <div>
+                    <strong>{personLabel(c.name, c.account)}</strong>
+                    {c.firm && <span className="muted"> · {c.firm}</span>}
+                  </div>
+                  <div className="muted small ledgerWhat">
+                    <AskKindIcon kind={c.ask_kind} size={13} /> {askKind(c.ask_kind).label} · {c.ask_title}
+                  </div>
+                </div>
+                <span className="muted small num">{formatDate(c.accepted_at)}</span>
               </li>
             ))}
           </ul>

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useAudience } from "../components/AudienceShell";
-import { Empty } from "../components/bits";
+import { Avatar, Empty } from "../components/bits";
+import { ChevronRightIcon, HelpCircleIcon, MessageIcon } from "../components/icons";
 import { personLabel, timeAgo, useLive, useRevision, useUpdatesClient } from "../lib/updates";
 
 /**
@@ -51,8 +52,14 @@ export default function QuestionsPage() {
 
   return (
     <>
+      <div className="pageHead">
+        <div>
+          <h1 className="pageTitle">Q&amp;A</h1>
+          <p className="pageSub">Questions and answers everyone in this audience can read.</p>
+        </div>
+      </div>
       <section className="askBox" data-testid="question-box">
-        <h2 className="sectionLabel">{me?.is_team ? "Start a thread" : "Ask the team"}</h2>
+        <h2 className="cardTitle">{me?.is_team ? "Start a thread" : "Ask the team"}</h2>
         <input
           aria-label="Question"
           placeholder={me?.is_team ? "e.g. “Office hours this Friday — bring questions”" : "e.g. “What's the runway after the new hires?”"}
@@ -71,7 +78,7 @@ export default function QuestionsPage() {
         )}
         <div className="row end">
           {error && <span className="errorText">{error}</span>}
-          <span className="muted small">Everyone in this audience can read the thread.</span>
+          <span className="muted small grow">Everyone in this audience can read the thread.</span>
           <button className="primary small" disabled={busy || !title.trim()} onClick={() => void ask()}>
             {busy ? "Posting…" : "Post"}
           </button>
@@ -87,25 +94,31 @@ export default function QuestionsPage() {
       </div>
 
       {questions.error && <div className="error">{questions.error}</div>}
-      {items.map((q) => (
-        <Link key={q.id} to={`/a/p/${q.id}`} className="updateRow" data-testid="question-row">
-          <div className="updateRowMain">
-            <div className="meta">
+      {items.length > 0 && (
+        <div className="listCard">
+          {items.map((q) => (
+            <Link key={q.id} to={`/a/p/${q.id}`} className="questionRow" data-testid="question-row">
+              <Avatar name={q.author_name} account={q.author} team={q.author_is_team} />
+              <div className="questionMain">
+                <h2 className="questionTitle">{q.title}</h2>
+                <div className="meta">
+                  <span>{personLabel(q.author_name, q.author)}</span>
+                  <span>· {timeAgo(q.created_at)}</span>
+                </div>
+              </div>
               <span className={`pill ${q.status === "answered" ? "ok" : "warn"}`}>
                 {q.status === "answered" ? "Answered" : "Open"}
               </span>
-              <span>{personLabel(q.author_name, q.author)}</span>
-              <span>· {timeAgo(q.created_at)}</span>
-            </div>
-            <h2 className="updateTitle">{q.title}</h2>
-          </div>
-          <div className="updateStats">
-            <span>💬 {q.comment_count}</span>
-          </div>
-        </Link>
-      ))}
+              <span className="replyCount" title="Replies">
+                <MessageIcon size={14} /> {q.comment_count}
+              </span>
+              <ChevronRightIcon size={16} className="rowChevron" />
+            </Link>
+          ))}
+        </div>
+      )}
       {!questions.loading && items.length === 0 && (
-        <Empty title={filter === "open" ? "Nothing waiting on an answer." : "No questions yet."}>
+        <Empty icon={<HelpCircleIcon size={20} />} title={filter === "open" ? "Nothing waiting on an answer." : "No questions yet."}>
           Questions and answers are visible to everyone in this audience.
         </Empty>
       )}

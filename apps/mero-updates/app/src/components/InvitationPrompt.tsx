@@ -9,6 +9,7 @@ import {
 } from "@calimero-apps/invite";
 import { setActiveAudience, setAudienceName } from "../lib/session";
 import styles from "./InvitationPrompt.module.css";
+import { AlertIcon, LayersIcon, XIcon } from "./icons";
 
 /**
  * "You have been invited to X" — for an invitation that arrived as a link.
@@ -107,14 +108,17 @@ export default function InvitationPrompt() {
     return error ? (
       <div className={styles.wrap}>
         <div className={`${styles.prompt} ${styles.promptError}`}>
+          <span className={`${styles.tile} ${styles.tileError}`} aria-hidden>
+            <AlertIcon size={18} />
+          </span>
           <span className={styles.text}>{error}</span>
           <button
             type="button"
-            className={styles.ghost}
+            className={styles.iconClose}
             onClick={() => setError(null)}
             aria-label="Dismiss"
           >
-            ✕
+            <XIcon size={16} />
           </button>
         </div>
       </div>
@@ -127,34 +131,41 @@ export default function InvitationPrompt() {
   return (
     <div className={styles.wrap}>
       <div className={styles.prompt} data-testid="invite-prompt">
+        <span className={styles.tile} aria-hidden>
+          <LayersIcon size={18} />
+        </span>
         <span className={styles.text}>
+          <span className={styles.eyebrow}>Invitation</span>
           <strong>You have been invited to {name}</strong>
           <span className={styles.sub}>
             {status ??
               error ??
               (pending.payload.audienceName
-                ? "Joining takes you straight into that call."
+                ? "Joining takes you straight into that audience."
                 : "Joining gives you access to the space and every audience in it.")}
           </span>
         </span>
-        <button
-          type="button"
-          className={styles.accept}
-          onClick={() => void accept()}
-          disabled={busy || !admin}
-          data-testid="invite-accept"
-        >
-          {busy ? "Joining…" : "Join"}
-        </button>
-        <button
-          type="button"
-          className={styles.ghost}
-          onClick={decline}
-          disabled={busy}
-          data-testid="invite-decline"
-        >
-          Not now
-        </button>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={decline}
+            disabled={busy}
+            data-testid="invite-decline"
+          >
+            Not now
+          </button>
+          <button
+            type="button"
+            className={styles.accept}
+            onClick={() => void accept()}
+            disabled={busy || !admin}
+            data-testid="invite-accept"
+          >
+            {busy && <span className={styles.spinner} aria-hidden />}
+            {busy ? "Joining…" : "Join"}
+          </button>
+        </div>
       </div>
     </div>
   );

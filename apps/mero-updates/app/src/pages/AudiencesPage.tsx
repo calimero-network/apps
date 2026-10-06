@@ -16,6 +16,20 @@ import {
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import { hostingProblem } from "../lib/hosting";
+import AppHeader from "../components/AppHeader";
+import {
+  AlertIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  HashIcon,
+  LayersIcon,
+  LogOutIcon,
+  MoreIcon,
+  PlusIcon,
+  TrashIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "../components/icons";
 import styles from "./AudiencesPage.module.css";
 import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
@@ -275,81 +289,125 @@ export default function AudiencesPage() {
     [admin, run, load, showToast],
   );
 
+  const copyId = (label: string, id: string) => {
+    void navigator.clipboard
+      ?.writeText(id)
+      .then(() => showToast(`${label} copied.`))
+      .catch(() => showToast("Could not reach the clipboard.", "error"));
+  };
+
   return (
     <div className={styles.root}>
-      <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate("/companies")}>
-          ← Spaces
-        </button>
-        <span className={styles.logo}>{nsName || "Space"}</span>
-        <div className={styles.headerRight}>
+      <AppHeader
+        crumbs={[
+          { label: "Companies", onClick: () => navigate("/companies"), icon: <LayersIcon size={14} /> },
+          { label: nsName || "Company" },
+        ]}
+        right={
+          <button className={styles.logoutBtn} onClick={logout} title="Sign out of this node">
+            <LogOutIcon size={15} />
+            Logout
+          </button>
+        }
+      />
+
+      <main className={styles.main}>
+        <div className={styles.pageHead}>
+          <span className={styles.headTile} aria-hidden>
+            <LayersIcon size={20} />
+          </span>
+          <div className={styles.headText}>
+            <h1 className={styles.title}>{nsName || "Company"}</h1>
+            {/* Said on the page because it is the one thing a founder would
+                otherwise assume wrong: an audience here is a FILTER for attention,
+                not a wall. Audiences are open subgroups, so a member of the company
+                can open any of them. */}
+            <p className={styles.sub} data-testid="audience-scope-note">
+              An audience is a feed of updates. Everyone invited to this company
+              can open every audience in it — for something confidential, like a
+              board, create a separate company and invite only the board.
+            </p>
+          </div>
           {/* Gated on hosting: a space the cloud refused to host cannot be
               invited to (lib/hosting), and the button says so rather than
               failing on the click. */}
           <button
-            className={styles.logoutBtn}
+            className={`${styles.btn} ${styles.btnSecondary}`}
             onClick={inviteToNamespace}
             disabled={pending === "invite:namespace" || !!hostingNote}
             title={hostingNote ?? undefined}
             data-testid="invite-space"
           >
+            <UserPlusIcon size={16} />
             {pending === "invite:namespace"
               ? "Inviting…"
               : hostingNote
                 ? "Invite (not hosted yet)"
-                : "Invite"}
-          </button>
-          <button className={styles.logoutBtn} onClick={logout}>
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <main className={styles.main}>
-        <h1 className={styles.title}>Audiences</h1>
-        {/* Said on the page because it is the one thing a founder would
-            otherwise assume wrong: an audience here is a FILTER for attention,
-            not a wall. Audiences are open subgroups, so a member of the company
-            can open any of them. */}
-        <p className={styles.empty} data-testid="audience-scope-note">
-          An audience is a feed of updates. Everyone invited to this company
-          can open every audience in it — for something confidential, like a
-          board, create a separate company and invite only the board.
-        </p>
-
-        <div className={styles.createRow}>
-          <input
-            className={styles.input}
-            placeholder="New audience — e.g. All investors, Angels, Advisors"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            data-testid="audience-name-input"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) create();
-            }}
-          />
-          <button
-            className={styles.btn}
-            onClick={create}
-            disabled={pending === "create" || !name.trim() || !appId}
-            data-testid="create-audience"
-          >
-            {pending === "create" ? "Creating…" : "Create"}
+                : "Invite people"}
           </button>
         </div>
 
-        {status && <p className={styles.empty}>{status}</p>}
-        {error && <p className={styles.joinError}>{error}</p>}
+        <section className={styles.createCard}>
+          <label className={styles.label} htmlFor="new-audience">
+            New audience
+          </label>
+          <div className={styles.createRow}>
+            <input
+              id="new-audience"
+              className={styles.input}
+              placeholder="New audience — e.g. All investors, Angels, Advisors"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="audience-name-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && name.trim()) create();
+              }}
+            />
+            <button
+              className={styles.btn}
+              onClick={create}
+              disabled={pending === "create" || !name.trim() || !appId}
+              data-testid="create-audience"
+            >
+              {pending !== "create" && <PlusIcon size={16} />}
+              {pending === "create" ? "Creating…" : "Create"}
+            </button>
+          </div>
+        </section>
+
+        {status && (
+          <p className={styles.status}>
+            <span className={styles.spinner} aria-hidden />
+            {status}
+          </p>
+        )}
+        {error && (
+          <p className={styles.joinError} role="alert">
+            <AlertIcon size={15} />
+            {error}
+          </p>
+        )}
+
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle}>Audiences</h2>
+          {!listing && audiences.length > 0 && <span className={styles.count}>{audiences.length}</span>}
+        </div>
 
         {isSyncing ? (
           <JoinSyncBanner show what="audiences" onDismiss={dismissSyncing} />
         ) : listing ? (
-          <p className={styles.empty}>Loading…</p>
+          <div className={styles.grid} aria-busy="true">
+            <div className={styles.skeleton} />
+            <div className={styles.skeleton} />
+          </div>
         ) : audiences.length === 0 ? (
-          <p className={styles.empty} data-testid="audiences-empty">
-            No audiences yet. Most companies start with one called
-            “All investors”.
-          </p>
+          <div className={styles.emptyCard} data-testid="audiences-empty">
+            <span className={styles.emptyTile} aria-hidden>
+              <HashIcon size={20} />
+            </span>
+            <strong>No audiences yet</strong>
+            <span>Most companies start with one called “All investors”.</span>
+          </div>
         ) : (
           <div className={styles.grid}>
             {audiences.map((audience) => (
@@ -364,17 +422,38 @@ export default function AudiencesPage() {
                   disabled={!audience.contextId}
                   onClick={() => enter(audience)}
                 >
-                  <span className={styles.cardName}>{audience.name}</span>
-                  <span className={styles.cardSub}>
-                    {audience.contextId
-                      ? `${audience.memberCount} member${audience.memberCount === 1 ? "" : "s"}${audience.joined ? "" : " · not joined"}`
-                      : "syncing…"}
+                  <span className={styles.cardTile} data-joined={audience.joined} aria-hidden>
+                    <HashIcon size={18} />
                   </span>
+                  <span className={styles.cardText}>
+                    <span className={styles.cardName}>{audience.name}</span>
+                    <span className={styles.cardSub}>
+                      {audience.contextId ? (
+                        <>
+                          <UsersIcon size={13} />
+                          {`${audience.memberCount} member${audience.memberCount === 1 ? "" : "s"}`}
+                          {!audience.joined && <span className={styles.tag}>not joined</span>}
+                        </>
+                      ) : (
+                        <>
+                          <span className={styles.spinner} aria-hidden />
+                          syncing…
+                        </>
+                      )}
+                    </span>
+                  </span>
+                  {pending === `enter:${audience.audienceId}` ? (
+                    <span className={styles.spinner} aria-hidden />
+                  ) : (
+                    <ChevronRightIcon size={16} className={styles.cardChevron} />
+                  )}
                 </button>
                 <button
                   className={styles.menuBtn}
                   data-testid="audience-menu"
                   title="More options"
+                  aria-label="More options"
+                  aria-expanded={menuOpenId === audience.audienceId}
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
@@ -382,10 +461,14 @@ export default function AudiencesPage() {
                     );
                   }}
                 >
-                  ⋯
+                  <MoreIcon size={16} />
                 </button>
                 {menuOpenId === audience.audienceId && (
-                  <div className={styles.dropdown}>
+                  <div
+                    className={styles.dropdown}
+                    role="menu"
+                    onKeyDown={(e) => e.key === "Escape" && setMenuOpenId(null)}
+                  >
                     <button
                       className={styles.dropdownItem}
                       data-testid="invite-audience"
@@ -396,23 +479,43 @@ export default function AudiencesPage() {
                         inviteToAudience(audience);
                       }}
                     >
+                      <UserPlusIcon size={15} />
                       {hostingNote ? "Invite (not hosted yet)" : "Invite"}
                     </button>
+                    {audience.contextId && (
+                      <button
+                        className={styles.dropdownItem}
+                        onClick={() => {
+                          setMenuOpenId(null);
+                          copyId("Context ID", audience.contextId!);
+                        }}
+                      >
+                        <CopyIcon size={15} />
+                        Copy context ID
+                      </button>
+                    )}
                     {/* Deleting an audience deletes its context first, which
                         is a node's own operation — the account admin refuses
                         `deleteContext` by name. Hidden rather than failing. */}
                     {!isDelegated && (
-                      <button
-                        className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
-                        data-testid="delete-audience"
-                        onClick={() => {
-                          setMenuOpenId(null);
-                          setPendingDelete(audience);
-                        }}
-                      >
-                        Delete
-                      </button>
+                      <>
+                        <div className={styles.dropdownSep} />
+                        <button
+                          className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                          data-testid="delete-audience"
+                          onClick={() => {
+                            setMenuOpenId(null);
+                            setPendingDelete(audience);
+                          }}
+                        >
+                          <TrashIcon size={15} />
+                          Delete
+                        </button>
+                      </>
                     )}
+                    <div className={styles.dropdownMeta} title={audience.audienceId}>
+                      Group <code>{audience.audienceId}</code>
+                    </div>
                   </div>
                 )}
               </div>
@@ -426,7 +529,12 @@ export default function AudiencesPage() {
         className={styles.confirmDialog}
         onClose={() => setPendingDelete(null)}
       >
-        <h2 className={styles.confirmTitle}>Delete this audience?</h2>
+        <div className={styles.confirmHead}>
+          <span className={styles.dangerTile} aria-hidden>
+            <AlertIcon size={18} />
+          </span>
+          <h2 className={styles.confirmTitle}>Delete this audience?</h2>
+        </div>
         <p className={styles.confirmText}>
           <strong>{pendingDelete?.name}</strong> and every update, reply and ask
           in it will be deleted. This happens for everyone in the company, not
@@ -434,18 +542,18 @@ export default function AudiencesPage() {
         </p>
         <div className={styles.confirmRow}>
           <button
+            className={`${styles.btn} ${styles.btnSecondary}`}
+            onClick={() => setPendingDelete(null)}
+          >
+            Cancel
+          </button>
+          <button
             className={`${styles.btn} ${styles.btnDanger}`}
             onClick={() => pendingDelete && removeAudience(pendingDelete)}
             disabled={pending === `delete:${pendingDelete?.audienceId}`}
             data-testid="confirm-delete-audience"
           >
-            Delete
-          </button>
-          <button
-            className={styles.logoutBtn}
-            onClick={() => setPendingDelete(null)}
-          >
-            Cancel
+            Delete audience
           </button>
         </div>
       </dialog>

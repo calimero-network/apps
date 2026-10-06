@@ -1,19 +1,20 @@
 .dialog {
   border: 1px solid var(--border);
-  border-radius: var(--radius, 12px);
-  background: var(--bg-elev);
+  border-radius: 16px;
+  background: var(--surface);
   color: var(--text);
   padding: 0;
-  width: min(92vw, 520px);
-  box-shadow: var(--shadow, 0 10px 34px rgba(19, 18, 21, 0.1));
+  width: min(calc(100vw - 32px), 500px);
+  box-shadow: var(--shadow-md);
 }
 
 .dialog::backdrop {
-  background: rgba(19, 18, 21, 0.38);
+  background: var(--overlay);
+  backdrop-filter: blur(2px);
 }
 
 .body {
-  padding: 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -21,28 +22,48 @@
 
 .head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tile {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
 }
 
 .title {
-  margin: 0;
-  font-size: 1.0625rem;
+  margin: 0 0 2px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--text);
 }
 
 .close {
-  font: inherit;
-  font-size: 1rem;
-  line-height: 1;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -4px -6px 0 0;
   color: var(--text-faint);
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: 8px;
 }
 
 .close:hover {
@@ -52,29 +73,45 @@
 
 .scope {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
-/* ONE line, ellipsised. The link is ~380 characters of base58 and wrapping it
-   turned the dialog into a wall of text that buried the Copy button below the
-   fold — nobody reads an invitation token, they copy it.
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
 
-   The full value stays reachable: it is the element's `title`, and
-   `data-full="true"` unwraps it for the one case that genuinely needs the
-   characters on screen — a blocked clipboard, where selecting by hand is the
-   only way left. */
+.linkField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px;
+  min-height: 38px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.linkIcon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+/* ONE line, ellipsised: the link is ~380 characters of base58 and wrapping it
+   buried the Copy button. `data-full="true"` unwraps it for a blocked
+   clipboard, where selecting by hand is the only way left. */
 .link {
   display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text-dim);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-sm, 8px);
-  padding: 9px 12px;
+  padding: 9px 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -88,14 +125,19 @@
 }
 
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
   font: inherit;
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-weight: 500;
+  font-size: 14px;
   color: var(--accent-text);
   background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm, 8px);
-  padding: 10px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  padding: 0 16px;
   cursor: pointer;
   transition: background 120ms ease;
 }
@@ -104,29 +146,46 @@
   background: var(--accent-hover);
 }
 
-.primary:focus-visible {
-  outline: 2px solid var(--accent-ink);
-  outline-offset: 2px;
+.primary:focus-visible,
+.close:focus-visible,
+.secondary:focus-visible,
+.disclosure:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 .hint {
   margin: 0;
-  font-size: 0.8125rem;
+  padding: 10px 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--text-dim);
+  background: var(--bg-subtle);
+  border-radius: 8px;
 }
 
 .disclosure {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font: inherit;
-  font-size: 0.8125rem;
-  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
   background: transparent;
   border: none;
   padding: 2px 0;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  border-radius: 4px;
+}
+
+.disclosure:hover {
+  color: var(--text);
+}
+
+.disclosure[aria-expanded="true"] .disclosureChevron {
+  transform: rotate(180deg);
 }
 
 .more {
@@ -134,21 +193,21 @@
   flex-direction: column;
   gap: 8px;
   border-top: 1px solid var(--border);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 .moreLabel {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text);
 }
 
 .moreNote {
   font-weight: 400;
-  font-size: 0.75rem;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--text-faint);
 }
@@ -157,31 +216,37 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
 }
 
 .moreValue {
   flex: 1;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.6875rem;
+  font-family: var(--mono);
+  font-size: 11px;
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 8px);
-  padding: 7px 9px;
+  border-radius: 8px;
+  padding: 8px 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm, 8px);
-  padding: 7px 12px;
+  border-radius: 8px;
+  padding: 0 10px;
   cursor: pointer;
   white-space: nowrap;
 }

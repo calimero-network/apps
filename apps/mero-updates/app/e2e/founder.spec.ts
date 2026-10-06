@@ -84,7 +84,7 @@ test("a founder sets up, publishes, and the conversation works", async ({ page }
   const composer = page.getByTestId("composer");
   await expect(composer).toBeVisible();
   await composer.getByLabel("Title").fill("June 2026 update");
-  await composer.getByLabel("Category").selectOption({ label: "📅 Monthly update" });
+  await composer.getByLabel("Category").selectOption({ label: "Monthly update" });
   await composer.getByLabel("Summary").fill("First enterprise customer, two senior hires.");
   await composer.getByLabel("Highlights").fill("Closed Globex, our first enterprise logo.");
   await composer.getByLabel("Lowlights").fill("Churned two SMB accounts.");
