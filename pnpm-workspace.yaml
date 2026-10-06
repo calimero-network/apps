@@ -66,7 +66,11 @@ catalog:
   # buildDelegatedClient, foundDelegatedNamespace, joinAsAccount, the registry
   # app id and the wallet enrolment helpers) lives in mero-js, so a vanilla-TS
   # app (mero-blocks, merraria) signs in with an account without mero-react.
-  "@calimero-network/mero-js": ^23.9.0
+  # 24.2.0 (mero-js#220, #249, #250) signs namespace ops at schema 23, mints
+  # device ids bound to their account and names the executor key in every
+  # warrant: core 0.11.0-rc.83 refuses all three from 23.x. 24.0.0 (#251) makes
+  # an account's createGroupInNamespace Open unless `visibility` says otherwise.
+  "@calimero-network/mero-js": ^24.2.0
   # mero-react 9.6.0 (#80): the connect dialog has Node and Cloud tabs, so
   # every app on ConnectButton signs in with an account as well as a node, and
   # useMero().admin is the account admin on an account. From 9.3 `mero` is
