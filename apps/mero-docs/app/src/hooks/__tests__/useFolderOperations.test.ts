@@ -4,6 +4,7 @@ import { renderHook } from '@testing-library/react';
 // the mocked '@calimero-network/mero-react' below.
 import { HTTPError } from '@calimero-network/mero-js';
 import { useFolderOperations } from '../useFolderOperations';
+import { CAPABILITIES } from '@/constants/config';
 
 // Capture the mero-react mutation mocks so assertions can read call args.
 const createGroupInNamespace = vi.fn();
@@ -150,9 +151,9 @@ describe('useFolderOperations.create - Read only', () => {
     expect(addGroupMembers.mock.invocationCallOrder[0]).toBeLessThan(
       setSubgroupVisibility.mock.invocationCallOrder[0],
     );
-    expect((registry as unknown as { setFolderRole: unknown }).setFolderRole).toHaveBeenCalledWith(
-      expect.objectContaining({ folder_id: 'new-folder', member: BOB, role: 'Viewer' }),
-    );
+    expect(setMemberCapabilities).toHaveBeenCalledWith('new-folder', BOB, {
+      capabilities: CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS,
+    });
   });
 });
 

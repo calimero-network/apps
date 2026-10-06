@@ -99,7 +99,7 @@ export function useFolderOperations(
       // A leaked docs context with no registry entry is the artifact
       // nothing else can recover, so rolling back the context on later
       // failures is the most valuable of the three.
-      const writer = { admin: admin, registry: registryClient };
+      const writer = { admin };
       const openChild =
         input.parentGroupId !== rootGroupId && input.visibility === 'Open';
       let createdGroupId: string | null = null;

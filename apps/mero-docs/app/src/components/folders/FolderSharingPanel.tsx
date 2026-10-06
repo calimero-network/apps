@@ -22,28 +22,22 @@
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
 // the Role radio) - a follow-up; today only the preset dropdown ships.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { UserPlus, Link2, Globe, Trash2 } from 'lucide-react';
-import { useMero } from '@calimero-network/mero-react';
+import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
-import { useFolderRoles } from '@/hooks/useFolderRole';
 import { useMemberName } from '@/hooks/useMemberName';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
-import type { Role } from '@/generated/registry/RegistryClient';
-import {
-  folderRoleOfRegistryRole,
-  parseGroupRole,
-  roleDisplayLabel,
-} from '@/lib/roles';
+import { folderRoleOf, parseGroupRole, roleDisplayLabel } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 import { folderLabel, folderNames } from '@/lib/folderLabel';
 import { inheritReadOnly } from '@/lib/applyFolderRole';
@@ -65,23 +59,18 @@ export function FolderSharingPanel({ folderId }: Props) {
     folders,
     selfIdentity,
     registryContextId,
-    registryClient,
     rootGroupId,
   } = useDriveWorkspace();
   const { admin } = useMero();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, refetch } =
     useFolderMembership(folderId);
-  const { entries: roleEntries, refetch: refetchRoles } =
-    useFolderRoles(folderId);
   const { create: createFolderInvite } = useCreateFolderInvite();
-  // Live-refresh members + roles when remote admin ops land for
-  // this folder (add/remove/role-change). The two refetches cover
-  // the two independent stores backing the panel.
+  // Live-refresh members when remote admin ops land for this folder
+  // (add/remove/role-change); roles are core's, read per row.
   const onFolderEvent = useCallback(() => {
     void refetch();
-    void refetchRoles();
-  }, [refetch, refetchRoles]);
+  }, [refetch]);
   useContextEvents(registryContextId, onFolderEvent, { strict: true });
   const confirm = useConfirm();
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
@@ -92,13 +81,6 @@ export function FolderSharingPanel({ folderId }: Props) {
   // else (Restricted, or not-yet-resolved) keeps the explicit-members
   // layout, which is the safe default.
   const isOpenFolder = folder?.visibility === 'Open';
-
-  // member identity → registry Role (default 'Editor' when absent).
-  const roleByMember = useMemo(() => {
-    const m = new Map<string, Role>();
-    for (const e of roleEntries) m.set(e.member, e.role);
-    return m;
-  }, [roleEntries]);
 
   const [identity, setIdentity] = useState('');
   const [inviting, setInviting] = useState(false);
@@ -151,16 +133,16 @@ export function FolderSharingPanel({ folderId }: Props) {
   const reapplyReadOnly = perms.canManagePermissions && !!parentId && isOpenFolder;
   const reappliedFor = useRef<string | null>(null); // once per folder per mount
   useEffect(() => {
-    if (!reapplyReadOnly || !parentId || !admin || !registryClient) return;
+    if (!reapplyReadOnly || !parentId || !admin) return;
     if (reappliedFor.current === folderId) return;
     reappliedFor.current = folderId;
-    const writer = { admin: admin, registry: registryClient };
+    const writer = { admin };
     // An admin who only inherits the folder is refused at the first core write,
-    // before the registry row or caps are touched.
+    // before the caps are touched.
     inheritReadOnly(writer, parentId, folderId).catch((e: unknown) =>
       console.warn('[FolderSharingPanel] Read only not re-applied', e),
     );
-  }, [reapplyReadOnly, parentId, folderId, admin, registryClient]);
+  }, [reapplyReadOnly, parentId, folderId, admin]);
 
   // Who an Open folder has removed: core bans them from it until an admin adds them back.
   const removedParent = folder?.parent_id ?? rootGroupId;
@@ -182,11 +164,11 @@ export function FolderSharingPanel({ folderId }: Props) {
   }, [refreshRemoved, memberKey]);
 
   const onRestore = async (id: string) => {
-    if (!admin || !registryClient || !removedParent) return;
+    if (!admin || !removedParent) return;
     setRestoringId(id);
     try {
       await restoreTo(
-        { admin: admin, registry: registryClient },
+        { admin },
         folders,
         removedParent,
         folderId,
@@ -329,10 +311,9 @@ export function FolderSharingPanel({ folderId }: Props) {
                   folderId={folderId}
                   identity={m.identity}
                   coreRole={m.role}
-                  registryRole={roleByMember.get(m.identity) ?? 'Editor'}
                   isSelf={isSelfRow}
                   canManage
-                  onAfterRoleChange={refetchRoles}
+                  onAfterRoleChange={refetch}
                   onRemove={removable ? onRemove : undefined}
                   removing={removingId === m.identity}
                 />
@@ -348,14 +329,10 @@ export function FolderSharingPanel({ folderId }: Props) {
             <ReadOnlyMemberRow
               key={m.identity}
               namespaceId={namespaceId}
+              folderId={folderId}
               identity={m.identity}
+              coreRole={m.role}
               isSelf={isSelfRow}
-              role={roleDisplayLabel(
-                folderRoleOfRegistryRole(
-                  parseGroupRole(m.role),
-                  roleByMember.get(m.identity) ?? 'Editor',
-                ),
-              )}
               onRemove={removable ? () => onRemove(m.identity) : undefined}
               removing={removingId === m.identity}
               error={rowErr}
@@ -476,22 +453,31 @@ export function FolderSharingPanel({ folderId }: Props) {
 // registry Role alone (caps are not fetched here), plus remove when allowed.
 function ReadOnlyMemberRow({
   namespaceId,
+  folderId,
   identity,
+  coreRole,
   isSelf,
-  role,
   onRemove,
   removing,
   error,
 }: {
   namespaceId: string | null;
+  folderId: string;
   identity: string;
+  coreRole?: string;
   isSelf: boolean;
-  role: string;
   onRemove?: () => void;
   removing: boolean;
   error: string | null;
 }) {
   const { name, settled } = useMemberName(namespaceId, identity);
+  // The role is core's role plus the member's folder caps; blank while they load.
+  const caps = useGroupCapabilities(folderId, identity);
+  const shown = folderRoleOf(
+    parseGroupRole(coreRole),
+    caps.loading || caps.error ? null : (caps.capabilities ?? null),
+  );
+  const role = shown ? roleDisplayLabel(shown) : '';
   // Null while the name loads, so labels never call a named member unnamed.
   const label = name ?? (settled ? UNNAMED_MEMBER_LABEL : null);
   return (

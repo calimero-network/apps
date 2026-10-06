@@ -23,17 +23,12 @@ const writer = {
     setMemberCapabilities: vi.fn(async () => {}),
     getMemberCapabilities: vi.fn(async () => ({ capabilities: 0 })),
   },
-  registry: {
-    setFolderRole: vi.fn(async () => {}),
-    getFolderRole: vi.fn(async () => 'Editor'),
-  },
 };
 const w = writer as unknown as FolderRoleWriter;
 
 beforeEach(() => {
   vi.clearAllMocks();
   writer.admin.getMemberCapabilities.mockResolvedValue({ capabilities: 0 });
-  writer.registry.getFolderRole.mockResolvedValue('Editor');
   rows = {};
   direct = new Set();
 });
@@ -55,11 +50,13 @@ describe('applyAcross', () => {
     expect(writer.admin.setMemberCapabilities).toHaveBeenCalledWith('open', BOB, {
       capabilities: FOLDER_ROLE_GRANTS.ReadOnly.folderCaps,
     });
-    expect(writer.registry.setFolderRole).toHaveBeenCalledTimes(2);
+    expect(writer.admin.setMemberCapabilities).toHaveBeenCalledTimes(2);
     // A folder they cannot reach is left alone.
     expect(writer.admin.listGroupMembers).toHaveBeenCalledWith('walled');
-    expect(writer.registry.setFolderRole).not.toHaveBeenCalledWith(
-      expect.objectContaining({ folder_id: 'walled' }),
+    expect(writer.admin.setMemberCapabilities).not.toHaveBeenCalledWith(
+      'walled',
+      expect.anything(),
+      expect.anything(),
     );
   });
 
@@ -83,9 +80,9 @@ describe('applyAcross', () => {
     await applyAcross(w, ['a', 'b'], BOB, false);
     expect(writer.admin.updateMemberRole).toHaveBeenCalledTimes(1);
     expect(writer.admin.updateMemberRole).toHaveBeenCalledWith('a', BOB, { role: 'Member' });
-    expect(writer.registry.setFolderRole).toHaveBeenCalledWith(
-      expect.objectContaining({ folder_id: 'a', role: 'Editor' }),
-    );
+    expect(writer.admin.setMemberCapabilities).toHaveBeenCalledWith('a', BOB, {
+      capabilities: FOLDER_ROLE_GRANTS.Editor.folderCaps,
+    });
   });
 
   // Listed ReadOnly only by inheritance from a parent that stays Read only:
@@ -110,23 +107,22 @@ describe('applyAcross', () => {
       new HTTPError(403, '', '/groups/a', new Headers()),
     );
     expect(await applyAcross(w, ['a', 'b'], BOB, true)).toEqual(['a']);
-    expect(writer.registry.setFolderRole).toHaveBeenCalledWith(
-      expect.objectContaining({ folder_id: 'b', role: 'Viewer' }),
-    );
+    expect(writer.admin.setMemberCapabilities).toHaveBeenCalledWith('b', BOB, {
+      capabilities: FOLDER_ROLE_GRANTS.ReadOnly.folderCaps,
+    });
   });
 });
 
 describe('inheritReadOnly', () => {
-  // Re-applying writes the registry and caps every time, so a complete grant is left alone.
+  // Re-applying writes the caps every time, so a complete grant is left alone.
   it('skips a member who already holds the whole Read only grant in the folder', async () => {
     rows = { parent: [{ identity: BOB, role: 'ReadOnly' }], child: [{ identity: BOB, role: 'ReadOnly' }] };
     writer.admin.getMemberCapabilities.mockResolvedValue({
       capabilities: FOLDER_ROLE_GRANTS.ReadOnly.folderCaps,
     });
-    writer.registry.getFolderRole.mockResolvedValue('Viewer');
     expect(await inheritReadOnly(w, 'parent', 'child')).toEqual([]);
     expect(writer.admin.updateMemberRole).not.toHaveBeenCalled();
-    expect(writer.registry.setFolderRole).not.toHaveBeenCalled();
+    expect(writer.admin.setMemberCapabilities).not.toHaveBeenCalled();
   });
 
   it("makes the parent's Read only members Read only in a new sub-folder they reach", async () => {

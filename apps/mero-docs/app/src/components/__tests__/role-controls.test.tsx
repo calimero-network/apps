@@ -16,7 +16,6 @@ const confirm = vi.fn();
 const setMemberCapabilities = vi.fn();
 const updateMemberRole = vi.fn();
 const setSubgroupVisibility = vi.fn();
-const setFolderRole = vi.fn();
 const removeMember = vi.fn();
 const caps = { value: DEFAULT_NEW_MEMBER_CAPS as number | null };
 const ME = { identity: 'me', name: 'Me', role: 'Member' };
@@ -35,7 +34,13 @@ vi.mock('@calimero-network/mero-react', () => ({
   }),
   useMero: () => ({
     mero: {},
-    admin: { setMemberCapabilities, removeGroupMembers: removeMember },
+    admin: {
+      setMemberCapabilities,
+      removeGroupMembers: removeMember,
+      // The restrict note reads who holds a direct row; none here.
+      listGroupMembers: async () => ({ members: [] }),
+      getMemberCapabilities: async () => ({ capabilities: 0 }),
+    },
   }),
   useUpdateMemberRole: () => ({ updateMemberRole }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
@@ -46,7 +51,6 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceId: 'ns',
     selfIdentity: 'me',
     registryContextId: 'ctx',
-    registryClient: { setFolderRole, listFolderRoles: async () => [] },
     registryAdmin: { isOwner: true, addManager: vi.fn(), removeManager: vi.fn() },
     namespaceMemberNames: { bob: 'Bob', me: 'Me' },
     folders: [{ id: 'f1', alias: 'Plans', visibility: 'Restricted' }],
@@ -94,7 +98,6 @@ beforeEach(() => {
     setMemberCapabilities,
     updateMemberRole,
     setSubgroupVisibility,
-    setFolderRole,
     removeMember,
   ]) {
     fn.mockResolvedValue(undefined);
@@ -215,7 +218,6 @@ function renderFolderRow() {
         folderId="f1"
         identity="bob"
         coreRole="Member"
-        registryRole="Editor"
         canManage
       />
     </ul>,
@@ -238,18 +240,15 @@ describe('folder member row', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ReadOnly' } });
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(confirm.mock.calls[0][0].title).toBe("Change Bob's role to Read only?");
-    expect(setFolderRole).not.toHaveBeenCalled();
     expect(setMemberCapabilities).not.toHaveBeenCalled();
   });
 
-  it('writes the folder role and caps once when confirmed', async () => {
+  it('writes the folder caps once when confirmed', async () => {
     caps.value = 0;
     confirm.mockResolvedValue(true);
     renderFolderRow();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Manager' } });
     await waitFor(() => expect(setMemberCapabilities).toHaveBeenCalledTimes(1));
-    expect(setFolderRole).toHaveBeenCalledTimes(1);
-    expect(setFolderRole.mock.calls[0][0].role).toBe('Manager');
     expect(setMemberCapabilities).toHaveBeenCalledWith('f1', 'bob', {
       capabilities: FOLDER_ROLE_GRANTS.Manager.folderCaps,
     });
@@ -262,8 +261,7 @@ describe('folder member row', () => {
           folderId="f1"
           identity="bob"
           coreRole="Admin"
-          registryRole="Editor"
-          canManage
+            canManage
         />
       </ul>,
     );
