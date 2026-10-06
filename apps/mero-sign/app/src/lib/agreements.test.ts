@@ -397,7 +397,7 @@ describe('createPersonalContext', () => {
     expect(methodsOf(calls)).not.toContain('setSubgroupVisibility');
     expect(argsOf(calls, 'createGroupInNamespace')).toEqual([
       'ns-mine',
-      { groupName: 'Private' },
+      { groupName: 'Private', visibility: 'restricted' },
     ]);
   });
 

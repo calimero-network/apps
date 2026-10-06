@@ -31,7 +31,7 @@ interface CreateDmContextParams {
   groupApi: {
     createSubgroup(
       namespaceId: string,
-      request: { groupName?: string },
+      request: { groupName?: string; visibility?: "open" | "restricted" },
     ): ApiResponse<{ groupId: string }>;
     setSubgroupVisibility(
       groupId: string,
@@ -314,6 +314,7 @@ export async function createDmContextInGroup(
   // 1) Create a restricted subgroup under the namespace for the DM.
   const sgResponse = await params.groupApi.createSubgroup(params.groupId, {
     groupName: alias,
+    visibility: "restricted",
   });
   if (sgResponse.error || !sgResponse.data) {
     return {

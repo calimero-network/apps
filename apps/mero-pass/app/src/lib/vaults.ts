@@ -740,8 +740,10 @@ export async function createPersonalVault(
   // merely missing.
 
   onStatus('Creating the vault…');
+  // Born Restricted, so the vault's name never sits under the namespace key.
   const sg = await admin.createGroupInNamespace(ns.namespaceId, {
     groupName: name,
+    visibility: 'restricted',
   });
   await admin.setGroupMetadata(sg.groupId, { name }).catch(() => {});
 
