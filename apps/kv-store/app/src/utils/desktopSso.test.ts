@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getBridge = vi.fn();
+const isDesktopWindow = vi.fn();
 const getNodeUrl = vi.fn();
 const setNodeUrl = vi.fn();
 
 vi.mock("@calimero-network/mero-platform", () => ({ getBridge: () => getBridge() }));
 vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => getNodeUrl(),
+  isDesktopWindow: () => isDesktopWindow(),
   setNodeUrl: (u: string) => setNodeUrl(u),
 }));
 
@@ -22,6 +24,7 @@ function hash(h: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   getBridge.mockReturnValue(null);
+  isDesktopWindow.mockReturnValue(false);
   getNodeUrl.mockReturnValue(null);
   hash("");
 });
@@ -29,6 +32,15 @@ beforeEach(() => {
 describe("adoptDesktopSession", () => {
   it("seeds the callback node inside the launcher, so a hand-off logs straight in", () => {
     getBridge.mockReturnValue(BRIDGE);
+    hash(CALLBACK);
+    adoptDesktopSession();
+    expect(setNodeUrl).toHaveBeenCalledWith("http://localhost:2528");
+  });
+
+  // What the Calimero Desktop actually provides: a Tauri window, no platform
+  // bridge. Checking the bridge alone made every fresh desktop open log in by hand.
+  it("seeds the callback node in a Calimero Desktop window with no platform bridge", () => {
+    isDesktopWindow.mockReturnValue(true);
     hash(CALLBACK);
     adoptDesktopSession();
     expect(setNodeUrl).toHaveBeenCalledWith("http://localhost:2528");

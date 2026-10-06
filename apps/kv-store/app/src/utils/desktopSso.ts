@@ -1,5 +1,5 @@
 import { getBridge } from "@calimero-network/mero-platform";
-import { getNodeUrl, setNodeUrl } from "@calimero-network/mero-react";
+import { getNodeUrl, isDesktopWindow, setNodeUrl } from "@calimero-network/mero-react";
 
 /**
  * Let a desktop hand-off log straight in, without re-authenticating.
@@ -26,9 +26,18 @@ import { getNodeUrl, setNodeUrl } from "@calimero-network/mero-react";
  * launcher, because that check is a real security boundary, not red tape. In a
  * plain browser tab a link like `#access_token=…&node_url=https://evil` would
  * otherwise bind the client to an attacker's node; the strict behaviour stays
- * exactly as-is there. `getBridge()` is non-null only when the Calimero
- * launcher injected its capability surface, which is the one context where the
- * callback's node came from the shell rather than from whoever sent the link.
+ * exactly as-is there. "Inside the launcher" is either signal:
+ *
+ *   * `isDesktopWindow()` (mero-react): the Calimero Desktop opens every app in
+ *     a Tauri webview, which always carries `__TAURI_INTERNALS__`. This is the
+ *     one that fires today — the desktop does NOT inject the platform bridge,
+ *     so checking `getBridge()` alone meant the hand-off never ran and every
+ *     fresh desktop open fell back to the Connect button.
+ *   * `getBridge()`: a launcher that injects the mero-platform capability
+ *     surface (`window.__calimero_platform__`).
+ *
+ * Neither exists in a plain browser tab, which is the context where the
+ * callback's node could come from whoever sent the link rather than the shell.
  *
  * ⚠️ Deliberately narrow. It seeds the NODE URL and nothing else:
  *
@@ -46,7 +55,7 @@ import { getNodeUrl, setNodeUrl } from "@calimero-network/mero-react";
  */
 export function adoptDesktopSession(): void {
   try {
-    if (!getBridge()) return;
+    if (!getBridge() && !isDesktopWindow()) return;
     if (getNodeUrl()) return;
 
     const hash = window.location.hash;
