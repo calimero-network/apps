@@ -5,6 +5,17 @@ import { AuditPanel } from "./AuditPanel";
 import { PhaseBadge } from "./VotePanel";
 import { errText, short, useMeroVote } from "./useMeroVote";
 import { TrusteePanel } from "./TrusteePanel";
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  CheckIcon,
+  ClockIcon,
+  LockIcon,
+  ShieldCheckIcon,
+  UserIcon,
+  UsersIcon,
+} from "./icons";
+import { Callout, IconTile, IdField } from "./ui";
 
 const STEPS = ["KeyCeremony", "Voting", "Closing", "Closed"] as const;
 const STEP_LABEL = { KeyCeremony: "Key ceremony", Voting: "Voting", Closing: "Closing", Closed: "Tally" };
@@ -74,10 +85,11 @@ export function PollDetail({
   if (!view) {
     return (
       <div className="card">
-        <button className="ghost" onClick={onBack}>
-          ← All polls
+        <button className="plain sm" onClick={onBack}>
+          <ArrowLeftIcon size={14} />
+          All polls
         </button>
-        <p className="empty">{err ?? "Loading poll…"}</p>
+        <p className="empty" style={{ marginTop: 12 }}>{err ?? "Loading poll…"}</p>
       </div>
     );
   }
@@ -114,54 +126,99 @@ export function PollDetail({
     );
   }
 
+  // Trustees matter most during the ceremony and while the totals still await
+  // decryption; once there is a ballot to cast or a result to read, they move down.
+  const trusteesLast = phase === "Voting" || phase === "Closing" || (phase === "Closed" && !!report?.counts);
+  const voterList = phase === "Closed" ? counted.map((c) => c.voter) : view.turnout.map((t) => t.voter);
+
   return (
     <>
       <div className="card">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <button className="ghost" onClick={onBack}>
-            ← All polls
+        <div className="poll-top">
+          <button className="plain sm" onClick={onBack} style={{ marginLeft: -8 }}>
+            <ArrowLeftIcon size={14} />
+            All polls
           </button>
           <PhaseBadge phase={phase} />
         </div>
         <h2 className="poll-heading">{def.title}</h2>
         {def.description && <p className="desc">{def.description}</p>}
-        <p className="empty">
-          Created by {label(def.creator)} · {ruleText}{" "}
-          {def.voters.length === 0 ? "Every member can vote." : `${def.voters.length} eligible voters.`}
-          {def.closes_at ? ` Planned close ${new Date(def.closes_at).toLocaleString()}.` : ""}
-        </p>
-        <ol className="steps">
-          {STEPS.map((s, i) => (
-            <li key={s} className={s === phase ? "now" : STEPS.indexOf(phase) > i ? "done" : ""}>
-              {STEP_LABEL[s]}
+        <ul className="facts">
+          <li>
+            <UserIcon size={14} />
+            Created by {label(def.creator)}
+          </li>
+          <li>
+            <CheckIcon size={14} />
+            {ruleText}
+          </li>
+          <li>
+            <UsersIcon size={14} />
+            {def.voters.length === 0 ? "Every member can vote." : `${def.voters.length} eligible voters.`}
+          </li>
+          {def.closes_at ? (
+            <li>
+              <CalendarIcon size={14} />
+              Planned close {new Date(def.closes_at).toLocaleString()}
             </li>
-          ))}
+          ) : null}
+        </ul>
+        <ol className="steps" aria-label="Poll progress">
+          {STEPS.map((s, i) => {
+            const done = STEPS.indexOf(phase) > i;
+            return (
+              <li key={s} className={s === phase ? "now" : done ? "done" : ""} aria-current={s === phase ? "step" : undefined}>
+                <span className="step-dot">{done ? <CheckIcon size={12} strokeWidth={2.5} /> : i + 1}</span>
+                <span className="step-label">{STEP_LABEL[s]}</span>
+              </li>
+            );
+          })}
         </ol>
-        {note && <p className="note">{note}</p>}
+        {note && (
+          <Callout tone="success" icon={<CheckIcon size={18} />}>
+            {note}
+          </Callout>
+        )}
         {err && <pre className="err">{err}</pre>}
       </div>
 
-      <TrusteePanel
-        client={client}
-        contextId={contextId}
-        view={view}
-        me={me}
-        label={label}
-        isCreator={isCreator}
-        busy={busy}
-        act={act}
-        onNote={setNote}
-        onError={setErr}
-        download={download}
-      />
+      {/*
+        One position in the tree (so it never remounts), but painted after the
+        ballot and the result while those are what the poll is about. The
+        parent column is a grid, so `order` moves it without moving the node.
+      */}
+      <div className="stack" style={{ order: trusteesLast ? 1 : 0 }}>
+        <TrusteePanel
+          client={client}
+          contextId={contextId}
+          view={view}
+          me={me}
+          label={label}
+          isCreator={isCreator}
+          busy={busy}
+          act={act}
+          onNote={setNote}
+          onError={setErr}
+          download={download}
+        />
+      </div>
 
       {/* ── ballot ───────────────────────────────────────────────────────── */}
       {phase === "Voting" && (
         <div className="card">
-          <h2>{view.my_digest ? "Change your vote" : "Your ballot"}</h2>
+          <div className="card-head">
+            <IconTile accent>
+              <LockIcon size={18} />
+            </IconTile>
+            <div className="grow">
+              <h2>{view.my_digest ? "Change your vote" : "Your ballot"}</h2>
+              {view.can_vote && (
+                <div className="meta">{ruleText} Your choice is encrypted in this browser before it is sent.</div>
+              )}
+            </div>
+          </div>
           {view.can_vote ? (
             <>
-              <p className="hint">{ruleText} Your choice is encrypted in this browser before it is sent.</p>
               <div className="options">
                 {def.options.map((o, i) => (
                   <label key={i} className={`option ${selection[i] ? "on" : ""}`}>
@@ -177,74 +234,29 @@ export function PollDetail({
                   </label>
                 ))}
               </div>
-              <button
-                onClick={() => void cast()}
-                disabled={!!busy || chosen < def.min_choices || chosen > def.max_choices}
-              >
-                {busy === "cast" ? "Encrypting & proving…" : view.my_digest ? "Replace my ballot" : "Encrypt & cast ballot"}
-              </button>
+              <div className="ballot-foot">
+                <button
+                  className="lg"
+                  onClick={() => void cast()}
+                  disabled={!!busy || chosen < def.min_choices || chosen > def.max_choices}
+                >
+                  <LockIcon size={16} />
+                  {busy === "cast" ? "Encrypting & proving…" : view.my_digest ? "Replace my ballot" : "Encrypt & cast ballot"}
+                </button>
+                <span className="empty">
+                  <ShieldCheckIcon size={14} />
+                  Encrypted and proven well-formed before it leaves this tab
+                </span>
+              </div>
             </>
           ) : (
             <p className="empty">You are not on this poll's voter roll.</p>
           )}
           {view.my_digest && (
             <p className="receipt">
-              Your receipt <code className="mono">{short(view.my_digest)}</code> — after the close, check it appears in
+              Your receipt <IdField value={view.my_digest} label="receipt" /> — after the close, check it appears in
               the counted list.
             </p>
-          )}
-        </div>
-      )}
-
-      {/* ── turnout ──────────────────────────────────────────────────────── */}
-      {phase !== "KeyCeremony" && (
-        <div className="card">
-          <h2>{phase === "Closed" ? `Counted ballots (${counted.length})` : `Turnout (${view.turnout.length})`}</h2>
-          <p className="hint">Who voted is public. What they voted is not.</p>
-          <div className="chips">
-            {(phase === "Closed" ? counted.map((c) => c.voter) : view.turnout.map((t) => t.voter)).map((v) => (
-              <span key={v} className="chip" title={v} data-testid="voter">
-                {label(v)}
-                {v === me && " (you)"}
-              </span>
-            ))}
-          </div>
-          {phase === "Closed" && view.my_digest && (
-            <p className={myCounted ? "note" : "hint warn"}>
-              {myCounted
-                ? `Your ballot ${short(view.my_digest)} is in the counted set.`
-                : `Your latest ballot ${short(view.my_digest)} is NOT in the counted set — it reached the creator's node after the seal.`}
-            </p>
-          )}
-          {phase === "Closing" && (
-            <p className="hint">
-              Closing: nodes refuse new ballots as soon as they see the close, but ballots cast before that are still
-              arriving. {isCreator ? "Seal once everyone's nodes have caught up." : "The creator seals the count next."}
-            </p>
-          )}
-          {isCreator && phase === "Voting" && (
-            <div className="row" style={{ marginTop: 12 }}>
-              <button
-                className="danger"
-                onClick={() => void act("close", () => client!.closePoll({ poll_id: pollId }), "Poll closed to new ballots. Seal the count once ballots in flight have arrived.")}
-                disabled={!!busy}
-              >
-                {busy === "close" ? "Closing…" : "Close poll"}
-              </button>
-              <span className="empty">Stops new ballots. The count is frozen in the next step.</span>
-            </div>
-          )}
-          {isCreator && phase === "Closing" && (
-            <div className="row" style={{ marginTop: 12 }}>
-              <button
-                className="danger"
-                onClick={() => void act("seal", () => client!.sealPoll({ poll_id: pollId }), "Count sealed. Trustees can now decrypt the totals.")}
-                disabled={!!busy}
-              >
-                {busy === "seal" ? "Sealing…" : "Seal the count"}
-              </button>
-              <span className="empty">Freezes the ballots your node holds now.</span>
-            </div>
           )}
         </div>
       )}
@@ -264,6 +276,71 @@ export function PollDetail({
           download={download}
         />
       )}
+
+      {/* ── turnout ──────────────────────────────────────────────────────── */}
+      {phase !== "KeyCeremony" && (
+        <div className="card">
+          <div className="card-head">
+            <div className="grow">
+              <h2>{phase === "Closed" ? `Counted ballots (${counted.length})` : `Turnout (${view.turnout.length})`}</h2>
+              <div className="meta">Who voted is public. What they voted is not.</div>
+            </div>
+            <UsersIcon size={16} className="muted" />
+          </div>
+          {voterList.length === 0 ? (
+            <p className="empty">No ballots yet.</p>
+          ) : (
+            <div className="chips">
+              {voterList.map((v) => (
+                <span key={v} className="chip" title={v} data-testid="voter">
+                  <span className={`avatar ${v === me ? "me" : ""}`}>{label(v).slice(0, 1)}</span>
+                  {label(v)}
+                  {v === me && <span className="you">(you)</span>}
+                </span>
+              ))}
+            </div>
+          )}
+          {phase === "Closed" && view.my_digest && (
+            <Callout tone={myCounted ? "success" : "warning"} icon={myCounted ? <CheckIcon size={18} /> : undefined}>
+              {myCounted
+                ? `Your ballot ${short(view.my_digest)} is in the counted set.`
+                : `Your latest ballot ${short(view.my_digest)} is NOT in the counted set — it reached the creator's node after the seal.`}
+            </Callout>
+          )}
+          {phase === "Closing" && (
+            <Callout tone="info" icon={<ClockIcon size={18} />}>
+              Closing: nodes refuse new ballots as soon as they see the close, but ballots cast before that are still
+              arriving. {isCreator ? "Seal once everyone's nodes have caught up." : "The creator seals the count next."}
+            </Callout>
+          )}
+          {isCreator && phase === "Voting" && (
+            <div className="creator-bar">
+              <span className="empty">Stops new ballots. The count is frozen in the next step.</span>
+              <button
+                className="danger"
+                onClick={() => void act("close", () => client!.closePoll({ poll_id: pollId }), "Poll closed to new ballots. Seal the count once ballots in flight have arrived.")}
+                disabled={!!busy}
+              >
+                {busy === "close" ? "Closing…" : "Close poll"}
+              </button>
+            </div>
+          )}
+          {isCreator && phase === "Closing" && (
+            <div className="creator-bar">
+              <span className="empty">Freezes the ballots your node holds now.</span>
+              <button
+                className="danger"
+                onClick={() => void act("seal", () => client!.sealPoll({ poll_id: pollId }), "Count sealed. Trustees can now decrypt the totals.")}
+                disabled={!!busy}
+              >
+                <LockIcon size={16} />
+                {busy === "seal" ? "Sealing…" : "Seal the count"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
     </>
   );
 }

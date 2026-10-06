@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Member } from "./generated/MeroVoteClient";
 import { errText, short, useMeroVote } from "./useMeroVote";
+import { BarChartIcon, CheckIcon, PlusIcon, XIcon } from "./icons";
+import { Callout, IconTile } from "./ui";
 
 type Mode = "single" | "multi";
 
@@ -80,65 +82,93 @@ export function CreatePoll({
     }
   }
 
+  const personLabel = (m: Member) => (m.account === me ? `${m.name} (you)` : m.name || short(m.account));
+
   return (
     <div className="card">
-      <h2>New poll</h2>
+      <div className="card-head" style={{ marginBottom: 20 }}>
+        <IconTile accent>
+          <BarChartIcon size={18} />
+        </IconTile>
+        <div className="grow">
+          <h2>New poll</h2>
+          <div className="meta">Everything here is frozen once the poll is created.</div>
+        </div>
+        <button className="icon-btn" onClick={onCancel} title="Cancel" aria-label="Close">
+          <XIcon size={16} />
+        </button>
+      </div>
       <div className="form">
         <label>
           Question
           <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="Where do we hold the offsite?" />
         </label>
         <label>
-          Details <span className="empty">(optional)</span>
+          <span>
+            Details <span className="opt">(optional)</span>
+          </span>
           <textarea value={description} maxLength={4000} rows={2} onChange={(e) => setDescription(e.target.value)} />
         </label>
 
         <fieldset>
           <legend>Options</legend>
-          {options.map((o, i) => (
-            <div className="row" key={i}>
-              <input
-                aria-label={`Option ${i + 1}`}
-                value={o}
-                maxLength={200}
-                placeholder={`Option ${i + 1}`}
-                onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value : x)))}
-              />
-              {options.length > 2 && (
-                <button className="ghost" onClick={() => setOptions(options.filter((_, j) => j !== i))} aria-label={`Remove option ${i + 1}`}>
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
+          <div className="option-rows">
+            {options.map((o, i) => (
+              <div className="option-input" key={i}>
+                <span className="idx">{i + 1}</span>
+                <input
+                  aria-label={`Option ${i + 1}`}
+                  value={o}
+                  maxLength={200}
+                  placeholder={`Option ${i + 1}`}
+                  onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value : x)))}
+                />
+                {options.length > 2 ? (
+                  <button
+                    className="icon-btn"
+                    onClick={() => setOptions(options.filter((_, j) => j !== i))}
+                    aria-label={`Remove option ${i + 1}`}
+                    title={`Remove option ${i + 1}`}
+                  >
+                    <XIcon size={16} />
+                  </button>
+                ) : (
+                  <span className="spacer" />
+                )}
+              </div>
+            ))}
+          </div>
           {options.length < 16 && (
-            <button className="ghost" onClick={() => setOptions([...options, ""])}>
+            <button className="plain sm add-option" onClick={() => setOptions([...options, ""])}>
+              <PlusIcon size={14} />
               Add option
             </button>
           )}
         </fieldset>
 
-        <fieldset>
+        <fieldset className="form-section">
           <legend>Each voter may pick</legend>
-          <label className="inline">
-            <input type="radio" checked={mode === "single"} onChange={() => setMode("single")} /> exactly one option
-          </label>
-          <label className="inline">
-            <input type="radio" checked={mode === "multi"} onChange={() => setMode("multi")} /> up to{" "}
-            <input
-              type="number"
-              className="narrow"
-              min={1}
-              max={Math.max(filled.length, 1)}
-              value={maxChoices}
-              onChange={(e) => setMaxChoices(Number(e.target.value))}
-              disabled={mode !== "multi"}
-            />{" "}
-            options (approval)
-          </label>
+          <div className="choice-group">
+            <label className={`inline choice ${mode === "single" ? "on" : ""}`}>
+              <input type="radio" checked={mode === "single"} onChange={() => setMode("single")} /> exactly one option
+            </label>
+            <label className={`inline choice ${mode === "multi" ? "on" : ""}`}>
+              <input type="radio" checked={mode === "multi"} onChange={() => setMode("multi")} /> up to{" "}
+              <input
+                type="number"
+                className="narrow"
+                min={1}
+                max={Math.max(filled.length, 1)}
+                value={maxChoices}
+                onChange={(e) => setMaxChoices(Number(e.target.value))}
+                disabled={mode !== "multi"}
+              />{" "}
+              options (approval)
+            </label>
+          </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset className="form-section">
           <legend>Trustees — hold the decryption key together</legend>
           <p className="hint">
             Trustees generate the election key together, so no one ever holds all of it. Any threshold of them can
@@ -149,7 +179,10 @@ export function CreatePoll({
             {people.map((m) => (
               <label key={m.account} className={`chip toggle ${trustees.has(m.account) ? "on" : ""}`}>
                 <input type="checkbox" checked={trustees.has(m.account)} onChange={() => setTrustees(toggle(trustees, m.account))} />
-                {m.account === me ? `${m.name} (you)` : m.name || short(m.account)}
+                <span className="tick">
+                  <CheckIcon size={10} strokeWidth={3} />
+                </span>
+                {personLabel(m)}
               </label>
             ))}
           </div>
@@ -169,52 +202,59 @@ export function CreatePoll({
             </label>
           )}
           {nT === 1 && trustees.has(me) ? (
-            <p className="hint warn">
+            <Callout tone="warning">
               With yourself as the only trustee, you alone could decrypt individual ballots. Fine for a quick poll —
               add trustees for a secret one.
-            </p>
+            </Callout>
           ) : threshold === 1 && nT > 1 ? (
-            <p className="hint warn">A threshold of 1 lets any single trustee decrypt individual ballots.</p>
+            <Callout tone="warning">A threshold of 1 lets any single trustee decrypt individual ballots.</Callout>
           ) : threshold === nT && nT > 1 ? (
-            <p className="hint">All {nT} must take part to count: most private, least available.</p>
+            <p className="help">All {nT} must take part to count: most private, least available.</p>
           ) : null}
         </fieldset>
 
-        <fieldset>
+        <fieldset className="form-section">
           <legend>Who can vote</legend>
-          <label className="inline">
-            <input type="radio" checked={everyone} onChange={() => setEveryone(true)} /> every member of this context
-          </label>
-          <label className="inline">
-            <input type="radio" checked={!everyone} onChange={() => setEveryone(false)} /> only these members:
-          </label>
+          <div className="choice-group">
+            <label className={`inline choice ${everyone ? "on" : ""}`}>
+              <input type="radio" checked={everyone} onChange={() => setEveryone(true)} /> every member of this context
+            </label>
+            <label className={`inline choice ${!everyone ? "on" : ""}`}>
+              <input type="radio" checked={!everyone} onChange={() => setEveryone(false)} /> only these members:
+            </label>
+          </div>
           {!everyone && (
             <div className="chips">
               {people.map((m) => (
                 <label key={m.account} className={`chip toggle ${voters.has(m.account) ? "on" : ""}`}>
                   <input type="checkbox" checked={voters.has(m.account)} onChange={() => setVoters(toggle(voters, m.account))} />
-                  {m.account === me ? `${m.name} (you)` : m.name || short(m.account)}
+                  <span className="tick">
+                    <CheckIcon size={10} strokeWidth={3} />
+                  </span>
+                  {personLabel(m)}
                 </label>
               ))}
             </div>
           )}
         </fieldset>
 
-        <label>
-          Planned close <span className="empty">(shown to voters; you close the poll yourself)</span>
-          <input type="datetime-local" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} />
+        <label className="form-section">
+          <span>
+            Planned close <span className="opt">(shown to voters; you close the poll yourself)</span>
+          </span>
+          <input type="datetime-local" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} style={{ maxWidth: 280 }} />
         </label>
       </div>
 
-      <div className="row" style={{ marginTop: 14 }}>
-        <button onClick={() => void submit()} disabled={!valid || busy}>
-          {busy ? "Creating…" : "Create poll"}
-        </button>
+      {err && <pre className="err">{err}</pre>}
+      <div className="form-foot">
         <button className="ghost" onClick={onCancel}>
           Cancel
         </button>
+        <button onClick={() => void submit()} disabled={!valid || busy}>
+          {busy ? "Creating…" : "Create poll"}
+        </button>
       </div>
-      {err && <pre className="err">{err}</pre>}
     </div>
   );
 }

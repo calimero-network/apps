@@ -2,6 +2,16 @@ import { useState } from "react";
 import type { AuditReport, MeroVoteClient } from "./generated/MeroVoteClient";
 import { verifyTranscript, type LocalAudit } from "./crypto/verify";
 import { errText, short } from "./useMeroVote";
+import {
+  AnchorIcon,
+  BarChartIcon,
+  CheckIcon,
+  ClockIcon,
+  DownloadIcon,
+  ShieldCheckIcon,
+  XIcon,
+} from "./icons";
+import { Callout, CopyButton, IconTile } from "./ui";
 
 /**
  * The result, and three ways of trusting it:
@@ -44,6 +54,10 @@ export function AuditPanel({
   const counts = report.counts;
   const total = counts ? counts.reduce((a, b) => a + b, 0) : 0;
   const max = counts ? Math.max(1, ...counts) : 1;
+  // Share of counted ballots (approval polls can sum past 100%).
+  const denom = report.counted_ballots > 0 ? report.counted_ballots : Math.max(total, 1);
+  const top = counts ? Math.max(...counts) : 0;
+  const pct = (c: number) => Math.round((100 * c) / denom);
 
   async function reverify() {
     if (!client) return;
@@ -88,68 +102,121 @@ export function AuditPanel({
   return (
     <>
       <div className="card">
-        <h2>Result</h2>
+        <div className="card-head">
+          <IconTile accent={!!counts}>
+            <BarChartIcon size={18} />
+          </IconTile>
+          <div className="grow">
+            <h2>Result</h2>
+            {counts && (
+              <div className="meta tnum">
+                {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} · {total} selection
+                {total === 1 ? "" : "s"}
+              </div>
+            )}
+          </div>
+          {report.verified && (
+            <span className="badge success">
+              <ShieldCheckIcon size={12} />
+              Verified
+            </span>
+          )}
+        </div>
         {counts ? (
           <div className="bars">
-            {options.map((o, i) => (
-              <div className="bar-row" key={i} data-testid="result-row">
-                <span className="bar-label">{o}</span>
-                <span className="bar-track">
-                  <span className="bar-fill" style={{ width: `${(100 * counts[i]!) / max}%` }} />
-                </span>
-                <span className="bar-count" data-testid="result-count">{counts[i]}</span>
-              </div>
-            ))}
-            <p className="empty">
-              {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} · {total} selection
-              {total === 1 ? "" : "s"} · decrypted from the totals only, by {report.decrypted_by.map(label).join(" + ")}
+            {options.map((o, i) => {
+              const winner = top > 0 && counts[i] === top;
+              return (
+                <div className={`bar-row ${winner ? "winner" : ""}`} key={i} data-testid="result-row">
+                  <span className="bar-label" title={o}>
+                    {o}
+                    {winner && <span className="badge">Most votes</span>}
+                  </span>
+                  <span className="bar-track">
+                    <span className="bar-fill" style={{ width: `${Math.min(100, (100 * counts[i]!) / Math.max(denom, max))}%` }} />
+                  </span>
+                  <span className="bar-count" data-testid="result-count">{counts[i]}</span>
+                  <span className="bar-pct">{pct(counts[i]!)}%</span>
+                </div>
+              );
+            })}
+            <p className="result-foot">
+              Decrypted from the totals only, by {report.decrypted_by.map(label).join(" + ")}. No single ballot was
+              ever decrypted.
             </p>
           </div>
         ) : report.verified ? (
-          <p className="empty">
+          <Callout tone="info" icon={<ClockIcon size={18} />}>
             {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} counted. {published} of the{" "}
             {threshold} decryption share{threshold === 1 ? "" : "s"} needed are in.
-          </p>
+          </Callout>
         ) : (
-          <p className="hint warn">This poll does not verify — see the audit below. No result is shown for it.</p>
+          <Callout tone="danger">This poll does not verify — see the audit below. No result is shown for it.</Callout>
         )}
       </div>
 
       <div className="card">
-        <h2>Audit</h2>
-        <p className="hint">
-          Your node recomputed all of this from the frozen ballots just now. Nothing here is a stored conclusion.
-        </p>
+        <div className="card-head">
+          <IconTile>
+            <ShieldCheckIcon size={18} />
+          </IconTile>
+          <div className="grow">
+            <h2>Audit</h2>
+            <div className="meta">
+              Your node recomputed all of this from the frozen ballots just now. Nothing here is a stored conclusion.
+            </div>
+          </div>
+        </div>
+        {report.verified ? (
+          <Callout tone="success">
+            <strong>Every check passed</strong>
+            <p>The node re-verified every proof, from the key ceremony to the decryption.</p>
+          </Callout>
+        ) : (
+          <Callout tone="danger">
+            <strong>This poll does not verify</strong>
+            <p>At least one check below failed. A poll is only as good as its worst check.</p>
+          </Callout>
+        )}
         <CheckList checks={report.checks} />
         {report.uncounted.length > 0 && (
-          <p className="hint warn">
+          <Callout tone="warning">
             Not in the sealed count: {report.uncounted.map(label).join(", ")} — their ballot reached this node after
             the seal, or the creator left it out.
-          </p>
+          </Callout>
         )}
         {report.transcript_digest && (
-          <p className="empty">
-            Transcript digest <code className="mono digest">{report.transcript_digest}</code>
-          </p>
+          <div className="digest-row">
+            <span>Transcript digest</span>
+            <span className="id-field" title={report.transcript_digest}>
+              <code className="mono digest">{report.transcript_digest}</code>
+              <CopyButton value={report.transcript_digest} label="Copy transcript digest" />
+            </span>
+          </div>
         )}
 
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row" style={{ marginTop: 16 }}>
           <button onClick={() => void reverify()} disabled={!!busy}>
+            <ShieldCheckIcon size={16} />
             {busy === "verify" ? "Re-verifying…" : "Re-verify in this browser"}
           </button>
           <button className="ghost" onClick={() => void saveTranscript()}>
+            <DownloadIcon size={16} />
             Download transcript
           </button>
         </div>
         {local && (
           <div className={`local-audit ${local.verified && local.agreesWithNode ? "ok" : "bad"}`}>
-            <strong>
-              {local.verified && local.agreesWithNode
-                ? "✓ This browser independently reproduced the node's result."
-                : local.agreesWithNode
-                  ? "✗ The poll does not verify here either."
-                  : "✗ This browser disagrees with the node."}
-            </strong>
+            <Callout tone={local.verified && local.agreesWithNode ? "success" : "danger"}>
+              <strong>
+                {local.verified && local.agreesWithNode
+                  ? "This browser independently reproduced the node's result."
+                  : local.agreesWithNode
+                    ? "The poll does not verify here either."
+                    : "This browser disagrees with the node."}
+              </strong>
+              <p>Checked from the raw transcript with an independent implementation.</p>
+            </Callout>
             <CheckList checks={local.checks} />
           </div>
         )}
@@ -158,12 +225,32 @@ export function AuditPanel({
 
       {(report.anchor || (isCreator && counts)) && (
         <div className="card">
-          <h2>Public anchor</h2>
+          <div className="card-head">
+            <IconTile>
+              <AnchorIcon size={18} />
+            </IconTile>
+            <div className="grow">
+              <h2>Public anchor</h2>
+              {!report.anchor && (
+                <div className="meta">Hold the result to a digest published outside this context.</div>
+              )}
+            </div>
+          </div>
           {report.anchor ? (
-            <p className="empty">
-              Digest <code className="mono">{short(report.anchor.digest)}</code> anchored on{" "}
-              <strong className="text">{report.anchor.network}</strong>: <code className="mono">{report.anchor.reference}</code>
-            </p>
+            <dl className="kv">
+              <dt>Digest</dt>
+              <dd>
+                <code className="mono" title={report.anchor.digest}>{short(report.anchor.digest)}</code>
+              </dd>
+              <dt>Network</dt>
+              <dd>
+                <strong className="text">{report.anchor.network}</strong>
+              </dd>
+              <dt>Reference</dt>
+              <dd>
+                <code className="mono" title={report.anchor.reference}>{report.anchor.reference}</code>
+              </dd>
+            </dl>
           ) : (
             <>
               <p className="hint">
@@ -190,7 +277,9 @@ function CheckList({ checks }: { checks: { name: string; ok: boolean; detail: st
     <ul className="checks">
       {checks.map((c) => (
         <li key={c.name} className={c.ok ? "ok" : "bad"}>
-          <span className="mark">{c.ok ? "✓" : "✗"}</span>
+          <span className="mark" role="img" aria-label={c.ok ? "passed" : "failed"}>
+            {c.ok ? <CheckIcon size={16} /> : <XIcon size={16} />}
+          </span>
           <span className="name">{c.name}</span>
           <span className="detail">{c.detail}</span>
         </li>
