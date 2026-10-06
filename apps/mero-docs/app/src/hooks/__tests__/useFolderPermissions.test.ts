@@ -182,6 +182,23 @@ describe('useFolderPermissions', () => {
     expect(result.current.isMember).toBe(false);
   });
 
+  it('reports a folder whose group has not synced to this node as notSynced, not removed', async () => {
+    getMemberCapsMock.mockRejectedValue(
+      new HTTPError(
+        404,
+        '',
+        '/groups/folder-1/members/bob/capabilities',
+        new Headers(),
+        '{"error":"group \'folder-1\' not found"}',
+      ),
+    );
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(result.current.notSynced).toBe(true));
+    expect(result.current.removed).toBe(false);
+    expect(result.current.denied).toBe(false);
+    expect(result.current.isMember).toBe(false);
+  });
+
   it('caps-fetch error → isMember false (NOT writable on error)', async () => {
     // useMemberCaps reports `caps = 0, error = Error` when retries are
     // exhausted. `isMember` must be false here - otherwise consumers

@@ -25,8 +25,18 @@ export function lacksFolderAccess(perms: {
 }
 
 // Core answers 404 for a capability read of someone removed from an Open folder.
+// The folder's group not existing on this node is a 404 too, and means the
+// opposite: nothing about the caller, just governance that has not arrived.
 export function isMemberGone(err: unknown): boolean {
-  return err instanceof HTTPError && err.status === 404;
+  return err instanceof HTTPError && err.status === 404 && !isGroupNotOnNode(err);
+}
+
+// `group '<id>' not found`: the registry lists a folder whose group this node
+// has not applied yet. Wait for sync; the caller is not refused.
+export function isGroupNotOnNode(err: unknown): boolean {
+  if (!(err instanceof HTTPError) || err.status !== 404) return false;
+  const text = `${err.message} ${err.bodyText ?? ''}`;
+  return /group '[^']*' not found/i.test(text);
 }
 
 // A revoked session also answers 403, but says nothing about membership.

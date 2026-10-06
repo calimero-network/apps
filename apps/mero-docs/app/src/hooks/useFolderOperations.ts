@@ -128,7 +128,23 @@ export function useFolderOperations(
         // visibility flip is a no-op (Restricted is the default),
         // and the name write still encrypts with the subgroup key -
         // which is fine because only subgroup members ever read it.
-        const group = await createGroupInNamespace(input.namespaceId, {});
+        //
+        // A top-level Open folder is instead created Open (core
+        // #2771) and never flipped. Created Restricted, core admits
+        // the TEE with an op sealed under the subgroup key, and the
+        // later Open flip cites it: a namespace member who is not in
+        // the subgroup can read the flip but never its ancestry, so
+        // it parks the flip - and every governance op after it in the
+        // namespace. Born Open, that subgroup-key op never exists.
+        // Nested folders keep the flip: they are created under the
+        // root and reparented, and the parent may not be Open. Both
+        // cases name their visibility rather than lean on core's
+        // default.
+        const bornOpen =
+          input.parentGroupId === rootGroupId && input.visibility === 'Open';
+        const group = await createGroupInNamespace(input.namespaceId, {
+          visibility: bornOpen ? 'open' : 'restricted',
+        });
         if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
         createdGroupId = group.groupId;
         const newId = group.groupId;
@@ -149,9 +165,11 @@ export function useFolderOperations(
         // Core expects lowercase `"open"` / `"restricted"`; see
         // `crates/server/src/admin/handlers/groups/set_subgroup_visibility.rs:31`
         // - capitalized values return 400 Bad Request.
-        await setSubgroupVisibility(newId, {
-          subgroupVisibility: input.visibility.toLowerCase(),
-        });
+        if (!bornOpen) {
+          await setSubgroupVisibility(newId, {
+            subgroupVisibility: input.visibility.toLowerCase(),
+          });
+        }
 
         // Now the name op encrypts on the namespace key chain for
         // Open subgroups; on the subgroup key for Restricted.

@@ -39,6 +39,12 @@ export interface UseBodyCursorsOptions {
   /** The node's id for a block this window knows by its own, and back. */
   toBackendId: (editorId: string) => string;
   toEditorId: (backendId: string) => string;
+  /**
+   * Whether the node holds this block yet. A block typed in this window has no
+   * node id until its write confirms, and `toBackendId` hands back the editor's
+   * own id for it - which the node cannot decode. Absent, every block counts.
+   */
+  isConfirmed?: (editorId: string) => boolean;
 }
 
 const SETTLE_MS = 150; // publish once a caret stops moving, not per keystroke
@@ -71,14 +77,15 @@ export function useBodyCursors({
   revision,
   toBackendId,
   toEditorId,
+  isConfirmed,
 }: UseBodyCursorsOptions): void {
   const publishRef = useRef(publish);
   publishRef.current = publish;
   const peersRef = useRef(peers);
   peersRef.current = peers;
   const peerKey = signature(peers);
-  const idsRef = useRef({ toBackendId, toEditorId });
-  idsRef.current = { toBackendId, toEditorId };
+  const idsRef = useRef({ toBackendId, toEditorId, isConfirmed });
+  idsRef.current = { toBackendId, toEditorId, isConfirmed };
 
   useEffect(() => {
     if (!client || !docId || !editor) return;
@@ -135,6 +142,15 @@ export function useBodyCursors({
       if (!editorId) return;
       const geometry = blockGeometry(editor.prosemirrorState.doc, editorId);
       if (!geometry) return;
+      const retry = () => {
+        if (attempt + 1 < MAX_SENDS) timer = setTimeout(() => send(attempt + 1), RETRY_MS);
+      };
+      // Wait for the block's write to confirm rather than mint on an id the
+      // node would refuse to decode.
+      if (idsRef.current.isConfirmed && !idsRef.current.isConfirmed(editorId)) {
+        retry();
+        return;
+      }
       const blockId = idsRef.current.toBackendId(editorId);
       const { anchor, head } = editor.prosemirrorState.selection;
       const mint = (position: number) =>
@@ -143,9 +159,7 @@ export function useBodyCursors({
         .then(([anchorToken, headToken]) =>
           publishRef.current({ blockId, anchor: anchorToken, head: headToken }),
         )
-        .catch(() => {
-          if (attempt + 1 < MAX_SENDS) timer = setTimeout(() => send(attempt + 1), RETRY_MS);
-        });
+        .catch(retry);
     };
     send(0);
     const unsubscribe = editor.onSelectionChange(() => {

@@ -46,7 +46,7 @@ import type { Role } from '../generated/registry/RegistryClient';
 import { useMemberCaps } from './useMemberCaps';
 import { useFolderRole } from './useFolderRole';
 import { useDriveWorkspace } from './useDriveWorkspace';
-import { isMemberGone } from '@/utils/accessDenied';
+import { isGroupNotOnNode, isMemberGone } from '@/utils/accessDenied';
 
 export interface FolderPermissions {
   /** Member of the folder subgroup at all - true only when the caps
@@ -105,6 +105,9 @@ export interface FolderPermissions {
   denied: boolean;
   /** Core no longer finds the caller in the folder: removed from an Open one. */
   removed: boolean;
+  /** This node has no record of the folder's group yet - its governance has
+   *  not synced here. Not a refusal: the folder appears once it does. */
+  notSynced: boolean;
   /** Re-run the membership probe. Use after an action that may have
    *  changed the caller's membership server-side (e.g. the join-via-
    *  inheritance call on the Open-folder card) - useMemberCaps's deps
@@ -213,6 +216,7 @@ export function useFolderPermissions(
     error,
     denied,
     removed: isMemberGone(error),
+    notSynced: isGroupNotOnNode(error),
     refetch: refetchCaps,
   };
 }

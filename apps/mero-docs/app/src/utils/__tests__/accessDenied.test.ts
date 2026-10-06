@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
-import { isGroupAccessDenied, lacksFolderAccess } from '../accessDenied';
+import {
+  isGroupAccessDenied,
+  isGroupNotOnNode,
+  isMemberGone,
+  lacksFolderAccess,
+} from '../accessDenied';
 
 const httpError = (status: number, body: string) =>
   new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
@@ -90,5 +95,24 @@ describe('lacksFolderAccess', () => {
     expect(
       lacksFolderAccess({ isMember: true, error: null, denied: false }),
     ).toBe(false);
+  });
+});
+
+describe('isGroupNotOnNode / isMemberGone', () => {
+  const groupMissing = httpError(404, '{"error":"group \'1ea8d3a4\' not found"}');
+  const memberMissing = httpError(404, '{"error":"member bob not found in group 1ea8d3a4"}');
+
+  it('reads a missing group as not synced, not as a removal', () => {
+    expect(isGroupNotOnNode(groupMissing)).toBe(true);
+    expect(isMemberGone(groupMissing)).toBe(false);
+  });
+
+  it('still reads a missing member as removed', () => {
+    expect(isGroupNotOnNode(memberMissing)).toBe(false);
+    expect(isMemberGone(memberMissing)).toBe(true);
+  });
+
+  it('ignores other statuses', () => {
+    expect(isGroupNotOnNode(httpError(500, '{"error":"group \'g\' not found"}'))).toBe(false);
   });
 });
