@@ -106,7 +106,7 @@ test.describe("mero-vote", () => {
     await expect(audit.locator(".checks li.bad")).toHaveCount(0);
     await expect(audit.locator(".digest")).toHaveText(/^[0-9a-f]{64}$/);
     await btn(page, "Re-verify in this browser").click();
-    await expect(page.getByText("✓ This browser independently reproduced the node's result.")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("This browser independently reproduced the node's result.")).toBeVisible({ timeout: 60_000 });
 
     // Anchor the digest.
     await page.getByPlaceholder(/network/).fill("git");
@@ -126,7 +126,7 @@ test.describe("mero-vote", () => {
     await page.getByRole("textbox", { name: "Option 2", exact: true }).fill("No");
     await btn(page, "Create poll").click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: TIMEOUT });
-    await btn(page, "← All polls").click();
+    await btn(page, "All polls").click();
     await page.getByRole("button", { name: new RegExp(title) }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByText("Key ceremony").first()).toBeVisible();
