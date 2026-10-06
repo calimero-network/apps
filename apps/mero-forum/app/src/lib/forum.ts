@@ -78,9 +78,7 @@ export function useForumClient(): ForumClient | null {
 
   return useMemo(
     () =>
-      mero && contextId && executor
-        ? new ForumClient(mero, contextId)
-        : null,
+      mero && contextId && executor ? new ForumClient(mero, contextId) : null,
     [mero, contextId, executor],
   );
 }
@@ -195,8 +193,24 @@ export function useComments(
   return { items, loadMore, hasMore, loading, reload, setItems };
 }
 
+/**
+ * The contract stamps posts and comments with `env::time_now()`, which is
+ * NANOSECONDS since the epoch. Read as milliseconds that is a date 10^6 times
+ * too far out: `new Date(t)` is "Invalid Date" and every age is "just now".
+ * Anything past 10^14 cannot be a millisecond time, so it is scaled down.
+ */
+export function toMs(t: number): number {
+  return t > 1e14 ? Math.floor(t / 1e6) : t;
+}
+
+/** The full local date and time of a contract timestamp. */
+export function fullDate(t: number): string {
+  return new Date(toMs(t)).toLocaleString();
+}
+
 /** "3h ago" — short, and stable enough not to need a ticking clock. */
-export function timeAgo(ms: number, now: number = Date.now()): string {
+export function timeAgo(t: number, now: number = Date.now()): string {
+  const ms = toMs(t);
   const s = Math.max(0, Math.floor((now - ms) / 1000));
   if (s < 60) return "just now";
   const m = Math.floor(s / 60);

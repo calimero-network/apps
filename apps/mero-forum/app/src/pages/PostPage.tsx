@@ -25,6 +25,7 @@ import {
 } from "../components/icons";
 import type { PostView } from "../generated/ForumClient";
 import {
+  fullDate,
   timeAgo,
   useComments,
   useForumClient,
@@ -236,7 +237,7 @@ export default function PostPage() {
             <h1 className="title">{post.title}</h1>
             <p className="excerpt">{post.body}</p>
             <div className="threadStamp">
-              <span>{new Date(post.created_at).toLocaleString()}</span>
+              <span>{fullDate(post.created_at)}</span>
               <span aria-hidden="true">·</span>
               <span>{timeAgo(post.created_at)}</span>
               {post.edited_at > post.created_at && (
