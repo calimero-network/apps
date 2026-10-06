@@ -186,6 +186,9 @@ export interface CreateSubgroupRequest {
    *  Capped at 64 bytes server-side. Omit for DM subgroups whose alias is
    *  structural and not user-facing. */
   name?: string;
+  /** Visibility at birth. Name it: core's default is moving to Open, and a
+   *  group created Restricted and flipped Open strands members outside it. */
+  visibility?: "open" | "restricted";
 }
 
 export interface CreateSubgroupResponse {

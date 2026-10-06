@@ -53,7 +53,10 @@ export function useDms(
     if (existing) return existing;
 
     const key = dmKey(selfIdentity, other);
-    const { groupId } = await mero.admin.createGroupInNamespace(namespaceId, { name: `dm:${key}` });
+    const { groupId } = await mero.admin.createGroupInNamespace(namespaceId, {
+      groupName: `dm:${key}`,
+      visibility: 'restricted',
+    });
     await mero.admin.setSubgroupVisibility(groupId, { subgroupVisibility: 'restricted' });
     // Mark as a DM + record both participants (read back in refresh()).
     await mero.admin.setGroupMetadata(groupId, { name: 'Direct message', data: { dm: '1', a: selfIdentity, b: other } });

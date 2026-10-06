@@ -187,6 +187,7 @@ describe("ChannelHeader (1-group-per-context)", () => {
       expect(mockCreateSubgroup).toHaveBeenCalledWith("namespace-1", {
         groupName: "project-alpha",
         name: "project-alpha",
+        visibility: "open",
       });
     });
     expect(mockSetSubgroupVisibility).toHaveBeenCalledWith("channel-sg-1", {
@@ -218,6 +219,7 @@ describe("ChannelHeader (1-group-per-context)", () => {
       expect(mockCreateSubgroup).toHaveBeenCalledWith("namespace-1", {
         groupName: "secret-room",
         name: "secret-room",
+        visibility: "restricted",
       });
     });
     expect(mockSetSubgroupVisibility).toHaveBeenCalledWith("channel-sg-1", {

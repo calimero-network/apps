@@ -345,8 +345,9 @@ export async function ensurePersonalWorkspace(
 /**
  * The private context itself: its subgroup, then the context bound to it.
  *
- * ⚠️ VISIBILITY IS LEFT AT THE DEFAULT, which is RESTRICTED — the one place in
- * this app where that is the wanted answer. `createAgreement` opens its
+ * ⚠️ VISIBILITY IS RESTRICTED, and named rather than left to core's default
+ * (which is moving to Open) — the one place in this app where that is the
+ * wanted answer. `createAgreement` opens its
  * subgroup so invited signers can enter; opening this one would make a node's
  * private signature library reachable by anybody admitted to the namespace.
  */
@@ -358,6 +359,7 @@ export async function createPersonalContext(
   onStatus('Creating your private store…');
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
     groupName: PERSONAL_GROUP_NAME,
+    visibility: 'restricted',
   });
 
   const ctx = await admin.createContext({

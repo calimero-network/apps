@@ -23,8 +23,9 @@ In `useChatLobby.ts` / `ChatPage.tsx`, replace the flat
 `createContext({ groupId: namespaceId })` room-creation with the subgroup flow
 in `useSubgroupRooms.ts`:
 
-1. `createGroupInNamespace(namespaceId, { name })` → `subgroupId`
-2. `setSubgroupVisibility(subgroupId, { subgroupVisibility })`
+1. `createGroupInNamespace(namespaceId, { groupName: name, visibility })` → `subgroupId`
+   (`visibility` is `'open'` or `'restricted'` — always pass it; the default is Open)
+2. `setSubgroupVisibility(subgroupId, { subgroupVisibility })` (a no-op guard)
 3. `createContext({ groupId: subgroupId, serviceName: 'room', ... })`
 4. private only: `addGroupMembers(subgroupId, { members })`
 
