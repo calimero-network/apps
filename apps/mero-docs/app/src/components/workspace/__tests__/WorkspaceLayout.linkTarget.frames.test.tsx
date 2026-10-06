@@ -46,10 +46,7 @@ const h = vi.hoisted(() => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
-    registryClient: {
-      getFolderContext: ({ folder_id }: { folder_id: string }) =>
-        h.contexts.get(folder_id)!.promise,
-    },
+    registryClient: {},
     fixed: {
       namespaces: [{ namespaceId: 'ns' }],
       registryFolders: [

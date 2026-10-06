@@ -15,19 +15,18 @@
 //      members, visibility, metadata.
 //
 //   2. THE REGISTRY CONTRACT'S OWNER / MANAGERS - state inside this app's
-//      own WASM, gating `set_folder_role`, `add_manager` and friends. Also
-//      keyed by ACCOUNT (as of the contract change that ships with this
-//      file; it used to be keyed by DEVICE id, which is why no grant it ever
-//      made authorised anybody).
-//      This governs: per-folder Viewer/Editor/Manager roles, and who may
-//      appoint further registry managers.
+//      own WASM (`add_manager`, `remove_manager`, `list_managers`). Also
+//      keyed by ACCOUNT (it used to be keyed by DEVICE id, which is why no
+//      grant it ever made authorised anybody). The registry stores no folder
+//      data and no folder roles: per-folder Viewer/Editor/Manager is core's
+//      group role + capabilities (system 1).
+//      This governs: who may appoint further registry managers, and the
+//      app's own reading of who administers the workspace.
 //
-// Core admin does NOT imply registry admin. Promoting someone to Admin in
-// system 1 and stopping there produces the exact failure this file exists to
-// prevent: a person whose badge says Admin, who can create and invite, and who
-// is refused by the contract the moment they try to set a folder role. So a
-// promotion has to drive BOTH, and the UI has to say so when it can only drive
-// one (only the registry OWNER may appoint managers).
+// Core admin does NOT imply registry manager. A namespace Admin promotion
+// therefore drives BOTH, so the registry's manager list stays in step with the
+// workspace's admins, and the UI has to say so when it can only drive one
+// (only the registry OWNER may appoint managers).
 
 import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS, hasCap } from '@/constants/config';
 /** What a member may do with a folder's documents, as the app shows it. Core

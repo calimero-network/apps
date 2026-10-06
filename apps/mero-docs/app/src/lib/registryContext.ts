@@ -35,9 +35,9 @@
 //
 //   2. THE ONE THAT HOLDS THE DATA. For a legacy namespace with duplicates,
 //      picking by name or by id would be deterministic and would still show the
-//      user an empty workspace, because their folders are in the other one.
-//      Whichever context answers `get_folders()` with the most rows is the one
-//      that was really being used, and adopting it is what makes the existing
+//      user an empty workspace, because their tags and views are in the other
+//      one. Whichever context answers `list_tags()` + `list_views()` with the
+//      most rows is the one that was really being used, and adopting it is what makes the existing
 //      data reappear.
 //
 //   3. NAME, then LOWEST ID. Contexts are created with `name: 'Registry'`, so a

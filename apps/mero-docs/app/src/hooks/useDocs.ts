@@ -1,11 +1,11 @@
-// Docs facade for a single folder - resolves the folder's bound
-// docs context via the registry, instantiates a DocsClient against
-// it, and exposes list / get / create / edit / delete + SSE-driven
+// Docs facade for a single folder - resolves the folder's docs
+// context from core (the one context in its subgroup), instantiates
+// a DocsClient against it, and exposes list / get / create / edit / delete + SSE-driven
 // refresh. Consumers pass a folderId and get a reactive list of
 // docs plus a typed set of mutations.
 //
 // Split of responsibilities:
-//   - RegistryClient.getFolderContext → resolve the docs context id
+//   - folderDocsContext (core listGroupContexts) → resolve the docs context id
 //   - useDocsClient → instantiate the generated client with MeroJs
 //     + contextId + executor pubkey
 //   - useSubscription-backed useDocEvents → invalidate the list on
@@ -27,8 +27,8 @@ import { folderDocsContext } from '../lib/coreFolders';
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
   contextId: string | null;
-  /** True while `getFolderContext` is in flight - distinguishes
-   *  "registry hasn't told us about this folder yet" (transient,
+  /** True while the docs-context read is in flight - distinguishes
+   *  "core hasn't told us about this folder yet" (transient,
    *  show a syncing message) from "folder genuinely has no binding"
    *  (legacy / unbound state, show the static empty copy). */
   contextResolving: boolean;
@@ -177,7 +177,7 @@ export function useDocs(
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
-  // True while getFolderContext is in flight; seeded from props so the first
+  // True while the docs-context read is in flight; seeded from props so the first
   // paint already says "resolving" instead of flashing the unbound copy.
   const [contextResolving, setContextResolving] = useState<boolean>(
     () => !!admin && !!folderId,

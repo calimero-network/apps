@@ -104,7 +104,7 @@ steps:
       - 'is_set({{alice_key}})'
 
   # =================================================================
-  # Phase B: Alice creates an Open folder, registers it, creates the
+  # Phase B: Alice creates an Open folder, names it, creates the
   # Docs context, writes a doc - all BEFORE Bob joins. The doc must
   # be readable by Bob purely via core's parent-walk inheritance once
   # he joins the namespace.
@@ -124,19 +124,15 @@ steps:
     group_id: '{{reports_group}}'
     visibility: Open
 
-  - name: register_folder Reports in registry
-    type: call
+  - name: Name Reports and colour it (subgroup metadata)
+    type: set_group_metadata
     node: calimero-node-1
-    context_id: '{{registry_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{reports_group}}'
-      parent_id: null
+    group_id: '{{reports_group}}'
+    record_name: Reports
+    data:
       color: '#00aa66'
-      alias: Reports
 
-  - name: Alice creates the Docs context bound to Reports
+  - name: Alice creates the Docs context inside Reports (the folder's one context)
     type: create_context
     node: calimero-node-1
     application_id: '{{app_id}}'
@@ -145,16 +141,6 @@ steps:
     outputs:
       reports_docs_ctx: contextId
       alice_docs_key: memberPublicKey
-
-  - name: bind_folder_context - Reports → Docs context
-    type: call
-    node: calimero-node-1
-    context_id: '{{registry_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{reports_group}}'
-      context_id: '{{reports_docs_ctx}}'
 
   - name: Alice creates the first doc inside Reports
     type: call
@@ -366,17 +352,13 @@ steps:
     group_id: '{{private_group}}'
     visibility: Restricted
 
-  - name: register_folder Private in registry
-    type: call
+  - name: Name Private and colour it (subgroup metadata)
+    type: set_group_metadata
     node: calimero-node-1
-    context_id: '{{registry_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{private_group}}'
-      parent_id: null
+    group_id: '{{private_group}}'
+    record_name: Private
+    data:
       color: '#aa0000'
-      alias: Private
 
   - name: Alice creates a Docs context inside Private
     type: create_context
@@ -387,16 +369,6 @@ steps:
     outputs:
       private_docs_ctx: contextId
       alice_private_key: memberPublicKey
-
-  - name: bind_folder_context - Private → Docs context
-    type: call
-    node: calimero-node-1
-    context_id: '{{registry_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{private_group}}'
-      context_id: '{{private_docs_ctx}}'
 
   - name: Alice writes a private doc
     type: call

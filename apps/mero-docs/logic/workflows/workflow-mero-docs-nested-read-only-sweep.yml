@@ -40,7 +40,7 @@ steps:
     outputs:
       namespace_id: namespaceId
 
-  - name: Alice creates the Registry context
+  - name: Alice creates the Registry context (workspace-level data only; folders live in core)
     type: create_context
     node: curn-node-1
     application_id: '{{app_id}}'
@@ -64,17 +64,11 @@ steps:
     group_id: '{{g_F}}'
     visibility: Open
 
-  - name: Register F
-    type: call
+  - name: Name F in its subgroup metadata
+    type: set_group_metadata
     node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_F}}'
-      parent_id: null
-      color: null
-      alias: F
+    group_id: '{{g_F}}'
+    record_name: F
 
   - name: Alice creates F's Docs context
     type: create_context
@@ -85,16 +79,6 @@ steps:
     outputs:
       c_F: contextId
       a_F: memberPublicKey
-
-  - name: Bind F
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F}}'
-      context_id: '{{c_F}}'
 
   - name: Alice creates a doc in F
     type: call
@@ -127,17 +111,11 @@ steps:
     group_id: '{{g_G}}'
     visibility: Open
 
-  - name: Register G
-    type: call
+  - name: Name G in its subgroup metadata
+    type: set_group_metadata
     node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_G}}'
-      parent_id: '{{g_F}}'
-      color: null
-      alias: G
+    group_id: '{{g_G}}'
+    record_name: G
 
   - name: Alice creates G's Docs context
     type: create_context
@@ -148,16 +126,6 @@ steps:
     outputs:
       c_G: contextId
       a_G: memberPublicKey
-
-  - name: Bind G
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G}}'
-      context_id: '{{c_G}}'
 
   - name: Alice creates a doc in G
     type: call
@@ -190,17 +158,11 @@ steps:
     group_id: '{{g_H}}'
     visibility: Restricted
 
-  - name: Register H
-    type: call
+  - name: Name H in its subgroup metadata
+    type: set_group_metadata
     node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{g_H}}'
-      parent_id: '{{g_F}}'
-      color: null
-      alias: H
+    group_id: '{{g_H}}'
+    record_name: H
 
   - name: Alice creates H's Docs context
     type: create_context
@@ -211,16 +173,6 @@ steps:
     outputs:
       c_H: contextId
       a_H: memberPublicKey
-
-  - name: Bind H
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_H}}'
-      context_id: '{{c_H}}'
 
   - name: Alice creates a doc in H
     type: call
@@ -349,17 +301,6 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 4
 
-  - name: Alice sets Bob's registry role in F to Viewer
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
   - name: Alice adds a direct ReadOnly row for Bob in G
     type: add_group_members
     node: curn-node-1
@@ -375,17 +316,6 @@ steps:
     member_id: '{{bob_account}}'
     capabilities: 4
 
-  - name: Alice sets Bob's registry role in G to Viewer
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G}}'
-      member: '{{bob_account}}'
-      role: Viewer
-
   - name: Alice makes Bob core Member in F again
     type: update_member_role
     node: curn-node-1
@@ -393,34 +323,12 @@ steps:
     member_id: '{{bob_account}}'
     role: Member
 
-  - name: Alice sets Bob's registry role in F to Editor
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_F}}'
-      member: '{{bob_account}}'
-      role: Editor
-
   - name: Alice makes Bob core Member in G again
     type: update_member_role
     node: curn-node-1
     group_id: '{{g_G}}'
     member_id: '{{bob_account}}'
     role: Member
-
-  - name: Alice sets Bob's registry role in G to Editor
-    type: call
-    node: curn-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{g_G}}'
-      member: '{{bob_account}}'
-      role: Editor
 
   - name: Sync F's roles to Bob
     type: wait_for_sync
