@@ -2,7 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAudience } from "../components/AudienceShell";
-import { CategoryChip } from "../components/bits";
+import { CategoryChip, DeltaIcon } from "../components/bits";
+import { deltaDir } from "../components/delta";
+import {
+  ArrowUpIcon,
+  BarChartIcon,
+  ChevronLeftIcon,
+  FileTextIcon,
+  HandIcon,
+  InfoIcon,
+  PlusIcon,
+  SendIcon,
+  SparkleIcon,
+  XIcon,
+} from "../components/icons";
 import type { MetricSeries } from "../generated/UpdatesClient";
 import {
   TEMPLATES,
@@ -157,6 +170,7 @@ export default function ComposePage() {
   if (me && !me.is_team)
     return (
       <div className="notice">
+        <InfoIcon size={16} />
         Only the company team can publish updates. You can <Link to="/a/questions">ask a question</Link> instead.
       </div>
     );
@@ -170,8 +184,16 @@ export default function ComposePage() {
     <div className="compose" data-testid="composer">
       <div className="composeTop">
         <Link className="back" to="/a">
+          <ChevronLeftIcon size={14} />
           Updates
         </Link>
+        <span className={`statusBadge ${editId ? "info" : "draft"}`}>{editId ? "Editing published update" : "Draft"}</span>
+        <div className="grow" />
+        {!editId && (
+          <span className="muted small" data-testid="draft-status">
+            {savedAt ? `Draft saved on this node · ${timeAgo(savedAt)}` : "Drafts stay on this node until you publish"}
+          </span>
+        )}
         <div className="tabs" role="tablist">
           {(["write", "preview"] as const).map((t) => (
             <button key={t} role="tab" className="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
@@ -179,18 +201,13 @@ export default function ComposePage() {
             </button>
           ))}
         </div>
-        <div className="grow" />
-        {!editId && (
-          <span className="muted small" data-testid="draft-status">
-            {savedAt ? `Draft saved on this node · ${timeAgo(savedAt)}` : "Drafts stay on this node until you publish"}
-          </span>
-        )}
       </div>
 
       {tab === "preview" ? (
         <Preview state={state} series={metrics.data ?? []} />
       ) : (
         <>
+          <div className="editorCard">
           <input
             className="titleInput"
             aria-label="Title"
@@ -199,7 +216,7 @@ export default function ComposePage() {
             maxLength={200}
             onChange={(e) => update((s) => ({ ...s, title: e.target.value }))}
           />
-          <div className="row wrap">
+          <div className="row wrap catRow">
             <label className="fieldLabel" htmlFor="cat">
               Category
             </label>
@@ -230,14 +247,19 @@ export default function ComposePage() {
             maxLength={1000}
             onChange={(e) => update((s) => ({ ...s, summary: e.target.value }))}
           />
+          </div>
 
           <MetricsEditor state={state} update={update} series={metrics.data ?? []} />
 
-          <h2 className="sectionLabel">Sections</h2>
+          <div className="editorCard">
+          <h2 className="cardTitle">
+            <FileTextIcon size={16} /> Sections
+          </h2>
           {state.sections.map((sec, i) => (
             <div key={i} className="sectionEditor">
               <div className="row">
                 <input
+                  className="sectionHeadingInput"
                   aria-label="Section heading"
                   placeholder="Heading (optional)"
                   value={sec.title}
@@ -260,14 +282,14 @@ export default function ComposePage() {
                     })
                   }
                 >
-                  ↑
+                  <ArrowUpIcon size={15} />
                 </button>
                 <button
                   className="iconBtn"
                   title="Remove section"
                   onClick={() => update((s) => ({ ...s, sections: s.sections.filter((_, j) => j !== i) }))}
                 >
-                  ✕
+                  <XIcon size={15} />
                 </button>
               </div>
               <textarea
@@ -287,8 +309,8 @@ export default function ComposePage() {
               />
             </div>
           ))}
-          <div className="row wrap">
-            <span className="muted small">Add:</span>
+          <div className="row wrap addRow">
+            <span className="muted small">Add section</span>
             {SECTION_SUGGESTIONS.filter((x) => !x.title || !state.sections.some((s) => s.kind === x.kind)).map(
               (x) => (
                 <button
@@ -296,7 +318,8 @@ export default function ComposePage() {
                   className="ghost small"
                   onClick={() => update((s) => ({ ...s, sections: [...s.sections, { ...x, body: "" }] }))}
                 >
-                  + {x.title || "Text"}
+                  <PlusIcon size={14} />
+                  {x.title || "Text"}
                 </button>
               ),
             )}
@@ -306,9 +329,11 @@ export default function ComposePage() {
                 data-testid="insert-thanks"
                 onClick={() => update((s) => ({ ...s, sections: [...s.sections, thanks] }))}
               >
-                + Thank {contributions.data!.length} contributor{contributions.data!.length === 1 ? "" : "s"}
+                <SparkleIcon size={14} />
+                Thank {contributions.data!.length} contributor{contributions.data!.length === 1 ? "" : "s"}
               </button>
             )}
+          </div>
           </div>
 
           <AsksEditor state={state} update={update} />
@@ -317,7 +342,12 @@ export default function ComposePage() {
 
       <div className="publishBar">
         {error && <span className="errorText">{error}</span>}
-        {blocker && <span className="muted small">{blocker}</span>}
+        {blocker && (
+          <span className="muted small blocker">
+            <InfoIcon size={14} />
+            {blocker}
+          </span>
+        )}
         <div className="grow" />
         <button
           className="primary"
@@ -325,6 +355,7 @@ export default function ComposePage() {
           onClick={() => void publish()}
           data-testid="publish"
         >
+          {!busy && <SendIcon size={15} />}
           {busy ? "Publishing…" : editId ? "Save changes" : "Publish to this audience"}
         </button>
       </div>
@@ -353,8 +384,10 @@ function MetricsEditor({
     update((s) => ({ ...s, metrics: s.metrics.map((m, j) => (j === i ? { ...m, ...patch } : m)) }));
 
   return (
-    <>
-      <h2 className="sectionLabel">KPIs</h2>
+    <div className="editorCard">
+      <h2 className="cardTitle">
+        <BarChartIcon size={16} /> KPIs
+      </h2>
       {state.metrics.length > 0 && (
         <div className="metricTable">
           {state.metrics.map((m, i) => {
@@ -381,7 +414,7 @@ function MetricsEditor({
                   value={m.unit}
                   onChange={(e) => set(i, { unit: e.target.value })}
                 />
-                <span className="metricDelta" data-dir={delta?.startsWith("+") ? "up" : delta?.startsWith("−") ? "down" : "flat"}>
+                <span className="metricDelta" data-dir={delta ? deltaDir(delta) : "flat"}>
                   {delta ?? (prev ? `was ${prev}` : "")}
                 </span>
                 <button
@@ -389,7 +422,7 @@ function MetricsEditor({
                   title="Remove KPI"
                   onClick={() => update((s) => ({ ...s, metrics: s.metrics.filter((_, j) => j !== i) }))}
                 >
-                  ✕
+                  <XIcon size={15} />
                 </button>
               </div>
             );
@@ -398,10 +431,12 @@ function MetricsEditor({
       )}
       <div className="row wrap">
         <button
-          className="ghost small"
+          className="secondary small"
+          aria-label="+ KPI"
           onClick={() => update((s) => ({ ...s, metrics: [...s.metrics, { name: "", value: "", unit: "" }] }))}
         >
-          + KPI
+          <PlusIcon size={14} />
+          KPI
         </button>
         {known.map((k) => (
           <button
@@ -409,12 +444,13 @@ function MetricsEditor({
             className="ghost small"
             onClick={() => update((s) => ({ ...s, metrics: [...s.metrics, { name: k.name, value: "", unit: k.unit }] }))}
           >
-            + {k.name}
+            <PlusIcon size={14} />
+            {k.name}
           </button>
         ))}
         <span className="muted small">Leave a value blank to skip it this time.</span>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -428,9 +464,11 @@ function AsksEditor({
   const set = (i: number, patch: Partial<ComposerState["asks"][number]>) =>
     update((s) => ({ ...s, asks: s.asks.map((a, j) => (j === i ? { ...a, ...patch } : a)) }));
   return (
-    <>
-      <h2 className="sectionLabel">Asks</h2>
-      <p className="muted small">
+    <div className="editorCard">
+      <h2 className="cardTitle">
+        <HandIcon size={16} /> Asks
+      </h2>
+      <p className="muted small cardSub">
         Specific, answerable requests. Investors reply with one click on “I can help”, and you accept offers from the
         Asks tab.
       </p>
@@ -440,7 +478,7 @@ function AsksEditor({
             <select aria-label="Ask type" value={a.kind} onChange={(e) => set(i, { kind: e.target.value })}>
               {ASK_KINDS.map((k) => (
                 <option key={k.id} value={k.id}>
-                  {k.icon} {k.label}
+                  {k.label}
                 </option>
               ))}
             </select>
@@ -455,7 +493,7 @@ function AsksEditor({
               title="Remove ask"
               onClick={() => update((s) => ({ ...s, asks: s.asks.filter((_, j) => j !== i) }))}
             >
-              ✕
+              <XIcon size={15} />
             </button>
           </div>
           <input
@@ -467,13 +505,14 @@ function AsksEditor({
         </div>
       ))}
       <button
-        className="ghost small"
+        className="secondary small addAsk"
         disabled={state.asks.length >= 10}
         onClick={() => update((s) => ({ ...s, asks: [...s.asks, { id: null, kind: "intro", title: "", detail: "" }] }))}
       >
-        + Ask
+        <PlusIcon size={14} />
+        Ask
       </button>
-    </>
+    </div>
   );
 }
 
@@ -489,7 +528,12 @@ function Preview({ state, series }: { state: ComposerState; series: MetricSeries
         {cat && <CategoryChip category={cat} />}
       </div>
       <h1 className="postTitle">{input.title || "Untitled"}</h1>
-      {input.summary && <p className="tldr">{input.summary}</p>}
+      {input.summary && (
+        <p className="tldr">
+          <span className="tldrLabel">TL;DR</span>
+          {input.summary}
+        </p>
+      )}
       {input.metrics.length > 0 && (
         <div className="kpis">
           {input.metrics.map((m) => {
@@ -503,7 +547,15 @@ function Preview({ state, series }: { state: ComposerState; series: MetricSeries
                   {m.value}
                   {m.unit && <small> {m.unit}</small>}
                 </span>
-                {delta && <span className="kpiDelta">{delta} <span className="muted">vs {prev}</span></span>}
+                {delta && (
+                  <span className="kpiFoot">
+                    <span className="kpiDelta" data-dir={deltaDir(delta)}>
+                      <DeltaIcon delta={delta} />
+                      {delta}
+                    </span>
+                    <span className="muted">vs {prev}</span>
+                  </span>
+                )}
               </div>
             );
           })}
@@ -517,16 +569,17 @@ function Preview({ state, series }: { state: ComposerState; series: MetricSeries
       ))}
       {input.asks.length > 0 && (
         <section className="postAsks">
-          <h2 className="sectionLabel">How you can help</h2>
+          <h2 className="sectionTitle">
+            <HandIcon size={16} /> How you can help
+          </h2>
           {input.asks.map((a, i) => (
             <div key={i} className="ask">
-              <span className="askKind">
-                {askKind(a.kind).icon} {askKind(a.kind).label}
-              </span>
+              <span className="askKind">{askKind(a.kind).label}</span>
               <h3 className="askTitle">{a.title}</h3>
               {a.detail && <p className="askDetail">{a.detail}</p>}
               <button className="primary small" disabled>
-                🙋 I can help
+                <HandIcon size={14} />
+                I can help
               </button>
             </div>
           ))}

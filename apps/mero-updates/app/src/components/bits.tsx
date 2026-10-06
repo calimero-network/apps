@@ -5,6 +5,8 @@ import { useState } from "react";
 import type { CategoryView, ReactionCount } from "../generated/UpdatesClient";
 import { initials } from "../lib/people";
 import { REACTIONS, parseMetric, personLabel } from "../lib/updates";
+import { deltaDir } from "./delta";
+import { InboxIcon, MinusIcon, SmilePlusIcon, TrendDownIcon, TrendUpIcon } from "./icons";
 
 export function CategoryChip({
   category,
@@ -81,7 +83,7 @@ export function Reactions({
           onClick={() => setOpen((v) => !v)}
           data-testid="react-open"
         >
-          ☺︎+
+          <SmilePlusIcon size={16} />
         </button>
         {open && (
           <div className="reactMenu" role="menu">
@@ -115,7 +117,7 @@ export function Reactions({
  */
 export function Sparkline({ values, width = 120, height = 32 }: { values: string[]; width?: number; height?: number }) {
   const nums = values.map(parseMetric).filter((n): n is number => n !== null);
-  if (nums.length < 2) return <span className="sparkEmpty">—</span>;
+  if (nums.length < 2) return <span className="sparkEmpty">Not enough reports for a trend</span>;
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min || 1;
@@ -130,17 +132,45 @@ export function Sparkline({ values, width = 120, height = 32 }: { values: string
   const last = pts.split(" ").pop()!.split(",");
   return (
     <svg className="spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <polygon
+        points={`${pad},${height - pad} ${pts} ${width - pad},${height - pad}`}
+        fill="currentColor"
+        opacity="0.08"
+        stroke="none"
+      />
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={last[0]} cy={last[1]} r="3" fill="currentColor" />
     </svg>
   );
 }
 
-export function Empty({ title, children }: { title: string; children?: React.ReactNode }) {
+export function Empty({
+  title,
+  children,
+  icon,
+  action,
+}: {
+  title: string;
+  children?: React.ReactNode;
+  icon?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="emptyState">
+      <span className="iconTile lg" aria-hidden>
+        {icon ?? <InboxIcon size={20} />}
+      </span>
       <strong>{title}</strong>
       {children && <div className="muted">{children}</div>}
+      {action && <div className="emptyAction">{action}</div>}
     </div>
   );
+}
+
+/** The arrow that goes with a delta badge. */
+export function DeltaIcon({ delta }: { delta: string | null | undefined }) {
+  const dir = deltaDir(delta);
+  if (dir === "up") return <TrendUpIcon size={13} />;
+  if (dir === "down") return <TrendDownIcon size={13} />;
+  return <MinusIcon size={13} />;
 }
