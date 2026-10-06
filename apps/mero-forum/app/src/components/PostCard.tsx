@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { PostView } from "../generated/ForumClient";
-import { timeAgo } from "../lib/forum";
+import { fullDate, timeAgo } from "../lib/forum";
 import { authorLabel, shortAccount } from "../lib/nickname";
 import { Avatar, Menu } from "./chrome";
 import {
@@ -189,10 +189,7 @@ export default function PostCard({
           <span className="dot" aria-hidden="true">
             ·
           </span>
-          <span
-            className="timeMeta"
-            title={new Date(post.created_at).toLocaleString()}
-          >
+          <span className="timeMeta" title={fullDate(post.created_at)}>
             {timeAgo(post.created_at)}
           </span>
           <span className="grow" />

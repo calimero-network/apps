@@ -3,7 +3,7 @@ import { useState } from "react";
 import { AuthorAvatar, Byline, VoteColumn } from "./PostCard";
 import { EditIcon, TrashIcon } from "./icons";
 import type { CommentView } from "../generated/ForumClient";
-import { timeAgo } from "../lib/forum";
+import { fullDate, timeAgo } from "../lib/forum";
 
 /**
  * One comment, with everything its author is allowed to do to it.
@@ -68,10 +68,7 @@ export default function CommentRow({
           <span className="dot" aria-hidden="true">
             ·
           </span>
-          <span
-            className="timeMeta"
-            title={new Date(comment.created_at).toLocaleString()}
-          >
+          <span className="timeMeta" title={fullDate(comment.created_at)}>
             {timeAgo(comment.created_at)}
           </span>
           {comment.edited_at > comment.created_at && (
