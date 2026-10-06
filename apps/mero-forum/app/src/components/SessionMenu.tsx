@@ -1,6 +1,6 @@
 import { useMero } from "@calimero-network/mero-react";
 import { clearActiveForum } from "../lib/session";
-import styles from "./SessionMenu.module.css";
+import { AccountChip } from "./chrome";
 
 /**
  * Who you are connected as, and the way out.
@@ -15,7 +15,7 @@ import styles from "./SessionMenu.module.css";
  * machine, "which node am I on" is the first question when something looks
  * empty, and the answer used to be nowhere on screen.
  */
-export default function SessionMenu() {
+export default function SessionMenu({ name }: { name?: string } = {}) {
   const { nodeUrl, logout } = useMero();
 
   // The active forum is OUR state, not the SDK's — `logout()` clears tokens and
@@ -40,25 +40,13 @@ export default function SessionMenu() {
   })();
 
   return (
-    <div className={styles.root}>
-      {host && (
-        <span
-          className={styles.node}
-          title={nodeUrl ?? undefined}
-          data-testid="session-node"
-        >
-          {host}
-        </span>
-      )}
-      <button
-        type="button"
-        className={styles.logout}
-        onClick={signOut}
-        data-testid="logout"
-        title="Sign out of this node"
-      >
-        Log out
-      </button>
-    </div>
+    <AccountChip
+      name={name}
+      host={host}
+      hostTitle={nodeUrl ?? undefined}
+      hostTestId="session-node"
+      onLogout={signOut}
+      logoutTestId="logout"
+    />
   );
 }

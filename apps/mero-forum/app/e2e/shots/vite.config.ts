@@ -18,6 +18,8 @@ export default defineConfig({
   root: here("."),
   base: "./",
   plugins: [react()],
+  // The app's public/ (self-hosted fonts), so the shots render Power Grotesk.
+  publicDir: here("../../public"),
   // Mirrors the app's own `define`. Without it the pages throw
   // "__APP_VERSION__ is not defined" at render and the harness photographs a
   // blank page — which is exactly the failure the pageerror check exists for.
@@ -35,6 +37,11 @@ export default defineConfig({
       { find: /.*\/lib\/nickname$/, replacement: here("./nickname.mock.ts") },
       { find: /.*\/lib\/session$/, replacement: here("./session.mock.ts") },
       { find: /.*\/lib\/groups$/, replacement: here("./groups.mock.ts") },
+      {
+        find: /.*\/lib\/inviteCodec$/,
+        replacement: here("./inviteCodec.mock.ts"),
+      },
+      { find: "@calimero-apps/invite", replacement: here("./invite.mock.ts") },
       {
         find: "@calimero-network/mero-react",
         replacement: here("./meroReact.mock.ts"),
