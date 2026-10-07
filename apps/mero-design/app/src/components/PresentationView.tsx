@@ -3,6 +3,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { useScreenImage } from "../hooks/useScreenImage";
 import { fitScreen, listScreens, type FitMode, type Screen } from "../utils/screens";
+import { useToast } from "../contexts/ToastContext";
+import { exitFullscreen, fullscreenShortcut, toggleFullscreen as toggleWindowFullscreen } from "../utils/fullscreen";
 import styles from "./PresentationView.module.css";
 
 /** Space kept clear around a slide shown whole, so it does not touch the chrome. */
@@ -81,16 +83,19 @@ export default function PresentationView() {
     if (s) setCurrentId(s.id);
   }, [screens]);
 
+  const { showToast } = useToast();
+
   const close = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+    void exitFullscreen();
     stopPresentation();
   }, [stopPresentation]);
 
-  const toggleFullscreen = useCallback(() => {
-    // The desktop webview may refuse; presenting works the same without it.
-    if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
-    else void document.documentElement.requestFullscreen?.().catch(() => {});
-  }, []);
+  const toggleFullscreen = useCallback(async () => {
+    // Presenting works the same without full screen; say how to get it anyway.
+    if ((await toggleWindowFullscreen()) === "unsupported") {
+      showToast(`Full screen isn't available here — press ${fullscreenShortcut()} instead`, "info");
+    }
+  }, [showToast]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -142,7 +147,7 @@ export default function PresentationView() {
         case "F":
           if (e.metaKey || e.ctrlKey) return;
           e.preventDefault();
-          toggleFullscreen();
+          void toggleFullscreen();
           break;
         default:
           // Undo, paste, delete… none of them may reach the board underneath.
@@ -196,7 +201,7 @@ export default function PresentationView() {
             aria-pressed={showStrip}
             data-testid="presentation-strip-toggle"
           >▤ <span>All screens</span></button>
-          <button className={styles.barBtn} onClick={toggleFullscreen} title="Full screen (F)">
+          <button className={styles.barBtn} onClick={() => void toggleFullscreen()} title="Full screen (F)" data-testid="presentation-fullscreen">
             ⤢ <span>Full screen</span>
           </button>
         </div>
