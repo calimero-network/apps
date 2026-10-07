@@ -98,11 +98,13 @@ type CanvasObject = FabricObject & { data?: Element; srcKey?: string };
  * anything added or replaced lands on top no matter what its layerIndex says.
  * A no-op when the order is already right, which is the common case.
  */
-function restack(fc: Canvas): void {
+function restack(fc: Canvas, layers?: Map<string, number>): void {
   const objects = fc.getObjects() as CanvasObject[];
   // Transient objects (drag preview, brush stroke) have no element and belong
-  // on top; sorting them to the end keeps them visible.
-  const layerOf = (o: CanvasObject) => (o.data ? o.data.layerIndex : Number.MAX_SAFE_INTEGER);
+  // on top; sorting them to the end keeps them visible. `layers` overrides the
+  // index an object was built with — the store's, when the object is not rebuilt.
+  const layerOf = (o: CanvasObject) =>
+    o.data ? layers?.get(o.data.id) ?? o.data.layerIndex : Number.MAX_SAFE_INTEGER;
   const target = [...objects].sort((a, b) => layerOf(a) - layerOf(b));
   if (target.every((o, i) => o === objects[i])) return;
   target.forEach((o, i) => fc.moveObjectTo(o, i));
@@ -162,6 +164,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     /** Per-element load counter, so a superseded image decode drops its result. */
     const imageTokensRef = useRef(new Map<string, number>());
     const [zoom, setZoom] = useState(1);
+    // Set when a store change arrived during a multi-selection and was only
+    // restacked; bumping the tick re-runs the reconcile once it is dropped.
+    const reconcilePendingRef = useRef(false);
+    const [reconcileTick, setReconcileTick] = useState(0);
     const { showToast } = useToast();
     // See utils/mutationErrors: these used to be `.catch(() => {})`, so a failed
     // save left the canvas looking correct until the next sync silently undid it.
@@ -310,6 +316,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         height: h,
         backgroundColor: "#ffffff",
         selection: true,
+        // Selected objects stay at their own depth instead of jumping on top
+        // while selected — otherwise a front/back on a multi-selection shows
+        // nothing until the selection is dropped.
+        preserveObjectStacking: true,
       });
       fabricRef.current = fc;
       // item 8: ⌘-click (macOS) and Ctrl-click (Windows/Linux) add to and remove
@@ -441,7 +451,15 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       if (activeObj?.isEditing) return;
       // Reconciling would destroy a live multi-selection: an ActiveSelection
       // owns its members, so re-adding one drops it out from under the cursor.
-      if (fc.getActiveObject() instanceof ActiveSelection) return;
+      // The paint order is still applied now — front/back on a multi-selection
+      // is exactly this case, and it showed nothing until the board was
+      // reopened — and the full reconcile runs once the selection is dropped.
+      if (fc.getActiveObject() instanceof ActiveSelection) {
+        restack(fc, new Map(elements.map((el) => [el.id, el.layerIndex])));
+        fc.requestRenderAll();
+        reconcilePendingRef.current = true;
+        return;
+      }
 
       const prevSelectedId = useCanvasStore.getState().selectedElementId;
 
@@ -555,7 +573,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       countBuild(built);
       fc.renderAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [elements, imageCache]);
+    }, [elements, imageCache, reconcileTick]);
 
     /* ── read-only: objects are inspectable but never interactive ── */
     useEffect(() => {
@@ -1184,6 +1202,13 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }).catch((e) => reportFailure.current("update_text_style", e));
       };
 
+      /** Runs the reconcile a multi-selection deferred, once there is none. */
+      const flushPendingReconcile = () => {
+        if (!reconcilePendingRef.current || fc.getActiveObject() instanceof ActiveSelection) return;
+        reconcilePendingRef.current = false;
+        setReconcileTick((t) => t + 1);
+      };
+
       const onSelectionCreated = () => {
         // The WHOLE active set, not `opt.selected`: on "selection:updated" that
         // holds only the object just added, so ⌘-clicking a second shape used to
@@ -1197,6 +1222,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         } else if (ids.length > 1) {
           selectElements(ids);
         }
+        flushPendingReconcile();
       };
 
       /**
@@ -1356,7 +1382,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.on("text:editing:exited", onTextEditingExited as (e: unknown) => void);
       fc.on("selection:created", onSelectionCreated as (e: unknown) => void);
       fc.on("selection:updated", onSelectionCreated as (e: unknown) => void);
-      const onSelectionCleared = () => selectElement(null);
+      const onSelectionCleared = () => {
+        selectElement(null);
+        flushPendingReconcile();
+      };
       fc.on("selection:cleared", onSelectionCleared);
       fc.on("mouse:dblclick", onDoubleClick as (e: unknown) => void);
       fc.on("object:moving", onObjectMoving as (e: unknown) => void);
