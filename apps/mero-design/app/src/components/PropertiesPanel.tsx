@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { rpcCall } from "../api/rpc";
 import { deleteElements, updateElements } from "../api/elementBatch";
 import { countRender } from "../utils/renderCount";
@@ -116,6 +116,19 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     () => elements.filter((e) => selectedElementIds.includes(e.id)),
     [elements, selectedElementIds],
   );
+
+  // Selecting on the canvas scrolls the Layers list to the selection, so you can
+  // see what you picked. The first highlighted row — or the collapsed group that
+  // holds it — is brought into view; a row already visible does not move.
+  const layersPaneRef = useRef<HTMLDivElement>(null);
+  const selectionKey = selectedElementIds.join(",");
+  useEffect(() => {
+    if (tab !== "layers" || !selectionKey) return;
+    const row = layersPaneRef.current?.querySelector<HTMLElement>(
+      `.${styles.layerItemActive}, .${styles.layerItemPartial}`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+  }, [tab, selectionKey]);
 
   function scheduleRpc(fn: () => void) {
     if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
@@ -262,6 +275,34 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       upsertElement({ ...e, layerIndex: e.id === target.id ? 0 : e.layerIndex + 1 })
     );
     await rpcCall(contextId, "send_to_back", { id: target.id }).catch((e) => reportFailure.current("send_to_back", e));
+  }
+
+  /**
+   * Front/back for a multi-selection, keeping the selection's own stacking.
+   * One `bring_to_front` per element, lowest first (each lands on top of the
+   * last), or `send_to_back` highest first — each is a single cheap write.
+   */
+  async function handleSelectionToFront() {
+    if (readOnly || selectedElements.length === 0) return;
+    const ordered = [...selectedElements].sort((a, b) => a.layerIndex - b.layerIndex);
+    const top = Math.max(0, ...elements.map((e) => e.layerIndex));
+    snapshot();
+    upsertElements(ordered.map((e, i) => ({ ...e, layerIndex: top + 1 + i, updatedAt: Date.now() })));
+    for (const e of ordered) {
+      await rpcCall(contextId, "bring_to_front", { id: e.id }).catch((err) => reportFailure.current("bring_to_front", err));
+    }
+  }
+
+  async function handleSelectionToBack() {
+    if (readOnly || selectedElements.length === 0) return;
+    const ordered = [...selectedElements].sort((a, b) => b.layerIndex - a.layerIndex);
+    const bottom = Math.min(...elements.map((e) => e.layerIndex));
+    snapshot();
+    // Local order only until the board syncs: below everything, same order among themselves.
+    upsertElements(ordered.map((e, i) => ({ ...e, layerIndex: bottom - 1 - i, updatedAt: Date.now() })));
+    for (const e of ordered) {
+      await rpcCall(contextId, "send_to_back", { id: e.id }).catch((err) => reportFailure.current("send_to_back", err));
+    }
   }
 
   async function handleMoveUp(targetEl: Element) {
@@ -678,7 +719,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   }
 
   const layersPanelContent = (
-    <div className={styles.layersPane}>
+    <div className={styles.layersPane} ref={layersPaneRef}>
       <div className={styles.layersToolbar}>
         <input
           className={styles.layerFilter}
@@ -798,11 +839,15 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     <div className={styles.propContent}>
       <div className={styles.kindRow}>
         <span className={styles.kindBadge}>{selectedElementIds.length} selected</span>
-        <button
-          className={controls.iconButton}
-          data-testid="clear-selection"
-          onClick={() => selectElements([])}
-        >Clear</button>
+        <div className={styles.layerBtns}>
+          <button className={controls.iconButton} title="Bring to front" aria-label="Bring to front" data-testid="selection-bring-to-front" disabled={readOnly} onClick={() => void handleSelectionToFront()}>⤒</button>
+          <button className={controls.iconButton} title="Send to back" aria-label="Send to back" data-testid="selection-send-to-back" disabled={readOnly} onClick={() => void handleSelectionToBack()}>⤓</button>
+          <button
+            className={controls.iconButton}
+            data-testid="clear-selection"
+            onClick={() => selectElements([])}
+          >Clear</button>
+        </div>
       </div>
 
       <div className={styles.group}>

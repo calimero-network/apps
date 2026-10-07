@@ -1534,8 +1534,9 @@ impl MeroDesign {
 
     // ── Layer order ───────────────────────────────────────────────────────────
 
-    /// Move one element to a position in the paint order and renumber every element from 0,
-    /// so a one-step move survives a sync. Editors only. Does nothing if `id` names no element.
+    /// Move one element to a position in the paint order. Only the elements whose index must
+    /// change are written (see `layer_move_writes`): renumbering the whole board ran out of gas
+    /// on a board of a few hundred elements. Editors only. Does nothing if `id` names no element.
     ///
     /// # Arguments
     /// * `id` - the element to move.
@@ -1561,23 +1562,13 @@ impl MeroDesign {
             .into_iter()
             .map(|(k, v)| (k, v.layer_index))
             .collect();
-        let Some(from) = order.iter().position(|(k, _)| *k == id) else {
+        let Some(writes) = layer_move_writes(&order, &id, index as usize) else {
             return Ok(());
         };
-        let to = (index as usize).min(order.len().saturating_sub(1));
-
-        let mut next = order;
-        let moved = next.remove(from);
-        next.insert(to, moved);
-
         let elements = self.elements.get_mut()?;
-        for (i, (key, current)) in next.iter().enumerate() {
-            let i = i as u32;
-            if *current == i && *key != id {
-                continue;
-            }
+        for (key, layer) in &writes {
             let _ = elements.update(key, |el| {
-                el.layer_index = i;
+                el.layer_index = *layer;
                 if *key == id {
                     el.updated_at = updated_at;
                 }
@@ -1631,41 +1622,26 @@ impl MeroDesign {
     /// ```
     pub fn send_to_back(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        if !self.elements.get()?.contains(&id)? {
+        let Some(map) = self.element_map() else {
             return Ok(());
-        }
-        let lowest = self
-            .element_map()
-            .map(|m| m.query("layer_index").limit(2).entries())
-            .transpose()?
-            .unwrap_or_default()
-            .into_iter()
-            .find(|(k, _)| *k != id)
-            .map(|(_, el)| el.layer_index);
-        let target = match lowest {
-            Some(0) => {
-                let others: Vec<String> = self
-                    .element_map()
-                    .map(|m| m.query("layer_index").keys())
-                    .transpose()?
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|k| *k != id)
-                    .collect();
-                let elements = self.elements.get_mut()?;
-                for other_id in &others {
-                    let _ = elements.update(other_id, |other| {
-                        other.layer_index = other.layer_index.saturating_add(1);
-                    })?;
-                }
-                0
-            }
-            Some(bottom) => bottom - 1,
-            None => 0,
         };
-        let _ = self.elements.get_mut()?.update(&id, |el| {
-            el.layer_index = target;
-        })?;
+        let order: Vec<(String, u32)> = map
+            .query("layer_index")
+            .entries()?
+            .into_iter()
+            .map(|(k, v)| (k, v.layer_index))
+            .collect();
+        // Below the lowest other element. That is one write while there is room under it;
+        // shifting every other element up by one (as this used to) ran out of gas.
+        let Some(writes) = layer_move_writes(&order, &id, 0) else {
+            return Ok(());
+        };
+        let elements = self.elements.get_mut()?;
+        for (key, layer) in &writes {
+            let _ = elements.update(key, |el| {
+                el.layer_index = *layer;
+            })?;
+        }
         app::emit!(Event::LayerReordered());
         Ok(())
     }
@@ -1911,6 +1887,65 @@ impl MeroDesign {
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────────
+
+/// The writes that move `id` to position `to` in `order` (the board's elements sorted by
+/// layer index, bottom first), as `(id, new layer index)`. `None` when `id` is not on the board
+/// or is already there.
+///
+/// Writes as few elements as the move allows, because each write costs gas and the old
+/// "renumber the whole board" needed hundreds of them:
+/// - if there is a free index between the new neighbours, only the moved element changes;
+/// - otherwise the indices already used by the slots it passes are handed round among those
+///   elements, so a one-step move is a swap of two;
+/// - indices that collide (equal values, which imports and old data can hold) are bumped
+///   upward just far enough to be strictly increasing again.
+fn layer_move_writes(order: &[(String, u32)], id: &str, to: usize) -> Option<Vec<(String, u32)>> {
+    let from = order.iter().position(|(k, _)| k == id)?;
+    let to = to.min(order.len().saturating_sub(1));
+    if from == to {
+        return None;
+    }
+    // Slot → index into `order` of the element that ends up there.
+    let mut slots: Vec<usize> = (0..order.len()).collect();
+    let moved = slots.remove(from);
+    slots.insert(to, moved);
+    let value = |slot: usize| order[slots[slot]].1;
+
+    // A gap between the new neighbours takes the element with a single write.
+    let below = to.checked_sub(1).map(value);
+    let above = (to + 1 < slots.len()).then(|| value(to + 1));
+    let gap = match (below, above) {
+        (None, Some(a)) => a.checked_sub(1),
+        (Some(b), None) => b.checked_add(1),
+        (Some(b), Some(a)) if a > b.saturating_add(1) => Some(b + (a - b) / 2),
+        _ => None,
+    };
+    if let Some(layer) = gap {
+        return Some(vec![(id.to_owned(), layer)]);
+    }
+
+    // No room: every slot keeps its index value, now held by the reordered element, so only
+    // the slots from..=to change hands. Then make the sequence strictly increasing again,
+    // stopping at the first slot past them that is already fine.
+    let (lo, hi) = (from.min(to), from.max(to));
+    let mut values: Vec<u32> = order.iter().map(|(_, v)| *v).collect();
+    let mut i = lo.max(1);
+    while i < values.len() {
+        if values[i] <= values[i - 1] {
+            values[i] = values[i - 1].saturating_add(1);
+        } else if i > hi {
+            break;
+        }
+        i += 1;
+    }
+    let writes = slots
+        .iter()
+        .zip(values)
+        .filter(|(&o, v)| order[o].1 != *v || order[o].0 == id)
+        .map(|(&o, v)| (order[o].0.clone(), v))
+        .collect();
+    Some(writes)
+}
 
 #[cfg(test)]
 mod tests {
@@ -2176,7 +2211,7 @@ mod tests {
     }
 
     #[test]
-    fn set_layer_index_moves_one_step_and_renumbers_densely() {
+    fn set_layer_index_moves_one_step_without_duplicates() {
         let mut app = new_board();
         seed(&mut app, &["a", "b", "c"]);
         app.call(|s| s.set_layer_index("b".to_owned(), 2, 99))
@@ -2189,7 +2224,8 @@ mod tests {
             .collect();
         let mut sorted = layers.clone();
         sorted.sort_unstable();
-        assert_eq!(sorted, vec![0, 1, 2], "indices stay dense — no duplicates");
+        sorted.dedup();
+        assert_eq!(sorted.len(), 3, "no two elements share an index");
     }
 
     #[test]
@@ -2232,6 +2268,39 @@ mod tests {
             ))
             .is_err());
         assert_eq!(order(&app), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn layer_moves_write_only_what_they_must() {
+        let board = |vals: &[u32]| -> Vec<(String, u32)> {
+            vals.iter().enumerate().map(|(i, v)| (format!("e{i}"), *v)).collect()
+        };
+        // Dense: one step is a swap of two.
+        let w = super::layer_move_writes(&board(&[0, 1, 2, 3]), "e1", 2).unwrap();
+        assert_eq!(w, vec![("e2".to_owned(), 1), ("e1".to_owned(), 2)]);
+        // A gap under the target takes the element alone.
+        let w = super::layer_move_writes(&board(&[0, 10, 20]), "e2", 1).unwrap();
+        assert_eq!(w, vec![("e2".to_owned(), 5)]);
+        // Send to back with room below the lowest: one write.
+        let w = super::layer_move_writes(&board(&[3, 4, 5]), "e2", 0).unwrap();
+        assert_eq!(w, vec![("e2".to_owned(), 2)]);
+        // A big dense board: one step never touches the rest.
+        let big: Vec<u32> = (0..500).collect();
+        assert_eq!(super::layer_move_writes(&board(&big), "e250", 251).unwrap().len(), 2);
+        // Duplicates get pulled apart just enough.
+        let w = super::layer_move_writes(&board(&[0, 0, 0]), "e0", 2).unwrap();
+        let mut vals: Vec<u32> = w.iter().map(|(_, v)| *v).collect();
+        vals.sort_unstable();
+        vals.dedup();
+        assert_eq!(vals.len(), w.len());
+    }
+
+    #[test]
+    fn send_to_back_on_a_dense_board_keeps_order() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b", "c"]);
+        app.call(|s| s.send_to_back("c".to_owned())).unwrap();
+        assert_eq!(order(&app), vec!["c", "a", "b"]);
     }
 
     // ── item 14: corner radius ───────────────────────────────────────────────
