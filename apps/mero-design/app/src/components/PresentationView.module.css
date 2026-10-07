@@ -244,3 +244,12 @@
   .barBtn span { display: none; }
   .segment { padding: 0 7px; }
 }
+
+/* Slideshow: the slide alone on black, edge to edge. */
+.show { background: #000; }
+.show .slide { box-shadow: none; }
+.noPointer, .noPointer * { cursor: none; }
+
+.playBtn { background: var(--color-accent); color: #fff; }
+.playBtn:hover { background: var(--color-accent-hover); }
+.playBtn:disabled { opacity: 0.4; cursor: default; }
