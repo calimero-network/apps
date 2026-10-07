@@ -11,7 +11,7 @@ e2e_mode: true
 # and a later start_node reconnects on base_port.
 nodes:
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.82
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
   s1-dev-1:
     port: 4020
     rpc_port: 4021

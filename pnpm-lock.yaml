@@ -12,9 +12,6 @@ catalogs:
     '@calimero-network/mero-icons':
       specifier: ^0.0.5
       version: 0.0.5
-    '@calimero-network/mero-js':
-      specifier: ^23.9.0
-      version: 23.9.0
     '@calimero-network/mero-platform':
       specifier: ^0.1.0
       version: 0.1.0
@@ -111,6 +108,7 @@ catalogs:
 
 overrides:
   base-x@2.0.6: 3.0.11
+  '@calimero-network/mero-js': ^24.5.0
 
 importers:
 
@@ -129,8 +127,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -253,8 +251,8 @@ importers:
   apps/conformance/app:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -290,8 +288,8 @@ importers:
   apps/delegated-execution/app:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@phala/dcap-qvl':
         specifier: 0.5.3
         version: 0.5.3
@@ -333,8 +331,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/invite
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -406,8 +404,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -473,8 +471,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -570,8 +568,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -742,8 +740,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -824,8 +822,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -909,8 +907,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1021,8 +1019,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1205,8 +1203,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1302,8 +1300,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1387,8 +1385,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1484,8 +1482,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1587,8 +1585,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1690,8 +1688,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1871,8 +1869,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -1974,8 +1972,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -2065,8 +2063,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/invite
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -2144,8 +2142,8 @@ importers:
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -2196,8 +2194,8 @@ importers:
   apps/scaffolding-e2e/app:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2269,8 +2267,8 @@ importers:
         specifier: workspace:*
         version: link:../join-sync
       '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 23.9.0
+        specifier: ^24.5.0
+        version: 24.5.0
       '@calimero-network/mero-platform':
         specifier: 'catalog:'
         version: 0.1.0
@@ -3065,8 +3063,8 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@23.9.0':
-    resolution: {integrity: sha512-b5QvvewD/y4h+7Ljr4CAYEe07Jb2oxZAlJodu8L2H/vEsKkZkeTIxjqsidC8+YTyOZmVowKf7KnuAp7u/3sDGg==}
+  '@calimero-network/mero-js@24.5.0':
+    resolution: {integrity: sha512-XMoNEiwSBHJX94j/3iIMSlmaLAG2nQKYfoHLJg9oaC57nfqUVz3QXeZytiZ/i46JATot21PZ9UdP8+3TD+b2qw==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-platform-react@0.1.0':
@@ -10380,7 +10378,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@calimero-network/mero-js@23.9.0':
+  '@calimero-network/mero-js@24.5.0':
     dependencies:
       '@phala/dcap-qvl': 0.5.3
     transitivePeerDependencies:
@@ -10395,7 +10393,7 @@ snapshots:
 
   '@calimero-network/mero-react@9.12.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@calimero-network/mero-js': 23.9.0
+      '@calimero-network/mero-js': 24.5.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
