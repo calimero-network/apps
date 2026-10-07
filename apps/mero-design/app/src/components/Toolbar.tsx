@@ -8,7 +8,9 @@ import { getImageDimensions } from "../utils/image";
 import Logo from "./Logo";
 import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
-import type { ProjectSnapshot } from "../utils/projectFile";
+import { validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
+import { useToast } from "../contexts/ToastContext";
+import ConfirmDialog from "./ConfirmDialog";
 import { STARTERS, type StarterId } from "../starter/starters";
 
 /* ── SVG tool icons ────────────────────────────────────────────── */
@@ -166,7 +168,7 @@ interface Props {
   /** Board roster, for resolving identities to usernames (item 8). */
   memberList?: Member[];
   onSaveProject?: () => void;
-  onImportProject?: (snapshot: ProjectSnapshot) => void;
+  onImportProject?: (snapshot: ProjectSnapshot) => void | Promise<void>;
   /** Loads one of the bundled starter projects into this board and persists it. */
   onOpenStarter?: (id: StarterId) => void | Promise<void>;
   /** Drives the confirm step: replacing a board that already has work needs one. */
@@ -220,7 +222,8 @@ export default function Toolbar({
   const optionsRef = useRef<HTMLDivElement>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ name: string; snapshot: ProjectSnapshot } | null>(null);
+  const { showToast } = useToast();
 
   // Close options on outside click
   useEffect(() => {
@@ -248,23 +251,23 @@ export default function Toolbar({
     // a non-admin, even if this input is reached outside the gated button.
     if (!file || !onImportProject || !canImport) return;
     e.target.value = "";
-    setImportError(null);
+    // Toasts, not the options menu: picking the file closed the menu, so an
+    // error written there was never seen.
     const text = await file.text().catch(() => "");
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      setImportError("Invalid file: not valid JSON");
+      showToast(`“${file.name}” is not a Mero Design project file`, "error");
       return;
     }
-    // Inline validation to avoid circular import issues in Toolbar
-    const d = parsed as Record<string, unknown>;
-    if (!d || typeof d !== "object" || d.version !== 1 || !Array.isArray(d.elements) || !Array.isArray(d.comments)) {
-      setImportError("Unrecognized project file format or version");
+    if (!validateSnapshot(parsed)) {
+      showToast(`“${file.name}” is from an unsupported version or is not a project file`, "error");
       return;
     }
-    if (!window.confirm("This will replace all elements and comments. Continue?")) return;
-    onImportProject(parsed as import("../utils/projectFile").ProjectSnapshot);
+    // Not window.confirm: the desktop webview answers it with `false` without
+    // showing anything (see ConfirmDialog).
+    setPendingImport({ name: file.name, snapshot: parsed });
   }
 
   return (
@@ -391,7 +394,6 @@ export default function Toolbar({
               data-testid="redo-btn"
               disabled={readOnly || redoStack.length === 0}
             >Redo (Ctrl+Y)</button>
-            {importError && <p className={styles.optionsError}>{importError}</p>}
           </div>
         )}
       </div>
@@ -479,6 +481,20 @@ export default function Toolbar({
         onChange={handleFileChange}
         data-testid="image-file-input"
       />
+      {pendingImport && onImportProject && (
+        <ConfirmDialog
+          title="Open project?"
+          message={`“${pendingImport.name}” will replace every element and comment on this board for everyone in it. This cannot be undone.`}
+          confirmLabel="Replace board"
+          destructive
+          onCancel={() => setPendingImport(null)}
+          onConfirm={() => {
+            const { snapshot } = pendingImport;
+            setPendingImport(null);
+            void onImportProject(snapshot);
+          }}
+        />
+      )}
       {canImport && (
         <input
           ref={importFileInputRef}

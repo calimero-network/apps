@@ -93,4 +93,65 @@ test.describe("item 9: saving under Tauri", () => {
     const [file] = await downloads(page);
     expect(file.href.startsWith("blob:")).toBe(true);
   });
+
+  test("an export says it went to the Downloads folder", async ({ page }) => {
+    // The desktop webview writes into ~/Downloads with no prompt and no download
+    // bar — without saying so, an export that worked looked like it did nothing.
+    await openWithBridge(page);
+    await exportVia(page, "export-png");
+    await expect(page.getByTestId("toast").filter({ hasText: "saved to your Downloads folder" })).toBeVisible();
+    await exportVia(page, "save-project");
+    await expect(page.getByTestId("toast").filter({ hasText: /Project saved to your Downloads folder as “.*\.merodesign”/ })).toBeVisible();
+  });
+});
+
+test.describe("Open (.merodesign) under Tauri", () => {
+  test("works although the webview's window.confirm always answers false", async ({ page }) => {
+    // wry implements no JavaScript confirm panel: `window.confirm` returns false
+    // without showing anything, so a confirm-gated import was cancelled before
+    // the user ever saw the question. Model that, and require the import anyway.
+    await page.addInitScript(() => { window.confirm = () => false; });
+    await installTauriStub(page);
+    const board = await openBoard(page, { elements: ONE, tauri: true, role: "admin" });
+
+    const snapshot = {
+      version: 1,
+      exportedAt: Date.now(),
+      boardName: "",
+      boardDescription: "",
+      elements: [element({ id: "from-file", x: 300, y: 200, fill: "#00AA00" })],
+      comments: [],
+    };
+    await page.getByTestId("import-file-input").setInputFiles({
+      name: "board.merodesign",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from(JSON.stringify(snapshot)),
+    });
+
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+    await page.getByTestId("confirm-ok").click();
+    await expect(page.getByTestId("confirm-dialog")).toBeHidden();
+    await expect(page.getByTestId("toast").filter({ hasText: "Project opened" })).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => board.elementsNow().map((el) => el.id)).toEqual(["from-file"]);
+  });
+
+  test("Cancel leaves the board alone, and a bad file says so", async ({ page }) => {
+    await installTauriStub(page);
+    const board = await openBoard(page, { elements: ONE, tauri: true, role: "admin" });
+    await page.getByTestId("import-file-input").setInputFiles({
+      name: "board.merodesign",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from(JSON.stringify({ version: 1, exportedAt: 0, boardName: "", boardDescription: "", elements: [], comments: [] })),
+    });
+    await page.getByTestId("confirm-cancel").click();
+    await expect(page.getByTestId("confirm-dialog")).toBeHidden();
+    expect(board.elementsNow().map((el) => el.id)).toEqual(["a"]);
+
+    await page.getByTestId("import-file-input").setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("hello"),
+    });
+    await expect(page.getByTestId("toast").filter({ hasText: "not a Mero Design project file" })).toBeVisible();
+  });
 });

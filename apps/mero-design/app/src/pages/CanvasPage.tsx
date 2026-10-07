@@ -22,6 +22,7 @@ import PresentationView from "../components/PresentationView";
 import { listScreens, screenForSelection } from "../utils/screens";
 import { loadStarter, type StarterId } from "../starter/starters";
 import { exportProject, importProject, validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
+import { savedMessage } from "../utils/saveFile";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { useToast } from "../contexts/ToastContext";
 import styles from "./CanvasPage.module.css";
@@ -514,21 +515,37 @@ export default function CanvasPage() {
     // Swallowing this is how item 9 stayed invisible for so long: the save
     // rejected in the desktop app and the UI said nothing at all.
     try {
-      await exportProject(projectId);
+      const filename = await exportProject(projectId);
+      if (filename) showToast(savedMessage("Project", filename), "success");
     } catch (e) {
       showToast(extractErrorMessage(e, "Could not save the project file"), "error");
     }
   }
 
+  /** Replaces the board with a snapshot. Rejects if the write failed; the board is re-read either way. */
   async function handleImportProject(snapshot: ProjectSnapshot) {
     if (!projectId) return;
-    await importProject(projectId, snapshot).catch(() => {});
-    rpcCall<Element[]>(projectId, "get_elements", {})
-      .then((els) => setElements(Array.isArray(els) ? els : []))
-      .catch(() => {});
-    rpcCall<CanvasComment[]>(projectId, "get_comments", {})
-      .then((cs) => setComments(Array.isArray(cs) ? cs : []))
-      .catch(() => {});
+    try {
+      await importProject(projectId, snapshot);
+    } finally {
+      rpcCall<Element[]>(projectId, "get_elements", {})
+        .then((els) => setElements(Array.isArray(els) ? els : []))
+        .catch(() => {});
+      rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+        .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+        .catch(() => {});
+    }
+  }
+
+  /** Open (.merodesign): the toolbar has already parsed, validated and confirmed the file. */
+  async function handleOpenProjectFile(snapshot: ProjectSnapshot) {
+    showToast(`Opening project — ${snapshot.elements.length} elements…`, "info");
+    try {
+      await handleImportProject(snapshot);
+      showToast("Project opened", "success");
+    } catch (e) {
+      showToast(extractErrorMessage(e, "Could not open the project file"), "error");
+    }
   }
 
   /**
@@ -674,7 +691,7 @@ export default function CanvasPage() {
         onToggleComment={() => setAddingComment((v) => !v)}
         members={cursors.filter((c) => c.identity !== myIdentity && Date.now() - c.updatedAt < 30_000)}
         onSaveProject={handleSaveProject}
-        onImportProject={handleImportProject}
+        onImportProject={handleOpenProjectFile}
         readOnly={!canEdit}
         canImport={isAdmin}
         memberList={members}

@@ -47,7 +47,7 @@ import {
   formatBinding,
   type Anchor,
 } from "../utils/connectors";
-import { saveDataUrl, saveText } from "../utils/saveFile";
+import { saveDataUrl, saveText, savedMessage } from "../utils/saveFile";
 import type { Element } from "../types";
 import {
   dashArray,
@@ -241,9 +241,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
      * which is exactly what the Tauri path produced — surfaced as an unhandled
      * promise in a console nobody had open, and as nothing at all in the UI.
      */
-    async function runExport(what: string, fn: () => Promise<boolean>) {
+    async function runExport(what: string, filename: string, save: (filename: string) => Promise<boolean>) {
       try {
-        if (await fn()) showToast(`${what} exported`, "success");
+        if (await save(filename)) showToast(savedMessage(what, filename), "success");
       } catch (err) {
         showToast(
           `Could not export the ${what.toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`,
@@ -255,11 +255,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useImperativeHandle(ref, () => ({
       async exportPng() {
         const url = withSolidBgData(() => fabricRef.current!.toDataURL({ format: "png", multiplier: 2 }));
-        await runExport("PNG", () => saveDataUrl(url, "mero-design-export.png"));
+        await runExport("PNG", "mero-design-export.png", (name) => saveDataUrl(url, name));
       },
       async exportSvg() {
         const svg = withSolidBgData(() => fabricRef.current!.toSVG());
-        await runExport("SVG", () => saveText(svg, "mero-design-export.svg", "image/svg+xml"));
+        await runExport("SVG", "mero-design-export.svg", (name) => saveText(svg, name, "image/svg+xml"));
       },
       async exportSelectedPng() {
         const fc = fabricRef.current;
@@ -272,7 +272,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           }
           return fc.toDataURL({ format: "png", multiplier: 2 });
         });
-        await runExport("PNG", () => saveDataUrl(url, "mero-design-selection.png"));
+        await runExport("PNG", "mero-design-selection.png", (name) => saveDataUrl(url, name));
       },
       async exportSelectedSvg() {
         const fc = fabricRef.current;
@@ -287,10 +287,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const svg = fc.toSVG();
           hidden.forEach((o) => { o.visible = true; });
           fc.renderAll();
-          await runExport("SVG", () => saveText(svg, "mero-design-selection.svg", "image/svg+xml"));
+          await runExport("SVG", "mero-design-selection.svg", (name) => saveText(svg, name, "image/svg+xml"));
         } else {
           const svg = fc.toSVG();
-          await runExport("SVG", () => saveText(svg, "mero-design-export.svg", "image/svg+xml"));
+          await runExport("SVG", "mero-design-export.svg", (name) => saveText(svg, name, "image/svg+xml"));
         }
       },
     }));
