@@ -1076,6 +1076,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
             const el = text.data!;
             const nextSize = Math.max(4, Math.round((el.data.fontSize ?? 24) * sy));
             const nextWidth = Math.max(20, Math.round((text.width ?? el.width) * sx));
+            if (text instanceof AlignedIText) {
+              if (text.boxWidth) text.boxWidth = nextWidth;
+              if (text.boxHeight) text.boxHeight = Math.round(el.height * sy);
+            }
             text.set({ fontSize: nextSize, width: nextWidth, scaleX: 1, scaleY: 1 });
             const updated: Element = {
               ...el,
@@ -1680,7 +1684,7 @@ function buildFabricObject(el: Element): FabricObject | null {
         const r = Math.max(0, Math.min(el.cornerRadius ?? 0, Math.min(el.width, el.height) / 2));
         return new BoxRect({ ...base, rx: r, ry: r }, el);
       }
-      const text = new IText(el.data.content ?? "Text", {
+      const text = new AlignedIText(el.data.content ?? "Text", {
         left: el.x, top: el.y,
         fontSize: el.data.fontSize ?? 24,
         fontFamily: el.data.fontFamily ?? "sans-serif",
@@ -1694,8 +1698,10 @@ function buildFabricObject(el: Element): FabricObject | null {
         stroke: isPaintable(el.stroke) ? el.stroke : undefined,
         strokeWidth: isPaintable(el.stroke) ? el.strokeWidth : 0,
         paintFirst: "stroke",
-        shadow, data: el,
+        shadow,
       });
+      text.data = el;
+      text.alignInBox(el);
       // item 5: the vertical handles. Present in Fabric 7, stated here so a future
       // default cannot quietly remove them again.
       text.setControlsVisibility({ mt: true, mb: true });
@@ -1721,6 +1727,46 @@ function dashProps(el: Element): { strokeDashArray: number[] | null; strokeLineC
     strokeDashArray: dashArray(el.strokeStyle, el.strokeWidth) ?? null,
     strokeLineCap: strokeCap(el.strokeStyle),
   };
+}
+
+/**
+ * A bare text that honours its alignment inside the element's box.
+ *
+ * Fabric's IText shrinks to its glyphs, so `textAlign` only lines the lines up
+ * against each other: a text widened to span a card and set to "center" still
+ * sat flush left on the canvas, while presenting and exporting (svgExport, which
+ * centres on the element's width) showed it centred. Here the box keeps at least
+ * the element's size whenever the alignment needs room — width for center/right,
+ * height for middle/bottom — and never shrinks below the text itself, which is
+ * the same box `svgExport` lays the text out in.
+ */
+class AlignedIText extends IText {
+  declare data?: Element;
+  declare boxWidth: number;
+  declare boxHeight: number;
+  declare verticalAlign: "top" | "middle" | "bottom";
+
+  alignInBox(el: Element): void {
+    const align = el.data.text_align ?? "left";
+    this.verticalAlign = el.data.vertical_align ?? "top";
+    this.boxWidth = align === "left" ? 0 : el.width;
+    this.boxHeight = this.verticalAlign === "top" ? 0 : el.height;
+    this.initDimensions();
+    this.setCoords();
+  }
+
+  initDimensions(): void {
+    super.initDimensions();
+    if (this.boxWidth > this.width) this.width = this.boxWidth;
+    if (this.boxHeight > this.height) this.height = this.boxHeight;
+  }
+
+  /** Where the first line starts: pushed down by the slack for middle/bottom. */
+  _getTopOffset(): number {
+    const slack = Math.max(0, this.height - this.calcTextHeight());
+    const shift = this.verticalAlign === "middle" ? slack / 2 : this.verticalAlign === "bottom" ? slack : 0;
+    return -this.height / 2 + shift;
+  }
 }
 
 /**

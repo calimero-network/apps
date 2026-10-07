@@ -185,3 +185,23 @@ describe("plan2: shapes, dashes, boxes and stickies in SVG", () => {
     expect(svg).not.toContain("<text");
   });
 });
+
+describe("bare text alignment", () => {
+  const text = (over: Partial<Element["data"]>, width: number) =>
+    el({ id: "t", x: 100, y: 0, width, height: 30, data: { kind: "text", content: "A fairly long line", fontSize: 24, ...over } });
+  const anchorX = (svg: string) => Number(/<tspan x="([\d.]+)"/.exec(svg)![1]);
+
+  it("centres on the element's width when the box is wider than the words", () => {
+    expect(anchorX(elementToSvgNode(text({ text_align: "center" }, 600)))).toBe(400);
+  });
+
+  it("never centres on a width narrower than the words — the canvas box does not shrink below them", () => {
+    // A stored width from before the text grew: centring on it pushed the words
+    // left of the element, where the canvas does not draw them.
+    expect(anchorX(elementToSvgNode(text({ text_align: "center" }, 10)))).toBeGreaterThan(105);
+  });
+
+  it("left-aligned text starts at x whatever the width", () => {
+    expect(anchorX(elementToSvgNode(text({ text_align: "left" }, 600)))).toBe(100);
+  });
+});
