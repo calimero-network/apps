@@ -69,10 +69,53 @@ function clickDownload(href: string, filename: string): void {
   a.remove();
 }
 
+/** How long to wait for the desktop to say how a download went — the macOS permission prompt waits on the user. */
+const DOWNLOAD_RESULT_TIMEOUT_MS = 120_000;
+
+export const DOWNLOADS_DENIED_MESSAGE =
+  "The file could not be saved to your Downloads folder. If macOS asked and you chose “Don't Allow”, it won't ask again — " +
+  "turn it on in System Settings → Privacy & Security → Files & Folders → Calimero Desktop → Downloads Folder, then save again.";
+
+/**
+ * Desktop save: click the download, then wait for the shell's verdict.
+ *
+ * The write happens outside the page, so on its own the page cannot tell a
+ * saved file from one macOS refused (Downloads-folder access declined — macOS
+ * asks once, and every save after that fails silently). The desktop reports
+ * each download as a `calimero-download` event; it says it will by setting
+ * `__CALIMERO_DOWNLOAD_EVENTS__`. An older desktop sets nothing, and the save
+ * is assumed to have worked, as before.
+ */
+async function desktopDownload(href: string, filename: string): Promise<boolean> {
+  const reports = !!(window as unknown as { __CALIMERO_DOWNLOAD_EVENTS__?: boolean }).__CALIMERO_DOWNLOAD_EVENTS__;
+  if (!reports) {
+    clickDownload(href, filename);
+    return true;
+  }
+  // Listening before the click: the verdict can arrive before click() returns.
+  const outcome = new Promise<{ success?: boolean } | null>((resolve) => {
+    const timer = window.setTimeout(() => {
+      window.removeEventListener("calimero-download", onResult);
+      resolve(null);
+    }, DOWNLOAD_RESULT_TIMEOUT_MS);
+    function onResult(e: Event) {
+      window.clearTimeout(timer);
+      window.removeEventListener("calimero-download", onResult);
+      resolve((e as CustomEvent<{ success?: boolean }>).detail ?? null);
+    }
+    window.addEventListener("calimero-download", onResult);
+  });
+  clickDownload(href, filename);
+  const result = await outcome;
+  if (result && result.success === false) throw new Error(DOWNLOADS_DENIED_MESSAGE);
+  return true;
+}
+
 /**
  * Saves bytes under a name the user picks. Resolves `false` when the user
  * cancels, so callers can stay quiet instead of reporting a failure. Throws only
- * when the write itself failed — callers surface that.
+ * when the write itself failed (on desktop: the shell reported the download
+ * failed) — callers surface that.
  */
 export async function saveBytes(
   bytes: Uint8Array,
@@ -83,10 +126,7 @@ export async function saveBytes(
 
   // Desktop: the same path mero-pixart uses. `showSaveFilePicker` does not exist
   // in the Tauri webview, so do not even look for it.
-  if (isTauri()) {
-    clickDownload(encodeDataUrl(bytes, mimeType), filename);
-    return true;
-  }
+  if (isTauri()) return desktopDownload(encodeDataUrl(bytes, mimeType), filename);
 
   const blob = new Blob([bytes as BlobPart], { type: mimeType });
   if ("showSaveFilePicker" in window) {
@@ -120,10 +160,7 @@ export async function saveDataUrl(dataUrl: string, filename: string): Promise<bo
   const mime = dataUrl.slice(5, dataUrl.indexOf(";")) || "application/octet-stream";
   // Under Tauri the data: URL is already exactly what the anchor wants — do not
   // round-trip it through bytes and back.
-  if (isTauri()) {
-    clickDownload(dataUrl, filename);
-    return true;
-  }
+  if (isTauri()) return desktopDownload(dataUrl, filename);
   return saveBytes(dataUrlToBytes(dataUrl), filename, mime);
 }
 
