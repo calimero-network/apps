@@ -21,7 +21,8 @@ export function validateSnapshot(data: unknown): data is ProjectSnapshot {
   return true;
 }
 
-export async function exportProject(contextId: string): Promise<void> {
+/** Writes the board to a `.merodesign` file. Resolves the filename, or null if the user cancelled. */
+export async function exportProject(contextId: string): Promise<string | null> {
   const [elements, comments, board] = await Promise.all([
     rpcCall<Element[]>(contextId, "get_elements", {}),
     rpcCall<CanvasComment[]>(contextId, "get_comments", {}),
@@ -39,11 +40,9 @@ export async function exportProject(contextId: string): Promise<void> {
 
   // Goes through the shared save seam: this used to build its own anchor, which
   // the Tauri webview ignores (item 9).
-  await saveText(
-    JSON.stringify(snapshot, null, 2),
-    `${snapshot.boardName || "mero-design"}.merodesign`,
-    "application/json",
-  );
+  const filename = `${snapshot.boardName || "mero-design"}.merodesign`;
+  const saved = await saveText(JSON.stringify(snapshot, null, 2), filename, "application/json");
+  return saved ? filename : null;
 }
 
 export async function importProject(

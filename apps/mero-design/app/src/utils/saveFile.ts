@@ -127,6 +127,18 @@ export async function saveDataUrl(dataUrl: string, filename: string): Promise<bo
   return saveBytes(dataUrlToBytes(dataUrl), filename, mime);
 }
 
+/**
+ * What to tell the user once a save went through. The desktop webview writes
+ * the file straight into ~/Downloads with no prompt and no download bar, so
+ * "exported" alone reads as nothing happened — say where it went. (wry renames
+ * on a clash, "name (1).png", so name the folder rather than promise a path.)
+ */
+export function savedMessage(what: string, filename: string): string {
+  return isTauri()
+    ? `${what} saved to your Downloads folder as “${filename}”`
+    : `${what} exported as “${filename}”`;
+}
+
 /** Convenience for text payloads (SVG markup, .mero-design JSON). */
 export async function saveText(text: string, filename: string, mimeType: string): Promise<boolean> {
   return saveBytes(new TextEncoder().encode(text), filename, mimeType);

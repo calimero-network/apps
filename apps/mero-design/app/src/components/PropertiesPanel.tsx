@@ -5,6 +5,7 @@ import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { useToast } from "../contexts/ToastContext";
+import { savedMessage } from "../utils/saveFile";
 import { createMutationReporter } from "../utils/mutationErrors";
 import { escapeHtml, escapeCss } from "../utils/sanitize";
 import {
@@ -346,8 +347,9 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const members = elementsOfNode(node);
     const name = (node.kind === "group" ? node.name : node.name) || "selection";
     await withBusy(`${format}:${node.kind === "group" ? node.path : node.id}`, async () => {
+      const filename = `${name.replace(/[^\w .-]+/g, "-")}.${format}`;
       const options = {
-        filename: `${name.replace(/[^\w .-]+/g, "-")}.${format}`,
+        filename,
         imageCache,
         background,
         padding: 8,
@@ -355,7 +357,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       const ok = format === "png"
         ? await exportElementsAsPng(members, options)
         : await exportElementsAsSvg(members, options);
-      if (ok) showToast(`Exported “${name}” as ${format.toUpperCase()}`, "success");
+      if (ok) showToast(savedMessage(format.toUpperCase(), filename), "success");
     });
   }
 

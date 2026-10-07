@@ -1,0 +1,64 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.modal {
+  background: var(--color-bg);
+  border-radius: 10px;
+  padding: 24px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.16);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.message {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancel,
+.confirm {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cancel {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+.cancel:hover { background: var(--color-surface); }
+
+.confirm {
+  background: var(--color-accent);
+  border: 1px solid transparent;
+  color: #fff;
+}
+.confirm:hover { background: var(--color-accent-hover); }
+
+.destructive { background: var(--color-danger); }
+.destructive:hover { background: #c53030; }
