@@ -4,7 +4,7 @@ import { useCanvasStore } from "../store/canvasStore";
 import { useScreenImage } from "../hooks/useScreenImage";
 import { fitScreen, listScreens, type FitMode, type Screen } from "../utils/screens";
 import { useToast } from "../contexts/ToastContext";
-import { exitFullscreen, fullscreenShortcut, toggleFullscreen as toggleWindowFullscreen } from "../utils/fullscreen";
+import { exitFullscreen, fullscreenShortcut, isFullscreen, toggleFullscreen as toggleWindowFullscreen } from "../utils/fullscreen";
 import styles from "./PresentationView.module.css";
 
 /** Space kept clear around a slide shown whole, so it does not touch the chrome. */
@@ -54,6 +54,14 @@ export default function PresentationView() {
 
   const [mode, setMode] = useState<FitMode>("fit");
   const [showStrip, setShowStrip] = useState(false);
+  /**
+   * Slideshow: the slide alone, full screen, no chrome and no pointer — the
+   * PowerPoint "From current slide" view. Esc steps back one level at a time:
+   * slideshow → presentation → board.
+   */
+  const [show, setShow] = useState(false);
+  const [pointerVisible, setPointerVisible] = useState(false);
+  const pointerTimer = useRef<number | undefined>(undefined);
   const stageRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ w: window.innerWidth, h: window.innerHeight });
 
@@ -85,6 +93,38 @@ export default function PresentationView() {
 
   const { showToast } = useToast();
 
+  const startShow = useCallback(async () => {
+    setShow(true);
+    setShowStrip(false);
+    setPointerVisible(false);
+    if (!(await isFullscreen()) && (await toggleWindowFullscreen()) === "unsupported") {
+      showToast(`Press ${fullscreenShortcut()} to fill the screen — Esc leaves the slideshow`, "info");
+    }
+  }, [showToast]);
+
+  const endShow = useCallback(() => {
+    setShow(false);
+    void exitFullscreen();
+  }, []);
+
+  // The browser takes Esc for itself while the page is full screen: it leaves
+  // full screen and the page never sees the key. Leaving full screen that way
+  // must still end the slideshow, or the chrome would stay hidden.
+  useEffect(() => {
+    if (!show) return;
+    function onChange() { if (!document.fullscreenElement) setShow(false); }
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, [show]);
+
+  // The pointer stays hidden over the slide, and comes back briefly when moved.
+  const onShowPointerMove = useCallback(() => {
+    setPointerVisible(true);
+    window.clearTimeout(pointerTimer.current);
+    pointerTimer.current = window.setTimeout(() => setPointerVisible(false), 1500);
+  }, []);
+  useEffect(() => () => window.clearTimeout(pointerTimer.current), []);
+
   const close = useCallback(() => {
     void exitFullscreen();
     stopPresentation();
@@ -103,6 +143,11 @@ export default function PresentationView() {
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
       if (tag === "select" || tag === "input") {
         if (e.key === "Escape") { e.preventDefault(); close(); }
+        return;
+      }
+      if (show && e.key === "Escape") {
+        e.preventDefault();
+        endShow();
         return;
       }
       const stage = stageRef.current;
@@ -156,18 +201,28 @@ export default function PresentationView() {
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [close, go, goTo, screens.length, toggleFullscreen]);
+  }, [close, endShow, go, goTo, screens.length, show, toggleFullscreen]);
 
   const url = useScreenImage(current, elements, background, imageCache);
-  const margin = mode === "fit" ? STAGE_MARGIN : 0;
+  // A slideshow always shows the whole slide, edge to edge.
+  const fitMode: FitMode = show ? "fit" : mode;
+  const margin = fitMode === "fit" && !show ? STAGE_MARGIN : 0;
   const fit = current
-    ? fitScreen(current.width, current.height, view.w - margin * 2, view.h - margin * 2, mode)
+    ? fitScreen(current.width, current.height, view.w - margin * 2, view.h - margin * 2, fitMode)
     : { scale: 1, scrolls: false };
   const drawW = current ? Math.round(current.width * fit.scale) : 0;
   const drawH = current ? Math.round(current.height * fit.scale) : 0;
 
   return (
-    <div className={styles.root} role="dialog" aria-label="Presentation" data-testid="presentation">
+    <div
+      className={`${styles.root} ${show ? styles.show : ""} ${show && !pointerVisible ? styles.noPointer : ""}`}
+      role="dialog"
+      aria-label="Presentation"
+      data-testid="presentation"
+      data-slideshow={show ? "true" : "false"}
+      onMouseMove={show ? onShowPointerMove : undefined}
+    >
+      {!show && (
       <header className={styles.bar}>
         <button className={styles.barBtn} onClick={close} title="Exit presentation (Esc)" data-testid="presentation-close">
           ✕ <span>Exit</span>
@@ -204,8 +259,19 @@ export default function PresentationView() {
           <button className={styles.barBtn} onClick={() => void toggleFullscreen()} title="Full screen (F)" data-testid="presentation-fullscreen">
             ⤢ <span>Full screen</span>
           </button>
+          <button
+            className={`${styles.barBtn} ${styles.playBtn}`}
+            onClick={() => void startShow()}
+            disabled={!current}
+            title="Slideshow — only the slides, full screen (Esc to come back)"
+            aria-label="Start slideshow"
+            data-testid="presentation-slideshow"
+          >
+            <SlideshowIcon /> <span>Slideshow</span>
+          </button>
         </div>
       </header>
+      )}
 
       <div
         ref={stageRef}
@@ -214,7 +280,12 @@ export default function PresentationView() {
         data-scrolls={fit.scrolls ? "true" : "false"}
       >
         {current ? (
-          <div className={styles.slideWrap} style={{ padding: margin }}>
+          <div
+            className={styles.slideWrap}
+            style={{ padding: margin }}
+            // Click to advance, as in a slideshow.
+            onClick={show ? () => go(1) : undefined}
+          >
             {url ? (
               <img
                 className={styles.slide}
@@ -242,7 +313,7 @@ export default function PresentationView() {
         )}
       </div>
 
-      {showStrip && screens.length > 0 && (
+      {!show && showStrip && screens.length > 0 && (
         <div className={styles.strip} data-testid="presentation-strip">
           {screens.map((s, i) => (
             <StripThumb
@@ -256,7 +327,7 @@ export default function PresentationView() {
         </div>
       )}
 
-      {screens.length > 0 && (
+      {!show && screens.length > 0 && (
         <footer className={styles.nav}>
           <button
             className={styles.navBtn}
@@ -286,6 +357,17 @@ export default function PresentationView() {
         </footer>
       )}
     </div>
+  );
+}
+
+/** A screen with a play mark: "present the slides alone". */
+function SlideshowIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="14" rx="2" />
+      <path d="M10 8.5v5l4.5-2.5z" fill="currentColor" />
+      <path d="M8 21h8M12 18v3" />
+    </svg>
   );
 }
 
