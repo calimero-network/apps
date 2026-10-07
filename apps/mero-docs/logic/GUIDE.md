@@ -14,7 +14,7 @@ The bundle has two services, and every context runs exactly one of them:
 - `docs` holds the documents, comments and document tags of one folder.
 
 `describe_app` and `select_app` show one service's methods at a time: pass `service` (`registry` or `docs`) to `describe_app`, or a `context` to `select_app`.
-mero-mcp generates no per-method tools for a bundle with two services, so run every method with the `call` tool, passing the `app_handle` from `select_app`, the `method` name and its `args` keyed by parameter name.
+Per-method tools may be available; the `call` tool always works, passing the `app_handle` from `select_app`, the `method` name and its `args` keyed by parameter name.
 
 ## Context model
 
