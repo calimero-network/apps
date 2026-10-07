@@ -135,3 +135,44 @@ describe("saveBytes", () => {
     }
   });
 });
+
+describe("desktop download verdict", () => {
+  afterEach(() => { delete w.__CALIMERO_DOWNLOAD_EVENTS__; });
+
+  /** Answers every download click the way the desktop shell would. */
+  function shellAnswers(success: boolean) {
+    w.__CALIMERO_DOWNLOAD_EVENTS__ = true;
+    const realCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
+      const el = realCreate(tag) as HTMLElement;
+      if (tag === "a") {
+        el.click = () => {
+          setTimeout(() => window.dispatchEvent(new CustomEvent("calimero-download", {
+            detail: { success, path: "/Users/me/Downloads/board.png" },
+          })), 0);
+        };
+      }
+      return el;
+    }) as typeof document.createElement);
+  }
+
+  it("throws when the desktop reports the write failed (Downloads access declined)", async () => {
+    stubBridge();
+    shellAnswers(false);
+    await expect(saveBytes(new Uint8Array([1]), "board.png", "image/png")).rejects.toThrow(/Downloads Folder/);
+    await expect(saveDataUrl("data:image/png;base64,AQ==", "board.png")).rejects.toThrow(/Don't Allow/);
+  });
+
+  it("resolves true when the desktop reports the file was written", async () => {
+    stubBridge();
+    shellAnswers(true);
+    await expect(saveBytes(new Uint8Array([1]), "board.png", "image/png")).resolves.toBe(true);
+  });
+
+  it("does not wait on an older desktop that sends no verdict", async () => {
+    stubBridge();
+    const clicked = captureAnchor();
+    await expect(saveBytes(new Uint8Array([1]), "board.png", "image/png")).resolves.toBe(true);
+    expect(clicked).toHaveLength(1);
+  });
+});
