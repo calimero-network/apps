@@ -28,8 +28,9 @@
 //! ## Scope
 //!
 //! No cross-service calls into the registry. The docs service knows nothing
-//! about the folder tree, color, or visibility - those live in the registry
-//! context, which the client queries separately and joins on the folder id.
+//! about the folder tree, name, colour, or visibility - a folder is a core
+//! subgroup, and the client reads those from core (subgroup metadata and
+//! visibility), finding this context as the one context in the subgroup.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::DerefMut;

@@ -1,9 +1,8 @@
-// Writes a folder role to core and the registry, for one folder or for a
-// folder's whole subtree: Read only on a folder covers every sub-folder the
-// member reaches, and core reads only the direct row of each folder's group.
+// Writes a folder role to core, for one folder or for a folder's whole
+// subtree: Read only on a folder covers every sub-folder the member reaches,
+// and core reads only the direct row of each folder's group.
 
 import { HTTPError, type AdminApiClient } from '@calimero-network/mero-js';
-import { FolderId, type RegistryClient } from '@/generated/registry/RegistryClient';
 import {
   FOLDER_ROLE_GRANTS,
   isTeeRole,
@@ -22,7 +21,6 @@ export interface FolderRoleWriter {
     | 'setMemberCapabilities'
     | 'getMemberCapabilities'
   >;
-  registry: Pick<RegistryClient, 'setFolderRole' | 'getFolderRole'>;
 }
 
 /** `account`'s role in the folder's effective member list, or null if absent. */
@@ -60,7 +58,7 @@ export async function setCoreRole(
   }
 }
 
-/** A folder role's three writes, core first. Read only always writes the core row (an
+/** A folder role's two writes, role then caps. Read only always writes the core row (an
  *  inheritor is listed with its anchor's role); false when there was no row to change. */
 export async function applyFolderGrant(
   writer: FolderRoleWriter,
@@ -74,11 +72,6 @@ export async function applyFolderGrant(
     if (!(await setCoreRole(writer, folder, account, grant.coreRole)))
       return false;
   }
-  await writer.registry.setFolderRole({
-    folder_id: FolderId(folder),
-    member: account,
-    role: grant.role,
-  });
   await writer.admin.setMemberCapabilities(folder, account, {
     capabilities: grant.folderCaps,
   });
@@ -176,18 +169,12 @@ async function holdsReadOnly(
     folder,
     account,
   );
-  if (capabilities !== grant.folderCaps) return false;
-  return (
-    (await writer.registry.getFolderRole({
-      folder_id: FolderId(folder),
-      member: account,
-    })) === grant.role
-  );
+  return capabilities === grant.folderCaps;
 }
 
 /** Before a new folder under `parent` turns Open: a direct ReadOnly row, with
  *  the grant's caps, for each person `parent` holds Read only, so the folder
- *  is never Open without them. The registry rows follow once it is bound. */
+ *  is never Open without them. */
 export async function readOnlyRowsBeforeOpen(
   writer: FolderRoleWriter,
   parent: string,

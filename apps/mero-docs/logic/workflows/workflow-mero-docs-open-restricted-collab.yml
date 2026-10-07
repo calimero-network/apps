@@ -1,8 +1,9 @@
 name: Mero Docs E2E - Open/Restricted folders + permissions (collab scenario)
 description: >
-  End-to-end coverage for the open/restricted-folders + registry-permissions
-  feature set (the Phase C-Rust `permissions` module + core's Open subgroup
-  inheritance + per-member default capabilities).
+  End-to-end coverage for open/restricted folders: core's Open subgroup
+  inheritance, per-member default capabilities, and the registry owner.
+  Folders are core subgroups; each folder's name and colour are subgroup
+  metadata (`data.color`) and its docs context is the one context in it.
 
   Two nodes - Alice (calimero-node-1, the namespace creator / registry owner)
   and Bob (calimero-node-2). The scenario:
@@ -14,20 +15,18 @@ description: >
     B. Alice creates an Open folder + Docs context + a doc - all before Bob
        joins.
     C. Bob joins ONLY the namespace (one invitation; no folder add_group_members).
-    D. Bob joins the Registry context via namespace-root membership and sees
-       Alice's folder registrations sync over.
+    D. Bob joins the Registry context via namespace-root membership.
     E. Bob joins the Open folder's Docs context purely via core's parent-walk
-       inheritance - NO add_group_members - reads Alice's doc, and his
-       `get_folder_role` on the Open folder is the implicit default `Editor`.
+       inheritance - NO add_group_members - reads Alice's doc, and reads the
+       folder's name from its subgroup metadata.
     F. Cross-node edit/verify rounds on the shared doc (Bob→Alice ×2, Alice→Bob ×2).
     G. Bob creates HIS OWN Open folder + Docs context + doc (allowed - he has
        CAN_CREATE_SUBGROUP by default); Alice joins it via inheritance, reads,
        and edits.
     H. Restricted folder: Bob's inherited join_context FAILS (Restricted wall);
-       Alice add_group_members him; the join now succeeds; cross edits both ways;
-       then Alice `set_folder_role`s Bob to `Viewer` and Bob reads back `Viewer`
-       (advisory - the WASM still permits his writes; the frontend is what hides
-       the edit UI).
+       Alice add_group_members him; the join now succeeds; cross edits both ways.
+       (A folder's Read only role is core ReadOnly; see
+       workflow-mero-docs-folder-read-only.yml.)
     J. Alice tears the namespace down.
 
   Sequential per merobox semantics - `wait_for_sync` hands writes off between
@@ -66,7 +65,7 @@ nodes:
   # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
   # discovery changed at the image bump with nothing here changing.
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.82
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
   prefix: calimero-node
 
 steps:
@@ -141,11 +140,8 @@ steps:
   # false and would red the run.
   #
   # Note what this step therefore does and does not prove. It proves the
-  # registry's owner is its creator and that the owner-gated writes below work, because
-  # `require_admin` compares the caller against the stored value using the SAME
-  # derivation on both sides - which held even when that derivation was
-  # `device_id`. What it does not prove is the property the account switch
-  # exists for: that the stored id equals the ACCOUNT a CLIENT can name, which
+  # registry's owner is its creator. What it does not prove is the property
+  # the account switch exists for: that the stored id equals the ACCOUNT a CLIENT can name, which
   # is the only id `listGroupMembers` hands out. Proving that needs a step that
   # asserts `get_owner` against the account from the node's own identity
   # endpoint, and a manager appointed by account who then writes successfully.
@@ -185,19 +181,15 @@ steps:
     group_id: '{{open_folder}}'
     visibility: Open
 
-  - name: register_folder Shared in the registry
-    type: call
+  - name: Alice names Shared and colours it (subgroup metadata)
+    type: set_group_metadata
     node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{open_folder}}'
-      parent_id: null
+    group_id: '{{open_folder}}'
+    record_name: Shared
+    data:
       color: '#1f8a4c'
-      alias: Shared
 
-  - name: Alice creates the Docs context bound to Shared
+  - name: Alice creates the Docs context inside Shared (the folder's one context)
     type: create_context
     node: calimero-node-1
     application_id: '{{app_id}}'
@@ -206,16 +198,6 @@ steps:
     outputs:
       open_docs_ctx: contextId
       alice_docs_key: memberPublicKey
-
-  - name: bind_folder_context - Shared → Docs context
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{open_folder}}'
-      context_id: '{{open_docs_ctx}}'
 
   - name: Alice creates the first doc inside Shared
     type: call
@@ -268,8 +250,9 @@ steps:
     message: Folder Open-visibility metadata + parent-walk auth need to land on Bob's node
 
   # =================================================================
-  # Phase D: Bob joins the Registry context (namespace-root membership)
-  # and sees Alice's folder registrations.
+  # Phase D: Bob joins the Registry context (namespace-root membership).
+  # It holds workspace-level data only (owner, managers, tags, saved
+  # views); folders are core subgroups and never appear in it.
   # =================================================================
 
   - name: Bob joins the Registry context via namespace-root membership
@@ -291,18 +274,9 @@ steps:
     context_id: '{{reg_ctx}}'
     timeout: 30
 
-  - name: Bob can read the Shared folder record from the synced registry
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: get_folder
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      id: '{{open_folder}}'
-
   # =================================================================
   # Phase E: Bob inherits the Open folder's Docs context - NO
-  # add_group_members. Reads Alice's doc; default folder role is Editor.
+  # add_group_members. Reads Alice's doc and the folder's metadata name.
   #
   # Two-step join, mirroring core's scaffolding-e2e
   # group-join-via-inheritance acceptance test:
@@ -368,26 +342,21 @@ steps:
     statements:
       - 'is_set({{bob_read_v0}})'
 
-  # No explicit role row for Bob on the Open folder → the registry reports
-  # the implicit default, Editor.
-  - name: Bob's folder role on Shared is the implicit Editor
-    type: call
+  # The folder's name lives in core subgroup metadata, which Bob reads
+  # once he is a member of the Open folder by inheritance.
+  - name: Bob reads the Shared folder's name from its subgroup metadata
+    type: get_group_metadata
     node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: get_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{open_folder}}'
-      member: '{{bob_identity}}'
+    group_id: '{{open_folder}}'
     outputs:
-      bob_open_role: result.output
+      bob_open_name: name
 
-  - name: Assert Bob's Shared-folder role == Editor
+  - name: Assert Bob sees the folder's name Alice set
     type: assert
     statements:
       # merobox auto-quotes string variables during {{...}} substitution, so
-      # `{{bob_open_role}}` already expands to `'Editor'` - don't wrap it again.
-      - "equal({{bob_open_role}}, 'Editor')"
+      # `{{bob_open_name}}` already expands to `'Shared'` - don't wrap it again.
+      - "equal({{bob_open_name}}, 'Shared')"
 
   # =================================================================
   # Phase F: Cross-node edit/verify rounds on the shared doc.
@@ -515,19 +484,15 @@ steps:
     group_id: '{{bob_folder}}'
     visibility: Open
 
-  - name: Bob registers his folder in the registry
-    type: call
+  - name: Bob names Bobs and colours it (subgroup metadata)
+    type: set_group_metadata
     node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      id: '{{bob_folder}}'
-      parent_id: null
+    group_id: '{{bob_folder}}'
+    record_name: Bobs
+    data:
       color: '#2266dd'
-      alias: Bobs
 
-  - name: Bob creates a Docs context bound to his folder
+  - name: Bob creates a Docs context inside his folder
     type: create_context
     node: calimero-node-2
     application_id: '{{app_id}}'
@@ -536,16 +501,6 @@ steps:
     outputs:
       bob_docs_own_ctx: contextId
       bob_own_docs_key: memberPublicKey
-
-  - name: bind_folder_context - Bobs → Bob's Docs context
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{bob_folder}}'
-      context_id: '{{bob_docs_own_ctx}}'
 
   - name: Bob writes the first doc in his folder
     type: call
@@ -562,12 +517,6 @@ steps:
     type: assert
     statements:
       - 'is_set({{bob_doc_id}})'
-
-  - name: Sync the registry so Alice sees Bob's folder registration
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{reg_ctx}}'
-    timeout: 30
 
   - name: Wait for Bob's Open folder metadata to reach Alice's node
     type: wait
@@ -629,8 +578,7 @@ steps:
 
   # =================================================================
   # Phase H: Restricted folder - Bob's inherited join FAILS until
-  # Alice explicitly add_group_members him; then cross edits; then
-  # Alice demotes Bob's folder role to Viewer (advisory).
+  # Alice explicitly add_group_members him; then cross edits.
   # =================================================================
 
   - name: Alice creates folder subgroup (Private)
@@ -647,17 +595,13 @@ steps:
     group_id: '{{priv_folder}}'
     visibility: Restricted
 
-  - name: register_folder Private in the registry
-    type: call
+  - name: Alice names Private and colours it (subgroup metadata)
+    type: set_group_metadata
     node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: register_folder
-    executor_public_key: '{{alice_key}}'
-    args:
-      id: '{{priv_folder}}'
-      parent_id: null
+    group_id: '{{priv_folder}}'
+    record_name: Private
+    data:
       color: '#aa0000'
-      alias: Private
 
   - name: Alice creates a Docs context inside Private
     type: create_context
@@ -668,16 +612,6 @@ steps:
     outputs:
       priv_docs_ctx: contextId
       alice_priv_key: memberPublicKey
-
-  - name: bind_folder_context - Private → Docs context
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: bind_folder_context
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{priv_folder}}'
-      context_id: '{{priv_docs_ctx}}'
 
   - name: Alice writes a private doc
     type: call
@@ -812,60 +746,6 @@ steps:
     executor_public_key: '{{bob_priv_key}}'
     args:
       id: '{{priv_doc_id}}'
-
-  # Owner demotes Bob's folder role to Viewer. This is advisory at the
-  # WASM layer (the docs service does not gate on the registry Role -
-  # the frontend does, by hiding the edit UI), so we only assert the
-  # role round-trips; Bob's edit ability above is unchanged.
-  - name: Alice sets Bob's Private-folder role to Viewer
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: set_folder_role
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{priv_folder}}'
-      member: '{{bob_identity}}'
-      role: Viewer
-
-  - name: Sync the registry so Bob sees the role change
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{reg_ctx}}'
-    timeout: 30
-
-  - name: Bob reads back his Private-folder role
-    type: call
-    node: calimero-node-2
-    context_id: '{{reg_ctx}}'
-    method: get_folder_role
-    executor_public_key: '{{bob_reg_key}}'
-    args:
-      folder_id: '{{priv_folder}}'
-      member: '{{bob_identity}}'
-    outputs:
-      bob_priv_role: result.output
-
-  - name: Assert Bob's Private-folder role == Viewer
-    type: assert
-    statements:
-      - "equal({{bob_priv_role}}, 'Viewer')"
-
-  - name: Alice lists the Private folder's explicit role rows
-    type: call
-    node: calimero-node-1
-    context_id: '{{reg_ctx}}'
-    method: list_folder_roles
-    executor_public_key: '{{alice_key}}'
-    args:
-      folder_id: '{{priv_folder}}'
-    outputs:
-      priv_role_rows: result.output
-
-  - name: Assert the role-rows list came back
-    type: assert
-    statements:
-      - 'is_set({{priv_role_rows}})'
 
   # =================================================================
   # Phase J: Teardown - owner deletes the namespace (cascades to its

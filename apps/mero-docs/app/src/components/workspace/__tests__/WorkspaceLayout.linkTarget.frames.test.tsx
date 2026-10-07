@@ -46,10 +46,7 @@ const h = vi.hoisted(() => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
-    registryClient: {
-      getFolderContext: ({ folder_id }: { folder_id: string }) =>
-        h.contexts.get(folder_id)!.promise,
-    },
+    registryClient: {},
     fixed: {
       namespaces: [{ namespaceId: 'ns' }],
       registryFolders: [
@@ -60,7 +57,16 @@ const h = vi.hoisted(() => {
       folders: [],
       noop: () => {},
       refetch: () => Promise.resolve(),
-      mero: { mero: {}, nodeUrl: 'http://node', logout: () => {} },
+      mero: {
+        mero: {},
+        nodeUrl: 'http://node',
+        logout: () => {},
+        // A folder's docs context is the one context core lists in its subgroup.
+        admin: {
+          listGroupContexts: (folderId: string) =>
+            h.contexts.get(folderId)!.promise.then((contextId) => [{ contextId }]),
+        },
+      },
       join: { joinContext: () => Promise.resolve() },
     },
   };

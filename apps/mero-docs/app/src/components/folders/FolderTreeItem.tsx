@@ -62,10 +62,8 @@ export function FolderTreeItem({
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
 
-  const { rootGroupId, registryClient, applicationId, refetch } =
-    useDriveWorkspace();
+  const { rootGroupId, applicationId, refetch } = useDriveWorkspace();
   const ops = useFolderOperations(
-    registryClient,
     rootGroupId,
     applicationId,
     refetch,

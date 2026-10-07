@@ -1,124 +1,6 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "ContextId": {
-      "kind": "alias",
-      "doc": "Wrapper around a Calimero context id. Same rationale as `FolderId`.",
-      "target": {
-        "kind": "string"
-      }
-    },
-    "Event_FolderAliasChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderColorChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderContextBound": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "folder_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderParentChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderRegistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderRoleChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "folder_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderSortOrderChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "parent_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderUnregistered": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_FolderVisibilityChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "Event_ManagerAdded": {
       "kind": "record",
       "fields": [
@@ -163,192 +45,9 @@
         }
       ]
     },
-    "FolderDto": {
-      "kind": "record",
-      "doc": "Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true,
-          "doc": "The parent folder's group id; `None` for a top-level folder."
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "`None` when color is unset / empty."
-        },
-        {
-          "name": "context_id",
-          "type": {
-            "$ref": "ContextId"
-          },
-          "nullable": true,
-          "doc": "`None` when no Docs context has been bound to this folder yet."
-        },
-        {
-          "name": "alias",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "`None` when no registry-side alias is stored (older folders,\nor folders created before the alias field existed). Clients\nfall back to the admin-API alias or a truncated id stub."
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          },
-          "doc": "A registry-side flag the app no longer writes, so it reads `Inherit`; the folder group's visibility decides who can join."
-        }
-      ]
-    },
-    "FolderId": {
-      "kind": "alias",
-      "doc": "Wrapper around a folder / group id string. Newtype so the generated TS\nclient surfaces `FolderId` instead of a bare `string`.",
-      "target": {
-        "kind": "string"
-      }
-    },
-    "FolderRecord": {
-      "kind": "record",
-      "doc": "Per-folder record inside the registry map. All fields are LWW so\nconcurrent updates resolve deterministically.",
-      "fields": [
-        {
-          "name": "parent_id",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "Parent folder id, or None for top-level folders. Stored as an\nLWW index; admin-API remains the source of truth for the tree."
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "`#rrggbb` color, or empty string for \"no color\"."
-        },
-        {
-          "name": "alias",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          },
-          "doc": "Display name. Mirrored from admin-API's group alias so namespace\nmembers who can't read the subgroup yet (Restricted folder before\ninvite) can still see folder names. Empty string means \"no\nregistry-side alias - fall back to the admin-API alias or a\ntruncated id stub on the client\"."
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "Visibility"
-            }
-          },
-          "doc": "Inherit = namespace-member cascade descends through this folder.\nRestricted = explicit-invite wall; cascade stops here."
-        }
-      ]
-    },
-    "FolderRoleEntry": {
-      "kind": "record",
-      "doc": "One explicit per-member role row for a folder (what `list_folder_roles`\nreturns). Members not present have the implicit `Editor` role.",
-      "fields": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The member's account id as 64 hex characters."
-        },
-        {
-          "name": "role",
-          "type": {
-            "$ref": "Role"
-          },
-          "doc": "The member's role on the folder."
-        }
-      ]
-    },
     "RegistryState": {
       "kind": "record",
       "fields": [
-        {
-          "name": "folders",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "FolderRecord"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "folder_id (string) → FolderRecord. Owned by whoever registered the\nfolder, who alone edits it; the registry admins (owner and managers)\nare its moderators and may also remove it. Every node enforces both.\n\nKeys are per owner (core rc.57): two accounts registering one id hold\ntwo entries, and a key-only `get`/`contains`/`owner_of` answers for the\nCALLER only. Every read by id goes through `folder_holder`, which takes\nthe entry of the lowest account holding the id, the same pick on every\nnode; `register_folder` refuses an id any account is known to hold."
-        },
-        {
-          "name": "folder_contexts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ContextId"
-            },
-            "crdt_type": "authored_map"
-          },
-          "doc": "folder_id (string) → Docs context id bound to that folder. Written\nonce, by the folder's registrant; nobody can rebind or remove it, so a\nfolder cannot be pointed at someone else's context after the fact.\nA binding counts only while its writer owns the folder (see\n`binding_of`)."
-        },
-        {
-          "name": "sort_order",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "list",
-                "items": {
-                  "kind": "string"
-                }
-              }
-            },
-            "crdt_type": "unordered_map"
-          },
-          "doc": "parent_id-or-empty → LWW list of child folder ids in display order.\nDeliberately public: display order is collaborative, and a bad order\nis corrected by the next reorder."
-        },
         {
           "name": "owner",
           "type": {
@@ -376,30 +75,6 @@
           "doc": "The registry's managers, as holders of the `MANAGER` role. The owner is\nits only admin, so only the owner grants or revokes it, on every node."
         },
         {
-          "name": "folder_roles",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "shared_storage",
-            "inner_type": {
-              "kind": "map",
-              "key": {
-                "kind": "string"
-              },
-              "value": {
-                "kind": "record",
-                "fields": [],
-                "crdt_type": "lww_register",
-                "inner_type": {
-                  "$ref": "Role"
-                }
-              },
-              "crdt_type": "sorted_map"
-            }
-          },
-          "doc": "`role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.\nThe owner administers it; managers may write and delete rows (see `sync_admins`)."
-        },
-        {
           "name": "tags",
           "type": {
             "kind": "map",
@@ -411,7 +86,7 @@
             },
             "crdt_type": "unordered_map"
           },
-          "doc": "tag key → TagRecord. Public, like `sort_order`: any member may name,\nrecolour or delete a tag; which roles may is the app's to gate."
+          "doc": "tag key → TagRecord. Public: any member may name, recolour or delete\na tag; which roles may is the app's to gate."
         },
         {
           "name": "views",
@@ -440,24 +115,6 @@
             "crdt_type": "authored_map"
           },
           "doc": "saved-view id → created_at, written once by the view's creator. Its\nowner stamp is who created the view, and nobody can rewrite either."
-        }
-      ]
-    },
-    "Role": {
-      "kind": "variant",
-      "doc": "Per-folder collaborator role. Local copy of `mero_docs_types::Role`\n(same variants, same bytes); keep the two definitions in sync.",
-      "variants": [
-        {
-          "name": "Viewer",
-          "doc": "Read only in the web app; enforced only by the member's `ReadOnly` role in the folder's group."
-        },
-        {
-          "name": "Editor",
-          "doc": "Reads and edits documents; the role of a member with no explicit row."
-        },
-        {
-          "name": "Manager",
-          "doc": "Edits, and manages the folder's members."
         }
       ]
     },
@@ -595,26 +252,12 @@
           "doc": "The saved search text."
         }
       ]
-    },
-    "Visibility": {
-      "kind": "variant",
-      "doc": "Per-folder cascade flag. `Inherit` = namespace-member cascade descends\nthrough this folder (Open subgroup); `Restricted` = explicit-invite wall,\ncascade stops here. Mirrors the admin-API subgroup_visibility concept but\nis stored in the registry so clients can read it without a per-folder\nadmin-API call.",
-      "variants": [
-        {
-          "name": "Inherit",
-          "doc": "Namespace members inherit access to the folder."
-        },
-        {
-          "name": "Restricted",
-          "doc": "Members must be added to the folder explicitly."
-        }
-      ]
     }
   },
   "methods": [
     {
       "name": "add_manager",
-      "doc": "Makes a member a registry manager, which lets them set folder roles and remove any folder from the registry.\nOnly the registry owner may do this.",
+      "doc": "Makes a member a registry manager. The registry gates none of its own methods on the role; the app reads `list_managers` to decide who may administer the workspace.\nOnly the registry owner may do this.",
       "params": [
         {
           "name": "member",
@@ -628,55 +271,6 @@
         "kind": "unit"
       },
       "intent": "mutating"
-    },
-    {
-      "name": "bind_folder_context",
-      "doc": "Attaches a folder's docs context to its registry record.\nAllowed once per folder and only for the folder's registrant; the binding can never be changed or removed.\nNot idempotent: a retry after a lost response fails as already bound, so check `get_folder_context` before repeating.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "context_id",
-          "type": {
-            "$ref": "ContextId"
-          },
-          "doc": "The id of the context created with service `docs` inside the folder's group."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "clear_folder_role",
-      "doc": "Resets a member's role on a folder to the default `Editor`.\nOnly a registry admin may do this; clearing a member who has no role row is not an error.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The member's account id as 64 hex characters."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "destructive": true
     },
     {
       "name": "delete_tag",
@@ -715,80 +309,6 @@
       "destructive": true
     },
     {
-      "name": "get_folder",
-      "doc": "Returns one folder's registry record, including the docs context bound to it.\nFails when the folder is not registered.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        }
-      ],
-      "returns": {
-        "$ref": "FolderDto"
-      },
-      "returns_doc": "The folder row.",
-      "intent": "read_only"
-    },
-    {
-      "name": "get_folder_context",
-      "doc": "Returns the docs context bound to a folder.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        }
-      ],
-      "returns": {
-        "$ref": "ContextId"
-      },
-      "returns_doc": "The context id, or `null` when the folder is unknown or no context is bound yet.",
-      "intent": "read_only"
-    },
-    {
-      "name": "get_folder_role",
-      "doc": "Returns a member's role on a folder, `Editor` when none was set.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The member's account id as 64 hex characters."
-        }
-      ],
-      "returns": {
-        "$ref": "Role"
-      },
-      "returns_doc": "The member's role.",
-      "intent": "read_only"
-    },
-    {
-      "name": "get_folders",
-      "doc": "Lists every folder registered in the workspace, one row per folder, in no guaranteed order.\nThe list is not filtered by access: a restricted folder the caller cannot open is still listed, with its docs context id.",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderDto"
-        }
-      },
-      "returns_doc": "The folder rows; `parent_id` gives the tree and `context_id` the docs context of each folder.",
-      "intent": "read_only"
-    },
-    {
       "name": "get_owner",
       "doc": "Returns the registry owner: the account of the member who created the registry context.\nThe owner is fixed when the registry is created.",
       "params": [],
@@ -799,54 +319,11 @@
       "intent": "read_only"
     },
     {
-      "name": "get_sort_order",
-      "doc": "Returns the stored display order of one parent's child folders.",
-      "params": [
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true,
-          "doc": "The parent folder's group id; `null` for the top level."
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderId"
-        }
-      },
-      "returns_doc": "The child folder ids in display order; empty when no order was stored.",
-      "intent": "read_only"
-    },
-    {
       "name": "init",
       "params": [],
       "returns": {
         "kind": "unit"
       }
-    },
-    {
-      "name": "list_folder_roles",
-      "doc": "Lists the members who have an explicit role on a folder; everyone else is an `Editor`.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderRoleEntry"
-        }
-      },
-      "returns_doc": "One row per member with a role.",
-      "intent": "read_only"
     },
     {
       "name": "list_managers",
@@ -888,72 +365,6 @@
       "intent": "read_only"
     },
     {
-      "name": "move_folder",
-      "doc": "Changes the parent recorded in the registry.\nIt does not move the folder's group in the namespace's group tree, and the Mero Docs app never calls it.\nOnly the folder's registrant may do this.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "new_parent",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true,
-          "doc": "The new parent folder's group id; `null` for top level."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "register_folder",
-      "doc": "Adds a folder to the workspace registry so the workspace lists it, and makes the caller its registrant.\nOnly the registrant can later change or bind the folder; a registry admin can also remove it.\nCreate the folder's group first and pass its group id as `id`.\nNot idempotent: a retry after a lost response fails because the id is already taken, so check `get_folder` before repeating.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true,
-          "doc": "The parent folder's group id; `null` for a top-level folder, whose group sits directly under the namespace."
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "Accent colour as `#rrggbb`; `null` or an empty string for none."
-        },
-        {
-          "name": "alias",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true,
-          "doc": "The folder's display name; `null` for none."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "remove_manager",
       "doc": "Takes manager rights away from a member.\nOnly the registry owner may do this; fails when the member is not a manager.",
       "params": [
@@ -970,34 +381,6 @@
       },
       "intent": "mutating",
       "destructive": true
-    },
-    {
-      "name": "reorder",
-      "doc": "Stores the display order of one parent's child folders.\nEvery id must be a registered folder whose recorded parent is `parent_id`.\nAny member may reorder; the last write wins.",
-      "params": [
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true,
-          "doc": "The parent folder's group id; `null` for the top level."
-        },
-        {
-          "name": "folder_ids",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "FolderId"
-            }
-          },
-          "doc": "The child folders' group ids in the order to show them."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
     },
     {
       "name": "save_view",
@@ -1023,85 +406,6 @@
             "kind": "string"
           },
           "doc": "The search text, at most 1000 bytes."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_color",
-      "doc": "Sets a folder's accent colour.\nOnly the folder's registrant may do this.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "Accent colour as `#rrggbb`; an empty string clears it."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_folder_alias",
-      "doc": "Sets the display name the registry holds for a folder.\nThe registry copy lets members who cannot read a restricted folder's group still see its name, so keep it equal to the group's name (`set_group_metadata`).\nOnly the folder's registrant may do this.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "alias",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The display name; an empty string clears it."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "set_folder_role",
-      "doc": "Sets a member's role on a folder: `Viewer`, `Editor` (the default) or `Manager`.\nOnly a registry admin may do this. A registry admin is the registry owner or a manager.\nThis records the role only: core refuses a member's writes when they hold `ReadOnly` in the folder's group, so pair `Viewer` with that group role.\nThe web app sets both, on the folder and on every Open sub-folder reached through it.",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The member's account id as 64 hex characters."
-        },
-        {
-          "name": "role",
-          "type": {
-            "$ref": "Role"
-          },
-          "doc": "The role to set."
         }
       ],
       "returns": {
@@ -1139,114 +443,9 @@
         "kind": "unit"
       },
       "intent": "mutating"
-    },
-    {
-      "name": "set_visibility",
-      "doc": "Records a visibility flag on the folder's registry record.\nThe Mero Docs app does not write or read this flag; who can join a folder is decided by the group's visibility, set with `set_group_visibility`.\nOnly the folder's registrant may do this.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          },
-          "doc": "`Inherit` or `Restricted`."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "unregister_folder",
-      "doc": "Removes a folder from the registry, together with its per-member role rows when the caller is a registry admin.\nThe folder's group, its docs context and its documents are not touched; delete the context and group separately.\nOnly the folder's registrant or a registry admin may do this. A registry admin is the registry owner or a manager.",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "doc": "The folder's group id."
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating",
-      "destructive": true
     }
   ],
   "events": [
-    {
-      "name": "FolderAliasChanged",
-      "payload": {
-        "$ref": "Event_FolderAliasChanged"
-      },
-      "doc": "A folder's display name changed."
-    },
-    {
-      "name": "FolderColorChanged",
-      "payload": {
-        "$ref": "Event_FolderColorChanged"
-      },
-      "doc": "A folder's colour changed."
-    },
-    {
-      "name": "FolderContextBound",
-      "payload": {
-        "$ref": "Event_FolderContextBound"
-      },
-      "doc": "A docs context was bound to a folder."
-    },
-    {
-      "name": "FolderParentChanged",
-      "payload": {
-        "$ref": "Event_FolderParentChanged"
-      },
-      "doc": "A folder's recorded parent changed."
-    },
-    {
-      "name": "FolderRegistered",
-      "payload": {
-        "$ref": "Event_FolderRegistered"
-      },
-      "doc": "A folder was added to the registry."
-    },
-    {
-      "name": "FolderRoleChanged",
-      "payload": {
-        "$ref": "Event_FolderRoleChanged"
-      },
-      "doc": "A folder's per-member role was set or cleared (UI re-fetches the row)."
-    },
-    {
-      "name": "FolderSortOrderChanged",
-      "payload": {
-        "$ref": "Event_FolderSortOrderChanged"
-      },
-      "doc": "The display order of a parent's child folders changed."
-    },
-    {
-      "name": "FolderUnregistered",
-      "payload": {
-        "$ref": "Event_FolderUnregistered"
-      },
-      "doc": "A folder was removed from the registry."
-    },
-    {
-      "name": "FolderVisibilityChanged",
-      "payload": {
-        "$ref": "Event_FolderVisibilityChanged"
-      },
-      "doc": "A folder's registry visibility flag changed."
-    },
     {
       "name": "ManagerAdded",
       "payload": {

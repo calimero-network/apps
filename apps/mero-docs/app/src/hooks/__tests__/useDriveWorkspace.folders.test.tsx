@@ -19,14 +19,32 @@ import { REGISTRY_CONTEXT_ALIAS } from '@/constants/config';
 const stub = vi.hoisted(() => {
   const refetch = () => Promise.resolve();
   const none: never[] = [];
-  // Each getFolders call per registry context, resolved by the test.
-  const reads: Record<string, ((rows: { id: string }[]) => void)[]> = {};
+  // Each walk of a workspace root's subgroups, resolved by the test.
+  const reads: Record<string, ((rows: { groupId: string }[]) => void)[]> = {};
+  // A folder's own children: none.
+  const leaf: Record<string, true> = {};
   return {
     none,
     refetch,
     reads,
+    leaf,
     mero: {
-      mero: { admin: { getGroupInfo: () => new Promise(() => {}) } },
+      mero: {},
+      // The session admin the folder walk reads.
+      admin: {
+        listSubgroups: (id: string) =>
+          leaf[id]
+            ? Promise.resolve([])
+            : new Promise<{ groupId: string }[]>((resolve) => {
+                (reads[id] ??= []).push(resolve);
+              }),
+        getGroupInfo: async (id: string) => {
+          leaf[id] = true;
+          return { metadata: { name: id }, subgroupVisibility: 'open' };
+        },
+        listGroupContexts: async () => [],
+        getContextsForApplication: async () => ({ contexts: [] }),
+      },
       applicationId: 'app',
       isAuthenticated: true,
       isLoading: false,
@@ -75,11 +93,6 @@ vi.mock('../../generated/registry/RegistryClient', () => ({
       _mero: unknown,
       private contextId: string,
     ) {}
-    getFolders() {
-      return new Promise((resolve) => {
-        (stub.reads[this.contextId] ??= []).push(resolve);
-      });
-    }
     getOwner = () => Promise.resolve('me');
     listManagers = () => Promise.resolve([]);
   },
@@ -120,6 +133,7 @@ const folders = () => screen.getByTestId('folders').textContent;
 
 afterEach(() => {
   localStorage.clear();
+  for (const key of Object.keys(stub.leaf)) delete stub.leaf[key];
   for (const key of Object.keys(stub.reads)) delete stub.reads[key];
   captured = null;
 });
@@ -133,22 +147,23 @@ describe('useDriveWorkspace folder reads across a workspace switch', () => {
         </DriveWorkspaceProvider>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(stub.reads['reg-ns1']).toHaveLength(1));
-    await act(async () => stub.reads['reg-ns1'][0]([{ id: 'a1' }]));
+    await waitFor(() => expect(stub.reads['ns1']).toHaveLength(1));
+    await act(async () => stub.reads['ns1'][0]([{ groupId: 'a1' }]));
     expect(folders()).toBe('a1');
 
     fireEvent.click(screen.getByRole('button', { name: 'capture' }));
     fireEvent.click(screen.getByRole('button', { name: 'ns2' }));
-    await waitFor(() => expect(stub.reads['reg-ns2']).toHaveLength(1));
+    await waitFor(() => expect(stub.reads['ns2']).toHaveLength(1));
 
     await act(async () => {
       void captured?.();
     });
     await act(async () => {
-      for (const resolve of stub.reads['reg-ns1']) resolve([{ id: 'a2' }]);
-      stub.reads['reg-ns2'][0]([{ id: 'b1' }]);
+      for (const resolve of stub.reads['ns1']) resolve([{ groupId: 'a2' }]);
+      stub.reads['ns2'][0]([{ groupId: 'b1' }]);
     });
 
     await waitFor(() => expect(folders()).toBe('b1'));
   });
 });
+

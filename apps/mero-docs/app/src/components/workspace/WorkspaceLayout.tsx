@@ -199,9 +199,11 @@ export function WorkspaceLayout() {
     ],
   );
   const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
-  // A card is about the doc only when its folder is known; an absent folder
-  // keeps its URL so it opens by itself if this node later syncs it.
-  const linkSubject = routedFolder && selectedDocId ? 'doc' : 'folder';
+  // Name what was linked: a doc link reads as a doc whether or not this node
+  // lists its folder, since an unlisted folder may be Restricted to others and
+  // the card must not tell that apart from one that never existed. An absent
+  // folder keeps its URL so it opens by itself if this node later syncs it.
+  const linkSubject = selectedDocId ? 'doc' : 'folder';
   const onLinkTargetGoHome = useCallback(
     () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
     [linkTarget, goWorkspace, goHome],

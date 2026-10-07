@@ -10,8 +10,8 @@ description: >
                            (replaces the removed set_group_alias step).
     - delete_namespace   → the namespace teardown path a future admin
                            surface will call via useDeleteNamespace.
-    - delete_group       → folder deletion, the useFolderOperations.
-                           remove tail step (after unregisterFolder).
+    - delete_group       → folder deletion: one core delete_group, which
+                           cascades to the folder's subtree and contexts.
 
   Also tests multi-namespace isolation: folders created in namespace
   A should not appear in namespace B's list_namespace_groups output.
@@ -52,7 +52,7 @@ nodes:
   # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
   # discovery changed at the image bump with nothing here changing.
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.82
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
   prefix: calimero-node
 
 steps:
@@ -184,9 +184,9 @@ steps:
   # =================================================================
   # Phase E: delete_group - folder cleanup
   #
-  # Mirrors useFolderOperations.remove's final step
-  # (registry.unregisterFolder already tested in main workflow;
-  # here we test the admin-side delete on its own).
+  # Mirrors useFolderOperations.remove: a folder is a core subgroup,
+  # so deleting it is this one admin-side delete (the registry holds
+  # no folder data to clean up).
   # =================================================================
 
   - name: Delete folder in namespace A

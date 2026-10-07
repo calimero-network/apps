@@ -15,22 +15,23 @@
 //      members, visibility, metadata.
 //
 //   2. THE REGISTRY CONTRACT'S OWNER / MANAGERS - state inside this app's
-//      own WASM, gating `set_folder_role`, `add_manager` and friends. Also
-//      keyed by ACCOUNT (as of the contract change that ships with this
-//      file; it used to be keyed by DEVICE id, which is why no grant it ever
-//      made authorised anybody).
-//      This governs: per-folder Viewer/Editor/Manager roles, and who may
-//      appoint further registry managers.
+//      own WASM (`add_manager`, `remove_manager`, `list_managers`). Also
+//      keyed by ACCOUNT (it used to be keyed by DEVICE id, which is why no
+//      grant it ever made authorised anybody). The registry stores no folder
+//      data and no folder roles: per-folder Viewer/Editor/Manager is core's
+//      group role + capabilities (system 1).
+//      This governs: who may appoint further registry managers, and the
+//      app's own reading of who administers the workspace.
 //
-// Core admin does NOT imply registry admin. Promoting someone to Admin in
-// system 1 and stopping there produces the exact failure this file exists to
-// prevent: a person whose badge says Admin, who can create and invite, and who
-// is refused by the contract the moment they try to set a folder role. So a
-// promotion has to drive BOTH, and the UI has to say so when it can only drive
-// one (only the registry OWNER may appoint managers).
+// Core admin does NOT imply registry manager. A namespace Admin promotion
+// therefore drives BOTH, so the registry's manager list stays in step with the
+// workspace's admins, and the UI has to say so when it can only drive one
+// (only the registry OWNER may appoint managers).
 
 import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS, hasCap } from '@/constants/config';
-import type { Role } from '@/generated/registry/RegistryClient';
+/** What a member may do with a folder's documents, as the app shows it. Core
+ *  decides it: ReadOnly is a Viewer, Manager is the folder Manager caps. */
+export type Role = 'Viewer' | 'Editor' | 'Manager';
 
 /** Core group role. The server's vocabulary, spelled as the server spells it. */
 export type GroupRole = 'Admin' | 'Member' | 'ReadOnly' | 'ReadOnlyTee' | 'RelayTee';
@@ -120,24 +121,17 @@ export const WORKSPACE_ROLE_GRANTS: Record<
   Guest: { role: 'ReadOnly', caps: 0 },
 };
 
-/** What each folder role writes: the core role in the folder's group, the
- *  registry folder Role and folder caps. Core ReadOnly is what refuses writes;
+/** What each folder role writes: the core role in the folder's group and its
+ *  folder caps - all of it in core, so a Restricted folder's roles live only
+ *  where its members can read them. Core ReadOnly is what refuses writes;
  *  every role keeps CAN_JOIN_OPEN_SUBGROUPS, which reaches the Open sub-folders. */
 export const FOLDER_ROLE_GRANTS: Record<
   FolderAccessRole,
-  { coreRole: GroupRole; role: Role; folderCaps: number }
+  { coreRole: GroupRole; folderCaps: number }
 > = {
-  Manager: {
-    coreRole: 'Member',
-    role: 'Manager',
-    folderCaps: MANAGER_FOLDER_CAPS | JOIN,
-  },
-  Editor: { coreRole: 'Member', role: 'Editor', folderCaps: JOIN },
-  ReadOnly: {
-    coreRole: 'ReadOnly',
-    role: 'Viewer',
-    folderCaps: JOIN,
-  },
+  Manager: { coreRole: 'Member', folderCaps: MANAGER_FOLDER_CAPS | JOIN },
+  Editor: { coreRole: 'Member', folderCaps: JOIN },
+  ReadOnly: { coreRole: 'ReadOnly', folderCaps: JOIN },
 };
 
 /** A workspace member's role; `null` while a non-admin's mask is loading. */
@@ -151,42 +145,40 @@ export function workspaceRoleOf(role: GroupRole, caps: number | null): ShownRole
   return match ?? 'Custom';
 }
 
-// Roles that core alone decides, whatever the registry or caps say.
+// Roles that core decides whatever the caps say.
 function coreOnlyRole(coreRole: GroupRole): 'Owner' | 'Tee' | null {
   if (coreRole === 'Admin') return 'Owner';
   return isTeeRole(coreRole) ? 'Tee' : null;
 }
 
-/** A folder member's role. A core Admin is the folder's Owner, whatever the
- *  other fields say, because core bypasses them. */
+/** A folder member's role, from core alone; null while the caps load. A core
+ *  Admin is the folder's Owner, whatever the caps say, because core bypasses them. */
 export function folderRoleOf(
   coreRole: GroupRole,
-  registryRole: Role | null,
   folderCaps: number | null,
 ): ShownRole | null {
   const fixed = coreOnlyRole(coreRole);
   if (fixed) return fixed;
-  if (registryRole === null || folderCaps === null) return null;
+  if (folderCaps === null) return null;
   const match = FOLDER_ROLES.find(
     (r) =>
       FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
-      FOLDER_ROLE_GRANTS[r].role === registryRole &&
       FOLDER_ROLE_GRANTS[r].folderCaps === (folderCaps | JOIN),
   );
   return match ?? 'Custom';
 }
 
-/** A folder member's role when only the registry Role is known, not the caps. */
-export function folderRoleOfRegistryRole(coreRole: GroupRole, registryRole: Role): ShownRole {
-  const fixed = coreOnlyRole(coreRole);
-  if (fixed) return fixed;
-  return (
-    FOLDER_ROLES.find(
-      (r) =>
-        FOLDER_ROLE_GRANTS[r].coreRole === coreRole &&
-        FOLDER_ROLE_GRANTS[r].role === registryRole,
-    ) ?? 'Custom'
-  );
+/** The documents role core grants: ReadOnly views, the Manager caps manage,
+ *  anyone else edits. Null while the caps load. */
+export function documentRoleOf(
+  isAdmin: boolean,
+  isReadOnly: boolean,
+  folderCaps: number | null,
+): Role | null {
+  if (isAdmin) return 'Manager';
+  if (folderCaps === null) return null;
+  if (isReadOnly) return 'Viewer';
+  return (folderCaps & MANAGER_FOLDER_CAPS) === MANAGER_FOLDER_CAPS ? 'Manager' : 'Editor';
 }
 
 // Lowest role first; each level lists what it adds over the one below.

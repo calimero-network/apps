@@ -1,7 +1,7 @@
 // One member row inside FolderSharingPanel: name, one RoleSelect bound to
-// the member's (core role, registry Role, folder caps), and an optional remove
-// button. Picking a role writes all three (see FOLDER_ROLE_GRANTS), the core
-// role first because it is the one core enforces. A core Admin (the folder's
+// the member's core role and folder caps, and an optional remove button.
+// Picking a role writes both (see FOLDER_ROLE_GRANTS), the core role first
+// because it is the one core enforces. A core Admin (the folder's
 // owner) or a TEE node shows as such and cannot be changed here.
 //
 // Permission-gating lives on the parent panel; this component trusts
@@ -29,7 +29,6 @@ import {
 import { applyAcross, applyFolderGrant, coreRoleIn } from '@/lib/applyFolderRole';
 import { folderNames } from '@/lib/folderLabel';
 import { openConnected } from '@/utils/ancestry';
-import type { Role } from '@/generated/registry/RegistryClient';
 
 const PARENT_READ_ONLY = 'Read only here comes from a parent folder. Change it there.'; // no row here to change
 
@@ -38,14 +37,12 @@ interface Props {
   identity: string;
   /** Server-reported core role: Admin / Member / ReadOnly. */
   coreRole?: string;
-  /** Registry folder Role for this member (default 'Editor' if absent). */
-  registryRole: Role;
   /** True when this row is the caller's own identity - surfaces a
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
   canManage: boolean;
-  /** Called after the role's registry role + folder caps are both
-   *  written, so the parent can refetch the role list. */
+  /** Called after the role and folder caps are written, so the parent can
+   *  refetch the member list. */
   onAfterRoleChange?: () => void;
   /** Remove this member from the folder. Undefined hides the button. */
   onRemove?: (identity: string) => void;
@@ -56,7 +53,6 @@ export function FolderMemberRoleRow({
   folderId,
   identity,
   coreRole,
-  registryRole,
   isSelf,
   canManage,
   onAfterRoleChange,
@@ -64,8 +60,7 @@ export function FolderMemberRoleRow({
   removing,
 }: Props) {
   const { admin } = useMero();
-  const { registryClient, registryContextId, namespaceId, folders } =
-    useDriveWorkspace();
+  const { registryContextId, namespaceId, folders } = useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
   const { name, settled } = useMemberName(namespaceId, identity);
   // Null while the name loads, so labels never call a named member unnamed.
@@ -90,17 +85,16 @@ export function FolderMemberRoleRow({
   const core = parseGroupRole(coreRole);
   const current = folderRoleOf(
     core,
-    registryRole,
     caps.loading || caps.error ? null : (caps.capabilities ?? null),
   );
 
   const applyRole = async (next: FolderAccessRole) => {
-    if (!registryClient || !admin) {
+    if (!admin) {
       setUpdateError('Workspace not ready');
       return;
     }
     // `identity` is the member's account, which is what core keys group rows by.
-    const writer = { admin: admin, registry: registryClient };
+    const writer = { admin };
     const readOnly = next === 'ReadOnly';
     setUpdating(true);
     setUpdateError(null);
@@ -117,8 +111,8 @@ export function FolderMemberRoleRow({
         return;
       }
       // Read only covers the Open sub-folders reached through this one, so its
-      // start and its end carry down (also when only the registry still says it).
-      if (readOnly || core === 'ReadOnly' || registryRole === 'Viewer') {
+      // start and its end carry down.
+      if (readOnly || core === 'ReadOnly') {
         const { open, unknown } = openConnected(folders, folderId);
         const failed = [...unknown, ...(await applyAcross(writer, open, identity, readOnly))];
         if (failed.length > 0) setUpdateError(subtreeFailure(failed));
@@ -148,9 +142,6 @@ export function FolderMemberRoleRow({
     });
     if (ok) await applyRole(next);
   };
-
-  // A Viewer row written before Read only also set the core role.
-  const unenforced = canManage && core === 'Member' && registryRole === 'Viewer';
 
   return (
     <li className="px-4 py-2 text-sm">
@@ -190,20 +181,6 @@ export function FolderMemberRoleRow({
           )}
         </div>
       </div>
-      {unenforced && (
-        <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          Read only, but not enforced.
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-xs"
-            disabled={updating}
-            onClick={() => void applyRole('ReadOnly')}
-          >
-            Enforce
-          </Button>
-        </p>
-      )}
       {updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
           {updateError}

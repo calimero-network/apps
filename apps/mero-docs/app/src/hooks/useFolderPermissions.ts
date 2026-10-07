@@ -1,50 +1,37 @@
-// Folder-scope permissions - derived from TWO orthogonal sources:
+// Folder-scope permissions - all of them from core:
 //
 //  1. The caller's core capability bitmask on the folder's subgroup
 //     (`useMemberCaps`) - the same `MemberCapabilities` layout the
-//     backend enforces via `is_group_admin_or_has_capability`
-//     (core/context/group_store/membership.rs). Drives the
+//     backend enforces via `is_group_admin_or_has_capability`. Drives the
 //     folder-admin affordances: rename / visibility / delete / invite /
 //     manage-members. `isAdmin` (core group-admin role) bypasses it.
 //
-//  2. The Registry per-(folder, member) `Role` (`useFolderRole`) - the
-//     "Viewer vs Editor vs Manager on documents" concept that does NOT
-//     exist in the core bitmask (design spec §5.3 / §5.5). Drives
-//     `canEditDocs`. An absent role row resolves to `Editor` (the WASM
-//     default), so a brand-new member can edit by default; an explicit
-//     `Viewer` downgrades them to read-only.
+//  2. The documents `Role` (Viewer / Editor / Manager), derived from the
+//     same read (`documentRoleOf`): core ReadOnly is a Viewer, the folder
+//     Manager caps are a Manager, anyone else edits. Core ReadOnly is also
+//     what refuses a Viewer's writes, so the two cannot disagree. Nothing
+//     about a folder's roles is kept in the namespace-wide registry, which
+//     every workspace member replicates - a Restricted folder's roles stay
+//     with the members who can read it.
 //
 //  3. Registry ownership/managers - only `permissionsNeedOwner`: folder
-//     roles also write core's role and caps, which only the folder's
-//     admin may, so `canManagePermissions` is `isAdmin`. The owner is the registry's creator, fixed by the contract at `init`;
-//     managers are added by the owner. Read from `useDriveWorkspace().registryAdmin`
-//     (fetched ONCE for the whole tree) - NOT via a per-row hook call.
+//     roles are core roles and caps, which only the folder's admin may
+//     write, so `canManagePermissions` is `isAdmin`. Read from
+//     `useDriveWorkspace().registryAdmin` (fetched ONCE for the whole tree).
 //
-// Open subgroups inherit membership from the
-// parent namespace via the server's parent-walk, so a namespace member
-// with `CAN_JOIN_OPEN_SUBGROUPS` (default-on) gets real caps from the
-// admin API directly - no app-layer fallback needed.
+// Open subgroups inherit membership from the parent namespace via the
+// server's parent-walk, so a namespace member with
+// `CAN_JOIN_OPEN_SUBGROUPS` (default-on) gets real caps from the admin API
+// directly - no app-layer fallback needed.
 //
-// `isMember` (folder subgroup membership) implies read access. Editing
-// docs is `canEditDocs` - and it's deliberately CONSERVATIVE: a member
-// can edit only once their registry Role has *definitively* resolved to
-// non-Viewer (or the workspace has no Registry context at all, in which
-// case there's no Role to wait on and we fall back to membership). A
-// still-loading role, a role-fetch error, or a definitively-`Viewer`
-// role all keep `canEditDocs` false, and so does core ReadOnly on the
-// folder: core refuses those writes, so the UI must never offer one.
-//
-// TODO(perf): split a lightweight `useFolderCaps(folderId)` that skips
-// `useFolderRole` (and the registry Role read it does), for
-// FolderContextMenu / NewFolderButton / FolderVisibilityToggle which
-// only consume the cap-derived booleans, never `role`/`canEditDocs`/
-// `canManagePermissions`. Today every folder row that renders a context
-// menu fires an extra N×getFolderRole. (Out of scope for this round.)
+// `isMember` (folder subgroup membership) implies read access. Editing docs
+// is `canEditDocs`, deliberately CONSERVATIVE: false while the caps load, on
+// a caps error, and for core ReadOnly - core refuses those writes, so the UI
+// must never offer one.
 
 import { CAPABILITIES, hasCap } from '../constants/config';
-import type { Role } from '../generated/registry/RegistryClient';
+import { documentRoleOf, type Role } from '../lib/roles';
 import { useMemberCaps } from './useMemberCaps';
-import { useFolderRole } from './useFolderRole';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import { isGroupNotOnNode, isMemberGone } from '@/utils/accessDenied';
 
@@ -61,21 +48,15 @@ export interface FolderPermissions {
   canCreateSubfolder: boolean;
   canRename: boolean; // isAdmin || CAN_MANAGE_METADATA
   canManageVisibility: boolean; // CAN_MANAGE_VISIBILITY
-  /** Delete THIS folder. Per spec §5.5: a core group-admin always, or
-   *  a member who both holds `CAN_DELETE_SUBGROUP` *and* has the
-   *  registry `Manager` role on the folder. */
+  /** Delete THIS folder: a core group-admin, or a member holding
+   *  `CAN_DELETE_SUBGROUP` (the folder Manager grant). */
   canDelete: boolean;
   canInviteMembers: boolean; // CAN_INVITE_MEMBERS
   canManageMembers: boolean; // MANAGE_MEMBERS
-  /** Edit or comment on documents in this folder. CONSERVATIVE: `isAdmin`,
-   *  or a folder member who is not core ReadOnly and whose registry `Role`
-   *  has *definitively resolved* to non-Viewer - OR a folder member when the
-   *  workspace has no Registry context at all (nothing to resolve, fall back
-   *  to membership).
-   *  While the role is still loading, on a role-fetch error, or on a
-   *  definitive `Viewer`, this is `false` (the editor stays read-only
-   *  so autosave can't persist a would-be Viewer's edits). Pair with
-   *  `roleLoading` for a "checking permissions" hint. */
+  /** Edit or comment on documents in this folder: `isAdmin`, or a folder
+   *  member core does not hold ReadOnly. False while the caps load and on a
+   *  caps error, so autosave can't persist a would-be Viewer's edits. Pair
+   *  with `roleLoading` for a "checking permissions" hint. */
   canEditDocs: boolean;
   /** Change per-folder roles: `isAdmin` only, since core takes a folder's
    *  role and caps changes from its admin alone. */
@@ -83,15 +64,13 @@ export interface FolderPermissions {
   /** A registry owner or manager who is not this folder's admin: the panel
    *  says why the roles are fixed for them. */
   permissionsNeedOwner: boolean;
-  /** The caller's registry `Role` on this folder; `null` while loading
-   *  OR when there's no Registry context. `'Editor'` once loaded if no
-   *  explicit row exists (WASM default). */
+  /** The caller's documents role on this folder, from core; `null` while
+   *  the caps load or on a caps error. */
   role: Role | null;
-  /** True while the registry Role read is in flight (false if there's
-   *  no Registry context to read from). */
+  /** True while the caps read that decides `role` is in flight. */
   roleLoading: boolean;
-  /** Non-null when the registry Role read failed. While set, editing is
-   *  disabled (we can't confirm the caller isn't a Viewer). */
+  /** The caps read's error, when it failed. While set, editing is disabled
+   *  (we can't confirm the caller isn't a Viewer). */
   roleError: Error | null;
   /** Aggregate: any folder-admin-ish power. Used to show the sharing
    *  panel / context-menu admin section. */
@@ -131,12 +110,10 @@ export function useFolderPermissions(
     namespaceId,
     folderId,
   );
-  const {
-    role,
-    loading: roleLoading,
-    error: roleError,
-    registryAvailable,
-  } = useFolderRole(folderId || null);
+  // The documents role is core's: its ReadOnly role and the folder caps.
+  const role = error ? null : documentRoleOf(isAdmin, isReadOnly, caps);
+  const roleLoading = caps === null;
+  const roleError = error;
   const { isOwnerOrManager } = useDriveWorkspace().registryAdmin;
 
   const has = (bit: number) => isAdmin || (caps !== null && hasCap(caps, bit));
@@ -149,36 +126,14 @@ export function useFolderPermissions(
 
   const isMember = caps !== null && error === null;
 
-  // Per spec §5.5: a core admin can always delete; otherwise the
-  // member needs BOTH the delete cap and the registry Manager role.
-  //
-  // No-Registry-context fallback: when there's no registry to read
-  // roles from (`!registryAvailable`), the Manager gate has nothing to
-  // resolve and `role` would be `null` forever. In that case fall back
-  // to the cap-only check - same approach as `canEditDocs` below for
-  // its registry-unavailable branch. Without this, a non-admin holding
-  // `CAN_DELETE_SUBGROUP` could never delete folders in a workspace
-  // without a Registry context.
-  const canDelete =
-    isAdmin ||
-    (hasDeleteCap && (registryAvailable ? role === 'Manager' : true));
+  // A core admin can always delete; otherwise the member needs the delete cap,
+  // which only the folder Manager grant carries.
+  const canDelete = isAdmin || hasDeleteCap;
 
   // Doc editing - CONSERVATIVE. Core refuses a ReadOnly member's writes,
-  // so an offered edit could only be typed and then lost. Therefore:
-  //   - `isAdmin`                       → always.
-  //   - core ReadOnly on the folder      → never.
-  //   - a folder member, registry exists → only once `useFolderRole`
-  //     has *definitively* resolved to a non-Viewer role (not while
-  //     `roleLoading`, not on `roleError`).
-  //   - a folder member, NO registry ctx → fall back to membership
-  //     (there's no Role to wait on; `registryAvailable` is false and
-  //     `role` would be `null` forever).
-  // A refetch keeps the last resolved role, so gate on that role rather than
-  // on a fetch being in flight: registry sync refetches it constantly.
-  const roleAllowsEdit = registryAvailable
-    ? roleError === null && role !== null && role !== 'Viewer'
-    : true;
-  const canEditDocs = isAdmin || (isMember && !isReadOnly && roleAllowsEdit);
+  // so an offered edit could only be typed and then lost: only an admin, or a
+  // member core does not hold ReadOnly.
+  const canEditDocs = isAdmin || (isMember && !isReadOnly);
 
   const canManagePermissions = isAdmin;
 
