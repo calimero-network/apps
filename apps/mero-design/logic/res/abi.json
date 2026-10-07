@@ -1389,7 +1389,7 @@
     },
     {
       "name": "set_layer_index",
-      "doc": "Move one element to a position in the paint order and renumber every element from 0,\nso a one-step move survives a sync. Editors only. Does nothing if `id` names no element.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"index\":0,\"updated_at\":1727000020000}\n```",
+      "doc": "Move one element to a position in the paint order. Only the elements whose index must\nchange are written (see `layer_move_writes`): renumbering the whole board ran out of gas\non a board of a few hundred elements. Editors only. Does nothing if `id` names no element.\n\n# Errors\nFails if the caller is not an editor or admin.\n\n# Examples\n```json\n{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"index\":0,\"updated_at\":1727000020000}\n```",
       "params": [
         {
           "name": "id",

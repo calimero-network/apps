@@ -2273,7 +2273,10 @@ mod tests {
     #[test]
     fn layer_moves_write_only_what_they_must() {
         let board = |vals: &[u32]| -> Vec<(String, u32)> {
-            vals.iter().enumerate().map(|(i, v)| (format!("e{i}"), *v)).collect()
+            vals.iter()
+                .enumerate()
+                .map(|(i, v)| (format!("e{i}"), *v))
+                .collect()
         };
         // Dense: one step is a swap of two.
         let w = super::layer_move_writes(&board(&[0, 1, 2, 3]), "e1", 2).unwrap();
@@ -2286,7 +2289,12 @@ mod tests {
         assert_eq!(w, vec![("e2".to_owned(), 2)]);
         // A big dense board: one step never touches the rest.
         let big: Vec<u32> = (0..500).collect();
-        assert_eq!(super::layer_move_writes(&board(&big), "e250", 251).unwrap().len(), 2);
+        assert_eq!(
+            super::layer_move_writes(&board(&big), "e250", 251)
+                .unwrap()
+                .len(),
+            2
+        );
         // Duplicates get pulled apart just enough.
         let w = super::layer_move_writes(&board(&[0, 0, 0]), "e0", 2).unwrap();
         let mut vals: Vec<u32> = w.iter().map(|(_, v)| *v).collect();
