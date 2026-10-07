@@ -191,7 +191,12 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
       const lineHeight = size * 1.16;
       const align = el.data.text_align ?? "left";
       const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
-      const x = align === "center" ? el.x + el.width / 2 : align === "right" ? el.x + el.width : el.x;
+      // The canvas box never shrinks below the text (FabricCanvas AlignedIText),
+      // so neither does this one — a stored width older than the latest edit
+      // would otherwise centre the words off to one side.
+      const measure = measurerFor(fontOf({ ...el, data: { ...el.data, fontSize: size } }), size);
+      const boxWidth = align === "left" ? el.width : Math.max(el.width, ...lines.map((line) => measure(line)));
+      const x = align === "center" ? el.x + boxWidth / 2 : align === "right" ? el.x + boxWidth : el.x;
       const vertical = el.data.vertical_align ?? "top";
       const block = lines.length * lineHeight;
       const offset =
