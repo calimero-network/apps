@@ -165,7 +165,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-account"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "borsh 1.8.1",
  "calimero-primitives",
@@ -176,18 +176,17 @@ dependencies = [
 [[package]]
 name = "calimero-prelude"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "borsh 1.8.1",
  "calimero-primitives",
  "serde",
- "sha2 0.11.0",
 ]
 
 [[package]]
 name = "calimero-primitives"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "borsh 1.8.1",
  "calimero-wasm-abi",
@@ -206,7 +205,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "borsh 1.8.1",
  "calimero-account",
@@ -223,7 +222,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -236,7 +235,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "borsh 1.8.1",
  "calimero-account",
@@ -260,7 +259,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "quote",
  "syn 3.0.6",
@@ -269,7 +268,7 @@ dependencies = [
 [[package]]
 name = "calimero-sys"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "cfg-if",
 ]
@@ -277,7 +276,7 @@ dependencies = [
 [[package]]
 name = "calimero-wasm-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.65#6c76f1776727d4a5a1a823bc092c90b4399f2e3c"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.83#643a082a7296f1c2bb4b0cb0c88e75154146bd61"
 dependencies = [
  "indexmap",
  "serde",
@@ -718,9 +717,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "libc"
-version = "0.2.189"
+version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libp2p-identity"
@@ -1234,9 +1233,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "wasmparser"
-version = "0.259.0"
+version = "0.261.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f7c12eac7bb587801590f6a67ff0bc84d0748513864b71108e4b311cc3df694"
+checksum = "4f20f20e44f7e8aeb6744823ea9d869ede51e51be4fdaedede2852282e54d2d8"
 dependencies = [
  "bitflags",
  "hashbrown 0.17.1",
@@ -1273,9 +1272,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1285,18 +1284,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.59"
+version = "0.8.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6df92bf3d9227be3d53173901ddbffac2babc27ae50f397776ffd6dc33f800cb"
+checksum = "879fb705ce98c32e41ebdb970fbe1204f8492423b314c6ab0354c3e7b5542866"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.59"
+version = "0.8.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac4f328cf2f05d084e496c3e9c3f33ed0a183656a16e1fcec4d464d8373aec82"
+checksum = "708882a28301d604fa039cc7727607a98d04c4b86dc76ec9cc683f805d709759"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1326,9 +1325,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.0"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 dependencies = [
  "zeroize_derive",
 ]
