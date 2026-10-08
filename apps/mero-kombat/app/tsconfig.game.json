@@ -1,0 +1,11 @@
+{
+  "// note": "The game engine's unit tests. Node types for reading the contract source off disk; index checks off like the browser project, because the engine indexes fixed two-slot tuples throughout.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/game",
+    "tsBuildInfoFile": "./dist-types/game.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/game"]
+}

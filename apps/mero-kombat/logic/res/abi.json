@@ -1,0 +1,859 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Action": {
+      "kind": "record",
+      "doc": "One thing a fighter did, keyed `\"<account>/<match>/<round>/<nonce>\"`.\n\nThe match, the round and the author come from the key and the owner stamp.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The client's own sequence number for this action. It is how the\nopponent's screen matches a blow it already saw over the fast channel\nto the row that makes it count, so nothing is ever subtracted twice."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`punch`, `kick`, `uppercut`, `sweep`, `air_kick`, `special`, `jump`,\n`block`."
+        },
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The attacker says it connected."
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "...and that the defender was guarding when it did."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Its author's clock. Display only."
+        },
+        {
+          "name": "opponent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member the attacker saw in the other corner — how a player's own,\nunforgeable rows vouch for who they were fighting, which is what locks\nthe corners once a fight is under way (see [`MeroKombat::corners`])."
+        }
+      ]
+    },
+    "ArenaView": {
+      "kind": "record",
+      "doc": "Everything a client needs to draw the arena, in one call — every field\nderived from the same pass over the rows.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Index of the match being fought now."
+        },
+        {
+          "name": "round",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Index of the round being fought now (0-based)."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`waiting`, `fighting` or `finished`."
+        },
+        {
+          "name": "round_results",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "One entry per decided round of this match: `p1`, `p2` or `draw`."
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`p1`, `p2`, `draw`, or `\"\"` while the match is on."
+        },
+        {
+          "name": "flawless",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "p1",
+          "type": {
+            "$ref": "FighterView"
+          }
+        },
+        {
+          "name": "p2",
+          "type": {
+            "$ref": "FighterView"
+          }
+        },
+        {
+          "name": "me",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The caller, as the contract sees it."
+        },
+        {
+          "name": "my_seat",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`p1`, `p2`, or `\"\"` for a spectator."
+        },
+        {
+          "name": "hits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "HitView"
+            }
+          },
+          "doc": "This round's landed blows, newest first, at most [`RECENT_HITS`]."
+        },
+        {
+          "name": "match_actions",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Actions written in the current match, both corners."
+        },
+        {
+          "name": "total_actions",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Every action ever written at this arena — the transaction count."
+        },
+        {
+          "name": "max_hp",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "rounds_to_win",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_Acted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Event_MatchOver": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MatchStarted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_RoundOver": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Seated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Vacated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FighterView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`p1` or `p2`."
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member in this corner, or `\"\"` when it is empty."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`FIGHTERS`]."
+        },
+        {
+          "name": "hp",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Health left in the current round."
+        },
+        {
+          "name": "rounds_won",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "matches_won",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Matches this corner has won at this arena."
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "HitView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The corner that threw it."
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The thrower's own sequence number (see [`Action::id`])."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "damage",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MatchRecord": {
+      "kind": "record",
+      "doc": "A claim that this player started a rematch, keyed `\"<account>/<match>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MatchSummary": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "flawless",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "rounds",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "MeroKombat": {
+      "kind": "record",
+      "doc": "Every map a player writes is owned and every key names its author, so a\nmember can only ever write rows about themselves — and, outside presence,\nnever change or remove one. Core enforces both at apply time.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            }
+          }
+        },
+        {
+          "name": "seat_claims",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Seat"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<nonce>\"` -> one person's claim on that corner."
+        },
+        {
+          "name": "vacated",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<claim nonce>/<nonce>\"` -> when that claim was given\nup. Honoured only for a claimant who never fought here."
+        },
+        {
+          "name": "matches",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MatchRecord"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<match>/<nonce>\"` -> a claim that this player started it."
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Action"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<match>/<round>/<nonce>\"` -> one thing that player did."
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "doc": "A person's presence row — name, chosen fighter, last sign of life. The one\nthing a player keeps RE-stating, so it lives in their own [`UserStorage`]\nslot and resolves to the newest copy.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Seat": {
+      "kind": "record",
+      "doc": "One person's claim on one corner, keyed `\"<seat>/<account>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "act",
+      "doc": "Record one action — a punch, a kick, a jump — in round `round` of match\n`match_index`. `hit` says it connected, `blocked` that it was guarded.\n\nEvery call is one transaction. `match_index` and `round` are stated by\nthe client rather than assumed, so a blow thrown in the closing frame of\na round cannot silently land in the next one: it is refused instead.",
+      "params": [
+        {
+          "name": "match_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "arena",
+      "doc": "The whole arena in one call — see [`ArenaView`].",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ArenaView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "history",
+      "doc": "Every match this arena has fought, oldest first.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MatchSummary"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "doc": "Announce yourself, or refresh your name and fighter.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "pick",
+      "doc": "Change fighter. Allowed any time — the look is yours, and the damage\ntable is the same for everybody.",
+      "params": [
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rematch",
+      "doc": "Start the next match. Corners stay; health and rounds reset.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "sit",
+      "doc": "Take corner `p1` or `p2`, if it is free.\n\nOne person cannot hold both: this is a game between two people, and a\nfight against yourself has no one on the other side of the network.",
+      "params": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "stand",
+      "doc": "Leave your corner — only before you have fought here. A corner someone\nhas fought from is the record of who fought.",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "Acted",
+      "payload": {
+        "$ref": "Event_Acted"
+      }
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "MatchOver",
+      "payload": {
+        "$ref": "Event_MatchOver"
+      }
+    },
+    {
+      "name": "MatchStarted",
+      "payload": {
+        "$ref": "Event_MatchStarted"
+      }
+    },
+    {
+      "name": "PlayerJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoundOver",
+      "payload": {
+        "$ref": "Event_RoundOver"
+      }
+    },
+    {
+      "name": "Seated",
+      "payload": {
+        "$ref": "Event_Seated"
+      }
+    },
+    {
+      "name": "Vacated",
+      "payload": {
+        "$ref": "Event_Vacated"
+      }
+    }
+  ],
+  "state_root": "MeroKombat",
+  "state_version": 1
+}

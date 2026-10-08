@@ -1,0 +1,674 @@
+name: Mero Kombat E2E
+description: >
+  Two nodes fight a full match through the contract and converge on it.
+
+  Each node takes a corner and throws blows as transactions. After the
+  exchanges, the OTHER node is asked for the arena, so a blow that never
+  replicated, or health derived from a divergent action list, fails here. Then
+  node-1 lands two knock-outs — rounds the contract derives, nobody writes "K.O."
+  — the match ends, and a rematch starts a fresh fight with the score kept.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# Clears the public bootstrap list and tightens sync — see mero-chess's
+# play-a-game.yml for the history.
+e2e_mode: true
+
+nodes:
+  count: 2
+  # Matched to the calimero-sdk tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  prefix: kombat-node
+  mdns: true
+
+steps:
+  - name: Install application on kombat-node-1
+    type: install_application
+    node: kombat-node-1
+    path: dist/com.calimero.mero-kombat.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Installed on EVERY node: a node does not serve bytecode to its peers.
+  - name: Install application on kombat-node-2
+    type: install_application
+    node: kombat-node-2
+    path: dist/com.calimero.mero-kombat.mpk
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: kombat-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - kombat-node-2
+    params: '{"title": "Two nodes", "now": 1700000000000}'
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_kombat-node-2}})"
+
+  # ─── entering the arena ─────────────────────────────────────────────────
+
+  - name: node-1 announces itself
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: join
+    args:
+      name: "Node One"
+      fighter: "cryo"
+      now: 1700000002000
+
+  - name: node-1 switches fighter
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: pick
+    args:
+      fighter: "kinetic"
+      now: 1700000003000
+
+  - name: node-1 takes the left corner
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sit
+    args:
+      seat: "p1"
+      name: "Node One"
+      fighter: "kinetic"
+      now: 1700000004000
+
+  - name: node-2 takes the right corner
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: sit
+    args:
+      seat: "p2"
+      name: "Node Two"
+      fighter: "inferno"
+      now: 1700000005000
+
+  - name: Wait for both corners to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the arena
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: arena
+    args:
+      now: 1700000006000
+    outputs:
+      n1_ready: result
+
+  - name: Assert node-1 sees a live fight from the left corner
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_ready}}, {"output": {"status": "fighting", "match_index": 0, "round": 0, "my_seat": "p1"}})'
+      - 'json_subset({{n1_ready}}, {"output": {"p1": {"name": "Node One", "fighter": "kinetic", "hp": 100}, "p2": {"name": "Node Two", "fighter": "inferno", "hp": 100}}})'
+
+  - name: node-2 tries to take the corner node-1 is in
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: sit
+    args:
+      seat: "p1"
+      name: "Node Two"
+      fighter: "inferno"
+      now: 1700000007000
+    expected_failure: true
+    outputs:
+      corner_taken_error: error
+
+  - name: Assert the second claim really was refused
+    type: assert
+    statements:
+      - "is_set({{corner_taken_error}})"
+
+  # ─── the exchange: every blow a transaction ───────────────────────────
+
+  - name: node-1 throws a jump
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 1
+      kind: "jump"
+      hit: false
+      blocked: false
+      now: 1700000008000
+
+  - name: node-1 throws a punch
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 2
+      kind: "punch"
+      hit: true
+      blocked: false
+      now: 1700000009000
+
+  - name: node-1 throws a kick
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 3
+      kind: "kick"
+      hit: true
+      blocked: false
+      now: 1700000010000
+
+  - name: node-1 throws a uppercut
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 4
+      kind: "uppercut"
+      hit: false
+      blocked: false
+      now: 1700000011000
+
+  - name: node-2 answers with a block
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 5
+      kind: "block"
+      hit: false
+      blocked: false
+      now: 1700000012000
+
+  - name: node-2 answers with a special
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 6
+      kind: "special"
+      hit: true
+      blocked: false
+      now: 1700000013000
+
+  - name: node-2 answers with a punch
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 7
+      kind: "punch"
+      hit: true
+      blocked: true
+      now: 1700000014000
+
+  - name: Wait for the exchange to reach both nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the arena
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: arena
+    args:
+      now: 1700000015000
+    outputs:
+      n2_hurt: result
+
+  - name: Assert node-2 derived the same health from both nodes' blows
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_hurt}}, {"output": {"my_seat": "p2", "total_actions": 7, "match_actions": 7}})'
+      - 'json_subset({{n2_hurt}}, {"output": {"p1": {"hp": 88}, "p2": {"hp": 88}}})'
+
+  # ─── two knock-outs from node-1 ────────────────────────────────────────
+
+  - name: node-1 uppercut 1 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 8
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000016000
+
+  - name: node-1 uppercut 2 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 9
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000017000
+
+  - name: node-1 uppercut 3 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 10
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000018000
+
+  - name: node-1 uppercut 4 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 11
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000019000
+
+  - name: node-1 uppercut 5 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 12
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000020000
+
+  - name: node-1 uppercut 6 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 13
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000021000
+
+  - name: node-1 uppercut 7 in round one
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 14
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000022000
+
+  - name: node-1 sees round one decided
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: arena
+    args:
+      now: 1700000023000
+    outputs:
+      n1_round: result
+
+  - name: Assert the knock-out was derived and round two began
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_round}}, {"output": {"round": 1, "round_results": ["p1"], "status": "fighting", "p2": {"hp": 100, "rounds_won": 0}, "p1": {"rounds_won": 1}}})'
+
+  - name: A late blow for the decided round is refused
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: act
+    args:
+      match_index: 0
+      round: 0
+      id: 999
+      kind: "punch"
+      hit: true
+      blocked: false
+      now: 1700000024000
+    expected_failure: true
+    outputs:
+      late_error: error
+
+  - name: Wait for the knock-out to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Assert the late blow really was refused
+    type: assert
+    statements:
+      - "is_set({{late_error}})"
+
+  - name: node-1 uppercut 1 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 15
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000025000
+
+  - name: node-1 uppercut 2 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 16
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000026000
+
+  - name: node-1 uppercut 3 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 17
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000027000
+
+  - name: node-1 uppercut 4 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 18
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000028000
+
+  - name: node-1 uppercut 5 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 19
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000029000
+
+  - name: node-1 uppercut 6 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 20
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000030000
+
+  - name: node-1 uppercut 7 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 21
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000031000
+
+  - name: node-1 uppercut 8 in round two
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: act
+    args:
+      match_index: 0
+      round: 1
+      id: 22
+      kind: "uppercut"
+      hit: true
+      blocked: false
+      now: 1700000032000
+
+  - name: Wait for the deciding round to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the result
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: arena
+    args:
+      now: 1700000033000
+    outputs:
+      n2_over: result
+
+  - name: Assert node-2 derived the same winner, flawless
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_over}}, {"output": {"status": "finished", "winner": "p1", "flawless": true, "round_results": ["p1", "p1"]}})'
+      - 'json_subset({{n2_over}}, {"output": {"p1": {"matches_won": 1}}})'
+
+  - name: node-2 reads the record
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: history
+    outputs:
+      n2_history: result
+
+  - name: Assert the record holds the finished match
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_history}}, {"output": [{"index": 0, "winner": "p1"}]})'
+
+  # ─── the rematch ───────────────────────────────────────────────────────
+
+  - name: node-2 cannot leave a corner it has fought from
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: stand
+    args:
+      now: 1700000034000
+    expected_failure: true
+    outputs:
+      stand_error: error
+
+  - name: Assert standing up was refused
+    type: assert
+    statements:
+      - "is_set({{stand_error}})"
+
+  - name: node-2 calls a rematch
+    type: call
+    node: kombat-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kombat-node-2}}"
+    method: rematch
+    args:
+      now: 1700000035000
+    outputs:
+      next_match: result
+
+  - name: Assert the rematch is match one
+    type: json_assert
+    statements:
+      - 'json_equal({{next_match}}, {"output": 1})'
+
+  - name: Wait for the rematch to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kombat-node-1
+      - kombat-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the new match
+    type: call
+    node: kombat-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: arena
+    args:
+      now: 1700000036000
+    outputs:
+      n1_rematch: result
+
+  - name: Assert a fresh fight with the score kept
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_rematch}}, {"output": {"status": "fighting", "match_index": 1, "round": 0, "match_actions": 0}})'
+      - 'json_subset({{n1_rematch}}, {"output": {"p1": {"hp": 100, "matches_won": 1}, "p2": {"hp": 100}}})'

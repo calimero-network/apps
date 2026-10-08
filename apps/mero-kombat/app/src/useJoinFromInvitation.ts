@@ -1,0 +1,244 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDeepLink } from "@calimero-network/mero-platform-react";
+import type { DeepLinkIntent } from "@calimero-network/mero-platform";
+import { setContextId, useMero } from "@calimero-network/mero-react";
+import {
+  describeInviteFailure,
+  redeemInvitation,
+  shouldRetain,
+  type InviteRedeemer,
+} from "@calimero-apps/invite";
+import {
+  decodeInvitationPayload,
+  parseInvitationPayload,
+  type KombatInvitationPayload,
+} from "./utils/invitation";
+
+export type JoinState =
+  /** Nothing pending. */
+  | { status: "idle" }
+  /**
+   * A link arrived and is waiting for the user to say yes.
+   *
+   * Auto-redeeming was the first version and is wrong: following a link would
+   * silently join the user's identity to a namespace someone else chose and
+   * switch their active context, with no moment at which they saw what was
+   * about to happen. An invitation is a request, so it gets a prompt. The cost
+   * is one click; the alternative is a link that acts on your behalf.
+   */
+  | { status: "confirm"; payload: KombatInvitationPayload }
+  | { status: "joining"; payload: KombatInvitationPayload }
+  /**
+   * `fromLink` distinguishes the two retry stories: a link-delivered invitation
+   * lives in the pending intent store and is replayed on the next load, while a
+   * pasted one was never captured there and is simply gone.
+   */
+  | { status: "failed"; message: string; retryable: boolean; fromLink: boolean };
+
+/**
+ * Redeem a pending invitation, whenever one arrives and the session is ready.
+ *
+ * Two ordering facts shape this:
+ *
+ *  * The intent is captured before React mounts (see main.tsx), so by the time
+ *    this hook runs it may already be buffered. `useDeepLink` replays it.
+ *  * Joining needs an authenticated session, and a cold invite open has none.
+ *    So an intent that arrives unauthenticated is HELD, not failed, and retried
+ *    once `isAuthenticated` flips.
+ *
+ * The intent is only acked — permanently discarded — on success, or on an error
+ * that can never succeed. Everything else keeps it for the next load. Which is
+ * which is decided by @calimero-apps/invite (`redeemInvitation`), which also
+ * treats "the request failed but the namespace is now listed" as success: the
+ * desktop proxy aborts at 30s while a join can take ~95s and land anyway.
+ */
+export function useJoinFromInvitation(): {
+  state: JoinState;
+  /** Redeem a pasted invitation — same path, no DeepLinkIntent to ack. */
+  redeemPasted: (payloadJson: string) => void;
+  /** Accept a link-delivered invitation. */
+  confirmJoin: () => void;
+  /** Refuse one, and stop being asked. */
+  declineJoin: () => void;
+} {
+  // `admin`, NOT `mero.admin`. `mero` is the raw client, and on a delegated
+  // (account) session its transport is the relay: `mero.admin.joinNamespace`
+  // became `POST {relay}/admin-api/namespaces/{ns}/join` with the account's
+  // bearer token, which carries no `namespace:manage` — a 403 the redeemer
+  // then reported as "you can't join with this invitation". `admin` is the
+  // session-aware one: the node's own client on a node login, and on an
+  // account the account admin, whose `joinNamespace` redeems the invitation
+  // through the admitter's unauthenticated route and moves the session onto
+  // that relay once it is in.
+  const { isAuthenticated, admin, isDelegated } = useMero();
+
+  const [state, setState] = useState<JoinState>({ status: "idle" });
+  // Set once a join has been attempted for the held intent. Without it, the
+  // retry effect below re-fires whenever `redeem`'s identity changes — which is
+  // every render if the SDK's hook callbacks are not stable — and a failed join
+  // retries in a loop.
+  const attempted = useRef(false);
+  // Held here rather than in state: an intent arriving before auth must not
+  // trigger a render loop, and we need the resolve/ack callback intact.
+  const pending = useRef<{
+    intent: DeepLinkIntent;
+    payload: KombatInvitationPayload;
+    fromLink: boolean;
+  } | null>(null);
+  const running = useRef(false);
+
+  const redeem = useCallback(async () => {
+    const held = pending.current;
+    if (!held || running.current) return;
+    running.current = true;
+    attempted.current = true;
+    setState({ status: "joining", payload: held.payload });
+    try {
+      // The admin client directly, not `useJoinNamespace` / `useJoinContext`:
+      // those hooks catch a failed request and resolve `null`, so a refused
+      // join looked exactly like a successful one. `join` has to throw, with
+      // the node's HTTP status on the error, for the outcome to say why. But
+      // the session-aware `admin` (see above), never the raw `mero.admin`.
+      const redeemer: InviteRedeemer = {
+        join: async (namespaceId) => {
+          if (!admin) throw new Error("Not connected.");
+          await admin.joinNamespace(namespaceId, {
+            invitation: held.payload.invitation,
+          });
+          // A node joins the context explicitly. An account does not: a
+          // namespace member follows its contexts (core auto-follow), and
+          // this app's contexts live directly in the namespace, so there is
+          // no further group to join — and the `admin` this closure holds may
+          // predate the relay the join just moved the session onto, so a read
+          // through it here would fail after a join that succeeded.
+          if (!isDelegated) await admin.joinContext(held.payload.contextId);
+        },
+        memberships: async () => {
+          if (!admin) throw new Error("Not connected.");
+          // rc.25 renamed `groupId` -> `namespaceId`; read both (see ContextPicker).
+          const namespaces = (await admin.listNamespaces()) as Array<{
+            namespaceId?: string;
+            groupId?: string;
+            id?: string;
+          }>;
+          return namespaces.map((n) => n.namespaceId ?? n.groupId ?? n.id ?? "");
+        },
+      };
+      // `already-member` is the same success as `joined`: a link followed
+      // twice, or a join the proxy gave up on that landed anyway. A namespace
+      // member follows its contexts by default (core auto-follow), so the
+      // context is joined even if this attempt never reached that call.
+      const outcome = await redeemInvitation(
+        { namespaceId: held.payload.namespaceId, invitation: held.payload.invitation },
+        redeemer,
+      );
+
+      if (outcome.status === "failed") {
+        if (!shouldRetain(outcome)) {
+          // Never going to work — stop asking on every load.
+          held.intent.resolve?.();
+          pending.current = null;
+        }
+        setState({
+          status: "failed",
+          message: describeInviteFailure(outcome.reason, "namespace") ?? outcome.message,
+          retryable: outcome.retryable,
+          fromLink: held.fromLink,
+        });
+        return;
+      }
+
+      setContextId(held.payload.contextId);
+      // Ack FIRST, then reload: a reload before the ack would replay the same
+      // intent forever.
+      held.intent.resolve?.();
+      pending.current = null;
+      window.location.reload();
+    } catch (e) {
+      // `redeemInvitation` reports a failed join in its outcome, never by
+      // throwing; this is anything else, so keep the invitation.
+      const message = e instanceof Error ? e.message : String(e);
+      setState({ status: "failed", message, retryable: true, fromLink: held.fromLink });
+    } finally {
+      running.current = false;
+    }
+  }, [admin, isDelegated]);
+
+  useDeepLink((intent) => {
+    // Only `join`. An unknown action must be left alone rather than acked, or
+    // this app would silently swallow a link meant for a future feature.
+    if (intent.action !== "join") return;
+    const encoded = intent.params?.invitation;
+    if (!encoded) return;
+
+    const json = decodeInvitationPayload(encoded);
+    const payload = json ? parseInvitationPayload(json) : null;
+    if (!payload) {
+      // Undecodable is terminal by definition: no retry will change the bytes.
+      intent.resolve?.();
+      setState({
+        status: "failed",
+        message: "That invitation link could not be read.",
+        retryable: false,
+        fromLink: true,
+      });
+      return;
+    }
+    pending.current = { intent, payload, fromLink: true };
+    attempted.current = false;
+    // NOT redeemed here. The user has to confirm — see JoinState.confirm.
+    setState({ status: "confirm", payload });
+  });
+
+  // An intent that arrived before the session existed stays in `confirm` until
+  // there IS a session — otherwise the prompt would be answerable before the
+  // join could possibly work. Deliberately depends on `isAuthenticated` only:
+  // adding `redeem` here is what let a failed join retry every render.
+  useEffect(() => {
+    if (!isAuthenticated || attempted.current) return;
+    if (pending.current) setState({ status: "confirm", payload: pending.current.payload });
+  }, [isAuthenticated]);
+
+  /** The user said yes to a link. */
+  const confirmJoin = useCallback(() => {
+    if (!isAuthenticated || !pending.current) return;
+    void redeem();
+  }, [isAuthenticated, redeem]);
+
+  /** The user said no — forget it, so it does not prompt again on every load. */
+  const declineJoin = useCallback(() => {
+    pending.current?.intent.resolve?.();
+    pending.current = null;
+    attempted.current = false;
+    setState({ status: "idle" });
+  }, []);
+
+  const redeemPasted = useCallback(
+    (payloadJson: string) => {
+      const payload = parseInvitationPayload(payloadJson);
+      if (!payload) {
+        setState({
+          status: "failed",
+          message: "That invitation could not be read.",
+          retryable: false,
+          fromLink: false,
+        });
+        return;
+      }
+      // No intent to ack: a pasted invitation was never captured by the store,
+      // so `resolve` is a no-op and the retry path is the user pasting again.
+      pending.current = {
+        intent: { resolve: () => {} } as DeepLinkIntent,
+        payload,
+        fromLink: false,
+      };
+      attempted.current = false;
+      // A pasted invitation IS the confirmation — the user typed it in this
+      // session, so there is nothing to warn them about.
+      void redeem();
+    },
+    [redeem],
+  );
+
+  return { state, redeemPasted, confirmJoin, declineJoin };
+}
