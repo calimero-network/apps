@@ -161,8 +161,12 @@ export default function ProjectsPage() {
     setMenuOpenId(null);
     try {
       await deleteContext(contextId);
-    } catch {
-      // best-effort
+    } catch (err) {
+      // Keep the card: dropping it on a refusal (e.g. a token without
+      // `context:delete` answering 403) hid the failure until the next reload
+      // brought the project back.
+      showToast(extractErrorMessage(err, "Could not delete project."));
+      return;
     }
     setProjects((prev) => prev.filter((p) => p.contextId !== contextId));
   }
@@ -279,7 +283,7 @@ export default function ProjectsPage() {
                         {/* Deleting a context is a node's own operation; an
                             account's relay has no form of it. */}
                         {!isDelegated && (
-                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>
+                          <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} data-testid={`project-delete-${p.contextId}`} onClick={() => deleteProject(p.contextId)}>
                             Delete
                           </button>
                         )}
