@@ -10,12 +10,11 @@ import MeroKit
 ///
 /// ## How this is meant to be used
 ///
-/// MeroAR is a client of a node that runs on a computer, so the *link* is not
-/// something this app opens. It is something you send someone, who opens it on
-/// the machine with Calimero Desktop: the launcher resolves the slug, installs
-/// the app if it is missing, and joins the namespace there. The phone's part is
-/// to produce that link, and to accept one pasted back in — which is what
-/// ``token(fromPasted:)`` is for.
+/// The link is something you send someone. On a phone they paste it into the
+/// lobby, and the app redeems it with their Calimero account through the Cloud
+/// manager (the SDK's `CloudSignIn.join`). On a computer with Calimero Desktop
+/// the launcher resolves the slug, installs the app if it is missing, and joins
+/// the namespace there. The format is the fleet's, so both work.
 public struct RoomInvite: Codable {
     /// The namespace (root group) the room lives in.
     public let namespaceId: String
@@ -76,7 +75,7 @@ public struct RoomInvite: Codable {
 
     /// True when the text looks like an invitation rather than a bare room id.
     ///
-    /// Used by the login screen to decide which field the user filled in: a room
+    /// Used by the lobby to decide what was pasted: a room
     /// id is a plain context id, an invitation decodes to this type.
     public static func looksLikeInvite(_ text: String) -> Bool {
         decode(pasted: text) != nil

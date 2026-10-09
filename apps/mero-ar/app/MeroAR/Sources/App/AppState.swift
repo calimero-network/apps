@@ -1,178 +1,195 @@
 import Foundation
 import MeroKit
+import MeroKitUI
 
-/// Session state: owns the `Mero` client and, once connected, the service +
-/// scene store for the active room.
+/// Session state: owns the Cloud client and, once a room is open, the service
+/// and scene store for it.
 ///
-/// Login goes through the shared SDK, so this app inherits its single-flight
-/// token refresh and reactive 401→refresh retry — a session no longer dies when
-/// the access token expires mid-scan.
+/// Sign-in is Cloud only. ``MeroClient/signInWithCloud(callbackScheme:)`` opens
+/// the Calimero wallet in the system auth sheet; the person approves this device
+/// with their passkey; the SDK verifies the device certificate, finds the relay
+/// that serves the account, and logs in there. There is no node URL and no
+/// password anywhere in the app.
 @MainActor
 public final class AppState: ObservableObject {
-    public enum Phase { case loggedOut, connecting, inRoom }
+    public enum Phase: Equatable { case restoring, signedOut, lobby, inRoom }
 
-    @Published public var phase: Phase = .loggedOut
-    @Published public var username = ""
-    @Published public var loginError: String?
-    @Published public var isLoggingIn = false
-    /// Last session's connection details, so the login card comes up prefilled.
-    @Published public var lastNodeURL: String
-    @Published public var lastRoomId: String
+    /// The URL scheme the wallet returns to (`meroar://enrol`). Registered in
+    /// `project.yml` → `CFBundleURLTypes`.
+    public static let callbackScheme = "meroar"
 
-    public private(set) var mero: Mero?
+    @Published public private(set) var phase: Phase = .restoring
+    /// Display name sent to the room's roster on `join`.
+    @Published public var displayName: String
+    /// The last room entered, offered as "Continue where you left off".
+    @Published public private(set) var lastRoomId: String
+    @Published public private(set) var lastRoomName: String
+    @Published public private(set) var isEntering = false
+    @Published public var roomError: String?
+
+    public let client: MeroClient
     public private(set) var service: MeroARService?
     public private(set) var store: SceneStore?
 
-    /// Tokens live in this app's own Keychain service. The vendored client used
-    /// `network.calimero.merotag`, which made Mero AR and Mero Tag fight over one
-    /// set of tokens whenever both were installed on a device.
-    private let tokenStore: any TokenStore
     private let defaults: UserDefaults
 
     private enum Key {
-        static let nodeURL = "meroar.nodeURL"
         static let roomId = "meroar.roomId"
-        static let username = "meroar.username"
+        static let roomName = "meroar.roomName"
+        static let displayName = "meroar.username"
     }
 
-    public init(
-        tokenStore: any TokenStore = KeychainTokenStore(service: "network.calimero.meroar"),
-        defaults: UserDefaults = .standard
-    ) {
-        self.tokenStore = tokenStore
+    public init(client: MeroClient? = nil, defaults: UserDefaults = .standard) {
+        // Device keys, the Cloud session and the relay tokens live in this app's
+        // own Keychain service, so Mero AR never shares a session with another
+        // Calimero app installed on the same phone.
+        self.client = client ?? MeroClient(cloud: CloudSignIn.keychain(service: "network.calimero.meroar"))
         self.defaults = defaults
-        self.lastNodeURL = defaults.string(forKey: Key.nodeURL) ?? "http://localhost:2450"
         self.lastRoomId = defaults.string(forKey: Key.roomId) ?? ""
-        self.username = defaults.string(forKey: Key.username) ?? ""
+        self.lastRoomName = defaults.string(forKey: Key.roomName) ?? ""
+        self.displayName = defaults.string(forKey: Key.displayName) ?? ""
     }
 
-    /// True when a stored token bundle + room could restore a session without
-    /// asking for a password.
-    public var canResume: Bool {
-        tokenStore.getTokens() != nil && !lastRoomId.isEmpty && URL(string: lastNodeURL)?.scheme != nil
+    // MARK: - Session
+
+    /// Reconnect a Cloud session from a previous launch, and walk back into the
+    /// last room if there was one. Lands on the lobby if the room can't be
+    /// reopened, and on sign-in if there is no session.
+    public func restore() async {
+        guard await client.restoreCloudSession(), client.isAuthenticated else {
+            phase = .signedOut
+            return
+        }
+        phase = .lobby
+        if !lastRoomId.isEmpty, client.connection?.relay != nil {
+            await enter(roomOrInvite: lastRoomId, quiet: true)
+        }
     }
 
-    // ── Login / resume ────────────────────────────────────────────────────────
+    /// "Continue with Calimero".
+    public func signIn() async {
+        await client.signInWithCloud(callbackScheme: Self.callbackScheme)
+        if client.isAuthenticated { phase = .lobby }
+    }
 
-    /// No setup code. core#3276/#3277 (0.11.0-rc.17) deleted the first-login
-    /// bootstrap secret this used to carry: the admin account is created at
-    /// `merod init` now, so there is no "very first login" state left for a
-    /// secret to unlock. core still parses the key, only to discard it, and
-    /// `Credentials` in the SDK has no third field to put it in.
-    public func login(
-        nodeUrl: String, username: String, password: String, contextId: String
-    ) async {
-        guard let base = URL(string: trim(nodeUrl)), base.scheme != nil else {
-            loginError = "Enter a valid node URL (e.g. http://localhost:2450)."
+    /// A wallet callback delivered by the system (`onOpenURL`) rather than
+    /// through the auth sheet.
+    public func handle(url: URL) async {
+        guard await client.handleEnrolmentCallback(url) else { return }
+        if client.isAuthenticated, phase == .signedOut { phase = .lobby }
+    }
+
+    public func signOut() async {
+        leaveRoom()
+        await client.logout()
+        phase = .signedOut
+    }
+
+    // MARK: - Rooms
+
+    /// The name to join with: what the person typed, else a short account id.
+    public var effectiveDisplayName: String {
+        let typed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty { return typed }
+        guard let account = client.account else { return "Guest" }
+        return "Guest \(account.prefix(4))"
+    }
+
+    /// Enter a room from whatever was pasted: an invitation link, a bare
+    /// invitation token, or a room id.
+    public func enter(roomOrInvite input: String, quiet: Bool = false) async {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            roomError = "Paste an invite link, or the room's ID."
             return
         }
-        guard !username.isEmpty, !password.isEmpty else {
-            loginError = "Username and password are required."
-            return
-        }
-        guard !contextId.isEmpty else {
-            loginError = "Paste an invite, or enter the room id to join."
-            return
-        }
+        isEntering = true
+        roomError = nil
+        defer { isEntering = false }
 
-        isLoggingIn = true
-        loginError = nil
-        defer { isLoggingIn = false }
-
-        let client = Mero(config: MeroConfig(baseURL: base, tokenStore: tokenStore))
         do {
-            _ = try await client.authenticate(Credentials(username: username, password: password))
-            // The one field takes either a room id or an invitation. An
-            // invitation has to be redeemed on this node first — join the
-            // namespace and wait for the room to sync — which yields the context
-            // id the rest of the flow expects. Everything downstream is unchanged.
-            let room: String
-            if let invite = RoomInvite.decode(pasted: contextId) {
-                room = try await MeroARService.redeem(invite, mero: client)
+            let contextId: String
+            if let invite = RoomInvite.decode(pasted: text) {
+                contextId = try await redeem(invite)
+                if !invite.roomName.isEmpty { remember(roomName: invite.roomName) }
             } else {
-                room = contextId
+                contextId = text
             }
-            try await enterRoom(
-                client: client, nodeUrl: trim(nodeUrl), contextId: room, username: username)
+            guard let connection = client.connection, let relay = connection.relay else {
+                throw MeroARError.noRelay
+            }
+            let service = try await MeroARService.open(
+                relay: relay, mero: connection.mero, contextId: contextId,
+                account: connection.session.account,
+                mintInvitation: MeroARService.cloudMinter(client.cloudSignIn, connection: connection))
+            let store = SceneStore(service: service)
+            let name = effectiveDisplayName
+
+            self.service = service
+            self.store = store
+            remember(roomId: contextId, displayName: name)
+            phase = .inRoom
+            await store.bootstrap(username: name)
+            if let roomName = store.room?.name, !roomName.isEmpty { remember(roomName: roomName) }
         } catch {
-            loginError = message(for: error)
+            if !quiet { roomError = userMessage(error) }
         }
     }
 
-    /// Re-enter the last room using the stored token bundle. A stale access token
-    /// is refreshed by the SDK on the first 401; only a revoked session falls back
-    /// to the login card.
-    public func resume() async {
-        guard canResume, let base = URL(string: lastNodeURL) else { return }
-        phase = .connecting
-        let client = Mero(config: MeroConfig(baseURL: base, tokenStore: tokenStore))
-        do {
-            try await enterRoom(
-                client: client, nodeUrl: lastNodeURL, contextId: lastRoomId,
-                username: username.isEmpty ? "guest" : username)
-        } catch {
-            // Don't shout at someone who never asked to log in — just show the card.
-            phase = .loggedOut
-            if case MeroError.authRevoked = error { tokenStore.clear() }
-        }
-    }
-
-    private func enterRoom(client: Mero, nodeUrl: String, contextId: String, username: String) async throws {
-        // Two steps, because they answer different questions: the first proves
-        // this node is in the context at all (and joins if an invitation was
-        // never opened here), the second asks the room which ACCOUNT it will see
-        // our writes as. Since rc.23 those are not the same value.
-        try await MeroARService.ensureIdentity(mero: client, contextId: contextId)
-        let memberId = try await MeroARService.whoami(mero: client, contextId: contextId)
-        let service = MeroARService(mero: client, contextId: contextId, memberId: memberId)
-        let store = SceneStore(service: service)
-
-        self.mero = client
-        self.service = service
-        self.store = store
-        self.username = username
-        self.lastNodeURL = nodeUrl
-        self.lastRoomId = contextId
-        defaults.set(nodeUrl, forKey: Key.nodeURL)
-        defaults.set(contextId, forKey: Key.roomId)
-        defaults.set(username, forKey: Key.username)
-        self.phase = .inRoom
-        await store.bootstrap(username: username)
-    }
-
-    public func leave() {
+    public func leaveRoom() {
         store?.stop()
-        let client = mero
-        Task { await client?.logout() }
-        mero = nil
-        service = nil
         store = nil
-        phase = .loggedOut
+        service = nil
+        if phase == .inRoom { phase = .lobby }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private func trim(_ value: String) -> String {
-        var text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        while text.hasSuffix("/") { text.removeLast() }
-        return text
-    }
-
-    /// Short, user-facing message — the SDK's error cases carry enough to tell a
-    /// bad password from an unreachable node.
-    private func message(for error: Error) -> String {
-        switch error {
-        case MeroError.authRevoked:
-            return "That session was revoked — sign in again."
-        case MeroError.authenticationFailed:
-            return "Login failed — check the username and password."
-        case MeroError.network(let detail):
-            return "Can't reach the node: \(detail)"
-        case MeroARError.noIdentity:
-            return MeroARError.noIdentity.errorDescription ?? "No identity in that room."
-        default:
-            if let urlError = error as? URLError { return "Can't reach the node (\(urlError.code))." }
-            return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
+    /// Redeem an invitation as this account and return the room to enter.
+    ///
+    /// The SDK resolves the admitting relay through the Cloud manager, signs the
+    /// member-join op with this device's certificate, and — for an account with
+    /// no relay yet — adopts the admitting relay. Cross-node sync is
+    /// asynchronous, so the room is polled for on the relay before entering.
+    ///
+    /// A refused join is KEPT, not discarded: "already a member" is fine to
+    /// continue from, a rejected signature is terminal, and only the room's
+    /// absence afterwards tells them apart.
+    private func redeem(_ invite: RoomInvite) async throws -> String {
+        let hadRelay = client.connection?.relay != nil
+        var joinRefusal: Error?
+        do {
+            _ = try await client.cloudSignIn.join(
+                namespaceId: invite.namespaceId, invitation: invite.invitation)
+        } catch {
+            joinRefusal = error
         }
+
+        // A relayless account just earned a relay: connect to it.
+        if !hadRelay { await client.restoreCloudSession() }
+        guard let relay = client.connection?.relay else {
+            if let joinRefusal { throw MeroARError.invitationRefused(userMessage(joinRefusal)) }
+            throw MeroARError.noRelay
+        }
+
+        for attempt in 1...8 {
+            if (try? await relay.describe(invite.contextId)) != nil { return invite.contextId }
+            if attempt < 8 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+        }
+        if let joinRefusal { throw MeroARError.invitationRefused(userMessage(joinRefusal)) }
+        throw MeroARError.roomNotSynced
+    }
+
+    private func remember(roomId: String, displayName: String) {
+        if roomId != lastRoomId {
+            lastRoomName = ""
+            defaults.removeObject(forKey: Key.roomName)
+        }
+        lastRoomId = roomId
+        defaults.set(roomId, forKey: Key.roomId)
+        defaults.set(displayName, forKey: Key.displayName)
+    }
+
+    private func remember(roomName: String) {
+        lastRoomName = roomName
+        defaults.set(roomName, forKey: Key.roomName)
     }
 }

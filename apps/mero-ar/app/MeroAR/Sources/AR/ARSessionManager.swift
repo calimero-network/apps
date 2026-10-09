@@ -1,4 +1,4 @@
-#if canImport(ARKit)
+#if canImport(ARKit) && os(iOS)
 import Foundation
 import ARKit
 import RealityKit

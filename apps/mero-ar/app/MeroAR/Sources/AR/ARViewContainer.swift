@@ -1,4 +1,4 @@
-#if canImport(ARKit)
+#if canImport(ARKit) && os(iOS)
 import SwiftUI
 import RealityKit
 

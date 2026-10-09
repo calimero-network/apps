@@ -7,11 +7,10 @@
 #   ./scripts/dev-node.sh --clean    # --stop + delete node home directory
 #   ./scripts/dev-node.sh --skip-build
 #
-# Log in from the app with:
-#   Node URL:   http://localhost:2450   (use your Mac's LAN IP from a phone)
-#   Username:   admin
-#   Password:   calimero1234
-#   Context ID: printed at the end ("Room")
+# This node is for the contract: merobox, the curl e2e, and two-node sync
+# (`make node2 && make invite`). The iOS app does not log into it — mobile
+# sign-in is Cloud only, and the app reaches rooms through its hosted relay.
+# Admin login for curl: admin / calimero1234. Context ID printed at the end.
 
 set -euo pipefail
 
@@ -247,6 +246,6 @@ printf '  Username:              \033[1m%s\033[0m\n' "$ADMIN_USER"
 printf '  Password:              \033[1m%s\033[0m\n' "$ADMIN_PASS"
 printf '  Context ID:            \033[1m%s\033[0m\n' "${CONTEXT_ID:-<create from app>}"
 printf '  Logs:                  /tmp/meroar-dev-node.log\n\n'
-printf '  Next:  \033[36mmake app-run\033[0m  (simulator)  or open MeroAR.xcodeproj\n'
+printf '  (The iOS app signs in with Calimero Cloud, not to this node.)\n'
 printf '  Two-node P2P:  \033[36mmake node2\033[0m  then  \033[36mmake invite\033[0m\n'
 printf '  Stop:  \033[36mmake stop\033[0m\n\n'

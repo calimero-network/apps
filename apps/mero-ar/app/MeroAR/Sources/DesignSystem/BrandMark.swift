@@ -1,40 +1,41 @@
 import SwiftUI
 
-/// Animated Mero AR logo: a slowly rotating wireframe cube with a glowing core —
-/// the "shared 3D space" motif. Built from two offset squares joined by edges to
-/// fake isometric depth, gently rotating and breathing.
+/// The Mero AR mark: an ink wireframe cube on a lime tile — the Calimero brand
+/// square (lime, radius 8, hairline edge) carrying the "shared 3D space" motif.
 struct BrandMark: View {
-    var size: CGFloat = 120
-    @State private var spin = false
-    @State private var breathe = false
+    var size: CGFloat = 28
 
     var body: some View {
-        ZStack {
-            // Soft glow behind the cube.
-            Circle()
-                .fill(Theme.glowA)
-                .frame(width: size * 1.8, height: size * 1.8)
-                .blur(radius: 24)
-                .opacity(breathe ? 0.9 : 0.5)
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .fill(Theme.accent)
+            .overlay(
+                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                    .stroke(Theme.limeEdge, lineWidth: 1)
+            )
+            .overlay(
+                CubeShape(depth: size * 0.16)
+                    .stroke(
+                        Theme.ink,
+                        style: StrokeStyle(lineWidth: max(1.5, size * 0.055), lineCap: .round, lineJoin: .round)
+                    )
+                    .frame(width: size * 0.54, height: size * 0.54)
+            )
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
 
-            CubeShape(depth: size * 0.32)
-                .stroke(Theme.brand, style: StrokeStyle(lineWidth: 3, lineJoin: .round))
-                .frame(width: size, height: size)
-                .rotation3DEffect(.degrees(spin ? 360 : 0), axis: (x: 0.25, y: 1, z: 0.1))
-                .shadow(color: Theme.accent.opacity(0.6), radius: 16)
-
-            // Glowing core.
-            Circle()
-                .fill(Theme.brand)
-                .frame(width: size * 0.2, height: size * 0.2)
-                .scaleEffect(breathe ? 1.25 : 0.85)
-                .blur(radius: 1)
+/// The app name next to its mark, as the top bar renders it.
+struct BrandLockup: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            BrandMark(size: 28)
+            Text("Mero AR")
+                .font(.system(size: 17, weight: .bold))
+                .tracking(-0.2)
+                .foregroundStyle(Theme.ink)
         }
-        .frame(width: size * 2, height: size * 2)
-        .onAppear {
-            withAnimation(.linear(duration: 14).repeatForever(autoreverses: false)) { spin = true }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { breathe = true }
-        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -44,27 +45,24 @@ private struct CubeShape: Shape {
     var depth: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        let d = depth
-        let frontInset = d / 2
-        // Front face (slightly down-right), back face (up-left).
-        let f = CGRect(x: rect.minX + frontInset, y: rect.minY + frontInset,
-                       width: rect.width - d, height: rect.height - d)
-        let off = CGSize(width: -frontInset, height: -frontInset)
-        let b = f.offsetBy(dx: off.width, dy: off.height)
+        let front = CGRect(
+            x: rect.minX + depth, y: rect.minY + depth,
+            width: rect.width - depth, height: rect.height - depth)
+        let back = front.offsetBy(dx: -depth, dy: -depth)
 
         var p = Path()
-        // Back square.
-        p.addRect(b)
-        // Front square.
-        p.addRect(f)
-        // Connecting edges.
-        let corners: [(CGPoint, CGPoint)] = [
-            (CGPoint(x: f.minX, y: f.minY), CGPoint(x: b.minX, y: b.minY)),
-            (CGPoint(x: f.maxX, y: f.minY), CGPoint(x: b.maxX, y: b.minY)),
-            (CGPoint(x: f.minX, y: f.maxY), CGPoint(x: b.minX, y: b.maxY)),
-            (CGPoint(x: f.maxX, y: f.maxY), CGPoint(x: b.maxX, y: b.maxY)),
+        p.addRect(back)
+        p.addRect(front)
+        let edges: [(CGPoint, CGPoint)] = [
+            (CGPoint(x: front.minX, y: front.minY), CGPoint(x: back.minX, y: back.minY)),
+            (CGPoint(x: front.maxX, y: front.minY), CGPoint(x: back.maxX, y: back.minY)),
+            (CGPoint(x: front.minX, y: front.maxY), CGPoint(x: back.minX, y: back.maxY)),
+            (CGPoint(x: front.maxX, y: front.maxY), CGPoint(x: back.maxX, y: back.maxY)),
         ]
-        for (a, c) in corners { p.move(to: a); p.addLine(to: c) }
+        for (a, b) in edges {
+            p.move(to: a)
+            p.addLine(to: b)
+        }
         return p
     }
 }

@@ -1,71 +1,116 @@
+import MeroKitUI
 import SwiftUI
 
-/// Animated start screen for Mero AR. Rotating cube + tagline animate in; "Enter
-/// a Room" springs the login card into place.
+/// Sign-in. Cloud only: one "Continue with Calimero" button that opens the
+/// Calimero wallet in the system auth sheet, like "Sign in with Google". The
+/// person approves this device with their passkey on the wallet's own page and
+/// comes straight back; the app never sees a password or a node URL.
 struct WelcomeView: View {
-    @State private var appeared = false
-    @State private var showLogin = false
+    @EnvironmentObject private var app: AppState
+    @EnvironmentObject private var client: MeroClient
 
     var body: some View {
         ZStack {
-            AnimatedBackground()
+            ScreenBackground()
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 40)
+            ScrollView {
+                VStack(spacing: 0) {
+                    hero
+                        .padding(.top, 72)
+                        .padding(.bottom, 32)
 
-                BrandMark(size: showLogin ? 64 : 110)
-                    .scaleEffect(appeared ? 1 : 0.6)
-                    .opacity(appeared ? 1 : 0)
-                    .animation(.spring(response: 0.8, dampingFraction: 0.6), value: appeared)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.7), value: showLogin)
+                    Card(padding: 24) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Sign in to start")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .tracking(-0.2)
+                                    .foregroundStyle(Theme.ink)
+                                    .accessibilityIdentifier("loginTitle")
+                                Text(
+                                    "You'll approve this device with your passkey on the Calimero wallet, "
+                                        + "then come straight back. Your account key never leaves the wallet."
+                                )
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.textDim)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
 
-                VStack(spacing: 10) {
-                    Text("Mero AR")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 16)
-                        .animation(.spring(response: 0.7, dampingFraction: 0.7).delay(0.15), value: appeared)
+                            if let error = client.errorMessage {
+                                Callout(tone: .danger, title: "Couldn't sign in", message: error)
+                                    .accessibilityIdentifier("loginError")
+                            }
 
-                    Text("Scan a room. Build together\nin shared 3D space.")
-                        .font(.callout)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 16)
-                        .animation(.spring(response: 0.7, dampingFraction: 0.7).delay(0.3), value: appeared)
-                }
-                .padding(.top, 8)
+                            Button {
+                                Haptics.tap()
+                                Task { await app.signIn() }
+                            } label: {
+                                ButtonLabel(
+                                    title: "Continue with Calimero", icon: "person.badge.key",
+                                    isLoading: client.isLoading)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(client.isLoading)
+                            .accessibilityIdentifier("cloudSignInButton")
 
-                Spacer()
-
-                Group {
-                    if showLogin {
-                        LoginCard()
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        startCTA
-                            .transition(.opacity)
+                            HStack(spacing: 6) {
+                                Image(systemName: "lock")
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("Uses the system sign-in sheet. Nothing to paste in.")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textFaint)
+                            .frame(maxWidth: .infinity)
+                        }
                     }
+                    .frame(maxWidth: 480)
+
+                    features
+                        .padding(.top, 28)
+                        .frame(maxWidth: 480)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 28)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity)
             }
         }
-        .onAppear { appeared = true }
     }
 
-    private var startCTA: some View {
+    private var hero: some View {
         VStack(spacing: 14) {
-            PrimaryButton(title: "Enter a Room", icon: "arkit") {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { showLogin = true }
-            }
-            Text("Collaborative spatial computing on Mero.")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.5))
+            BrandMark(size: 64)
+            Text("Mero AR")
+                .font(.system(size: 30, weight: .bold))
+                .tracking(-0.6)
+                .foregroundStyle(Theme.ink)
+            Text("Scan a room. Build in it together,\nin shared 3D space.")
+                .font(.system(size: 15))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Theme.textDim)
         }
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 24)
-        .animation(.spring(response: 0.7, dampingFraction: 0.7).delay(0.45), value: appeared)
+    }
+
+    private var features: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            feature("viewfinder", "Place objects where they belong", "Cubes, spheres and markers anchored to real surfaces.")
+            feature("person.2", "Everyone sees the same room", "Edits sync peer to peer, live, on every device.")
+            feature("square.stack.3d.up", "Share the scan", "Publish your room map so others line up with you.")
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func feature(_ icon: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            IconTile(systemName: icon, accent: true, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                Text(detail)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }

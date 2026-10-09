@@ -6,44 +6,50 @@ struct MeroARApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                switch app.phase {
-                case .loggedOut:
-                    WelcomeView()
-                        .transition(.opacity)
-                case .connecting:
-                    ReconnectingView()
-                        .transition(.opacity)
-                case .inRoom:
-                    RoomView()
-                        .transition(.opacity.combined(with: .scale(scale: 1.02)))
-                }
-            }
-            .animation(.smooth(duration: 0.5), value: app.phase)
-            .preferredColorScheme(.dark)
-            .environmentObject(app)
-            .task {
-                // Tokens are in the Keychain — walk straight back into the last
-                // room instead of asking for the password again. The SDK refreshes
-                // a stale access token on the first 401.
-                if app.canResume { await app.resume() }
-            }
+            RootView()
+                .environmentObject(app)
+                .environmentObject(app.client)
+                .tint(Theme.ink)
+                // The wallet returns to `meroar://enrol`. The auth sheet normally
+                // captures it; this catches a callback the system delivers to the
+                // app directly instead.
+                .onOpenURL { url in Task { await app.handle(url: url) } }
+                .task { await app.restore() }
         }
     }
 }
 
-/// Shown while a stored session is being restored.
-private struct ReconnectingView: View {
+struct RootView: View {
+    @EnvironmentObject private var app: AppState
+
     var body: some View {
         ZStack {
-            AnimatedBackground()
-            VStack(spacing: 18) {
-                BrandMark(size: 84)
-                ProgressView()
-                    .tint(.white)
-                Text("Reconnecting…")
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.7))
+            switch app.phase {
+            case .restoring:
+                RestoringView().transition(.opacity)
+            case .signedOut:
+                WelcomeView().transition(.opacity)
+            case .lobby:
+                LobbyView().transition(.opacity)
+            case .inRoom:
+                RoomView().transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: app.phase)
+    }
+}
+
+/// Shown while a stored Cloud session reconnects to its relay.
+private struct RestoringView: View {
+    var body: some View {
+        ZStack {
+            ScreenBackground()
+            VStack(spacing: 16) {
+                BrandMark(size: 56)
+                ProgressView().tint(Theme.textFaint)
+                Text("Reconnecting to your relay…")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textFaint)
             }
         }
     }

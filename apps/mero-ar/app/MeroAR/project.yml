@@ -7,50 +7,26 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
-# MeroKit is the shared Calimero Swift SDK (calimero-network/swift-sdk) — this
-# app no longer vendors its own copy.
+# MeroKit + MeroKitUI are the shared Calimero Swift SDK
+# (calimero-network/swift-sdk). The app depends on two things that are not on
+# a tagged release yet, so this tracks `master`:
 #
-# Pinned by commit, not by version: the SDK has no release tags yet, and a
-# `branch: master` pin would make every clean build (and every CI run) resolve
-# to whatever landed upstream that morning. Bump this SHA deliberately, then run
-# `make app-gen && make app-test`.
+# - swift-sdk#43 (feat/core-rc83): the core 0.11.0-rc.83 wire.
+# - swift-sdk#44 (feat/cloud-sign-in): Cloud-only mobile sign-in — wallet
+#   passkey → device certificate → hosted relay (`CloudSignIn`, `RelayClient`,
+#   `MeroClient.signInWithCloud`). Every contract call in this app goes through
+#   that relay session.
 #
-# ⚠️ This pin is not optional maintenance — it is load-bearing for the invite
-# flow. The previous SHA predated swift-sdk#28, whose typed
-# `SignedGroupOpenInvitation` named 2 of the envelope's 5 keys and 5 of the
-# signed body's 6, and silently dropped the rest on re-encode. One of the
-# dropped keys is `admitters`, which core#3714 (0.11.0-rc.29) made non-empty on
-# EVERY invitation: the node verifies by re-encoding the JSON as borsh and
-# checking the signature over those bytes, so a dropped signed field invalidates
-# the signature and the join is refused. `RoomInvite` round-trips this type
-# through the share link, so on any node at rc.29 or later, an invite minted by
-# the old pin could not be redeemed. #28 fixed it by carrying unknown keys
-# verbatim at both levels.
+# Once the SDK cuts a release, pin it here by `revision:` or `from:` so a clean
+# build cannot pick up whatever landed upstream that morning.
 #
-# Also picked up here: #25's `expectedSlug:` on the invite parser (RoomInvite
-# now passes it instead of hand-rolling the check) and #26/#27's CI fixes.
-#
-# Moved to swift-sdk master (#34/#36/#37/#38) alongside the rc.41 pin. The one
-# that matters to a phone is **#36**: `RefreshGate` deduped only refreshes that
-# overlapped in time, so a 401 that was issued before a rotation but landed
-# after it found the gate free and started a *second* rotation. Refresh tokens
-# are single-use (core#3083), so the second rotation invalidates the bundle the
-# first one just issued — presenting it is treated as theft and core revokes the
-# whole family. That is one of the two ways an app ends up in a permanent 403
-# loop, and on iOS it is the likely one: an app suspended and resumed fires
-# several requests at once against a token that expired while it was in the
-# background. The gate now remembers the newest token it produced and a stale
-# 401 simply retries.
-#
-# ⚠️ Deliberately NOT moved to swift-sdk#40 (`feat/core-rc38`, unmerged). Its
-# three fatal bodies are `createNamespace`, `createGroup` and
-# `createGroupInNamespace` — the provisioning calls. This app calls none of
-# them; it only joins and reads (see MeroARService). So nothing here blocks on
-# that PR. Pick it up after it merges, not before.
+# Local development against an unmerged SDK checkout: swap the two lines below
+# for `path: ../../../swift-sdk` (or your worktree), regenerate, and do NOT
+# commit that.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 39e6ce5dde8dce01821a7dd6e5be4b074584c096
+    branch: master
 
 targets:
   MeroAR:
@@ -69,8 +45,11 @@ targets:
         NSCameraUsageDescription: "Mero AR uses the camera to scan your room and place shared 3D objects in it."
         UIRequiredDeviceCapabilities:
           - arkit
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+        # The wallet returns to meroar://enrol after the passkey approval.
+        CFBundleURLTypes:
+          - CFBundleURLName: network.calimero.meroar.enrol
+            CFBundleURLSchemes:
+              - meroar
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.meroar
@@ -85,6 +64,8 @@ targets:
     dependencies:
       - package: MeroKit
         product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
 
   MeroARTests:
     type: bundle.unit-test
@@ -97,6 +78,8 @@ targets:
       # package directly rather than relying on the app target's copy.
       - package: MeroKit
         product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
 
   MeroARUITests:
     type: bundle.ui-testing
