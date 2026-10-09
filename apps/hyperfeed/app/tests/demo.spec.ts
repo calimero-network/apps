@@ -1,16 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * The node-less shell: the landing page and `/demo`, the same screens run
- * against `DemoBackend`. No merod; the node-backed suite is e2e/.
+ * The node-less shell: `/demo`, the same screens run against `DemoBackend`.
+ * No merod; the node-backed suite is e2e/. The landing page has its own
+ * generated spec beside this one (marketing-landing.spec.ts).
  */
-
-test("the landing page offers to connect or to try the demo", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "One feed for your agent and your apps" })).toBeVisible();
-  await page.getByRole("link", { name: "Try the demo" }).click();
-  await expect(page).toHaveURL(/\/demo$/);
-});
 
 test("in the demo, a choice is answered in place and the agent delivers it", async ({ page }) => {
   const errors: string[] = [];

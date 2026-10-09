@@ -1,10 +1,21 @@
 {
   "// note": "Browser code. Tests are a separate project (tsconfig.test.json) because they read the ABI off disk and so need node types, which browser code must not have.",
+  "// noUncheckedIndexedAccess": [
+    "Off for THIS project only, and only because of src/pages/landing, as in mero-chess.",
+    "",
+    "That page is generated from the fleet-wide template by `pnpm landing:generate`,",
+    "which has never been compiled under this flag. Editing the generated copy is",
+    "not an option: `pnpm landing:check` fails CI the moment it drifts.",
+    "",
+    "The code this app owns keeps the check: tsconfig.test.json compiles all of src",
+    "except the generated landing, with the flag inherited from tsconfig.base.json."
+  ],
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist-types/app",
     "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]

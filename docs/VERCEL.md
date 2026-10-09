@@ -73,6 +73,7 @@ keep them that way, and republish the bundle if a domain changes.
 | app | Vercel project | Root Directory | Output | Frontend URL (= redirect URI) |
 |---|---|---|---|---|
 | `battleships` | `battleships` | `apps/battleships/app` | `dist` | https://battleships.vercel.app |
+| `hyperfeed` | `hyperfeed` | `apps/hyperfeed/app` | `dist` | https://hyperfeed-two.vercel.app |
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |

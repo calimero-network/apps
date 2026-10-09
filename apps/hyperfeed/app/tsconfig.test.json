@@ -7,5 +7,7 @@
     "types": ["node", "vite/client"],
     "jsx": "react-jsx"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "// exclude": "The generated landing page, and the two entry files that import it (App.tsx routes to it, main.tsx mounts App): see tsconfig.app.json. Both are still type-checked there.",
+  "exclude": ["src/pages/landing", "src/App.tsx", "src/main.tsx"]
 }
