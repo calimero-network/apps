@@ -122,6 +122,24 @@ describe("FeedView", () => {
     expect(within(detail).getByText("Conversation with your agent")).toBeInTheDocument();
   });
 
+  it("says why a message to your agent was not sent, and keeps your words", async () => {
+    // What a node returns when the feed's contract predates talking to your agent.
+    class NoSay extends DemoBackend {
+      override async say(): Promise<never> {
+        throw Object.assign(new Error("FunctionCallError"), { data: 'method "say" not found' });
+      }
+    }
+    render(<Harness backend={new NoSay(true, 0)} />);
+    await cardFor(/Vendor NDA/);
+    const box = within(stream()).getByLabelText("Ask your agent");
+    fireEvent.change(box, { target: { value: "testing this" } });
+    await act(async () => {
+      fireEvent.click(within(stream()).getByRole("button", { name: "Send" }));
+    });
+    expect(box).toHaveValue("testing this");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/made by an earlier Hyperfeed/);
+  });
+
   it("talks to the agent about the selected row, in its chain", async () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} />);

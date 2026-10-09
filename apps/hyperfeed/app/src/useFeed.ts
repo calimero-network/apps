@@ -35,6 +35,11 @@ export interface Feed {
    * message, so the caller can open its chain; null when the node refused it.
    */
   say: (chain: string, text: string) => Promise<FeedItem | null>;
+  /**
+   * Your chats with your agent, newest first: the chains whose latest row is a
+   * message. Each comes as that latest message. A read, like `loadChain`.
+   */
+  chats: () => Promise<FeedItem[]>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
   loadChain: (chain: string) => Promise<FeedItem[]>;
   markSeen: (ids: string[]) => Promise<void>;
@@ -71,6 +76,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   // per event; one in flight is enough, and the trailing one is kept.
   const reading = useRef(false);
   const again = useRef(false);
+  // The error the last read set, so a good read clears only its own: an
+  // action's refusal stays up after the re-read that follows it.
+  const readError = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!backend) return;
@@ -92,10 +100,13 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
         setSettings(s);
         setLenses(l ?? []);
         setOutdated(l === null);
-        setError(null);
+        const stale = readError.current;
+        readError.current = null;
+        setError((now) => (now === stale ? null : now));
       } while (again.current);
     } catch (e) {
-      setError(messageOf(e));
+      readError.current = messageOf(e);
+      setError(readError.current);
     } finally {
       reading.current = false;
     }
@@ -118,7 +129,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       try {
         await fn(backend);
       } catch (e) {
-        setError(messageOf(e));
+        setError(refusalOf(e));
       } finally {
         setBusy(false);
         await refresh();
@@ -163,6 +174,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       },
       [run],
     ),
+    chats: useCallback(
+      async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
+      [backend],
+    ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
@@ -191,6 +206,14 @@ export async function deliver(b: FeedBackend, item: FeedItem, answer: string): P
 /** The item a list row refers to, or the first one when nothing is picked. */
 export function pickSelected(items: FeedItem[], selected: string | null): FeedItem | null {
   return items.find((i) => i.id === selected) ?? items[0] ?? null;
+}
+
+/** What an action's refusal says to you; a method the feed lacks means an older feed. */
+function refusalOf(e: unknown): string {
+  const m = messageOf(e);
+  return /method "?\w+"? not found/i.test(m)
+    ? "Your feed was made by an earlier Hyperfeed and can't do this. Create a new feed to use it."
+    : m;
 }
 
 /** A contract refusal is a sentence; anything else gets one. */
