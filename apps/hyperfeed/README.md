@@ -2,8 +2,8 @@
 
 **One feed for your agent and your apps.** Everything an AI agent did on your behalf, with where it
 acted, why, and which warrant carried it, sits beside every notification the apps it uses sent you.
-From the same feed you approve what the agent proposes, undo what it did, and set what it may do in
-each app.
+From the same feed you approve what the agent proposes, undo what it did, set what it may do in
+each app, and talk to it about any of it.
 
 > **Status: prototype.** The contract, its API and the app work against a real `merod`
 > (0.11.0-rc.83): sign-in, creating the feed, the collector, approvals and controls were driven in a
@@ -14,7 +14,7 @@ each app.
 | | |
 | --- | --- |
 | Package | `com.calimero.hyperfeed` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 32 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 43 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
 | Frontend | [`app/`](app): Vite, React and mero-react. `/` runs against your node and `/demo` runs in memory |
 
@@ -33,6 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said` |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)) |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
@@ -119,6 +120,9 @@ the feed context, then:
   answer or change your rules.
 - **Watches the node.** It subscribes to every context on the node and records other apps' events as
   notifications, using the same keys as this app's collector, so nothing is collected twice.
+- **Answers you.** What you say to it in the feed starts a conversation turn. It marks your message
+  `thinking`, answers in the same chain, and anything it proposes or does because of it lands
+  there too, under the same rules as everything else.
 - **Turns events into turns.** Something new that needs you starts a triage turn, where the agent
   prepares proposals (a drafted reply, options, an action) instead of acting on its own. What you
   approve or answer here starts a turn that carries it out and reports back.
@@ -216,19 +220,24 @@ in the row's `note` while it is current.
    option, confirm). Then report with `complete_answer(id, "delivered" | "failed", note)`. A failed
    delivery goes back to you to answer again.
 5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
+6. You talk to your agent with `say`, which arrives as `MessagePosted { id, chain, from: "you" }`.
+   Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
+   then answer with `agent_say(chain, id, text)`, which marks it `answered`. If you cannot, give up
+   with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
+   same `chain`. An agent that was away reads `open_questions()` when it starts.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`.
 
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
-`mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it writes as you, but
-`resolve_action` and `answer_notification` are your decisions, and an agent should never call them
-for itself.
+`say(chain, text)`; `mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it
+writes as you, but `resolve_action`, `answer_notification` and `say` are your decisions and your
+words, and an agent should never call them for itself.
 
 ## Trust model, honestly
 

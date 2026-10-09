@@ -166,4 +166,55 @@ describe("answers", () => {
     expect(page.items.some((i) => i.chain_len > 1)).toBe(true);
     expect(page.counts.needs_you).toBeGreaterThan(0);
   });
+
+  describe("talking to your agent", () => {
+    it("starts a chain of its own when asked from nowhere, and counts as agent activity", async () => {
+      const b = fresh();
+      const q = await b.say("", "What's on my plate today?");
+      expect(q).toMatchObject({ kind: "message", from: "you", status: "waiting", chain: q.id, needs_you: false, app: "" });
+      const page = await b.feed("agent", "");
+      expect(page.items.map((i) => i.id)).toEqual([q.id]);
+      expect(page.apps).toEqual([]);
+    });
+
+    it("joins an existing chain, and refuses one that does not exist", async () => {
+      const b = fresh();
+      const a = await b.recordAction(action("chat", "done"));
+      const q = await b.say(a.chain, "Why did you post that?");
+      expect(q.chain).toBe(a.chain);
+      expect(await b.chain(a.chain)).toHaveLength(2);
+      await expect(b.say("nope", "hi")).rejects.toThrow(/no chain/);
+      await expect(b.say("", "  ")).rejects.toThrow(/empty/);
+    });
+
+    it("takes a message up, answers it, and marks it answered", async () => {
+      const b = fresh();
+      const q = await b.say("", "Book lunch with Maya");
+      expect(b.agentAck(q.id).status).toBe("thinking");
+      expect(() => b.agentAck(q.id)).toThrow(/cannot mark it thinking/);
+      const answer = b.agentSay(q.chain, q.id, "Proposed two slots below.");
+      expect(answer).toMatchObject({ from: "agent", status: "said", reply_to: q.id, chain: q.chain });
+      expect((await b.chain(q.chain)).find((i) => i.id === q.id)?.status).toBe("answered");
+      expect(() => b.agentAck(answer.id)).toThrow(/agent's own/);
+      expect(() => b.agentSay("elsewhere", q.id, "x")).toThrow(/is in chain/);
+    });
+
+    it("lets the agent give up on a message it took up", async () => {
+      const b = fresh();
+      const q = await b.say("", "Cancel my 3pm");
+      b.agentAck(q.id);
+      expect(b.agentAck(q.id, "failed", "No calendar access").status).toBe("failed");
+    });
+
+    it("has the pretend agent answer on its own", async () => {
+      const b = new DemoBackend(false, 5);
+      const q = await b.say("", "hello");
+      await new Promise((r) => setTimeout(r, 40));
+      const chain = await b.chain(q.chain);
+      expect(chain.map((i) => [i.from, i.status])).toEqual([
+        ["you", "answered"],
+        ["agent", "said"],
+      ]);
+    });
+  });
 });

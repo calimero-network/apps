@@ -604,6 +604,47 @@ input:focus-visible {
   outline-offset: 1px;
 }
 
+/* ── talking to your agent ───────────────────────────────────────────────── */
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.ask-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.detail-ask .ask {
+  padding: 0;
+  border: 0;
+}
+
+.badge-agent {
+  background: var(--accent);
+}
+
+.badge-you {
+  background: var(--plain-bg);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--wait-ink);
+}
+
 /* ── a chain's flow ──────────────────────────────────────────────────────── */
 
 .flow {

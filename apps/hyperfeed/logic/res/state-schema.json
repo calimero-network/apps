@@ -292,6 +292,72 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Message"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Message": {
+      "kind": "record",
+      "doc": "One message in a conversation with your agent, inside a chain.\n\nYou talk to your agent about a row by posting into its chain; a question\nasked from nowhere starts a chain of its own. The agent's answers, and\nanything it proposes or does because of them, land in the same chain.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`FROM_YOU`] or [`FROM_AGENT`]."
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reply_to",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The message of yours this answers; empty for yours, and for an agent\nmessage nobody asked for."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
+          }
         }
       ]
     },

@@ -17,6 +17,11 @@ export interface Feed {
   resolve: (id: string, decision: Decision, answer?: string) => Promise<void>;
   /** Answer a notification in place. */
   answer: (id: string, answer: string) => Promise<void>;
+  /**
+   * Talk to your agent about a chain ("" starts a new one). Resolves to your
+   * message, so the caller can open its chain; null when the node refused it.
+   */
+  say: (chain: string, text: string) => Promise<FeedItem | null>;
   /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
   loadChain: (chain: string) => Promise<FeedItem[]>;
   markSeen: (ids: string[]) => Promise<void>;
@@ -113,6 +118,16 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     dismissError: useCallback(() => setError(null), []),
     resolve: useCallback((id, decision, answer) => run((b) => b.resolveAction(id, decision, answer)), [run]),
     answer: useCallback((id, answer) => run((b) => b.answerNotification(id, answer)), [run]),
+    say: useCallback(
+      async (chain, text) => {
+        let posted: FeedItem | null = null;
+        await run(async (b) => {
+          posted = await b.say(chain, text);
+        });
+        return posted;
+      },
+      [run],
+    ),
     loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),

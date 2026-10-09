@@ -54,6 +54,18 @@
 //! never needs write access to every app, and every answer leaves the same
 //! audit trail as an approval.
 //!
+//! ## Talking to your agent
+//!
+//! You can talk to your agent about any chain, or about nothing in particular.
+//! [`Hyperfeed::say`] posts your message into the chain (an empty chain starts
+//! a new one) as `waiting`. Your agent watches for [`Event::MessagePosted`],
+//! takes the message up with [`Hyperfeed::agent_ack`] (`thinking`, which is how
+//! you know it is there), and answers with [`Hyperfeed::agent_say`], which
+//! marks yours `answered`. Whatever it proposes or does because of the
+//! conversation lands in the same chain, under the same rules as everything
+//! else. An agent that was away reads [`Hyperfeed::open_questions`] when it
+//! starts.
+//!
 //! ## What holds against a node that does not run this code
 //!
 //! A peer's node folds deltas without executing this contract, so the owner
@@ -87,6 +99,8 @@ const MAX_HASH: usize = 128;
 const MAX_OPTIONS: usize = 8;
 const MAX_OPTION: usize = 120;
 const MAX_HISTORY: usize = 64;
+/// One message to or from your agent: a question, an instruction, an answer.
+const MAX_MESSAGE: usize = 2_000;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -147,12 +161,24 @@ pub const STATUS_RECEIVED: &str = "received";
 pub const STATUS_ANSWERED: &str = "answered";
 pub const STATUS_DELIVERED: &str = "delivered";
 
+/// A message's steps. Yours: `waiting` for your agent, `thinking` once it has
+/// picked the message up, then `answered`, or `failed` when it gave up. Your
+/// agent's: `said`.
+pub const STATUS_WAITING: &str = "waiting";
+pub const STATUS_THINKING: &str = "thinking";
+pub const STATUS_SAID: &str = "said";
+
+/// Who wrote a message.
+pub const FROM_YOU: &str = "you";
+pub const FROM_AGENT: &str = "agent";
+
 /// How a row is best resolved. Empty: nothing beyond the defaults (approve or
 /// decline a proposal; open a notification).
 pub const ASK_KINDS: &[&str] = &["", "confirm", "reply", "choose"];
 
 pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
+pub const KIND_MESSAGE: &str = "message";
 
 const FILTERS: &[&str] = &["all", "agent", "notifications", "needs_you"];
 
@@ -329,6 +355,35 @@ impl Mergeable for Notification {
     }
 }
 
+/// One message in a conversation with your agent, inside a chain.
+///
+/// You talk to your agent about a row by posting into its chain; a question
+/// asked from nowhere starts a chain of its own. The agent's answers, and
+/// anything it proposes or does because of them, land in the same chain.
+#[app::mergeable(id = "hyperfeed::Message")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Message {
+    pub id: String,
+    pub chain: String,
+    /// [`FROM_YOU`] or [`FROM_AGENT`].
+    pub from: String,
+    pub text: String,
+    /// The message of yours this answers; empty for yours, and for an agent
+    /// message nobody asked for.
+    pub reply_to: String,
+    pub created_at: u64,
+    pub history: Vec<Step>,
+}
+
+impl Mergeable for Message {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        merge_history(&mut self.history, &other.history);
+        Ok(())
+    }
+}
+
 /// Your rules for one app.
 #[app::mergeable(id = "hyperfeed::Policy")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -486,10 +541,14 @@ pub struct FeedItem {
     pub breach: String,
     /// When you kept an action the agent took without asking; 0 if not.
     pub reviewed_at: u64,
-    // ── notifications ──
+    // ── notifications and messages ──
+    /// Who sent a notification; for a message, [`FROM_YOU`] or [`FROM_AGENT`].
     pub from: String,
     pub event: String,
     pub seen: bool,
+    // ── messages ──
+    /// The message of yours an agent message answers.
+    pub reply_to: String,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -555,17 +614,41 @@ pub struct Hyperfeed {
     policies: UnorderedMap<String, Policy>,
     guards: UnorderedMap<String, Guard>,
     agent: UnorderedMap<String, AgentState>,
+    messages: UnorderedMap<String, Message>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
 #[app::event]
 pub enum Event<'a> {
-    ActionRecorded { id: &'a str, status: &'a str },
-    ActionChanged { id: &'a str, status: &'a str },
-    NotificationRecorded { id: &'a str },
-    NotificationChanged { id: &'a str, status: &'a str },
-    NotificationsSeen { count: u32 },
+    ActionRecorded {
+        id: &'a str,
+        status: &'a str,
+    },
+    ActionChanged {
+        id: &'a str,
+        status: &'a str,
+    },
+    NotificationRecorded {
+        id: &'a str,
+    },
+    NotificationChanged {
+        id: &'a str,
+        status: &'a str,
+    },
+    NotificationsSeen {
+        count: u32,
+    },
     SettingsChanged,
+    /// A message in a chain: yours (your agent should answer) or its answer.
+    MessagePosted {
+        id: &'a str,
+        chain: &'a str,
+        from: &'a str,
+    },
+    MessageChanged {
+        id: &'a str,
+        status: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -583,6 +666,7 @@ impl Hyperfeed {
             policies: UnorderedMap::new(),
             guards: UnorderedMap::new(),
             agent: UnorderedMap::new(),
+            messages: UnorderedMap::new(),
         }
     }
 
@@ -772,6 +856,7 @@ impl Hyperfeed {
             from: String::new(),
             event: String::new(),
             seen: true,
+            reply_to: String::new(),
         }
     }
 
@@ -807,6 +892,44 @@ impl Hyperfeed {
             from: n.from.clone(),
             event: n.event.clone(),
             seen: n.seen,
+            reply_to: String::new(),
+        }
+    }
+
+    /// A message as a row. It never needs you: what the agent wants from you
+    /// arrives as a proposal in the same chain.
+    fn message_item(m: &Message) -> FeedItem {
+        let now = current(&m.history);
+        FeedItem {
+            id: m.id.clone(),
+            kind: KIND_MESSAGE.to_owned(),
+            chain: m.chain.clone(),
+            chain_len: 1,
+            chain_at: now.at,
+            app: String::new(),
+            source_context: String::new(),
+            source_label: String::new(),
+            title: headline(&m.text),
+            body: m.text.clone(),
+            at: m.created_at,
+            needs_you: false,
+            status: now.status.clone(),
+            status_at: now.at,
+            note: now.note.clone(),
+            ask: Ask::default(),
+            history: m.history.clone(),
+            method: String::new(),
+            category: String::new(),
+            why: String::new(),
+            intent_hash: String::new(),
+            executor: String::new(),
+            undoable: false,
+            breach: String::new(),
+            reviewed_at: 0,
+            from: m.from.clone(),
+            event: String::new(),
+            seen: true,
+            reply_to: m.reply_to.clone(),
         }
     }
 
@@ -959,6 +1082,75 @@ impl Hyperfeed {
         Ok(item)
     }
 
+    fn get_message(&self, id: &str) -> app::Result<Message> {
+        self.messages
+            .get(id)?
+            .map(|m| m.clone())
+            .ok_or_else(|| AppError::msg(format!("no message {id}")))
+    }
+
+    /// Whether any row lives in `chain`: a message goes into a chain that
+    /// exists, or starts its own.
+    fn chain_exists(&self, chain: &str) -> app::Result<bool> {
+        Ok(self.actions.entries()?.any(|(_, a)| a.chain == chain)
+            || self.notifications.entries()?.any(|(_, n)| n.chain == chain)
+            || self.messages.entries()?.any(|(_, m)| m.chain == chain))
+    }
+
+    fn push_message_step(
+        &mut self,
+        mut m: Message,
+        status: &str,
+        note: String,
+    ) -> app::Result<FeedItem> {
+        let at = Self::next_at(&m.history);
+        m.history.push(Step {
+            status: status.to_owned(),
+            note,
+            at,
+        });
+        let item = Self::message_item(&m);
+        self.messages.insert(m.id.clone(), m)?;
+        app::emit!(Event::MessageChanged {
+            id: &item.id,
+            status: &item.status,
+        });
+        Ok(item)
+    }
+
+    fn post_message(
+        &mut self,
+        chain: String,
+        from: &str,
+        text: String,
+        reply_to: String,
+        status: &str,
+    ) -> app::Result<FeedItem> {
+        let now = now_ms();
+        let id = Self::fresh_id();
+        let m = Message {
+            chain: Self::chain_of(&chain, &id)?,
+            id,
+            from: from.to_owned(),
+            text,
+            reply_to,
+            created_at: now,
+            history: vec![Step {
+                status: status.to_owned(),
+                note: String::new(),
+                at: now,
+            }],
+        };
+        let item = Self::message_item(&m);
+        self.messages.insert(m.id.clone(), m)?;
+        app::emit!(Event::MessagePosted {
+            id: &item.id,
+            chain: &item.chain,
+            from: &item.from,
+        });
+        Ok(item)
+    }
+
     // ── the agent's side ─────────────────────────────────────────────────────
 
     /// What your rules say about an action before the agent takes it.
@@ -1105,7 +1297,98 @@ impl Hyperfeed {
         self.push_notification_step(n, next, note)
     }
 
+    /// The agent takes up one of your messages (`thinking`), or gives up on it
+    /// (`failed`, with why). Taking it up is how you know an agent is there.
+    pub fn agent_ack(&mut self, id: String, status: String, note: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_one_of("status", &status, &[STATUS_THINKING, STATUS_FAILED])?;
+        Self::check_len("note", &note, MAX_WHY, false)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!("message {id} is the agent's own")));
+        }
+        let now = current(&m.history).status.clone();
+        match (now.as_str(), status.as_str()) {
+            (STATUS_WAITING, _) | (STATUS_THINKING, STATUS_FAILED) => {
+                self.push_message_step(m, &status, note)
+            }
+            _ => Err(AppError::msg(format!(
+                "message {id} is {now}; cannot mark it {status}"
+            ))),
+        }
+    }
+
+    /// The agent says something in a chain: an answer to one of your
+    /// messages (`reply_to`, which marks it answered), or, with `reply_to`
+    /// empty, a note of its own in a chain that exists.
+    pub fn agent_say(
+        &mut self,
+        chain: String,
+        reply_to: String,
+        text: String,
+    ) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        Self::check_len("reply_to", &reply_to, MAX_KEY, false)?;
+        if reply_to.is_empty() {
+            if !self.chain_exists(&chain)? {
+                return Err(AppError::msg(format!("no chain {chain}")));
+            }
+        } else {
+            let asked = self.get_message(&reply_to)?;
+            if asked.from != FROM_YOU {
+                return Err(AppError::msg(format!(
+                    "message {reply_to} is the agent's own; answer one of yours"
+                )));
+            }
+            if asked.chain != chain {
+                return Err(AppError::msg(format!(
+                    "message {reply_to} is in chain {}, not {chain}",
+                    asked.chain
+                )));
+            }
+            // A second answer to the same question leaves it answered.
+            if current(&asked.history).status != STATUS_ANSWERED {
+                self.push_message_step(asked, STATUS_ANSWERED, String::new())?;
+            }
+        }
+        self.post_message(chain, FROM_AGENT, text, reply_to, STATUS_SAID)
+    }
+
+    /// Your messages your agent has not answered yet, oldest first: what an
+    /// agent that was away picks up when it starts.
+    pub fn open_questions(&self) -> app::Result<Vec<FeedItem>> {
+        let mut open: Vec<FeedItem> = self
+            .messages
+            .entries()?
+            .filter(|(_, m)| {
+                m.from == FROM_YOU
+                    && matches!(
+                        current(&m.history).status.as_str(),
+                        STATUS_WAITING | STATUS_THINKING
+                    )
+            })
+            .map(|(_, m)| Self::message_item(&m))
+            .collect();
+        open.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
+        Ok(open)
+    }
+
     // ── your side ────────────────────────────────────────────────────────────
+
+    /// Talk to your agent: about a chain (`chain` = its id), or about
+    /// anything (`chain` empty, which starts a new chain). Your agent picks it
+    /// up, answers in the chain, and may propose or act there under your rules.
+    pub fn say(&mut self, chain: String, text: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, false)?;
+        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        if !chain.is_empty() && !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        self.post_message(chain, FROM_YOU, text, String::new(), STATUS_WAITING)
+    }
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an
     /// undo, or keep an action the agent took without asking.
@@ -1371,6 +1654,12 @@ impl Hyperfeed {
                 .filter(|(_, n)| !muted.contains(&n.app))
                 .map(|(_, n)| Self::notification_item(&n)),
         );
+        // A conversation is never muted: you started it.
+        all.extend(
+            self.messages
+                .entries()?
+                .map(|(_, m)| Self::message_item(&m)),
+        );
         Ok(all)
     }
 
@@ -1415,11 +1704,18 @@ impl Hyperfeed {
         let mut apps: Vec<AppCount> = Vec::new();
         let mut rows: Vec<(FeedItem, bool, bool, Vec<String>)> = Vec::new();
         for (_, items) in chains {
-            let has_action = items.iter().any(|i| i.kind == KIND_ACTION);
+            // A conversation with your agent counts as agent activity.
+            let has_action = items
+                .iter()
+                .any(|i| i.kind == KIND_ACTION || i.kind == KIND_MESSAGE);
             let has_notification = items.iter().any(|i| i.kind == KIND_NOTIFICATION);
             let needs = items.iter().any(|i| i.needs_you);
             let chain_at = items.iter().map(|i| i.chain_at).max().unwrap_or(0);
-            let mut chain_apps: Vec<String> = items.iter().map(|i| i.app.clone()).collect();
+            let mut chain_apps: Vec<String> = items
+                .iter()
+                .filter(|i| !i.app.is_empty())
+                .map(|i| i.app.clone())
+                .collect();
             chain_apps.sort();
             chain_apps.dedup();
 
@@ -1513,10 +1809,10 @@ impl Hyperfeed {
         if let Some(a) = self.actions.get(&id)? {
             return Ok(Some(Self::action_item(&a)));
         }
-        Ok(self
-            .notifications
-            .get(&id)?
-            .map(|n| Self::notification_item(&n)))
+        if let Some(n) = self.notifications.get(&id)? {
+            return Ok(Some(Self::notification_item(&n)));
+        }
+        Ok(self.messages.get(&id)?.map(|m| Self::message_item(&m)))
     }
 
     /// Your rules: the pause switch, every app you set a policy for, and
@@ -1554,6 +1850,19 @@ enum Occurrence {
     Seen(Box<Notification>),
     /// A new event, to be stored under this id.
     New(String),
+}
+
+/// A message's first line, cut to a title's length on a character boundary.
+fn headline(text: &str) -> String {
+    let line = text.lines().next().unwrap_or("").trim();
+    if line.len() <= MAX_TITLE {
+        return line.to_owned();
+    }
+    let mut end = MAX_TITLE - '…'.len_utf8();
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &line[..end])
 }
 
 fn outcome_status(outcome: &str) -> &'static str {

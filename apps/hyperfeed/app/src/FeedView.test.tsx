@@ -101,4 +101,41 @@ describe("FeedView", () => {
     expect(within(stream()).queryByRole("button", { name: /Posted your stand-up/ })).not.toBeInTheDocument();
     expect(within(stream()).getByRole("button", { name: /Vendor NDA/ })).toBeInTheDocument();
   });
+
+  it("asks the agent from the top of the feed and opens the new conversation", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} />);
+    await cardFor(/Vendor NDA/);
+    const box = within(stream()).getByLabelText("Ask your agent");
+    fireEvent.change(box, { target: { value: "What's left before the board meeting?" } });
+    await act(async () => {
+      fireEvent.click(within(stream()).getByRole("button", { name: "Send" }));
+    });
+    const card = await cardFor(/What's left before the board meeting/);
+    expect(within(card).getByText("Sent · waiting for your agent")).toBeInTheDocument();
+    expect(box).toHaveValue("");
+    const detail = screen.getByRole("complementary", { name: "Selected item" });
+    expect(within(detail).getByText("Conversation with your agent")).toBeInTheDocument();
+  });
+
+  it("talks to the agent about the selected row, in its chain", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} />);
+    const card = await cardFor(/Posted your stand-up/);
+    await act(async () => {
+      fireEvent.click(within(card).getByRole("button", { name: "Details" }));
+    });
+    const detail = screen.getByRole("complementary", { name: "Selected item" });
+    fireEvent.change(within(detail).getByLabelText("Talk to your agent about this"), {
+      target: { value: "Mention the reconnect fix too" },
+    });
+    await act(async () => {
+      fireEvent.click(within(detail).getByRole("button", { name: "Send" }));
+    });
+    const [standup] = (await backend.feed("all", "")).items.filter((i) => /Mention the reconnect/.test(i.title));
+    expect(standup?.chain_len).toBe(2);
+    const chain = await backend.chain(standup!.chain);
+    expect(chain.map((i) => i.kind)).toEqual(["action", "message"]);
+  });
 });
+

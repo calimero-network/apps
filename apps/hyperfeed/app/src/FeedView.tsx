@@ -110,6 +110,8 @@ export function FeedView({ feed, query }: { feed: Feed; query: string }) {
           </div>
         </section>
 
+        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => setSelected(m.id)} />
+
         {feed.error && (
           <div className="error" role="alert">
             <span>{feed.error}</span>
@@ -162,6 +164,16 @@ export function Badge({ app, size = "md" }: { app: string; size?: "sm" | "md" })
   );
 }
 
+/** A row's avatar: its app's, or your agent's for a conversation. */
+function RowBadge({ item }: { item: FeedItem }) {
+  if (item.kind !== "message") return <Badge app={item.app} />;
+  return (
+    <span className={`badge badge-md ${item.from === "you" ? "badge-you" : "badge-agent"}`} aria-hidden="true">
+      {item.from === "you" ? "You" : <Spark />}
+    </span>
+  );
+}
+
 function Spark() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" aria-hidden="true">
@@ -180,7 +192,8 @@ function Bell() {
 }
 
 function Who({ item }: { item: FeedItem }) {
-  if (item.kind === "action") {
+  if (item.kind === "message" && item.from === "you") return <span className="who">You, to your agent</span>;
+  if (item.kind === "action" || item.kind === "message") {
     return (
       <span className="who who-agent">
         <Spark />
@@ -342,22 +355,25 @@ function Card({
   const flowId = useId();
   return (
     <article className={`card ${selected ? "selected" : ""} ${item.needs_you ? "needs" : ""}`}>
-      <Badge app={item.app} />
+      <RowBadge item={item} />
       <div className="card-body">
         <div className="meta">
           <Who item={item} />
-          <span>
-            in {look.name}
-            {item.source_label ? ` · ${item.source_label}` : ""}
-          </span>
+          {item.app && (
+            <span>
+              in {look.name}
+              {item.source_label ? ` · ${item.source_label}` : ""}
+            </span>
+          )}
           <span className="time">{timeLabel(item.at)}</span>
         </div>
         <button type="button" className="title" onClick={onSelect}>
           {item.title}
         </button>
-        {item.body && (item.kind === "notification" ? <p className="quote">{item.body}</p> : <p>{item.body}</p>)}
+        {item.body && item.body !== item.title && (item.kind === "action" ? <p>{item.body}</p> : <p className="quote">{item.body}</p>)}
         {item.breach && <p className="breach">Your agent {item.breach}.</p>}
         {item.note && <p className="note">{answerLine(item)}</p>}
+        <LateHint item={item} />
         {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} compact />}
         <div className="actions">
           <Status item={item} />
@@ -434,7 +450,7 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
           <div className="flow-body">
             <div className="flow-meta">
               <strong>{s.who}</strong>
-              {s.first && <span className="muted">in {appName(s.item.app)}{s.item.source_label ? ` · ${s.item.source_label}` : ""}</span>}
+              {s.first && s.item.app && <span className="muted">in {appName(s.item.app)}{s.item.source_label ? ` · ${s.item.source_label}` : ""}</span>}
               <span className="time">{timeLabel(s.at)}</span>
             </div>
             <p className={s.first ? "flow-title" : ""}>{s.text}</p>
@@ -457,7 +473,13 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
 function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
   const look = appLook(item.app);
   const rows: [string, string, boolean?][] =
-    item.kind === "action"
+    item.kind === "message"
+      ? [
+          ["Said by", item.from === "you" ? "You" : "Your agent"],
+          ["Chain", short(item.chain), true],
+          ["Delivered", "Through your own node"],
+        ]
+      : item.kind === "action"
       ? [
           ["Acted as", "You — the agent signs as your account"],
           ["Executor", item.executor || "Not executed yet"],
@@ -478,16 +500,20 @@ function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
   return (
     <div className="detail-inner">
       <div className="detail-head">
-        <Badge app={item.app} />
+        <RowBadge item={item} />
         <div>
           <p className="muted">
-            {item.kind === "action" ? "Agent action" : "Notification"} · {look.name}
+            {item.kind === "message"
+              ? "Conversation with your agent"
+              : `${item.kind === "action" ? "Agent action" : "Notification"} · ${look.name}`}
           </p>
           <p className="muted">{new Date(item.at).toLocaleString()}</p>
         </div>
       </div>
-      <h2>{item.title}</h2>
+      {/* An answer reads in the flow below; as a heading it would be a paragraph. */}
+      <h2>{item.kind === "message" && item.from === "agent" ? (item.reply_to ? "Your agent answered" : "A note from your agent") : item.title}</h2>
       <Status item={item} />
+      <LateHint item={item} />
       {item.breach && <p className="breach">Your agent {item.breach}. Keep it, or undo it if you can.</p>}
       {(resolvable(item) || choicesFor(item).approve || choicesFor(item).decline || choicesFor(item).undo || choicesFor(item).keep) && (
         <section className="detail-settle">
@@ -524,8 +550,16 @@ function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
           </ol>
         )}
       </section>
+      <section className="detail-ask">
+        <AskAgent
+          key={item.chain}
+          feed={feed}
+          chain={item.chain}
+          label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
+        />
+      </section>
       <section>
-        <h3>{item.kind === "action" ? "Provenance" : "Source"}</h3>
+        <h3>{item.kind === "action" ? "Provenance" : item.kind === "message" ? "About" : "Source"}</h3>
         <dl className="facts">
           {rows.map(([k, v, mono]) => (
             <div key={k} className="fact">
@@ -536,5 +570,87 @@ function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
         </dl>
       </section>
     </div>
+  );
+}
+
+/**
+ * Talk to your agent: about a chain, or with `chain` "" about anything, which
+ * starts a chain of its own. Your agent answers in that chain, and whatever it
+ * proposes or does because of it lands there too, under your rules.
+ */
+export function AskAgent({
+  feed,
+  chain,
+  label,
+  onPosted,
+}: {
+  feed: Feed;
+  chain: string;
+  label: string;
+  onPosted?: (message: FeedItem) => void;
+}) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const send = async () => {
+    const t = text.trim();
+    if (!t || feed.busy) return;
+    const posted = await feed.say(chain, t);
+    if (!posted) return;
+    setText("");
+    onPosted?.(posted);
+  };
+  return (
+    <form
+      className="ask"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <label htmlFor={`${id}-ask`} className="ask-label">
+        <Spark />
+        {label}
+      </label>
+      <div className="reply-row">
+        <textarea
+          id={`${id}-ask`}
+          value={text}
+          rows={2}
+          placeholder={chain ? "Ask about this, or tell your agent what to do next…" : "Ask a question or hand your agent a task…"}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
+          }}
+        />
+        <button type="submit" className="primary" disabled={feed.busy || !text.trim()}>
+          Send
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** How long a message may wait before the feed wonders where your agent is. */
+const AGENT_LATE_MS = 10_000;
+
+/** Under a message nothing has picked up: a hint that no agent may be running. */
+function LateHint({ item }: { item: FeedItem }) {
+  const waiting = item.kind === "message" && item.from === "you" && item.status === "waiting";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!waiting) return;
+    const left = item.status_at + AGENT_LATE_MS - Date.now();
+    if (left <= 0) {
+      setNow(Date.now());
+      return;
+    }
+    const timer = window.setTimeout(() => setNow(Date.now()), left);
+    return () => window.clearTimeout(timer);
+  }, [waiting, item.status_at]);
+  if (!waiting || now - item.status_at < AGENT_LATE_MS) return null;
+  return (
+    <p className="hint" role="status">
+      Nothing has picked this up yet. Is your agent running and connected to this feed?
+    </p>
   );
 }
