@@ -259,6 +259,17 @@ install the bundle (`meroctl app install --path dist/com.calimero.hyperfeed.mpk`
 and "Create my feed" makes the context. The two-node scenario runs without Docker too:
 `merobox bootstrap run --no-docker apps/hyperfeed/logic/workflows/feed.yml`.
 
+Browser suites, as CI runs them (`test:e2e:ci`):
+
+```bash
+pnpm -F hyperfeed test:e2e        # tests/: the landing page and /demo, no node
+pnpm -F hyperfeed test:e2e:node   # e2e/: a real merod with the bundle; create the feed, answer in place
+```
+
+The node suite boots its own merod on port 2697 from `MEROD_BINARY` (or `merod` on the path) and installs
+`logic/dist/com.calimero.hyperfeed.mpk`, the bundle the `cargo mero bundle` line above writes there
+when given `--output apps/hyperfeed/logic/dist/com.calimero.hyperfeed.mpk`.
+
 ## Not done yet
 
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
@@ -266,4 +277,4 @@ and "Create my feed" makes the context. The two-node scenario runs without Docke
 - A Vercel project. `logic/Cargo.toml` has no `frontend` until one exists: `hyperfeed.vercel.app` is taken by another project, and that URL is also the login callback origin.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
 - Paging past the first 50 rows. The contract returns `next_before`, but the UI does not ask for the next page.
-- Landing page, and the browser e2e suites other apps carry.
+- Landing page.

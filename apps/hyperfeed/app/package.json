@@ -10,6 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:node": "playwright test -c playwright.node.config.ts",
+    "test:e2e:ci": "playwright test && playwright test -c playwright.node.config.ts",
     "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name HyperfeedClient --import-path @calimero-network/mero-js",
     "icons": "node scripts/gen-icons.mjs"
   },
@@ -22,7 +25,9 @@
     "react-router-dom": "catalog:"
   },
   "devDependencies": {
+    "@calimero-apps/e2e-node": "workspace:*",
     "@calimero-network/abi-codegen": "catalog:",
+    "@playwright/test": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/node": "catalog:",

@@ -13,6 +13,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // src only: e2e/ and tests/ hold @playwright/test specs, which vitest must not run.
+    include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
     server: {
       deps: {
