@@ -45,7 +45,18 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
   );
 }
 
-export function FeedView({ feed, query, newFeed }: { feed: Feed; query: string; newFeed?: NewFeed }) {
+export function FeedView({
+  feed,
+  query,
+  newFeed,
+  onChat,
+}: {
+  feed: Feed;
+  query: string;
+  newFeed?: NewFeed;
+  /** Open a chat with your agent; without it, a new conversation opens beside the feed. */
+  onChat?: (chain: string) => void;
+}) {
   const { page } = feed;
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -140,7 +151,7 @@ export function FeedView({ feed, query, newFeed }: { feed: Feed; query: string; 
           </div>
         </section>
 
-        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => setSelected(m.id)} />
+        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => (onChat ? onChat(m.chain) : setSelected(m.id))} />
 
         {feed.outdated && (
           <div className="notice" role="status">
@@ -175,6 +186,7 @@ export function FeedView({ feed, query, newFeed }: { feed: Feed; query: string; 
                 feed={feed}
                 selected={current?.id === item.id}
                 onSelect={() => setSelected(item.id)}
+                onChat={onChat}
               />
             ))}
           </section>
@@ -381,11 +393,13 @@ function Card({
   feed,
   selected,
   onSelect,
+  onChat,
 }: {
   item: FeedItem;
   feed: Feed;
   selected: boolean;
   onSelect: () => void;
+  onChat?: (chain: string) => void;
 }) {
   const look = appLook(item.app);
   const [open, setOpen] = useState(false);
@@ -431,6 +445,11 @@ function Card({
           <button type="button" className="link small" onClick={onSelect}>
             Details
           </button>
+          {onChat && item.kind === "message" && (
+            <button type="button" className="link small" onClick={() => onChat(item.chain)}>
+              Open chat
+            </button>
+          )}
         </div>
         {open && (
           <div id={flowId}>

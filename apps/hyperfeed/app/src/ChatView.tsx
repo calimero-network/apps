@@ -1,0 +1,246 @@
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { FeedItem } from "./generated/HyperfeedClient";
+import type { Feed } from "./useFeed";
+import { NewFeedButton, type NewFeed } from "./FeedView";
+import { statusOf, timeLabel } from "./format";
+
+/**
+ * Chats with your agent.
+ *
+ * A chat is a chain the feed already keeps: your first message starts it
+ * (`say("", text)`), each one after joins it, and your agent answers into it
+ * with `agent_say`. So a chat started here is in the feed too, and one started
+ * from the feed opens here.
+ */
+
+/** How long your message may wait before the page asks whether your agent is running. */
+export const UNANSWERED_MS = 30_000;
+
+export function ChatView({
+  feed,
+  chain,
+  onOpen,
+  newFeed,
+  clock = Date.now,
+}: {
+  feed: Feed;
+  /** The open chat's chain; "" for a new one. */
+  chain: string;
+  onOpen: (chain: string) => void;
+  newFeed?: NewFeed;
+  /** The time, for how long a message has waited. */
+  clock?: () => number;
+}) {
+  const [chats, setChats] = useState<FeedItem[] | null>(null);
+  const [thread, setThread] = useState<FeedItem[]>([]);
+  // On a phone one pane shows at a time: New chat opens the empty chat.
+  const [composing, setComposing] = useState(false);
+  const { chats: listChats, loadChain, page } = feed;
+
+  // `page` changes on every re-read, which follows every event on the feed:
+  // the list and the open chat are read again with it.
+  useEffect(() => {
+    let live = true;
+    void listChats().then((c) => live && setChats(c), () => live && setChats([]));
+    return () => {
+      live = false;
+    };
+  }, [listChats, page]);
+  useEffect(() => {
+    let live = true;
+    if (!chain) setThread([]);
+    else void loadChain(chain).then((t) => live && setThread(t), () => live && setThread([]));
+    return () => {
+      live = false;
+    };
+  }, [loadChain, chain, page]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const posted = await feed.say(chain, text);
+      if (!posted) return false;
+      if (!chain) onOpen(posted.chain);
+      else setThread(await loadChain(chain));
+      return true;
+    },
+    [feed, chain, onOpen, loadChain],
+  );
+
+  return (
+    <div className={`chat${chain || composing ? " chat-open" : ""}`}>
+      <nav className="chat-list" aria-label="Chats">
+        <button
+          type="button"
+          className="button primary"
+          onClick={() => {
+            setComposing(true);
+            onOpen("");
+          }}
+          aria-current={!chain ? "page" : undefined}
+        >
+          New chat
+        </button>
+        {chats === null ? (
+          <p className="chat-hint">Loading…</p>
+        ) : chats.length === 0 ? (
+          <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
+        ) : (
+          <ul>
+            {chats.map((c) => (
+              <li key={c.chain}>
+                <button
+                  type="button"
+                  className={`chat-item${c.chain === chain ? " on" : ""}`}
+                  aria-current={c.chain === chain ? "page" : undefined}
+                  onClick={() => {
+                    setComposing(false);
+                    onOpen(c.chain);
+                  }}
+                >
+                  <span className="chat-item-text">
+                    {c.from === "agent" ? "" : "You: "}
+                    {c.body}
+                  </span>
+                  <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </nav>
+
+      <section className="chat-main" aria-label={chain ? "Chat" : "New chat"}>
+        {(chain || composing) && (
+          <button
+            type="button"
+            className="link chat-back"
+            onClick={() => {
+              setComposing(false);
+              onOpen("");
+            }}
+          >
+            ← Chats
+          </button>
+        )}
+        {feed.error && (
+          <div className="error" role="alert">
+            <span>{feed.error}</span>
+            {feed.outdated && newFeed ? (
+              <NewFeedButton newFeed={newFeed} />
+            ) : (
+              <button type="button" className="ghost small" onClick={feed.dismissError}>
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
+        <Thread items={thread} clock={clock} />
+        <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
+      </section>
+    </div>
+  );
+}
+
+function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
+  const end = useRef<HTMLDivElement>(null);
+  const last = items[items.length - 1];
+  useEffect(() => {
+    // In braces: newer Chromium returns a Promise here, and an effect must
+    // return nothing but its clean-up.
+    end.current?.scrollIntoView?.({ block: "end" });
+  }, [items.length, last?.status]);
+
+  if (items.length === 0) {
+    return (
+      <div className="chat-thread chat-empty">
+        <h2>Talk to your agent</h2>
+        <p>Ask a question or hand it a task. It answers here, and anything it does for you also shows in your feed.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="chat-thread" role="log" aria-live="polite">
+      {items.map((m) =>
+        m.kind === "message" ? (
+          <div key={m.id} className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
+            <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
+            <p>{m.body}</p>
+            <span className="bubble-time">{timeLabel(m.at)}</span>
+          </div>
+        ) : (
+          <div key={m.id} className="chat-event">
+            {m.title} · {statusOf(m).label}
+          </div>
+        ),
+      )}
+      {last && <Waiting last={last} clock={clock} />}
+      <div ref={end} />
+    </div>
+  );
+}
+
+/** Where your latest message stands while your agent hasn't answered it. */
+function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
+  const [, setTick] = useState(0);
+  const now = clock();
+  const waiting = last.kind === "message" && last.from === "you" && last.status === "waiting";
+  useEffect(() => {
+    if (!waiting) return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 5_000);
+    return () => window.clearInterval(t);
+  }, [waiting]);
+
+  if (last.kind !== "message" || last.from !== "you") return null;
+  if (last.status === "thinking") return <p className="chat-status busy">Your agent is on it…</p>;
+  if (last.status === "failed") {
+    return <p className="chat-status bad">Your agent couldn't answer{last.note ? `: ${last.note}` : "."}</p>;
+  }
+  if (!waiting) return null;
+  if (now - last.at < UNANSWERED_MS) return <p className="chat-status">Sent · waiting for your agent</p>;
+  return (
+    <p className="chat-status wait">
+      Your agent hasn't picked this up yet. Is mero-bot running against this feed? It answers once it starts.
+    </p>
+  );
+}
+
+function Composer({ busy, fresh, onSend }: { busy: boolean; fresh: boolean; onSend: (text: string) => Promise<boolean> }) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const send = async () => {
+    const t = text.trim();
+    if (!t || busy) return;
+    if (await onSend(t)) setText("");
+  };
+  return (
+    <form
+      className="chat-composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <label htmlFor={`${id}-say`} className="sr-only">
+        Message your agent
+      </label>
+      <textarea
+        id={`${id}-say`}
+        value={text}
+        rows={2}
+        autoFocus
+        placeholder={fresh ? "Ask a question or hand your agent a task…" : "Reply to your agent…"}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends; Shift+Enter is a new line.
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+      />
+      <button type="submit" className="button primary" disabled={busy || !text.trim()}>
+        Send
+      </button>
+    </form>
+  );
+}

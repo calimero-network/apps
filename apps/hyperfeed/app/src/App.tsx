@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { ControlsView } from "./ControlsView";
+import { ChatView } from "./ChatView";
 import { FeedPicker } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
@@ -15,9 +16,9 @@ import LandingPage from "./pages/landing/LandingPage";
 /**
  * Two ways in, one set of screens.
  *
- * `/` and `/controls` run against your node: connect, open your feed, and the
- * collector starts watching your other contexts. `/demo` and `/demo/controls`
- * run the same screens against `DemoBackend`, the contract's rules kept in
+ * `/`, `/chat` and `/controls` run against your node: connect, open your
+ * feed, and the collector starts watching your other contexts. `/demo`,
+ * `/demo/chat` and `/demo/controls` run the same screens against `DemoBackend`, the contract's rules kept in
  * memory, so the app can be tried with no node at all.
  */
 export function App() {
@@ -30,8 +31,10 @@ export function App() {
           not, they stay reference pages. */}
         <Route path="/docs" element={<LandingPage />} />
         <Route path="/preview" element={<LandingPage />} />
+        <Route path="/chat/:chain?" element={<NodeApp page="chat" />} />
         <Route path="/controls" element={<NodeApp page="controls" />} />
         <Route path="/demo" element={<DemoApp page="feed" />} />
+        <Route path="/demo/chat/:chain?" element={<DemoApp page="chat" />} />
         <Route path="/demo/controls" element={<DemoApp page="controls" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -39,7 +42,7 @@ export function App() {
   );
 }
 
-type Page = "feed" | "controls";
+type Page = "feed" | "chat" | "controls";
 
 function NodeApp({ page }: { page: Page }) {
   const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
@@ -86,6 +89,7 @@ function NodeFeedApp({
   return (
     <Shell base="" page={page} feed={feed} session={session} status={watching} query={query} onQuery={setQuery}>
       <Screen
+        base=""
         page={page}
         feed={feed}
         contextId={contextId}
@@ -118,7 +122,7 @@ function DemoApp({ page }: { page: Page }) {
         </button>
       }
     >
-      <Screen page={page} feed={feed} contextId={null} query={query} preview={DEMO_PREVIEW} />
+      <Screen base="/demo" page={page} feed={feed} contextId={null} query={query} preview={DEMO_PREVIEW} />
     </Shell>
   );
 }
@@ -132,6 +136,7 @@ function demoSingleton(): DemoBackend {
 }
 
 function Screen({
+  base,
   page,
   feed,
   contextId,
@@ -139,6 +144,7 @@ function Screen({
   preview,
   newFeed,
 }: {
+  base: string;
   page: Page;
   feed: Feed;
   contextId: string | null;
@@ -146,8 +152,12 @@ function Screen({
   preview: Preview;
   newFeed?: NewFeed;
 }) {
+  const navigate = useNavigate();
+  const { chain = "" } = useParams();
+  const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
+  if (page === "chat") return <ChatView feed={feed} chain={chain} onOpen={openChat} newFeed={newFeed} />;
   return page === "feed" ? (
-    <FeedView feed={feed} query={query} newFeed={newFeed} />
+    <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} />
   ) : (
     <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />
   );
@@ -210,9 +220,19 @@ function Shell({
           )}
           {extra}
           {feed && (
-            <Link className="button dark" to={page === "feed" ? `${base}/controls` : base || "/"}>
-              {page === "feed" ? "Controls" : "Back to feed"}
-            </Link>
+            <nav className="topnav" aria-label="Pages">
+              {(
+                [
+                  ["feed", "Feed", base || "/"],
+                  ["chat", "Chat", `${base}/chat`],
+                  ["controls", "Controls", `${base}/controls`],
+                ] as const
+              ).map(([p, label, to]) => (
+                <Link key={p} className={`button${p === page ? " dark" : ""}`} to={to} aria-current={p === page ? "page" : undefined}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
           )}
           {session && (
             <button type="button" className="ghost" title={session.nodeUrl ?? ""} onClick={session.logout}>
