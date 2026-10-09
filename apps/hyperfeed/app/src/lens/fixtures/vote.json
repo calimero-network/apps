@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "events": {
+    "VotingOpened": {
+      "type": "poll",
+      "read": [{ "as": "poll", "call": "get_poll", "args": { "poll_id": "=event.poll_id" } }],
+      "show_if": "=poll.can_vote",
+      "fields": {
+        "question": "=poll.definition.title",
+        "options": "=poll.definition.options"
+      },
+      "title": "='Vote open: ' + poll.definition.title"
+    },
+    "PollCreated": "ignore",
+    "TransportKeyPublished": "ignore",
+    "DealingPublished": "ignore",
+    "ComplaintFiled": "ignore",
+    "BallotCast": "ignore",
+    "PollClosing": "ignore",
+    "PollSealed": "ignore",
+    "PartialPublished": "ignore",
+    "Anchored": "ignore",
+    "MemberNamed": "ignore"
+  }
+}

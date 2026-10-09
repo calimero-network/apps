@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "events": {
+    "QuestionAsked": {
+      "type": "message",
+      "read": [
+        { "as": "post", "call": "get_post", "args": { "post_id": "=event.id" } },
+        { "as": "me_view", "call": "get_me", "args": {} }
+      ],
+      "show_if": "=me_view.is_team && !mine(post.card.author)",
+      "fields": {
+        "from": "=post.card.author",
+        "text": "=post.card.title + (post.card.summary ? '\\n' + post.card.summary : '')",
+        "where": "Questions"
+      },
+      "title": "=post.card.author_name ? post.card.author_name + ' asked a question' : 'A new question'",
+      "ask": { "kind": "reply", "prompt": "Answer in Updates" },
+      "reply": {
+        "method": "add_comment",
+        "args": { "post_id": "=event.id", "parent_id": null, "body": "=answer" }
+      }
+    },
+    "UpdatePublished": "ignore",
+    "Commented": "ignore",
+    "Reacted": "ignore",
+    "Read": "ignore",
+    "PostEdited": "ignore"
+  }
+}

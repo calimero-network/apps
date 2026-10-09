@@ -14,7 +14,7 @@ each app, and talk to it about any of it.
 | | |
 | --- | --- |
 | Package | `com.calimero.hyperfeed` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 43 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
 | Frontend | [`app/`](app): Vite, React and mero-react. `/` runs against your node and `/demo` runs in memory |
 
@@ -34,7 +34,8 @@ same warrant path it uses everywhere else.
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
 | **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said` |
-| **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)) |
+| **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
+| **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
@@ -76,23 +77,51 @@ pending ──approve──▶ approved ──complete(done)──▶ done ─�
 Approving does not perform anything. The agent watches the feed for `ActionChanged`, signs the
 warrant for the real call, and reports the result with `complete_action`.
 
-## Notifications: the collector
+## Notifications: the collector and lenses
 
 On a node, the open app lists every context the node is in and subscribes to each one's event
 stream. Nearly every event an app emits is bookkeeping (a keystroke in a doc, a cursor, a
 reaction), and your own node emits them for your own edits as well. So **nothing is recorded by
-default**. An event becomes a notification only through a reader written for its app and kind in
-[`app/src/collector.ts`](app/src/collector.ts). The reader reads what the event points at from the
-app itself, drops what you did yourself, and keeps what concerns you:
+default**. An event becomes a notification only through a **lens** for its app version.
 
-| App | Recorded | Not recorded |
-| --- | --- | --- |
-| Chat | a DM to you, a message that mentions you, `@everyone` or `@here` (with a `reply` ask, so your agent posts your answer), and your own role changing | the rest of a channel, your own messages, thread replies, edits, reactions, profiles |
-| Anything else | nothing yet | everything, until it has a reader |
+**A lens is learned, not written by hand.** When mero-bot meets an app version the feed has no lens
+for, it starts a turn that reads the app's ABI (its events, its methods and their types) and writes
+one. The lens is checked before you see it:
+
+- every event and method it names exists;
+- every read is a read-only call with the arguments the method takes;
+- every path it reads (`page.messages[0].text`) is a field of the type the ABI says it reads;
+- a reply is a mutating call that puts your answer in it.
+
+It is then tried on the app's recent events. Only a lens that passes is proposed. In **Controls**,
+under *What your feed reads from each app*, you see what each lens records, preview it on recent
+events, and approve or turn it down. A new app version is learned again.
+
+From then on every event runs through the approved lens with plain code (`app/src/lens/`): no model
+call per event, and the same result on every device. A lens is data, not code. Its expressions can
+read paths, compare, join strings and call a handful of functions (`has(list, me)`, `mine(id)`,
+`plain(html)`); they cannot write, loop or reach anything but the values they are given.
+
+**Item types.** A lens makes each event it keeps one of nine feed item types, each with its own card:
+`message`, `assignment`, `poll`, `invite`, `turn`, `request`, `change`, `status` and `other`.
+Their fields are fixed (`lens/lens.ts`, `ITEM_TYPES`). An identity field is shown as the person's
+name from the namespace's member list, the name Chat shows too.
+
+**Answers go straight to the app.** A lens can give a reply call, such as Chat's `send_message`
+with your text. When you answer such a row, the feed makes that call itself, in the source context,
+as you, and marks the row delivered, or failed with the app's own words. No agent turn is involved.
+A row without a reply call is answered the old way, by your agent. Some answers only an app's own
+client can make, such as Vote's sealed ballot; such a row shows the options and says to vote in the
+app.
+
+**Before you approve anything**, Chat uses the lens this app ships
+([`lens/fixtures/chat.json`](app/src/lens/fixtures/chat.json)). It records a DM, a mention of you,
+`@everyone` or `@here`, and your own role changing. It drops the rest of a channel, your own
+messages, edits and reactions.
 
 "You" is your node's account id, which is what apps stamp on what you do (`env::account_id()`),
 plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
-becomes `chat`). mero-bot carries the same readers and keys.
+becomes `chat`). mero-bot runs the same lenses with the same keys.
 
 **Recording each event once.** Core's event carries no delta id, only the context's new root hash,
 and that hash depends only on the state's contents. So the key is the transition,
@@ -121,8 +150,11 @@ the feed context, then:
   here. Allowed writes are logged when they finish. Guarded ones become a proposal you approve or
   decline in Hyperfeed (or at its terminal). Refused ones never run. It is never allowed to approve,
   answer or change your rules.
-- **Watches the node.** It subscribes to every context on the node and records other apps' events as
-  notifications, using the same keys as this app's collector, so nothing is collected twice.
+- **Watches the node.** It subscribes to every context on the node and runs other apps' events
+  through the same lenses as this app's collector, with the same keys, so nothing is collected twice.
+- **Learns apps.** An app version with no lens starts a turn that learns one from its ABI and
+  proposes it for your approval (`--no-learn` turns this off; `npm run learn` does it without the
+  terminal UI).
 - **Answers you.** What you say to it in the feed starts a conversation turn. It marks your message
   `thinking`, answers in the same chain, and anything it proposes or does because of it lands
   there too, under the same rules as everything else.
@@ -232,15 +264,17 @@ in the row's `note` while it is current.
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`, `MessagePosted`, `MessageChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`.
 
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
-`say(chain, text)`; `mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it
-writes as you, but `resolve_action`, `answer_notification` and `say` are your decisions and your
-words, and an agent should never call them for itself.
+`say(chain, text)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
+`mark_all_seen()`. An agent kit can call them too, since it
+writes as you, but `resolve_action`, `answer_notification`, `decide_lens` and `say` are your decisions and your
+words, and an agent should never call them for itself. The agent's side of lenses is
+`propose_lens(app_key, application_id, spec, summary)` and `lenses()`.
 
 ## Trust model, honestly
 
@@ -282,9 +316,19 @@ The node suite boots its own merod on port 2697 from `MEROD_BINARY` (or `merod` 
 `logic/dist/com.calimero.hyperfeed.mpk`, the bundle the `cargo mero bundle` line above writes there
 when given `--output apps/hyperfeed/logic/dist/com.calimero.hyperfeed.mpk`.
 
+## Upgrading
+
+Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The
+state layout changed twice (conversations, then lenses), and the prototype does not carry old
+rows over.
+
 ## Not done yet
 
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
   waits as long as mero-bot runs: there is no timeout yet.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
+- Lenses for apps other than Chat are learned on your node; none ships for them. A lens is tried on
+  recent events only when there are some, so a quiet app's lens is checked against its ABI alone.
+- An answer the feed sends itself has no retry if the tab closes between the two calls; the row
+  stays "Sending…".
 - Paging past the first 50 rows. The contract returns `next_before`, but the UI does not ask for the next page.

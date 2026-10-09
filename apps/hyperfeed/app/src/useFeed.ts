@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FeedItem, FeedPage, SettingsView } from "./generated/HyperfeedClient";
+import type { FeedItem, FeedPage, LensView, SettingsView } from "./generated/HyperfeedClient";
+import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
 
 export interface Feed {
   page: FeedPage | null;
   settings: SettingsView | null;
+  /** What your agent learned for each app version, newest first. */
+  lenses: LensView[];
   error: string | null;
   busy: boolean;
   filter: Filter;
@@ -15,8 +18,13 @@ export interface Feed {
   dismissError: () => void;
   /** Decide on an action; `answer` is the option or text for a proposal with an ask. */
   resolve: (id: string, decision: Decision, answer?: string) => Promise<void>;
-  /** Answer a notification in place. */
+  /**
+   * Answer a notification in place. A typed row with a reply call is carried
+   * out right here, in the source app, and reported delivered or failed; any
+   * other answer waits for your agent.
+   */
   answer: (id: string, answer: string) => Promise<void>;
+  decideLens: (appKey: string, applicationId: string, decision: "approve" | "reject") => Promise<void>;
   /**
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
@@ -48,6 +56,7 @@ const POLL_MS = 15_000;
 export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [page, setPage] = useState<FeedPage | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [lenses, setLenses] = useState<LensView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -67,9 +76,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     try {
       do {
         again.current = false;
-        const [p, s] = await Promise.all([backend.feed(filter, appKey), backend.settings()]);
+        const [p, s, l] = await Promise.all([backend.feed(filter, appKey), backend.settings(), backend.lenses()]);
         setPage(p);
         setSettings(s);
+        setLenses(l);
         setError(null);
       } while (again.current);
     } catch (e) {
@@ -108,6 +118,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   return {
     page,
     settings,
+    lenses,
     error,
     busy,
     filter,
@@ -117,7 +128,18 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     refresh,
     dismissError: useCallback(() => setError(null), []),
     resolve: useCallback((id, decision, answer) => run((b) => b.resolveAction(id, decision, answer)), [run]),
-    answer: useCallback((id, answer) => run((b) => b.answerNotification(id, answer)), [run]),
+    answer: useCallback(
+      (id, answer) =>
+        run(async (b) => {
+          const item = await b.answerNotification(id, answer);
+          if (item.reply_call) await deliver(b, item, answer);
+        }),
+      [run],
+    ),
+    decideLens: useCallback(
+      (appKey, applicationId, decision) => run((b) => b.decideLens(appKey, applicationId, decision)),
+      [run],
+    ),
     say: useCallback(
       async (chain, text) => {
         let posted: FeedItem | null = null;
@@ -137,6 +159,22 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   };
 }
 
+/**
+ * Your answer, carried out in the app it belongs to with the call the row's
+ * lens wrote, then reported. A refusal is reported too: the row goes back to
+ * you as failed, with the app's own words, and can be answered again.
+ */
+export async function deliver(b: FeedBackend, item: FeedItem, answer: string): Promise<void> {
+  try {
+    const call = fillReplyCall(item.reply_call, answer);
+    await b.callApp(item.source_context, call.method, call.args);
+  } catch (e) {
+    await b.completeAnswer(item.id, "failed", messageOf(e).slice(0, 900));
+    throw e;
+  }
+  await b.completeAnswer(item.id, "delivered", item.source_label ? `Sent in ${item.source_label}` : "Sent");
+}
+
 /** The item a list row refers to, or the first one when nothing is picked. */
 export function pickSelected(items: FeedItem[], selected: string | null): FeedItem | null {
   return items.find((i) => i.id === selected) ?? items[0] ?? null;
@@ -144,6 +182,9 @@ export function pickSelected(items: FeedItem[], selected: string | null): FeedIt
 
 /** A contract refusal is a sentence; anything else gets one. */
 export function messageOf(e: unknown): string {
+  // An app's refusal arrives as `{ type: "FunctionCallError", data: "<its words>" }`.
+  const data = (e as { data?: unknown } | null)?.data;
+  if (typeof data === "string" && data) return data.replace(/^the method call returned an error:\s*/, "").replace(/^"|"$/g, "");
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
   return "Something went wrong talking to the node.";

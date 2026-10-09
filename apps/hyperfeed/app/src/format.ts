@@ -21,6 +21,12 @@ export function statusOf(item: FeedItem): { label: string; tone: Tone } {
     if (item.status === "failed") return { label: "Your agent couldn't answer", tone: "bad" };
     return { label: "Sent · waiting for your agent", tone: "busy" };
   }
+  if (item.kind === "notification" && item.reply_call) {
+    // The feed carries a typed row's answer itself: no agent in between.
+    if (item.status === "answered") return { label: "Sending…", tone: "busy" };
+    if (item.status === "delivered") return { label: "Sent", tone: "good" };
+    if (item.status === "failed") return { label: "Not sent · needs you", tone: "bad" };
+  }
   if (item.kind === "notification") {
     if (item.status === "answered") return { label: "Answered · agent sending", tone: "busy" };
     if (item.status === "delivered") return { label: "Answered", tone: "good" };
@@ -213,3 +219,50 @@ export const GUARD_LABELS: Record<string, string> = {
   invite: "Inviting people or changing roles",
   secret: "Reading a secret",
 };
+
+/** What a typed row is, as a word on its card. */
+export const TYPE_LABELS: Record<string, string> = {
+  message: "Message",
+  assignment: "Assignment",
+  poll: "Poll",
+  invite: "Invite",
+  turn: "Your turn",
+  request: "Request",
+  change: "Change",
+  status: "Status",
+  other: "Update",
+};
+
+/** A typed row's fields, or {} when it has none or they do not parse. */
+export function fieldsOf(item: FeedItem): Record<string, unknown> {
+  if (!item.fields) return {};
+  try {
+    const f = JSON.parse(item.fields) as unknown;
+    return f && typeof f === "object" && !Array.isArray(f) ? (f as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The facts a typed card shows under its title, by type: label and value. */
+export function typedFacts(item: FeedItem): [string, string][] {
+  const f = fieldsOf(item);
+  const text = (k: string) => (typeof f[k] === "string" ? (f[k] as string) : typeof f[k] === "number" ? String(f[k]) : "");
+  const pick = (...pairs: [string, string][]) => pairs.filter(([, v]) => v);
+  switch (item.item_type) {
+    case "assignment":
+      return pick(["What", text("what")], ["Due", text("due")]);
+    case "poll":
+      return pick(["Closes", text("closes_at")]);
+    case "invite":
+      return pick(["What", text("what")], ["When", text("when")], ["Where", text("where")]);
+    case "turn":
+      return pick(["Game", text("game")], ["Last move", text("last_move")]);
+    case "request":
+      return pick(["Asks for", text("asks_for")]);
+    case "change":
+      return pick(["What", text("what")]);
+    default:
+      return [];
+  }
+}

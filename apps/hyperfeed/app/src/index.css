@@ -604,6 +604,115 @@ input:focus-visible {
   outline-offset: 1px;
 }
 
+/* ── typed rows ──────────────────────────────────────────────────────────── */
+
+.type-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--plain-bg);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.typed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.typed-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.typed-facts div {
+  display: flex;
+  gap: 6px;
+}
+
+.typed-facts dt {
+  color: var(--muted);
+}
+
+.typed-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.chip.static {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  cursor: default;
+}
+
+.small-text {
+  font-size: 13px;
+}
+
+/* ── lenses ──────────────────────────────────────────────────────────────── */
+
+.lenses {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lens {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lens-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lens-preview {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-recorded {
+  color: var(--good-ink);
+}
+
+.preview-skipped {
+  color: var(--muted);
+}
+
+.preview-error {
+  color: var(--bad-ink);
+}
+
+.lens-spec {
+  max-height: 260px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--ground);
+  border-radius: 8px;
+  padding: 10px;
+}
+
 /* ── talking to your agent ───────────────────────────────────────────────── */
 
 .ask {
@@ -858,6 +967,11 @@ input:focus-visible {
 
 .panel.wide {
   flex: 999 1 600px;
+  min-width: 0;
+}
+
+.panel.full {
+  flex: 1 1 100%;
   min-width: 0;
 }
 

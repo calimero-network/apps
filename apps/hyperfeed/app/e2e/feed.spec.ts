@@ -32,6 +32,13 @@ async function login(page: Page) {
   await page.goto(`/#${params.toString()}`);
 }
 
+/** Sign in again and open the feed the first test created. */
+async function openFeed(page: Page) {
+  await login(page);
+  await page.getByRole("button", { name: /^Open feed / }).click();
+  await expect(page.getByRole("navigation", { name: "Feed filters" })).toBeVisible({ timeout: 60_000 });
+}
+
 /** The node, as a script calls it: the identity the collector and mero-bot write as. */
 function node(): MeroJs {
   const s = readState();
@@ -136,3 +143,60 @@ async function chainOf(mero: MeroJs, contextId: string, id: string): Promise<str
   const row = await mero.rpc.execute<{ chain: string } | null>({ contextId, method: "item", argsJson: { id } });
   return row?.chain ?? "";
 }
+
+test("a typed row is answered straight into its app, and a refusal comes back to you", async ({ page }) => {
+  await openFeed(page);
+  const mero = node();
+  const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
+  // A message a lens typed, whose reply call names a context this node does not
+  // have: the feed makes the call itself, and the node's refusal is the answer.
+  await mero.rpc.execute({
+    contextId,
+    method: "record_notification",
+    argsJson: {
+      input: {
+        key: "chat-typed:e2e>2:0",
+        app: "chat",
+        source_context: "0".repeat(64),
+        source_label: "#launch",
+        from: "Maya Ortiz",
+        title: "Sent you a message",
+        body: "are you free at 3?",
+        event: "MessageSent",
+        needs_you: true,
+        chain: "",
+        ask: { kind: "reply", prompt: "Reply to Maya", options: [], draft: "" },
+        item_type: "message",
+        fields: JSON.stringify({ from: "Maya Ortiz", text: "are you free at 3?", where: "DM", is_dm: true }),
+        reply_call: JSON.stringify({ method: "send_message", args: { message: "=answer" } }),
+      },
+    },
+  });
+  const card = page.locator("article.card", { hasText: "are you free at 3?" });
+  await expect(card.getByText("Message", { exact: true })).toBeVisible();
+  await card.getByRole("textbox").fill("Yes, 3 works");
+  await card.getByRole("button", { name: "Send" }).click();
+  await expect(card.getByText("Not sent · needs you")).toBeVisible();
+  // The row goes back to you, and can be answered again.
+  await expect(card.getByRole("textbox")).toBeVisible();
+});
+
+test("you approve a lens your agent proposed, in Controls", async ({ page }) => {
+  await openFeed(page);
+  const mero = node();
+  const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
+  const spec = { version: 1, events: { Inserted: { type: "status", fields: { what: "=event.key" } }, Removed: "ignore" } };
+  await mero.rpc.execute({
+    contextId,
+    method: "propose_lens",
+    argsJson: { app_key: "kv-store", application_id: "kv-app-1", spec: JSON.stringify(spec), summary: "Keys set in kv-store" },
+  });
+  await page.getByRole("link", { name: "Controls" }).click();
+  const lens = page.locator("li.lens", { hasText: "Keys set in kv-store" });
+  await expect(lens.getByText("Waiting for you")).toBeVisible();
+  await expect(lens).toContainText("Inserted → Status · 1 other event ignored");
+  await lens.getByRole("button", { name: "Approve" }).click();
+  await expect(lens.getByText("In use")).toBeVisible();
+  const [stored] = await mero.rpc.execute<{ status: string }[]>({ contextId, method: "lenses", argsJson: {} });
+  expect(stored?.status).toBe("approved");
+});

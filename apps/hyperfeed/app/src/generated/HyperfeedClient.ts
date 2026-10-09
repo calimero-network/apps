@@ -137,6 +137,11 @@ export interface Event_ActionRecorded {
   status: string;
 }
 
+export interface Event_LensChanged {
+  app: string;
+  status: string;
+}
+
 export interface Event_MessageChanged {
   id: string;
   status: string;
@@ -222,6 +227,18 @@ export interface FeedItem {
    * The message of yours an agent message answers.
    */
   reply_to: string;
+  /**
+   * One of [`ITEM_TYPES`]; `""` for an untyped row.
+   */
+  item_type: string;
+  /**
+   * The type's fields, a JSON object, or `""`.
+   */
+  fields: string;
+  /**
+   * The call that answers it in its app, or `""`; see [`Typed`].
+   */
+  reply_call: string;
 }
 
 export interface FeedPage {
@@ -263,6 +280,48 @@ export interface Hyperfeed {
   guards: Record<string, Guard>;
   agent: Record<string, AgentState>;
   messages: Record<string, Message>;
+  /**
+   * What a lens made of a notification, by the notification's id.
+   */
+  typed: Record<string, Typed>;
+  /**
+   * How each app version's events become feed items, by `<app>@<application id>`.
+   */
+  lenses: Record<string, Lens>;
+}
+
+/**
+ * How one app version's events become feed items, as your agent learned it
+ * from the app's ABI. Nothing uses a lens until you approve it.
+ */
+export interface Lens {
+  app: string;
+  /**
+   * The app version it was learned from: a new version is learned again.
+   */
+  application_id: string;
+  /**
+   * The lens itself, JSON (see the app's `lens` module).
+   */
+  spec: string;
+  /**
+   * One line for you: what it records and how it answers.
+   */
+  summary: string;
+  /**
+   * [`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`].
+   */
+  status: string;
+  updated_at: number;
+}
+
+export interface LensView {
+  app: string;
+  application_id: string;
+  spec: string;
+  summary: string;
+  status: string;
+  updated_at: number;
 }
 
 /**
@@ -342,6 +401,18 @@ export interface NotificationInput {
    * How to answer it from the feed, if it can be.
    */
   ask: Ask;
+  /**
+   * What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these.
+   */
+  item_type: string;
+  /**
+   * The type's fields, a JSON object.
+   */
+  fields: string;
+  /**
+   * The call that answers it in its app, a JSON object; see [`Typed`].
+   */
+  reply_call: string;
 }
 
 /**
@@ -381,6 +452,28 @@ export interface Step {
 }
 
 /**
+ * What a lens made of a notification: its type, the fields its card shows,
+ * and the call that answers it in its app. Kept beside the notification, keyed
+ * by its id, so rows recorded before lenses existed keep their layout.
+ */
+export interface Typed {
+  /**
+   * One of [`ITEM_TYPES`].
+   */
+  item_type: string;
+  /**
+   * A JSON object: the fields of that type (`from`, `text`, `options`, …).
+   */
+  fields: string;
+  /**
+   * A JSON object `{ "method", "args" }`: what your client calls in the
+   * source context to answer, with `"=$answer"` where your answer goes.
+   * Empty: answered by your agent, or not answerable from the feed.
+   */
+  reply_call: string;
+}
+
+/**
  * The rules' answer for one prospective action.
  */
 export interface Verdict {
@@ -399,9 +492,17 @@ export interface Verdict {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | {
+    /**
+     * A lens was proposed, approved or turned down: re-read `lenses`.
+     */
+    name: "LensChanged";
+    payload: Event_LensChanged;
+  }
   | { name: "MessageChanged"; payload: Event_MessageChanged }
   | {
     /**
@@ -523,6 +624,20 @@ export class HyperfeedClient {
   }
 
   /**
+   * decide_lens
+   *
+   * Approve or turn down a lens your agent proposed. Only an approved lens
+   * turns an app's events into feed items, and only for the app version it
+   * was learned from.
+   *
+   * @intent mutating
+   */
+  public async decideLens(params: { app_key: string; application_id: string; decision: string }): Promise<LensView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'decide_lens', argsJson: params });
+    return response as LensView;
+  }
+
+  /**
    * feed
    *
    * The feed: one row per chain, newest activity first.
@@ -568,6 +683,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * lenses
+   *
+   * Every lens, newest first: what your agent learned for each app version,
+   * and whether you approved it.
+   *
+   * @intent read_only
+   */
+  public async lenses(): Promise<LensView[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'lenses', argsJson: {} });
+    return response as LensView[];
+  }
+
+  /**
    * mark_all_seen
    *
    * Mark every notification seen.
@@ -603,6 +731,20 @@ export class HyperfeedClient {
   public async openQuestions(): Promise<FeedItem[]> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'open_questions', argsJson: {} });
     return response as FeedItem[];
+  }
+
+  /**
+   * propose_lens
+   *
+   * The agent proposes a lens for one app version, learned from its ABI.
+   * It waits for you: an approved lens is replaced only by a new proposal,
+   * which waits again. The same spec proposed again changes nothing.
+   *
+   * @intent mutating
+   */
+  public async proposeLens(params: { app_key: string; application_id: string; spec: string; summary: string }): Promise<LensView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'propose_lens', argsJson: params });
+    return response as LensView;
   }
 
   /**

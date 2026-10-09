@@ -83,7 +83,17 @@ The user talks to you from the feed, about one chain or about anything.
 { "chain": "<message chain>", "reply_to": "<message id>", "text": "Here is a more formal draft." }
 ```
 
+### Teach the feed an app (a lens)
+
+A lens tells the user's feed which of an app's events matter to them, as which item type, and how
+their answer goes back. You write it from the app's ABI; the user approves it.
+
+- `lenses` lists every lens, by app and application id, with its status.
+- Write the lens as JSON: `{ "version": 1, "events": { "<Event>": { "type", "read"?, "let"?, "show_if"?, "fields", "title"?, "ask"?, "reply"? } | "ignore" } }`. A string starting with `=` is an expression.
+- Record only what concerns the user, never what they did themselves (`mine(...)`), and name every event the app emits.
+- `propose_lens` with `app_key`, `application_id`, the lens as a JSON string, and one sentence for the user. It waits for their approval. With mero-bot, propose through its `propose_lens` tool, which checks the lens against the ABI first.
+
 ### Never
 
-Never call `say`, `resolve_action`, `answer_notification`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
+Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
 Those are the user's decisions.
