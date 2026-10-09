@@ -263,7 +263,7 @@ and "Create my feed" makes the context. The two-node scenario runs without Docke
 
 - Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
   waits as long as mero-bot runs: there is no timeout yet.
-- A Vercel project. `frontend = "https://hyperfeed.vercel.app"` resolves to nothing until it exists.
+- A Vercel project. `logic/Cargo.toml` has no `frontend` until one exists: `hyperfeed.vercel.app` is taken by another project, and that URL is also the login callback origin.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
 - Paging past the first 50 rows. The contract returns `next_before`, but the UI does not ask for the next page.
 - Landing page, and the browser e2e suites other apps carry.
