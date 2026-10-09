@@ -8,11 +8,11 @@
  * needs no Docker. Two-node behaviour is logic/workflows/feed.yml's job.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeToLog } from "@calimero-apps/e2e-node";
+import { MeroJs } from "@calimero-network/mero-js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(__dirname, "..");
@@ -51,51 +51,22 @@ function resolveMpk(): string {
   );
 }
 
-async function healthy(url: string): Promise<boolean> {
-  try {
-    return (await fetch(`${url}/admin-api/health`)).ok;
-  } catch {
-    return false;
-  }
+/** The node through mero-js: health, login and install are the SDK's, not hand-rolled HTTP. */
+function client(): MeroJs {
+  return new MeroJs({ baseUrl: NODE_URL, credentials: { username: ADMIN_USER, password: ADMIN_PASSWORD } });
 }
 
-async function waitForHealth(url: string, timeoutMs = 40_000): Promise<void> {
+async function waitForHealth(mero: MeroJs, timeoutMs = 40_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await healthy(url)) return;
-    await new Promise((r) => setTimeout(r, 500));
+    try {
+      await mero.admin.healthCheck();
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
-  throw new Error(`merod at ${url} never became healthy within ${timeoutMs}ms`);
-}
-
-/** A client key for `/auth/token`: raw 32-byte ed25519 public key, base64. */
-function clientPublicKey(): string {
-  const { publicKey } = generateKeyPairSync("ed25519");
-  const der = publicKey.export({ type: "spki", format: "der" });
-  return Buffer.from(der.subarray(der.length - 32)).toString("base64");
-}
-
-async function authenticate(url: string) {
-  const resp = await fetch(`${url}/auth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      auth_method: "user_password",
-      public_key: clientPublicKey(),
-      client_name: "hyperfeed-e2e",
-      timestamp: Date.now(),
-      permissions: ["admin"],
-      provider_data: { username: ADMIN_USER, password: ADMIN_PASSWORD },
-    }),
-  });
-  if (!resp.ok) throw new Error(`auth failed (${resp.status}): ${await resp.text()}`);
-  const body = (await resp.json()) as { data?: { access_token?: string; refresh_token?: string } } & {
-    access_token?: string;
-    refresh_token?: string;
-  };
-  const t = body.data ?? body;
-  if (!t?.access_token) throw new Error(`auth returned no access_token: ${JSON.stringify(body).slice(0, 300)}`);
-  return { accessToken: t.access_token as string, refreshToken: t.refresh_token as string };
+  throw new Error(`merod at ${NODE_URL} never became healthy within ${timeoutMs}ms`);
 }
 
 export default async function globalSetup() {
@@ -146,21 +117,20 @@ export default async function globalSetup() {
   pipeToLog(proc, path.join(DATA_DIR, `${NODE_NAME}.log`));
   if (proc.pid) pids.push(proc.pid);
 
-  await waitForHealth(NODE_URL);
-  const tokens = await authenticate(NODE_URL);
-
-  const resp = await fetch(`${NODE_URL}/admin-api/install-dev-application`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokens.accessToken}` },
-    body: JSON.stringify({ path: mpk }),
-  });
-  if (!resp.ok) throw new Error(`install failed (${resp.status}): ${await resp.text()}`);
+  const mero = client();
+  await waitForHealth(mero);
+  const tokens = await mero.authenticate();
   // A login callback names the application it is for; the spec's login does too.
-  const installed = (await resp.json()) as { data?: { applicationId?: string }; applicationId?: string };
-  const applicationId = (installed.data ?? installed).applicationId;
-  if (!applicationId) throw new Error(`install returned no applicationId: ${JSON.stringify(installed).slice(0, 300)}`);
+  const { applicationId } = await mero.admin.installDevApplication({ path: mpk });
 
-  writeFileSync(STATE_FILE, JSON.stringify({ pids, nodeUrl: NODE_URL, applicationId, ...tokens }, null, 2));
+  writeFileSync(
+    STATE_FILE,
+    JSON.stringify(
+      { pids, nodeUrl: NODE_URL, applicationId, accessToken: tokens.access_token, refreshToken: tokens.refresh_token },
+      null,
+      2,
+    ),
+  );
 }
 
 export function readState() {
