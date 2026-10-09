@@ -1,44 +1,59 @@
+import MeroKit
 import XCTest
 @testable import MeroTag
 
-/// The contract emits SSE events as `{ "VariantName": "payloadId" }`. Verify the
-/// app decodes each variant the store cares about.
+/// Contract events reach the app inside a `StateMutation` SSE frame as
+/// `data.events[] = { kind, data: [bytes] }`. Verify the variants the store
+/// acts on decode, whatever shape the payload bytes take.
 final class EventTests: XCTestCase {
-    private func event(_ json: String) -> TagEvent? {
-        TagEvent(data: Data(json.utf8))
+    private func bytes(_ s: String) -> JSONValue { .array(Array(s.utf8).map { .number(Double($0)) }) }
+
+    private func frame(_ events: [(String, JSONValue)], type: String = "StateMutation") -> JSONValue {
+        [
+            "contextId": "ctx", "type": .string(type),
+            "data": ["newRoot": "r", "events": .array(events.map { ["kind": .string($0.0), "data": $0.1] })],
+        ]
     }
 
-    func testTrackerUpdated() {
-        guard case .trackerUpdated(let id)? = event(#"{"TrackerUpdated":"t1"}"#) else {
-            return XCTFail("not trackerUpdated")
-        }
-        XCTAssertEqual(id, "t1")
+    func testTrackerUpdatedFromJsonStringBytes() {
+        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerUpdated", bytes(#""t1""#))])), [.trackerUpdated("t1")])
     }
 
-    func testTrackerCreatedDeletedShared() {
-        if case .trackerCreated(let id)? = event(#"{"TrackerCreated":"a"}"#) { XCTAssertEqual(id, "a") } else { XCTFail() }
-        if case .trackerDeleted(let id)? = event(#"{"TrackerDeleted":"b"}"#) { XCTAssertEqual(id, "b") } else { XCTFail() }
-        if case .trackerShared(let id)? = event(#"{"TrackerShared":"c"}"#) { XCTAssertEqual(id, "c") } else { XCTFail() }
+    func testPayloadAsOneKeyObjectOrRawBytes() {
+        XCTAssertEqual(
+            TagEvent.events(inFrame: frame([("TrackerCreated", bytes(#"{"TrackerCreated":"a"}"#))])),
+            [.trackerCreated("a")])
+        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerDeleted", bytes("b"))])), [.trackerDeleted("b")])
     }
 
-    func testGroupVariantsCollapse() {
-        if case .groupChanged? = event(#"{"GroupUpdated":"g"}"#) {} else { XCTFail("GroupUpdated") }
-        if case .groupChanged? = event(#"{"GroupCreated":"g"}"#) {} else { XCTFail("GroupCreated") }
+    func testPayloadAsBase64OrPlainString() {
+        let b64 = Data(#""c""#.utf8).base64EncodedString()
+        XCTAssertEqual(TagEvent.events(inFrame: frame([("TrackerShared", .string(b64))])), [.trackerShared("c")])
+        XCTAssertEqual(TagEvent.events(inFrame: frame([("PresenceUpdated", "u1")])), [.presenceUpdated("u1")])
     }
 
-    func testGeofenceAndPresence() {
-        if case .geofenceEntered(let id)? = event(#"{"GeofenceEntered":"home"}"#) { XCTAssertEqual(id, "home") } else { XCTFail() }
-        if case .geofenceExited? = event(#"{"GeofenceExited":"home"}"#) {} else { XCTFail() }
-        if case .presenceUpdated(let id)? = event(#"{"PresenceUpdated":"u1"}"#) { XCTAssertEqual(id, "u1") } else { XCTFail() }
+    func testSeveralEventsInOneFrame() {
+        let events = TagEvent.events(inFrame: frame([
+            ("GroupUpdated", bytes(#""g""#)), ("GeofenceEntered", bytes(#""home""#)), ("MemberJoined", bytes(#""m""#)),
+        ]))
+        XCTAssertEqual(events, [.groupChanged("g"), .geofenceEntered("home"), .memberJoined("m")])
+    }
+
+    func testStateMutationWithoutEventsMeansRefresh() {
+        XCTAssertEqual(TagEvent.events(inFrame: frame([])), [.stateChanged])
+    }
+
+    func testSyncStatusFramesAreIgnored() {
+        XCTAssertEqual(TagEvent.events(inFrame: frame([], type: "SyncStatus")), [])
     }
 
     func testUnknownVariantBecomesOther() {
-        guard case .other(let key, _)? = event(#"{"SomethingNew":"x"}"#) else { return XCTFail() }
-        XCTAssertEqual(key, "SomethingNew")
+        XCTAssertEqual(TagEvent.events(inFrame: frame([("SomethingNew", bytes(#""x""#))])), [.other("SomethingNew", "x")])
     }
 
-    func testGarbageReturnsNil() {
-        XCTAssertNil(event("not json"))
-        XCTAssertNil(event("{}"))
+    func testSerdeShapedEventStillDecodes() {
+        XCTAssertEqual(TagEvent(data: Data(#"{"GeofenceExited":"home"}"#.utf8)), .geofenceExited("home"))
+        XCTAssertNil(TagEvent(data: Data("not json".utf8)))
+        XCTAssertNil(TagEvent(data: Data("{}".utf8)))
     }
 }

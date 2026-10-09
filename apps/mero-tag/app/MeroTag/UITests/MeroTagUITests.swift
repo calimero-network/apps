@@ -1,15 +1,14 @@
 import XCTest
 
-/// Smoke UI test — launches the app, checks the animated welcome screen, then
-/// reveals the login card. Run from Xcode or `make app-test`.
+/// Smoke UI test: a fresh install lands on Cloud sign-in — one "Continue with
+/// Calimero" button, and no node URL or password fields anywhere.
 final class MeroTagUITests: XCTestCase {
-    func testWelcomeThenLoginAppears() {
+    func testFreshLaunchShowsCloudSignInOnly() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Mero Tag"].waitForExistence(timeout: 5))
-        let getStarted = app.buttons["Get Started"]
-        XCTAssertTrue(getStarted.waitForExistence(timeout: 5))
-        getStarted.tap()
-        XCTAssertTrue(app.buttons["Connect"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["appTitle"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["cloudSignInButton"].exists)
+        XCTAssertEqual(app.textFields.count, 0, "sign-in must not ask for a node URL or credentials")
+        XCTAssertEqual(app.secureTextFields.count, 0)
     }
 }

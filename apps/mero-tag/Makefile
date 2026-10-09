@@ -1,9 +1,8 @@
-.PHONY: help setup logic-build logic-bundle logic-test logic-e2e workflows kit-verify kit-test \
+.PHONY: help setup logic-build logic-bundle logic-test logic-e2e workflows \
         node node2 invite stop dev \
         app-gen app-build app-run app-test test clean
 
 APP_DIR    := app/MeroTag
-KIT_DIR    := app/MeroKit
 XCODEPROJ  := $(APP_DIR)/MeroTag.xcodeproj
 SCHEME     := MeroTag
 SIMULATOR  ?= iPhone 17
@@ -16,7 +15,7 @@ help:
 	@echo "  Setup"
 	@echo "    setup        Check prereqs + build the WASM contract"
 	@echo ""
-	@echo "  Backend (Calimero node)"
+	@echo "  Local node (contract development; the app itself signs in with Calimero Cloud)"
 	@echo "    node         Build WASM, start node1, create a tracking space"
 	@echo "    node2        Start a second node (for P2P sync demo)"
 	@echo "    invite       Invite node2 into node1's space (run after node + node2)"
@@ -29,18 +28,14 @@ help:
 	@echo "    workflows    merobox WASM logic tests (real merod in Docker)"
 	@echo "    logic-e2e    curl-based node integration test"
 	@echo ""
-	@echo "  MeroKit (Swift client)"
-	@echo "    kit-verify   Smoke-test pure logic (Command Line Tools only — no Xcode)"
-	@echo "    kit-test     Full XCTest suite (needs full Xcode)"
-	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
 	@echo "    app-gen      Generate MeroTag.xcodeproj from project.yml"
 	@echo "    app-build    Build the app for the simulator"
 	@echo "    app-run      Build + boot simulator + install + launch"
-	@echo "    app-test     Run the UI test suite"
+	@echo "    app-test     Run the unit + UI test suites"
 	@echo ""
 	@echo "  Aggregate"
-	@echo "    test         logic-test + kit-verify"
+	@echo "    test         logic-test (the no-Xcode subset)"
 	@echo "    clean        Remove build artifacts"
 	@echo ""
 
@@ -96,13 +91,6 @@ stop:
 	@rm -f /tmp/merotag-dev-node.pid /tmp/merotag-dev-node2.pid
 	@printf '\033[32m  ✓  dev nodes stopped & cleaned\033[0m\n'
 
-# ── MeroKit ────────────────────────────────────────────────────────────────────
-kit-verify:
-	cd $(KIT_DIR) && swift run merokit-verify
-
-kit-test:
-	cd $(KIT_DIR) && swift test
-
 # ── iOS app ─────────────────────────────────────────────────────────────────────
 app-gen:
 	@command -v xcodegen >/dev/null 2>&1 || { echo "xcodegen not found — run: brew install xcodegen"; exit 1; }
@@ -127,9 +115,8 @@ app-test: app-gen
 	  -derivedDataPath $(APP_DIR)/.build test
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
-test: logic-test kit-verify
+test: logic-test
 
 clean:
 	cd logic && rm -rf res target
-	cd $(KIT_DIR) && rm -rf .build
 	rm -rf $(APP_DIR)/.build $(XCODEPROJ)

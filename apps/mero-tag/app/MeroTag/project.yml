@@ -8,8 +8,13 @@ options:
   createIntermediateGroups: true
 
 packages:
+  # The official Calimero Swift SDK (MeroKit + MeroKitUI). Needs core
+  # 0.11.0-rc.83 wire support and Cloud sign-in (swift-sdk#43, #44).
+  # To build against a local checkout instead, swap `url`/`branch` for
+  # `path: ../../../swift-sdk` — but never commit that.
   MeroKit:
-    path: ../MeroKit
+    url: https://github.com/calimero-network/swift-sdk
+    branch: master
 
 targets:
   MeroTag:
@@ -30,8 +35,11 @@ targets:
         UIBackgroundModes:
           - location
           - fetch
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+        # Cloud sign-in: the Calimero wallet returns to merotag://enrol.
+        CFBundleURLTypes:
+          - CFBundleURLName: network.calimero.merotag.enrol
+            CFBundleURLSchemes:
+              - merotag
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: network.calimero.merotag
@@ -46,6 +54,8 @@ targets:
     dependencies:
       - package: MeroKit
         product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
 
   MeroTagTests:
     type: bundle.unit-test
@@ -54,6 +64,10 @@ targets:
       - path: Tests
     dependencies:
       - target: MeroTag
+      - package: MeroKit
+        product: MeroKit
+      - package: MeroKit
+        product: MeroKitUI
 
   MeroTagUITests:
     type: bundle.ui-testing
