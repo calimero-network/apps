@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { ChatView, UNANSWERED_MS } from "./ChatView";
@@ -88,5 +88,25 @@ describe("chat with your agent", () => {
     await say("testing this");
     expect(await screen.findByRole("alert")).toHaveTextContent(/made by an earlier Hyperfeed/);
     expect(screen.getByLabelText("Message your agent")).toHaveValue("testing this");
+  });
+
+  describe("in a browser whose scrollIntoView returns a promise", () => {
+    // Chromium's newer scrollIntoView returns a Promise. An effect that hands
+    // it back to React is taken for a clean-up and crashes the page on the
+    // next update.
+    const original = Element.prototype.scrollIntoView;
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it("keeps updating the open chat", async () => {
+      Element.prototype.scrollIntoView = (() => Promise.resolve()) as unknown as typeof original;
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      await say("Still there?");
+      const [asked] = await backend.chain((await backend.feed("agent", "")).items[0]!.chain);
+      await act(async () => void backend.agentSay(asked!.chain, asked!.id, "Yes."));
+      expect(await within(thread()).findByText("Yes.")).toBeInTheDocument();
+    });
   });
 });

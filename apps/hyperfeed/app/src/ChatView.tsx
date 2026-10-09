@@ -144,7 +144,11 @@ export function ChatView({
 function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
-  useEffect(() => end.current?.scrollIntoView?.({ block: "end" }), [items.length, last?.status]);
+  useEffect(() => {
+    // In braces: newer Chromium returns a Promise here, and an effect must
+    // return nothing but its clean-up.
+    end.current?.scrollIntoView?.({ block: "end" });
+  }, [items.length, last?.status]);
 
   if (items.length === 0) {
     return (
