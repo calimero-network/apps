@@ -8,6 +8,8 @@ import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
+import { useNewFeed } from "./newFeed";
+import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
 
 /**
@@ -59,19 +61,22 @@ function NodeApp({ page }: { page: Page }) {
       </Shell>
     );
   }
-  return <NodeFeedApp page={page} contextId={contextId} session={{ nodeUrl, logout }} />;
+  return <NodeFeedApp page={page} contextId={contextId} applicationId={applicationId} session={{ nodeUrl, logout }} />;
 }
 
 function NodeFeedApp({
   page,
   contextId,
+  applicationId,
   session,
 }: {
   page: Page;
   contextId: string;
+  applicationId: string | null;
   session: { nodeUrl: string | null; logout: () => void };
 }) {
   const node = useNodeFeed(contextId);
+  const newFeed = useNewFeed(applicationId);
   const feed = useFeed(node.backend, node.nudge);
   const [query, setQuery] = useState("");
   const watching =
@@ -80,7 +85,14 @@ function NodeFeedApp({
       : `Watching ${node.watching.length} other context${node.watching.length === 1 ? "" : "s"}`;
   return (
     <Shell base="" page={page} feed={feed} session={session} status={watching} query={query} onQuery={setQuery}>
-      <Screen page={page} feed={feed} contextId={contextId} query={query} preview={nodePreview(node)} />
+      <Screen
+        page={page}
+        feed={feed}
+        contextId={contextId}
+        query={query}
+        preview={nodePreview(node)}
+        newFeed={newFeed.ready ? newFeed : undefined}
+      />
     </Shell>
   );
 }
@@ -125,17 +137,19 @@ function Screen({
   contextId,
   query,
   preview,
+  newFeed,
 }: {
   page: Page;
   feed: Feed;
   contextId: string | null;
   query: string;
   preview: Preview;
+  newFeed?: NewFeed;
 }) {
   return page === "feed" ? (
-    <FeedView feed={feed} query={query} />
+    <FeedView feed={feed} query={query} newFeed={newFeed} />
   ) : (
-    <ControlsView feed={feed} contextId={contextId} preview={preview} />
+    <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />
   );
 }
 

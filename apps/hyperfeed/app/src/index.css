@@ -663,6 +663,13 @@ input:focus-visible {
   font-size: 14px;
 }
 
+.notice-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 10px;
+}
+
 /* ── lenses ──────────────────────────────────────────────────────────────── */
 
 .lenses {
