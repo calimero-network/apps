@@ -1209,6 +1209,12 @@ impl MeroChat {
             self.sync_staff()?;
         }
 
+        // The app re-asserts an admin's own role whenever a channel opens:
+        // the writes above keep the grants in step, but a role that did not
+        // change is no news to announce.
+        if target_role == role {
+            return Ok("Role unchanged".to_string());
+        }
         app::emit!(Event::RoleUpdated(target.to_string()));
         Ok("Role updated".to_string())
     }
@@ -2386,6 +2392,29 @@ mod tests {
         let denied = app.call_as_account(MODR, MODR, |s| s.set_member_role(target, Role::Admin));
         assert!(denied.is_err());
         assert_eq!(app.view(|s| s.get_member_role(target)), Role::User);
+    }
+
+    #[test]
+    fn setting_a_role_a_member_already_has_announces_nothing() {
+        // The app re-asserts an admin's own Admin role each time they open a
+        // channel. Announcing that as a role change told them "you are now
+        // Admin" over and over; only a real change is news.
+        let mut app = new_chat();
+        let me = UserId::new(CREATOR());
+        let modr = UserId::new(MODR);
+        let _ = app.take_events();
+
+        app.call(|s| s.set_member_role(me, Role::Admin)).unwrap();
+        assert!(
+            app.take_events().is_empty(),
+            "admin to admin is not a change"
+        );
+
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+        assert_eq!(app.take_events().len(), 1, "user to mod is");
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+        assert!(app.take_events().is_empty(), "mod to mod is not");
+        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
     }
 
     #[test]
