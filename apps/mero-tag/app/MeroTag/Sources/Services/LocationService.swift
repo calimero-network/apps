@@ -9,10 +9,11 @@ import UIKit
 /// updates (distance + time filter so we don't hammer the node), reads battery,
 /// and forwards each fix to `onLocation`.
 @MainActor
-public final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
+public final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var lastSentAt: Date = .distantPast
     private var lastSentCoord: CLLocationCoordinate2D?
+    private var isRunning = false
 
     /// Minimum spacing between forwarded updates.
     public var minInterval: TimeInterval = 5
@@ -35,7 +36,9 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
     }
 
     public func requestAuthorization() {
-        manager.requestWhenInUseAuthorization()
+        if manager.authorizationStatus == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        }
     }
 
     /// Ask for Always (background) authorization — call after When-In-Use is granted.
@@ -47,6 +50,8 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
     }
 
     public func start() {
+        guard !isRunning else { return }
+        isRunning = true
         manager.startUpdatingLocation()
         #if os(iOS)
         manager.startMonitoringSignificantLocationChanges()
@@ -54,6 +59,7 @@ public final class LocationService: NSObject, ObservableObject, CLLocationManage
     }
 
     public func stop() {
+        isRunning = false
         manager.stopUpdatingLocation()
         #if os(iOS)
         manager.stopMonitoringSignificantLocationChanges()

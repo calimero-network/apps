@@ -43,23 +43,6 @@ jobs:
       - name: Build WASM (+ ABI embed)
         run: cargo mero build
 
-  merokit:
-    name: MeroKit (Swift)
-    runs-on: macos-15
-    defaults:
-      run:
-        working-directory: app/MeroKit
-    steps:
-      - uses: actions/checkout@v4
-      # Pinned rather than inherited: the installed simulator runtimes differ per
-      # Xcode, so a default bump silently changes what this job is testing.
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app
-      # The verify binary is pure logic and needs no Xcode, so it runs first and
-      # fails fast if the client cannot even construct its requests.
-      - run: swift run merokit-verify
-      - run: swift test
-
   app:
     name: iOS app build
     runs-on: macos-15

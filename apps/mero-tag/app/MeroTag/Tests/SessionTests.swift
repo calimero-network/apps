@@ -1,61 +1,97 @@
-import XCTest
 import MeroKit
+import MeroKitUI
+import XCTest
 @testable import MeroTag
 
-/// What happens when the node ends the session under the app's feet.
-///
-/// Access tokens live one hour. MeroKit refreshes them now, so this path is only
-/// reached when a refresh cannot help — a revoked family, a replayed refresh
-/// token, a grant the token does not carry. Before, none of those reached the UI
-/// at all: the tab bar stayed up, the map kept its last positions, and every
-/// call behind it was refused.
+/// The sign-in → space → sign-out state machine, and what happens when the
+/// account session ends under the app.
 @MainActor
 final class SessionTests: XCTestCase {
-    private func makeApp() -> AppState {
-        AppState(client: MeroClient(store: InMemoryTokenStore(
-            nodeUrl: "http://node.test", accessToken: "tok", refreshToken: "ref")))
+    private func makeApp(defaults: UserDefaults = isolatedDefaults()) -> AppState {
+        AppState(client: makeClient(), preferences: SpacePreferences(defaults: defaults))
     }
 
-    func testSessionEndedReturnsToLoginWithAReason() throws {
+    func testLaunchWithNoStoredSessionShowsSignIn() async {
         let app = makeApp()
-        app.phase = .ready
-        app.sessionEnded(.tokenRevoked)
+        XCTAssertEqual(app.phase, .launching)
+        await app.restore()
+        XCTAssertEqual(app.phase, .signedOut)
+        XCTAssertNil(app.account)
+    }
 
-        XCTAssertEqual(app.phase, .loggedOut)
+    func testCancelledWalletSheetIsNotAnError() async {
+        let app = makeApp()
+        await app.restore()
+        await app.signIn()
+        XCTAssertEqual(app.phase, .signedOut)
+        XCTAssertNil(app.client.errorMessage, "dismissing the sheet is a choice, not a failure")
+    }
+
+    func testCallbackForAnotherSchemeIsIgnored() async {
+        let app = makeApp()
+        await app.restore()
+        await app.handleOpenURL(URL(string: "https://example.com/#credential=x")!)
+        XCTAssertEqual(app.phase, .signedOut)
+    }
+
+    func testSessionEndedReturnsToSignInWithAReason() throws {
+        let app = makeApp()
+        app.setPhaseForTesting(.ready)
+        app.sessionEnded("Your Calimero session was revoked.")
+        XCTAssertEqual(app.phase, .signedOut)
         let notice = try XCTUnwrap(app.sessionNotice)
         XCTAssertTrue(notice.contains("revoked"), "got: \(notice)")
         XCTAssertTrue(notice.hasSuffix("Please sign in again."))
     }
 
-    /// Each terminal reason has to say something a human can act on — a bare
-    /// "403" on a login screen is the version of this that already existed.
-    func testEveryTerminalReasonProducesANotice() {
-        for reason: AuthFailure in [.tokenRevoked, .tokenReuse, .permissionDenied, .invalidNode, .invalidToken] {
-            let app = makeApp()
-            app.phase = .ready
-            app.sessionEnded(reason)
-            XCTAssertEqual(app.phase, .loggedOut, "\(reason) must end the session")
-            XCTAssertFalse(app.sessionNotice?.isEmpty ?? true, "\(reason) must explain itself")
-        }
-    }
-
-    /// The handler can fire more than once (several calls in flight when the
-    /// token died). Logging out twice must not resurrect anything.
-    func testSessionEndedIsIdempotentOnceLoggedOut() {
+    /// Several calls in flight can each report the dead session.
+    func testSessionEndedIsIdempotentOnceSignedOut() {
         let app = makeApp()
-        app.phase = .ready
-        app.sessionEnded(.tokenRevoked)
+        app.setPhaseForTesting(.ready)
+        app.sessionEnded("first.")
         let first = app.sessionNotice
-        app.sessionEnded(.tokenReuse)
+        app.sessionEnded("second.")
         XCTAssertEqual(app.sessionNotice, first, "a second report must not overwrite the first reason")
-        XCTAssertEqual(app.phase, .loggedOut)
     }
 
-    func testLoggingOutDeliberatelyLeavesNoNotice() {
+    func testSigningOutDeliberatelyLeavesNoNotice() async {
         let app = makeApp()
-        app.phase = .ready
-        app.logout()
-        XCTAssertEqual(app.phase, .loggedOut)
+        app.setPhaseForTesting(.choosingSpace)
+        await app.signOut()
+        XCTAssertEqual(app.phase, .signedOut)
         XCTAssertNil(app.sessionNotice)
+    }
+
+    func testOpeningASpaceWhileSignedOutGoesBackToSignIn() async {
+        let app = makeApp()
+        app.setPhaseForTesting(.choosingSpace)
+        await app.openSpace(contextId: "ctx", displayName: "Fran")
+        XCTAssertEqual(app.phase, .signedOut)
+    }
+
+    func testOpenSpaceValidatesInput() async {
+        let app = makeApp()
+        app.setPhaseForTesting(.choosingSpace)
+        await app.openSpace(contextId: "  ", displayName: "Fran")
+        XCTAssertEqual(app.spaceError, "Enter the space ID you were given.")
+        await app.openSpace(contextId: "ctx", displayName: " ")
+        XCTAssertEqual(app.spaceError, "Choose a name others will see.")
+    }
+
+    func testTerminalErrorsAreRecognised() {
+        let revoked = MeroError.authRevoked(
+            reason: "token_revoked", http: HTTPError(status: 403, statusText: "", url: "", headers: [:]))
+        XCTAssertNotNil(TrackerStore.sessionEndReason(revoked))
+        XCTAssertNotNil(TrackerStore.sessionEndReason(AccountError.notSignedIn("gone")))
+        XCTAssertNil(TrackerStore.sessionEndReason(MeroError.network("offline")))
+    }
+
+    func testSpacePreferencesRoundTrip() {
+        let prefs = SpacePreferences(defaults: isolatedDefaults())
+        XCTAssertNil(prefs.space)
+        prefs.space = SpaceSelection(contextId: "ctx", displayName: "Fran")
+        XCTAssertEqual(prefs.space, SpaceSelection(contextId: "ctx", displayName: "Fran"))
+        prefs.space = nil
+        XCTAssertNil(prefs.space)
     }
 }

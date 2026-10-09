@@ -17,7 +17,6 @@ check rustc   "install via https://rustup.rs"
 check cargo   "install via https://rustup.rs"
 check jq      "brew install jq"
 check merod   "install Calimero node (merod)"
-check swift   "install Xcode or Command Line Tools"
 
 [[ ${#MISSING[@]} -gt 0 ]] && { err "Missing: ${MISSING[*]}"; exit 1; }
 
@@ -41,7 +40,7 @@ command -v wasm-opt >/dev/null 2>&1 && ok "wasm-opt found" || warn "wasm-opt not
 
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"
-printf "    ${CYAN}make node${RESET}      → start the dev node + create a tracking space\n"
-printf "    ${CYAN}make kit-verify${RESET} → smoke-test MeroKit (no Xcode needed)\n"
-printf "    ${CYAN}make app-gen${RESET}   → generate MeroTag.xcodeproj (needs xcodegen + Xcode)\n\n"
+printf "    ${CYAN}make logic-test${RESET} → unit-test the contract\n"
+printf "    ${CYAN}make app-run${RESET}    → build + run the app in the Simulator (needs xcodegen + Xcode)\n"
+printf "    ${CYAN}make node${RESET}       → a local dev node, for contract work only (the app signs in with Calimero Cloud)\n\n"
 printf "  See ${BOLD}requirements.md${RESET} for the full Mac / iPhone walkthrough.\n\n"
