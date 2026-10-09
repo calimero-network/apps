@@ -37,8 +37,8 @@ jobs:
 
   # There is no MeroKit job any more: the Swift client is the shared SDK
   # (calimero-network/swift-sdk), tested in its own repo. This app's job is to
-  # prove it still builds and passes its tests against the pinned SDK revision
-  # in app/MeroAR/project.yml.
+  # prove it still builds and passes its tests against the SDK branch named
+  # in app/MeroAR/project.yml (swift-sdk master).
   app:
     name: iOS app build
     runs-on: macos-15

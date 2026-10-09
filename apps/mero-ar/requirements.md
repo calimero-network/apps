@@ -91,32 +91,34 @@ Stop later with `make stop`.
 3. **Plug in the device**, select it as the run destination, press **⌘R**.
    - First run: on the device, *Settings ▸ General ▸ VPN & Device Management* →
      trust your developer certificate.
-4. **In the app**, enter:
-   - Node URL: `http://<your-mac-ip>:2450` (must be on the same Wi-Fi as the Mac)
-   - Username `admin`, Password `calimero1234`
-   - Context ID: the value from `make node`, or paste an invite link
+4. **In the app**, tap **Continue with Calimero**. The Calimero wallet opens in
+   the system sign-in sheet; approve this device with your passkey and you land
+   back in the app, signed in to your account's hosted relay. There is no node
+   URL, username or password on mobile — the phone never talks to a node you
+   run; every call goes through your relay (writes as signed warrant intents,
+   reads as relay queries).
 
-   There is no setup code to enter. core#3276/#3277 (0.11.0-rc.17) deleted the
-   first-login bootstrap secret — the admin account is created at `merod init`,
-   so `merod` no longer prints a secret to paste and the field is gone from the
-   login card.
+   Then paste an **invite link** someone sent you (or a room ID you're already
+   in) and tap **Join and enter**.
 
-   The session is stored in the Keychain, so the next launch walks straight back
-   into the room; the SDK refreshes an expired token on its own.
+   The device key and the session live in the Keychain, so the next launch
+   reconnects to the relay and walks straight back into the last room.
 5. Grant **camera permission**, then **slowly pan the device** to scan the room.
 6. Point the centre reticle at a surface and tap **Cube / Sphere / Marker** to
    place objects. Tap an object to select it (then delete).
 
-> **Firewall:** if the device can't reach the node, allow incoming connections
-> for `merod` (System Settings ▸ Network ▸ Firewall).
+> **Wallet callback:** the wallet returns to `meroar://enrol`. It needs a wallet
+> build that accepts app-scheme callbacks (mero-wallet#7).
 
 ---
 
 ## 5. Multi-device collaboration
 
-1. Build & run on **two devices** (repeat §4 for each, same Context ID).
+1. Build & run on **two devices** (repeat §4 for each). The second person signs
+   in with their own account and pastes the invite link from the first device
+   (members sheet ▸ **Create invite link**).
 2. On the **first** device (the one that created the room, so it is admin), scan,
-   then tap **Scan** in the toolbar to publish the shared map — `set_world_map`
+   then tap **Share scan** in the toolbar to publish the shared map — `set_world_map`
    with the serialized `ARWorldMap`.
    If it says *"keep scanning"*, ARKit hasn't mapped enough of the room yet.
 3. The **second** device downloads that map on entry and **relocalizes** into the
@@ -128,8 +130,9 @@ Stop later with `make stop`.
 the members sheet (the people button, top-right) and toggle the other member to
 **editor**. This is contract-enforced, not just UI.
 
-**Full P2P (two nodes):** `make node` → `make node2` → `make invite`, then point
-each device at `:2450` and `:2451` with the same Context ID.
+**Local two-node P2P** (`make node` → `make node2` → `make invite`) exercises the
+contract and sync on your Mac — merobox and the curl e2e use it. The phone app
+does not log into those nodes; it reaches rooms through its Cloud relay.
 
 > **Why relocalization matters:** two devices don't share an origin. We use
 > persisted `ARWorldMap` relocalization (the approach chosen in
@@ -167,18 +170,18 @@ make clean         # remove build artifacts
   Simulator. Deploy to a physical ARKit device.
 - **`xcodebuild` does nothing** → full Xcode not selected:
   `sudo xcode-select -s /Applications/Xcode.app`.
-- **Device can't connect** → wrong IP / not same Wi-Fi / Mac firewall blocking
-  `merod`. Use the LAN URL from `make node`.
+- **"Couldn't sign in"** → the wallet page must be able to return to
+  `meroar://enrol`; check the wallet build accepts app-scheme callbacks.
+- **"No relay yet"** → a new account gets its relay by redeeming its first
+  invitation. Paste one in the lobby.
 - **Objects appear in different places on each device** → relocalization hasn't
   completed; the joining device needs the published `ARWorldMap` and must see
   enough of the same scene to relocalize. Pan slowly over shared features.
-- **Login works but no objects** → wrong/empty Context ID (see
-  `app/.env.integration` → `E2E_CONTEXT_ID`).
+- **"Couldn't open the room"** → the relay doesn't serve that room. Use an
+  invite link rather than a bare room ID for a room you haven't joined.
 - **"View-only — ask an admin for editor access"** → this device joined the room
   rather than creating it, so it's a viewer. Promote it from the admin device's
   members sheet.
-- **"This node has no identity in that room yet"** → the node isn't a member of
-  that context. Invite it (`make invite`) and try again.
 - **SwiftPM can't resolve MeroKit** → cold builds fetch the SDK from GitHub;
   check network access, or `File ▸ Packages ▸ Reset Package Caches` in Xcode.
 
@@ -189,7 +192,7 @@ make clean         # remove build artifacts
 The phased plan, task tracker, and AR-specific gotchas are in
 [`../merointerier.md`](../merointerier.md). Built so far: the scene-graph
 contract on core rc.32 (account-attributed writes, account-keyed roles), the app
-on the shared swift-sdk (login, session resume, live SSE, roles UI), and the AR
+on the shared swift-sdk (Cloud sign-in, relay session, live SSE, roles UI), and the AR
 room (scan, place, sync, presence, publish + relocalize the world map). Next
 tickets: spatial comments UI, shared-cursor avatars, lock UX, and on-device
 validation of relocalization with two phones.

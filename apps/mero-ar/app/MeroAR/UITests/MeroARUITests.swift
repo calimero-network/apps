@@ -1,18 +1,15 @@
 import XCTest
 
-/// Smoke UI test — launches the app, checks the animated welcome screen, then
-/// reveals the login card. Run from Xcode or `make app-test`.
+/// Smoke UI test — launches the app on a clean install and checks the Cloud
+/// sign-in screen. There is no node URL or password field to find: mobile
+/// sign-in is "Continue with Calimero" only. Run from Xcode or `make app-test`.
 final class MeroARUITests: XCTestCase {
-    func testWelcomeThenLoginAppears() {
+    func testSignInScreenIsCloudOnly() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Mero AR"].waitForExistence(timeout: 5))
-        let enter = app.buttons["Enter a Room"]
-        XCTAssertTrue(enter.waitForExistence(timeout: 5))
-        enter.tap()
-        // 5s, matching the two waits above. At 3s this failed intermittently on
-        // a loaded machine — the welcome screen animates out before the login
-        // card mounts, so this is the slowest step in the test, not the fastest.
-        XCTAssertTrue(app.buttons["Enter Room"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Mero AR"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["cloudSignInButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textFields["Node URL"].exists)
+        XCTAssertFalse(app.secureTextFields["Password"].exists)
     }
 }

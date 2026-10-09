@@ -1,7 +1,8 @@
 import Foundation
 import MeroKit
 
-/// Observable scene state. Hydrates from the contract, reconciles live via SSE.
+/// Observable scene state. Hydrates from the contract through the relay, reconciles live via SSE
+/// (or by polling when the relay's Bearer session is unavailable).
 /// The AR layer observes `objects`/`presence` and mirrors them into RealityKit.
 @MainActor
 public final class SceneStore: ObservableObject {
@@ -26,6 +27,7 @@ public final class SceneStore: ObservableObject {
 
     /// Object ids we just mutated locally — used to ignore our own SSE echoes.
     private var localEchoes: Set<String> = []
+    private var presenceInFlight = false
 
     public init(service: MeroARService) { self.service = service }
 
@@ -47,7 +49,7 @@ public final class SceneStore: ObservableObject {
             try await service.join(username: username)
             await refresh()
             startListening()
-        } catch { lastError = error.localizedDescription }
+        } catch { lastError = message(error) }
     }
 
     public func refresh() async {
@@ -58,7 +60,7 @@ public final class SceneStore: ObservableObject {
             self.objects = Dictionary(uniqueKeysWithValues: try await objs.map { ($0.id, $0) })
             self.presence = Dictionary(uniqueKeysWithValues: try await pres.map { ($0.identity, $0) })
             self.room = try await room
-        } catch { lastError = error.localizedDescription }
+        } catch { lastError = message(error) }
         await refreshRole()
         await refreshRoster()
     }
@@ -74,10 +76,24 @@ public final class SceneStore: ObservableObject {
         roles = (try? await service.listRoles()) ?? roles
     }
 
+    /// Whether changes arrive live (SSE over the relay's Bearer session) or by
+    /// polling, when that session could not be established.
+    public var isLive: Bool { service.hasBearerSession }
+
     private func startListening() {
         eventTask?.cancel()
         eventTask = Task { [weak self] in
             guard let self else { return }
+            guard self.service.hasBearerSession else {
+                // No Bearer session, so no SSE: poll instead. Slow enough not
+                // to load the relay, quick enough that a peer's edit appears.
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    if Task.isCancelled { break }
+                    await self.refresh()
+                }
+                return
+            }
             // The SDK's SSE client reconnects internally, but its stream still
             // *ends* once it gives up. Without this outer loop the room would go
             // quiet for the rest of the session with no sign anything was wrong.
@@ -183,6 +199,18 @@ public final class SceneStore: ObservableObject {
         } catch { lastError = message(error) }
     }
 
+    /// Publish this device's camera pose. Each pose is a warranted write, so a
+    /// pose is dropped while the previous one is still in flight rather than
+    /// queueing a backlog behind a slow uplink.
+    public func sendPresence(position: Vec3, rotation: Quat) {
+        guard !presenceInFlight else { return }
+        presenceInFlight = true
+        Task {
+            defer { presenceInFlight = false }
+            try? await service.updatePresence(position: position, rotation: rotation)
+        }
+    }
+
     public func publishWorldMap(_ data: Data) async -> Bool {
         do {
             try await service.publishWorldMap(data)
@@ -203,12 +231,9 @@ public final class SceneStore: ObservableObject {
         lastError = message(error)
     }
 
-    /// Contract rejections arrive as JSON-RPC errors; surface the contract's own
-    /// sentence ("view-only: …") rather than a generic failure.
-    private func message(_ error: Error) -> String {
-        if case MeroError.rpc(let rpcError) = error { return rpcError.message }
-        return (error as? LocalizedError)?.errorDescription ?? "\(error)"
-    }
+    /// Surface the contract's own sentence ("view-only: …") for a refused
+    /// intent rather than a generic failure.
+    private func message(_ error: Error) -> String { userMessage(error) }
 
     private func now() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) }
 }

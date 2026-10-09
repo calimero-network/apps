@@ -1,343 +1,268 @@
 import Foundation
 import MeroKit
 
-/// High-level wrapper over the Mero AR contract, on top of the shared Calimero
-/// Swift SDK (`MeroKit`'s `Mero` actor — single-flight refresh, 401→refresh
-/// retry, Keychain-backed tokens).
+/// The Mero AR contract, spoken through the account's Cloud relay.
+///
+/// A phone does not run a node and never holds a node password. After Cloud
+/// sign-in (wallet passkey → device certificate → hosted relay) every call goes
+/// through the SDK's relay session:
+///
+/// - **Writes** are warrant intents — ``RelayClient/execute(contextId:method:argsJson:)``.
+///   The device signs a warrant naming the method and its arguments; the relay
+///   executes it *as the account*, so the contract sees `env::account_id()` =
+///   this person on every device they own.
+/// - **Reads** are ``RelayClient/query(contextId:method:argsJson:)``: a Bearer
+///   query for a view method, which the SDK upgrades to a warrant if the node
+///   says the method writes.
+/// - **Blobs and live events** need the relay's Bearer session (``Mero``),
+///   which exists once the relay's node key is established. Without it the
+///   room still works — the store polls instead of streaming, and the world map
+///   cannot be shared — and ``CloudConnection/readNote`` says why.
 ///
 /// Top-level `argsJson` keys are snake_case (Rust parameter names); nested
 /// structs (`transform`, `position`, `SceneObject`) use the camelCase encoding
 /// the contract's serde derives expect. `MeroJSON` applies no key strategy, so
-/// what is written here is what goes on the wire.
-///
-/// **No call carries `executorPublicKey`.** The node resolves the caller from
-/// the auth token on the request and hands the contract `env::account_id()`; the
-/// JSON-RPC `execute` payload has no such field to read, so passing one only
-/// looked like it was steering something. Who a write is attributed to is
-/// decided by which session signed it, not by an argument.
-public final class MeroARService {
-    public let mero: Mero
+/// what is written here is what goes on the wire — and into the warrant hash.
+public final class MeroARService: @unchecked Sendable {
+    public let relay: RelayClient
+    /// The relay's Bearer session (blobs, invitations, SSE), or nil when the
+    /// relay's node key could not be established.
+    public let mero: Mero?
     public let contextId: String
-    /// Who this session is in the room: an account id (64 hex), as
-    /// `whoami` on the contract reports it. Compare roster rows, object authors,
-    /// and the room owner against this — never against a context identity key.
+    /// Who this session is in the room: an account id (64 hex), as `whoami` on
+    /// the contract reports it. Compare roster rows, object authors and the room
+    /// owner against this.
     public let memberId: String
 
-    public init(mero: Mero, contextId: String, memberId: String) {
+    /// Signs a namespace invitation as the account (see ``InvitationMinter``),
+    /// or nil when this session cannot — no Cloud connection behind it.
+    let mintInvitation: InvitationMinter?
+
+    public init(
+        relay: RelayClient, mero: Mero?, contextId: String, memberId: String,
+        mintInvitation: InvitationMinter? = nil
+    ) {
+        self.relay = relay
         self.mero = mero
         self.contextId = contextId
         self.memberId = memberId
+        self.mintInvitation = mintInvitation
     }
 
-    /// Ensure this node holds an identity in `contextId`, joining + pulling state
-    /// first if the context arrived by invitation and was never opened here.
-    ///
-    /// Still required, and still the honest failure point: the node's membership
-    /// check runs against this identity, so without one every call is rejected.
-    /// It is no longer the *member id* though — see [`whoami`] — so the returned
-    /// key is proof of membership and nothing more.
-    @discardableResult
-    public static func ensureIdentity(mero: Mero, contextId: String) async throws -> String {
-        if let owned = try? await mero.admin.getContextIdentitiesOwned(contextId),
-           let identity = owned.identities.first, !identity.isEmpty {
-            return identity
-        }
-        _ = try? await mero.admin.joinContext(contextId)
-        try? await mero.admin.syncContext(contextId)
-        let owned = try await mero.admin.getContextIdentitiesOwned(contextId)
-        guard let identity = owned.identities.first, !identity.isEmpty else {
-            throw MeroARError.noIdentity
-        }
-        return identity
+    /// Mints a signed invitation to a namespace id.
+    public typealias InvitationMinter = @Sendable (_ namespaceId: String) async throws -> SignedGroupOpenInvitation
+
+    /// The account-signed minter: ``CloudSignIn/createNamespaceInvitation(_:namespaceId:invitedRole:validForSeconds:)``
+    /// signs the invitation with this device's certificate key — the relay is
+    /// only read (members, group info, routing), never asked to mint. The
+    /// namespace's TEE relays are named as admitters, which is what lets an
+    /// invitee with no node of their own be admitted.
+    public static func cloudMinter(_ cloud: CloudSignIn, connection: CloudConnection) -> InvitationMinter {
+        { namespaceId in try await cloud.createNamespaceInvitation(connection, namespaceId: namespaceId) }
     }
 
-    /// The account this session writes as, straight from the contract.
+    /// Whether live events and blob transfer are available on this session.
+    public var hasBearerSession: Bool { mero != nil }
+
+    // MARK: - Entering a room
+
+    /// Confirm the relay serves `contextId` and ask the room who we are.
     ///
-    /// The node-level `GET /admin-api/identity` (rc.23's replacement for the
-    /// deleted per-namespace identity route) reports the same account, but it
-    /// needs an admin scope and answers in a vocabulary this app otherwise never
-    /// uses. Asking the room keeps one source for "who am I here".
+    /// `describe` is the honest failure point: a relay that does not hold the
+    /// context answers it with a typed 4xx, which reads far better than the
+    /// first write failing later. `whoami` falls back to the signed-in account —
+    /// the two are the same value whenever the relay executes as the author.
+    public static func open(
+        relay: RelayClient, mero: Mero?, contextId: String, account: String,
+        mintInvitation: InvitationMinter? = nil
+    ) async throws -> MeroARService {
+        _ = try await relay.describe(contextId)
+        let member = (try? await relay.query(String.self, contextId: contextId, method: "whoami"))
+            .flatMap { $0.isEmpty ? nil : $0 } ?? account.lowercased()
+        return MeroARService(
+            relay: relay, mero: mero, contextId: contextId, memberId: member, mintInvitation: mintInvitation)
+    }
+
     // MARK: - Invitations
 
     /// Mint a shareable invitation to this room.
     ///
     /// The room lives in a namespace (its root group); the invitation is issued
-    /// against that namespace, and the context id rides along so the joiner can
-    /// enter the room directly instead of polling to see which context appeared.
+    /// against that namespace and **signed by the account on this device**
+    /// (``InvitationMinter``), not minted ad hoc by the relay. The context id
+    /// rides along so the joiner can enter the room directly instead of polling
+    /// to see which context appeared.
     public func createRoomInvite() async throws -> RoomInvite {
+        guard let mero, let mintInvitation else { throw MeroARError.readsUnavailable }
         guard let namespaceId = try await mero.admin.getContextGroup(contextId) else {
             throw MeroError.decoding("this room has no namespace to invite into")
         }
-        // The SDK models this endpoint as either-shape: a plain namespace
-        // invitation, or a recursive one carrying an entry per group. We ask for
-        // the plain kind, but handle both rather than crashing on a node that
-        // answers recursively — take the entry for this namespace, or the first.
-        let result = try await mero.admin.createNamespaceInvitation(namespaceId)
-        let signed: SignedGroupOpenInvitation
-        switch result {
-        case .single(let data):
-            signed = data.invitation
-        case .recursive(let data):
-            let match = data.invitations.first { $0.groupId == namespaceId }
-            guard let entry = match ?? data.invitations.first else {
-                throw MeroError.decoding("the node returned an invitation with no entries")
-            }
-            signed = entry.invitation
-        }
+        let signed = try await mintInvitation(namespaceId)
         let name = (try? await getRoom().name) ?? ""
-        return RoomInvite(
-            namespaceId: namespaceId,
-            contextId: contextId,
-            roomName: name,
-            invitation: signed
-        )
+        return RoomInvite(namespaceId: namespaceId, contextId: contextId, roomName: name, invitation: signed)
     }
 
-    /// Redeem an invitation on this node, and return the room context to enter.
-    ///
-    /// Mirrors what `scripts/dev-invite.sh` does by hand: join the namespace, pull
-    /// it so the room's context arrives, then hand back the context id.
-    ///
-    /// The namespace join tolerates failure on purpose — it fails when this node
-    /// is already a member, which is a perfectly good state to continue from. The
-    /// context is what actually decides whether this worked.
-    ///
-    /// ⚠️ But the refusal is KEPT, not discarded. A rejected invitation and an
-    /// already-joined namespace both land in that `catch`, and they need
-    /// different words: the first is terminal, the second is fine. Swallowing it
-    /// outright reported every rejected invitation as "the room has not synced
-    /// here yet — try again shortly", nine seconds later, which is advice that
-    /// can never work. That mislabel is what a dropped `admitters` field looks
-    /// like from the outside (see the SDK pin note in `app/MeroAR/project.yml`),
-    /// so the reason is carried down to the failure message.
-    public static func redeem(_ invite: RoomInvite, mero: Mero) async throws -> String {
-        var joinRefusal: Error?
-        do {
-            _ = try await mero.admin.joinNamespace(
-                invite.namespaceId,
-                request: JoinNamespaceRequest(invitation: invite.invitation)
-            )
-        } catch {
-            // Already a member, most likely. The sync + context join below
-            // decide — but keep the reason in case they don't.
-            joinRefusal = error
-        }
+    // MARK: - Reads
 
-        // Cross-node sync is asynchronous: the room context does not exist here
-        // the instant the namespace join returns. Pull, then look for it, and
-        // give it a few attempts before calling it a failure.
-        for attempt in 1...6 {
-            _ = try? await mero.admin.syncGroup(invite.namespaceId)
-            if let contexts = try? await mero.admin.syncGroupContexts(invite.namespaceId),
-                contexts.contains(where: { $0.contextId == invite.contextId })
-            {
-                return invite.contextId
-            }
-            if attempt < 6 {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-            }
-        }
+    public func whoami() async throws -> String { try await read("whoami") }
+    public func getRoom() async throws -> RoomInfo { try await read("get_room") }
+    public func getObjects() async throws -> [SceneObject] { try await read("get_objects") }
+    public func getMembers() async throws -> [Member] { try await read("get_members") }
+    public func getPresence() async throws -> [Presence] { try await read("get_presence") }
+    public func getComments() async throws -> [SpatialComment] { try await read("get_comments") }
 
-        // The room never arrived. If the join itself was refused, that is the
-        // real story and "try again shortly" is actively misleading — a
-        // signature the node rejects will be rejected on every retry.
-        if let joinRefusal {
-            throw MeroError.decoding(
-                "this invitation was not accepted by the node: \(joinRefusal)")
-        }
-
-        // Otherwise the namespace is joined and the room has genuinely not
-        // arrived yet. Returning the id anyway would drop the user into a room
-        // this node does not have.
-        throw MeroError.decoding(
-            "joined the space, but the room has not synced here yet — try again shortly")
-    }
-
-    public static func whoami(mero: Mero, contextId: String) async throws -> String {
-        try await mero.rpc.execute(contextId: contextId, method: "whoami", argsJson: [:])
-    }
-
-    private func ms() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) }
-
-    // ── Reads ───────────────────────────────────────────────────────────────
-    public func getRoom() async throws -> RoomInfo { try await call("get_room") }
-    public func getObjects() async throws -> [SceneObject] { try await call("get_objects") }
-    public func getMembers() async throws -> [Member] { try await call("get_members") }
-    public func getPresence() async throws -> [Presence] { try await call("get_presence") }
-    public func getComments() async throws -> [SpatialComment] { try await call("get_comments") }
-
+    /// `Option<SceneObject>`: absent and `null` both come back as nil.
     public func getObject(id: String) async throws -> SceneObject? {
-        try await callOptional("get_object", ["id": .string(id)])
+        let value = try await relay.query(contextId: contextId, method: "get_object", argsJson: ["id": .string(id)])
+        guard let value, value != .null else { return nil }
+        return try MeroJSON.decode(SceneObject.self, from: try MeroJSON.encode(value))
     }
 
-    // ── Roles ─────────────────────────────────────────────────────────────────
+    // MARK: - Roles
+
     /// The caller's effective role: "admin", "editor", or "viewer".
-    public func myRole() async throws -> String { try await call("my_role") }
-    public func canEdit() async throws -> Bool { try await call("can_edit") }
-    public func listRoles() async throws -> [MemberRole] { try await call("list_roles") }
+    public func myRole() async throws -> String { try await read("my_role") }
+    public func canEdit() async throws -> Bool { try await read("can_edit") }
+    public func listRoles() async throws -> [MemberRole] { try await read("list_roles") }
 
     public func grantEditor(member: String) async throws {
-        try await callVoid("grant_editor", ["member": .string(member)])
+        try await write("grant_editor", ["member": .string(member)])
     }
     public func revokeEditor(member: String) async throws {
-        try await callVoid("revoke_editor", ["member": .string(member)])
+        try await write("revoke_editor", ["member": .string(member)])
     }
     public func transferOwnership(to member: String) async throws {
-        try await callVoid("transfer_ownership", ["new_owner": .string(member)])
+        try await write("transfer_ownership", ["new_owner": .string(member)])
     }
     public func renameRoom(_ name: String) async throws {
-        try await callVoid("rename_room", ["name": .string(name)])
+        try await write("rename_room", ["name": .string(name)])
     }
 
-    // ── Membership ────────────────────────────────────────────────────────────
-    /// Enter the room. The contract derives the member id from the signer, so
-    /// only a display name goes over the wire.
+    // MARK: - Membership
+
+    /// Enter the room. The contract derives the member id from the warrant's
+    /// author, so only a display name goes over the wire.
     public func join(username: String) async throws {
-        try await callVoid("join", [
+        try await write("join", [
             "username": .string(username),
             "avatar": .null,
-            "timestamp": .number(Double(ms())),
+            "timestamp": .number(Double(Self.ms())),
         ])
     }
 
     public func updateUsername(_ username: String) async throws {
-        try await callVoid("update_member_username", ["username": .string(username)])
+        try await write("update_member_username", ["username": .string(username)])
     }
 
-    // ── Objects ─────────────────────────────────────────────────────────────────
-    @discardableResult
-    public func addObject(_ object: SceneObject) async throws -> String {
-        try await call("add_object", ["object": try JSONValue(encoding: object)])
+    // MARK: - Objects
+
+    public func addObject(_ object: SceneObject) async throws {
+        try await write("add_object", ["object": try JSONValue(encoding: object)])
     }
 
     public func updateTransform(id: String, transform: Transform) async throws {
-        try await callVoid("update_transform", [
+        try await write("update_transform", [
             "id": .string(id),
             "transform": try JSONValue(encoding: transform),
-            "updated_at": .number(Double(ms())),
+            "updated_at": .number(Double(Self.ms())),
         ])
     }
 
     public func updateColor(id: String, color: String) async throws {
-        try await callVoid("update_color", [
+        try await write("update_color", [
             "id": .string(id),
             "color": .string(color),
-            "updated_at": .number(Double(ms())),
+            "updated_at": .number(Double(Self.ms())),
         ])
     }
 
-    public func lock(id: String) async throws {
-        try await callVoid("lock_object", ["id": .string(id)])
-    }
-    public func unlock(id: String) async throws {
-        try await callVoid("unlock_object", ["id": .string(id)])
-    }
-    public func deleteObject(id: String) async throws {
-        try await callVoid("delete_object", ["id": .string(id)])
-    }
-    public func clearObjects() async throws {
-        try await callVoid("clear_objects")
-    }
+    public func lock(id: String) async throws { try await write("lock_object", ["id": .string(id)]) }
+    public func unlock(id: String) async throws { try await write("unlock_object", ["id": .string(id)]) }
+    public func deleteObject(id: String) async throws { try await write("delete_object", ["id": .string(id)]) }
+    public func clearObjects() async throws { try await write("clear_objects") }
 
-    // ── Comments ──────────────────────────────────────────────────────────────
+    // MARK: - Comments
+
     public func addComment(text: String, position: Vec3) async throws {
-        try await callVoid("add_comment", [
+        try await write("add_comment", [
             "id": .string(UUID().uuidString),
             "text": .string(text),
             "position": try JSONValue(encoding: position),
-            "created_at": .number(Double(ms())),
+            "created_at": .number(Double(Self.ms())),
         ])
     }
 
     public func deleteComment(id: String) async throws {
-        try await callVoid("delete_comment", ["id": .string(id)])
+        try await write("delete_comment", ["id": .string(id)])
     }
 
-    // ── Presence ──────────────────────────────────────────────────────────────
+    // MARK: - Presence
+
     public func updatePresence(position: Vec3, rotation: Quat) async throws {
-        try await callVoid("update_presence", [
+        try await write("update_presence", [
             "camera_position": try JSONValue(encoding: position),
             "camera_rotation": try JSONValue(encoding: rotation),
-            "updated_at": .number(Double(ms())),
+            "updated_at": .number(Double(Self.ms())),
         ])
     }
 
-    // ── World map (ARWorldMap relocalization) ─────────────────────────────────
+    // MARK: - World map (ARWorldMap relocalization)
 
-    /// How long a single blob transfer may take.
+    /// How long a world-map upload may take.
     ///
-    /// ⚠️ Not a nicety, and not the SDK default. `MeroConfig.timeout` is **10
-    /// seconds** (it mirrors mero-js's `timeoutMs: 10000`), which is the right
-    /// number for an admin call and the wrong one for a blob: since core#3823
-    /// (0.11.0-rc.39) removed the blob DHT, a GET for a blob this node does not
-    /// hold makes the node *probe its peers* for it, and that sweep regularly
-    /// runs past 30s on a cold context. A client that gives up at 10s aborts the
-    /// sweep and reports "not found" for a blob that was about to arrive — which
-    /// reads as a corrupt world map rather than as a timeout. An `ARWorldMap`
-    /// for a scanned room is also megabytes, so the upload wants the same headroom.
-    private static let blobTimeout: TimeInterval = 120
+    /// Not the SDK default: `MeroConfig.timeout` is 10 seconds (it mirrors
+    /// mero-js), right for an admin call and wrong for an `ARWorldMap` of a
+    /// scanned room, which is megabytes on a phone uplink. Downloads use the
+    /// SDK's own context-blob timeout (60s, covering the node's 30s peer probe).
+    static let uploadTimeout: TimeInterval = 120
 
     /// Upload a serialized `ARWorldMap`, then point the room at the new blob.
-    ///
-    /// `context_id` is mandatory in practice. rc.39 made it the ONLY way a blob
-    /// is discoverable: an upload without it is announced to nobody, so every
-    /// other device in the room gets a 404 forever. (The contract's
-    /// `set_world_map` also calls `blob_announce_to_context`, but that announces
-    /// a blob the node must already be able to find.)
-    ///
-    /// Sent by hand rather than through `admin.uploadBlob` only to carry
-    /// ``blobTimeout`` — the wire shape is identical (raw octet-stream body,
-    /// `context_id` in the query string, `{ data: { blob_id, size } }` back).
     @discardableResult
     public func publishWorldMap(_ data: Data) async throws -> String {
+        let blobId = try await uploadWorldMap(data)
+        try await write("set_world_map", ["blob_id": .string(blobId)])
+        return blobId
+    }
+
+    /// Upload the bytes into this room's blob space and return the blob id.
+    ///
+    /// `context_id` is mandatory in practice: since core#3823 (0.11.0-rc.39)
+    /// removed the blob DHT, it is the ONLY way another device's node can find
+    /// the blob. An upload without it is announced to nobody.
+    ///
+    /// Same request `admin.uploadBlob` builds (raw octet-stream body,
+    /// `context_id` in the query, `{ data: { blob_id, size } }` back), sent on
+    /// the SDK transport only to carry ``uploadTimeout``.
+    func uploadWorldMap(_ data: Data) async throws -> String {
+        guard let mero else { throw MeroARError.readsUnavailable }
         let (response, _) = try await mero.http.sendRaw(
             HttpRequest(
                 path: blobUploadPath,
                 method: .put,
                 body: .data(data, contentType: "application/octet-stream"),
-                timeout: Self.blobTimeout))
+                timeout: Self.uploadTimeout))
         let envelope = try MeroJSON.decode(ApiResponse<BlobRef>.self, from: response)
         guard let blobId = envelope.data?.blobId, !blobId.isEmpty else {
-            throw MeroError.decoding("the node accepted the world map but returned no blob id")
+            throw MeroError.decoding("the relay accepted the world map but returned no blob id")
         }
-        try await callVoid("set_world_map", ["blob_id": .string(blobId)])
         return blobId
     }
 
-    /// Fetch the room's shared world map.
-    ///
-    /// ⚠️ `context_id` again, for the same rc.39 reason — and this is the side
-    /// that actually breaks without it. The *publisher's* node holds the bytes
-    /// locally, so it downloads fine either way; every other device has to have
-    /// the node go and find them, and with no context id there is nowhere to
-    /// look now that the DHT is gone. `admin.getBlob(_:)` in the pinned SDK
-    /// sends no query string at all, so the request is built here.
-    ///
-    /// A blob id is **hex** (core#3691, 0.11.0-rc.27 removed base58). It is used
-    /// verbatim — exactly as the contract stored it — and never re-encoded.
+    /// Fetch the room's shared world map through the SDK blob API, naming the
+    /// context so the node can find a blob a peer holds. A blob id is hex
+    /// (core#3691) and used verbatim, never re-encoded.
     public func downloadWorldMap(blobId: String) async throws -> Data {
-        let (data, _) = try await mero.http.sendRaw(
-            HttpRequest(path: blobDownloadPath(blobId), timeout: Self.blobTimeout))
-        return data
+        guard let mero else { throw MeroARError.readsUnavailable }
+        return try await mero.admin.getBlob(blobId, contextId: contextId)
     }
 
     /// `PUT` path for a world-map upload into this room.
-    ///
-    /// Split out so a test can assert the context id is on it: the whole rc.39
-    /// failure mode is a request that is perfectly well-formed and reaches
-    /// nobody, which nothing but reading the URL will show.
     var blobUploadPath: String {
         "/admin-api/blobs?context_id=\(Self.query(contextId))"
     }
 
-    /// `GET` path for a world map belonging to this room.
-    func blobDownloadPath(_ blobId: String) -> String {
-        "/admin-api/blobs/\(Self.query(blobId))?context_id=\(Self.query(contextId))"
-    }
-
-    /// Percent-encode an id for a URL. Both ids are hex today and need no
-    /// escaping; this is here so a future id spelling cannot silently produce a
-    /// malformed path.
+    /// Percent-encode an id for a URL. Ids are hex today and need no escaping;
+    /// this keeps a future id spelling from producing a malformed path.
     static func query(_ value: String) -> String {
         value.addingPercentEncoding(
             withAllowedCharacters: CharacterSet(
@@ -355,11 +280,13 @@ public final class MeroARService {
         }
     }
 
-    // ── Live events ─────────────────────────────────────────────────────────────
-    /// Contract events for this room, flattened out of the node's `StateMutation`
-    /// envelope. The SSE stream reconnects itself; cancel the consuming task to
-    /// close it.
+    // MARK: - Live events
+
+    /// Contract events for this room over the relay's Bearer SSE session,
+    /// flattened out of the node's `StateMutation` envelope. Finishes at once
+    /// when there is no Bearer session; the store polls then.
     public func events() -> AsyncStream<ARSceneEvent> {
+        guard let mero else { return AsyncStream { $0.finish() } }
         let raw = mero.events(contextIds: [contextId])
         return AsyncStream { continuation in
             let task = Task {
@@ -369,7 +296,7 @@ public final class MeroARService {
                     }
                 } catch {
                     // The SDK's stream only throws once it has given up; the
-                    // store falls back to polling on refresh.
+                    // store reconnects and re-reads state.
                 }
                 continuation.finish()
             }
@@ -377,52 +304,68 @@ public final class MeroARService {
         }
     }
 
-    // ── RPC plumbing ──────────────────────────────────────────────────────────
+    // MARK: - Relay plumbing
 
-    private func call<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:]) async throws -> T {
-        try await mero.rpc.execute(contextId: contextId, method: method, argsJson: args)
+    private func read<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:]) async throws -> T {
+        try await relay.query(T.self, contextId: contextId, method: method, argsJson: .object(args))
     }
 
-    /// A mutation whose return value we don't need. A contract method returning
-    /// `()` (or `Result<()>`) sends no `output`, which the SDK reports as
-    /// `emptyResponse` — for a void call that IS success.
-    private func callVoid(_ method: String, _ args: [String: JSONValue] = [:]) async throws {
-        do {
-            let _: JSONValue = try await call(method, args)
-        } catch let error as MeroError {
-            if case .emptyResponse = error { return }
-            throw error
-        }
+    /// A warranted write. Contract methods returning `()` send no `returns`,
+    /// which is success.
+    private func write(_ method: String, _ args: [String: JSONValue] = [:]) async throws {
+        _ = try await relay.execute(contextId: contextId, method: method, argsJson: .object(args))
     }
 
-    /// A read whose `Option<T>` result may be absent.
-    private func callOptional<T: Decodable>(
-        _ method: String, _ args: [String: JSONValue] = [:]
-    ) async throws -> T? {
-        do {
-            return try await call(method, args) as T
-        } catch let error as MeroError {
-            if case .emptyResponse = error { return nil }
-            throw error
-        }
-    }
+    private static func ms() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) }
 }
 
-// ── Errors ────────────────────────────────────────────────────────────────────
+// MARK: - Errors
 
-public enum MeroARError: LocalizedError {
-    case noIdentity
+public enum MeroARError: LocalizedError, Equatable {
+    /// Signed in, but no relay serves the account yet.
+    case noRelay
+    /// The relay's Bearer session is not established (blobs, invites, events).
+    case readsUnavailable
+    /// The invitation was redeemed but the room never reached the relay.
+    case roomNotSynced
+    case invitationRefused(String)
 
     public var errorDescription: String? {
         switch self {
-        case .noIdentity:
-            return "This node has no identity in that room yet — check the room id, "
-                + "or ask the owner to invite this node."
+        case .noRelay:
+            return "Your account doesn't have a relay yet. Paste an invitation to a room to get one."
+        case .readsUnavailable:
+            return "The relay session isn't fully established yet, so this isn't available. Try again shortly."
+        case .roomNotSynced:
+            return "You joined the space, but the room hasn't reached your relay yet. Try again in a moment."
+        case .invitationRefused(let reason):
+            return "This invitation wasn't accepted: \(reason)"
         }
     }
 }
 
-// ── Encodable → JSONValue ─────────────────────────────────────────────────────
+/// The contract's own sentence for a refused call ("view-only: …"), else the
+/// SDK's description.
+func userMessage(_ error: Error) -> String {
+    switch error {
+    case AccountError.intentRefused(let reason, _, _):
+        return reason
+    case AccountError.invitationNotClaimable:
+        return "Nobody could redeem an invite to this room yet: no relay that can admit people serves its space. "
+            + "Try again once the space is hosted in Calimero Cloud."
+    case MeroError.rpc(let rpcError):
+        return rpcError.message
+    case MeroError.authRevoked:
+        return "Your session was revoked. Sign in again."
+    case MeroError.network(let detail):
+        return "Can't reach your relay: \(detail)"
+    default:
+        if let urlError = error as? URLError { return "Can't reach your relay (\(urlError.code.rawValue))." }
+        return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
+    }
+}
+
+// MARK: - Encodable → JSONValue
 
 extension JSONValue {
     /// Bridge a `Codable` model into the SDK's dynamic JSON type, preserving the

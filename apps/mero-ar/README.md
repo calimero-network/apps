@@ -13,33 +13,58 @@ workflows/  merobox suites (logic-test.yml = 1 node, identity-and-roles.yml = 2 
 Makefile    every command has a `make` shortcut
 ```
 
+Built for **Calimero core 0.11.0-rc.83**: the contract pins `calimero-sdk`,
+`calimero-storage` and `calimero-storage-macros` to tag `0.11.0-rc.83`
+(`logic/Cargo.toml`, `min-runtime-version` too), and the merobox suites run
+`ghcr.io/calimero-network/merod:0.11.0-rc.83`.
+
+## The iOS app: Cloud sign-in, relay session
+
 The Swift client is **not** vendored here: the app depends on
 [calimero-network/swift-sdk](https://github.com/calimero-network/swift-sdk)
-(`MeroKit`), pinned by commit in `app/MeroAR/project.yml`. That SDK brings the
-actor-based single-flight token refresh, reactive 401→refresh retry, SSO, the
-full admin API, and Keychain-backed tokens. To move to a newer SDK, bump the
-`revision:` there and run `make app-test`.
+(`MeroKit` + `MeroKitUI`) as a SwiftPM package declared in
+`app/MeroAR/project.yml`. It needs two SDK changes that are open as PRs, so the
+package tracks `branch: master` until they land and a release is cut:
 
-## Quick start
+- [swift-sdk#43](https://github.com/calimero-network/swift-sdk/pull/43) — the core rc.83 wire.
+- [swift-sdk#44](https://github.com/calimero-network/swift-sdk/pull/44) — Cloud sign-in, the account layer and `RelayClient`.
 
-```bash
-make setup        # check prereqs + build the signed .mpk bundle
-make node         # start a Calimero node + create a Room (prints a Context ID)
-make app-gen      # generate MeroAR.xcodeproj (needs xcodegen + full Xcode)
-make test         # contract unit tests + app tests
-make workflows    # merobox suites against a real merod in Docker
-make logic-bundle # rebuild just the .mpk (raw .wasm is not installable since rc.31)
-```
+**Sign-in is Cloud only.** There is no node URL, username or password in the
+app. **Continue with Calimero** opens the Calimero wallet in the system sign-in
+sheet (`ASWebAuthenticationSession`); the person approves this device with their
+passkey, and the wallet returns to `meroar://enrol` with a device certificate.
+The SDK verifies it, asks the Cloud manager which relay serves the account, and
+logs in there. Device keys, the session and relay tokens live in the Keychain
+(service `network.calimero.meroar`), so a relaunch reconnects without the wallet.
 
-> **Mero AR needs a physical ARKit device** (iPhone/iPad with an A12 chip or
-> newer; LiDAR models also get scene-mesh reconstruction). The iOS Simulator
-> cannot run an AR camera session, so simulator runs cover the login, room, and
-> roles UI only. See **[requirements.md](requirements.md)**.
+Every contract call then goes through that relay:
 
-Implementation plan & task tracker: **[../merointerier.md](../merointerier.md)**.
-Run `make help` for all targets.
+| What | How |
+| --- | --- |
+| Writes (`join`, `add_object`, `update_presence`, roles…) | warrant intents — `RelayClient.execute`, signed by the device, executed as the account |
+| Reads (`get_room`, `get_objects`, `my_role`…) | `RelayClient.query` with the relay's Bearer session |
+| World map blob | the relay's Bearer `Mero` — upload with `context_id`, download via `admin.getBlob(_:contextId:)` |
+| Live updates | SSE on the relay's Bearer session; the room polls if that session isn't up |
+| Invitations | signed by the account on the device (`CloudSignIn.createNamespaceInvitation`, naming the space's relays as admitters), redeemed with `CloudSignIn.join` |
 
-## Identity & roles (core 0.11.0-rc.41)
+Rooms are entered from the lobby by pasting an invite link (the fleet format,
+`links.calimero.network/com.calimero.mero-ar/join?invitation=…`) or a room ID
+the account is already in. A new account with no relay gets one by redeeming
+its first invitation.
+
+The app does not create rooms. A room is a context inside a space (namespace),
+created where the contract is deployed (`make node`, or the web build); the
+phone joins it. Founding a space from the phone (`CloudSignIn.foundNamespace`)
+would also need a context created in it, which is out of scope here.
+
+### Building against an unmerged SDK
+
+Until #43/#44 are on swift-sdk master, build against a local checkout that
+merges both branches: in `app/MeroAR/project.yml` replace the package's
+`url:`/`branch:` with `path: /path/to/swift-sdk-checkout`, run `make app-gen`,
+and **don't commit that change**.
+
+## Identity & roles
 
 Nothing in the contract trusts a client-supplied id. A member **is** an account:
 every write is attributed to `env::account_id()`, and so is every ownership
@@ -68,11 +93,10 @@ So a second device that joins by invitation starts read-only: open the members
 sheet from the room and toggle it to **editor**. The app hides the tools for a
 viewer, and the contract rejects the write regardless.
 
-**No RPC carries `executorPublicKey`.** The node resolves the caller from the
-auth token on the request and hands the contract `env::account_id()`; the
-JSON-RPC `execute` payload has no such field to read, so passing one only looked
-like it was steering something. Who a write is attributed to is decided by which
-session signed it, not by an argument.
+**No call names its own author.** A write is a warrant signed by this device's
+key under the account's certificate; the relay executes it and the contract
+sees `env::account_id()` = that account. Who a write is attributed to is decided
+by who signed it, not by an argument.
 
 ## The world map is a blob, and a blob needs a context (core 0.11.0-rc.39)
 
@@ -86,23 +110,23 @@ formed, the node answers, and the bytes simply never arrive. It is also
 invisible from the device that published the map, which holds the bytes locally
 and relocalizes perfectly; it only breaks for everyone else in the room, which
 is the whole point of a *shared* world map. So both calls in `MeroARService`
-carry the room's context id, and `BlobRequestTests` asserts the URLs still do.
+carry the room's context id, and `BlobRequestTests` asserts the requests still do.
 
 Two more things the same code depends on:
 
 - **A blob id is hex** (core#3691, rc.27 removed base58). It is stored on the
   contract exactly as the node minted it and is never re-encoded.
 - **The transfer timeout is not the SDK default.** `MeroConfig.timeout` is 10s,
-  which is right for an admin call. A blob this node does not hold makes it probe
-  its peers, and that sweep routinely runs past 30s on a cold context — giving up
-  at 10s aborts a fetch that was about to succeed and reports it as "not found".
-  Blob requests use 120s.
+  which is right for an admin call. Downloads use the SDK's context-blob timeout
+  (60s, covering the node's 30s peer probe); the upload carries 120s, since a
+  scanned room's `ARWorldMap` is megabytes on a phone uplink.
 
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.41, builds + unit-tested
+- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.83, builds + unit-tested
 - ✅ Account identity model: account-attributed writes, account-keyed roles, owner-gated room name, admin lock-breaking — covered by both merobox suites
-- ✅ App on the shared swift-sdk: login, Keychain session resume, live SSE, roles UI
+- ✅ App on the shared swift-sdk: Cloud sign-in (wallet passkey → device certificate → relay), relay writes/reads, Keychain session resume, live SSE, roles UI
+- ✅ Light Calimero design (the apps' light tokens, SF Symbols, ids behind "Show technical details")
 - ✅ ARKit/RealityKit room view: place/sync objects, camera-pose presence, publish + relocalize into a shared `ARWorldMap`
 - 🔵 Cross-device coordinate alignment via persisted `ARWorldMap` — needs on-device validation with two phones
 - ⬜ Spatial comments UI, shared-cursor avatars, lock UX, undo/redo (next tickets — see `../merointerier.md`)

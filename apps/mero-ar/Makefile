@@ -116,9 +116,9 @@ app-test: app-gen
 	  -derivedDataPath $(APP_DIR)/.build test
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
-# The Swift client itself is the shared SDK (calimero-network/swift-sdk, pinned
-# by revision in app/MeroAR/project.yml) and is tested in its own repo; what this
-# repo tests is the contract plus this app against that pin.
+# The Swift client itself is the shared SDK (calimero-network/swift-sdk, declared
+# in app/MeroAR/project.yml) and is tested in its own repo; what this repo tests
+# is the contract plus this app against that SDK.
 test: logic-test app-test
 
 clean:
