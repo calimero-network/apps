@@ -7,6 +7,7 @@ import { FeedPicker } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
+import { demoPreview, nodePreview, type Preview } from "./preview";
 import LandingPage from "./pages/landing/LandingPage";
 
 /**
@@ -79,7 +80,7 @@ function NodeFeedApp({
       : `Watching ${node.watching.length} other context${node.watching.length === 1 ? "" : "s"}`;
   return (
     <Shell base="" page={page} feed={feed} session={session} status={watching} query={query} onQuery={setQuery}>
-      <Screen page={page} feed={feed} contextId={contextId} query={query} />
+      <Screen page={page} feed={feed} contextId={contextId} query={query} preview={nodePreview(node)} />
     </Shell>
   );
 }
@@ -105,10 +106,12 @@ function DemoApp({ page }: { page: Page }) {
         </button>
       }
     >
-      <Screen page={page} feed={feed} contextId={null} query={query} />
+      <Screen page={page} feed={feed} contextId={null} query={query} preview={DEMO_PREVIEW} />
     </Shell>
   );
 }
+
+const DEMO_PREVIEW = demoPreview();
 
 let demo: DemoBackend | null = null;
 function demoSingleton(): DemoBackend {
@@ -121,16 +124,18 @@ function Screen({
   feed,
   contextId,
   query,
+  preview,
 }: {
   page: Page;
   feed: Feed;
   contextId: string | null;
   query: string;
+  preview: Preview;
 }) {
   return page === "feed" ? (
     <FeedView feed={feed} query={query} />
   ) : (
-    <ControlsView feed={feed} contextId={contextId} />
+    <ControlsView feed={feed} contextId={contextId} preview={preview} />
   );
 }
 

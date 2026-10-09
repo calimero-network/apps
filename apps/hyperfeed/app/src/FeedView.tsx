@@ -4,7 +4,19 @@ import type { Filter } from "./backend";
 import type { Feed } from "./useFeed";
 import { pickSelected } from "./useFeed";
 import { appLook } from "./apps";
-import { choicesFor, flowOf, groupByDay, resolvable, short, statusOf, timeLabel, type FlowStep } from "./format";
+import {
+  choicesFor,
+  fieldsOf,
+  flowOf,
+  groupByDay,
+  resolvable,
+  short,
+  statusOf,
+  timeLabel,
+  TYPE_LABELS,
+  typedFacts,
+  type FlowStep,
+} from "./format";
 
 const TABS: { id: Filter; label: string }[] = [
   { id: "all", label: "Everything" },
@@ -365,12 +377,14 @@ function Card({
               {item.source_label ? ` · ${item.source_label}` : ""}
             </span>
           )}
+          {item.item_type && <span className="type-tag">{TYPE_LABELS[item.item_type] ?? item.item_type}</span>}
           <span className="time">{timeLabel(item.at)}</span>
         </div>
         <button type="button" className="title" onClick={onSelect}>
           {item.title}
         </button>
         {item.body && item.body !== item.title && (item.kind === "action" ? <p>{item.body}</p> : <p className="quote">{item.body}</p>)}
+        <Typed item={item} />
         {item.breach && <p className="breach">Your agent {item.breach}.</p>}
         {item.note && <p className="note">{answerLine(item)}</p>}
         <LateHint item={item} />
@@ -494,6 +508,10 @@ function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
           ["App", `${look.name}${item.source_label ? ` · ${item.source_label}` : ""}`],
           ["Context", item.source_context ? short(item.source_context) : "—", true],
           ["Event", item.event || "—", true],
+          ...(item.item_type ? ([["Read as", TYPE_LABELS[item.item_type] ?? item.item_type]] as [string, string][]) : []),
+          ...(item.reply_call
+            ? ([["Answered by", `Your feed, with ${replyMethod(item)} in ${look.name}`, false]] as [string, string, boolean][])
+            : []),
           ["Delivered", "Live from your own node"],
         ];
   const flow: FlowStep[] = flowOf([item], appName);
@@ -652,5 +670,49 @@ function LateHint({ item }: { item: FeedItem }) {
     <p className="hint" role="status">
       Nothing has picked this up yet. Is your agent running and connected to this feed?
     </p>
+  );
+}
+
+function replyMethod(item: FeedItem): string {
+  try {
+    return (JSON.parse(item.reply_call) as { method?: string }).method ?? "a call";
+  } catch {
+    return "a call";
+  }
+}
+
+/**
+ * What a typed card adds under its title: the type's facts (when, due, the
+ * game), and a poll's options when it cannot be answered from here.
+ */
+function Typed({ item }: { item: FeedItem }) {
+  if (!item.item_type) return null;
+  const facts = typedFacts(item);
+  const f = fieldsOf(item);
+  const options = item.item_type === "poll" && !resolvable(item) && Array.isArray(f.options) ? (f.options as unknown[]).map(String) : [];
+  if (facts.length === 0 && options.length === 0) return null;
+  return (
+    <div className="typed">
+      {facts.length > 0 && (
+        <dl className="typed-facts">
+          {facts.map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {options.length > 0 && (
+        <div className="chips" aria-label="Options">
+          {options.map((o) => (
+            <span key={o} className="chip static">
+              {o}
+            </span>
+          ))}
+          <span className="muted small-text">Vote in {appLook(item.app).name}</span>
+        </div>
+      )}
+    </div>
   );
 }

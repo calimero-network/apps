@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "events": {
+    "MessageSent": {
+      "type": "message",
+      "read": [
+        { "as": "pos", "call": "message_position", "args": { "message_id": "=event.message_id" } },
+        { "as": "page", "call": "get_messages_from", "args": { "start": "=pos", "limit": 1 } },
+        { "as": "info", "call": "get_info", "args": {} }
+      ],
+      "let": { "item": "=page.messages[0]" },
+      "show_if": "=item.id == event.message_id && !item.deleted && !mine(item.sender) && (info.context_type == 'Dm' || has(item.mentions, me) || has(item.mentions_usernames, 'everyone') || has(item.mentions_usernames, 'here'))",
+      "fields": {
+        "from": "=item.sender",
+        "text": "=plain(item.text)",
+        "where": "=info.context_type == 'Dm' ? 'DM' : '#' + info.name",
+        "is_dm": "=info.context_type == 'Dm'"
+      },
+      "title": "=info.context_type == 'Dm' ? 'Sent you a message' : has(item.mentions, me) ? 'Mentioned you' : 'Mentioned everyone in #' + info.name",
+      "reply": {
+        "method": "send_message",
+        "args": {
+          "message": "=answer",
+          "mentions": [],
+          "mentions_usernames": [],
+          "parent_message": null,
+          "timestamp": "=now_s()",
+          "files": null,
+          "images": null
+        }
+      }
+    },
+    "RoleUpdated": {
+      "type": "status",
+      "read": [
+        { "as": "role", "call": "get_member_role", "args": { "identity": "=event" } },
+        { "as": "info", "call": "get_info", "args": {} }
+      ],
+      "show_if": "=mine(event)",
+      "fields": {
+        "what": "Your role changed",
+        "state": "='You are now ' + role + (info.context_type == 'Dm' ? ' in this DM' : ' in #' + info.name)",
+        "where": "=info.context_type == 'Dm' ? 'DM' : '#' + info.name"
+      }
+    },
+    "MessageSentThread": "ignore",
+    "MessageEdited": "ignore",
+    "ReactionUpdated": "ignore",
+    "ProfileUpdated": "ignore",
+    "InfoUpdated": "ignore",
+    "Initialized": "ignore"
+  }
+}

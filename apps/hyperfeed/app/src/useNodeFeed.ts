@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useContexts, useMero, useSubscription } from "@calimero-network/mero-react";
 import type { SubscriptionEventData } from "@calimero-network/mero-react";
-import { HyperfeedClient } from "./generated/HyperfeedClient";
+import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import { appKeyForPackage } from "./apps";
-import { identitiesOf, toNotifications, type SourceContext, type SourceReader, type StateMutation } from "./collector";
+import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
+import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
+import { nodeLensHosts, type NodeAdmin } from "./nodeHost";
 
 export interface NodeFeed {
   backend: FeedBackend | null;
@@ -14,19 +16,30 @@ export interface NodeFeed {
   watching: SourceContext[];
   /** Why watching failed, when it did. The feed itself still works. */
   watchError: string | null;
+  /** The last events each app version emitted, newest last: what a lens preview runs on. */
+  recent: (appKey: string, applicationId: string) => (RawEvent & { contextId: string })[];
+  /** A host to run a lens against one context, for a preview. */
+  hostFor: (contextId: string) => LensHost | null;
 }
+
+/** Events kept per app version for a preview. */
+const RECENT = 25;
 
 /**
  * The feed in `contextId`, plus the collector that fills it.
  *
- * The collector subscribes to every OTHER context on the node and records what
- * their apps emit as notifications in the feed. It runs wherever the app is
- * open; with two devices open, both record, and the contract keeps one copy
- * per event key.
+ * The collector subscribes to every OTHER context on the node and runs each
+ * event through the approved lens for that context's app version (or the lens
+ * this app ships, for Chat), recording what it keeps as typed notifications.
+ * It runs wherever the app is open; with two devices open, both record, and
+ * the contract keeps one copy per event key.
  */
 export function useNodeFeed(contextId: string): NodeFeed {
   const { mero, admin, applicationId } = useMero();
-  const backend = useMemo(() => (mero ? nodeBackend(new HyperfeedClient(mero, contextId)) : null), [mero, contextId]);
+  const backend = useMemo(
+    () => (mero ? nodeBackend(new HyperfeedClient(mero, contextId), mero.rpc) : null),
+    [mero, contextId],
+  );
   const [nudge, setNudge] = useState(0);
 
   // Every context on the node. With no application id, `useContexts` asks the
@@ -62,7 +75,12 @@ export function useNodeFeed(contextId: string): NodeFeed {
         .filter((c) => c.contextId !== contextId && c.applicationId !== applicationId)
         .map((c) => {
           const appKey = appKeyForPackage(packages[c.applicationId], c.applicationId);
-          return { contextId: c.contextId, appKey, label: `${appKey} · ${c.contextId.slice(0, 6)}` };
+          return {
+            contextId: c.contextId,
+            appKey,
+            applicationId: c.applicationId,
+            label: `${appKey} · ${c.contextId.slice(0, 6)}`,
+          };
         }),
     [contexts, contextId, applicationId, packages],
   );
@@ -71,30 +89,41 @@ export function useNodeFeed(contextId: string): NodeFeed {
   const lastRoots = useRef(new Map<string, string>());
   sources.current = new Map(watching.map((s) => [s.contextId, s]));
 
-  // How the collector reads what an event points at. Who you are is the
-  // node's account (and this device), the same in every context: asked once.
-  const self = useRef<Promise<Set<string>> | null>(null);
-  const readerFor = useCallback(
-    (sourceContext: string): SourceReader | null => {
-      if (!mero || !admin) return null;
-      return {
-        call: <T,>(method: string, args: Record<string, unknown>) =>
-          mero.rpc.execute<T>({ contextId: sourceContext, method, argsJson: args }),
-        me: () => {
-          if (!self.current) {
-            const asked = admin.getNodeIdentity().then((id) => identitiesOf([id.accountId, id.deviceId]));
-            // A failed lookup is asked again next time, not remembered.
-            asked.catch(() => {
-              self.current = null;
-            });
-            self.current = asked;
+  // The approved lenses, re-read whenever the feed changes (a lens approved on
+  // another device arrives as a feed event like anything else).
+  const lenses = useRef(new Map<string, LensSpec>());
+  useEffect(() => {
+    if (!backend) return;
+    let live = true;
+    backend
+      .lenses()
+      .then((all: LensView[]) => {
+        if (!live) return;
+        const approved = new Map<string, LensSpec>();
+        for (const l of all) {
+          if (l.status !== "approved") continue;
+          try {
+            approved.set(`${l.app}@${l.application_id}`, parseLens(l.spec));
+          } catch (e) {
+            console.warn("[hyperfeed] an approved lens does not parse", l.app, e);
           }
-          return self.current;
-        },
-      };
-    },
+        }
+        lenses.current = approved;
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [backend, nudge]);
+  const lensFor = (source: SourceContext): LensSpec | null =>
+    lenses.current.get(`${source.appKey}@${source.applicationId}`) ?? BUILT_IN[source.appKey] ?? null;
+
+  const hosts = useMemo(
+    () => (mero && admin ? nodeLensHosts(mero.rpc, admin as unknown as NodeAdmin) : null),
     [mero, admin],
   );
+
+  const recentEvents = useRef(new Map<string, (RawEvent & { contextId: string })[]>());
 
   const ids = useMemo(() => [contextId, ...watching.map((w) => w.contextId)], [contextId, watching]);
 
@@ -108,16 +137,20 @@ export function useNodeFeed(contextId: string): NodeFeed {
           return;
         }
         const source = sources.current.get(event.contextId);
-        if (!source || !backend) return;
+        if (!source || !backend || !hosts) return;
         if (event.type && event.type !== "StateMutation") return;
         const mutation = event.data as StateMutation;
         const previous = lastRoots.current.get(event.contextId) ?? "";
         if (mutation?.newRoot) lastRoots.current.set(event.contextId, mutation.newRoot);
-        const reader = readerFor(event.contextId);
-        if (!reader) return;
+        const key = `${source.appKey}@${source.applicationId}`;
+        const kept = recentEvents.current.get(key) ?? [];
+        for (const e of mutation?.events ?? []) {
+          if (e.kind) kept.push({ kind: e.kind, payload: decodePayload(e.data), at: Date.now(), contextId: source.contextId });
+        }
+        recentEvents.current.set(key, kept.slice(-RECENT));
         // Fire and forget: a collector that stalls the stream waiting on the
         // node is worse than a missed notification. Never silently, though.
-        void toNotifications(source, mutation, previous, reader).then((inputs) => {
+        void toNotifications(source, mutation, previous, lensFor(source), hosts(event.contextId)).then((inputs) => {
           for (const input of inputs) {
             void backend
               .recordNotification(input)
@@ -125,7 +158,8 @@ export function useNodeFeed(contextId: string): NodeFeed {
           }
         });
       },
-      [contextId, backend, readerFor],
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [contextId, backend, hosts],
     ),
   );
 
@@ -134,5 +168,7 @@ export function useNodeFeed(contextId: string): NodeFeed {
     nudge,
     watching,
     watchError: contextsError?.message ?? packagesError,
+    recent: useCallback((appKey: string, appId: string) => recentEvents.current.get(`${appKey}@${appId}`) ?? [], []),
+    hostFor: useCallback((ctx: string) => (hosts ? hosts(ctx) : null), [hosts]),
   };
 }

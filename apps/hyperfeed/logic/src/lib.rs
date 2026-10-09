@@ -99,6 +99,11 @@ const MAX_HASH: usize = 128;
 const MAX_OPTIONS: usize = 8;
 const MAX_OPTION: usize = 120;
 const MAX_HISTORY: usize = 64;
+/// A typed notification's fields, and the call that answers it, as JSON.
+const MAX_FIELDS: usize = 4_000;
+/// One app's lens: how its events become feed items. Written once per app
+/// version, read on every event.
+const MAX_LENS: usize = 32_000;
 /// One message to or from your agent: a question, an instruction, an answer.
 const MAX_MESSAGE: usize = 2_000;
 const DEFAULT_PAGE: u32 = 50;
@@ -175,6 +180,26 @@ pub const FROM_AGENT: &str = "agent";
 /// How a row is best resolved. Empty: nothing beyond the defaults (approve or
 /// decline a proposal; open a notification).
 pub const ASK_KINDS: &[&str] = &["", "confirm", "reply", "choose"];
+
+/// What a notification is, so the feed can show it as one: a typed
+/// notification carries the fields its card needs. `""` is an untyped row.
+pub const ITEM_TYPES: &[&str] = &[
+    "",
+    "message",
+    "assignment",
+    "poll",
+    "invite",
+    "turn",
+    "request",
+    "change",
+    "status",
+    "other",
+];
+
+/// A lens waits for you, then is in use or turned down.
+pub const LENS_PROPOSED: &str = "proposed";
+pub const LENS_APPROVED: &str = "approved";
+pub const LENS_REJECTED: &str = "rejected";
 
 pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
@@ -355,6 +380,64 @@ impl Mergeable for Notification {
     }
 }
 
+/// What a lens made of a notification: its type, the fields its card shows,
+/// and the call that answers it in its app. Kept beside the notification, keyed
+/// by its id, so rows recorded before lenses existed keep their layout.
+#[app::mergeable(id = "hyperfeed::Typed")]
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Typed {
+    /// One of [`ITEM_TYPES`].
+    pub item_type: String,
+    /// A JSON object: the fields of that type (`from`, `text`, `options`, …).
+    pub fields: String,
+    /// A JSON object `{ "method", "args" }`: what your client calls in the
+    /// source context to answer, with `"=$answer"` where your answer goes.
+    /// Empty: answered by your agent, or not answerable from the feed.
+    pub reply_call: String,
+}
+
+impl Mergeable for Typed {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its notification; two devices that typed the same
+        // event differently settle on the same one everywhere.
+        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// How one app version's events become feed items, as your agent learned it
+/// from the app's ABI. Nothing uses a lens until you approve it.
+#[app::mergeable(id = "hyperfeed::Lens")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Lens {
+    pub app: String,
+    /// The app version it was learned from: a new version is learned again.
+    pub application_id: String,
+    /// The lens itself, JSON (see the app's `lens` module).
+    pub spec: String,
+    /// One line for you: what it records and how it answers.
+    pub summary: String,
+    /// [`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`].
+    pub status: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Lens {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
 /// One message in a conversation with your agent, inside a chain.
 ///
 /// You talk to your agent about a row by posting into its chain; a question
@@ -493,6 +576,15 @@ pub struct NotificationInput {
     pub chain: String,
     /// How to answer it from the feed, if it can be.
     pub ask: Ask,
+    /// What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these.
+    #[serde(default)]
+    pub item_type: String,
+    /// The type's fields, a JSON object.
+    #[serde(default)]
+    pub fields: String,
+    /// The call that answers it in its app, a JSON object; see [`Typed`].
+    #[serde(default)]
+    pub reply_call: String,
 }
 
 /// The rules' answer for one prospective action.
@@ -549,6 +641,13 @@ pub struct FeedItem {
     // ── messages ──
     /// The message of yours an agent message answers.
     pub reply_to: String,
+    // ── typed notifications ──
+    /// One of [`ITEM_TYPES`]; `""` for an untyped row.
+    pub item_type: String,
+    /// The type's fields, a JSON object, or `""`.
+    pub fields: String,
+    /// The call that answers it in its app, or `""`; see [`Typed`].
+    pub reply_call: String,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -596,6 +695,17 @@ pub struct GuardView {
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
+pub struct LensView {
+    pub app: String,
+    pub application_id: String,
+    pub spec: String,
+    pub summary: String,
+    pub status: String,
+    pub updated_at: u64,
+}
+
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
 pub struct SettingsView {
     pub owner: String,
     pub paused: bool,
@@ -615,6 +725,10 @@ pub struct Hyperfeed {
     guards: UnorderedMap<String, Guard>,
     agent: UnorderedMap<String, AgentState>,
     messages: UnorderedMap<String, Message>,
+    /// What a lens made of a notification, by the notification's id.
+    typed: UnorderedMap<String, Typed>,
+    /// How each app version's events become feed items, by `<app>@<application id>`.
+    lenses: UnorderedMap<String, Lens>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -649,6 +763,11 @@ pub enum Event<'a> {
         id: &'a str,
         status: &'a str,
     },
+    /// A lens was proposed, approved or turned down: re-read `lenses`.
+    LensChanged {
+        app: &'a str,
+        status: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -667,6 +786,8 @@ impl Hyperfeed {
             guards: UnorderedMap::new(),
             agent: UnorderedMap::new(),
             messages: UnorderedMap::new(),
+            typed: UnorderedMap::new(),
+            lenses: UnorderedMap::new(),
         }
     }
 
@@ -715,6 +836,41 @@ impl Hyperfeed {
     }
 
     /// App keys are policy keys, shown as labels, so they stay short and plain.
+    /// A typed notification's parts: a known type, and JSON objects within
+    /// their limits. The contract does not read the JSON beyond its shape; the
+    /// lens that wrote it and the client that renders it agree on the rest.
+    fn check_typed(item_type: &str, fields: &str, reply_call: &str) -> app::Result<()> {
+        Self::check_one_of("item_type", item_type, ITEM_TYPES)?;
+        Self::check_len("fields", fields, MAX_FIELDS, false)?;
+        Self::check_len("reply_call", reply_call, MAX_FIELDS, false)?;
+        if item_type.is_empty() && !(fields.is_empty() && reply_call.is_empty()) {
+            return Err(AppError::msg("fields and reply_call need an item_type"));
+        }
+        if !fields.is_empty() {
+            Self::check_json_object("fields", fields)?;
+        }
+        if !reply_call.is_empty() {
+            let call = Self::check_json_object("reply_call", reply_call)?;
+            let method = call.get("method").and_then(|m| m.as_str()).unwrap_or("");
+            if method.is_empty() || !call.get("args").is_some_and(|a| a.is_object()) {
+                return Err(AppError::msg(
+                    "reply_call must be {\"method\": \"…\", \"args\": {…}}",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_json_object(
+        field: &str,
+        value: &str,
+    ) -> app::Result<calimero_sdk::serde_json::Map<String, calimero_sdk::serde_json::Value>> {
+        match calimero_sdk::serde_json::from_str::<calimero_sdk::serde_json::Value>(value) {
+            Ok(calimero_sdk::serde_json::Value::Object(map)) => Ok(map),
+            _ => Err(AppError::msg(format!("{field} must be a JSON object"))),
+        }
+    }
+
     fn check_app(app: &str) -> app::Result<()> {
         Self::check_len("app", app, MAX_APP, true)?;
         if app
@@ -857,10 +1013,19 @@ impl Hyperfeed {
             event: String::new(),
             seen: true,
             reply_to: String::new(),
+            item_type: String::new(),
+            fields: String::new(),
+            reply_call: String::new(),
         }
     }
 
-    fn notification_item(n: &Notification) -> FeedItem {
+    /// A notification as a row, with what a lens made of it.
+    fn notification_row(&self, n: &Notification) -> app::Result<FeedItem> {
+        let typed = self.typed.get(&n.id)?.map(|t| t.clone());
+        Ok(Self::notification_item(n, typed.as_ref()))
+    }
+
+    fn notification_item(n: &Notification, typed: Option<&Typed>) -> FeedItem {
         let now = current(&n.history);
         FeedItem {
             id: n.id.clone(),
@@ -893,6 +1058,9 @@ impl Hyperfeed {
             event: n.event.clone(),
             seen: n.seen,
             reply_to: String::new(),
+            item_type: typed.map(|t| t.item_type.clone()).unwrap_or_default(),
+            fields: typed.map(|t| t.fields.clone()).unwrap_or_default(),
+            reply_call: typed.map(|t| t.reply_call.clone()).unwrap_or_default(),
         }
     }
 
@@ -930,6 +1098,9 @@ impl Hyperfeed {
             event: String::new(),
             seen: true,
             reply_to: m.reply_to.clone(),
+            item_type: String::new(),
+            fields: String::new(),
+            reply_call: String::new(),
         }
     }
 
@@ -1073,7 +1244,7 @@ impl Hyperfeed {
             note,
             at,
         });
-        let item = Self::notification_item(&n);
+        let item = self.notification_row(&n)?;
         self.notifications.insert(n.id.clone(), n)?;
         app::emit!(Event::NotificationChanged {
             id: &item.id,
@@ -1375,6 +1546,60 @@ impl Hyperfeed {
         Ok(open)
     }
 
+    /// The agent proposes a lens for one app version, learned from its ABI.
+    /// It waits for you: an approved lens is replaced only by a new proposal,
+    /// which waits again. The same spec proposed again changes nothing.
+    pub fn propose_lens(
+        &mut self,
+        app_key: String,
+        application_id: String,
+        spec: String,
+        summary: String,
+    ) -> app::Result<LensView> {
+        self.require_owner()?;
+        Self::check_app(&app_key)?;
+        Self::check_len("application_id", &application_id, MAX_KEY, true)?;
+        Self::check_len("spec", &spec, MAX_LENS, true)?;
+        Self::check_len("summary", &summary, MAX_WHY, true)?;
+        Self::check_json_object("spec", &spec)?;
+        let key = Self::lens_key(&app_key, &application_id);
+        let prior = self.lenses.get(&key)?.map(|l| l.clone());
+        if let Some(l) = &prior {
+            if l.spec == spec && l.summary == summary {
+                return Ok(Self::lens_view(l.clone()));
+            }
+        }
+        let lens = Lens {
+            app: app_key,
+            application_id,
+            spec,
+            summary,
+            status: LENS_PROPOSED.to_owned(),
+            updated_at: prior.map_or(now_ms(), |l| now_ms().max(l.updated_at + 1)),
+        };
+        self.lenses.insert(key, lens.clone())?;
+        app::emit!(Event::LensChanged {
+            app: &lens.app,
+            status: &lens.status,
+        });
+        Ok(Self::lens_view(lens))
+    }
+
+    fn lens_key(app_key: &str, application_id: &str) -> String {
+        format!("{app_key}@{application_id}")
+    }
+
+    fn lens_view(l: Lens) -> LensView {
+        LensView {
+            app: l.app,
+            application_id: l.application_id,
+            spec: l.spec,
+            summary: l.summary,
+            status: l.status,
+            updated_at: l.updated_at,
+        }
+    }
+
     // ── your side ────────────────────────────────────────────────────────────
 
     /// Talk to your agent: about a chain (`chain` = its id), or about
@@ -1500,10 +1725,11 @@ impl Hyperfeed {
         Self::check_len("body", &input.body, MAX_BODY, false)?;
         Self::check_len("event", &input.event, MAX_SHORT, false)?;
         Self::check_ask(&input.ask)?;
+        Self::check_typed(&input.item_type, &input.fields, &input.reply_call)?;
 
         let now = now_ms();
         let id = match self.occurrence_of(&input.key, now)? {
-            Occurrence::Seen(existing) => return Ok(Self::notification_item(&existing)),
+            Occurrence::Seen(existing) => return self.notification_row(&existing),
             Occurrence::New(id) => id,
         };
         let n = Notification {
@@ -1527,7 +1753,16 @@ impl Hyperfeed {
                 at: now,
             }],
         };
-        let item = Self::notification_item(&n);
+        let typed = Typed {
+            item_type: input.item_type,
+            fields: input.fields,
+            reply_call: input.reply_call,
+        };
+        let typed = (!typed.item_type.is_empty()).then_some(typed);
+        let item = Self::notification_item(&n, typed.as_ref());
+        if let Some(t) = typed {
+            self.typed.insert(n.id.clone(), t)?;
+        }
         self.notifications.insert(n.id.clone(), n)?;
         app::emit!(Event::NotificationRecorded { id: &item.id });
         Ok(item)
@@ -1617,6 +1852,37 @@ impl Hyperfeed {
         Ok(())
     }
 
+    /// Approve or turn down a lens your agent proposed. Only an approved lens
+    /// turns an app's events into feed items, and only for the app version it
+    /// was learned from.
+    pub fn decide_lens(
+        &mut self,
+        app_key: String,
+        application_id: String,
+        decision: String,
+    ) -> app::Result<LensView> {
+        self.require_owner()?;
+        Self::check_one_of("decision", &decision, &["approve", "reject"])?;
+        let key = Self::lens_key(&app_key, &application_id);
+        let mut lens =
+            self.lenses.get(&key)?.map(|l| l.clone()).ok_or_else(|| {
+                AppError::msg(format!("no lens for {app_key} at {application_id}"))
+            })?;
+        lens.status = if decision == "approve" {
+            LENS_APPROVED
+        } else {
+            LENS_REJECTED
+        }
+        .to_owned();
+        lens.updated_at = now_ms().max(lens.updated_at + 1);
+        self.lenses.insert(key, lens.clone())?;
+        app::emit!(Event::LensChanged {
+            app: &lens.app,
+            status: &lens.status,
+        });
+        Ok(Self::lens_view(lens))
+    }
+
     /// Pause the agent: every write it wants to make becomes a proposal.
     pub fn set_paused(&mut self, paused: bool) -> app::Result<()> {
         self.require_owner()?;
@@ -1648,12 +1914,11 @@ impl Hyperfeed {
             .entries()?
             .map(|(_, a)| Self::action_item(&a))
             .collect();
-        all.extend(
-            self.notifications
-                .entries()?
-                .filter(|(_, n)| !muted.contains(&n.app))
-                .map(|(_, n)| Self::notification_item(&n)),
-        );
+        for (_, n) in self.notifications.entries()? {
+            if !muted.contains(&n.app) {
+                all.push(self.notification_row(&n)?);
+            }
+        }
         // A conversation is never muted: you started it.
         all.extend(
             self.messages
@@ -1810,9 +2075,32 @@ impl Hyperfeed {
             return Ok(Some(Self::action_item(&a)));
         }
         if let Some(n) = self.notifications.get(&id)? {
-            return Ok(Some(Self::notification_item(&n)));
+            return Ok(Some(self.notification_row(&n)?));
         }
         Ok(self.messages.get(&id)?.map(|m| Self::message_item(&m)))
+    }
+
+    /// Every lens, newest first: what your agent learned for each app version,
+    /// and whether you approved it.
+    pub fn lenses(&self) -> app::Result<Vec<LensView>> {
+        let mut out: Vec<LensView> = self
+            .lenses
+            .entries()?
+            .map(|(_, l)| LensView {
+                app: l.app,
+                application_id: l.application_id,
+                spec: l.spec,
+                summary: l.summary,
+                status: l.status,
+                updated_at: l.updated_at,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.updated_at
+                .cmp(&a.updated_at)
+                .then_with(|| a.app.cmp(&b.app))
+        });
+        Ok(out)
     }
 
     /// Your rules: the pause switch, every app you set a policy for, and

@@ -3,7 +3,9 @@ import type { AgentMode, NotificationMode } from "./backend";
 import type { Feed } from "./useFeed";
 import { Badge } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
-import { GUARD_LABELS } from "./format";
+import { GUARD_LABELS, TYPE_LABELS } from "./format";
+import type { LensView } from "./generated/HyperfeedClient";
+import type { Preview, PreviewRow } from "./preview";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
   { id: "act", label: "Act" },
@@ -18,7 +20,7 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
   { id: "mute", label: "Mute" },
 ];
 
-export function ControlsView({ feed, contextId }: { feed: Feed; contextId: string | null }) {
+export function ControlsView({ feed, contextId, preview }: { feed: Feed; contextId: string | null; preview?: Preview }) {
   const { settings, page } = feed;
   // What a control was just set to, shown until the contract's answer is read
   // back. Without it a checkbox snaps back to its old state for the length of
@@ -175,6 +177,24 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
           </dl>
         </section>
       </div>
+      <section className="panel full" aria-labelledby="h-lenses">
+        <h2 id="h-lenses">What your feed reads from each app</h2>
+        <p className="muted">
+          Your agent reads each app's ABI and writes a lens: which events matter to you, what kind of item each
+          becomes, and how your answer goes back. Nothing is recorded from an app until you approve its lens, and a
+          new app version is learned again.
+        </p>
+        {feed.lenses.length === 0 ? (
+          <p className="muted">Nothing learned yet. Chat uses the lens this app ships.</p>
+        ) : (
+          <ul className="lenses">
+            {feed.lenses.map((l) => (
+              <LensRow key={`${l.app}@${l.application_id}`} lens={l} feed={feed} preview={preview} />
+            ))}
+          </ul>
+        )}
+      </section>
+
     </div>
   );
 }
@@ -208,4 +228,110 @@ function Segmented<T extends string>({
       ))}
     </div>
   );
+}
+
+const LENS_STATUS: Record<string, { label: string; tone: string }> = {
+  proposed: { label: "Waiting for you", tone: "pill-wait" },
+  approved: { label: "In use", tone: "pill-good" },
+  rejected: { label: "Turned down", tone: "" },
+};
+
+/** One app version's lens: what it records, a preview on recent events, and your decision. */
+function LensRow({ lens, feed, preview }: { lens: LensView; feed: Feed; preview?: Preview }) {
+  const look = appLook(lens.app);
+  const status = LENS_STATUS[lens.status] ?? { label: lens.status, tone: "" };
+  const [rows, setRows] = useState<PreviewRow[] | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const events = useMemo(() => {
+    try {
+      const spec = JSON.parse(lens.spec) as { events?: Record<string, { type?: string } | string> };
+      return Object.entries(spec.events ?? {}).map(([kind, e]) => [kind, typeof e === "string" ? e : (e.type ?? "?")] as const);
+    } catch {
+      return [];
+    }
+  }, [lens.spec]);
+  const read = events.filter(([, t]) => t !== "ignore");
+  const ignored = events.length - read.length;
+  const runPreview = async () => {
+    if (!preview) return;
+    setPreviewing(true);
+    try {
+      setRows(await preview(lens));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+  return (
+    <li className="lens">
+      <div className="lens-head">
+        <Badge app={lens.app} size="sm" />
+        <strong>{look.name}</strong>
+        <span className="muted mono" title={lens.application_id}>
+          {lens.application_id.slice(0, 8)}
+        </span>
+        <span className={`pill ${status.tone}`}>{status.label}</span>
+      </div>
+      <p>{lens.summary}</p>
+      <p className="muted small-text">
+        {read.map(([kind, type]) => `${kind} → ${TYPE_LABELS[type] ?? type}`).join(" · ")}
+        {ignored > 0 && ` · ${ignored} other event${ignored === 1 ? "" : "s"} ignored`}
+      </p>
+      <div className="actions">
+        {lens.status !== "approved" && (
+          <button
+            type="button"
+            className="primary small"
+            disabled={feed.busy}
+            onClick={() => void feed.decideLens(lens.app, lens.application_id, "approve")}
+          >
+            Approve
+          </button>
+        )}
+        {lens.status !== "rejected" && (
+          <button
+            type="button"
+            className="ghost small"
+            disabled={feed.busy}
+            onClick={() => void feed.decideLens(lens.app, lens.application_id, "reject")}
+          >
+            {lens.status === "approved" ? "Stop using it" : "Turn down"}
+          </button>
+        )}
+        {preview && (
+          <button type="button" className="link small" disabled={previewing} onClick={() => void runPreview()}>
+            {previewing ? "Running…" : "Preview on recent events"}
+          </button>
+        )}
+      </div>
+      {rows && (
+        <ol className="lens-preview" aria-label={`What the ${look.name} lens would do`}>
+          {rows.length === 0 && <li className="muted">No events from {look.name} since the feed opened.</li>}
+          {rows.map((r, i) => (
+            <li key={i} className={`preview-${r.outcome.kind}`}>
+              <span className="mono">{r.kind}</span>{" "}
+              {r.outcome.kind === "recorded"
+                ? `→ ${TYPE_LABELS[r.outcome.reading.item_type] ?? r.outcome.reading.item_type}: ${r.outcome.reading.title}${
+                    r.outcome.reading.from ? ` · ${r.outcome.reading.from}` : ""
+                  }${r.outcome.reading.body ? ` · "${r.outcome.reading.body.slice(0, 80)}"` : ""}`
+                : r.outcome.kind === "skipped"
+                  ? `· not recorded (${r.outcome.why})`
+                  : `· failed: ${r.outcome.why}`}
+            </li>
+          ))}
+        </ol>
+      )}
+      <details>
+        <summary className="small-text">The lens itself</summary>
+        <pre className="lens-spec">{pretty(lens.spec)}</pre>
+      </details>
+    </li>
+  );
+}
+
+function pretty(spec: string): string {
+  try {
+    return JSON.stringify(JSON.parse(spec), null, 2);
+  } catch {
+    return spec;
+  }
 }

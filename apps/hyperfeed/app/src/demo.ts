@@ -4,6 +4,7 @@ import type {
   Ask,
   FeedItem,
   FeedPage,
+  LensView,
   NotificationInput,
   PolicyView,
   SettingsView,
@@ -11,6 +12,8 @@ import type {
   Verdict,
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
+import chatLens from "./lens/fixtures/chat.json";
+import voteLens from "./lens/fixtures/vote.json";
 
 /**
  * The Hyperfeed contract's rules, in memory, so the app can be tried without a
@@ -58,6 +61,9 @@ export class DemoBackend implements FeedBackend {
   private policies = new Map<string, PolicyView>();
   private guards = new Map<string, boolean>();
   private paused = false;
+  private lensRows = new Map<string, LensView>();
+  /** What the feed sent into other apps, newest last: the demo's stand-in for them. */
+  readonly sent: { contextId: string; method: string; args: Record<string, unknown> }[] = [];
   private listeners = new Set<Listener>();
   private nextId = 1;
   private clock = 0;
@@ -69,6 +75,7 @@ export class DemoBackend implements FeedBackend {
     private readonly now: () => number = () => Date.now(),
   ) {
     if (seed) this.seed();
+    if (seed) this.seedLenses();
   }
 
   /** Called whenever the feed changes, as a node's event stream would. */
@@ -276,7 +283,8 @@ export class DemoBackend implements FeedBackend {
     const note = DemoBackend.checkAnswer(item.ask, answer);
     const answered = this.step({ ...item, seen: true }, "answered", note);
     this.changed();
-    if (this.agentDelayMs > 0) setTimeout(() => this.agentDelivers(id), this.agentDelayMs);
+    // A typed row with a reply call is carried out by the feed itself.
+    if (this.agentDelayMs > 0 && !item.reply_call) setTimeout(() => this.agentDelivers(id), this.agentDelayMs);
     return answered;
   }
 
@@ -294,6 +302,55 @@ export class DemoBackend implements FeedBackend {
     if (!next) return;
     this.step(item, next[0], next[1]);
     this.changed();
+  }
+
+  async completeAnswer(id: string, outcome: "delivered" | "failed", note: string): Promise<FeedItem> {
+    const item = this.get(id, "notification");
+    if (item.status !== "answered") throw new Error(`notification ${id} is ${item.status}; nothing is waiting on the agent`);
+    const done = this.step(item, outcome, note);
+    this.changed();
+    return done;
+  }
+
+  /** The other app, as far as the demo goes: it takes the call. */
+  async callApp(contextId: string, method: string, args: Record<string, unknown>): Promise<unknown> {
+    this.sent.push({ contextId, method, args });
+    return null;
+  }
+
+  async lenses(): Promise<LensView[]> {
+    return [...this.lensRows.values()].sort((a, b) => b.updated_at - a.updated_at).map((l) => ({ ...l }));
+  }
+
+  async decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView> {
+    const key = `${appKey}@${applicationId}`;
+    const lens = this.lensRows.get(key);
+    if (!lens) throw new Error(`no lens for ${appKey} at ${applicationId}`);
+    const next = { ...lens, status: decision === "approve" ? "approved" : "rejected", updated_at: this.tick() };
+    this.lensRows.set(key, next);
+    this.changed();
+    return { ...next };
+  }
+
+  /** What the pretend agent learned: Chat in use, Vote waiting for you. */
+  private seedLenses() {
+    const at = this.now();
+    this.lensRows.set("chat@demo-chat", {
+      app: "chat",
+      application_id: "demo-chat",
+      spec: JSON.stringify(chatLens),
+      summary: "DMs, mentions of you or of everyone, and your role changing; answers with send_message.",
+      status: "approved",
+      updated_at: at - 3 * 60 * MINUTE,
+    });
+    this.lensRows.set("vote@demo-vote", {
+      app: "vote",
+      application_id: "demo-vote",
+      spec: JSON.stringify(voteLens),
+      summary: "Polls you can vote in, as they open. Ballots are sealed: you vote in the Vote app.",
+      status: "proposed",
+      updated_at: at - 5 * MINUTE,
+    });
   }
 
   /** What the pretend agent reports after you answer a notification. */
@@ -419,6 +476,11 @@ export class DemoBackend implements FeedBackend {
   async recordNotification(input: NotificationInput, at = this.now()): Promise<FeedItem> {
     const existing = this.items.get(input.key);
     if (existing) return copy(existing);
+    // Older callers leave the typed parts out, as the contract allows.
+    input = { ...input, item_type: input.item_type ?? "", fields: input.fields ?? "", reply_call: input.reply_call ?? "" };
+    if (!["", "message", "assignment", "poll", "invite", "turn", "request", "change", "status", "other"].includes(input.item_type)) {
+      throw new Error(`item_type must be one of the feed's types, not ${input.item_type}`);
+    }
     const t = this.tick(at);
     this.flagged.set(input.key, input.needs_you);
     const item = this.put({
@@ -429,6 +491,9 @@ export class DemoBackend implements FeedBackend {
       body: input.body,
       from: input.from,
       event: input.event,
+      item_type: input.item_type,
+      fields: input.fields,
+      reply_call: input.reply_call,
       seen: false,
       history: [{ status: "received", note: "", at: t }],
     });
@@ -554,6 +619,24 @@ export class DemoBackend implements FeedBackend {
       event: "IssueAssigned",
       needs_you: true,
       ask: { kind: "choose", prompt: "Take it?", options: ["Take it this sprint", "Next sprint", "Hand back to Tomás"], draft: "" },
+      item_type: "assignment",
+      fields: JSON.stringify({ from: "Tomás Reid", what: "HF-31", detail: "Notification grouping drops events when two apps emit in the same block.", due: "This sprint" }),
+    });
+
+    // A calendar invite, answered straight into Calendar.
+    note(20, {
+      key: "cal-ctx:g>h:0",
+      app: "calendar",
+      source_label: "Design team",
+      from: "Maya Ortiz",
+      title: "Invited you to Q3 planning",
+      body: "",
+      event: "CalendarEventCreated",
+      needs_you: true,
+      ask: { kind: "choose", prompt: "Going?", options: ["Accept", "Decline"], draft: "" },
+      item_type: "invite",
+      fields: JSON.stringify({ from: "Maya Ortiz", what: "Q3 planning", when: "Thu 10:00–11:00", where: "Design team" }),
+      reply_call: JSON.stringify({ method: "respond", args: { event_id: "evt-q3", answer: "=answer" } }),
     });
 
     // The agent commented without asking: a breach to keep or undo.
@@ -574,9 +657,11 @@ export class DemoBackend implements FeedBackend {
       source_label: "Team offsite",
       from: "Priya Nair",
       title: 'Vote: "Offsite location"',
-      body: "Closes tomorrow at 18:00.",
+      body: "",
       event: "PollCreated",
       ask: { kind: "choose", prompt: "Your vote", options: ["Lisbon", "Berlin", "Remote"], draft: "" },
+      item_type: "poll",
+      fields: JSON.stringify({ from: "Priya Nair", question: "Offsite location", options: ["Lisbon", "Berlin", "Remote"], closes_at: "Tomorrow 18:00" }),
     });
 
     // #launch: Maya's mention starts a chain the agent works through.
@@ -590,6 +675,10 @@ export class DemoBackend implements FeedBackend {
       event: "MessageSent",
       needs_you: true,
       ask: { kind: "reply", prompt: "Reply in #launch", options: ["On it", "After 2pm", "Can you send the deck link?"], draft: "" },
+      // Typed by the Chat lens: your reply goes straight into #launch.
+      item_type: "message",
+      fields: JSON.stringify({ from: "Maya Ortiz", from_id: "maya", text: "Can your agent pull last week's numbers…", where: "#launch", is_dm: false }),
+      reply_call: JSON.stringify({"method": "send_message", "args": {"message": "=answer", "mentions": [], "mentions_usernames": [], "parent_message": null, "timestamp": "=now_s()", "files": null, "images": null}}),
     });
     done(4, {
       app: "sheets",
@@ -682,6 +771,9 @@ function notification(input: Partial<NotificationInput> & { key: string }): Noti
     needs_you: false,
     chain: "",
     ask: NO_ASK,
+    item_type: "",
+    fields: "",
+    reply_call: "",
     ...input,
   };
 }
@@ -731,5 +823,8 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     event: "",
     seen: kind !== "notification",
     reply_to: "",
+    item_type: "",
+    fields: "",
+    reply_call: "",
   };
 }

@@ -348,6 +348,23 @@
         }
       ]
     },
+    "Event_LensChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_MessageChanged": {
       "kind": "record",
       "fields": [
@@ -642,6 +659,27 @@
             "kind": "string"
           },
           "doc": "The message of yours an agent message answers."
+        },
+        {
+          "name": "item_type",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`ITEM_TYPES`]; `\"\"` for an untyped row."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The type's fields, a JSON object, or `\"\"`."
+        },
+        {
+          "name": "reply_call",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The call that answers it in its app, or `\"\"`; see [`Typed`]."
         }
       ]
     },
@@ -814,6 +852,121 @@
               "$ref": "Message"
             },
             "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "typed",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Typed"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What a lens made of a notification, by the notification's id."
+        },
+        {
+          "name": "lenses",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Lens"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        }
+      ]
+    },
+    "Lens": {
+      "kind": "record",
+      "doc": "How one app version's events become feed items, as your agent learned it\nfrom the app's ABI. Nothing uses a lens until you approve it.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The app version it was learned from: a new version is learned again."
+        },
+        {
+          "name": "spec",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The lens itself, JSON (see the app's `lens` module)."
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line for you: what it records and how it answers."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`]."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LensView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "spec",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -1044,6 +1197,27 @@
             "$ref": "Ask"
           },
           "doc": "How to answer it from the feed, if it can be."
+        },
+        {
+          "name": "item_type",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What a lens made of it: one of [`ITEM_TYPES`]. Older clients omit these."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The type's fields, a JSON object."
+        },
+        {
+          "name": "reply_call",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The call that answers it in its app, a JSON object; see [`Typed`]."
         }
       ]
     },
@@ -1157,6 +1331,33 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "Typed": {
+      "kind": "record",
+      "doc": "What a lens made of a notification: its type, the fields its card shows,\nand the call that answers it in its app. Kept beside the notification, keyed\nby its id, so rows recorded before lenses existed keep their layout.",
+      "fields": [
+        {
+          "name": "item_type",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`ITEM_TYPES`]."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A JSON object: the fields of that type (`from`, `text`, `options`, …)."
+        },
+        {
+          "name": "reply_call",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A JSON object `{ \"method\", \"args\" }`: what your client calls in the\nsource context to answer, with `\"=$answer\"` where your answer goes.\nEmpty: answered by your agent, or not answerable from the feed."
         }
       ]
     },
@@ -1363,6 +1564,34 @@
       "intent": "mutating"
     },
     {
+      "name": "decide_lens",
+      "doc": "Approve or turn down a lens your agent proposed. Only an approved lens\nturns an app's events into feed items, and only for the app version it\nwas learned from.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LensView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "feed",
       "doc": "The feed: one row per chain, newest activity first.\n\nA row is the chain's **lead**: the latest step that needs you if any\ndoes, otherwise the latest row. Its `chain_len` says how many rows the\nchain holds and `needs_you` whether any of them needs you; read them all\nwith [`Hyperfeed::chain`].\n\n`filter` keeps chains holding an action (`agent`), a notification\n(`notifications`), or something that needs you (`needs_you`); `app_key`\nkeeps chains that touch that app; `before` pages by `chain_at` (0 = from\nthe newest). The counts are over chains, for the whole feed.",
       "params": [
@@ -1421,6 +1650,18 @@
       "intent": "read_only"
     },
     {
+      "name": "lenses",
+      "doc": "Every lens, newest first: what your agent learned for each app version,\nand whether you approved it.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "LensView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "mark_all_seen",
       "doc": "Mark every notification seen.",
       "params": [],
@@ -1459,6 +1700,40 @@
         }
       },
       "intent": "read_only"
+    },
+    {
+      "name": "propose_lens",
+      "doc": "The agent proposes a lens for one app version, learned from its ABI.\nIt waits for you: an approved lens is replaced only by a new proposal,\nwhich waits again. The same spec proposed again changes nothing.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "spec",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LensView"
+      },
+      "intent": "mutating"
     },
     {
       "name": "record_action",
@@ -1628,6 +1903,13 @@
       "payload": {
         "$ref": "Event_ActionRecorded"
       }
+    },
+    {
+      "name": "LensChanged",
+      "payload": {
+        "$ref": "Event_LensChanged"
+      },
+      "doc": "A lens was proposed, approved or turned down: re-read `lenses`."
     },
     {
       "name": "MessageChanged",

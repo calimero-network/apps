@@ -41,6 +41,9 @@ fn notification(key: &str, app: &str, needs_you: bool) -> NotificationInput {
         needs_you,
         chain: String::new(),
         ask: Ask::default(),
+        item_type: String::new(),
+        fields: String::new(),
+        reply_call: String::new(),
     }
 }
 
@@ -1013,4 +1016,188 @@ fn a_long_message_is_titled_by_its_first_line() {
     let h = headline(&long);
     assert!(h.len() <= MAX_TITLE);
     assert!(h.ends_with('…'));
+}
+
+// ── typed notifications and lenses ───────────────────────────────────────────
+
+fn typed(item_type: &str, fields: &str, reply_call: &str) -> NotificationInput {
+    let mut n = notification("chat-ctx:a>b:0", "chat", true);
+    n.item_type = item_type.to_owned();
+    n.fields = fields.to_owned();
+    n.reply_call = reply_call.to_owned();
+    n
+}
+
+const REPLY: &str =
+    r#"{"method":"send_message","args":{"message":"=$answer","parent_message":null}}"#;
+
+#[test]
+fn a_typed_notification_carries_its_type_fields_and_reply_call() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let fields = r#"{"from":"Maya","text":"numbers?","is_dm":false}"#;
+    let n = app
+        .call(|s| s.record_notification(typed("message", fields, REPLY)))
+        .unwrap();
+    assert_eq!(
+        (
+            n.item_type.as_str(),
+            n.fields.as_str(),
+            n.reply_call.as_str()
+        ),
+        ("message", fields, REPLY)
+    );
+    let row = app.view(|s| s.item(n.id.clone())).unwrap().unwrap();
+    assert_eq!(row.item_type, "message");
+    let page = app
+        .view(|s| s.feed("all".to_owned(), String::new(), 10, 0))
+        .unwrap();
+    assert_eq!(page.items[0].reply_call, REPLY);
+    // Answering keeps them.
+    let answered = app
+        .call(|s| s.answer_notification(n.id.clone(), String::new()))
+        .err();
+    assert!(
+        answered.is_some(),
+        "an untyped ask still decides what an answer is"
+    );
+}
+
+#[test]
+fn an_untyped_notification_reads_as_before() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k", "chat", false)))
+        .unwrap();
+    assert_eq!((n.item_type.as_str(), n.fields.as_str()), ("", ""));
+}
+
+#[test]
+fn an_older_client_may_leave_the_typed_fields_out() {
+    let input: NotificationInput = calimero_sdk::serde_json::from_str(
+        r#"{"key":"k","app":"chat","source_context":"","source_label":"","from":"","title":"t",
+            "body":"","event":"","needs_you":false,"chain":"",
+            "ask":{"kind":"","prompt":"","options":[],"draft":""}}"#,
+    )
+    .unwrap();
+    assert_eq!(input.item_type, "");
+}
+
+#[test]
+fn typed_parts_are_checked() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    for (t, f, r, why) in [
+        ("tweet", "{}", "", "item_type"),
+        ("message", "[1]", "", "fields must be a JSON object"),
+        ("message", "{}", r#"{"args":{}}"#, "reply_call must be"),
+        (
+            "message",
+            "{}",
+            r#"{"method":"x","args":[]}"#,
+            "reply_call must be",
+        ),
+        ("", r#"{"a":1}"#, "", "need an item_type"),
+    ] {
+        let err = app
+            .call(|s| s.record_notification(typed(t, f, r)))
+            .unwrap_err();
+        let err = format!("{err:?}");
+        assert!(err.contains(why), "{t} {f} {r}: {err}");
+    }
+    let big = format!(r#"{{"text":"{}"}}"#, "x".repeat(MAX_FIELDS));
+    assert!(app
+        .call(|s| s.record_notification(typed("message", &big, "")))
+        .is_err());
+}
+
+fn propose(app: &mut TestHost<Hyperfeed>, spec: &str) -> LensView {
+    app.call(|s| {
+        s.propose_lens(
+            "chat".to_owned(),
+            "app-1".to_owned(),
+            spec.to_owned(),
+            "DMs and mentions of you; answers with send_message".to_owned(),
+        )
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_lens_waits_for_you_then_is_approved() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let _ = app.take_events();
+    let l = propose(&mut app, r#"{"events":{}}"#);
+    assert_eq!(l.status, LENS_PROPOSED);
+    let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, ["LensChanged"]);
+    let l = app
+        .call(|s| s.decide_lens("chat".to_owned(), "app-1".to_owned(), "approve".to_owned()))
+        .unwrap();
+    assert_eq!(l.status, LENS_APPROVED);
+    // Proposing the same lens again changes nothing.
+    assert_eq!(propose(&mut app, r#"{"events":{}}"#).status, LENS_APPROVED);
+    // A different one waits for you again.
+    assert_eq!(
+        propose(&mut app, r#"{"events":{"X":"ignore"}}"#).status,
+        LENS_PROPOSED
+    );
+    let all = app.view(|s| s.lenses()).unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].spec, r#"{"events":{"X":"ignore"}}"#);
+}
+
+#[test]
+fn each_app_version_has_its_own_lens() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    propose(&mut app, "{}");
+    app.call(|s| {
+        s.propose_lens(
+            "chat".to_owned(),
+            "app-2".to_owned(),
+            "{}".to_owned(),
+            "v2".to_owned(),
+        )
+    })
+    .unwrap();
+    assert_eq!(app.view(|s| s.lenses()).unwrap().len(), 2);
+    let err = app
+        .call(|s| s.decide_lens("chat".to_owned(), "app-9".to_owned(), "approve".to_owned()))
+        .unwrap_err();
+    let err = format!("{err:?}");
+    assert!(err.contains("no lens"), "{err}");
+}
+
+#[test]
+fn a_lens_is_checked_and_only_the_owner_handles_lenses() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let err = app
+        .call(|s| {
+            s.propose_lens(
+                "chat".to_owned(),
+                "app-1".to_owned(),
+                "not json".to_owned(),
+                "x".to_owned(),
+            )
+        })
+        .unwrap_err();
+    let err = format!("{err:?}");
+    assert!(err.contains("spec must be a JSON object"), "{err}");
+    propose(&mut app, "{}");
+    assert!(app
+        .call(|s| s.decide_lens("chat".to_owned(), "app-1".to_owned(), "maybe".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| {
+            s.decide_lens("chat".to_owned(), "app-1".to_owned(), "approve".to_owned())
+        })
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| {
+            s.propose_lens(
+                "chat".to_owned(),
+                "app-1".to_owned(),
+                "{}".to_owned(),
+                "x".to_owned(),
+            )
+        })
+        .is_err());
 }

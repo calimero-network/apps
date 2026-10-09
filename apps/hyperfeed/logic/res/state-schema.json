@@ -305,6 +305,80 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "typed",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Typed"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What a lens made of a notification, by the notification's id."
+        },
+        {
+          "name": "lenses",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Lens"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        }
+      ]
+    },
+    "Lens": {
+      "kind": "record",
+      "doc": "How one app version's events become feed items, as your agent learned it\nfrom the app's ABI. Nothing uses a lens until you approve it.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "application_id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The app version it was learned from: a new version is learned again."
+        },
+        {
+          "name": "spec",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The lens itself, JSON (see the app's `lens` module)."
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One line for you: what it records and how it answers."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`LENS_PROPOSED`], [`LENS_APPROVED`] or [`LENS_REJECTED`]."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },
@@ -514,6 +588,33 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "Typed": {
+      "kind": "record",
+      "doc": "What a lens made of a notification: its type, the fields its card shows,\nand the call that answers it in its app. Kept beside the notification, keyed\nby its id, so rows recorded before lenses existed keep their layout.",
+      "fields": [
+        {
+          "name": "item_type",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`ITEM_TYPES`]."
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A JSON object: the fields of that type (`from`, `text`, `options`, …)."
+        },
+        {
+          "name": "reply_call",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "A JSON object `{ \"method\", \"args\" }`: what your client calls in the\nsource context to answer, with `\"=$answer\"` where your answer goes.\nEmpty: answered by your agent, or not answerable from the feed."
         }
       ]
     }

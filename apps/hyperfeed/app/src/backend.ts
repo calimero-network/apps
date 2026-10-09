@@ -3,6 +3,7 @@ import type {
   FeedItem,
   FeedPage,
   HyperfeedClient,
+  LensView,
   NotificationInput,
   PolicyView,
   SettingsView,
@@ -29,6 +30,13 @@ export interface FeedBackend {
   resolveAction(id: string, decision: Decision, answer?: string): Promise<FeedItem>;
   /** Answer a notification in place: the reply, the option, or "" to confirm. */
   answerNotification(id: string, answer: string): Promise<FeedItem>;
+  /** Report how an answer went, when the feed carried it out itself (a typed row's reply call). */
+  completeAnswer(id: string, outcome: "delivered" | "failed", note: string): Promise<FeedItem>;
+  /** Call a method of another app on your node: how a typed row is answered directly. */
+  callApp(contextId: string, method: string, args: Record<string, unknown>): Promise<unknown>;
+  /** What your agent learned for each app version, and what you decided. */
+  lenses(): Promise<LensView[]>;
+  decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView>;
   /** Every row in a chain, oldest first. */
   chain(chain: string): Promise<FeedItem[]>;
   /** Talk to your agent about a chain, or about anything with `chain` "" (a new chain). */
@@ -45,13 +53,23 @@ export interface FeedBackend {
 /** Rows per read. The contract's own default; the feed pages beyond it. */
 export const PAGE_SIZE = 50;
 
-export function nodeBackend(client: HyperfeedClient): FeedBackend {
+/** The one call the feed makes into other apps. */
+export interface AppRpc {
+  execute<T>(params: { contextId: string; method: string; argsJson?: Record<string, unknown> }): Promise<T>;
+}
+
+export function nodeBackend(client: HyperfeedClient, rpc: AppRpc): FeedBackend {
   return {
     kind: "node",
     feed: (filter, appKey) => client.feed({ filter, app_key: appKey, limit: PAGE_SIZE, before: 0 }),
     settings: () => client.settings(),
     resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
     answerNotification: (id, answer) => client.answerNotification({ id, answer }),
+    completeAnswer: (id, outcome, note) => client.completeAnswer({ id, outcome, note }),
+    callApp: (contextId, method, args) => rpc.execute({ contextId, method, argsJson: args }),
+    lenses: () => client.lenses(),
+    decideLens: (appKey, applicationId, decision) =>
+      client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
     chain: (chain) => client.chain({ chain }),
     say: (chain, text) => client.say({ chain, text }),
     markSeen: (ids) => client.markSeen({ ids }),

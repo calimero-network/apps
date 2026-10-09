@@ -490,6 +490,86 @@ steps:
       - 'json_subset({{answer}}, {"output": {"kind": "message", "from": "agent", "chain": "{{mention_id}}", "reply_to": "{{question_id}}"}})'
       - 'json_subset({{question_after}}, {"output": {"status": "answered"}})'
 
+  # ─── lenses and typed notifications ──────────────────────────────────────
+
+  - name: The agent proposes a lens it learned for Chat
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_lens
+    args:
+      app_key: "chat"
+      application_id: "chat-app-1"
+      spec: '{"events":{"MessageSent":{"type":"message"},"TextChanged":"ignore"}}'
+      summary: "DMs and mentions of you; answers with send_message"
+    outputs:
+      proposed: result
+
+  - name: Owner approves it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: decide_lens
+    args: { app_key: "chat", application_id: "chat-app-1", decision: "approve" }
+    outputs:
+      approved: result
+
+  - name: Owner lists the lenses
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: lenses
+    args: {}
+    outputs:
+      lens_1: result.output.0
+
+  # Vote is muted, so this typed row stays out of the feed's counts below.
+  - name: The client records a typed notification a lens made
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-vote:r1>r2:0"
+        app: "vote"
+        source_context: "ctx-vote"
+        source_label: "Team offsite"
+        from: "Priya"
+        title: "Offsite location"
+        body: ""
+        event: "PollCreated"
+        needs_you: false
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
+        item_type: "poll"
+        fields: '{"question":"Offsite location","options":["Lisbon","Berlin"]}'
+        reply_call: ""
+    outputs:
+      poll_id: result.output.id
+
+  - name: Owner reads the typed row
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{poll_id}}" }
+    outputs:
+      poll_row: result
+
+  - name: Assert the lens was approved and the row kept its type
+    type: json_assert
+    statements:
+      - 'json_subset({{proposed}}, {"output": {"app": "chat", "status": "proposed"}})'
+      - 'json_subset({{approved}}, {"output": {"status": "approved"}})'
+      - 'json_subset({{lens_1}}, {"app": "chat", "application_id": "chat-app-1", "status": "approved"})'
+      - 'json_subset({{poll_row}}, {"output": {"item_type": "poll", "fields": "{\"question\":\"Offsite location\",\"options\":[\"Lisbon\",\"Berlin\"]}"}})'
+
   # ─── the second node ──────────────────────────────────────────────────────
 
   - name: Wait for the feed to converge
@@ -581,9 +661,36 @@ steps:
     outputs:
       say_error: error
 
+  - name: node-2 tries to approve a lens in someone else's feed
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: decide_lens
+    args: { app_key: "chat", application_id: "chat-app-1", decision: "reject" }
+    expected_failure: true
+    outputs:
+      lens_error: error
+
+  - name: node-2 reads the lenses
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: lenses
+    args: {}
+    outputs:
+      lens_2: result.output.0
+
   - name: Assert every write was refused
     type: assert
     statements:
       - "is_set({{forged_error}})"
       - "is_set({{unpause_error}})"
       - "is_set({{say_error}})"
+      - "is_set({{lens_error}})"
+
+  - name: Assert node-2 holds the approved lens
+    type: json_assert
+    statements:
+      - 'json_subset({{lens_2}}, {"app": "chat", "status": "approved"})'

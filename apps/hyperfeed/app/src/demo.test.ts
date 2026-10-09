@@ -44,6 +44,9 @@ function note(key: string, app: string, extra: Partial<NotificationInput> = {}):
     needs_you: false,
     chain: "",
     ask: NO_ASK,
+    item_type: "",
+    fields: "",
+    reply_call: "",
     ...extra,
   };
 }
@@ -217,4 +220,35 @@ describe("answers", () => {
       ]);
     });
   });
+
+  describe("typed rows and lenses", () => {
+    const REPLY = JSON.stringify({ method: "send_message", args: { message: "=answer" } });
+
+    it("keeps a typed row's type, fields and reply call", async () => {
+      const b = fresh();
+      const n = await b.recordNotification(note("t", "chat", { item_type: "message", fields: '{"from":"Maya"}', reply_call: REPLY, ask: ask("reply") }));
+      expect(n).toMatchObject({ item_type: "message", fields: '{"from":"Maya"}', reply_call: REPLY });
+      await expect(b.recordNotification(note("u", "chat", { item_type: "tweet" }))).rejects.toThrow(/item_type/);
+    });
+
+    it("reports a direct answer delivered or failed, only after you answered", async () => {
+      const b = fresh();
+      const n = await b.recordNotification(note("t", "chat", { item_type: "message", reply_call: REPLY, ask: ask("reply") }));
+      await expect(b.completeAnswer(n.id, "delivered", "")).rejects.toThrow(/nothing is waiting/);
+      await b.answerNotification(n.id, "hi");
+      expect((await b.completeAnswer(n.id, "failed", "banned")).status).toBe("failed");
+    });
+
+    it("approves and turns down lenses", async () => {
+      const b = new DemoBackend(true, 0);
+      const before = await b.lenses();
+      expect(before.map((l) => [l.app, l.status])).toEqual([
+        ["vote", "proposed"],
+        ["chat", "approved"],
+      ]);
+      expect((await b.decideLens("vote", "demo-vote", "approve")).status).toBe("approved");
+      await expect(b.decideLens("vote", "nope", "approve")).rejects.toThrow(/no lens/);
+    });
+  });
 });
+

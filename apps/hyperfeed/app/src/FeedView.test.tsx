@@ -66,8 +66,12 @@ describe("FeedView", () => {
       fireEvent.click(within(flow).getByRole("button", { name: "Send" }));
     });
     expect(await within(flow).findByText("Replied to Maya Ortiz")).toBeInTheDocument();
+    // A typed row is answered by the feed itself: straight into #launch, no agent turn.
     const [mention] = await backend.chain("chat-launch:e>f:0");
-    expect(mention).toMatchObject({ status: "answered", note: "After 2pm" });
+    expect(mention).toMatchObject({ status: "delivered", note: "Sent in #launch" });
+    expect(backend.sent).toEqual([
+      expect.objectContaining({ method: "send_message", args: expect.objectContaining({ message: "After 2pm" }) }),
+    ]);
   });
 
   it("votes with one tap and edits a drafted reply before approving it", async () => {
