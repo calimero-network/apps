@@ -68,7 +68,22 @@ Watch the feed's events, or read with `item`:
 - `ActionChanged` with `approved`, `retrying` or `undo_requested`: do it (use the `note` exactly when there is one), then `complete_action` with `done` or `failed` and a one-line `note`.
 - `NotificationChanged` with `answered`: the `note` is the user's answer. Send the reply, cast the vote, or confirm in the source app, then `complete_answer` with `delivered` or `failed`.
 
+### Answer the user's messages
+
+The user talks to you from the feed, about one chain or about anything.
+
+- `MessagePosted` with `from: "you"`: read the message with `item`, and the chain it is in with `chain`.
+- Take it up at once with `agent_ack` (`status: "thinking"`), so the user sees you are on it.
+- Answer with `agent_say`: the message's `chain`, its `id` as `reply_to`, and your answer as `text`.
+- If they want something done, do it the way you do anything: `check_action` first, then act or propose, with `chain` set to the message's chain so it shows in the same conversation.
+- If you cannot answer, `agent_ack` with `status: "failed"` and a one-line `note` saying why.
+- When you start, `open_questions` lists the messages still waiting on you.
+
+```json
+{ "chain": "<message chain>", "reply_to": "<message id>", "text": "Here is a more formal draft." }
+```
+
 ### Never
 
-Never call `resolve_action`, `answer_notification`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
+Never call `say`, `resolve_action`, `answer_notification`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
 Those are the user's decisions.

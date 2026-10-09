@@ -137,6 +137,17 @@ export interface Event_ActionRecorded {
   status: string;
 }
 
+export interface Event_MessageChanged {
+  id: string;
+  status: string;
+}
+
+export interface Event_MessagePosted {
+  id: string;
+  chain: string;
+  from: string;
+}
+
 export interface Event_NotificationChanged {
   id: string;
   status: string;
@@ -201,9 +212,16 @@ export interface FeedItem {
    * When you kept an action the agent took without asking; 0 if not.
    */
   reviewed_at: number;
+  /**
+   * Who sent a notification; for a message, [`FROM_YOU`] or [`FROM_AGENT`].
+   */
   from: string;
   event: string;
   seen: boolean;
+  /**
+   * The message of yours an agent message answers.
+   */
+  reply_to: string;
 }
 
 export interface FeedPage {
@@ -244,6 +262,31 @@ export interface Hyperfeed {
   policies: Record<string, Policy>;
   guards: Record<string, Guard>;
   agent: Record<string, AgentState>;
+  messages: Record<string, Message>;
+}
+
+/**
+ * One message in a conversation with your agent, inside a chain.
+ *
+ * You talk to your agent about a row by posting into its chain; a question
+ * asked from nowhere starts a chain of its own. The agent's answers, and
+ * anything it proposes or does because of them, land in the same chain.
+ */
+export interface Message {
+  id: string;
+  chain: string;
+  /**
+   * [`FROM_YOU`] or [`FROM_AGENT`].
+   */
+  from: string;
+  text: string;
+  /**
+   * The message of yours this answers; empty for yours, and for an agent
+   * message nobody asked for.
+   */
+  reply_to: string;
+  created_at: number;
+  history: Step[];
 }
 
 /**
@@ -354,9 +397,19 @@ export interface Verdict {
 
 
 
+
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | { name: "MessageChanged"; payload: Event_MessageChanged }
+  | {
+    /**
+     * A message in a chain: yours (your agent should answer) or its answer.
+     */
+    name: "MessagePosted";
+    payload: Event_MessagePosted;
+  }
   | { name: "NotificationChanged"; payload: Event_NotificationChanged }
   | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
   | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
@@ -375,6 +428,33 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * agent_ack
+   *
+   * The agent takes up one of your messages (`thinking`), or gives up on it
+   * (`failed`, with why). Taking it up is how you know an agent is there.
+   *
+   * @intent mutating
+   */
+  public async agentAck(params: { id: string; status: string; note: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ack', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * agent_say
+   *
+   * The agent says something in a chain: an answer to one of your
+   * messages (`reply_to`, which marks it answered), or, with `reply_to`
+   * empty, a note of its own in a chain that exists.
+   *
+   * @intent mutating
+   */
+  public async agentSay(params: { chain: string; reply_to: string; text: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_say', argsJson: params });
+    return response as FeedItem;
   }
 
   /**
@@ -513,6 +593,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * open_questions
+   *
+   * Your messages your agent has not answered yet, oldest first: what an
+   * agent that was away picks up when it starts.
+   *
+   * @intent read_only
+   */
+  public async openQuestions(): Promise<FeedItem[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'open_questions', argsJson: {} });
+    return response as FeedItem[];
+  }
+
+  /**
    * record_action
    *
    * Record an action: a proposal for you to approve, or an outcome.
@@ -560,6 +653,20 @@ export class HyperfeedClient {
    */
   public async resolveAction(params: { id: string; decision: string; answer: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'resolve_action', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * say
+   *
+   * Talk to your agent: about a chain (`chain` = its id), or about
+   * anything (`chain` empty, which starts a new chain). Your agent picks it
+   * up, answers in the chain, and may propose or act there under your rules.
+   *
+   * @intent mutating
+   */
+  public async say(params: { chain: string; text: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'say', argsJson: params });
     return response as FeedItem;
   }
 

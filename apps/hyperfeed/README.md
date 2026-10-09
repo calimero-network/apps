@@ -2,8 +2,8 @@
 
 **One feed for your agent and your apps.** Everything an AI agent did on your behalf, with where it
 acted, why, and which warrant carried it, sits beside every notification the apps it uses sent you.
-From the same feed you approve what the agent proposes, undo what it did, and set what it may do in
-each app.
+From the same feed you approve what the agent proposes, undo what it did, set what it may do in
+each app, and talk to it about any of it.
 
 > **Status: prototype.** The contract, its API and the app work against a real `merod`
 > (0.11.0-rc.83): sign-in, creating the feed, the collector, approvals and controls were driven in a
@@ -14,7 +14,7 @@ each app.
 | | |
 | --- | --- |
 | Package | `com.calimero.hyperfeed` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 32 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 43 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
 | Frontend | [`app/`](app): Vite, React and mero-react. `/` runs against your node and `/demo` runs in memory |
 
@@ -33,6 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said` |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)) |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
@@ -78,17 +79,20 @@ warrant for the real call, and reports the result with `complete_action`.
 ## Notifications: the collector
 
 On a node, the open app lists every context the node is in and subscribes to each one's event
-stream. It decodes each `StateMutation` event and records it in the feed:
+stream. Nearly every event an app emits is bookkeeping (a keystroke in a doc, a cursor, a
+reaction), and your own node emits them for your own edits as well. So **nothing is recorded by
+default**. An event becomes a notification only through a reader written for its app and kind in
+[`app/src/collector.ts`](app/src/collector.ts). The reader reads what the event points at from the
+app itself, drops what you did yourself, and keeps what concerns you:
 
-- A few well-known kinds get a sentence and the "needs you" flag: `MessageSent`, `IssueAssigned`,
-  `QuestionAsked` and others, listed in [`app/src/collector.ts`](app/src/collector.ts).
-- Any other kind is filed under its own name.
-- Bookkeeping events (reads, reactions, presence) are skipped.
-- A chat message (`MessageSent`) comes with a `reply` ask, so you can answer it from the feed and
-  your agent posts the reply.
-- Any other kind is filed under its own name, with its simple fields as the body
-  (`key: launch-date · value: Oct 28`).
-- The app key comes from the installed package (`com.calimero.mero-chat` becomes `chat`).
+| App | Recorded | Not recorded |
+| --- | --- | --- |
+| Chat | a DM to you, a message that mentions you, `@everyone` or `@here` (with a `reply` ask, so your agent posts your answer), and your own role changing | the rest of a channel, your own messages, thread replies, edits, reactions, profiles |
+| Anything else | nothing yet | everything, until it has a reader |
+
+"You" is your node's account id, which is what apps stamp on what you do (`env::account_id()`),
+plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
+becomes `chat`). mero-bot carries the same readers and keys.
 
 **Recording each event once.** Core's event carries no delta id, only the context's new root hash,
 and that hash depends only on the state's contents. So the key is the transition,
@@ -119,6 +123,9 @@ the feed context, then:
   answer or change your rules.
 - **Watches the node.** It subscribes to every context on the node and records other apps' events as
   notifications, using the same keys as this app's collector, so nothing is collected twice.
+- **Answers you.** What you say to it in the feed starts a conversation turn. It marks your message
+  `thinking`, answers in the same chain, and anything it proposes or does because of it lands
+  there too, under the same rules as everything else.
 - **Turns events into turns.** Something new that needs you starts a triage turn, where the agent
   prepares proposals (a drafted reply, options, an action) instead of acting on its own. What you
   approve or answer here starts a turn that carries it out and reports back.
@@ -216,19 +223,24 @@ in the row's `note` while it is current.
    option, confirm). Then report with `complete_answer(id, "delivered" | "failed", note)`. A failed
    delivery goes back to you to answer again.
 5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
+6. You talk to your agent with `say`, which arrives as `MessagePosted { id, chain, from: "you" }`.
+   Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
+   then answer with `agent_say(chain, id, text)`, which marks it `answered`. If you cannot, give up
+   with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
+   same `chain`. An agent that was away reads `open_questions()` when it starts.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`.
 
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
-`mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it writes as you, but
-`resolve_action` and `answer_notification` are your decisions, and an agent should never call them
-for itself.
+`say(chain, text)`; `mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it
+writes as you, but `resolve_action`, `answer_notification` and `say` are your decisions and your
+words, and an agent should never call them for itself.
 
 ## Trust model, honestly
 

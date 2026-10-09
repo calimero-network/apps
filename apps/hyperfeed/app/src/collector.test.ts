@@ -1,60 +1,136 @@
 import { describe, expect, it } from "vitest";
-import { decodePayload, humanise, toNotifications } from "./collector";
+import { clip, decodePayload, hexToBase58, humanise, identitiesOf, plainText, toNotifications, type SourceReader } from "./collector";
 import { appKeyForPackage } from "./apps";
 
-const SOURCE = { contextId: "ctx-chat", appKey: "chat", label: "chat · ctx-ch" };
+const CHAT = { contextId: "ctx-chat", appKey: "chat", label: "chat · ctx-ch" };
 const bytes = (v: unknown) => Array.from(new TextEncoder().encode(JSON.stringify(v)));
 
+interface Msg {
+  id: string;
+  sender: string;
+  text: string;
+  mentions?: string[];
+  mentions_usernames?: string[];
+}
+
+/** A chat context as the reader sees it, answering the methods mero-chat has. */
+function chat(messages: Msg[], { dm = false, me = "me" } = {}): SourceReader & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    me: async () => new Set([me]),
+    call: async <T,>(method: string, args: Record<string, unknown>): Promise<T> => {
+      calls.push(method);
+      const answer = (() => {
+        switch (method) {
+          case "message_position": {
+            const i = messages.findIndex((m) => m.id === args.message_id);
+            return i < 0 ? null : i;
+          }
+          case "get_messages_from": {
+            const m = messages[args.start as number];
+            return { messages: m ? [{ mentions: [], mentions_usernames: [], ...m }] : [] };
+          }
+          case "get_info":
+            return { name: "launch", context_type: dm ? "Dm" : "Channel" };
+          case "get_profiles":
+            return [{ identity: "maya", username: "Maya" }];
+          case "get_member_role":
+            return "Mod";
+          default:
+            throw new Error(`no method ${method}`);
+        }
+      })();
+      return answer as T;
+    },
+  };
+}
+
+const sent = (id: string) => ({ kind: "MessageSent", data: bytes({ message_id: id }) });
+
 describe("toNotifications", () => {
-  it("keys each event by context, root and index, so every device records it once", () => {
-    const out = toNotifications(SOURCE, {
-      newRoot: "root-1",
-      events: [
-        { kind: "MessageSent", data: bytes({ channel: "#launch", text: "hi", sender: "Maya" }) },
-        { kind: "IssueAssigned", data: bytes({ title: "HF-31" }) },
-      ],
+  it("records a mention of you, with who said what and where", async () => {
+    const reader = chat([{ id: "m1", sender: "maya", text: "<p>Can you pull the <b>numbers</b>?</p>", mentions: ["me"] }]);
+    const [n] = await toNotifications(CHAT, { newRoot: "root-1", events: [sent("m1")] }, "", reader);
+    expect(n).toMatchObject({
+      key: "ctx-chat:>root-1:0",
+      app: "chat",
+      title: "Mentioned you",
+      from: "Maya",
+      body: "Can you pull the numbers?",
+      source_label: "#launch",
+      needs_you: true,
+      ask: { kind: "reply", prompt: "Reply in #launch" },
     });
-    expect(out.map((n) => n.key)).toEqual(["ctx-chat:>root-1:0", "ctx-chat:>root-1:1"]);
-    expect(out[0]).toMatchObject({ app: "chat", title: "New message in #launch", body: "hi", from: "Maya" });
-    expect(out[1]).toMatchObject({ title: "Assigned an issue to you", body: "HF-31", needs_you: true });
   });
 
-  it("keys the transition, so returning to an earlier state is a new event", () => {
-    // A, then B, then A again: the third change ends on the first one's root.
-    const set = (prev: string, root: string) =>
-      toNotifications(SOURCE, { newRoot: root, events: [{ kind: "Updated" }] }, prev)[0]!.key;
-    const keys = [set("", "root-a"), set("root-a", "root-b"), set("root-b", "root-a")];
-    expect(new Set(keys).size).toBe(3);
+  it("records a DM, and a mention of everyone", async () => {
+    const dm = await toNotifications(CHAT, { newRoot: "r", events: [sent("m1")] }, "", chat([{ id: "m1", sender: "maya", text: "hi" }], { dm: true }));
+    expect(dm[0]).toMatchObject({ title: "Sent you a message", source_label: "DM", ask: { prompt: "Reply to Maya" } });
+    const all = await toNotifications(
+      CHAT,
+      { newRoot: "r", events: [sent("m1")] },
+      "",
+      chat([{ id: "m1", sender: "maya", text: "standup!", mentions_usernames: ["here"] }]),
+    );
+    expect(all[0]?.title).toBe("Mentioned everyone in #launch");
   });
 
-  it("files an unknown kind under its name and skips bookkeeping", () => {
-    const out = toNotifications(SOURCE, {
-      newRoot: "r",
-      events: [{ kind: "PollClosingSoon", data: null }, { kind: "Read", data: null }],
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0]?.title).toBe("Poll closing soon");
+  it("records nothing for the rest of a channel, or for what you said yourself", async () => {
+    const reader = chat([
+      { id: "m1", sender: "maya", text: "lunch?" },
+      { id: "m2", sender: "me", text: "@me note to self", mentions: ["me"] },
+    ]);
+    expect(await toNotifications(CHAT, { newRoot: "r", events: [sent("m1"), sent("m2")] }, "", reader)).toEqual([]);
   });
 
-  it("shows an unknown event's simple fields as its body", () => {
-    const [n] = toNotifications(SOURCE, {
-      newRoot: "r",
-      events: [{ kind: "Inserted", data: bytes({ key: "launch-date", value: "Oct 28", nested: { a: 1 } }) }],
-    });
-    expect(n).toMatchObject({ title: "Inserted", body: "key: launch-date · value: Oct 28" });
+  it("records nothing an app has no reader for: keystrokes, cursors, edits", async () => {
+    const docs = { contextId: "ctx-docs", appKey: "drive-docs", label: "drive-docs · ctx-do" };
+    const reader = chat([]);
+    const events = [{ kind: "TextChanged", data: bytes({ block: "b", doc: "d" }) }];
+    expect(await toNotifications(docs, { newRoot: "r", events }, "", reader)).toEqual([]);
+    const chatNoise = [{ kind: "MessageEdited", data: bytes("m1") }, { kind: "ReactionUpdated", data: bytes("m1") }];
+    expect(await toNotifications(CHAT, { newRoot: "r", events: chatNoise }, "", reader)).toEqual([]);
+    expect(reader.calls).toEqual([]);
   });
 
-  it("records nothing without a root hash to key it by", () => {
-    expect(toNotifications(SOURCE, { events: [{ kind: "MessageSent" }] })).toEqual([]);
+  it("records your own role changing, and nobody else's", async () => {
+    const mine = await toNotifications(CHAT, { newRoot: "r", events: [{ kind: "RoleUpdated", data: bytes("me") }] }, "", chat([]));
+    expect(mine[0]).toMatchObject({ title: "Your role changed", body: "You are now Mod in #launch.", needs_you: false });
+    expect(await toNotifications(CHAT, { newRoot: "r", events: [{ kind: "RoleUpdated", data: bytes("maya") }] }, "", chat([]))).toEqual([]);
   });
 
-  it("stays inside the contract's limits", () => {
-    const [n] = toNotifications(SOURCE, {
-      newRoot: "r".repeat(300),
-      events: [{ kind: "MessageSent", data: bytes({ text: "x".repeat(5000) }) }],
-    });
+  it("keys an event by its place in the change, so a skipped one never shifts a key", async () => {
+    const reader = chat([
+      { id: "m1", sender: "maya", text: "lunch?" },
+      { id: "m2", sender: "maya", text: "@me ping", mentions: ["me"] },
+    ]);
+    const out = await toNotifications(CHAT, { newRoot: "root-1", events: [sent("m1"), sent("m2")] }, "root-0", reader);
+    expect(out.map((n) => n.key)).toEqual(["ctx-chat:root-0>root-1:1"]);
+  });
+
+  it("drops an event its reader cannot read, and keeps the rest", async () => {
+    const reader = chat([{ id: "m2", sender: "maya", text: "ping", mentions: ["me"] }]);
+    const broken: SourceReader = {
+      me: reader.me,
+      call: async <T,>(method: string, args: Record<string, unknown>) => {
+        if (args.message_id === "gone") throw new Error("refused");
+        return reader.call<T>(method, args);
+      },
+    };
+    const out = await toNotifications(CHAT, { newRoot: "r", events: [sent("gone"), sent("m2")] }, "", broken);
+    expect(out.map((n) => n.key)).toEqual(["ctx-chat:>r:1"]);
+  });
+
+  it("records nothing without a root hash to key it by", async () => {
+    expect(await toNotifications(CHAT, { events: [sent("m1")] }, "", chat([]))).toEqual([]);
+  });
+
+  it("stays inside the contract's limits, counted in bytes", async () => {
+    const reader = chat([{ id: "m1", sender: "maya", text: "é".repeat(5000), mentions: ["me"] }]);
+    const [n] = await toNotifications(CHAT, { newRoot: "r".repeat(300), events: [sent("m1")] }, "", reader);
     expect(n!.key.length).toBeLessThanOrEqual(200);
-    expect(n!.body.length).toBeLessThanOrEqual(2000);
+    expect(new TextEncoder().encode(n!.body).length).toBeLessThanOrEqual(2000);
   });
 });
 
@@ -63,10 +139,27 @@ describe("helpers", () => {
     expect(humanise("UpdatePublished")).toBe("Update published");
   });
 
-  it("decodes only JSON objects", () => {
+  it("decodes whatever JSON an event carries", () => {
     expect(decodePayload(bytes({ a: 1 }))).toEqual({ a: 1 });
-    expect(decodePayload(bytes([1, 2]))).toEqual({});
-    expect(decodePayload([0xff, 0xfe])).toEqual({});
+    expect(decodePayload(bytes("m1"))).toBe("m1");
+    expect(decodePayload([0xff, 0xfe])).toBeNull();
+  });
+
+  it("reads a message without its markup", () => {
+    expect(plainText("<p>a &amp; b</p><p>c</p>")).toBe("a & b\nc");
+  });
+
+  it("writes your identity the way apps stamp it, base58 as well as hex", () => {
+    // Known vectors: bs58 of 0x0000ff and of 32 bytes of 0x01.
+    expect(hexToBase58("0000ff")).toBe("115Q");
+    expect(hexToBase58("01".repeat(32))).toBe("4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi");
+    expect(hexToBase58("xyz")).toBe("");
+    expect(identitiesOf(["0000ff", null, ""])).toEqual(new Set(["0000ff", "115Q"]));
+  });
+
+  it("clips on a character boundary", () => {
+    expect(clip("aé", 2)).toBe("a");
+    expect(clip("abc", 5)).toBe("abc");
   });
 
   it("derives a contract-safe app key from a package", () => {

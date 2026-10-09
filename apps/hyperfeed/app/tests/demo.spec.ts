@@ -27,3 +27,15 @@ test("in the demo, a chain expands into its whole flow", async ({ page }) => {
   await flow.click();
   await expect(page.getByRole("list", { name: "The whole flow" }).first()).toBeVisible();
 });
+
+test("in the demo, you ask your agent and the pretend agent answers in the same chain", async ({ page }) => {
+  await page.goto("/demo");
+  const stream = page.getByRole("main");
+  await stream.getByLabel("Ask your agent").fill("What's left before the board meeting?");
+  await stream.getByRole("button", { name: "Send", exact: true }).click();
+  // Your question, then the pretend agent's answer, which leads the chain.
+  const answer = page.locator("article.card", { hasText: "pretend agent" });
+  await expect(answer).toBeVisible({ timeout: 15_000 });
+  await answer.getByRole("button", { name: /Show the flow · 2 steps/ }).click();
+  await expect(answer.getByRole("list", { name: "The whole flow" })).toContainText("What's left before the board meeting?");
+});

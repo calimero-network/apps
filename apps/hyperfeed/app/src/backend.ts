@@ -31,6 +31,8 @@ export interface FeedBackend {
   answerNotification(id: string, answer: string): Promise<FeedItem>;
   /** Every row in a chain, oldest first. */
   chain(chain: string): Promise<FeedItem[]>;
+  /** Talk to your agent about a chain, or about anything with `chain` "" (a new chain). */
+  say(chain: string, text: string): Promise<FeedItem>;
   markSeen(ids: string[]): Promise<number>;
   markAllSeen(): Promise<number>;
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
@@ -51,6 +53,7 @@ export function nodeBackend(client: HyperfeedClient): FeedBackend {
     resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
     answerNotification: (id, answer) => client.answerNotification({ id, answer }),
     chain: (chain) => client.chain({ chain }),
+    say: (chain, text) => client.say({ chain, text }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
     setPolicy: (appKey, agent, notifications) =>

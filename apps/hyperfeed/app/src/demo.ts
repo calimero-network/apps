@@ -34,6 +34,16 @@ const GUARDS: [string, boolean][] = [
 
 export const NO_ASK: Ask = { kind: "", prompt: "", options: [], draft: "" };
 
+/** The contract's limits on a message and on a title. */
+const MAX_MESSAGE = 2_000;
+const MAX_TITLE = 200;
+
+/** A message's first line, cut to a title's length (the contract's `headline`). */
+export function headline(text: string): string {
+  const line = (text.split("\n")[0] ?? "").trim();
+  return line.length <= MAX_TITLE ? line : `${line.slice(0, MAX_TITLE - 1)}…`;
+}
+
 type Listener = () => void;
 
 const MINUTE = 60_000;
@@ -101,6 +111,8 @@ export class DemoBackend implements FeedBackend {
   }
 
   private needsYou(item: FeedItem): boolean {
+    // What the agent wants from you in a conversation arrives as a proposal.
+    if (item.kind === "message") return false;
     if (item.kind === "notification") {
       if (item.ask.kind) return item.status === "received" || item.status === "failed";
       return (this.flagged.get(item.id) ?? false) && !item.seen;
@@ -125,7 +137,7 @@ export class DemoBackend implements FeedBackend {
     return copy(stored);
   }
 
-  private get(id: string, kind: "action" | "notification"): FeedItem {
+  private get(id: string, kind: FeedItem["kind"]): FeedItem {
     const item = this.items.get(id);
     if (!item || item.kind !== kind) throw new Error(`no ${kind} ${id}`);
     return item;
@@ -172,8 +184,9 @@ export class DemoBackend implements FeedBackend {
       lead.chain_len = items.length;
       lead.chain_at = Math.max(...items.map((i) => i.chain_at));
       lead.needs_you = needing.length > 0;
-      const chainApps = new Set(items.map((i) => i.app));
-      const action = items.some((i) => i.kind === "action");
+      const chainApps = new Set(items.map((i) => i.app).filter(Boolean));
+      // A conversation with your agent counts as agent activity.
+      const action = items.some((i) => i.kind === "action" || i.kind === "message");
       const notification = items.some((i) => i.kind === "notification");
       counts.all += 1;
       counts.agent += action ? 1 : 0;
@@ -291,6 +304,82 @@ export class DemoBackend implements FeedBackend {
     const note = item.ask.kind === "reply" ? `Sent${where}` : item.ask.kind === "choose" ? `Answered "${item.note}"${where}` : `Done${where}`;
     this.step(item, "delivered", note);
     this.changed();
+  }
+
+  async say(chain: string, text: string): Promise<FeedItem> {
+    if (!text.trim()) throw new Error("text must not be empty");
+    if (new TextEncoder().encode(text).length > MAX_MESSAGE) throw new Error(`text is longer than ${MAX_MESSAGE} bytes`);
+    if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    const posted = this.post(chain, "you", text, "", "waiting");
+    this.changed();
+    if (this.agentDelayMs > 0) {
+      setTimeout(() => this.agentAck(posted.id), this.agentDelayMs / 2);
+      setTimeout(() => this.agentAnswers(posted.id), this.agentDelayMs * 2);
+    }
+    return posted;
+  }
+
+  /** The agent's side of a conversation, as `agent_ack` would take it. */
+  agentAck(id: string, status: "thinking" | "failed" = "thinking", note = ""): FeedItem {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own`);
+    if (!(m.status === "waiting" || (m.status === "thinking" && status === "failed"))) {
+      throw new Error(`message ${id} is ${m.status}; cannot mark it ${status}`);
+    }
+    const item = this.step(m, status, note);
+    this.changed();
+    return item;
+  }
+
+  /** The agent's side of a conversation, as `agent_say` would take it. */
+  agentSay(chain: string, replyTo: string, text: string): FeedItem {
+    if (!text.trim()) throw new Error("text must not be empty");
+    if (!replyTo) {
+      if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    } else {
+      const asked = this.get(replyTo, "message");
+      if (asked.from !== "you") throw new Error(`message ${replyTo} is the agent's own; answer one of yours`);
+      if (asked.chain !== chain) throw new Error(`message ${replyTo} is in chain ${asked.chain}, not ${chain}`);
+      if (asked.status !== "answered") this.step(asked, "answered");
+    }
+    const said = this.post(chain, "agent", text, replyTo, "said");
+    this.changed();
+    return said;
+  }
+
+  private chainExists(chain: string): boolean {
+    return [...this.items.values()].some((i) => i.chain === chain);
+  }
+
+  private post(chain: string, from: "you" | "agent", text: string, replyTo: string, status: string): FeedItem {
+    const id = `demo-${this.nextId++}`;
+    const t = this.tick();
+    return this.put({
+      ...blank(id, "message", "", t, chain || id, NO_ASK),
+      title: headline(text),
+      body: text,
+      from,
+      reply_to: replyTo,
+      history: [{ status, note: "", at: t }],
+    });
+  }
+
+  /**
+   * The pretend agent's answer. It can only say where things stand: there is
+   * no agent behind the demo to go and do anything.
+   */
+  private agentAnswers(id: string) {
+    const asked = this.items.get(id);
+    if (!asked || asked.status === "answered" || asked.status === "failed") return;
+    const about = [...this.items.values()]
+      .filter((i) => i.chain === asked.chain && i.kind !== "message")
+      .sort((a, b) => b.at - a.at)[0];
+    const text = about
+      ? `On "${about.title}": it is ${about.status.replace("_", " ")}. I'm the demo's pretend agent, so this is as far as I go. ` +
+        "Connect your node and your own agent answers here, and proposes or acts in this chain under your rules."
+      : "I'm the demo's pretend agent, so I can't take that on. Connect your node and your own agent answers here, " +
+        "and proposes or acts under your rules.";
+    this.agentSay(asked.chain, id, text);
   }
 
   async markSeen(ids: string[]): Promise<number> {
@@ -611,7 +700,7 @@ function copy(item: FeedItem): FeedItem {
   return { ...item, ask: { ...item.ask, options: [...item.ask.options] }, history: item.history.map((s: Step) => ({ ...s })) };
 }
 
-function blank(id: string, kind: "action" | "notification", app: string, at: number, chain: string, ask: Ask): FeedItem {
+function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chain: string, ask: Ask): FeedItem {
   return {
     id,
     kind,
@@ -640,6 +729,7 @@ function blank(id: string, kind: "action" | "notification", app: string, at: num
     reviewed_at: 0,
     from: "",
     event: "",
-    seen: kind === "action",
+    seen: kind !== "notification",
+    reply_to: "",
   };
 }

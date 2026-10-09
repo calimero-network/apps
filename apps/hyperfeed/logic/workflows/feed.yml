@@ -430,6 +430,66 @@ steps:
       - 'json_subset({{slot_after}}, {"output": {"status": "approved", "note": "Fri 10:00"}})'
       - 'json_subset({{mention_after}}, {"output": {"status": "delivered", "needs_you": false}})'
 
+  # ─── talking to the agent about a chain ───────────────────────────────────
+
+  - name: Owner asks the agent about the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say
+    args: { chain: "{{mention_id}}", text: "Which numbers did you send Maya?" }
+    outputs:
+      question_id: result.output.id
+
+  - name: The agent's open questions hold it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: open_questions
+    args: {}
+    outputs:
+      open_first: result.output.0
+
+  - name: The agent takes the question up
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ack
+    args: { id: "{{question_id}}", status: "thinking", note: "" }
+    outputs:
+      thinking: result
+
+  - name: The agent answers in the same chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_say
+    args: { chain: "{{mention_id}}", reply_to: "{{question_id}}", text: "Q3 revenue and churn, slide 4." }
+    outputs:
+      answer: result
+
+  - name: Owner reads the question after the answer
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{question_id}}" }
+    outputs:
+      question_after: result
+
+  - name: Assert the conversation went waiting, thinking, answered
+    type: json_assert
+    statements:
+      - 'json_subset({{open_first}}, {"kind": "message", "from": "you", "status": "waiting"})'
+      - 'json_subset({{thinking}}, {"output": {"status": "thinking"}})'
+      - 'json_subset({{answer}}, {"output": {"kind": "message", "from": "agent", "chain": "{{mention_id}}", "reply_to": "{{question_id}}"}})'
+      - 'json_subset({{question_after}}, {"output": {"status": "answered"}})'
+
   # ─── the second node ──────────────────────────────────────────────────────
 
   - name: Wait for the feed to converge
@@ -463,7 +523,8 @@ steps:
       settings_2: result
 
   # Vote is muted, so four chains: the stand-up, the NDA, the first mention,
-  # and the mention with its slot proposal. Nothing needs the owner any more.
+  # and the mention with its slot proposal and conversation. Nothing needs the
+  # owner any more.
   - name: Assert node-2 sees the owner's feed and rules
     type: json_assert
     statements:
@@ -509,8 +570,20 @@ steps:
     outputs:
       unpause_error: error
 
-  - name: Assert both writes were refused
+  - name: node-2 tries to talk to the agent in someone else's feed
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: say
+    args: { chain: "", text: "Forged question" }
+    expected_failure: true
+    outputs:
+      say_error: error
+
+  - name: Assert every write was refused
     type: assert
     statements:
       - "is_set({{forged_error}})"
       - "is_set({{unpause_error}})"
+      - "is_set({{say_error}})"

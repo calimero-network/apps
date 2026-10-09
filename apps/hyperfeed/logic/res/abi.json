@@ -348,6 +348,46 @@
         }
       ]
     },
+    "Event_MessageChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MessagePosted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_NotificationChanged": {
       "kind": "record",
       "fields": [
@@ -581,7 +621,8 @@
           "name": "from",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Who sent a notification; for a message, [`FROM_YOU`] or [`FROM_AGENT`]."
         },
         {
           "name": "event",
@@ -594,6 +635,13 @@
           "type": {
             "kind": "bool"
           }
+        },
+        {
+          "name": "reply_to",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The message of yours an agent message answers."
         }
       ]
     },
@@ -753,6 +801,72 @@
               "$ref": "AgentState"
             },
             "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Message"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Message": {
+      "kind": "record",
+      "doc": "One message in a conversation with your agent, inside a chain.\n\nYou talk to your agent about a row by posting into its chain; a question\nasked from nowhere starts a chain of its own. The agent's answers, and\nanything it proposes or does because of them, land in the same chain.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`FROM_YOU`] or [`FROM_AGENT`]."
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reply_to",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The message of yours this answers; empty for yours, and for an agent\nmessage nobody asked for."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
           }
         }
       ]
@@ -1068,6 +1182,62 @@
   },
   "methods": [
     {
+      "name": "agent_ack",
+      "doc": "The agent takes up one of your messages (`thinking`), or gives up on it\n(`failed`, with why). Taking it up is how you know an agent is there.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "agent_say",
+      "doc": "The agent says something in a chain: an answer to one of your\nmessages (`reply_to`, which marks it answered), or, with `reply_to`\nempty, a note of its own in a chain that exists.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reply_to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "answer_notification",
       "doc": "Answer a notification from the feed: the reply to send, the option you\npicked, or `\"\"` to confirm. Your agent carries it out in the source app\nand reports with [`Hyperfeed::complete_answer`]. A failed delivery can be\nanswered again.",
       "params": [
@@ -1279,6 +1449,18 @@
       "intent": "mutating"
     },
     {
+      "name": "open_questions",
+      "doc": "Your messages your agent has not answered yet, oldest first: what an\nagent that was away picks up when it starts.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FeedItem"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "record_action",
       "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped.",
       "params": [
@@ -1328,6 +1510,28 @@
         },
         {
           "name": "answer",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "say",
+      "doc": "Talk to your agent: about a chain (`chain` = its id), or about\nanything (`chain` empty, which starts a new chain). Your agent picks it\nup, answers in the chain, and may propose or act there under your rules.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
           "type": {
             "kind": "string"
           }
@@ -1424,6 +1628,19 @@
       "payload": {
         "$ref": "Event_ActionRecorded"
       }
+    },
+    {
+      "name": "MessageChanged",
+      "payload": {
+        "$ref": "Event_MessageChanged"
+      }
+    },
+    {
+      "name": "MessagePosted",
+      "payload": {
+        "$ref": "Event_MessagePosted"
+      },
+      "doc": "A message in a chain: yours (your agent should answer) or its answer."
     },
     {
       "name": "NotificationChanged",

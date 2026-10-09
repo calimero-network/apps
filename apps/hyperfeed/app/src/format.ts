@@ -14,6 +14,13 @@ const STATUS_LABELS: Record<string, string> = {
 export type Tone = "wait" | "bad" | "good" | "busy" | "plain";
 
 export function statusOf(item: FeedItem): { label: string; tone: Tone } {
+  if (item.kind === "message") {
+    if (item.from === "agent") return { label: item.reply_to ? "Answer" : "Note", tone: "plain" };
+    if (item.status === "thinking") return { label: "Your agent is on it", tone: "busy" };
+    if (item.status === "answered") return { label: "Answered", tone: "good" };
+    if (item.status === "failed") return { label: "Your agent couldn't answer", tone: "bad" };
+    return { label: "Sent · waiting for your agent", tone: "busy" };
+  }
   if (item.kind === "notification") {
     if (item.status === "answered") return { label: "Answered · agent sending", tone: "busy" };
     if (item.status === "delivered") return { label: "Answered", tone: "good" };
@@ -85,6 +92,16 @@ export function stepsOf(item: FeedItem, appName: string): FlowStep[] {
     out.push({ key: `${item.id}:${i}`, item, actor, who, text, detail, at, tone, first: i === 0 });
   item.history.forEach((step, i) => {
     const note = step.note;
+    if (item.kind === "message") {
+      const mine = item.from === "you";
+      if (i === 0) add(i, mine ? "you" : "agent", mine ? "You" : "Your agent", item.body, "", step.at, mine ? "plain" : "good");
+      // Picking it up only matters while nothing else has happened; the
+      // answer is a message of its own.
+      else if (step.status === "thinking" && i === item.history.length - 1)
+        add(i, "agent", "Your agent", "Is on it…", "", step.at, "busy");
+      else if (step.status === "failed") add(i, "agent", "Your agent", "Couldn't answer", note, step.at, "bad");
+      return;
+    }
     if (item.kind === "notification") {
       switch (step.status) {
         case "received":

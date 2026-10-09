@@ -8,7 +8,9 @@ import { readState } from "./global-setup";
  *
  *   connect → create your feed → an app's notification lands in it (recorded
  *   through the contract, as the collector or mero-bot records one) → you
- *   answer it in place → the contract holds your answer for the agent.
+ *   answer it in place → the contract holds your answer for the agent → you
+ *   ask your agent about it → the agent (played here through the contract,
+ *   as mero-bot calls it) takes it up and answers in the same chain.
  *
  * The agent's side (check, propose, carry out, complete) is covered on two
  * nodes by logic/workflows/feed.yml and against a node by mero-bot's
@@ -100,5 +102,37 @@ test("you create your feed and answer a notification in place", async ({ page })
   expect(item?.note).toBe("Numbers are in the deck.");
   expect(item?.history.map((s) => s.status)).toEqual(["received", "answered"]);
 
+  // ── you talk to your agent about it ────────────────────────────────────────
+  await card.getByRole("button", { name: "Details" }).click();
+  const detail = page.getByRole("complementary", { name: "Selected item" });
+  await detail.getByLabel("Talk to your agent about this").fill("Who else asked for the numbers?");
+  await detail.getByRole("button", { name: "Send" }).click();
+  // One row per chain: your question now leads Maya's.
+  const talk = page.locator("article.card", { hasText: "Who else asked for the numbers?" });
+  await expect(talk.getByText("Sent · waiting for your agent")).toBeVisible();
+
+  // ── your agent picks it up and answers, in the same chain ──────────────────
+  const open = await mero.rpc.execute<{ id: string; chain: string }[]>({ contextId, method: "open_questions", argsJson: {} });
+  expect(open).toHaveLength(1);
+  const question = open[0]!;
+  expect(question.chain, "the question joined Maya's chain").toBe(await chainOf(mero, contextId, recorded.id));
+  await mero.rpc.execute({ contextId, method: "agent_ack", argsJson: { id: question.id, status: "thinking", note: "" } });
+  await expect(talk.getByText("Your agent is on it")).toBeVisible();
+  await mero.rpc.execute({
+    contextId,
+    method: "agent_say",
+    argsJson: { chain: question.chain, reply_to: question.id, text: "Only Maya, in #launch." },
+  });
+  const answer = page.locator("article.card", { hasText: "Only Maya, in #launch." });
+  await expect(answer).toBeVisible();
+  await expect(answer.getByText("Your agent", { exact: true }).first()).toBeVisible();
+  const asked = await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: question.id } });
+  expect(asked?.status).toBe("answered");
+
   expect(errors, "an unhandled error escaped to the page").toEqual([]);
 });
+
+async function chainOf(mero: MeroJs, contextId: string, id: string): Promise<string> {
+  const row = await mero.rpc.execute<{ chain: string } | null>({ contextId, method: "item", argsJson: { id } });
+  return row?.chain ?? "";
+}

@@ -4,7 +4,7 @@ import type { SubscriptionEventData } from "@calimero-network/mero-react";
 import { HyperfeedClient } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
 import { appKeyForPackage } from "./apps";
-import { toNotifications, type SourceContext, type StateMutation } from "./collector";
+import { identitiesOf, toNotifications, type SourceContext, type SourceReader, type StateMutation } from "./collector";
 
 export interface NodeFeed {
   backend: FeedBackend | null;
@@ -71,6 +71,31 @@ export function useNodeFeed(contextId: string): NodeFeed {
   const lastRoots = useRef(new Map<string, string>());
   sources.current = new Map(watching.map((s) => [s.contextId, s]));
 
+  // How the collector reads what an event points at. Who you are is the
+  // node's account (and this device), the same in every context: asked once.
+  const self = useRef<Promise<Set<string>> | null>(null);
+  const readerFor = useCallback(
+    (sourceContext: string): SourceReader | null => {
+      if (!mero || !admin) return null;
+      return {
+        call: <T,>(method: string, args: Record<string, unknown>) =>
+          mero.rpc.execute<T>({ contextId: sourceContext, method, argsJson: args }),
+        me: () => {
+          if (!self.current) {
+            const asked = admin.getNodeIdentity().then((id) => identitiesOf([id.accountId, id.deviceId]));
+            // A failed lookup is asked again next time, not remembered.
+            asked.catch(() => {
+              self.current = null;
+            });
+            self.current = asked;
+          }
+          return self.current;
+        },
+      };
+    },
+    [mero, admin],
+  );
+
   const ids = useMemo(() => [contextId, ...watching.map((w) => w.contextId)], [contextId, watching]);
 
   useSubscription(
@@ -88,15 +113,19 @@ export function useNodeFeed(contextId: string): NodeFeed {
         const mutation = event.data as StateMutation;
         const previous = lastRoots.current.get(event.contextId) ?? "";
         if (mutation?.newRoot) lastRoots.current.set(event.contextId, mutation.newRoot);
-        for (const input of toNotifications(source, mutation, previous)) {
-          // Fire and forget: a collector that stalls the stream waiting on the
-          // node is worse than a missed notification. Never silently, though.
-          void backend
-            .recordNotification(input)
-            .catch((e: unknown) => console.warn("[hyperfeed] could not record a notification", input.key, e));
-        }
+        const reader = readerFor(event.contextId);
+        if (!reader) return;
+        // Fire and forget: a collector that stalls the stream waiting on the
+        // node is worse than a missed notification. Never silently, though.
+        void toNotifications(source, mutation, previous, reader).then((inputs) => {
+          for (const input of inputs) {
+            void backend
+              .recordNotification(input)
+              .catch((e: unknown) => console.warn("[hyperfeed] could not record a notification", input.key, e));
+          }
+        });
       },
-      [contextId, backend],
+      [contextId, backend, readerFor],
     ),
   );
 
