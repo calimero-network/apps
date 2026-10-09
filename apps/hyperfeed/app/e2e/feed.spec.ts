@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { MeroJs } from "@calimero-network/mero-js";
 
 import { readState } from "./global-setup";
+import { short } from "../src/format";
 
 /**
  * Your side of the loop, through the UI, against a real node:
@@ -261,4 +262,35 @@ test("you see when your agent is there, and archive what is done", async ({ page
   expect(page1.counts.archived).toBeGreaterThan(0);
   await page.getByRole("button", { name: /^Archived · \d+/ }).click();
   await expect(page.getByRole("region", { name: "Archived" }).locator("li.row").first()).toBeVisible();
+});
+
+// Last: it leaves a second feed on the node, and the tests above open "the" feed.
+test("you switch between your feeds without signing in again", async ({ page }) => {
+  await openFeed(page);
+  const first = (await node().admin.getContexts()).contexts[0]!.id;
+  const switcher = page.getByTitle("Switch feed");
+  await expect(switcher).toHaveText(short(first));
+  await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toBeVisible();
+
+  // A second feed, made from the switcher, opens in place.
+  await switcher.click();
+  await page.getByRole("menuitem", { name: "Create a new feed" }).click();
+  await expect(switcher).not.toHaveText(short(first), { timeout: 60_000 });
+  await expect(page.getByText("Nothing needs you.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toHaveCount(0);
+  const second = (await node().admin.getContexts()).contexts.map((c) => c.id).find((id) => id !== first)!;
+  await expect(switcher).toHaveText(short(second));
+
+  // Back to the first: the same session, its rows again.
+  await switcher.click();
+  const items = page.getByRole("menuitemradio");
+  await expect(items).toHaveCount(2);
+  await items.filter({ hasText: short(first) }).click();
+  await expect(switcher).toHaveText(short(first));
+  await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+
+  // The feed you switched to is the one a reload opens.
+  await page.reload();
+  await expect(page.getByTitle("Switch feed")).toHaveText(short(first), { timeout: 60_000 });
 });

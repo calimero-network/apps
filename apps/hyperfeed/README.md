@@ -337,6 +337,10 @@ beside the feed at the row's context (Chat at the channel, Design at the documen
 your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
 handed your session. The theme follows your system until you switch it.
 
+The feed's id beside the brand switches feeds: it lists every feed this Hyperfeed has on your node
+and opens the one you pick in place, still signed in, and a reload opens it again. **Create a new
+feed** is there too. mero-bot follows you to a feed once you write in it.
+
 ## Upgrading
 
 Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The

@@ -4,12 +4,12 @@ import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { ControlsView } from "./ControlsView";
 import { ChatView } from "./ChatView";
-import { FeedPicker } from "./FeedPicker";
+import { FeedPicker, FeedSwitcher } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
 import { demoPreview, nodePreview, type Preview } from "./preview";
-import { useNewFeed } from "./newFeed";
+import { useNewFeed, useOpenFeed } from "./newFeed";
 import { appLink } from "./links";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
@@ -48,7 +48,8 @@ export function App() {
 type Page = "feed" | "chat" | "controls";
 
 function NodeApp({ page }: { page: Page }) {
-  const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  const { isAuthenticated, isLoading, applicationId, contextId: sessionFeed, nodeUrl, logout } = useMero();
+  const contextId = useOpenFeed(sessionFeed);
 
   if (isLoading) {
     return (
@@ -67,7 +68,8 @@ function NodeApp({ page }: { page: Page }) {
       </Shell>
     );
   }
-  return <NodeFeedApp page={page} contextId={contextId} applicationId={applicationId} session={{ nodeUrl, logout }} />;
+  // Keyed by feed: switching starts the new feed's screens fresh.
+  return <NodeFeedApp key={contextId} page={page} contextId={contextId} applicationId={applicationId} session={{ nodeUrl, logout }} />;
 }
 
 function NodeFeedApp({
@@ -110,7 +112,16 @@ function NodeFeedApp({
       ? `Not watching other apps: ${node.watchError}`
       : `Watching ${node.watching.length} other context${node.watching.length === 1 ? "" : "s"}`;
   return (
-    <Shell base="" page={page} feed={feed} session={session} status={watching} query={query} onQuery={setQuery}>
+    <Shell
+      base=""
+      page={page}
+      feed={feed}
+      session={session}
+      status={watching}
+      query={query}
+      onQuery={setQuery}
+      switcher={<FeedSwitcher applicationId={applicationId} current={contextId} />}
+    >
       <Screen
         base=""
         page={page}
@@ -198,6 +209,7 @@ function Shell({
   extra,
   query,
   onQuery,
+  switcher,
   children,
 }: {
   base: string;
@@ -208,6 +220,8 @@ function Shell({
   extra?: ReactNode;
   query?: string;
   onQuery?: (q: string) => void;
+  /** The feed switcher, beside the brand, when a feed on your node is open. */
+  switcher?: ReactNode;
   children: ReactNode;
 }) {
   const paused = feed?.settings?.paused ?? false;
@@ -220,6 +234,7 @@ function Shell({
           <img src="/favicon.svg" alt="" width={24} height={24} />
           <span>hyperfeed</span>
         </Link>
+        {switcher}
         {feed && (
           <nav className="topnav" aria-label="Pages">
             {(
