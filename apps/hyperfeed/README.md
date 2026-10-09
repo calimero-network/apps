@@ -276,4 +276,3 @@ when given `--output apps/hyperfeed/logic/dist/com.calimero.hyperfeed.mpk`.
   waits as long as mero-bot runs: there is no timeout yet.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
 - Paging past the first 50 rows. The contract returns `next_before`, but the UI does not ask for the next page.
-- Landing page.

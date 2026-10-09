@@ -1,5 +1,5 @@
 /**
- * Per-app landing content for all fifteen user-facing apps.
+ * Per-app landing content for every user-facing app.
  *
  * This is the ONLY place app-specific copy lives. `generate.mjs` renders each
  * entry into `apps/<app>/app/src/pages/landing/landing.config.ts` next to a
@@ -54,6 +54,41 @@ import { DOCS } from './docs.config.mjs';
 
 /** @type {Record<string, import('./types.js').AppLanding>} */
 export const APPS = {
+  'hyperfeed': {
+    e2eDir: 'tests',
+    availability: 'web+desktop',
+    overview: {
+      headline: 'Everything your agent did, and everything your apps sent you. One feed, on your node.',
+      comparison: {
+        heading: 'An agent that answers to you',
+        sub: 'Letting an agent act in your apps usually means trusting a log someone else keeps. Here the log, the rules and the approvals are yours.',
+        themLabel: 'A typical agent with app access',
+        rows: [
+          { label: 'What it did on your behalf', them: 'Scattered across each app, if logged at all', us: 'One feed: every action with its app, method and reason' },
+          { label: 'What it may do', them: 'Whatever the token allows', us: 'Your rules per app: act, ask first, read only or off' },
+          { label: 'Signing, money, new contacts', them: 'Same as everything else', us: 'Guards that always ask you, whatever the app allows' },
+          { label: 'Answering a message', them: 'Open the app, find the thread, reply', us: 'Reply, pick or confirm right in the feed; the agent delivers it' },
+          { label: 'Where it is kept', them: 'In the agent vendor’s database', us: 'In a context on your own node that only you write to' },
+        ],
+      },
+      closing: {
+        title: 'Open your feed',
+        body: 'Connect your node and create your feed. Then point your agent at it: mero-bot plugs in as is.',
+      },
+    },
+    trust: ['Only you write to your feed', 'Every action has provenance', 'Your rules, checked first'],
+    explainer: [
+      'Hyperfeed is one feed of everything an agent did on your behalf, beside every notification the apps it uses sent you. Each action carries its app, its method and its reason, plus the warrant’s intent hash when it acted through one, and a row can be approved, answered or undone where it lands.',
+      'The feed is a Calimero context on your own node that only you write to. Your agent checks your rules there before it writes anywhere else, reports what it did, and carries out what you decide. While the app is open it also watches your other contexts and records what they emit as notifications.',
+    ],
+    features: [
+      { icon: 'Zap', title: 'Everything your agent did', body: 'Every action it took or wants to take, grouped into chains you can expand into the whole flow.' },
+      { icon: 'MessageCircle', title: 'Resolve it where it lands', body: 'Reply to a chat, pick an option or confirm in place. Your agent carries it out and reports back.' },
+      { icon: 'ShieldCheck', title: 'Your rules, per app', body: 'Act, ask first, read only or off for each app, guards that always ask, and one switch to pause it.' },
+      { icon: 'Eye', title: 'Provenance on every row', body: 'Which app, which method and why, and the warrant’s intent hash when it signed one as you.' },
+    ],
+  },
+
   'mero-chess': {
     e2eDir: 'e2e',
     availability: 'web+desktop',

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
-import { ConnectButton, useMero } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { ControlsView } from "./ControlsView";
 import { FeedPicker } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
 import { useNodeFeed } from "./useNodeFeed";
+import LandingPage from "./pages/landing/LandingPage";
 
 /**
  * Two ways in, one set of screens.
@@ -21,6 +22,11 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<NodeApp page="feed" />} />
+        {/* The landing page's other two pages. Real routes, so a shared link
+          opens cold instead of falling into the catch-all below. Signed in or
+          not, they stay reference pages. */}
+        <Route path="/docs" element={<LandingPage />} />
+        <Route path="/preview" element={<LandingPage />} />
         <Route path="/controls" element={<NodeApp page="controls" />} />
         <Route path="/demo" element={<DemoApp page="feed" />} />
         <Route path="/demo/controls" element={<DemoApp page="controls" />} />
@@ -42,25 +48,9 @@ function NodeApp({ page }: { page: Page }) {
       </Shell>
     );
   }
-  if (!isAuthenticated) {
-    return (
-      <Shell base="" page={page} feed={null}>
-        <section className="center-card">
-          <h1>One feed for your agent and your apps</h1>
-          <p className="muted">
-            Everything your agent did on your behalf, with where it acted and why, beside every notification the
-            apps it uses sent you. Approve, undo and set its permissions from one place.
-          </p>
-          <div className="row">
-            <ConnectButton />
-            <Link className="button ghost" to="/demo">
-              Try the demo
-            </Link>
-          </div>
-        </section>
-      </Shell>
-    );
-  }
+  // Signed out, the front door is the shared landing page; its Connect to
+  // node opens the login popup over it. The demo is linked from /docs.
+  if (!isAuthenticated) return <LandingPage />;
   if (!contextId) {
     return (
       <Shell base="" page={page} feed={null} session={{ nodeUrl, logout }}>
