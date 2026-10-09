@@ -537,7 +537,7 @@
           }
         },
         {
-          "name": "on",
+          "name": "enabled",
           "type": {
             "kind": "bool"
           }
@@ -560,7 +560,7 @@
           }
         },
         {
-          "name": "on",
+          "name": "enabled",
           "type": {
             "kind": "bool"
           }
@@ -1058,7 +1058,7 @@
     },
     {
       "name": "record_notification",
-      "doc": "Record a notification your client saw. Recording the same key twice is\na no-op, so every device can record what it sees.",
+      "doc": "Record a notification your client saw.\n\nEvery device records what it sees, and the same event arrives under the\nsame key on each, so a key already recorded within\n[`DEDUPE_WINDOW_MS`] returns that row and records nothing. The same key\nlater is a new event — the source context came back to a state it had\nbeen in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting\nthat occurrence derive the same id, so their rows still merge.",
       "params": [
         {
           "name": "input",
@@ -1104,7 +1104,7 @@
           }
         },
         {
-          "name": "on",
+          "name": "enabled",
           "type": {
             "kind": "bool"
           }

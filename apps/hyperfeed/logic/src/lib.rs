@@ -67,6 +67,20 @@ const MAX_HASH: usize = 128;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
+/// How long a notification key keeps meaning "the event already recorded".
+///
+/// Your devices see the same event within seconds of each other, so a repeat
+/// inside the window is another device's report of it. A repeat after the
+/// window is the context arriving at the same state again — a real, new event
+/// that core's root-hash-based key cannot tell apart — and gets a row of its
+/// own. See [`Hyperfeed::record_notification`].
+pub const DEDUPE_WINDOW_MS: u64 = 10_000;
+
+/// How many occurrences of one key are looked for before giving up and keying
+/// the new one by time. Only a context that keeps returning to the same state
+/// gets anywhere near it.
+const MAX_OCCURRENCES: u32 = 64;
+
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 
 /// What the agent may do in one app. `act` = without asking, `ask` = propose
@@ -246,7 +260,7 @@ impl Mergeable for Policy {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Guard {
     pub category: String,
-    pub on: bool,
+    pub enabled: bool,
     pub updated_at: u64,
 }
 
@@ -399,7 +413,7 @@ pub struct PolicyView {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct GuardView {
     pub category: String,
-    pub on: bool,
+    pub enabled: bool,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -543,7 +557,7 @@ impl Hyperfeed {
             return Ok(false);
         }
         if let Some(g) = self.guards.get(category)? {
-            return Ok(g.on);
+            return Ok(g.enabled);
         }
         Ok(GUARDS
             .iter()
@@ -645,6 +659,38 @@ impl Hyperfeed {
             from: n.from.clone(),
             event: n.event.clone(),
             seen: n.seen,
+        }
+    }
+
+    /// Whether `key` at `now` is an event already recorded, or which id a new
+    /// one gets: the key itself, then `<key>#1`, `<key>#2`, … in order. Only the
+    /// latest occurrence can be the one being re-reported.
+    fn occurrence_of(&self, key: &str, now: u64) -> app::Result<Occurrence> {
+        let mut latest: Option<Notification> = None;
+        for n in 0..MAX_OCCURRENCES {
+            let id = if n == 0 {
+                key.to_owned()
+            } else {
+                format!("{key}#{n}")
+            };
+            match self.notifications.get(&id)? {
+                Some(found) => latest = Some(found.clone()),
+                None => {
+                    return Ok(match latest {
+                        Some(prev) if now.saturating_sub(prev.created_at) <= DEDUPE_WINDOW_MS => {
+                            Occurrence::Seen(prev)
+                        }
+                        _ => Occurrence::New(id),
+                    })
+                }
+            }
+        }
+        // A context that keeps coming back to one state: key by time instead.
+        match latest {
+            Some(prev) if now.saturating_sub(prev.created_at) <= DEDUPE_WINDOW_MS => {
+                Ok(Occurrence::Seen(prev))
+            }
+            _ => Ok(Occurrence::New(format!("{key}@{now}"))),
         }
     }
 
@@ -831,8 +877,14 @@ impl Hyperfeed {
         self.set_state(action, status, String::new())
     }
 
-    /// Record a notification your client saw. Recording the same key twice is
-    /// a no-op, so every device can record what it sees.
+    /// Record a notification your client saw.
+    ///
+    /// Every device records what it sees, and the same event arrives under the
+    /// same key on each, so a key already recorded within
+    /// [`DEDUPE_WINDOW_MS`] returns that row and records nothing. The same key
+    /// later is a new event — the source context came back to a state it had
+    /// been in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting
+    /// that occurrence derive the same id, so their rows still merge.
     pub fn record_notification(&mut self, input: NotificationInput) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("key", &input.key, MAX_KEY, true)?;
@@ -844,11 +896,13 @@ impl Hyperfeed {
         Self::check_len("body", &input.body, MAX_BODY, false)?;
         Self::check_len("event", &input.event, MAX_SHORT, false)?;
 
-        if let Some(existing) = self.notifications.get(&input.key)? {
-            return Ok(Self::notification_item(&existing));
-        }
+        let now = now_ms();
+        let id = match self.occurrence_of(&input.key, now)? {
+            Occurrence::Seen(existing) => return Ok(Self::notification_item(&existing)),
+            Occurrence::New(id) => id,
+        };
         let n = Notification {
-            id: input.key,
+            id,
             app: input.app,
             source_context: input.source_context,
             source_label: input.source_label,
@@ -857,7 +911,7 @@ impl Hyperfeed {
             body: input.body,
             event: input.event,
             needs_you: input.needs_you,
-            created_at: now_ms(),
+            created_at: now,
             seen: false,
             seen_at: 0,
         };
@@ -929,7 +983,7 @@ impl Hyperfeed {
         self.policy_for(&app_key)
     }
 
-    pub fn set_guard(&mut self, category: String, on: bool) -> app::Result<()> {
+    pub fn set_guard(&mut self, category: String, enabled: bool) -> app::Result<()> {
         self.require_owner()?;
         Self::check_category(&category)?;
         if category.is_empty() {
@@ -943,7 +997,7 @@ impl Hyperfeed {
             category.clone(),
             Guard {
                 category,
-                on,
+                enabled,
                 updated_at,
             },
         )?;
@@ -1085,7 +1139,7 @@ impl Hyperfeed {
         for (category, _) in GUARDS {
             guards.push(GuardView {
                 category: (*category).to_owned(),
-                on: self.guard_on(category)?,
+                enabled: self.guard_on(category)?,
             });
         }
         Ok(SettingsView {
@@ -1095,6 +1149,14 @@ impl Hyperfeed {
             guards,
         })
     }
+}
+
+/// What [`Hyperfeed::occurrence_of`] found for a notification key.
+enum Occurrence {
+    /// Already recorded inside the window: another device's report of it.
+    Seen(Notification),
+    /// A new event, to be stored under this id.
+    New(String),
 }
 
 fn outcome_status(outcome: &str) -> &'static str {

@@ -166,7 +166,7 @@
           }
         },
         {
-          "name": "on",
+          "name": "enabled",
           "type": {
             "kind": "bool"
           }

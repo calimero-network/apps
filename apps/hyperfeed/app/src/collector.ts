@@ -10,9 +10,19 @@ import type { NotificationInput } from "./generated/HyperfeedClient";
  * best-effort reading: a few well-known kinds get a proper sentence and the
  * "needs you" flag, and anything else is filed under its kind, humanised.
  *
- * The dedupe key is `<context>:<new root hash>:<index>`. Every device watching
- * the same context sees the same root hash for the same change, so the
- * contract records the event once however many of your devices saw it.
+ * The dedupe key is `<context>:<previous root>><new root>:<index>`: the state
+ * TRANSITION, not just where it ended. Every device watching a context sees the
+ * same sequence of roots, so the same change keys the same way everywhere and
+ * the contract records it once. The new root alone is not enough: core derives
+ * it from the state's contents, so a value set A, then B, then A again ends on
+ * a root it had before, and the third change would read as a repeat of the
+ * first. The contract also treats a key seen again after a few seconds as a new
+ * occurrence, which covers the rest (A, B, A, B, A …).
+ *
+ * A device's first event for a context has no previous root, so the key
+ * starts `<context>:>`; a device that connects mid-stream may record that one
+ * event a second time. A duplicate is the cheaper failure: a missed event is
+ * gone for good.
  */
 
 /** The `data` of a `StateMutation` context event. */
@@ -54,6 +64,18 @@ const KNOWN: Record<string, (payload: Record<string, unknown>) => Partial<Readin
   GameEnded: () => ({ title: "A game ended" }),
 };
 
+/**
+ * An unknown event's simple fields, as one line: `key: launch-date · value: Oct 28`.
+ * Better than a bare kind name, and it never guesses at meaning.
+ */
+export function summarise(payload: Record<string, unknown>): string {
+  return Object.entries(payload)
+    .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+    .map(([k, v]) => `${k}: ${String(v)}`)
+    .join(" · ")
+    .slice(0, 500);
+}
+
 function text(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 500) : "";
 }
@@ -76,16 +98,23 @@ export function decodePayload(data: number[] | string | null | undefined): Recor
   }
 }
 
-export function toNotifications(source: SourceContext, mutation: StateMutation): NotificationInput[] {
+export function toNotifications(
+  source: SourceContext,
+  mutation: StateMutation,
+  /** The root this client last saw for the context, or "" for its first event. */
+  previousRoot = "",
+): NotificationInput[] {
   const root = mutation.newRoot ?? "";
   if (!root) return []; // no stable key, and recording it twice is worse than not at all
   const out: NotificationInput[] = [];
   (mutation.events ?? []).forEach((event, index) => {
     const kind = event.kind ?? "";
     if (!kind || QUIET.has(kind)) return;
-    const reading = KNOWN[kind]?.(decodePayload(event.data)) ?? {};
+    const payload = decodePayload(event.data);
+    const known = KNOWN[kind];
+    const reading: Partial<Reading> = known ? known(payload) : { body: summarise(payload) };
     out.push({
-      key: `${source.contextId}:${root}:${index}`.slice(0, 200),
+      key: `${source.contextId}:${previousRoot.slice(0, 16)}>${root}:${index}`.slice(0, 200),
       app: source.appKey,
       source_context: source.contextId,
       source_label: source.label.slice(0, 120),

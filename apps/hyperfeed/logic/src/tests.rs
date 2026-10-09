@@ -263,6 +263,42 @@ fn a_notification_is_recorded_once_per_key() {
     assert_eq!(page.counts.needs_you, 1);
 }
 
+/// Core's state-change event names the context's new ROOT HASH, which depends
+/// only on the state's contents. A context that returns to an earlier state
+/// (a value set A, then B, then A again) produces the same key a second time,
+/// for a change that really happened. Found against a real node: the third
+/// write never reached the feed.
+#[test]
+fn the_same_key_after_the_window_is_a_new_occurrence() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let first = app
+        .call(|s| s.record_notification(notification("ctx:root-a:0", "kv", false)))
+        .unwrap();
+    // Age the first sighting past the window: what a later return to the
+    // same state looks like.
+    app.call(|s| {
+        let mut n = s.notifications.get(&first.id)?.expect("recorded").clone();
+        n.created_at -= DEDUPE_WINDOW_MS + 1;
+        // Remove first: an insert over a live key merges, and the merge keeps
+        // the stored `created_at`.
+        s.notifications.remove(&first.id)?;
+        s.notifications.insert(first.id.clone(), n).map(|_| ())
+    })
+    .unwrap();
+    let second = app
+        .call(|s| s.record_notification(notification("ctx:root-a:0", "kv", false)))
+        .unwrap();
+    assert_ne!(second.id, first.id);
+    assert_eq!(second.id, "ctx:root-a:0#1");
+    // Another device reporting that same second change inside the window
+    // still lands on the same row.
+    let again = app
+        .call(|s| s.record_notification(notification("ctx:root-a:0", "kv", false)))
+        .unwrap();
+    assert_eq!(again.id, second.id);
+    assert_eq!(feed(&app, "notifications").items.len(), 2);
+}
+
 #[test]
 fn seen_notifications_stop_needing_you() {
     let mut app = TestHost::new(Hyperfeed::init);
@@ -371,13 +407,31 @@ fn settings_list_policies_and_every_guard() {
     let s = app.view(|s| s.settings()).unwrap();
     assert_eq!(s.policies.len(), 1);
     assert_eq!(s.guards.len(), GUARDS.len());
-    assert!(s.guards.iter().find(|g| g.category == "sign").unwrap().on);
-    assert!(!s.guards.iter().find(|g| g.category == "secret").unwrap().on);
+    assert!(
+        s.guards
+            .iter()
+            .find(|g| g.category == "sign")
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        !s.guards
+            .iter()
+            .find(|g| g.category == "secret")
+            .unwrap()
+            .enabled
+    );
     assert_eq!(s.owner, AccountId::from(app.account_id()).to_string());
     app.call(|s| s.set_guard("secret".to_owned(), true))
         .unwrap();
     let s = app.view(|s| s.settings()).unwrap();
-    assert!(s.guards.iter().find(|g| g.category == "secret").unwrap().on);
+    assert!(
+        s.guards
+            .iter()
+            .find(|g| g.category == "secret")
+            .unwrap()
+            .enabled
+    );
 }
 
 #[test]

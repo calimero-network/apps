@@ -174,13 +174,13 @@ export interface FeedPage {
  */
 export interface Guard {
   category: string;
-  on: boolean;
+  enabled: boolean;
   updated_at: number;
 }
 
 export interface GuardView {
   category: string;
-  on: boolean;
+  enabled: boolean;
 }
 
 export interface Hyperfeed {
@@ -401,8 +401,14 @@ export class HyperfeedClient {
   /**
    * record_notification
    *
-   * Record a notification your client saw. Recording the same key twice is
-   * a no-op, so every device can record what it sees.
+   * Record a notification your client saw.
+   *
+   * Every device records what it sees, and the same event arrives under the
+   * same key on each, so a key already recorded within
+   * [`DEDUPE_WINDOW_MS`] returns that row and records nothing. The same key
+   * later is a new event — the source context came back to a state it had
+   * been in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting
+   * that occurrence derive the same id, so their rows still merge.
    *
    * @intent mutating
    */
@@ -429,7 +435,7 @@ export class HyperfeedClient {
    *
    * @intent mutating
    */
-  public async setGuard(params: { category: string; on: boolean }): Promise<void> {
+  public async setGuard(params: { category: string; enabled: boolean }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'set_guard', argsJson: params });
     return response as void;
   }

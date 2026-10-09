@@ -17,7 +17,7 @@ export interface Feed {
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
-  setGuard: (category: string, on: boolean) => Promise<void>;
+  setGuard: (category: string, enabled: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
 }
 
@@ -110,7 +110,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
-    setGuard: useCallback((category, on) => run((b) => b.setGuard(category, on)), [run]),
+    setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
   };
 }

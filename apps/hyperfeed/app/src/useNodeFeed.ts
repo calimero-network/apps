@@ -67,6 +67,8 @@ export function useNodeFeed(contextId: string): NodeFeed {
     [contexts, contextId, applicationId, packages],
   );
   const sources = useRef(new Map<string, SourceContext>());
+  // The last root seen per context: half of each notification's key.
+  const lastRoots = useRef(new Map<string, string>());
   sources.current = new Map(watching.map((s) => [s.contextId, s]));
 
   const ids = useMemo(() => [contextId, ...watching.map((w) => w.contextId)], [contextId, watching]);
@@ -83,10 +85,15 @@ export function useNodeFeed(contextId: string): NodeFeed {
         const source = sources.current.get(event.contextId);
         if (!source || !backend) return;
         if (event.type && event.type !== "StateMutation") return;
-        for (const input of toNotifications(source, event.data as StateMutation)) {
-          // Fire and forget: a missed notification is a smaller problem than a
-          // collector that stalls the stream waiting on the node.
-          void backend.recordNotification(input).catch(() => undefined);
+        const mutation = event.data as StateMutation;
+        const previous = lastRoots.current.get(event.contextId) ?? "";
+        if (mutation?.newRoot) lastRoots.current.set(event.contextId, mutation.newRoot);
+        for (const input of toNotifications(source, mutation, previous)) {
+          // Fire and forget: a collector that stalls the stream waiting on the
+          // node is worse than a missed notification. Never silently, though.
+          void backend
+            .recordNotification(input)
+            .catch((e: unknown) => console.warn("[hyperfeed] could not record a notification", input.key, e));
         }
       },
       [contextId, backend],

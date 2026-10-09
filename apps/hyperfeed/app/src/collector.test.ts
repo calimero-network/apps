@@ -14,9 +14,17 @@ describe("toNotifications", () => {
         { kind: "IssueAssigned", data: bytes({ title: "HF-31" }) },
       ],
     });
-    expect(out.map((n) => n.key)).toEqual(["ctx-chat:root-1:0", "ctx-chat:root-1:1"]);
+    expect(out.map((n) => n.key)).toEqual(["ctx-chat:>root-1:0", "ctx-chat:>root-1:1"]);
     expect(out[0]).toMatchObject({ app: "chat", title: "New message in #launch", body: "hi", from: "Maya" });
     expect(out[1]).toMatchObject({ title: "Assigned an issue to you", body: "HF-31", needs_you: true });
+  });
+
+  it("keys the transition, so returning to an earlier state is a new event", () => {
+    // A, then B, then A again: the third change ends on the first one's root.
+    const set = (prev: string, root: string) =>
+      toNotifications(SOURCE, { newRoot: root, events: [{ kind: "Updated" }] }, prev)[0]!.key;
+    const keys = [set("", "root-a"), set("root-a", "root-b"), set("root-b", "root-a")];
+    expect(new Set(keys).size).toBe(3);
   });
 
   it("files an unknown kind under its name and skips bookkeeping", () => {
@@ -26,6 +34,14 @@ describe("toNotifications", () => {
     });
     expect(out).toHaveLength(1);
     expect(out[0]?.title).toBe("Poll closing soon");
+  });
+
+  it("shows an unknown event's simple fields as its body", () => {
+    const [n] = toNotifications(SOURCE, {
+      newRoot: "r",
+      events: [{ kind: "Inserted", data: bytes({ key: "launch-date", value: "Oct 28", nested: { a: 1 } }) }],
+    });
+    expect(n).toMatchObject({ title: "Inserted", body: "key: launch-date · value: Oct 28" });
   });
 
   it("records nothing without a root hash to key it by", () => {

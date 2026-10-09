@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AgentMode, NotificationMode } from "./backend";
 import type { Feed } from "./useFeed";
 import { Badge } from "./FeedView";
@@ -20,6 +20,22 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
 
 export function ControlsView({ feed, contextId }: { feed: Feed; contextId: string | null }) {
   const { settings, page } = feed;
+  // What a control was just set to, shown until the contract's answer is read
+  // back. Without it a checkbox snaps back to its old state for the length of
+  // the round trip, which reads as the click not having worked.
+  const [pending, setPending] = useState<Record<string, string | boolean>>({});
+  const write = async (key: string, value: string | boolean, call: () => Promise<void>) => {
+    setPending((p) => ({ ...p, [key]: value }));
+    try {
+      await call();
+    } finally {
+      setPending((p) => {
+        const next = { ...p };
+        delete next[key];
+        return next;
+      });
+    }
+  };
 
   // Every app with a policy, every app in the feed, and the usual ones.
   const apps = useMemo(() => {
@@ -31,8 +47,13 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
 
   if (!settings) return <div className="empty">Loading your rules…</div>;
 
-  const policyOf = (app: string) =>
-    settings.policies.find((p) => p.app === app) ?? { app, agent: "ask", notifications: "feed" };
+  const policyOf = (app: string) => {
+    const stored = settings.policies.find((p) => p.app === app) ?? { app, agent: "ask", notifications: "feed" };
+    return {
+      agent: String(pending[`agent:${app}`] ?? stored.agent) as AgentMode,
+      notifications: String(pending[`notifications:${app}`] ?? stored.notifications) as NotificationMode,
+    };
+  };
 
   return (
     <div className="controls">
@@ -78,7 +99,7 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
                         options={AGENT_OPTIONS}
                         disabled={feed.busy}
                         onChange={(agent) =>
-                          void feed.setPolicy(app, agent, policy.notifications as NotificationMode)
+                          void write(`agent:${app}`, agent, () => feed.setPolicy(app, agent, policy.notifications))
                         }
                       />
                     </td>
@@ -88,7 +109,9 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
                         value={policy.notifications}
                         options={NOTIFICATION_OPTIONS}
                         disabled={feed.busy}
-                        onChange={(n) => void feed.setPolicy(app, policy.agent as AgentMode, n)}
+                        onChange={(n) =>
+                          void write(`notifications:${app}`, n, () => feed.setPolicy(app, policy.agent, n))
+                        }
                       />
                     </td>
                   </tr>
@@ -116,17 +139,20 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
         <section className="panel" aria-labelledby="h-guards">
           <h2 id="h-guards">Always ask me before</h2>
           <p className="muted">These override "Act" in every app.</p>
-          {settings.guards.map((g) => (
-            <label key={g.category} className="check">
-              <input
-                type="checkbox"
-                checked={g.on}
-                disabled={feed.busy}
-                onChange={() => void feed.setGuard(g.category, !g.on)}
-              />
-              <span>{GUARD_LABELS[g.category] ?? g.category}</span>
-            </label>
-          ))}
+          {settings.guards.map((g) => {
+            const enabled = Boolean(pending[`guard:${g.category}`] ?? g.enabled);
+            return (
+              <label key={g.category} className="check">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  disabled={feed.busy}
+                  onChange={() => void write(`guard:${g.category}`, !enabled, () => feed.setGuard(g.category, !enabled))}
+                />
+                <span>{GUARD_LABELS[g.category] ?? g.category}</span>
+              </label>
+            );
+          })}
         </section>
 
         <section className="panel" aria-labelledby="h-agent">

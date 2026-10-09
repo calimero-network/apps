@@ -144,7 +144,7 @@ export class DemoBackend implements FeedBackend {
       owner: "demo-account",
       paused: this.paused,
       policies: [...this.policies.values()].sort((a, b) => a.app.localeCompare(b.app)),
-      guards: GUARDS.map(([category]) => ({ category, on: this.guardOn(category) })),
+      guards: GUARDS.map(([category]) => ({ category, enabled: this.guardOn(category) })),
     };
   }
 
@@ -216,9 +216,9 @@ export class DemoBackend implements FeedBackend {
     return { ...policy };
   }
 
-  async setGuard(category: string, on: boolean): Promise<void> {
+  async setGuard(category: string, enabled: boolean): Promise<void> {
     if (!GUARDS.some(([name]) => name === category)) throw new Error(`unknown guard ${category}`);
-    this.guards.set(category, on);
+    this.guards.set(category, enabled);
     this.changed();
   }
 

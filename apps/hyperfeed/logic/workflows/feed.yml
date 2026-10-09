@@ -85,7 +85,7 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: set_guard
-    args: { category: "invite", on: true }
+    args: { category: "invite", enabled: true }
 
   - name: Owner reads the settings
     type: call

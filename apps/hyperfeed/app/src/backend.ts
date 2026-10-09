@@ -29,7 +29,7 @@ export interface FeedBackend {
   markSeen(ids: string[]): Promise<number>;
   markAllSeen(): Promise<number>;
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
-  setGuard(category: string, on: boolean): Promise<void>;
+  setGuard(category: string, enabled: boolean): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
   recordNotification(input: NotificationInput): Promise<FeedItem>;
   recordAction(input: ActionInput): Promise<FeedItem>;
@@ -48,7 +48,7 @@ export function nodeBackend(client: HyperfeedClient): FeedBackend {
     markAllSeen: () => client.markAllSeen(),
     setPolicy: (appKey, agent, notifications) =>
       client.setPolicy({ app_key: appKey, agent, notifications }),
-    setGuard: (category, on) => client.setGuard({ category, on }),
+    setGuard: (category, enabled) => client.setGuard({ category, enabled }),
     setPaused: (paused) => client.setPaused({ paused }),
     recordNotification: (input) => client.recordNotification({ input }),
     recordAction: (input) => client.recordAction({ input }),
