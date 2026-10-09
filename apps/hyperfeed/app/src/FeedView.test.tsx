@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
-import { FeedView } from "./FeedView";
+import { FeedView, type NewFeed } from "./FeedView";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
 
-function Harness({ backend }: { backend: DemoBackend }) {
+function Harness({ backend, newFeed }: { backend: DemoBackend; newFeed?: NewFeed }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" />;
+  return <FeedView feed={feed} query="" newFeed={newFeed} />;
 }
 
 const stream = () => screen.getByRole("main");
@@ -149,10 +149,15 @@ describe("FeedView", () => {
         throw Object.assign(new Error("FunctionCallError"), { data: 'method "lenses" not found' });
       }
     }
-    render(<Harness backend={new OlderFeed(true, 0)} />);
+    let created = 0;
+    const newFeed = { create: async () => void created++, busy: false, failed: null };
+    render(<Harness backend={new OlderFeed(true, 0)} newFeed={newFeed} />);
     expect(await cardFor(/Vendor NDA/)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Your feed was made by an earlier Hyperfeed");
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent("Your feed was made by an earlier Hyperfeed");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(within(notice).getByRole("button", { name: "Create a new feed" }));
+    expect(created).toBe(1);
   });
 });
 

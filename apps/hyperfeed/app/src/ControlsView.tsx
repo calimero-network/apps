@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AgentMode, NotificationMode } from "./backend";
 import type { Feed } from "./useFeed";
-import { Badge } from "./FeedView";
+import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
 import type { LensView } from "./generated/HyperfeedClient";
@@ -20,7 +20,17 @@ const NOTIFICATION_OPTIONS: { id: NotificationMode; label: string }[] = [
   { id: "mute", label: "Mute" },
 ];
 
-export function ControlsView({ feed, contextId, preview }: { feed: Feed; contextId: string | null; preview?: Preview }) {
+export function ControlsView({
+  feed,
+  contextId,
+  preview,
+  newFeed,
+}: {
+  feed: Feed;
+  contextId: string | null;
+  preview?: Preview;
+  newFeed?: NewFeed;
+}) {
   const { settings, page } = feed;
   // What a control was just set to, shown until the contract's answer is read
   // back. Without it a checkbox snaps back to its old state for the length of
@@ -185,7 +195,10 @@ export function ControlsView({ feed, contextId, preview }: { feed: Feed; context
           new app version is learned again.
         </p>
         {feed.outdated ? (
-          <p className="notice">Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items. Install the latest Hyperfeed on your node and create a new feed to get them.</p>
+          <p className="notice">
+            Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items: those need a feed made by the Hyperfeed installed now.
+            {newFeed && <NewFeedButton newFeed={newFeed} />}
+          </p>
         ) : feed.lenses.length === 0 ? (
           <p className="muted">Nothing learned yet. Chat uses the lens this app ships.</p>
         ) : (

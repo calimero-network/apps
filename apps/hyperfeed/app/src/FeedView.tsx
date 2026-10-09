@@ -27,7 +27,25 @@ const TABS: { id: Filter; label: string }[] = [
 
 const appName = (key: string) => appLook(key).name;
 
-export function FeedView({ feed, query }: { feed: Feed; query: string }) {
+/** Making a feed with the Hyperfeed installed now: only on a node. */
+export interface NewFeed {
+  create: () => Promise<void>;
+  busy: boolean;
+  failed: string | null;
+}
+
+export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
+  return (
+    <span className="notice-action">
+      <button type="button" className="primary small" disabled={newFeed.busy} onClick={() => void newFeed.create()}>
+        {newFeed.busy ? "Creating…" : "Create a new feed"}
+      </button>
+      {newFeed.failed && <span className="err">{newFeed.failed}</span>}
+    </span>
+  );
+}
+
+export function FeedView({ feed, query, newFeed }: { feed: Feed; query: string; newFeed?: NewFeed }) {
   const { page } = feed;
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -126,7 +144,8 @@ export function FeedView({ feed, query }: { feed: Feed; query: string }) {
 
         {feed.outdated && (
           <div className="notice" role="status">
-            Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items. Install the latest Hyperfeed on your node and create a new feed to get them.
+            Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items: those need a feed made by the Hyperfeed installed now.
+            {newFeed && <NewFeedButton newFeed={newFeed} />}
           </div>
         )}
 

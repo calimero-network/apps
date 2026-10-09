@@ -1,17 +1,6 @@
-import { useState } from "react";
-import {
-  setContextId,
-  useApplicationContexts,
-  useCreateContext,
-  useCreateNamespace,
-} from "@calimero-network/mero-react";
+import { useApplicationContexts } from "@calimero-network/mero-react";
 import { short } from "./format";
-
-/** rc.25 renamed `groupId` → `namespaceId`; read both. */
-function namespaceIdOf(ns: unknown): string | undefined {
-  const n = ns as { namespaceId?: string; groupId?: string; id?: string } | null;
-  return n?.namespaceId ?? n?.groupId ?? n?.id;
-}
+import { openFeed, useNewFeed } from "./newFeed";
 
 /**
  * Open your feed, or make it.
@@ -25,37 +14,7 @@ export function FeedPicker({ applicationId }: { applicationId: string | null }) 
   // Without an application id the hook lists EVERY context on the node; only
   // ours are safe to open.
   const contexts = applicationId ? reported.filter((c) => c.applicationId === applicationId) : [];
-  const { createNamespace } = useCreateNamespace();
-  const { createContext } = useCreateContext();
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  function open(id: string) {
-    setContextId(id);
-    // The provider reads the stored context on mount.
-    window.location.reload();
-  }
-
-  async function create() {
-    if (!applicationId) return;
-    setBusy(true);
-    setFailed(null);
-    try {
-      const ns = await createNamespace({ applicationId });
-      const namespaceId = namespaceIdOf(ns);
-      if (!namespaceId) throw new Error("namespace created but no id came back");
-      // `init` takes no arguments.
-      const init = Array.from(new TextEncoder().encode("{}"));
-      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: init });
-      const id = (ctx as { contextId?: string } | null)?.contextId;
-      if (!id) throw new Error("context created but no contextId came back");
-      open(id);
-    } catch (e) {
-      setFailed(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { create, busy, failed } = useNewFeed(applicationId);
 
   return (
     <section className="center-card">
@@ -76,7 +35,7 @@ export function FeedPicker({ applicationId }: { applicationId: string | null }) 
         <ul className="picker">
           {contexts.map((c) => (
             <li key={c.contextId}>
-              <button type="button" className="ghost" onClick={() => open(c.contextId)}>
+              <button type="button" className="ghost" onClick={() => openFeed(c.contextId)}>
                 Open feed <span className="mono">{short(c.contextId)}</span>
               </button>
             </li>
@@ -84,9 +43,10 @@ export function FeedPicker({ applicationId }: { applicationId: string | null }) 
         </ul>
       )}
       <div className="row">
-        {!loading && applicationId && contexts.length === 0 && (
-          <button type="button" className="primary" disabled={busy} onClick={() => void create()}>
-            {busy ? "Creating…" : "Create my feed"}
+        {/* Always offered: a feed made by an earlier Hyperfeed is replaced by a new one. */}
+        {!loading && applicationId && (
+          <button type="button" className={contexts.length === 0 ? "primary" : "ghost"} disabled={busy} onClick={() => void create()}>
+            {busy ? "Creating…" : contexts.length === 0 ? "Create my feed" : "Create a new feed"}
           </button>
         )}
         <button type="button" className="ghost" disabled={loading} onClick={() => void refetch()}>
