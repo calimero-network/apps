@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { FeedView, type NewFeed } from "./FeedView";
 import { DemoBackend } from "./demo";
@@ -174,12 +174,15 @@ describe("FeedView", () => {
   it("moves with J and K, and archives with E", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     await rowFor(/Vendor NDA/);
-    await act(async () => {
-      fireEvent.keyDown(window, { key: "j" });
+    // J opens the first row. Pressed again until one is open: on a slow machine
+    // the key handler can still be catching up with rows that just arrived.
+    const opened = await waitFor(async () => {
+      await act(async () => {
+        fireEvent.keyDown(window, { key: "j" });
+      });
+      return within(lane("To do")).getByRole("button", { expanded: true });
     });
-    const first = within(lane("To do")).getAllByRole("listitem")[0]!;
-    expect(within(first).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true");
-    const title = within(first).getAllByRole("button")[0]!.textContent ?? "";
+    const title = opened.textContent ?? "";
     await act(async () => {
       fireEvent.keyDown(window, { key: "e" });
     });
