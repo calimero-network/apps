@@ -200,3 +200,35 @@ test("you approve a lens your agent proposed, in Controls", async ({ page }) => 
   const [stored] = await mero.rpc.execute<{ status: string }[]>({ contextId, method: "lenses", argsJson: {} });
   expect(stored?.status).toBe("approved");
 });
+
+test("you start a chat with your agent and it answers there", async ({ page }) => {
+  await openFeed(page);
+  const mero = node();
+  const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
+
+  await page.getByRole("link", { name: "Chat" }).click();
+  await page.getByRole("button", { name: "New chat" }).click();
+  await page.getByLabel("Message your agent").fill("testing this");
+  await page.getByLabel("Message your agent").press("Enter");
+  const thread = page.getByRole("log");
+  await expect(thread.getByText("testing this")).toBeVisible();
+  await expect(thread.getByText("Sent · waiting for your agent")).toBeVisible();
+  await expect(page.getByLabel("Message your agent")).toHaveValue("");
+
+  // Your agent, played through the contract as mero-bot calls it.
+  const open = await mero.rpc.execute<{ id: string; chain: string; body: string }[]>({ contextId, method: "open_questions", argsJson: {} });
+  const asked = open.find((q) => q.body === "testing this")!;
+  expect(page.url()).toContain(`/chat/${asked.chain}`);
+  await mero.rpc.execute({ contextId, method: "agent_ack", argsJson: { id: asked.id, status: "thinking", note: "" } });
+  await expect(thread.getByText("Your agent is on it…")).toBeVisible();
+  await mero.rpc.execute({ contextId, method: "agent_say", argsJson: { chain: asked.chain, reply_to: asked.id, text: "Loud and clear." } });
+  await expect(thread.getByText("Loud and clear.")).toBeVisible();
+
+  // A follow-up stays in the same chat.
+  await page.getByLabel("Message your agent").fill("Great, thanks");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(thread.getByText("Great, thanks")).toBeVisible();
+  const chain = await mero.rpc.execute<unknown[]>({ contextId, method: "chain", argsJson: { chain: asked.chain } });
+  expect(chain).toHaveLength(3);
+  await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /Great, thanks/ })).toBeVisible();
+});

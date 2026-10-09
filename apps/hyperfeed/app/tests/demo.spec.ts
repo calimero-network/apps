@@ -33,9 +33,36 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   const stream = page.getByRole("main");
   await stream.getByLabel("Ask your agent").fill("What's left before the board meeting?");
   await stream.getByRole("button", { name: "Send", exact: true }).click();
-  // Your question, then the pretend agent's answer, which leads the chain.
+  // It opens as a chat: your question, then the pretend agent's answer.
+  await expect(page).toHaveURL(/\/demo\/chat\//);
+  const thread = page.getByRole("log");
+  await expect(thread).toContainText("What's left before the board meeting?");
+  await expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 });
+  // The same chain, in the feed.
+  await page.getByRole("link", { name: "Feed", exact: true }).click();
   const answer = page.locator("article.card", { hasText: "pretend agent" });
-  await expect(answer).toBeVisible({ timeout: 15_000 });
   await answer.getByRole("button", { name: /Show the flow · 2 steps/ }).click();
   await expect(answer.getByRole("list", { name: "The whole flow" })).toContainText("What's left before the board meeting?");
+});
+
+test("in the demo, the chat page holds your chats with your agent", async ({ page }) => {
+  await page.goto("/demo/chat");
+  await page.getByLabel("Message your agent").fill("Plan my week");
+  await page.getByLabel("Message your agent").press("Enter");
+  const thread = page.getByRole("log");
+  await expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /pretend agent/ })).toBeVisible();
+});
+
+test("on a phone, the chat list and the open chat take turns", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto("/demo/chat");
+  await page.getByRole("button", { name: "New chat" }).click();
+  await page.getByLabel("Message your agent").fill("Hi");
+  await page.getByLabel("Message your agent").press("Enter");
+  await expect(page.getByRole("log").getByText("Hi", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Chats" })).toBeHidden();
+  await page.getByRole("button", { name: "← Chats" }).click();
+  await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

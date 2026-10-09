@@ -16,7 +16,7 @@ each app, and talk to it about any of it.
 | Package | `com.calimero.hyperfeed` |
 | Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 50 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
-| Frontend | [`app/`](app): Vite, React and mero-react. `/` runs against your node and `/demo` runs in memory |
+| Frontend | [`app/`](app): Vite, React and mero-react. `/` (feed), `/chat` and `/controls` run against your node; `/demo` runs the same pages in memory |
 
 ## Why it needs a contract of its own
 
@@ -260,6 +260,9 @@ in the row's `note` while it is current.
    then answer with `agent_say(chain, id, text)`, which marks it `answered`. If you cannot, give up
    with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
    same `chain`. An agent that was away reads `open_questions()` when it starts.
+   The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every
+   message after it is `say(chain, text)`, and your answers show as they land. A message nobody
+   has taken up after 30 seconds asks whether your agent (mero-bot) is running.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
