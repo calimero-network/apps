@@ -1,0 +1,74 @@
+# Hyperfeed
+
+## Overview
+
+Hyperfeed is the user's feed of everything an agent does on their behalf, beside every notification their apps send them.
+It is also where they set what the agent may do, and where they approve, answer and undo.
+If you are an agent acting for this user in their Calimero apps, this feed is where you report and where you ask.
+
+- An **action** is something you did, or want to do: an app, a method, a title the user reads, and your reason (`why`).
+- A **notification** is something an app sent the user. It may carry an **ask**: how the user answers it in place (`reply`, `choose`, `confirm`).
+- Every row belongs to a **chain**: the id of the row that led to it. The user sees a chain as one expandable flow.
+- Every row keeps its **history** of steps (`status`, `note`, `at`). An action goes `pending → approved → done`, or `failed`, `declined`, `undo_requested`, `undone`. A notification goes `received → answered → delivered` or `failed`.
+
+## Context model
+
+- A feed is one context of this app, created by the user. Usually there is exactly one on the node, and only its owner writes to it.
+- You write as the node's own identity, which is the owner when the feed was created on this node.
+- The feed takes no init arguments.
+
+## Getting started
+
+1. `list_contexts` for the package `com.calimero.hyperfeed` and take its one context (ask the user if there are several).
+2. `select_app` with that context; keep the `app_handle`.
+3. Read the user's rules with `settings`.
+
+## Procedures
+
+### Before writing in another app
+
+Call `check_action` with the app's short key (`chat`, `crm`, `kv-store`: the package's last segment without `mero-`), a guard category (`sign`, `money`, `new_contact`, `delete`, `invite`, `secret`, or `""`) and `writes: true`.
+
+- `act`: do it, then `record_action` with `outcome: "done"` (or `"failed"` with a `note`).
+- `ask`: do not do it. `record_action` with `outcome: "proposed"` and wait for the user's decision.
+- `refuse`: do not do it, and do not propose it.
+
+```json
+{ "app_key": "chat", "category": "", "writes": true }
+```
+
+### Record an action
+
+`record_action` takes one `input`. Every field is required; use `""` when there is nothing to say.
+Set `chain` to the id of whatever led to this (the notification you are answering, an earlier action), or `""` to start a chain.
+
+```json
+{ "input": {
+  "app": "chat", "source_context": "<context id>", "source_label": "#launch",
+  "method": "send_message", "category": "", "writes": true, "undoable": true,
+  "title": "Replied to Maya with the deck link", "body": "", "why": "Maya asked for the numbers",
+  "outcome": "done", "intent_hash": "", "executor": "", "note": "",
+  "chain": "<notification id>", "ask": { "kind": "", "prompt": "", "options": [], "draft": "" } } }
+```
+
+### Propose something the user resolves in one tap
+
+Use an `ask` on a proposal:
+
+- `reply` with a `draft`: the user edits your text and approves.
+- `choose` with 2 to 8 `options`: the user picks one, and the pick approves the proposal.
+- `confirm` with a `prompt`: one button.
+
+The user's answer arrives as the action's `note` when its status becomes `approved`.
+
+### Carry out what the user decided
+
+Watch the feed's events, or read with `item`:
+
+- `ActionChanged` with `approved`, `retrying` or `undo_requested`: do it (use the `note` exactly when there is one), then `complete_action` with `done` or `failed` and a one-line `note`.
+- `NotificationChanged` with `answered`: the `note` is the user's answer. Send the reply, cast the vote, or confirm in the source app, then `complete_answer` with `delivered` or `failed`.
+
+### Never
+
+Never call `resolve_action`, `answer_notification`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
+Those are the user's decisions.

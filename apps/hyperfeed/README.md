@@ -107,6 +107,29 @@ Both disappear if core adds a delta id to `StateMutation`.
 The collector only runs while the app is open somewhere. Events that arrive while no client is
 connected are never replayed, so they never reach the feed.
 
+## With mero-bot
+
+[mero-bot](https://github.com/calimero-network/mero-bot) is a terminal agent that drives your node
+through mero-mcp. Run it on the machine with the node and it plugs into your feed by itself. It finds
+the feed context, then:
+
+- **Gates and logs every call.** Each call it makes through mero-mcp is checked against your rules
+  here. Allowed writes are logged when they finish. Guarded ones become a proposal you approve or
+  decline in Hyperfeed (or at its terminal). Refused ones never run. It is never allowed to approve,
+  answer or change your rules.
+- **Watches the node.** It subscribes to every context on the node and records other apps' events as
+  notifications, using the same keys as this app's collector, so nothing is collected twice.
+- **Turns events into turns.** Something new that needs you starts a triage turn, where the agent
+  prepares proposals (a drafted reply, options, an action) instead of acting on its own. What you
+  approve or answer here starts a turn that carries it out and reports back.
+
+So the agent learns what is happening from the node's live event stream, and it acts only through
+proposals you settle here, or where your rules let it act. See mero-bot's README for the flags
+(`--autopilot off`, `--no-hyperfeed`).
+
+The bundle also ships [`logic/GUIDE.md`](logic/GUIDE.md), which mero-mcp shows to any agent the
+first time it meets this app. An agent without mero-bot's bridge still learns the loop from it.
+
 ## API for agents
 
 Everything an agent kit needs is a method on the feed's context, called with one JSON-RPC
@@ -238,7 +261,8 @@ and "Create my feed" makes the context. The two-node scenario runs without Docke
 
 ## Not done yet
 
-- The agent kit (an MCP server), built separately against the [API](#api-for-agents).
+- Approvals from mero-bot's terminal and from the feed race; the first answer wins. A held tool call
+  waits as long as mero-bot runs: there is no timeout yet.
 - A Vercel project. `frontend = "https://hyperfeed.vercel.app"` resolves to nothing until it exists.
 - Push delivery for apps set to "Feed + push". The setting is stored, but nothing sends a push yet.
 - Paging past the first 50 rows. The contract returns `next_before`, but the UI does not ask for the next page.

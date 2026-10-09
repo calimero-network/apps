@@ -38,6 +38,9 @@ min-runtime-version = "0.11.0-rc.83"
 # ⚠️ Resolves to nothing until a Vercel project named `hyperfeed` exists with
 # Root Directory `apps/hyperfeed/app`.
 frontend = "https://hyperfeed.vercel.app"
+# Shown to an agent by mero-mcp the first time it meets this app: how to report,
+# ask and carry out the user's decisions through the feed.
+guide = "GUIDE.md"
 
 # ⚠️ The dependency tables come AFTER the calimero table on purpose:
 # `scripts/landing/generate.mjs` only finds a calimero table that has another

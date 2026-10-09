@@ -158,9 +158,10 @@ export function ControlsView({ feed, contextId }: { feed: Feed; contextId: strin
         <section className="panel" aria-labelledby="h-agent">
           <h2 id="h-agent">Connect your agent</h2>
           <p className="muted">
-            Your agent writes to this feed as you, through the same warrant path it uses everywhere else. Before
-            acting it calls <code>check_action</code>; it records with <code>record_action</code> and reports
-            back after your decision with <code>complete_action</code>.
+            Run <strong>mero-bot</strong> on the machine with this node: it finds this feed by itself, checks every
+            call it makes against these rules, logs what it does here, and carries out what you approve or answer.
+            Any other agent uses the same API: <code>check_action</code> before acting, <code>record_action</code>{" "}
+            to log or propose, <code>complete_action</code> after your decision.
           </p>
           <dl className="facts">
             <div className="fact">
