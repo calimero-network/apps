@@ -2,9 +2,8 @@
  * The connect dialog for the landing page's CTA: a **Node** tab and a **Cloud**
  * tab, the same two ways in that `<ConnectButton/>` offers inside the app.
  *
- * GENERATED FILE. Source: scripts/landing/template/loginPopup.tsx.
- * `pnpm landing:generate` writes it into every app that depends on
- * `@calimero-network/mero-react`; `pnpm landing:check` fails CI on drift.
+ * Hand-owned here since Hyperfeed left the shared landing template; it began as
+ * a copy of scripts/landing/template/loginPopup.tsx, so keep the two in step.
  *
  * ⚠️ This replaces a `/login` PAGE in ten of the fourteen apps, and the reason
  * is worth keeping. Each of those pages rendered the app's name, its
@@ -39,7 +38,10 @@
 import { useState } from 'react';
 import { LoginModal, useAccountEnrolment, useMero } from '@calimero-network/mero-react';
 
-import type { LoginPopupProps } from './landingTypes';
+export interface LoginPopupProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
 export default function LoginPopup({ isOpen, onClose }: LoginPopupProps) {
   const { connectToNode } = useMero();

@@ -15,6 +15,7 @@ import type { FeedItem } from "./generated/HyperfeedClient";
 import { AGENT_LIVE_MS, useTheme } from "./theme";
 import type { NewFeed } from "./FeedView";
 import LandingPage from "./pages/landing/LandingPage";
+import DocsPage from "./pages/landing/DocsPage";
 
 /**
  * Two ways in, one set of screens.
@@ -29,11 +30,10 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<NodeApp page="feed" />} />
-        {/* The landing page's other two pages. Real routes, so a shared link
-          opens cold instead of falling into the catch-all below. Signed in or
-          not, they stay reference pages. */}
-        <Route path="/docs" element={<LandingPage />} />
-        <Route path="/preview" element={<LandingPage />} />
+        {/* Hyperfeed's own docs, signed in or not. /preview was the shared
+          template's animation page; the landing's hero is that now. */}
+        <Route path="/docs" element={<DocsPage />} />
+        <Route path="/preview" element={<Navigate to="/" replace />} />
         <Route path="/chat/:chain?" element={<NodeApp page="chat" />} />
         <Route path="/controls" element={<NodeApp page="controls" />} />
         <Route path="/demo" element={<DemoApp page="feed" />} />
