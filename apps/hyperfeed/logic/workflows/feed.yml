@@ -1,0 +1,401 @@
+name: Hyperfeed E2E
+description: >
+  The owner's node records what their agent did and what their apps sent, then
+  approves, undoes and mutes from it; a second node in the same context reads
+  the same feed and is refused every write.
+
+  The Rust tests cover the rules in-process. This covers what they cannot:
+  every method called over the wire on a real merod (argument names, the
+  `input` wrappers, a guard that turns a proposal pending), the feed converging
+  on a second node, and the owner check holding for a node that is not the
+  owner's.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# Clears the public devnet bootstrap nodes and turns local discovery on; without
+# it the mesh join dies on `KeyDelivery timed out`.
+e2e_mode: true
+
+nodes:
+  count: 2
+  # Matched to the calimero-sdk tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  prefix: feed-node
+  mdns: true
+
+steps:
+  - name: Install application on feed-node-1
+    type: install_application
+    node: feed-node-1
+    path: dist/com.calimero.hyperfeed.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # A node does not serve bytecode to its peers, so every node installs it.
+  - name: Install application on feed-node-2
+    type: install_application
+    node: feed-node-2
+    path: dist/com.calimero.hyperfeed.mpk
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # `create_mesh` joins internally and races the KeyDelivery window.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: feed-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - feed-node-2
+    params: "{}"
+    outputs:
+      context_id: contextId
+      owner_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{owner_key}})"
+      - "is_set({{public_key_feed-node-2}})"
+
+  # ─── your rules ───────────────────────────────────────────────────────────
+
+  - name: Owner lets the agent act in chat
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_policy
+    args: { app_key: "chat", agent: "act", notifications: "push" }
+
+  - name: Owner turns the "invite" guard on
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_guard
+    args: { category: "invite", on: true }
+
+  - name: Owner reads the settings
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: settings
+    args: {}
+    outputs:
+      settings_1: result
+
+  - name: Assert the policy and the guard are stored
+    type: json_assert
+    statements:
+      - 'json_subset({{settings_1}}, {"output": {"paused": false, "policies": [{"app": "chat", "agent": "act", "notifications": "push"}]}})'
+
+  - name: The agent checks before acting in chat
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: check_action
+    args: { app_key: "chat", category: "", writes: true }
+    outputs:
+      verdict_chat: result
+
+  - name: The agent checks before signing
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: check_action
+    args: { app_key: "sign", category: "sign", writes: true }
+    outputs:
+      verdict_sign: result
+
+  - name: Assert chat is act and signing needs you
+    type: json_assert
+    statements:
+      - 'json_subset({{verdict_chat}}, {"output": {"decision": "act"}})'
+      - 'json_subset({{verdict_sign}}, {"output": {"decision": "ask"}})'
+
+  # ─── what the agent did ───────────────────────────────────────────────────
+
+  - name: The agent records the stand-up it posted
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "chat"
+        source_context: "ctx-standup"
+        source_label: "#eng-standup"
+        method: "send_message"
+        category: ""
+        writes: true
+        undoable: true
+        title: "Posted your stand-up"
+        body: ""
+        why: "Daily routine you set up."
+        outcome: "done"
+        intent_hash: "a91f3c07"
+        executor: "relay-account"
+        note: ""
+    outputs:
+      standup_id: result.output.id
+      standup: result
+
+  - name: Assert the stand-up is done and clean
+    type: json_assert
+    statements:
+      - 'json_subset({{standup}}, {"output": {"kind": "action", "status": "done", "breach": "", "needs_you": false}})'
+
+  - name: The agent proposes a signature
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "sign"
+        source_context: "ctx-legal"
+        source_label: "Acme · Legal"
+        method: "request_signature"
+        category: "sign"
+        writes: true
+        undoable: false
+        title: "Prepared the vendor NDA for your signature"
+        body: ""
+        why: "Asked for in #launch."
+        outcome: "proposed"
+        intent_hash: ""
+        executor: ""
+        note: ""
+    outputs:
+      nda_id: result.output.id
+      nda: result
+
+  - name: Assert the signature waits for you
+    type: json_assert
+    statements:
+      - 'json_subset({{nda}}, {"output": {"status": "pending", "needs_you": true}})'
+
+  # ─── what the apps sent ───────────────────────────────────────────────────
+
+  - name: The client records a mention
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-launch:root-1:0"
+        app: "chat"
+        source_context: "ctx-launch"
+        source_label: "#launch"
+        from: "Maya"
+        title: "Mentioned you"
+        body: "Can your agent pull the numbers?"
+        event: "MessageSent"
+        needs_you: true
+
+  - name: The client records a poll that closes soon
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-offsite:root-7:0"
+        app: "vote"
+        source_context: "ctx-offsite"
+        source_label: "Team offsite"
+        from: "Priya"
+        title: "Poll closes tomorrow"
+        body: ""
+        event: "PollClosingSoon"
+        needs_you: false
+
+  - name: Owner reads what needs them
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: feed
+    args: { filter: "needs_you", app_key: "", limit: 0, before: 0 }
+    outputs:
+      needs_1: result
+
+  - name: Assert the signature and the mention need the owner
+    type: json_assert
+    statements:
+      - 'json_subset({{needs_1}}, {"output": {"counts": {"all": 4, "agent": 2, "notifications": 2, "needs_you": 2}}})'
+
+  # ─── the owner decides ────────────────────────────────────────────────────
+
+  - name: Owner approves the signature
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: resolve_action
+    args: { id: "{{nda_id}}", decision: "approve" }
+
+  - name: The agent reports the signature done
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: complete_action
+    args: { id: "{{nda_id}}", outcome: "done", note: "signed" }
+
+  - name: Owner asks for the stand-up to be undone
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: resolve_action
+    args: { id: "{{standup_id}}", decision: "undo" }
+
+  - name: Owner reads the stand-up
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{standup_id}}" }
+    outputs:
+      standup_after: result
+
+  - name: Assert the undo is waiting on the agent
+    type: json_assert
+    statements:
+      - 'json_subset({{standup_after}}, {"output": {"status": "undo_requested"}})'
+
+  - name: Owner marks the mention seen
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: mark_seen
+    args: { ids: ["ctx-launch:root-1:0"] }
+
+  - name: Owner marks everything else seen
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: mark_all_seen
+    args: {}
+
+  - name: Owner mutes vote
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_policy
+    args: { app_key: "vote", agent: "off", notifications: "mute" }
+
+  - name: Owner pauses the agent
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: set_paused
+    args: { paused: true }
+
+  # ─── the second node ──────────────────────────────────────────────────────
+
+  - name: Wait for the feed to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - feed-node-1
+      - feed-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the feed
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: feed
+    args: { filter: "all", app_key: "", limit: 0, before: 0 }
+    outputs:
+      feed_2: result
+
+  - name: node-2 reads the settings
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: settings
+    args: {}
+    outputs:
+      settings_2: result
+
+  # Vote is muted, so three rows; nothing needs the owner any more.
+  - name: Assert node-2 sees the owner's feed and rules
+    type: json_assert
+    statements:
+      - 'json_subset({{feed_2}}, {"output": {"counts": {"all": 3, "needs_you": 0}}})'
+      - 'json_subset({{settings_2}}, {"output": {"paused": true}})'
+
+  - name: node-2 tries to record an action in someone else's feed
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: record_action
+    args:
+      input:
+        app: "chat"
+        source_context: ""
+        source_label: ""
+        method: "send_message"
+        category: ""
+        writes: true
+        undoable: false
+        title: "Forged"
+        body: ""
+        why: ""
+        outcome: "done"
+        intent_hash: ""
+        executor: ""
+        note: ""
+    expected_failure: true
+    outputs:
+      forged_error: error
+
+  - name: node-2 tries to unpause the agent in someone else's feed
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: set_paused
+    args: { paused: false }
+    expected_failure: true
+    outputs:
+      unpause_error: error
+
+  - name: Assert both writes were refused
+    type: assert
+    statements:
+      - "is_set({{forged_error}})"
+      - "is_set({{unpause_error}})"

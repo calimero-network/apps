@@ -1,0 +1,378 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Action": {
+      "kind": "record",
+      "doc": "One thing your agent did, or wants to do, on your behalf.\n\nEverything but `state` and `reviewed` is written once. `state` resolves\nlast-writer-wins, and `reviewed` only ever turns on.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "undoable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "intent_hash",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex `H(method ‖ args)` from the warrant. The arguments themselves never\nleave the agent: this is enough to match the feed row to the delta."
+        },
+        {
+          "name": "executor",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The relay account that executed the warrant, as the agent was told."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "breach",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why the rules say this needed you, when the agent acted anyway. Empty\nwhen it did not."
+        },
+        {
+          "name": "reviewed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "$ref": "ActionState"
+          }
+        }
+      ]
+    },
+    "ActionState": {
+      "kind": "record",
+      "doc": "The part of an action that changes after it is recorded.",
+      "fields": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The agent's or your note on the latest change (\"NDA signed\", \"undo\nfailed: the message was already read\")."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AgentState": {
+      "kind": "record",
+      "doc": "The agent's global switch, stored under the single key `\"main\"`.",
+      "fields": [
+        {
+          "name": "paused",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Guard": {
+      "kind": "record",
+      "doc": "One \"always ask me before\" switch.",
+      "fields": [
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "on",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Hyperfeed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The account that created the feed; the only one that writes to it."
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Action"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Notification"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "policies",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Policy"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "guards",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Guard"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AgentState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Notification": {
+      "kind": "record",
+      "doc": "One notification an app sent you, as your client saw it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The dedupe key the client derived from the source event."
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "needs_you",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Policy": {
+      "kind": "record",
+      "doc": "Your rules for one app.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "Hyperfeed",
+  "state_version": 1
+}
