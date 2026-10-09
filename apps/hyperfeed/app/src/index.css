@@ -1846,3 +1846,81 @@ body {
   align-self: flex-start;
 }
 
+
+/* ── feed switcher ──────────────────────────────────────────────────────── */
+
+.switcher {
+  position: relative;
+}
+
+.switcher-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 0;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.switcher-button:hover {
+  border-color: var(--line-strong);
+}
+
+.switcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--line);
+}
+
+.switcher-label {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.switcher-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.switcher-menu button:hover:not(:disabled),
+.switcher-menu button.on {
+  background: var(--sunken);
+}
+
+.switcher-check {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.switcher-menu hr {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}

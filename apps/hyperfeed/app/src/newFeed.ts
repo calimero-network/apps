@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { setContextId, useCreateContext, useCreateNamespace } from "@calimero-network/mero-react";
 
 /** rc.25 renamed `groupId` → `namespaceId`; read both. */
@@ -7,11 +7,30 @@ function namespaceIdOf(ns: unknown): string | undefined {
   return n?.namespaceId ?? n?.groupId ?? n?.id;
 }
 
-/** Open a feed: the app opens the stored one on its next load. */
+/** The feed you opened in this tab, once you switch; until then, the session's. */
+let opened: string | null = null;
+const listeners = new Set<() => void>();
+
+/**
+ * Open a feed, in place: stored for your next visit, and shown now without a
+ * reload, so you stay signed in and switch in one click.
+ */
 export function openFeed(id: string) {
   setContextId(id);
-  // The provider reads the stored context on mount.
-  window.location.reload();
+  opened = id;
+  listeners.forEach((l) => l());
+}
+
+/** The feed to show: the one you last opened here, else the session's. */
+export function useOpenFeed(sessionFeed: string | null): string | null {
+  const picked = useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => opened,
+  );
+  return picked ?? sessionFeed;
 }
 
 /**

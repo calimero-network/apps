@@ -1,6 +1,92 @@
+import { useEffect, useRef, useState } from "react";
 import { useApplicationContexts } from "@calimero-network/mero-react";
 import { short } from "./format";
 import { openFeed, useNewFeed } from "./newFeed";
+
+/** Your feeds on this node: only this Hyperfeed's, never another app's contexts. */
+function useFeeds(applicationId: string | null) {
+  const { contexts: reported, loading, error, refetch } = useApplicationContexts(applicationId);
+  // Without an application id the hook lists EVERY context on the node; only
+  // ours are safe to open.
+  const contexts = applicationId ? reported.filter((c) => c.applicationId === applicationId) : [];
+  return { contexts, loading, error, refetch };
+}
+
+/**
+ * The open feed's name in the header, and every other feed one click away:
+ * switching keeps you signed in and opens the feed in place.
+ */
+export function FeedSwitcher({ applicationId, current }: { applicationId: string | null; current: string }) {
+  const [open, setOpen] = useState(false);
+  const { contexts, loading, refetch } = useFeeds(applicationId);
+  const { create, busy, failed } = useNewFeed(applicationId);
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    void refetch();
+    const away = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+    };
+    // refetch changes identity per render; fetch once per opening.
+  }, [open]);
+
+  // The open feed is listed even before the node reports it.
+  const ids = contexts.some((c) => c.contextId === current) ? contexts.map((c) => c.contextId) : [current, ...contexts.map((c) => c.contextId)];
+
+  return (
+    <div className="switcher" ref={root}>
+      <button
+        type="button"
+        className="switcher-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Switch feed"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="mono">{short(current)}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="switcher-menu" role="menu" aria-label="Your feeds">
+          <div className="switcher-label">Your feeds{loading ? " · looking…" : ""}</div>
+          {ids.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={id === current}
+              className={id === current ? "on" : ""}
+              onClick={() => {
+                setOpen(false);
+                if (id !== current) openFeed(id);
+              }}
+            >
+              <span className="mono">{short(id)}</span>
+              {id === current && <span className="switcher-check">Open</span>}
+            </button>
+          ))}
+          <hr />
+          <button type="button" role="menuitem" disabled={busy || !applicationId} onClick={() => void create()}>
+            {busy ? "Creating…" : "Create a new feed"}
+          </button>
+          {failed && <pre className="err">{failed}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Open your feed, or make it.
@@ -10,10 +96,7 @@ import { openFeed, useNewFeed } from "./newFeed";
  * namespace of its own that you never invite anyone to.
  */
 export function FeedPicker({ applicationId }: { applicationId: string | null }) {
-  const { contexts: reported, loading, error, refetch } = useApplicationContexts(applicationId);
-  // Without an application id the hook lists EVERY context on the node; only
-  // ours are safe to open.
-  const contexts = applicationId ? reported.filter((c) => c.applicationId === applicationId) : [];
+  const { contexts, loading, error, refetch } = useFeeds(applicationId);
   const { create, busy, failed } = useNewFeed(applicationId);
 
   return (
