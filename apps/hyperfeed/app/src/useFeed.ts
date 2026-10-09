@@ -47,7 +47,18 @@ export interface Feed {
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
   setGuard: (category: string, enabled: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
+  /** Put chains away (they come back when something new happens in them); undoable. */
+  archive: (chains: string[], label?: string) => Promise<void>;
+  /** Put a chain away until `until` (ms); undoable. */
+  later: (chain: string, until: number, label?: string) => Promise<void>;
+  unarchive: (chains: string[]) => Promise<void>;
+  /** The last thing you put away, with its undo, until the next one or a few seconds pass. */
+  toast: { text: string; undo: () => void } | null;
+  dismissToast: () => void;
 }
+
+/** How long the undo for something you put away stays offered. */
+export const TOAST_MS = 5_000;
 
 /**
  * Re-read when nothing arrived, for a change made while the event stream was
@@ -72,6 +83,8 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [appKey, setAppKey] = useState("");
+  const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
   // A burst of events (an action and its status change) must not fire a read
   // per event; one in flight is enough, and the trailing one is kept.
   const reading = useRef(false);
@@ -184,6 +197,49 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
+    archive: useCallback(
+      async (chains, label) => {
+        let ok = false;
+        await run(async (b) => {
+          await b.archive(chains, 0);
+          ok = true;
+        });
+        if (!ok) return;
+        window.clearTimeout(toastTimer.current);
+        setToast({
+          text: label ?? (chains.length === 1 ? "Archived" : `Archived ${chains.length}`),
+          undo: () => {
+            setToast(null);
+            void run((b) => b.unarchive(chains));
+          },
+        });
+        toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
+      },
+      [run],
+    ),
+    later: useCallback(
+      async (chain, until, label) => {
+        let ok = false;
+        await run(async (b) => {
+          await b.archive([chain], until);
+          ok = true;
+        });
+        if (!ok) return;
+        window.clearTimeout(toastTimer.current);
+        setToast({
+          text: label ?? "Back later",
+          undo: () => {
+            setToast(null);
+            void run((b) => b.unarchive([chain]));
+          },
+        });
+        toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
+      },
+      [run],
+    ),
+    unarchive: useCallback((chains) => run((b) => b.unarchive(chains)), [run]),
+    toast,
+    dismissToast: useCallback(() => setToast(null), []),
   };
 }
 

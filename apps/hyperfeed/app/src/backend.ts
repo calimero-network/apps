@@ -9,7 +9,7 @@ import type {
   SettingsView,
 } from "./generated/HyperfeedClient";
 
-export type Filter = "all" | "agent" | "notifications" | "needs_you";
+export type Filter = "all" | "agent" | "notifications" | "needs_you" | "archived";
 export type Decision = "approve" | "decline" | "undo" | "keep";
 export type AgentMode = "act" | "ask" | "read" | "off";
 export type NotificationMode = "push" | "feed" | "mute";
@@ -46,6 +46,9 @@ export interface FeedBackend {
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
   setGuard(category: string, enabled: boolean): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
+  /** Put chains away until something new happens in them, or until `until` (ms) for "later". */
+  archive(chains: string[], until?: number): Promise<number>;
+  unarchive(chains: string[]): Promise<number>;
   recordNotification(input: NotificationInput): Promise<FeedItem>;
   recordAction(input: ActionInput): Promise<FeedItem>;
 }
@@ -78,6 +81,8 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc): FeedBackend {
       client.setPolicy({ app_key: appKey, agent, notifications }),
     setGuard: (category, enabled) => client.setGuard({ category, enabled }),
     setPaused: (paused) => client.setPaused({ paused }),
+    archive: (chains, until = 0) => client.archive({ chains, until }),
+    unarchive: (chains) => client.unarchive({ chains }),
     recordNotification: (input) => client.recordNotification({ input }),
     recordAction: (input) => client.recordAction({ input }),
   };

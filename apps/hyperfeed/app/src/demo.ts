@@ -61,6 +61,8 @@ export class DemoBackend implements FeedBackend {
   private policies = new Map<string, PolicyView>();
   private guards = new Map<string, boolean>();
   private paused = false;
+  /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
+  private archivedChains = new Map<string, { at: number; until: number }>();
   private lensRows = new Map<string, LensView>();
   /** What the feed sent into other apps, newest last: the demo's stand-in for them. */
   readonly sent: { contextId: string; method: string; args: Record<string, unknown> }[] = [];
@@ -180,7 +182,7 @@ export class DemoBackend implements FeedBackend {
     const chains = new Map<string, FeedItem[]>();
     for (const i of this.visible(false)) chains.set(i.chain, [...(chains.get(i.chain) ?? []), i]);
 
-    const counts = { all: 0, agent: 0, notifications: 0, needs_you: 0 };
+    const counts = { all: 0, agent: 0, notifications: 0, needs_you: 0, archived: 0 };
     const apps = new Map<string, number>();
     const rows: { lead: FeedItem; action: boolean; notification: boolean; apps: Set<string> }[] = [];
     for (const items of chains.values()) {
@@ -195,6 +197,14 @@ export class DemoBackend implements FeedBackend {
       // A conversation with your agent counts as agent activity.
       const action = items.some((i) => i.kind === "action" || i.kind === "message");
       const notification = items.some((i) => i.kind === "notification");
+      const put = this.archivedChains.get(lead.chain);
+      const archived = Boolean(put && lead.chain_at <= put.at && (put.until === 0 || this.now() < put.until));
+      counts.archived += archived ? 1 : 0;
+      if (archived !== (filter === "archived")) continue;
+      if (archived) {
+        rows.push({ lead, action, notification, apps: chainApps });
+        continue;
+      }
       counts.all += 1;
       counts.agent += action ? 1 : 0;
       counts.notifications += notification ? 1 : 0;
@@ -239,7 +249,26 @@ export class DemoBackend implements FeedBackend {
       paused: this.paused,
       policies: [...this.policies.values()].sort((a, b) => a.app.localeCompare(b.app)),
       guards: GUARDS.map(([category]) => ({ category, enabled: this.guardOn(category) })),
+      // The pretend agent is "there" whenever it answers.
+      agents: this.agentDelayMs > 0 ? [{ name: "demo agent", seen_at: this.now() }] : [],
     };
+  }
+
+  async archive(chains: string[], until = 0): Promise<number> {
+    if (until !== 0 && until <= this.now()) throw new Error("until must be in the future, or 0");
+    for (const chain of chains) {
+      const rows = [...this.items.values()].filter((i) => i.chain === chain);
+      if (rows.length === 0) throw new Error(`no chain ${chain}`);
+      this.archivedChains.set(chain, { at: Math.max(...rows.map((i) => Math.max(i.chain_at, i.at))), until });
+    }
+    this.changed();
+    return chains.length;
+  }
+
+  async unarchive(chains: string[]): Promise<number> {
+    for (const chain of chains) this.archivedChains.delete(chain);
+    this.changed();
+    return chains.length;
   }
 
   async resolveAction(id: string, decision: Decision, answer = ""): Promise<FeedItem> {

@@ -1,31 +1,34 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import type { Filter } from "./backend";
 import type { Feed } from "./useFeed";
-import { pickSelected } from "./useFeed";
 import { appLook } from "./apps";
+import { canOpen } from "./links";
 import {
   choicesFor,
   fieldsOf,
   flowOf,
-  groupByDay,
+  laneOf,
   resolvable,
-  short,
   statusOf,
   timeLabel,
   TYPE_LABELS,
   typedFacts,
-  type FlowStep,
+  type Lane,
 } from "./format";
 
-const TABS: { id: Filter; label: string }[] = [
-  { id: "all", label: "Everything" },
-  { id: "agent", label: "Agent actions" },
-  { id: "notifications", label: "Notifications" },
-  { id: "needs_you", label: "Needs you" },
-];
-
 const appName = (key: string) => appLook(key).name;
+
+/** How long "Later" puts a row away. */
+export const LATER_MS = 3 * 60 * 60 * 1000;
+
+/** How many done rows show before "Show all". */
+const DONE_SHOWN = 5;
+
+const LANES: { id: Lane; label: string; empty: string }[] = [
+  { id: "todo", label: "To do", empty: "Nothing needs you." },
+  { id: "progress", label: "In progress", empty: "Nothing underway." },
+  { id: "done", label: "Done", empty: "Nothing finished yet." },
+];
 
 /** Making a feed with the Hyperfeed installed now: only on a node. */
 export interface NewFeed {
@@ -45,113 +48,136 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
   );
 }
 
+/**
+ * The feed as three lanes: what needs you, what is underway, what is done.
+ *
+ * One row per chain. The row you are on opens in place with everything about
+ * it (the thread, the answer, the actions); nothing is shown twice. Done rows
+ * are archived out of the way, one at a time or all at once, and come back on
+ * their own when something new happens in them.
+ */
 export function FeedView({
   feed,
   query,
   newFeed,
   onChat,
+  openLink,
 }: {
   feed: Feed;
   query: string;
   newFeed?: NewFeed;
-  /** Open a chat with your agent; without it, a new conversation opens beside the feed. */
+  /** Open a chat with your agent; without it, a new conversation opens in place. */
   onChat?: (chain: string) => void;
+  /** The signed-in address that shows a row in its app; without it, rows have no Open. */
+  openLink?: (item: FeedItem) => Promise<string | null>;
 }) {
   const { page } = feed;
-  const [selected, setSelected] = useState<string | null>(null);
+  const archivedView = feed.filter === "archived";
+  const [open, setOpen] = useState<string | null>(null);
+  const [allDone, setAllDone] = useState(false);
+  const [panel, setPanel] = useState<{ url: string; title: string } | null>(null);
 
   const items = useMemo(() => {
     const all = page?.items ?? [];
     const q = query.trim().toLowerCase();
     if (!q) return all;
     return all.filter((i) =>
-      [i.title, i.body, i.from, i.source_label, appLook(i.app).name, i.method]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
+      [i.title, i.body, i.from, i.source_label, appLook(i.app).name, i.method].join(" ").toLowerCase().includes(q),
     );
   }, [page, query]);
 
-  const current = pickSelected(items, selected);
+  const lanes = useMemo(() => {
+    const by: Record<Lane, FeedItem[]> = { todo: [], progress: [], done: [] };
+    for (const i of items) by[laneOf(i)].push(i);
+    return by;
+  }, [items]);
+
+  // The rows in the order the keys move through them.
+  const order = useMemo(() => {
+    if (archivedView) return items;
+    const done = allDone ? lanes.done : lanes.done.slice(0, DONE_SHOWN);
+    return [...lanes.todo, ...lanes.progress, ...done];
+  }, [archivedView, items, lanes, allDone]);
 
   // Opening a notification is reading it.
   const { markSeen } = feed;
+  const current = order.find((i) => i.chain === open) ?? null;
   useEffect(() => {
-    if (current && current.kind === "notification" && !current.seen && selected === current.id) {
-      void markSeen([current.id]);
-    }
-  }, [current, selected, markSeen]);
+    if (current && current.kind === "notification" && !current.seen) void markSeen([current.id]);
+  }, [current, markSeen]);
 
-  const counts = page?.counts;
+  const openApp = useCallback(
+    async (item: FeedItem) => {
+      if (!openLink) return;
+      const url = await openLink(item);
+      if (url) setPanel({ url, title: `${appName(item.app)}${item.source_label ? ` · ${item.source_label}` : ""}` });
+    },
+    [openLink],
+  );
+
+  // After a row leaves its lane, the next one opens: hammer through them.
+  const step = useCallback(
+    (from: FeedItem | null, by: number) => {
+      if (order.length === 0) return setOpen(null);
+      const at = from ? order.findIndex((i) => i.chain === from.chain) : -1;
+      const next = order[Math.min(Math.max(at + by, 0), order.length - 1)];
+      setOpen(next?.chain ?? null);
+    },
+    [order],
+  );
+
+  const archive = useCallback(
+    (item: FeedItem) => {
+      step(item, 1);
+      void feed.archive([item.chain]);
+    },
+    [feed, step],
+  );
+  const later = useCallback(
+    (item: FeedItem) => {
+      step(item, 1);
+      void feed.later(item.chain, Date.now() + LATER_MS, "Back in 3 hours");
+    },
+    [feed, step],
+  );
+
+  // The keys: J/K move, E archive, S later, O open in its app, U undo, Esc close.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === "escape") {
+        if (panel) setPanel(null);
+        else setOpen(null);
+        return;
+      }
+      if (k === "j") step(current, current ? 1 : 0);
+      else if (k === "k") step(current, -1);
+      else if (k === "e" && current && !archivedView) archive(current);
+      else if (k === "s" && current && !archivedView) later(current);
+      else if (k === "o" && current && canOpen(current)) void openApp(current);
+      else if (k === "u" && feed.toast) feed.toast.undo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, current, archive, later, openApp, archivedView, panel, feed.toast]);
+
+  const rowProps = {
+    feed,
+    onChat,
+    onOpenApp: openLink ? openApp : undefined,
+    onArchive: archive,
+    onLater: later,
+  };
 
   return (
-    <div className="layout">
-      <nav className="rail" aria-label="Feed filters">
-        <div className="rail-group">
-          {TABS.map((t) => {
-            const count =
-              t.id === "all"
-                ? counts?.all
-                : t.id === "agent"
-                  ? counts?.agent
-                  : t.id === "notifications"
-                    ? counts?.notifications
-                    : counts?.needs_you;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                className={`rail-item ${feed.filter === t.id ? "active" : ""}`}
-                aria-pressed={feed.filter === t.id}
-                onClick={() => feed.setFilter(t.id)}
-              >
-                <span>{t.label}</span>
-                <span className={`count ${t.id === "needs_you" ? "count-wait" : ""}`}>{count ?? 0}</span>
-              </button>
-            );
-          })}
-        </div>
-        {page && page.apps.length > 0 && (
-          <div className="rail-group">
-            <p className="rail-heading">Apps</p>
-            {page.apps.map((a) => {
-              const look = appLook(a.app);
-              const active = feed.appKey === a.app;
-              return (
-                <button
-                  key={a.app}
-                  type="button"
-                  className={`rail-item ${active ? "active" : ""}`}
-                  aria-pressed={active}
-                  onClick={() => feed.setAppKey(active ? "" : a.app)}
-                >
-                  <Badge app={a.app} size="sm" />
-                  <span className="grow">{look.name}</span>
-                  <span className="muted">{a.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </nav>
-
-      <main className="stream">
-        <section className="stats" aria-label="At a glance">
-          <div className="stat">
-            <span>Agent actions</span>
-            <strong>{counts?.agent ?? "–"}</strong>
-          </div>
-          <div className="stat">
-            <span>Notifications</span>
-            <strong>{counts?.notifications ?? "–"}</strong>
-          </div>
-          <div className="stat stat-wait">
-            <span>Waiting on you</span>
-            <strong>{counts?.needs_you ?? "–"}</strong>
-          </div>
-        </section>
-
-        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => (onChat ? onChat(m.chain) : setSelected(m.id))} />
+    <div className={`feed-page ${panel ? "with-panel" : ""}`}>
+      <main className="feed-main">
+        <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => (onChat ? onChat(m.chain) : setOpen(m.chain))} />
 
         {feed.outdated && (
           <div className="notice" role="status">
@@ -169,38 +195,118 @@ export function FeedView({
           </div>
         )}
 
-        {page && items.length === 0 && (
-          <div className="empty">
-            {query ? "Nothing matches that search." : "Nothing here. Your agent and your apps are quiet."}
-          </div>
-        )}
         {!page && !feed.error && <div className="empty">Loading the feed…</div>}
 
-        {groupByDay(items).map((g) => (
-          <section key={g.label} className="day">
-            <h2 className="day-label">{g.label}</h2>
-            {g.items.map((item) => (
-              <Card
-                key={item.chain}
-                item={item}
-                feed={feed}
-                selected={current?.id === item.id}
-                onSelect={() => setSelected(item.id)}
-                onChat={onChat}
-              />
-            ))}
+        {page && archivedView && (
+          <section className="lane" aria-label="Archived">
+            <header className="lane-head">
+              <h2>Archived</h2>
+              <span className="lane-count">{items.length}</span>
+              <button type="button" className="link small lane-action" onClick={() => feed.setFilter("all")}>
+                Back to the feed
+              </button>
+            </header>
+            {items.length === 0 ? (
+              <p className="lane-empty">Nothing archived.</p>
+            ) : (
+              <ul className="rows">
+                {items.map((item) => (
+                  <Row key={item.chain} item={item} lane="done" archived expanded={open === item.chain} onToggle={() => setOpen(open === item.chain ? null : item.chain)} {...rowProps} />
+                ))}
+              </ul>
+            )}
           </section>
-        ))}
+        )}
+
+        {page && !archivedView && (
+          <>
+            {query && items.length === 0 && <div className="empty">Nothing matches that search.</div>}
+            {LANES.map((lane) => {
+              const rows = lanes[lane.id];
+              const shown = lane.id === "done" && !allDone ? rows.slice(0, DONE_SHOWN) : rows;
+              return (
+                <section key={lane.id} className={`lane lane-${lane.id}`} aria-label={lane.label}>
+                  <header className="lane-head">
+                    <h2>{lane.label}</h2>
+                    <span className="lane-count">{rows.length}</span>
+                    {lane.id === "done" && rows.length > 0 && (
+                      <button
+                        type="button"
+                        className="link small lane-action"
+                        disabled={feed.busy}
+                        onClick={() => void feed.archive(rows.map((r) => r.chain), `Archived ${rows.length} done`)}
+                      >
+                        Archive all done
+                      </button>
+                    )}
+                  </header>
+                  {rows.length === 0 ? (
+                    <p className="lane-empty">{lane.empty}</p>
+                  ) : (
+                    <ul className="rows">
+                      {shown.map((item) => (
+                        <Row
+                          key={item.chain}
+                          item={item}
+                          lane={lane.id}
+                          expanded={open === item.chain}
+                          onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                          {...rowProps}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  {lane.id === "done" && rows.length > DONE_SHOWN && (
+                    <button type="button" className="link small lane-more" onClick={() => setAllDone((v) => !v)}>
+                      {allDone ? "Show fewer" : `Show all ${rows.length}`}
+                    </button>
+                  )}
+                </section>
+              );
+            })}
+            <footer className="feed-foot">
+              <button type="button" className="link small" onClick={() => feed.setFilter("archived")}>
+                Archived{page.counts.archived ? ` · ${page.counts.archived}` : ""}
+              </button>
+              <span className="keys" aria-hidden="true">
+                <kbd>J</kbd>/<kbd>K</kbd> move · <kbd>E</kbd> archive · <kbd>S</kbd> later · <kbd>O</kbd> open · <kbd>U</kbd> undo
+              </span>
+            </footer>
+          </>
+        )}
       </main>
 
-      <aside className="detail" aria-label="Selected item">
-        {current ? (
-          <Detail key={current.id} item={current} feed={feed} />
-        ) : (
-          <p className="muted">Pick something in the feed to see where it came from.</p>
-        )}
-      </aside>
+      {panel && <AppPanel url={panel.url} title={panel.title} onClose={() => setPanel(null)} />}
+
+      {feed.toast && (
+        <div className="toast" role="status">
+          <span>{feed.toast.text}</span>
+          <button type="button" className="toast-undo" onClick={feed.toast.undo}>
+            Undo
+          </button>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** An app, open beside the feed, at the row it was opened from. */
+function AppPanel({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return (
+    <aside className="app-panel" aria-label={title}>
+      <header className="app-panel-head">
+        <strong>{title}</strong>
+        <a className="link small" href={url} target="_blank" rel="noopener noreferrer" onClick={onClose}>
+          Open in a tab
+        </a>
+        <button type="button" className="icon-button" aria-label="Close" onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </header>
+      <iframe title={title} src={url} className="app-panel-frame" allow="clipboard-read; clipboard-write" />
+    </aside>
   );
 }
 
@@ -240,22 +346,16 @@ function Bell() {
   );
 }
 
-function Who({ item }: { item: FeedItem }) {
-  if (item.kind === "message" && item.from === "you") return <span className="who">You, to your agent</span>;
-  if (item.kind === "action" || item.kind === "message") {
-    return (
-      <span className="who who-agent">
-        <Spark />
-        Your agent
-      </span>
-    );
-  }
-  return (
-    <span className="who">
-      <Bell />
-      {item.from || appLook(item.app).name}
-    </span>
-  );
+/** Who a row is from, and where: one short line. */
+function whereOf(item: FeedItem): string {
+  const who =
+    item.kind === "message" && item.from === "you"
+      ? "You, to your agent"
+      : item.kind === "action" || item.kind === "message"
+        ? "Your agent"
+        : item.from || appName(item.app);
+  const app = item.app ? ` · ${appName(item.app)}${item.source_label ? ` ${item.source_label}` : ""}` : "";
+  return `${who}${app}`;
 }
 
 function Status({ item }: { item: FeedItem }) {
@@ -265,28 +365,27 @@ function Status({ item }: { item: FeedItem }) {
 
 type Decide = (d: "approve" | "decline" | "undo" | "keep") => void;
 
-function Choices({ item, busy, onDecide, large }: { item: FeedItem; busy: boolean; onDecide: Decide; large?: boolean }) {
+function Choices({ item, busy, onDecide }: { item: FeedItem; busy: boolean; onDecide: Decide }) {
   const c = choicesFor(item);
-  const size = large ? "" : "small";
   return (
     <>
       {c.approve && (
-        <button type="button" className={`primary ${size}`} disabled={busy} onClick={() => onDecide("approve")}>
+        <button type="button" className="primary small" disabled={busy} onClick={() => onDecide("approve")}>
           {c.approve}
         </button>
       )}
       {c.decline && (
-        <button type="button" className={`ghost ${size}`} disabled={busy} onClick={() => onDecide("decline")}>
+        <button type="button" className="ghost small" disabled={busy} onClick={() => onDecide("decline")}>
           Decline
         </button>
       )}
       {c.keep && (
-        <button type="button" className={`ghost ${size}`} disabled={busy} onClick={() => onDecide("keep")}>
+        <button type="button" className="ghost small" disabled={busy} onClick={() => onDecide("keep")}>
           Keep it
         </button>
       )}
       {c.undo && (
-        <button type="button" className={`ghost ${size}`} disabled={busy} onClick={() => onDecide("undo")}>
+        <button type="button" className="ghost small" disabled={busy} onClick={() => onDecide("undo")}>
           Undo
         </button>
       )}
@@ -302,13 +401,11 @@ function Choices({ item, busy, onDecide, large }: { item: FeedItem; busy: boolea
  * button. On a notification the answer goes to `answer_notification`; on a
  * proposal it approves with that answer. Either way your agent carries it out.
  */
-export function Resolver({ item, feed, compact }: { item: FeedItem; feed: Feed; compact?: boolean }) {
+export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   const id = useId();
   const [text, setText] = useState(item.ask.draft);
   const isAction = item.kind === "action";
-  const submit = (answer: string) =>
-    isAction ? feed.resolve(item.id, "approve", answer) : feed.answer(item.id, answer);
-  const size = compact ? "small" : "";
+  const submit = (answer: string) => (isAction ? feed.resolve(item.id, "approve", answer) : feed.answer(item.id, answer));
   const { kind, prompt, options } = item.ask;
 
   if (kind === "choose") {
@@ -317,7 +414,7 @@ export function Resolver({ item, feed, compact }: { item: FeedItem; feed: Feed; 
         {prompt && <span className="resolver-prompt">{prompt}</span>}
         <div className="resolver-options">
           {options.map((o) => (
-            <button key={o} type="button" className={`option ${size}`} disabled={feed.busy} onClick={() => void submit(o)}>
+            <button key={o} type="button" className="option small" disabled={feed.busy} onClick={() => void submit(o)}>
               {o}
             </button>
           ))}
@@ -329,14 +426,13 @@ export function Resolver({ item, feed, compact }: { item: FeedItem; feed: Feed; 
   if (kind === "confirm") {
     return (
       <div className="resolver">
-        <button type="button" className={`primary ${size}`} disabled={feed.busy} onClick={() => void submit("")}>
+        <button type="button" className="primary small" disabled={feed.busy} onClick={() => void submit("")}>
           {prompt || "Confirm"}
         </button>
       </div>
     );
   }
 
-  // reply
   return (
     <form
       className="resolver"
@@ -361,103 +457,18 @@ export function Resolver({ item, feed, compact }: { item: FeedItem; feed: Feed; 
         <textarea
           id={`${id}-reply`}
           value={text}
-          rows={compact ? 2 : 3}
+          rows={2}
           placeholder="Write a reply…"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim()) void submit(text.trim());
           }}
         />
-        <button type="submit" className={`primary ${size}`} disabled={feed.busy || !text.trim()}>
+        <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
           {isAction ? "Approve & send" : "Send"}
         </button>
       </div>
     </form>
-  );
-}
-
-/** Everything a row needs to be settled: its resolver and its plain decisions. */
-function Settle({ item, feed, compact }: { item: FeedItem; feed: Feed; compact?: boolean }) {
-  return (
-    <>
-      {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} compact={compact} />}
-      <div className="actions">
-        <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} large={!compact} />
-      </div>
-    </>
-  );
-}
-
-function Card({
-  item,
-  feed,
-  selected,
-  onSelect,
-  onChat,
-}: {
-  item: FeedItem;
-  feed: Feed;
-  selected: boolean;
-  onSelect: () => void;
-  onChat?: (chain: string) => void;
-}) {
-  const look = appLook(item.app);
-  const [open, setOpen] = useState(false);
-  const flowId = useId();
-  return (
-    <article className={`card ${selected ? "selected" : ""} ${item.needs_you ? "needs" : ""}`}>
-      <RowBadge item={item} />
-      <div className="card-body">
-        <div className="meta">
-          <Who item={item} />
-          {item.app && (
-            <span>
-              in {look.name}
-              {item.source_label ? ` · ${item.source_label}` : ""}
-            </span>
-          )}
-          {item.item_type && <span className="type-tag">{TYPE_LABELS[item.item_type] ?? item.item_type}</span>}
-          <span className="time">{timeLabel(item.at)}</span>
-        </div>
-        <button type="button" className="title" onClick={onSelect}>
-          {item.title}
-        </button>
-        {item.body && item.body !== item.title && (item.kind === "action" ? <p>{item.body}</p> : <p className="quote">{item.body}</p>)}
-        <Typed item={item} />
-        {item.breach && <p className="breach">Your agent {item.breach}.</p>}
-        {item.note && <p className="note">{answerLine(item)}</p>}
-        <LateHint item={item} />
-        {resolvable(item) && <Resolver key={item.id} item={item} feed={feed} compact />}
-        <div className="actions">
-          <Status item={item} />
-          <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
-          {item.chain_len > 1 && (
-            <button
-              type="button"
-              className="link small"
-              aria-expanded={open}
-              aria-controls={flowId}
-              onClick={() => setOpen((o) => !o)}
-            >
-              {open ? "Hide the flow" : `Show the flow · ${item.chain_len} steps`}
-            </button>
-          )}
-          <button type="button" className="link small" onClick={onSelect}>
-            Details
-          </button>
-          {onChat && item.kind === "message" && (
-            <button type="button" className="link small" onClick={() => onChat(item.chain)}>
-              Open chat
-            </button>
-          )}
-        </div>
-        {open && (
-          <div id={flowId}>
-            <Flow chain={item.chain} lead={item.id} feed={feed} />
-          </div>
-        )}
-      </div>
-    </article>
   );
 }
 
@@ -470,6 +481,115 @@ function answerLine(item: FeedItem): string {
   if (item.status === "approved" && item.ask.kind === "choose") return `You picked "${item.note}"`;
   if (item.status === "approved" && item.ask.kind === "reply") return `You approved: "${item.note}"`;
   return item.note;
+}
+
+/** The body, when it says more than the title it starts with. */
+function extraBody(item: FeedItem): string {
+  const body = item.body.trim();
+  const title = item.title.replace(/…$/, "").trim();
+  if (!body || body === title) return "";
+  return body;
+}
+
+function Row({
+  item,
+  lane,
+  archived,
+  expanded,
+  onToggle,
+  feed,
+  onChat,
+  onOpenApp,
+  onArchive,
+  onLater,
+}: {
+  item: FeedItem;
+  lane: Lane;
+  archived?: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  feed: Feed;
+  onChat?: (chain: string) => void;
+  onOpenApp?: (item: FeedItem) => void;
+  onArchive: (item: FeedItem) => void;
+  onLater: (item: FeedItem) => void;
+}) {
+  const ref = useRef<HTMLLIElement>(null);
+  const bodyId = useId();
+  useEffect(() => {
+    if (expanded) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [expanded]);
+  const body = extraBody(item);
+  const openable = Boolean(onOpenApp) && canOpen(item);
+  return (
+    <li ref={ref} className={`row ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
+      <button type="button" className="row-line" aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
+        <RowBadge item={item} />
+        <span className="row-text">
+          <span className="row-title">{item.title}</span>
+          <span className="row-where">{whereOf(item)}</span>
+        </span>
+        <Status item={item} />
+        {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
+        <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+      </button>
+      {expanded && (
+        <div id={bodyId} className="row-body">
+          {body && (item.kind === "action" ? <p>{body}</p> : <p className="quote">{body}</p>)}
+          <Typed item={item} />
+          {item.breach && <p className="breach">Your agent {item.breach}.</p>}
+          {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
+          {item.note && <p className="note">{answerLine(item)}</p>}
+          <LateHint item={item} />
+          {resolvable(item) && (
+            <div className="row-answer">
+              <Resolver key={item.id} item={item} feed={feed} />
+            </div>
+          )}
+          {item.chain_len > 1 && <Flow chain={item.chain} lead={item.id} feed={feed} />}
+          <div className="actions">
+            <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+            {openable && (
+              <button type="button" className="ghost small" onClick={() => onOpenApp?.(item)}>
+                Open in {appName(item.app)}
+                <kbd>O</kbd>
+              </button>
+            )}
+            {onChat && item.kind === "message" && (
+              <button type="button" className="ghost small" onClick={() => onChat(item.chain)}>
+                Open chat
+              </button>
+            )}
+            <span className="grow" />
+            {archived ? (
+              <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.unarchive([item.chain])}>
+                Unarchive
+              </button>
+            ) : (
+              <>
+                {lane !== "done" && (
+                  <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onLater(item)}>
+                    Later
+                    <kbd>S</kbd>
+                  </button>
+                )}
+                <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+                  Archive
+                  <kbd>E</kbd>
+                </button>
+              </>
+            )}
+          </div>
+          <AskAgent
+            key={item.chain}
+            feed={feed}
+            chain={item.chain}
+            label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
+          />
+        </div>
+      )}
+    </li>
+  );
 }
 
 /**
@@ -508,130 +628,28 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
           <div className="flow-body">
             <div className="flow-meta">
               <strong>{s.who}</strong>
-              {s.first && s.item.app && <span className="muted">in {appName(s.item.app)}{s.item.source_label ? ` · ${s.item.source_label}` : ""}</span>}
+              {s.first && s.item.app && (
+                <span className="muted">
+                  in {appName(s.item.app)}
+                  {s.item.source_label ? ` · ${s.item.source_label}` : ""}
+                </span>
+              )}
               <span className="time">{timeLabel(s.at)}</span>
             </div>
             <p className={s.first ? "flow-title" : ""}>{s.text}</p>
             {s.detail && <p className="flow-detail">{s.detail}</p>}
-            {!s.first && items.length > 1 && (
-              <p className="flow-about">on: {s.item.title.length > 70 ? `${s.item.title.slice(0, 70)}…` : s.item.title}</p>
-            )}
             {s.item.id !== lead && s.item.needs_you && lastStepOf.get(s.item.id) === s.key && (
               <div className="flow-settle">
-                <Settle item={s.item} feed={feed} compact />
+                {resolvable(s.item) && <Resolver key={s.item.id} item={s.item} feed={feed} />}
+                <div className="actions">
+                  <Choices item={s.item} busy={feed.busy} onDecide={(d) => void feed.resolve(s.item.id, d)} />
+                </div>
               </div>
             )}
           </div>
         </li>
       ))}
     </ol>
-  );
-}
-
-function Detail({ item, feed }: { item: FeedItem; feed: Feed }) {
-  const look = appLook(item.app);
-  const rows: [string, string, boolean?][] =
-    item.kind === "message"
-      ? [
-          ["Said by", item.from === "you" ? "You" : "Your agent"],
-          ["Chain", short(item.chain), true],
-          ["Delivered", "Through your own node"],
-        ]
-      : item.kind === "action"
-      ? [
-          ["Acted as", "You — the agent signs as your account"],
-          ["Executor", item.executor || "Not executed yet"],
-          ["App", `${look.name}${item.source_label ? ` · ${item.source_label}` : ""}`],
-          ["Context", item.source_context ? short(item.source_context) : "—", true],
-          ["Method", item.method, true],
-          ["Guard", item.category || "none"],
-          ["Intent hash", item.intent_hash ? short(item.intent_hash) : "—", true],
-        ]
-      : [
-          ["From", item.from || "—"],
-          ["App", `${look.name}${item.source_label ? ` · ${item.source_label}` : ""}`],
-          ["Context", item.source_context ? short(item.source_context) : "—", true],
-          ["Event", item.event || "—", true],
-          ...(item.item_type ? ([["Read as", TYPE_LABELS[item.item_type] ?? item.item_type]] as [string, string][]) : []),
-          ...(item.reply_call
-            ? ([["Answered by", `Your feed, with ${replyMethod(item)} in ${look.name}`, false]] as [string, string, boolean][])
-            : []),
-          ["Delivered", "Live from your own node"],
-        ];
-  const flow: FlowStep[] = flowOf([item], appName);
-  return (
-    <div className="detail-inner">
-      <div className="detail-head">
-        <RowBadge item={item} />
-        <div>
-          <p className="muted">
-            {item.kind === "message"
-              ? "Conversation with your agent"
-              : `${item.kind === "action" ? "Agent action" : "Notification"} · ${look.name}`}
-          </p>
-          <p className="muted">{new Date(item.at).toLocaleString()}</p>
-        </div>
-      </div>
-      {/* An answer reads in the flow below; as a heading it would be a paragraph. */}
-      <h2>{item.kind === "message" && item.from === "agent" ? (item.reply_to ? "Your agent answered" : "A note from your agent") : item.title}</h2>
-      <Status item={item} />
-      <LateHint item={item} />
-      {item.breach && <p className="breach">Your agent {item.breach}. Keep it, or undo it if you can.</p>}
-      {(resolvable(item) || choicesFor(item).approve || choicesFor(item).decline || choicesFor(item).undo || choicesFor(item).keep) && (
-        <section className="detail-settle">
-          <Settle item={item} feed={feed} />
-        </section>
-      )}
-      {item.why && (
-        <section>
-          <h3>Why the agent did this</h3>
-          <p>{item.why}</p>
-        </section>
-      )}
-      <section>
-        <h3>{item.chain_len > 1 ? `The whole flow · ${item.chain_len} steps` : "What happened"}</h3>
-        {item.chain_len > 1 ? (
-          <Flow chain={item.chain} lead={item.id} feed={feed} />
-        ) : (
-          <ol className="flow">
-            {flow.map((s) => (
-              <li key={s.key} className={`flow-step actor-${s.actor} tone-${s.tone}`}>
-                <span className="flow-dot" aria-hidden="true">
-                  {s.actor === "agent" ? <Spark /> : s.actor === "app" ? <Bell /> : null}
-                </span>
-                <div className="flow-body">
-                  <div className="flow-meta">
-                    <strong>{s.who}</strong>
-                    <span className="time">{timeLabel(s.at)}</span>
-                  </div>
-                  <p>{s.text}</p>
-                  {s.detail && <p className="flow-detail">{s.detail}</p>}
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-      <section className="detail-ask">
-        <AskAgent
-          key={item.chain}
-          feed={feed}
-          chain={item.chain}
-          label={item.kind === "message" ? "Say more to your agent" : "Talk to your agent about this"}
-        />
-      </section>
-      <section>
-        <h3>{item.kind === "action" ? "Provenance" : item.kind === "message" ? "About" : "Source"}</h3>
-        <dl className="facts">
-          {rows.map(([k, v, mono]) => (
-            <div key={k} className="fact">
-              <dt>{k}</dt>
-              <dd className={mono ? "mono" : ""}>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-    </div>
   );
 }
 
@@ -663,7 +681,7 @@ export function AskAgent({
   };
   return (
     <form
-      className="ask"
+      className={`ask ${chain ? "ask-inline" : ""}`}
       onSubmit={(e) => {
         e.preventDefault();
         void send();
@@ -671,23 +689,25 @@ export function AskAgent({
     >
       <label htmlFor={`${id}-ask`} className="ask-label">
         <Spark />
-        {label}
+        <span className={chain ? "" : "sr-only"}>{label}</span>
       </label>
-      <div className="reply-row">
-        <textarea
-          id={`${id}-ask`}
-          value={text}
-          rows={2}
-          placeholder={chain ? "Ask about this, or tell your agent what to do next…" : "Ask a question or hand your agent a task…"}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void send();
-          }}
-        />
-        <button type="submit" className="primary" disabled={feed.busy || !text.trim()}>
-          Send
-        </button>
-      </div>
+      <textarea
+        id={`${id}-ask`}
+        value={text}
+        rows={1}
+        aria-label={label}
+        placeholder={chain ? "Ask about this, or tell your agent what to do next…" : "Tell your agent… (Enter to send)"}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+      />
+      <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
+        Send
+      </button>
     </form>
   );
 }
@@ -717,26 +737,18 @@ function LateHint({ item }: { item: FeedItem }) {
   );
 }
 
-function replyMethod(item: FeedItem): string {
-  try {
-    return (JSON.parse(item.reply_call) as { method?: string }).method ?? "a call";
-  } catch {
-    return "a call";
-  }
-}
-
 /**
- * What a typed card adds under its title: the type's facts (when, due, the
- * game), and a poll's options when it cannot be answered from here.
+ * What a typed row adds: the type's facts (when, due, the game), and a poll's
+ * options when it cannot be answered from here.
  */
 function Typed({ item }: { item: FeedItem }) {
   if (!item.item_type) return null;
   const facts = typedFacts(item);
   const f = fieldsOf(item);
   const options = item.item_type === "poll" && !resolvable(item) && Array.isArray(f.options) ? (f.options as unknown[]).map(String) : [];
-  if (facts.length === 0 && options.length === 0) return null;
   return (
     <div className="typed">
+      <span className="type-tag">{TYPE_LABELS[item.item_type] ?? item.item_type}</span>
       {facts.length > 0 && (
         <dl className="typed-facts">
           {facts.map(([k, v]) => (
