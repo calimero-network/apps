@@ -1,0 +1,13 @@
+{
+  "name": "Mero Kombat",
+  "short_name": "Mero Kombat",
+  "description": "A one-on-one arcade fighting game with no game server. Every punch, kick and special is a transaction on both fighters' own nodes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1013",
+  "theme_color": "#0f1013",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

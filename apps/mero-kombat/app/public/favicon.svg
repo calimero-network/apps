@@ -1,0 +1,13 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Kombat logo">
+  <rect width="64" height="64" rx="14" fill="#0d0c10"/>
+  <path d="M8 64 L56 64 L48 47 L16 47 Z" fill="#4d7d00"/>
+  <path d="M14 64 L50 64 L44 49 L20 49 Z" fill="#8fdc0a"/>
+  <clipPath id="h"><circle cx="32" cy="29" r="17"/></clipPath>
+  <circle cx="32" cy="29" r="17" fill="#8fdc0a"/>
+  <g clip-path="url(#h)">
+    <rect x="0" y="33" width="64" height="20" fill="#4d7d00"/>
+    <rect x="13" y="23" width="38" height="9" rx="1" fill="#d9a27c"/>
+  </g>
+  <rect x="19" y="25.5" width="10" height="4" rx="1" fill="#f4ffd9"/>
+  <rect x="35" y="25.5" width="10" height="4" rx="1" fill="#f4ffd9"/>
+</svg>

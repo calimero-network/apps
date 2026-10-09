@@ -91,6 +91,69 @@ export const DOCS = {
       { title: 'The result is derived', body: 'Nobody writes down "checkmate": both nodes replay the same moves and reach the same verdict, which is what makes it trustworthy without a referee.' },
     ],
   },
+  'mero-kombat': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'An arena is a Calimero context. There is no game server: each fighter\u2019s own node runs the contract, stores every blow thrown, and replicates them to the other. Health, rounds and the winner are derived by the contract from those blows, so both nodes reach the same verdict.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A dojo. You create one, invite the people you fight, and every arena inside it is open to them without another invitation.' },
+          { term: 'Context', def: 'An arena. It holds the two corners and every action either fighter has taken, across as many matches as you like.' },
+          { term: 'Corner', def: 'Left or right. The first person to claim a corner holds it, and once both fighters have acted against each other the corners lock.' },
+          { term: 'Action', def: 'One finished move — a punch, kick, uppercut, sweep, flying kick, special, jump or block — and one contract transaction.' },
+          { term: 'Presence', def: 'Where your fighter stands, fifteen times a second, over the node\u2019s ephemeral channel. Never stored, never a transaction.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Open an arena', body: 'A new arena is a context in a namespace you own. Joining someone else\u2019s means opening their invite link.' },
+          { title: 'Pick a fighter and a corner', body: 'Choose Kinetic, Cryo, Inferno or Jinzo and take an open corner. The fight starts when both corners are taken and both fighters are in the arena.' },
+          { title: 'Fight', body: 'A and D move, W jumps, S crouches. J punches, K kicks, L blocks and I throws your special. Crouch with J for an uppercut, crouch with K for a sweep, and K in the air for a flying kick.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Fighting someone else',
+        paragraphs: [
+          'Invitations are links. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining, and whoever opens it can take the open corner or watch.',
+          'The invitation admits someone to the namespace the arena lives in, so one link is enough for every arena in that namespace.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Every action, keyed by fighter, match and round: what it was, whether it connected, whether it was blocked, and the opponent its author saw.',
+          'The two corners, each recording who claimed it and when.',
+          'Rematch claims. A new match starts when a fighter in a corner calls one after the last match ended.',
+          'Never health. Health, round wins, the winner and a flawless victory are derived from the actions on every read, so nothing can write a score that disagrees with the fight.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A transaction is refused', def: 'A blow written for a round that has already ended, or after the match is over, is refused by the contract. It shows in the chain panel and changes nothing.' },
+          { term: 'The other fighter looks away', def: 'Their presence stream stopped for a few seconds. The fight waits for them; their blows count when their node reconnects.' },
+          { term: 'The health bars jump back', def: 'A blow your screen saw over presence never reached the contract. The bars settle on what the contract counts.' },
+          { term: 'The invite link does nothing', def: 'An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'An arena that is a context', body: 'Two corners and every blow thrown, replicated between the two fighters\u2019 own nodes. Nothing in the middle, and nothing to host.' },
+      { title: 'Movement over presence', body: 'Where each fighter stands streams fifteen times a second over ephemeral presence — fast, encrypted, and never stored.' },
+      { title: 'Blows are transactions', body: 'Every finished punch, kick, jump and block is a signed contract call on your node, gossiped to your opponent\u2019s.' },
+      { title: 'The score is derived', body: 'Nobody writes down "K.O.": both nodes count the same blows and reach the same verdict, round after round.' },
+    ],
+  },
   battleships: {
     docs: [
       {

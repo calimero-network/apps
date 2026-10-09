@@ -1,0 +1,213 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Action": {
+      "kind": "record",
+      "doc": "One thing a fighter did, keyed `\"<account>/<match>/<round>/<nonce>\"`.\n\nThe match, the round and the author come from the key and the owner stamp.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The client's own sequence number for this action. It is how the\nopponent's screen matches a blow it already saw over the fast channel\nto the row that makes it count, so nothing is ever subtracted twice."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`punch`, `kick`, `uppercut`, `sweep`, `air_kick`, `special`, `jump`,\n`block`."
+        },
+        {
+          "name": "hit",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "The attacker says it connected."
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "...and that the defender was guarding when it did."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Its author's clock. Display only."
+        },
+        {
+          "name": "opponent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member the attacker saw in the other corner — how a player's own,\nunforgeable rows vouch for who they were fighting, which is what locks\nthe corners once a fight is under way (see [`MeroKombat::corners`])."
+        }
+      ]
+    },
+    "MatchRecord": {
+      "kind": "record",
+      "doc": "A claim that this player started a rematch, keyed `\"<account>/<match>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroKombat": {
+      "kind": "record",
+      "doc": "Every map a player writes is owned and every key names its author, so a\nmember can only ever write rows about themselves — and, outside presence,\nnever change or remove one. Core enforces both at apply time.",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            }
+          }
+        },
+        {
+          "name": "seat_claims",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Seat"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<nonce>\"` -> one person's claim on that corner."
+        },
+        {
+          "name": "vacated",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<seat>/<account>/<claim nonce>/<nonce>\"` -> when that claim was given\nup. Honoured only for a claimant who never fought here."
+        },
+        {
+          "name": "matches",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MatchRecord"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<match>/<nonce>\"` -> a claim that this player started it."
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Action"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "`\"<account>/<match>/<round>/<nonce>\"` -> one thing that player did."
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "doc": "A person's presence row — name, chosen fighter, last sign of life. The one\nthing a player keeps RE-stating, so it lives in their own [`UserStorage`]\nslot and resolves to the newest copy.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fighter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Seat": {
+      "kind": "record",
+      "doc": "One person's claim on one corner, keyed `\"<seat>/<account>/<nonce>\"`.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroKombat",
+  "state_version": 1
+}
