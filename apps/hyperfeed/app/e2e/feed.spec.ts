@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { MeroJs } from "@calimero-network/mero-js";
 
 import { readState } from "./global-setup";
-import { short } from "../src/format";
 
 /**
  * Your side of the loop, through the UI, against a real node:
@@ -39,6 +38,9 @@ async function openFeed(page: Page) {
   await page.getByRole("button", { name: /^Open feed / }).click();
   await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
 }
+
+/** A feed's id as the header shows it (src/format.ts `short`). */
+const short = (id: string) => (id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id);
 
 /** A chain's row in the feed, opened in place as a click opens it. */
 async function openRow(page: Page, text: string) {
