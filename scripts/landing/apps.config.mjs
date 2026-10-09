@@ -107,6 +107,60 @@ export const APPS = {
       },
     ],
   },
+  'mero-kombat': {
+    e2eDir: 'e2e',
+    availability: 'web+desktop',
+    playableOffline: true,
+    overview: {
+      headline: 'A fighting game where every punch is a transaction.',
+      comparison: {
+        heading: 'Online fighting games, without the server in the middle',
+        sub: 'Two fighters, three rounds, health bars that drain. The difference is who holds the fight, and who keeps the score.',
+        themLabel: 'A typical online fighting game',
+        rows: [
+          { label: 'Where the match lives', them: 'On the publisher\u2019s game server', us: 'On your node and your opponent\u2019s, nobody else\u2019s' },
+          { label: 'Who keeps the score', them: 'The server', us: 'The contract, deriving health from every blow on both nodes' },
+          { label: 'Starting a match', them: 'An account, then matchmaking', us: 'One invite link. No sign-up, no email' },
+          { label: 'What a punch is', them: 'A packet the server may or may not keep', us: 'A signed transaction, executed and stored' },
+          { label: 'If the server goes away', them: 'So does the game', us: 'Your node still has every round' },
+        ],
+      },
+      closing: {
+        title: 'Step into the arena',
+        body: 'Connect a node, or install the desktop app that bundles one, then send your opponent the link. Or warm up against the CPU first.',
+      },
+    },
+    trust: ['No game server', 'Every blow is a transaction', 'No accounts'],
+    explainer: [
+      'A one-on-one arcade fighter in the old style: two corners, best of three rounds, uppercuts, sweeps and a special move each. An arena is a Calimero context, and it replicates between the two fighters\u2019 own nodes — there is no game server anywhere.',
+      'Movement streams sixty times a second over ephemeral presence, which never touches storage. Every action you finish — a punch, a kick, a jump, a block — is one contract transaction on your node, gossiped to your opponent\u2019s, and the health bars are what the contract derives from those transactions. The arena shows the count as you fight.',
+    ],
+    features: [
+      { icon: 'Zap', title: 'Every blow is a transaction', body: 'A fight is hundreds of signed contract calls a minute between two machines, with the throughput and confirm time on screen.' },
+      { icon: 'CloudX', title: 'No game server', body: 'An arena is a context. Two nodes hold the same fight, and movement travels peer to peer over presence.' },
+      { icon: 'Target', title: 'Health nobody writes down', body: 'The contract derives health, rounds and the winner from the blows themselves, so the score cannot disagree with the fight.' },
+      { icon: 'LockCheck', title: 'Blows are owned', body: 'Every action is stamped with its author by core, so a player can only ever land blows for themselves.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link opens the arena. No sign-up, no account — whoever opens it can take the open corner or watch.' },
+    ],
+    faq: [
+      {
+        q: 'Is every punch really a transaction?',
+        a: 'Yes. Each finished action — a punch, a kick, an uppercut, a jump, a block — is one call to the contract on your node, which executes it, stores it and gossips it to your opponent\u2019s node. Walking is not: position streams over ephemeral presence, which is built for exactly that.',
+      },
+      {
+        q: 'Who decides whether a blow connected?',
+        a: 'The fighter who threw it — only their screen knows where their fist was. The contract bounds what a claim can be worth (fixed damage per move, chip damage when blocked) and stamps every row with its author, so you can only ever land blows for yourself.',
+      },
+      {
+        q: 'What if we both land the finishing blow at once?',
+        a: 'It is a double knock-out. Both nodes count the same blows, so both reach the same verdict, and the round scores for nobody.',
+      },
+      {
+        q: 'Can I play without a node?',
+        a: 'Practice mode runs entirely in your browser against a CPU opponent. Nothing in practice is a transaction — that needs an arena and an opponent.',
+      },
+    ],
+  },
   battleships: {
     e2eDir: 'e2e',
     availability: 'web+desktop',
