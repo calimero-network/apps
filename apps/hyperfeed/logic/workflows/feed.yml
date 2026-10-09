@@ -694,3 +694,69 @@ steps:
     type: json_assert
     statements:
       - 'json_subset({{lens_2}}, {"app": "chat", "status": "approved"})'
+
+  # ── Put things away, and know the agent is there ─────────────────────────
+  - name: Owner archives the stand-up chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: archive
+    args: { chains: ["{{standup_id}}"], until: 0 }
+    outputs:
+      archived_count: result.output
+
+  - name: Owner reads what is archived
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: feed
+    args: { filter: "archived", app_key: "", limit: 10, before: 0 }
+    outputs:
+      archived_first: result.output.items.0
+
+  - name: The agent reports in
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_seen
+    args: { name: "mero-bot@ci" }
+
+  - name: Let the archive and presence reach node-2
+    type: wait
+    seconds: 6
+
+  - name: node-2 sees the agent
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: settings
+    args: {}
+    outputs:
+      agent_2: result.output.agents.0
+
+  - name: node-2 cannot unarchive
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: unarchive
+    args: { chains: ["{{standup_id}}"] }
+    expected_failure: true
+    outputs:
+      unarchive_error: error
+
+  - name: Assert archive and presence
+    type: json_assert
+    statements:
+      - 'json_equal({{archived_count}}, 1)'
+      - 'json_subset({{archived_first}}, {"id": "{{standup_id}}"})'
+      - 'json_subset({{agent_2}}, {"name": "mero-bot@ci"})'
+
+  - name: Assert node-2 was refused
+    type: assert
+    statements:
+      - "is_set({{unarchive_error}})"

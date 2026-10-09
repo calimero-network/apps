@@ -36,7 +36,16 @@ async function login(page: Page) {
 async function openFeed(page: Page) {
   await login(page);
   await page.getByRole("button", { name: /^Open feed / }).click();
-  await expect(page.getByRole("navigation", { name: "Feed filters" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+}
+
+/** A chain's row in the feed, opened in place as a click opens it. */
+async function openRow(page: Page, text: string) {
+  const row = page.locator("li.row", { hasText: text });
+  await expect(row).toBeVisible();
+  const line = row.locator(".row-line");
+  if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
+  return row;
 }
 
 /** The node, as a script calls it: the identity the collector and mero-bot write as. */
@@ -59,8 +68,8 @@ test("you create your feed and answer a notification in place", async ({ page })
 
   // ── your feed ──────────────────────────────────────────────────────────────
   await page.getByRole("button", { name: "Create my feed" }).click();
-  await expect(page.getByRole("navigation", { name: "Feed filters" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Nothing here. Your agent and your apps are quiet.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Nothing needs you.")).toBeVisible();
 
   // ── an app's notification arrives ──────────────────────────────────────────
   const mero = node();
@@ -88,14 +97,13 @@ test("you create your feed and answer a notification in place", async ({ page })
   });
 
   // The feed's own event refreshes the page; no reload.
-  const card = page.locator("article.card", { hasText: "Mentioned you" });
-  await expect(card).toBeVisible();
+  const card = await openRow(page, "Mentioned you");
   await expect(card.getByText("Can your agent pull the numbers?")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Needs you\s*1/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "To do" })).toContainText("Mentioned you");
 
   // ── you answer it where it is ──────────────────────────────────────────────
-  await card.getByRole("textbox").fill("Numbers are in the deck.");
-  await card.getByRole("button", { name: "Send" }).click();
+  await card.getByLabel("Reply in #launch").fill("Numbers are in the deck.");
+  await card.getByRole("button", { name: "Send" }).first().click();
   await expect(card.getByText('You replied: "Numbers are in the deck."')).toBeVisible();
   await expect(card.getByText("Answered · agent sending")).toBeVisible();
 
@@ -110,12 +118,11 @@ test("you create your feed and answer a notification in place", async ({ page })
   expect(item?.history.map((s) => s.status)).toEqual(["received", "answered"]);
 
   // ── you talk to your agent about it ────────────────────────────────────────
-  await card.getByRole("button", { name: "Details" }).click();
-  const detail = page.getByRole("complementary", { name: "Selected item" });
-  await detail.getByLabel("Talk to your agent about this").fill("Who else asked for the numbers?");
-  await detail.getByRole("button", { name: "Send" }).click();
-  // One row per chain: your question now leads Maya's.
-  const talk = page.locator("article.card", { hasText: "Who else asked for the numbers?" });
+  await card.getByLabel("Talk to your agent about this").fill("Who else asked for the numbers?");
+  await card.getByRole("button", { name: "Send" }).last().click();
+  // One row per chain: your question now leads Maya's, in progress.
+  const talk = page.locator("li.row", { hasText: "Who else asked for the numbers?" });
+  await expect(page.getByRole("region", { name: "In progress" })).toContainText("Who else asked for the numbers?");
   await expect(talk.getByText("Sent · waiting for your agent")).toBeVisible();
 
   // ── your agent picks it up and answers, in the same chain ──────────────────
@@ -130,7 +137,7 @@ test("you create your feed and answer a notification in place", async ({ page })
     method: "agent_say",
     argsJson: { chain: question.chain, reply_to: question.id, text: "Only Maya, in #launch." },
   });
-  const answer = page.locator("article.card", { hasText: "Only Maya, in #launch." });
+  const answer = page.locator("li.row", { hasText: "Only Maya, in #launch." });
   await expect(answer).toBeVisible();
   await expect(answer.getByText("Your agent", { exact: true }).first()).toBeVisible();
   const asked = await mero.rpc.execute<{ status: string } | null>({ contextId, method: "item", argsJson: { id: question.id } });
@@ -172,13 +179,13 @@ test("a typed row is answered straight into its app, and a refusal comes back to
       },
     },
   });
-  const card = page.locator("article.card", { hasText: "are you free at 3?" });
+  const card = await openRow(page, "Sent you a message");
   await expect(card.getByText("Message", { exact: true })).toBeVisible();
-  await card.getByRole("textbox").fill("Yes, 3 works");
-  await card.getByRole("button", { name: "Send" }).click();
-  await expect(card.getByText("Not sent · needs you")).toBeVisible();
+  await card.getByLabel("Reply to Maya").fill("Yes, 3 works");
+  await card.getByRole("button", { name: "Send" }).first().click();
+  await expect(card.getByText("Not sent · needs you").first()).toBeVisible();
   // The row goes back to you, and can be answered again.
-  await expect(card.getByRole("textbox")).toBeVisible();
+  await expect(card.getByLabel("Reply to Maya")).toBeVisible();
 });
 
 test("you approve a lens your agent proposed, in Controls", async ({ page }) => {
@@ -231,4 +238,27 @@ test("you start a chat with your agent and it answers there", async ({ page }) =
   const chain = await mero.rpc.execute<unknown[]>({ contextId, method: "chain", argsJson: { chain: asked.chain } });
   expect(chain).toHaveLength(3);
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /Great, thanks/ })).toBeVisible();
+});
+
+test("you see when your agent is there, and archive what is done", async ({ page }) => {
+  await openFeed(page);
+  const mero = node();
+  const contextId = (await mero.admin.getContexts()).contexts[0]!.id;
+  await expect(page.getByText("No agent connected")).toBeVisible();
+  // mero-bot reports in every half minute; one report is enough to show it.
+  await mero.rpc.execute({ contextId, method: "agent_seen", argsJson: { name: "mero-bot@e2e" } });
+  await expect(page.getByText("Agent live")).toBeVisible({ timeout: 25_000 });
+
+  const done = page.getByRole("region", { name: "Done" });
+  await expect(done.locator("li.row").first()).toBeVisible();
+  await done.getByRole("button", { name: "Archive all done" }).click();
+  await expect(done.getByText("Nothing finished yet.")).toBeVisible();
+  const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
+    contextId,
+    method: "feed",
+    argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+  });
+  expect(page1.counts.archived).toBeGreaterThan(0);
+  await page.getByRole("button", { name: /^Archived · \d+/ }).click();
+  await expect(page.getByRole("region", { name: "Archived" }).locator("li.row").first()).toBeVisible();
 });

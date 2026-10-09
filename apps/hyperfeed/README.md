@@ -39,13 +39,15 @@ same warrant path it uses everywhere else.
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
+| **Archived** | you | per chain: put away, with the chain's latest activity then and an optional return time ("later"). It is out of the feed until something new happens in it or that time passes |
+| **Presence** | your agent | per agent name: when it last reported in. The app shows "Agent live" for 90 seconds after a report |
 
 Every record merges deterministically:
 
 - A row's content is written once. Its history merges as a union of steps in one total order, so
   the last step is the current status on every device.
 - "Reviewed" and "seen" only ever turn on.
-- Policies and guards are last-writer-wins.
+- Policies, guards and archive decisions are last-writer-wins; presence keeps the latest report.
 
 ## The rules the contract applies
 
@@ -267,14 +269,18 @@ in the row's `note` while it is current.
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
 `ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
-`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`.
+`SettingsChanged`, `MessagePosted`, `MessageChanged`, `LensChanged`, `ArchiveChanged`.
+
+7. Report in while you run: `agent_seen(name)`, about every 30 seconds (mero-bot sends
+   `mero-bot@<host>`). `settings().agents` lists who reported and when.
 
 **The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
 `approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
 ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
 `say(chain, text)`; `decide_lens(app_key, application_id, decision)`; `mark_seen(ids)` and
-`mark_all_seen()`. An agent kit can call them too, since it
+`mark_all_seen()`; `archive(chains, until)` (`until` 0 = until something new happens, else ms
+for "later") and `unarchive(chains)`; `feed("archived", …)` lists what is put away. An agent kit can call them too, since it
 writes as you, but `resolve_action`, `answer_notification`, `decide_lens` and `say` are your decisions and your
 words, and an agent should never call them for itself. The agent's side of lenses is
 `propose_lens(app_key, application_id, spec, summary)` and `lenses()`.
@@ -318,6 +324,18 @@ pnpm -F hyperfeed test:e2e:node   # e2e/: a real merod with the bundle; create t
 The node suite boots its own merod on port 2697 from `MEROD_BINARY` (or `merod` on the path) and installs
 `logic/dist/com.calimero.hyperfeed.mpk`, the bundle the `cargo mero bundle` line above writes there
 when given `--output apps/hyperfeed/logic/dist/com.calimero.hyperfeed.mpk`.
+
+## Using the feed
+
+The feed is three lanes, one row per chain: **To do** (something in it needs you), **In
+progress** (your agent is answering, an approved action is being carried out, or your answer is
+being sent) and **Done**. The row you are on opens in place with its whole thread, its answer box
+and its actions; nothing is repeated beside it. Done rows archive one at a time (`E`) or all at
+once, and "Later" (`S`) puts a row away for three hours; both show an undo toast (`U`). `J`/`K`
+move between rows. A row from a first-party app has **Open in …** (`O`), which shows that app
+beside the feed at the row's context (Chat at the channel, Design at the document), signed in to
+your node. Its address comes from the app's `frontend` in its Cargo.toml, and only those apps are
+handed your session. The theme follows your system until you switch it.
 
 ## Upgrading
 

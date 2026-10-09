@@ -33,6 +33,8 @@ export function statusOf(item: FeedItem): { label: string; tone: Tone } {
     if (item.status === "failed") return { label: "Not delivered · needs you", tone: "bad" };
     return item.needs_you ? { label: "Needs you", tone: "wait" } : { label: item.seen ? "Seen" : "New", tone: "plain" };
   }
+  // It acted where your rules said to ask: yours to keep or undo, whatever its status.
+  if (item.breach && !item.reviewed_at && item.status === "done") return { label: "Acted without asking", tone: "wait" };
   const label = STATUS_LABELS[item.status] ?? item.status;
   const tone: Tone =
     item.status === "pending"
@@ -265,4 +267,22 @@ export function typedFacts(item: FeedItem): [string, string][] {
     default:
       return [];
   }
+}
+
+/** Where a row stands for you: something to do, something underway, or done. */
+export type Lane = "todo" | "progress" | "done";
+
+/**
+ * A chain's lane, from its lead row: it needs you (to do); your agent or the
+ * feed is still carrying it (in progress: a message being answered, an
+ * approved action being done, your answer being sent); or it is settled.
+ */
+export function laneOf(item: FeedItem): Lane {
+  if (item.needs_you) return "todo";
+  if (item.kind === "message") {
+    return item.from === "you" && (item.status === "waiting" || item.status === "thinking") ? "progress" : "done";
+  }
+  if (item.kind === "action") return ["approved", "retrying", "undo_requested"].includes(item.status) ? "progress" : "done";
+  if (item.kind === "notification") return item.status === "answered" ? "progress" : "done";
+  return "done";
 }

@@ -152,6 +152,37 @@
         }
       ]
     },
+    "Archived": {
+      "kind": "record",
+      "doc": "A chain you put away. It stays out of the feed until something new\nhappens in it, or until `until` passes (\"later\"); `until` 0 has no return\ntime. Unarchiving keeps the row with `archived: false`, so the latest\ndecision wins on every device.",
+      "fields": [
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The chain's latest activity when it was put away: anything newer brings it back."
+        },
+        {
+          "name": "until",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Ask": {
       "kind": "record",
       "doc": "How a row is best resolved in place. See [`ASK_KINDS`].",
@@ -333,6 +364,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Archived"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Chains you put away, by chain id."
+        },
+        {
+          "name": "presence",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Presence"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Agents that report in, by name."
         }
       ]
     },
@@ -560,6 +619,18 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Presence": {
+      "kind": "record",
+      "doc": "When an agent last said it was running, by its name.",
+      "fields": [
+        {
+          "name": "seen_at",
           "type": {
             "kind": "u64"
           }

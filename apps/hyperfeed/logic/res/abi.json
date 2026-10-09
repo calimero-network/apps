@@ -260,6 +260,24 @@
         }
       ]
     },
+    "AgentView": {
+      "kind": "record",
+      "doc": "An agent and when it last said it was running (ms).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "AppCount": {
       "kind": "record",
       "fields": [
@@ -273,6 +291,37 @@
           "name": "count",
           "type": {
             "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Archived": {
+      "kind": "record",
+      "doc": "A chain you put away. It stays out of the feed until something new\nhappens in it, or until `until` passes (\"later\"); `until` 0 has no return\ntime. Unarchiving keeps the row with `archived: false`, so the latest\ndecision wins on every device.",
+      "fields": [
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "The chain's latest activity when it was put away: anything newer brings it back."
+        },
+        {
+          "name": "until",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -344,6 +393,17 @@
           "name": "status",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ArchiveChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -470,6 +530,13 @@
           "type": {
             "kind": "u32"
           }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "Chains put away right now (shown only by the `archived` filter)."
         }
       ]
     },
@@ -881,6 +948,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "How each app version's events become feed items, by `<app>@<application id>`."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Archived"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Chains you put away, by chain id."
+        },
+        {
+          "name": "presence",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Presence"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Agents that report in, by name."
         }
       ]
     },
@@ -1274,6 +1369,18 @@
         }
       ]
     },
+    "Presence": {
+      "kind": "record",
+      "doc": "When an agent last said it was running, by its name.",
+      "fields": [
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "SettingsView": {
       "kind": "record",
       "fields": [
@@ -1306,6 +1413,16 @@
               "$ref": "GuardView"
             }
           }
+        },
+        {
+          "name": "agents",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AgentView"
+            }
+          },
+          "doc": "Every agent that has reported in, most recent first."
         }
       ]
     },
@@ -1439,6 +1556,22 @@
       "intent": "mutating"
     },
     {
+      "name": "agent_seen",
+      "doc": "An agent saying it is running. The feed shows it as live while it\nkeeps reporting; mero-bot calls this every half minute.",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "answer_notification",
       "doc": "Answer a notification from the feed: the reply to send, the option you\npicked, or `\"\"` to confirm. Your agent carries it out in the source app\nand reports with [`Hyperfeed::complete_answer`]. A failed delivery can be\nanswered again.",
       "params": [
@@ -1457,6 +1590,31 @@
       ],
       "returns": {
         "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "archive",
+      "doc": "Pause the agent: every write it wants to make becomes a proposal.\nPut chains away: each leaves the feed until something new happens in\nit, or until `until` (ms; 0 = no return time) for \"later\". Returns how\nmany were put away.",
+      "params": [
+        {
+          "name": "chains",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "until",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
       },
       "intent": "mutating"
     },
@@ -1840,7 +1998,6 @@
     },
     {
       "name": "set_paused",
-      "doc": "Pause the agent: every write it wants to make becomes a proposal.",
       "params": [
         {
           "name": "paused",
@@ -1889,6 +2046,25 @@
         "$ref": "SettingsView"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "unarchive",
+      "doc": "Bring chains back into the feed.",
+      "params": [
+        {
+          "name": "chains",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
     }
   ],
   "events": [
@@ -1903,6 +2079,13 @@
       "payload": {
         "$ref": "Event_ActionRecorded"
       }
+    },
+    {
+      "name": "ArchiveChanged",
+      "payload": {
+        "$ref": "Event_ArchiveChanged"
+      },
+      "doc": "Chains were put away or brought back: re-read the feed."
     },
     {
       "name": "LensChanged",

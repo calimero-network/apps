@@ -95,5 +95,5 @@ their answer goes back. You write it from the app's ABI; the user approves it.
 
 ### Never
 
-Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `mark_seen` or `mark_all_seen`.
+Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
 Those are the user's decisions.

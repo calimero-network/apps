@@ -1201,3 +1201,100 @@ fn a_lens_is_checked_and_only_the_owner_handles_lenses() {
         })
         .is_err());
 }
+
+// ── Archive and presence ─────────────────────────────────────────────────────
+
+fn ms_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+
+#[test]
+fn an_archived_chain_leaves_the_feed_until_something_new_happens_in_it() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    app.call(|s| s.record_notification(notification("k2", "chat", false)))
+        .unwrap();
+    assert_eq!(feed(&app, "all").items.len(), 2);
+
+    assert_eq!(
+        app.call(|s| s.archive(vec![n.chain.clone()], 0)).unwrap(),
+        1
+    );
+    let page = feed(&app, "all");
+    assert_eq!(page.items.len(), 1, "the archived chain is gone");
+    assert_eq!(page.counts.needs_you, 0, "and counts for nothing");
+    assert_eq!(page.counts.archived, 1);
+    let archived = feed(&app, "archived");
+    assert_eq!(archived.items.len(), 1);
+    assert_eq!(archived.items[0].chain, n.chain);
+
+    // You say something in it: it is back.
+    app.call(|s| s.say(n.chain.clone(), "About this…".to_owned()))
+        .unwrap();
+    assert_eq!(feed(&app, "all").items.len(), 2);
+    assert!(feed(&app, "archived").items.is_empty());
+}
+
+#[test]
+fn unarchiving_brings_a_chain_back_and_the_last_decision_wins() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    app.call(|s| s.archive(vec![n.chain.clone()], 0)).unwrap();
+    app.call(|s| s.unarchive(vec![n.chain.clone()])).unwrap();
+    assert_eq!(feed(&app, "needs_you").items.len(), 1);
+    app.call(|s| s.archive(vec![n.chain.clone()], 0)).unwrap();
+    assert!(feed(&app, "needs_you").items.is_empty());
+}
+
+#[test]
+fn later_returns_a_chain_when_its_time_comes() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    app.call(|s| s.archive(vec![n.chain.clone()], ms_now() + 150))
+        .unwrap();
+    assert!(feed(&app, "all").items.is_empty());
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    assert_eq!(feed(&app, "all").items.len(), 1, "back after its time");
+}
+
+#[test]
+fn archive_refuses_strangers_unknown_chains_and_the_past() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("k1", "chat", true)))
+        .unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.archive(vec![n.chain.clone()], 0))
+        .is_err());
+    assert!(app.call(|s| s.archive(vec!["nope".to_owned()], 0)).is_err());
+    assert!(app.call(|s| s.archive(vec![n.chain.clone()], 1)).is_err());
+    assert!(app
+        .call(|s| s.archive(vec![n.chain.clone(); MAX_ARCHIVE + 1], 0))
+        .is_err());
+    assert_eq!(feed(&app, "all").items.len(), 1);
+}
+
+#[test]
+fn an_agent_reporting_in_shows_in_settings() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    assert!(app.view(|s| s.settings()).unwrap().agents.is_empty());
+    let before = ms_now();
+    app.call(|s| s.agent_seen("mero-bot@laptop".to_owned()))
+        .unwrap();
+    let agents = app.view(|s| s.settings()).unwrap().agents;
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].name, "mero-bot@laptop");
+    assert!(agents[0].seen_at >= before);
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.agent_seen("x".to_owned()))
+        .is_err());
+}

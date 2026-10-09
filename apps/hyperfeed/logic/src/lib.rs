@@ -205,7 +205,9 @@ pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
 pub const KIND_MESSAGE: &str = "message";
 
-const FILTERS: &[&str] = &["all", "agent", "notifications", "needs_you"];
+const FILTERS: &[&str] = &["all", "agent", "notifications", "needs_you", "archived"];
+/// How many chains one `archive` or `unarchive` call may name.
+const MAX_ARCHIVE: usize = 200;
 
 /// Wall-clock milliseconds. `env::time_now()` is nanoseconds, which is past
 /// 2^53 and loses its low digits as a JSON number in the browser.
@@ -524,6 +526,46 @@ impl Mergeable for AgentState {
     }
 }
 
+/// A chain you put away. It stays out of the feed until something new
+/// happens in it, or until `until` passes ("later"); `until` 0 has no return
+/// time. Unarchiving keeps the row with `archived: false`, so the latest
+/// decision wins on every device.
+#[app::mergeable(id = "hyperfeed::Archived")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Archived {
+    pub archived: bool,
+    /// The chain's latest activity when it was put away: anything newer brings it back.
+    pub at: u64,
+    pub until: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Archived {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// When an agent last said it was running, by its name.
+#[app::mergeable(id = "hyperfeed::Presence")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Presence {
+    pub seen_at: u64,
+}
+
+impl Mergeable for Presence {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        self.seen_at = self.seen_at.max(other.seen_at);
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -657,6 +699,8 @@ pub struct FeedCounts {
     pub agent: u32,
     pub notifications: u32,
     pub needs_you: u32,
+    /// Chains put away right now (shown only by the `archived` filter).
+    pub archived: u32,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -711,6 +755,16 @@ pub struct SettingsView {
     pub paused: bool,
     pub policies: Vec<PolicyView>,
     pub guards: Vec<GuardView>,
+    /// Every agent that has reported in, most recent first.
+    pub agents: Vec<AgentView>,
+}
+
+/// An agent and when it last said it was running (ms).
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AgentView {
+    pub name: String,
+    pub seen_at: u64,
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -729,6 +783,10 @@ pub struct Hyperfeed {
     typed: UnorderedMap<String, Typed>,
     /// How each app version's events become feed items, by `<app>@<application id>`.
     lenses: UnorderedMap<String, Lens>,
+    /// Chains you put away, by chain id.
+    archived: UnorderedMap<String, Archived>,
+    /// Agents that report in, by name.
+    presence: UnorderedMap<String, Presence>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -768,6 +826,10 @@ pub enum Event<'a> {
         app: &'a str,
         status: &'a str,
     },
+    /// Chains were put away or brought back: re-read the feed.
+    ArchiveChanged {
+        count: u32,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -788,6 +850,8 @@ impl Hyperfeed {
             messages: UnorderedMap::new(),
             typed: UnorderedMap::new(),
             lenses: UnorderedMap::new(),
+            archived: UnorderedMap::new(),
+            presence: UnorderedMap::new(),
         }
     }
 
@@ -1884,6 +1948,80 @@ impl Hyperfeed {
     }
 
     /// Pause the agent: every write it wants to make becomes a proposal.
+    /// Put chains away: each leaves the feed until something new happens in
+    /// it, or until `until` (ms; 0 = no return time) for "later". Returns how
+    /// many were put away.
+    pub fn archive(&mut self, chains: Vec<String>, until: u64) -> app::Result<u32> {
+        self.require_owner()?;
+        if chains.len() > MAX_ARCHIVE {
+            return Err(AppError::msg(format!(
+                "at most {MAX_ARCHIVE} chains at a time"
+            )));
+        }
+        if until != 0 && until <= now_ms() {
+            return Err(AppError::msg("until must be in the future, or 0"));
+        }
+        self.set_archived(&chains, true, until)
+    }
+
+    /// Bring chains back into the feed.
+    pub fn unarchive(&mut self, chains: Vec<String>) -> app::Result<u32> {
+        self.require_owner()?;
+        if chains.len() > MAX_ARCHIVE {
+            return Err(AppError::msg(format!(
+                "at most {MAX_ARCHIVE} chains at a time"
+            )));
+        }
+        self.set_archived(&chains, false, 0)
+    }
+
+    fn set_archived(&mut self, chains: &[String], archived: bool, until: u64) -> app::Result<u32> {
+        let mut count = 0u32;
+        for chain in chains {
+            Self::check_len("chain", chain, MAX_KEY, false)?;
+            let latest = self
+                .all_items(true)?
+                .into_iter()
+                .filter(|i| i.chain == *chain)
+                .map(|i| i.chain_at.max(i.at))
+                .max()
+                .ok_or_else(|| AppError::msg(format!("no chain {chain}")))?;
+            let updated_at = match self.archived.get(chain)? {
+                Some(a) => now_ms().max(a.updated_at + 1),
+                None => now_ms(),
+            };
+            self.archived.insert(
+                chain.clone(),
+                Archived {
+                    archived,
+                    at: latest,
+                    until,
+                    updated_at,
+                },
+            )?;
+            count += 1;
+        }
+        app::emit!(Event::ArchiveChanged { count });
+        Ok(count)
+    }
+
+    /// Whether a chain is put away now, given its latest activity.
+    fn is_archived(&self, chain: &str, chain_at: u64, now: u64) -> app::Result<bool> {
+        Ok(match self.archived.get(chain)? {
+            Some(a) => a.archived && chain_at <= a.at && (a.until == 0 || now < a.until),
+            None => false,
+        })
+    }
+
+    /// An agent saying it is running. The feed shows it as live while it
+    /// keeps reporting; mero-bot calls this every half minute.
+    pub fn agent_seen(&mut self, name: String) -> app::Result<()> {
+        self.require_owner()?;
+        Self::check_len("name", &name, MAX_KEY, false)?;
+        self.presence.insert(name, Presence { seen_at: now_ms() })?;
+        Ok(())
+    }
+
     pub fn set_paused(&mut self, paused: bool) -> app::Result<()> {
         self.require_owner()?;
         let updated_at = match self.agent.get("main")? {
@@ -1965,10 +2103,12 @@ impl Hyperfeed {
             agent: 0,
             notifications: 0,
             needs_you: 0,
+            archived: 0,
         };
+        let now = now_ms();
         let mut apps: Vec<AppCount> = Vec::new();
         let mut rows: Vec<(FeedItem, bool, bool, Vec<String>)> = Vec::new();
-        for (_, items) in chains {
+        for (chain_id, items) in chains {
             // A conversation with your agent counts as agent activity.
             let has_action = items
                 .iter()
@@ -1996,6 +2136,17 @@ impl Hyperfeed {
             lead.chain_len = u32::try_from(items.len()).unwrap_or(u32::MAX);
             lead.chain_at = chain_at;
             lead.needs_you = needs;
+
+            // Put away: only the archived view shows it, and nothing counts it.
+            let archived = self.is_archived(&chain_id, chain_at, now)?;
+            counts.archived += u32::from(archived);
+            if archived != (filter == "archived") {
+                continue;
+            }
+            if archived {
+                rows.push((lead, has_action, has_notification, chain_apps));
+                continue;
+            }
 
             counts.all += 1;
             counts.agent += u32::from(has_action);
@@ -2123,11 +2274,21 @@ impl Hyperfeed {
                 enabled: self.guard_on(category)?,
             });
         }
+        let mut agents: Vec<AgentView> = self
+            .presence
+            .entries()?
+            .map(|(name, p)| AgentView {
+                name,
+                seen_at: p.seen_at,
+            })
+            .collect();
+        agents.sort_by(|a, b| b.seen_at.cmp(&a.seen_at).then_with(|| a.name.cmp(&b.name)));
         Ok(SettingsView {
             owner: self.owner.get().clone(),
             paused: self.is_paused()?,
             policies,
             guards,
+            agents,
         })
     }
 }
