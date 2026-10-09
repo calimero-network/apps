@@ -34,6 +34,26 @@
 //! [`Hyperfeed::complete_action`]; the warrant it signs then is the authority,
 //! and its intent hash is what the feed shows.
 //!
+//! ## Chains, and resolving things in place
+//!
+//! Every row belongs to a **chain**: the thread of things that happened
+//! because of one another. A mention arrives (a notification, its own chain);
+//! the agent answers it by pulling numbers into a sheet and preparing an NDA
+//! (actions recorded with that notification's id as their `chain`); you approve
+//! the NDA; the agent reports it signed. [`Hyperfeed::feed`] returns one row
+//! per chain, led by whatever in it needs you, and [`Hyperfeed::chain`] returns
+//! the whole flow. Every row keeps its full **history** of steps, so the flow
+//! shows each decision and outcome, not just where it ended.
+//!
+//! A row can carry an [`Ask`]: how it is best resolved. `reply` (a text, maybe a
+//! drafted one), `choose` (one of a few options) or `confirm` (one button). You
+//! answer in the feed ([`Hyperfeed::answer_notification`], or
+//! [`Hyperfeed::resolve_action`] with an answer); the agent, which already holds
+//! the authority to act in the source app, carries it out and reports back
+//! ([`Hyperfeed::complete_answer`], [`Hyperfeed::complete_action`]). The feed
+//! never needs write access to every app, and every answer leaves the same
+//! audit trail as an approval.
+//!
 //! ## What holds against a node that does not run this code
 //!
 //! A peer's node folds deltas without executing this contract, so the owner
@@ -64,6 +84,9 @@ const MAX_TITLE: usize = 200;
 const MAX_BODY: usize = 2_000;
 const MAX_WHY: usize = 1_000;
 const MAX_HASH: usize = 128;
+const MAX_OPTIONS: usize = 8;
+const MAX_OPTION: usize = 120;
+const MAX_HISTORY: usize = 64;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -119,6 +142,15 @@ pub const STATUS_RETRYING: &str = "retrying";
 pub const STATUS_UNDO_REQUESTED: &str = "undo_requested";
 pub const STATUS_UNDONE: &str = "undone";
 
+/// A notification's steps: it arrives, you answer, the agent delivers.
+pub const STATUS_RECEIVED: &str = "received";
+pub const STATUS_ANSWERED: &str = "answered";
+pub const STATUS_DELIVERED: &str = "delivered";
+
+/// How a row is best resolved. Empty: nothing beyond the defaults (approve or
+/// decline a proposal; open a notification).
+pub const ASK_KINDS: &[&str] = &["", "confirm", "reply", "choose"];
+
 pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
 
@@ -147,24 +179,78 @@ fn lww<T: BorshSerialize + Clone>(mine: &mut T, mine_at: u64, theirs: &T, theirs
 
 // ── Stored records ───────────────────────────────────────────────────────────
 
-/// The part of an action that changes after it is recorded.
+/// One step in a row's history: a status, who said what about it, and when.
 #[derive(
-    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
-pub struct ActionState {
+pub struct Step {
     pub status: String,
-    /// The agent's or your note on the latest change ("NDA signed", "undo
-    /// failed: the message was already read").
+    /// The note that came with it: the agent's ("NDA signed"), or your answer
+    /// (the reply you sent, the option you picked).
     pub note: String,
     pub at: u64,
 }
 
+impl Step {
+    fn sort_key(&self) -> (u64, &str, &str) {
+        (self.at, &self.status, &self.note)
+    }
+}
+
+/// Union two histories in one total order, so every replica keeps the same
+/// steps in the same order and the last one is the current status.
+fn merge_history(mine: &mut Vec<Step>, theirs: &[Step]) {
+    for step in theirs {
+        if !mine.contains(step) {
+            mine.push(step.clone());
+        }
+    }
+    mine.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+    if mine.len() > MAX_HISTORY {
+        // Keep the first step (how it started) and the most recent ones.
+        let excess = mine.len() - MAX_HISTORY;
+        mine.drain(1..=excess);
+    }
+}
+
+/// The current step: the last one. A history is never empty.
+fn current(history: &[Step]) -> &Step {
+    history
+        .last()
+        .expect("a history starts with its first step")
+}
+
+/// How a row is best resolved in place. See [`ASK_KINDS`].
+#[derive(
+    AbiType,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Ask {
+    /// `""`, `confirm`, `reply` or `choose`.
+    pub kind: String,
+    /// What the control says: "Reply in #launch", "Pick a slot", "Join the call".
+    pub prompt: String,
+    /// `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
+    pub options: Vec<String>,
+    /// `reply`: a draft to start from, e.g. the agent's proposed text.
+    pub draft: String,
+}
+
 /// One thing your agent did, or wants to do, on your behalf.
 ///
-/// Everything but `state` and `reviewed` is written once. `state` resolves
-/// last-writer-wins, and `reviewed` only ever turns on.
+/// Everything but `history` and `reviewed` is written once. `history` merges as
+/// a union of steps, and `reviewed` only ever turns on.
 #[app::mergeable(id = "hyperfeed::Action")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -187,18 +273,22 @@ pub struct Action {
     /// The relay account that executed the warrant, as the agent was told.
     pub executor: String,
     pub created_at: u64,
+    /// The chain this belongs to: the id of the row that started it.
+    pub chain: String,
+    pub ask: Ask,
     /// Why the rules say this needed you, when the agent acted anyway. Empty
     /// when it did not.
     pub breach: String,
     pub reviewed: bool,
-    pub state: ActionState,
+    pub reviewed_at: u64,
+    pub history: Vec<Step>,
 }
 
 impl Mergeable for Action {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        let at = self.state.at;
-        lww(&mut self.state, at, &other.state, other.state.at);
+        merge_history(&mut self.history, &other.history);
         self.reviewed |= other.reviewed;
+        self.reviewed_at = self.reviewed_at.max(other.reviewed_at);
         Ok(())
     }
 }
@@ -220,8 +310,13 @@ pub struct Notification {
     pub event: String,
     pub needs_you: bool,
     pub created_at: u64,
+    pub chain: String,
+    pub ask: Ask,
     pub seen: bool,
     pub seen_at: u64,
+    /// `received`, then `answered` (your answer as the note), then
+    /// `delivered` or `failed` (the agent's note).
+    pub history: Vec<Step>,
 }
 
 impl Mergeable for Notification {
@@ -229,6 +324,7 @@ impl Mergeable for Notification {
         // Seen on any device is seen.
         self.seen |= other.seen;
         self.seen_at = self.seen_at.max(other.seen_at);
+        merge_history(&mut self.history, &other.history);
         Ok(())
     }
 }
@@ -314,6 +410,13 @@ pub struct ActionInput {
     pub executor: String,
     /// What went wrong, for a `failed` outcome.
     pub note: String,
+    /// The chain this continues: the id of the row that led to it (a
+    /// notification, or an earlier action). Empty starts a chain of its own.
+    pub chain: String,
+    /// For a proposal: how you resolve it, beyond approve or decline. A
+    /// `choose` lets you approve with one of the options; a `reply` lets you
+    /// edit the agent's draft before it goes.
+    pub ask: Ask,
 }
 
 /// What your client saw for one notification.
@@ -331,6 +434,10 @@ pub struct NotificationInput {
     pub body: String,
     pub event: String,
     pub needs_you: bool,
+    /// Empty starts a chain of its own, which is usual for a notification.
+    pub chain: String,
+    /// How to answer it from the feed, if it can be.
+    pub ask: Ask,
 }
 
 /// The rules' answer for one prospective action.
@@ -349,6 +456,11 @@ pub struct Verdict {
 pub struct FeedItem {
     pub id: String,
     pub kind: String,
+    /// The chain it belongs to, how many rows the chain has, and when anything
+    /// in it last happened (what the feed is ordered and paged by).
+    pub chain: String,
+    pub chain_len: u32,
+    pub chain_at: u64,
     pub app: String,
     pub source_context: String,
     pub source_label: String,
@@ -356,10 +468,15 @@ pub struct FeedItem {
     pub body: String,
     pub at: u64,
     pub needs_you: bool,
-    // ── actions ──
+    /// The current status and its note: an action's (`pending` … `done`) or a
+    /// notification's (`received`, `answered`, `delivered`, `failed`).
     pub status: String,
     pub status_at: u64,
     pub note: String,
+    pub ask: Ask,
+    /// Every step, oldest first.
+    pub history: Vec<Step>,
+    // ── actions ──
     pub method: String,
     pub category: String,
     pub why: String,
@@ -367,6 +484,8 @@ pub struct FeedItem {
     pub executor: String,
     pub undoable: bool,
     pub breach: String,
+    /// When you kept an action the agent took without asking; 0 if not.
+    pub reviewed_at: u64,
     // ── notifications ──
     pub from: String,
     pub event: String,
@@ -444,6 +563,7 @@ pub enum Event<'a> {
     ActionRecorded { id: &'a str, status: &'a str },
     ActionChanged { id: &'a str, status: &'a str },
     NotificationRecorded { id: &'a str },
+    NotificationChanged { id: &'a str, status: &'a str },
     NotificationsSeen { count: u32 },
     SettingsChanged,
 }
@@ -600,14 +720,31 @@ impl Hyperfeed {
     }
 
     fn action_needs_you(a: &Action) -> bool {
-        matches!(a.state.status.as_str(), STATUS_PENDING | STATUS_FAILED)
-            || (!a.breach.is_empty() && !a.reviewed)
+        matches!(
+            current(&a.history).status.as_str(),
+            STATUS_PENDING | STATUS_FAILED
+        ) || (!a.breach.is_empty() && !a.reviewed)
+    }
+
+    /// An ask makes a notification need you until it is answered (or its
+    /// delivery failed); without one, a flagged notification needs you until
+    /// you have seen it.
+    fn notification_needs_you(n: &Notification) -> bool {
+        let status = current(&n.history).status.as_str();
+        if !n.ask.kind.is_empty() {
+            return matches!(status, STATUS_RECEIVED | STATUS_FAILED);
+        }
+        n.needs_you && !n.seen
     }
 
     fn action_item(a: &Action) -> FeedItem {
+        let now = current(&a.history);
         FeedItem {
             id: a.id.clone(),
             kind: KIND_ACTION.to_owned(),
+            chain: a.chain.clone(),
+            chain_len: 1,
+            chain_at: now.at,
             app: a.app.clone(),
             source_context: a.source_context.clone(),
             source_label: a.source_label.clone(),
@@ -615,9 +752,11 @@ impl Hyperfeed {
             body: a.body.clone(),
             at: a.created_at,
             needs_you: Self::action_needs_you(a),
-            status: a.state.status.clone(),
-            status_at: a.state.at,
-            note: a.state.note.clone(),
+            status: now.status.clone(),
+            status_at: now.at,
+            note: now.note.clone(),
+            ask: a.ask.clone(),
+            history: a.history.clone(),
             method: a.method.clone(),
             category: a.category.clone(),
             why: a.why.clone(),
@@ -629,6 +768,7 @@ impl Hyperfeed {
             } else {
                 a.breach.clone()
             },
+            reviewed_at: a.reviewed_at,
             from: String::new(),
             event: String::new(),
             seen: true,
@@ -636,19 +776,26 @@ impl Hyperfeed {
     }
 
     fn notification_item(n: &Notification) -> FeedItem {
+        let now = current(&n.history);
         FeedItem {
             id: n.id.clone(),
             kind: KIND_NOTIFICATION.to_owned(),
+            chain: n.chain.clone(),
+            chain_len: 1,
+            // Seeing a notification is not news: it does not move the chain.
+            chain_at: now.at,
             app: n.app.clone(),
             source_context: n.source_context.clone(),
             source_label: n.source_label.clone(),
             title: n.title.clone(),
             body: n.body.clone(),
             at: n.created_at,
-            needs_you: n.needs_you && !n.seen,
-            status: String::new(),
-            status_at: n.seen_at,
-            note: String::new(),
+            needs_you: Self::notification_needs_you(n),
+            status: now.status.clone(),
+            status_at: now.at,
+            note: now.note.clone(),
+            ask: n.ask.clone(),
+            history: n.history.clone(),
             method: String::new(),
             category: String::new(),
             why: String::new(),
@@ -656,10 +803,72 @@ impl Hyperfeed {
             executor: String::new(),
             undoable: false,
             breach: String::new(),
+            reviewed_at: 0,
             from: n.from.clone(),
             event: n.event.clone(),
             seen: n.seen,
         }
+    }
+
+    fn check_ask(ask: &Ask) -> app::Result<()> {
+        Self::check_one_of("ask.kind", &ask.kind, ASK_KINDS)?;
+        Self::check_len("ask.prompt", &ask.prompt, MAX_TITLE, false)?;
+        Self::check_len("ask.draft", &ask.draft, MAX_BODY, false)?;
+        if ask.options.len() > MAX_OPTIONS {
+            return Err(AppError::msg(format!(
+                "ask.options has {} options, limit is {MAX_OPTIONS}",
+                ask.options.len()
+            )));
+        }
+        for option in &ask.options {
+            Self::check_len("ask.options[]", option, MAX_OPTION, true)?;
+        }
+        match ask.kind.as_str() {
+            "" if !ask.options.is_empty() || !ask.draft.is_empty() || !ask.prompt.is_empty() => {
+                Err(AppError::msg(
+                    "an empty ask kind takes no prompt, options or draft",
+                ))
+            }
+            "choose" if ask.options.len() < 2 => {
+                Err(AppError::msg("a choose ask needs at least 2 options"))
+            }
+            "confirm" if !ask.options.is_empty() || !ask.draft.is_empty() => {
+                Err(AppError::msg("a confirm ask takes a prompt only"))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether `answer` resolves `ask`, and the note it is recorded with.
+    fn check_answer(ask: &Ask, answer: &str) -> app::Result<String> {
+        match ask.kind.as_str() {
+            "choose" if ask.options.iter().any(|o| o == answer) => Ok(answer.to_owned()),
+            "choose" => Err(AppError::msg(format!(
+                "answer must be one of {}",
+                ask.options.join(", ")
+            ))),
+            "reply" => {
+                Self::check_len("answer", answer, MAX_BODY, true)?;
+                Ok(answer.to_owned())
+            }
+            "confirm" | "" if answer.is_empty() => Ok(String::new()),
+            _ => Err(AppError::msg("this takes no answer")),
+        }
+    }
+
+    fn chain_of(chain: &str, id: &str) -> app::Result<String> {
+        Self::check_len("chain", chain, MAX_KEY, false)?;
+        Ok(if chain.is_empty() {
+            id.to_owned()
+        } else {
+            chain.to_owned()
+        })
+    }
+
+    /// The next step's time: now, but strictly after the last step, so a
+    /// history never ties with itself on a fast device.
+    fn next_at(history: &[Step]) -> u64 {
+        now_ms().max(current(history).at + 1)
     }
 
     /// Whether `key` at `now` is an event already recorded, or which id a new
@@ -678,7 +887,7 @@ impl Hyperfeed {
                 None => {
                     return Ok(match latest {
                         Some(prev) if now.saturating_sub(prev.created_at) <= DEDUPE_WINDOW_MS => {
-                            Occurrence::Seen(prev)
+                            Occurrence::Seen(Box::new(prev))
                         }
                         _ => Occurrence::New(id),
                     })
@@ -688,7 +897,7 @@ impl Hyperfeed {
         // A context that keeps coming back to one state: key by time instead.
         match latest {
             Some(prev) if now.saturating_sub(prev.created_at) <= DEDUPE_WINDOW_MS => {
-                Ok(Occurrence::Seen(prev))
+                Ok(Occurrence::Seen(Box::new(prev)))
             }
             _ => Ok(Occurrence::New(format!("{key}@{now}"))),
         }
@@ -701,23 +910,49 @@ impl Hyperfeed {
             .ok_or_else(|| AppError::msg(format!("no action {id}")))
     }
 
-    fn set_state(
+    fn push_step(
         &mut self,
         mut action: Action,
         status: &str,
         note: String,
     ) -> app::Result<FeedItem> {
-        // Strictly after the state it replaces, so last-writer-wins never
-        // drops a change made in the same millisecond on this device.
-        let at = now_ms().max(action.state.at + 1);
-        action.state = ActionState {
+        let at = Self::next_at(&action.history);
+        action.history.push(Step {
             status: status.to_owned(),
             note,
             at,
-        };
+        });
         let item = Self::action_item(&action);
         self.actions.insert(action.id.clone(), action)?;
         app::emit!(Event::ActionChanged {
+            id: &item.id,
+            status: &item.status,
+        });
+        Ok(item)
+    }
+
+    fn get_notification(&self, id: &str) -> app::Result<Notification> {
+        self.notifications
+            .get(id)?
+            .map(|n| n.clone())
+            .ok_or_else(|| AppError::msg(format!("no notification {id}")))
+    }
+
+    fn push_notification_step(
+        &mut self,
+        mut n: Notification,
+        status: &str,
+        note: String,
+    ) -> app::Result<FeedItem> {
+        let at = Self::next_at(&n.history);
+        n.history.push(Step {
+            status: status.to_owned(),
+            note,
+            at,
+        });
+        let item = Self::notification_item(&n);
+        self.notifications.insert(n.id.clone(), n)?;
+        app::emit!(Event::NotificationChanged {
             id: &item.id,
             status: &item.status,
         });
@@ -756,6 +991,12 @@ impl Hyperfeed {
         Self::check_len("intent_hash", &input.intent_hash, MAX_HASH, false)?;
         Self::check_len("executor", &input.executor, MAX_KEY, false)?;
         Self::check_len("note", &input.note, MAX_WHY, false)?;
+        Self::check_ask(&input.ask)?;
+        if !input.ask.kind.is_empty() && input.outcome != "proposed" {
+            return Err(AppError::msg(
+                "an ask belongs on a proposal; a done or failed action has nothing to answer",
+            ));
+        }
 
         let verdict = self.verdict(&input.app, &input.category, input.writes)?;
         let (status, breach) = match (input.outcome.as_str(), verdict.decision.as_str()) {
@@ -775,8 +1016,10 @@ impl Hyperfeed {
         };
 
         let now = now_ms();
+        let id = Self::fresh_id();
         let action = Action {
-            id: Self::fresh_id(),
+            chain: Self::chain_of(&input.chain, &id)?,
+            id,
             app: input.app,
             source_context: input.source_context,
             source_label: input.source_label,
@@ -790,13 +1033,15 @@ impl Hyperfeed {
             intent_hash: input.intent_hash,
             executor: input.executor,
             created_at: now,
+            ask: input.ask,
             breach,
             reviewed: false,
-            state: ActionState {
+            reviewed_at: 0,
+            history: vec![Step {
                 status: status.to_owned(),
                 note: input.note,
                 at: now,
-            },
+            }],
         };
         let item = Self::action_item(&action);
         self.actions.insert(action.id.clone(), action)?;
@@ -819,7 +1064,7 @@ impl Hyperfeed {
         Self::check_one_of("outcome", &outcome, &["done", "failed"])?;
         Self::check_len("note", &note, MAX_WHY, false)?;
         let action = self.get_action(&id)?;
-        let status = match (action.state.status.as_str(), outcome.as_str()) {
+        let status = match (current(&action.history).status.as_str(), outcome.as_str()) {
             (STATUS_APPROVED | STATUS_RETRYING, "done") => STATUS_DONE,
             (STATUS_APPROVED | STATUS_RETRYING, _) => STATUS_FAILED,
             (STATUS_UNDO_REQUESTED, "done") => STATUS_UNDONE,
@@ -831,24 +1076,63 @@ impl Hyperfeed {
                 )))
             }
         };
-        self.set_state(action, status, note)
+        self.push_step(action, status, note)
+    }
+
+    /// The agent reports whether it carried out your answer to a notification:
+    /// sent the reply, cast the vote, accepted the invite.
+    pub fn complete_answer(
+        &mut self,
+        id: String,
+        outcome: String,
+        note: String,
+    ) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_one_of("outcome", &outcome, &["delivered", "failed"])?;
+        Self::check_len("note", &note, MAX_WHY, false)?;
+        let n = self.get_notification(&id)?;
+        let status = current(&n.history).status.clone();
+        if status != STATUS_ANSWERED {
+            return Err(AppError::msg(format!(
+                "notification {id} is {status}; nothing is waiting on the agent"
+            )));
+        }
+        let next = if outcome == "delivered" {
+            STATUS_DELIVERED
+        } else {
+            STATUS_FAILED
+        };
+        self.push_notification_step(n, next, note)
     }
 
     // ── your side ────────────────────────────────────────────────────────────
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an
     /// undo, or keep an action the agent took without asking.
-    pub fn resolve_action(&mut self, id: String, decision: String) -> app::Result<FeedItem> {
+    ///
+    /// `answer` goes with an approval when the proposal has an [`Ask`]: one of
+    /// its options for `choose`, the text to send for `reply` (the agent's
+    /// draft, edited or not). Every other decision takes `""`.
+    pub fn resolve_action(
+        &mut self,
+        id: String,
+        decision: String,
+        answer: String,
+    ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_one_of("decision", &decision, DECISIONS)?;
         let mut action = self.get_action(&id)?;
-        let current = action.state.status.clone();
+        let status_now = current(&action.history).status.clone();
 
         if decision == "keep" {
             if action.breach.is_empty() || action.reviewed {
                 return Err(AppError::msg(format!("action {id} has nothing to keep")));
             }
+            if !answer.is_empty() {
+                return Err(AppError::msg("keep takes no answer"));
+            }
             action.reviewed = true;
+            action.reviewed_at = Self::next_at(&action.history);
             let item = Self::action_item(&action);
             self.actions.insert(action.id.clone(), action)?;
             app::emit!(Event::ActionChanged {
@@ -858,7 +1142,14 @@ impl Hyperfeed {
             return Ok(item);
         }
 
-        let status = match (current.as_str(), decision.as_str()) {
+        let note = match (status_now.as_str(), decision.as_str()) {
+            (STATUS_PENDING, "approve") => Self::check_answer(&action.ask, &answer)?,
+            _ if !answer.is_empty() => {
+                return Err(AppError::msg(format!("{decision} takes no answer")))
+            }
+            _ => String::new(),
+        };
+        let status = match (status_now.as_str(), decision.as_str()) {
             (STATUS_PENDING, "approve") => STATUS_APPROVED,
             (STATUS_FAILED, "approve") => STATUS_RETRYING,
             (STATUS_PENDING | STATUS_FAILED, "decline") => STATUS_DECLINED,
@@ -868,13 +1159,43 @@ impl Hyperfeed {
             }
             _ => {
                 return Err(AppError::msg(format!(
-                    "cannot {decision} an action that is {current}"
+                    "cannot {decision} an action that is {status_now}"
                 )))
             }
         };
         // Deciding on an action is reviewing it.
+        if !action.reviewed && !action.breach.is_empty() {
+            action.reviewed_at = Self::next_at(&action.history);
+        }
         action.reviewed = true;
-        self.set_state(action, status, String::new())
+        self.push_step(action, status, note)
+    }
+
+    /// Answer a notification from the feed: the reply to send, the option you
+    /// picked, or `""` to confirm. Your agent carries it out in the source app
+    /// and reports with [`Hyperfeed::complete_answer`]. A failed delivery can be
+    /// answered again.
+    pub fn answer_notification(&mut self, id: String, answer: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        let mut n = self.get_notification(&id)?;
+        if n.ask.kind.is_empty() {
+            return Err(AppError::msg(format!(
+                "notification {id} has nothing to answer; open it in its app"
+            )));
+        }
+        let status = current(&n.history).status.clone();
+        if !matches!(status.as_str(), STATUS_RECEIVED | STATUS_FAILED) {
+            return Err(AppError::msg(format!(
+                "notification {id} is already {status}"
+            )));
+        }
+        let note = Self::check_answer(&n.ask, &answer)?;
+        // Answering it is reading it.
+        if !n.seen {
+            n.seen = true;
+            n.seen_at = now_ms();
+        }
+        self.push_notification_step(n, STATUS_ANSWERED, note)
     }
 
     /// Record a notification your client saw.
@@ -895,6 +1216,7 @@ impl Hyperfeed {
         Self::check_len("title", &input.title, MAX_TITLE, true)?;
         Self::check_len("body", &input.body, MAX_BODY, false)?;
         Self::check_len("event", &input.event, MAX_SHORT, false)?;
+        Self::check_ask(&input.ask)?;
 
         let now = now_ms();
         let id = match self.occurrence_of(&input.key, now)? {
@@ -902,6 +1224,7 @@ impl Hyperfeed {
             Occurrence::New(id) => id,
         };
         let n = Notification {
+            chain: Self::chain_of(&input.chain, &id)?,
             id,
             app: input.app,
             source_context: input.source_context,
@@ -912,8 +1235,14 @@ impl Hyperfeed {
             event: input.event,
             needs_you: input.needs_you,
             created_at: now,
+            ask: input.ask,
             seen: false,
             seen_at: 0,
+            history: vec![Step {
+                status: STATUS_RECEIVED.to_owned(),
+                note: String::new(),
+                at: now,
+            }],
         };
         let item = Self::notification_item(&n);
         self.notifications.insert(n.id.clone(), n)?;
@@ -1020,9 +1349,42 @@ impl Hyperfeed {
 
     // ── reads ────────────────────────────────────────────────────────────────
 
-    /// The feed, newest first. `filter` is `all`, `agent`, `notifications` or
-    /// `needs_you`; `app_key` narrows to one app when not empty; `before` pages by
-    /// time (0 = from the newest).
+    /// Every row, muted apps' notifications excluded unless `include_muted`.
+    fn all_items(&self, include_muted: bool) -> app::Result<Vec<FeedItem>> {
+        let muted: Vec<String> = if include_muted {
+            Vec::new()
+        } else {
+            self.policies
+                .entries()?
+                .filter(|(_, p)| p.notifications == "mute")
+                .map(|(k, _)| k)
+                .collect()
+        };
+        let mut all: Vec<FeedItem> = self
+            .actions
+            .entries()?
+            .map(|(_, a)| Self::action_item(&a))
+            .collect();
+        all.extend(
+            self.notifications
+                .entries()?
+                .filter(|(_, n)| !muted.contains(&n.app))
+                .map(|(_, n)| Self::notification_item(&n)),
+        );
+        Ok(all)
+    }
+
+    /// The feed: one row per chain, newest activity first.
+    ///
+    /// A row is the chain's **lead**: the latest step that needs you if any
+    /// does, otherwise the latest row. Its `chain_len` says how many rows the
+    /// chain holds and `needs_you` whether any of them needs you; read them all
+    /// with [`Hyperfeed::chain`].
+    ///
+    /// `filter` keeps chains holding an action (`agent`), a notification
+    /// (`notifications`), or something that needs you (`needs_you`); `app_key`
+    /// keeps chains that touch that app; `before` pages by `chain_at` (0 = from
+    /// the newest). The counts are over chains, for the whole feed.
     pub fn feed(
         &self,
         filter: String,
@@ -1036,24 +1398,13 @@ impl Hyperfeed {
             n => n.min(MAX_PAGE),
         } as usize;
 
-        let muted: Vec<String> = self
-            .policies
-            .entries()?
-            .filter(|(_, p)| p.notifications == "mute")
-            .map(|(k, _)| k)
-            .collect();
-
-        let mut all: Vec<FeedItem> = self
-            .actions
-            .entries()?
-            .map(|(_, a)| Self::action_item(&a))
-            .collect();
-        all.extend(
-            self.notifications
-                .entries()?
-                .filter(|(_, n)| !muted.contains(&n.app))
-                .map(|(_, n)| Self::notification_item(&n)),
-        );
+        let mut chains: Vec<(String, Vec<FeedItem>)> = Vec::new();
+        for item in self.all_items(false)? {
+            match chains.iter_mut().find(|(c, _)| *c == item.chain) {
+                Some((_, items)) => items.push(item),
+                None => chains.push((item.chain.clone(), vec![item])),
+            }
+        }
 
         let mut counts = FeedCounts {
             all: 0,
@@ -1062,42 +1413,70 @@ impl Hyperfeed {
             needs_you: 0,
         };
         let mut apps: Vec<AppCount> = Vec::new();
-        for item in &all {
+        let mut rows: Vec<(FeedItem, bool, bool, Vec<String>)> = Vec::new();
+        for (_, items) in chains {
+            let has_action = items.iter().any(|i| i.kind == KIND_ACTION);
+            let has_notification = items.iter().any(|i| i.kind == KIND_NOTIFICATION);
+            let needs = items.iter().any(|i| i.needs_you);
+            let chain_at = items.iter().map(|i| i.chain_at).max().unwrap_or(0);
+            let mut chain_apps: Vec<String> = items.iter().map(|i| i.app.clone()).collect();
+            chain_apps.sort();
+            chain_apps.dedup();
+
+            let by_time =
+                |a: &&FeedItem, b: &&FeedItem| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id));
+            let lead = items
+                .iter()
+                .filter(|i| i.needs_you)
+                .max_by(by_time)
+                .or_else(|| items.iter().max_by(by_time))
+                .expect("a chain has at least one row");
+            let mut lead = lead.clone();
+            lead.chain_len = u32::try_from(items.len()).unwrap_or(u32::MAX);
+            lead.chain_at = chain_at;
+            lead.needs_you = needs;
+
             counts.all += 1;
-            if item.kind == KIND_ACTION {
-                counts.agent += 1;
-            } else {
-                counts.notifications += 1;
+            counts.agent += u32::from(has_action);
+            counts.notifications += u32::from(has_notification);
+            counts.needs_you += u32::from(needs);
+            for app in &chain_apps {
+                match apps.iter_mut().find(|a| a.app == *app) {
+                    Some(a) => a.count += 1,
+                    None => apps.push(AppCount {
+                        app: app.clone(),
+                        count: 1,
+                    }),
+                }
             }
-            if item.needs_you {
-                counts.needs_you += 1;
-            }
-            match apps.iter_mut().find(|a| a.app == item.app) {
-                Some(a) => a.count += 1,
-                None => apps.push(AppCount {
-                    app: item.app.clone(),
-                    count: 1,
-                }),
-            }
+            rows.push((lead, has_action, has_notification, chain_apps));
         }
         apps.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.app.cmp(&b.app)));
 
-        let mut items: Vec<FeedItem> = all
+        let mut items: Vec<FeedItem> = rows
             .into_iter()
-            .filter(|i| match filter.as_str() {
-                "agent" => i.kind == KIND_ACTION,
-                "notifications" => i.kind == KIND_NOTIFICATION,
-                "needs_you" => i.needs_you,
-                _ => true,
-            })
-            .filter(|i| app_key.is_empty() || i.app == app_key)
-            .filter(|i| before == 0 || i.at < before)
+            .filter(
+                |(lead, has_action, has_notification, _)| match filter.as_str() {
+                    "agent" => *has_action,
+                    "notifications" => *has_notification,
+                    "needs_you" => lead.needs_you,
+                    _ => true,
+                },
+            )
+            .filter(|(_, _, _, chain_apps)| app_key.is_empty() || chain_apps.contains(&app_key))
+            .map(|(lead, ..)| lead)
+            .filter(|lead| before == 0 || lead.chain_at < before)
             .collect();
-        // Newest first; the id breaks ties so every device pages identically.
-        items.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| b.id.cmp(&a.id)));
+        // Newest activity first; the chain id breaks ties so every device
+        // pages identically.
+        items.sort_by(|a, b| {
+            b.chain_at
+                .cmp(&a.chain_at)
+                .then_with(|| b.chain.cmp(&a.chain))
+        });
 
         let next_before = if items.len() > limit {
-            items[limit - 1].at
+            items[limit - 1].chain_at
         } else {
             0
         };
@@ -1109,6 +1488,24 @@ impl Hyperfeed {
             apps,
             next_before,
         })
+    }
+
+    /// Every row in a chain, oldest first: the whole flow, muted apps included.
+    pub fn chain(&self, chain: String) -> app::Result<Vec<FeedItem>> {
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        let mut items: Vec<FeedItem> = self
+            .all_items(true)?
+            .into_iter()
+            .filter(|i| i.chain == chain)
+            .collect();
+        items.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
+        let len = u32::try_from(items.len()).unwrap_or(u32::MAX);
+        let chain_at = items.iter().map(|i| i.chain_at).max().unwrap_or(0);
+        for item in &mut items {
+            item.chain_len = len;
+            item.chain_at = chain_at;
+        }
+        Ok(items)
     }
 
     /// One row, by id, whichever kind it is.
@@ -1154,7 +1551,7 @@ impl Hyperfeed {
 /// What [`Hyperfeed::occurrence_of`] found for a notification key.
 enum Occurrence {
     /// Already recorded inside the window: another device's report of it.
-    Seen(Notification),
+    Seen(Box<Notification>),
     /// A new event, to be stored under this id.
     New(String),
 }

@@ -3,7 +3,7 @@
   "types": {
     "Action": {
       "kind": "record",
-      "doc": "One thing your agent did, or wants to do, on your behalf.\n\nEverything but `state` and `reviewed` is written once. `state` resolves\nlast-writer-wins, and `reviewed` only ever turns on.",
+      "doc": "One thing your agent did, or wants to do, on your behalf.\n\nEverything but `history` and `reviewed` is written once. `history` merges as\na union of steps, and `reviewed` only ever turns on.",
       "fields": [
         {
           "name": "id",
@@ -92,6 +92,19 @@
           }
         },
         {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain this belongs to: the id of the row that started it."
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        },
+        {
           "name": "breach",
           "type": {
             "kind": "string"
@@ -105,34 +118,18 @@
           }
         },
         {
-          "name": "state",
-          "type": {
-            "$ref": "ActionState"
-          }
-        }
-      ]
-    },
-    "ActionState": {
-      "kind": "record",
-      "doc": "The part of an action that changes after it is recorded.",
-      "fields": [
-        {
-          "name": "status",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "note",
-          "type": {
-            "kind": "string"
-          },
-          "doc": "The agent's or your note on the latest change (\"NDA signed\", \"undo\nfailed: the message was already read\")."
-        },
-        {
-          "name": "at",
+          "name": "reviewed_at",
           "type": {
             "kind": "u64"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
           }
         }
       ]
@@ -152,6 +149,43 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "Ask": {
+      "kind": "record",
+      "doc": "How a row is best resolved in place. See [`ASK_KINDS`].",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`\"\"`, `confirm`, `reply` or `choose`."
+        },
+        {
+          "name": "prompt",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the control says: \"Reply in #launch\", \"Pick a slot\", \"Join the call\"."
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "`choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8)."
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`reply`: a draft to start from, e.g. the agent's proposed text."
         }
       ]
     },
@@ -327,6 +361,18 @@
           }
         },
         {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        },
+        {
           "name": "seen",
           "type": {
             "kind": "bool"
@@ -337,6 +383,16 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
+          },
+          "doc": "`received`, then `answered` (your answer as the note), then\n`delivered` or `failed` (the agent's note)."
         }
       ]
     },
@@ -364,6 +420,31 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Step": {
+      "kind": "record",
+      "doc": "One step in a row's history: a status, who said what about it, and when.",
+      "fields": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The note that came with it: the agent's (\"NDA signed\"), or your answer\n(the reply you sent, the option you picked)."
+        },
+        {
+          "name": "at",
           "type": {
             "kind": "u64"
           }

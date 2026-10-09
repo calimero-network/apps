@@ -9,8 +9,8 @@ import type {
 /**
  * One thing your agent did, or wants to do, on your behalf.
  *
- * Everything but `state` and `reviewed` is written once. `state` resolves
- * last-writer-wins, and `reviewed` only ever turns on.
+ * Everything but `history` and `reviewed` is written once. `history` merges as
+ * a union of steps, and `reviewed` only ever turns on.
  */
 export interface Action {
   id: string;
@@ -35,12 +35,18 @@ export interface Action {
   executor: string;
   created_at: number;
   /**
+   * The chain this belongs to: the id of the row that started it.
+   */
+  chain: string;
+  ask: Ask;
+  /**
    * Why the rules say this needed you, when the agent acted anyway. Empty
    * when it did not.
    */
   breach: string;
   reviewed: boolean;
-  state: ActionState;
+  reviewed_at: number;
+  history: Step[];
 }
 
 /**
@@ -73,19 +79,17 @@ export interface ActionInput {
    * What went wrong, for a `failed` outcome.
    */
   note: string;
-}
-
-/**
- * The part of an action that changes after it is recorded.
- */
-export interface ActionState {
-  status: string;
   /**
-   * The agent's or your note on the latest change ("NDA signed", "undo
-   * failed: the message was already read").
+   * The chain this continues: the id of the row that led to it (a
+   * notification, or an earlier action). Empty starts a chain of its own.
    */
-  note: string;
-  at: number;
+  chain: string;
+  /**
+   * For a proposal: how you resolve it, beyond approve or decline. A
+   * `choose` lets you approve with one of the options; a `reply` lets you
+   * edit the agent's draft before it goes.
+   */
+  ask: Ask;
 }
 
 /**
@@ -101,12 +105,39 @@ export interface AppCount {
   count: number;
 }
 
+/**
+ * How a row is best resolved in place. See [`ASK_KINDS`].
+ */
+export interface Ask {
+  /**
+   * `""`, `confirm`, `reply` or `choose`.
+   */
+  kind: string;
+  /**
+   * What the control says: "Reply in #launch", "Pick a slot", "Join the call".
+   */
+  prompt: string;
+  /**
+   * `choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8).
+   */
+  options: string[];
+  /**
+   * `reply`: a draft to start from, e.g. the agent's proposed text.
+   */
+  draft: string;
+}
+
 export interface Event_ActionChanged {
   id: string;
   status: string;
 }
 
 export interface Event_ActionRecorded {
+  id: string;
+  status: string;
+}
+
+export interface Event_NotificationChanged {
   id: string;
   status: string;
 }
@@ -133,6 +164,13 @@ export interface FeedCounts {
 export interface FeedItem {
   id: string;
   kind: string;
+  /**
+   * The chain it belongs to, how many rows the chain has, and when anything
+   * in it last happened (what the feed is ordered and paged by).
+   */
+  chain: string;
+  chain_len: number;
+  chain_at: number;
   app: string;
   source_context: string;
   source_label: string;
@@ -140,9 +178,18 @@ export interface FeedItem {
   body: string;
   at: number;
   needs_you: boolean;
+  /**
+   * The current status and its note: an action's (`pending` … `done`) or a
+   * notification's (`received`, `answered`, `delivered`, `failed`).
+   */
   status: string;
   status_at: number;
   note: string;
+  ask: Ask;
+  /**
+   * Every step, oldest first.
+   */
+  history: Step[];
   method: string;
   category: string;
   why: string;
@@ -150,6 +197,10 @@ export interface FeedItem {
   executor: string;
   undoable: boolean;
   breach: string;
+  /**
+   * When you kept an action the agent took without asking; 0 if not.
+   */
+  reviewed_at: number;
   from: string;
   event: string;
   seen: boolean;
@@ -212,8 +263,15 @@ export interface Notification {
   event: string;
   needs_you: boolean;
   created_at: number;
+  chain: string;
+  ask: Ask;
   seen: boolean;
   seen_at: number;
+  /**
+   * `received`, then `answered` (your answer as the note), then
+   * `delivered` or `failed` (the agent's note).
+   */
+  history: Step[];
 }
 
 /**
@@ -233,6 +291,14 @@ export interface NotificationInput {
   body: string;
   event: string;
   needs_you: boolean;
+  /**
+   * Empty starts a chain of its own, which is usual for a notification.
+   */
+  chain: string;
+  /**
+   * How to answer it from the feed, if it can be.
+   */
+  ask: Ask;
 }
 
 /**
@@ -259,6 +325,19 @@ export interface SettingsView {
 }
 
 /**
+ * One step in a row's history: a status, who said what about it, and when.
+ */
+export interface Step {
+  status: string;
+  /**
+   * The note that came with it: the agent's ("NDA signed"), or your answer
+   * (the reply you sent, the option you picked).
+   */
+  note: string;
+  at: number;
+}
+
+/**
  * The rules' answer for one prospective action.
  */
 export interface Verdict {
@@ -274,9 +353,11 @@ export interface Verdict {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | { name: "NotificationChanged"; payload: Event_NotificationChanged }
   | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
   | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
   | { name: "SettingsChanged" }
@@ -294,6 +375,33 @@ export class HyperfeedClient {
   constructor(client: ExecuteTransport | { readonly rpc: ExecuteTransport }, contextId: string) {
     this._transport = 'execute' in client ? client : client.rpc;
     this._contextId = contextId;
+  }
+
+  /**
+   * answer_notification
+   *
+   * Answer a notification from the feed: the reply to send, the option you
+   * picked, or `""` to confirm. Your agent carries it out in the source app
+   * and reports with [`Hyperfeed::complete_answer`]. A failed delivery can be
+   * answered again.
+   *
+   * @intent mutating
+   */
+  public async answerNotification(params: { id: string; answer: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'answer_notification', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * chain
+   *
+   * Every row in a chain, oldest first: the whole flow, muted apps included.
+   *
+   * @intent read_only
+   */
+  public async chain(params: { chain: string }): Promise<FeedItem[]> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'chain', argsJson: params });
+    return response as FeedItem[];
   }
 
   /**
@@ -322,11 +430,32 @@ export class HyperfeedClient {
   }
 
   /**
+   * complete_answer
+   *
+   * The agent reports whether it carried out your answer to a notification:
+   * sent the reply, cast the vote, accepted the invite.
+   *
+   * @intent mutating
+   */
+  public async completeAnswer(params: { id: string; outcome: string; note: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'complete_answer', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
    * feed
    *
-   * The feed, newest first. `filter` is `all`, `agent`, `notifications` or
-   * `needs_you`; `app_key` narrows to one app when not empty; `before` pages by
-   * time (0 = from the newest).
+   * The feed: one row per chain, newest activity first.
+   *
+   * A row is the chain's **lead**: the latest step that needs you if any
+   * does, otherwise the latest row. Its `chain_len` says how many rows the
+   * chain holds and `needs_you` whether any of them needs you; read them all
+   * with [`Hyperfeed::chain`].
+   *
+   * `filter` keeps chains holding an action (`agent`), a notification
+   * (`notifications`), or something that needs you (`needs_you`); `app_key`
+   * keeps chains that touch that app; `before` pages by `chain_at` (0 = from
+   * the newest). The counts are over chains, for the whole feed.
    *
    * @intent read_only
    */
@@ -423,9 +552,13 @@ export class HyperfeedClient {
    * Approve or decline a proposal, retry or drop a failure, ask for an
    * undo, or keep an action the agent took without asking.
    *
+   * `answer` goes with an approval when the proposal has an [`Ask`]: one of
+   * its options for `choose`, the text to send for `reply` (the agent's
+   * draft, edited or not). Every other decision takes `""`.
+   *
    * @intent mutating
    */
-  public async resolveAction(params: { id: string; decision: string }): Promise<FeedItem> {
+  public async resolveAction(params: { id: string; decision: string; answer: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'resolve_action', argsJson: params });
     return response as FeedItem;
   }

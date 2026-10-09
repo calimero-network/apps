@@ -1,4 +1,4 @@
-import type { NotificationInput } from "./generated/HyperfeedClient";
+import type { Ask, NotificationInput } from "./generated/HyperfeedClient";
 
 /**
  * Turning another app's live events into Hyperfeed notifications.
@@ -42,17 +42,27 @@ interface Reading {
   body: string;
   from: string;
   needsYou: boolean;
+  ask: Ask;
 }
+
+const NO_ASK: Ask = { kind: "", prompt: "", options: [], draft: "" };
 
 /** Events that are bookkeeping, not news: a read marker, presence, a reaction. */
 const QUIET = new Set(["Read", "Seen", "Heartbeat", "Presence", "ProfileSet", "ReactionUpdated", "Reacted"]);
 
 const KNOWN: Record<string, (payload: Record<string, unknown>) => Partial<Reading>> = {
+  // A message can be answered from the feed; your agent posts the reply.
   MessageSent: (p) => ({
     title: p.channel ? `New message in ${String(p.channel)}` : "New message",
     body: text(p.text ?? p.message ?? p.content),
     from: text(p.sender ?? p.author),
     needsYou: Boolean(p.mentions_me ?? p.mentioned),
+    ask: {
+      kind: "reply",
+      prompt: p.channel ? `Reply in ${String(p.channel)}`.slice(0, 200) : "Reply",
+      options: [],
+      draft: "",
+    },
   }),
   MessageSentThread: (p) => ({ title: "New reply in a thread", body: text(p.text) }),
   UpdatePublished: () => ({ title: "Published an update" }),
@@ -123,6 +133,9 @@ export function toNotifications(
       body: (reading.body ?? "").slice(0, 2000),
       event: kind.slice(0, 120),
       needs_you: reading.needsYou ?? false,
+      // Every notification starts a chain of its own; the agent continues it.
+      chain: "",
+      ask: reading.ask ?? NO_ASK,
     });
   });
   return out;

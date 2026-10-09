@@ -152,6 +152,8 @@ steps:
         intent_hash: "a91f3c07"
         executor: "relay-account"
         note: ""
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
     outputs:
       standup_id: result.output.id
       standup: result
@@ -183,6 +185,8 @@ steps:
         intent_hash: ""
         executor: ""
         note: ""
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
     outputs:
       nda_id: result.output.id
       nda: result
@@ -211,6 +215,8 @@ steps:
         body: "Can your agent pull the numbers?"
         event: "MessageSent"
         needs_you: true
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
 
   - name: The client records a poll that closes soon
     type: call
@@ -229,6 +235,8 @@ steps:
         body: ""
         event: "PollClosingSoon"
         needs_you: false
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
 
   - name: Owner reads what needs them
     type: call
@@ -253,7 +261,7 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: resolve_action
-    args: { id: "{{nda_id}}", decision: "approve" }
+    args: { id: "{{nda_id}}", decision: "approve", answer: "" }
 
   - name: The agent reports the signature done
     type: call
@@ -269,7 +277,7 @@ steps:
     context_id: "{{context_id}}"
     executor_public_key: "{{owner_key}}"
     method: resolve_action
-    args: { id: "{{standup_id}}", decision: "undo" }
+    args: { id: "{{standup_id}}", decision: "undo", answer: "" }
 
   - name: Owner reads the stand-up
     type: call
@@ -318,6 +326,110 @@ steps:
     method: set_paused
     args: { paused: true }
 
+  # ─── chains and answers ───────────────────────────────────────────────────
+
+  - name: The client records a mention you can reply to
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_notification
+    args:
+      input:
+        key: "ctx-launch:r1>r2:0"
+        app: "chat"
+        source_context: "ctx-launch"
+        source_label: "#launch"
+        from: "Maya"
+        title: "Mentioned you"
+        body: "Can your agent pull the numbers?"
+        event: "MessageSent"
+        needs_you: true
+        chain: ""
+        ask: { kind: "reply", prompt: "Reply in #launch", options: ["On it", "After 2pm"], draft: "" }
+    outputs:
+      mention_id: result.output.id
+
+  - name: The agent continues that chain with a proposal that offers a choice
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: record_action
+    args:
+      input:
+        app: "calendar"
+        source_context: "ctx-cal"
+        source_label: "Design team"
+        method: "create_event"
+        category: ""
+        writes: true
+        undoable: true
+        title: "Book a slot to go through the numbers with Maya"
+        body: ""
+        why: "Maya asked for the numbers before 2."
+        outcome: "proposed"
+        intent_hash: ""
+        executor: ""
+        note: ""
+        chain: "{{mention_id}}"
+        ask: { kind: "choose", prompt: "Pick a slot", options: ["Thu 15:00", "Fri 10:00"], draft: "" }
+    outputs:
+      slot_id: result.output.id
+
+  - name: Owner reads the feed as chains
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: chain
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      # `json_subset` compares lists whole, so each step of the flow is pulled
+      # out and checked on its own.
+      flow_first: result.output.0
+      flow_second: result.output.1
+
+  - name: Assert the mention and the proposal are one flow, oldest first
+    type: json_assert
+    statements:
+      - 'json_subset({{flow_first}}, {"kind": "notification", "chain_len": 2, "status": "received"})'
+      - 'json_subset({{flow_second}}, {"kind": "action", "chain_len": 2, "status": "pending"})'
+
+  - name: Owner picks a slot
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: resolve_action
+    args: { id: "{{slot_id}}", decision: "approve", answer: "Fri 10:00" }
+    outputs:
+      slot_after: result
+
+  - name: Owner replies to Maya from the feed
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: answer_notification
+    args: { id: "{{mention_id}}", answer: "Numbers are in the deck, slide 4." }
+
+  - name: The agent reports the reply delivered
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: complete_answer
+    args: { id: "{{mention_id}}", outcome: "delivered", note: "Sent in #launch" }
+    outputs:
+      mention_after: result
+
+  - name: Assert the slot carries your pick and the reply was delivered
+    type: json_assert
+    statements:
+      - 'json_subset({{slot_after}}, {"output": {"status": "approved", "note": "Fri 10:00"}})'
+      - 'json_subset({{mention_after}}, {"output": {"status": "delivered", "needs_you": false}})'
+
   # ─── the second node ──────────────────────────────────────────────────────
 
   - name: Wait for the feed to converge
@@ -350,11 +462,12 @@ steps:
     outputs:
       settings_2: result
 
-  # Vote is muted, so three rows; nothing needs the owner any more.
+  # Vote is muted, so four chains: the stand-up, the NDA, the first mention,
+  # and the mention with its slot proposal. Nothing needs the owner any more.
   - name: Assert node-2 sees the owner's feed and rules
     type: json_assert
     statements:
-      - 'json_subset({{feed_2}}, {"output": {"counts": {"all": 3, "needs_you": 0}}})'
+      - 'json_subset({{feed_2}}, {"output": {"counts": {"all": 4, "needs_you": 0}}})'
       - 'json_subset({{settings_2}}, {"output": {"paused": true}})'
 
   - name: node-2 tries to record an action in someone else's feed
@@ -379,6 +492,8 @@ steps:
         intent_hash: ""
         executor: ""
         note: ""
+        chain: ""
+        ask: { kind: "", prompt: "", options: [], draft: "" }
     expected_failure: true
     outputs:
       forged_error: error

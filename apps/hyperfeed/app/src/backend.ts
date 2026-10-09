@@ -25,7 +25,12 @@ export interface FeedBackend {
   readonly kind: "node" | "demo";
   feed(filter: Filter, appKey: string): Promise<FeedPage>;
   settings(): Promise<SettingsView>;
-  resolveAction(id: string, decision: Decision): Promise<FeedItem>;
+  /** `answer`: the option picked or the text to send, for a proposal with an ask. */
+  resolveAction(id: string, decision: Decision, answer?: string): Promise<FeedItem>;
+  /** Answer a notification in place: the reply, the option, or "" to confirm. */
+  answerNotification(id: string, answer: string): Promise<FeedItem>;
+  /** Every row in a chain, oldest first. */
+  chain(chain: string): Promise<FeedItem[]>;
   markSeen(ids: string[]): Promise<number>;
   markAllSeen(): Promise<number>;
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
@@ -43,7 +48,9 @@ export function nodeBackend(client: HyperfeedClient): FeedBackend {
     kind: "node",
     feed: (filter, appKey) => client.feed({ filter, app_key: appKey, limit: PAGE_SIZE, before: 0 }),
     settings: () => client.settings(),
-    resolveAction: (id, decision) => client.resolveAction({ id, decision }),
+    resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
+    answerNotification: (id, answer) => client.answerNotification({ id, answer }),
+    chain: (chain) => client.chain({ chain }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
     setPolicy: (appKey, agent, notifications) =>

@@ -23,6 +23,8 @@ fn action(app: &str, outcome: &str) -> ActionInput {
         intent_hash: "a91f3c07".to_owned(),
         executor: "relay-account".to_owned(),
         note: String::new(),
+        chain: String::new(),
+        ask: Ask::default(),
     }
 }
 
@@ -37,6 +39,8 @@ fn notification(key: &str, app: &str, needs_you: bool) -> NotificationInput {
         body: "Can your agent pull the numbers?".to_owned(),
         event: "MessageSent".to_owned(),
         needs_you,
+        chain: String::new(),
+        ask: Ask::default(),
     }
 }
 
@@ -111,7 +115,7 @@ fn acting_without_asking_is_recorded_as_a_breach_until_kept() {
     assert_eq!(feed(&app, "needs_you").items.len(), 1);
 
     let kept = app
-        .call(|s| s.resolve_action(item.id.clone(), "keep".to_owned()))
+        .call(|s| s.resolve_action(item.id.clone(), "keep".to_owned(), String::new()))
         .unwrap();
     assert!(kept.breach.is_empty());
     assert!(!kept.needs_you);
@@ -183,7 +187,7 @@ fn approve_then_the_agent_completes() {
         .is_err());
 
     let approved = app
-        .call(|s| s.resolve_action(item.id.clone(), "approve".to_owned()))
+        .call(|s| s.resolve_action(item.id.clone(), "approve".to_owned(), String::new()))
         .unwrap();
     assert_eq!(approved.status, STATUS_APPROVED);
     assert!(!approved.needs_you);
@@ -205,7 +209,7 @@ fn a_failure_can_be_retried_or_declined() {
     assert!(item.needs_you);
 
     let retrying = app
-        .call(|s| s.resolve_action(item.id.clone(), "approve".to_owned()))
+        .call(|s| s.resolve_action(item.id.clone(), "approve".to_owned(), String::new()))
         .unwrap();
     assert_eq!(retrying.status, STATUS_RETRYING);
     let failed = app
@@ -219,7 +223,7 @@ fn a_failure_can_be_retried_or_declined() {
         .unwrap();
     assert_eq!(failed.status, STATUS_FAILED);
     let declined = app
-        .call(|s| s.resolve_action(item.id.clone(), "decline".to_owned()))
+        .call(|s| s.resolve_action(item.id.clone(), "decline".to_owned(), String::new()))
         .unwrap();
     assert_eq!(declined.status, STATUS_DECLINED);
     assert!(!declined.needs_you);
@@ -232,7 +236,7 @@ fn undo_is_requested_and_only_for_undoable_actions() {
         .call(|s| s.record_action(action("chat", "done")))
         .unwrap();
     let asked = app
-        .call(|s| s.resolve_action(item.id.clone(), "undo".to_owned()))
+        .call(|s| s.resolve_action(item.id.clone(), "undo".to_owned(), String::new()))
         .unwrap();
     assert_eq!(asked.status, STATUS_UNDO_REQUESTED);
     let undone = app
@@ -244,7 +248,7 @@ fn undo_is_requested_and_only_for_undoable_actions() {
     fixed.undoable = false;
     let fixed = app.call(|s| s.record_action(fixed)).unwrap();
     assert!(app
-        .call(|s| s.resolve_action(fixed.id.clone(), "undo".to_owned()))
+        .call(|s| s.resolve_action(fixed.id.clone(), "undo".to_owned(), String::new()))
         .is_err());
 }
 
@@ -443,7 +447,7 @@ fn every_change_emits_one_event() {
         .unwrap();
     let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
     assert_eq!(kinds, vec!["ActionRecorded".to_owned()]);
-    app.call(|s| s.resolve_action(item.id, "approve".to_owned()))
+    app.call(|s| s.resolve_action(item.id, "approve".to_owned(), String::new()))
         .unwrap();
     let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
     assert_eq!(kinds, vec!["ActionChanged".to_owned()]);
@@ -451,4 +455,321 @@ fn every_change_emits_one_event() {
         .unwrap();
     let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
     assert_eq!(kinds, vec!["SettingsChanged".to_owned()]);
+}
+
+// ── chains, histories and answers ───────────────────────────────────────────
+
+fn ask(kind: &str, prompt: &str, options: &[&str], draft: &str) -> Ask {
+    Ask {
+        kind: kind.to_owned(),
+        prompt: prompt.to_owned(),
+        options: options.iter().map(|o| (*o).to_owned()).collect(),
+        draft: draft.to_owned(),
+    }
+}
+
+/// A mention arrives; the agent continues its chain with two actions; you
+/// approve one. The feed shows ONE row for all of it, led by what needs you.
+#[test]
+fn a_chain_is_one_row_led_by_what_needs_you() {
+    let mut app = acting_in("sheets");
+    let mention = app
+        .call(|s| s.record_notification(notification("chat:a>b:0", "chat", true)))
+        .unwrap();
+    let mut kpis = action("sheets", "done");
+    kpis.chain = mention.id.clone();
+    let kpis = app.call(|s| s.record_action(kpis)).unwrap();
+    let mut nda = action("sign", "proposed");
+    nda.category = "sign".to_owned();
+    nda.chain = mention.id.clone();
+    let nda = app.call(|s| s.record_action(nda)).unwrap();
+    // An unrelated action is a chain of its own.
+    app.call(|s| s.record_action(action("sheets", "done")))
+        .unwrap();
+
+    let page = feed(&app, "all");
+    assert_eq!(page.counts.all, 2, "two chains");
+    let row = page
+        .items
+        .iter()
+        .find(|r| r.chain == mention.id)
+        .expect("the mention's chain");
+    assert_eq!(row.chain_len, 3);
+    assert!(row.needs_you);
+    assert_eq!(row.id, nda.id, "the newest step that needs you leads");
+
+    let flow = app.view(|s| s.chain(mention.id.clone())).unwrap();
+    let ids: Vec<&str> = flow.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec![mention.id.as_str(), kpis.id.as_str(), nda.id.as_str()]
+    );
+    assert!(flow.iter().all(|i| i.chain_len == 3));
+}
+
+#[test]
+fn needs_you_and_agent_filters_work_on_chains() {
+    let mut app = acting_in("sheets");
+    let mention = app
+        .call(|s| s.record_notification(notification("chat:a>b:0", "chat", false)))
+        .unwrap();
+    let mut kpis = action("sheets", "done");
+    kpis.chain = mention.id.clone();
+    app.call(|s| s.record_action(kpis)).unwrap();
+    let page = feed(&app, "agent");
+    assert_eq!(
+        page.items.len(),
+        1,
+        "a chain holding an action counts as agent"
+    );
+    assert_eq!(page.counts.notifications, 1);
+    assert_eq!(feed(&app, "needs_you").items.len(), 0);
+    let by_app = app
+        .view(|s| s.feed("all".to_owned(), "chat".to_owned(), 0, 0))
+        .unwrap();
+    assert_eq!(by_app.items.len(), 1, "the chain touches chat");
+}
+
+#[test]
+fn every_step_stays_in_the_history() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let item = app
+        .call(|s| s.record_action(action("chat", "proposed")))
+        .unwrap();
+    app.call(|s| s.resolve_action(item.id.clone(), "approve".to_owned(), String::new()))
+        .unwrap();
+    let done = app
+        .call(|s| s.complete_action(item.id.clone(), "done".to_owned(), "sent".to_owned()))
+        .unwrap();
+    let steps: Vec<&str> = done.history.iter().map(|s| s.status.as_str()).collect();
+    assert_eq!(steps, vec![STATUS_PENDING, STATUS_APPROVED, STATUS_DONE]);
+    assert!(done.history.windows(2).all(|w| w[0].at < w[1].at));
+    assert_eq!(done.note, "sent");
+}
+
+#[test]
+fn histories_merge_to_the_same_order_everywhere() {
+    let a = Step {
+        status: "pending".to_owned(),
+        note: String::new(),
+        at: 1,
+    };
+    let b = Step {
+        status: "approved".to_owned(),
+        note: "Fri 10:00".to_owned(),
+        at: 5,
+    };
+    let c = Step {
+        status: "done".to_owned(),
+        note: "booked".to_owned(),
+        at: 9,
+    };
+    let mut left = vec![a.clone(), c.clone()];
+    let mut right = vec![a.clone(), b.clone()];
+    merge_history(&mut left, &[a.clone(), b.clone()]);
+    merge_history(&mut right, &[a.clone(), c.clone()]);
+    assert_eq!(left, right);
+    assert_eq!(left, vec![a, b, c]);
+}
+
+#[test]
+fn a_reply_is_answered_in_the_feed_and_delivered_by_the_agent() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut input = notification("chat:c>d:0", "chat", true);
+    input.ask = ask("reply", "Reply in #launch", &["On it", "After 2pm"], "");
+    let n = app.call(|s| s.record_notification(input)).unwrap();
+    assert!(n.needs_you);
+    assert_eq!(n.status, STATUS_RECEIVED);
+
+    // Seeing it is not answering it.
+    app.call(|s| s.mark_seen(vec![n.id.clone()])).unwrap();
+    assert!(
+        app.view(|s| s.item(n.id.clone()))
+            .unwrap()
+            .unwrap()
+            .needs_you
+    );
+
+    assert!(
+        app.call(|s| s.answer_notification(n.id.clone(), String::new()))
+            .is_err(),
+        "a reply needs text"
+    );
+    let answered = app
+        .call(|s| s.answer_notification(n.id.clone(), "Numbers are in the deck.".to_owned()))
+        .unwrap();
+    assert_eq!(answered.status, STATUS_ANSWERED);
+    assert_eq!(answered.note, "Numbers are in the deck.");
+    assert!(!answered.needs_you);
+    assert!(
+        app.call(|s| s.answer_notification(n.id.clone(), "again".to_owned()))
+            .is_err(),
+        "answered once"
+    );
+
+    let delivered = app
+        .call(|s| {
+            s.complete_answer(
+                n.id.clone(),
+                "delivered".to_owned(),
+                "Sent in #launch".to_owned(),
+            )
+        })
+        .unwrap();
+    let steps: Vec<&str> = delivered
+        .history
+        .iter()
+        .map(|s| s.status.as_str())
+        .collect();
+    assert_eq!(
+        steps,
+        vec![STATUS_RECEIVED, STATUS_ANSWERED, STATUS_DELIVERED]
+    );
+}
+
+#[test]
+fn a_failed_delivery_needs_you_and_can_be_answered_again() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut input = notification("vote:e>f:0", "vote", false);
+    input.ask = ask(
+        "choose",
+        "Offsite location",
+        &["Lisbon", "Berlin", "Remote"],
+        "",
+    );
+    let n = app.call(|s| s.record_notification(input)).unwrap();
+    assert!(
+        n.needs_you,
+        "an ask needs you whether or not it was flagged"
+    );
+    assert!(
+        app.call(|s| s.answer_notification(n.id.clone(), "Paris".to_owned()))
+            .is_err(),
+        "not an option"
+    );
+    app.call(|s| s.answer_notification(n.id.clone(), "Lisbon".to_owned()))
+        .unwrap();
+    let failed = app
+        .call(|s| s.complete_answer(n.id.clone(), "failed".to_owned(), "poll closed".to_owned()))
+        .unwrap();
+    assert!(failed.needs_you);
+    let again = app
+        .call(|s| s.answer_notification(n.id.clone(), "Remote".to_owned()))
+        .unwrap();
+    assert_eq!(again.status, STATUS_ANSWERED);
+}
+
+#[test]
+fn a_notification_without_an_ask_cannot_be_answered() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let n = app
+        .call(|s| s.record_notification(notification("kv:a>b:0", "kv", false)))
+        .unwrap();
+    assert!(app
+        .call(|s| s.answer_notification(n.id.clone(), String::new()))
+        .is_err());
+    assert!(
+        app.call(|s| s.complete_answer(n.id.clone(), "delivered".to_owned(), String::new()))
+            .is_err(),
+        "nothing is waiting on the agent"
+    );
+}
+
+#[test]
+fn a_confirm_takes_no_text() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut input = notification("cal:a>b:0", "calendar", true);
+    input.ask = ask("confirm", "Accept the invite", &[], "");
+    let n = app.call(|s| s.record_notification(input)).unwrap();
+    assert!(app
+        .call(|s| s.answer_notification(n.id.clone(), "yes".to_owned()))
+        .is_err());
+    let ok = app
+        .call(|s| s.answer_notification(n.id.clone(), String::new()))
+        .unwrap();
+    assert_eq!(ok.status, STATUS_ANSWERED);
+}
+
+#[test]
+fn a_proposal_with_options_is_approved_with_one_of_them() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut input = action("calendar", "proposed");
+    input.ask = ask("choose", "Pick a slot", &["Thu 15:00", "Fri 10:00"], "");
+    let p = app.call(|s| s.record_action(input)).unwrap();
+    assert!(
+        app.call(|s| s.resolve_action(p.id.clone(), "approve".to_owned(), String::new()))
+            .is_err(),
+        "pick one"
+    );
+    let ok = app
+        .call(|s| s.resolve_action(p.id.clone(), "approve".to_owned(), "Fri 10:00".to_owned()))
+        .unwrap();
+    assert_eq!(ok.status, STATUS_APPROVED);
+    assert_eq!(ok.note, "Fri 10:00");
+}
+
+#[test]
+fn a_drafted_reply_is_approved_as_edited() {
+    let mut app = acting_in("chat");
+    let mut input = action("chat", "proposed");
+    input.ask = ask("reply", "Send to Maya", &[], "Numbers are in the deck.");
+    let p = app.call(|s| s.record_action(input)).unwrap();
+    let ok = app
+        .call(|s| {
+            s.resolve_action(
+                p.id.clone(),
+                "approve".to_owned(),
+                "Numbers are in the deck, slide 4.".to_owned(),
+            )
+        })
+        .unwrap();
+    assert_eq!(ok.note, "Numbers are in the deck, slide 4.");
+    // Declining never carries an answer.
+    let mut other = action("chat", "proposed");
+    other.ask = ask("reply", "Send", &[], "draft");
+    let other = app.call(|s| s.record_action(other)).unwrap();
+    assert!(app
+        .call(|s| s.resolve_action(other.id.clone(), "decline".to_owned(), "no".to_owned()))
+        .is_err());
+}
+
+#[test]
+fn asks_are_validated() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let bad = [
+        ask("choose", "One", &["only"], ""),
+        ask("confirm", "Go", &["a"], ""),
+        ask("", "stray prompt", &[], ""),
+        ask("pick", "?", &[], ""),
+        ask(
+            "reply",
+            "Too many",
+            &["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            "",
+        ),
+    ];
+    for a in bad {
+        let mut input = notification("k", "chat", false);
+        input.ask = a.clone();
+        assert!(app.call(|s| s.record_notification(input)).is_err(), "{a:?}");
+    }
+    let mut done = action("chat", "done");
+    done.ask = ask("confirm", "Go", &[], "");
+    assert!(
+        app.call(|s| s.record_action(done)).is_err(),
+        "asks belong on proposals"
+    );
+}
+
+#[test]
+fn keeping_a_breach_is_stamped() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let item = app
+        .call(|s| s.record_action(action("chat", "done")))
+        .unwrap();
+    assert_eq!(item.reviewed_at, 0);
+    let kept = app
+        .call(|s| s.resolve_action(item.id.clone(), "keep".to_owned(), String::new()))
+        .unwrap();
+    assert!(kept.reviewed_at > 0);
 }

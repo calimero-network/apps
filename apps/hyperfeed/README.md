@@ -14,7 +14,7 @@ each app.
 | | |
 | --- | --- |
 | Package | `com.calimero.hyperfeed` |
-| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 20 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
+| Contract | [`logic/src/lib.rs`](logic/src/lib.rs), with 32 `TestHost` tests in [`logic/src/tests.rs`](logic/src/tests.rs) |
 | Two-node scenario | [`logic/workflows/feed.yml`](logic/workflows/feed.yml): every contract method on real nodes, the feed converging on a second node, and that node refused every write |
 | Frontend | [`app/`](app): Vite, React and mero-react. `/` runs against your node and `/demo` runs in memory |
 
@@ -32,15 +32,16 @@ same warrant path it uses everywhere else.
 
 | Row | Written by | Holds |
 | --- | --- | --- |
-| **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, status, and a *breach* note when the rules say it should have asked |
-| **Notification** | your client | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)) |
+| **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
+| **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)) |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
 | **Guard** | you | "always ask me before…" for `sign`, `money`, `new_contact` and `delete` (on by default), and `invite` and `secret` (off by default) |
 | **Pause** | you | while paused, every write the agent wants to make becomes a proposal |
 
 Every record merges deterministically:
 
-- An action's content is written once. Its status is last-writer-wins, with ties broken on the bytes.
+- A row's content is written once. Its history merges as a union of steps in one total order, so
+  the last step is the current status on every device.
 - "Reviewed" and "seen" only ever turn on.
 - Policies and guards are last-writer-wins.
 
@@ -83,6 +84,8 @@ stream. It decodes each `StateMutation` event and records it in the feed:
   `QuestionAsked` and others, listed in [`app/src/collector.ts`](app/src/collector.ts).
 - Any other kind is filed under its own name.
 - Bookkeeping events (reads, reactions, presence) are skipped.
+- A chat message (`MessageSent`) comes with a `reply` ask, so you can answer it from the feed and
+  your agent posts the reply.
 - Any other kind is filed under its own name, with its simple fields as the body
   (`key: launch-date · value: Oct 28`).
 - The app key comes from the installed package (`com.calimero.mero-chat` becomes `chat`).
@@ -129,8 +132,11 @@ account (your node's own identity, or your account through a warrant); anything 
 | `check_action` | `app_key: string, category: string, writes: bool` | `Verdict { decision: "act" \| "ask" \| "refuse", reason }` |
 | `record_action` | `input: ActionInput` | `FeedItem`, the recorded row with its `id` |
 | `complete_action` | `id: string, outcome: "done" \| "failed", note: string` | `FeedItem` |
+| `record_notification` | `input: NotificationInput` | `FeedItem`; the same `key` again within 10 s returns the existing row |
+| `complete_answer` | `id: string, outcome: "delivered" \| "failed", note: string` | `FeedItem` |
 | `item` | `id: string` | `FeedItem` or `null` |
-| `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }` |
+| `chain` | `chain: string` | `FeedItem[]`, every row in the chain, oldest first |
+| `feed` | `filter: "all" \| "agent" \| "notifications" \| "needs_you", app_key: string, limit: u32, before: u64` | `FeedPage { items, counts, apps, next_before }`: one row per chain |
 | `settings` | none | `SettingsView { owner, paused, policies, guards }` |
 
 `ActionInput`, every field required (use `""` when there is nothing to say):
@@ -146,7 +152,30 @@ account (your node's own identity, or your account through a warrant); anything 
 | `outcome` | `proposed`, `done` or `failed` |
 | `intent_hash`, `executor` | the warrant's `H(method ‖ args)` and the relay that ran it |
 | `note` | what went wrong, for `failed` |
+| `chain` | the id of the row that led to this (a notification, or an earlier action), or `""` to start a chain |
+| `ask` | for a proposal: how you resolve it, `{ kind, prompt, options, draft }` (below). `{ kind: "", prompt: "", options: [], draft: "" }` for a plain approve or decline |
 
+`NotificationInput` is `key` (stable for the same event on every device), `app`,
+`source_context`, `source_label`, `from`, `title`, `body`, `event`, `needs_you`, `chain` and `ask`.
+
+**Chains.** Pass the id of whatever led to an action as its `chain`, and the feed shows the whole
+thread as one row, led by the step that needs you. `chain(id)` returns the flow, and every row's
+`history` lists each step (`status`, `note`, `at`), so the app can show who did what and when.
+Usually a notification starts the chain and the agent's actions continue it.
+
+**Asks: how a row is resolved in place.**
+
+| `kind` | The app shows | Your answer |
+| --- | --- | --- |
+| `reply` | a text box, `draft` pre-filled, `options` as suggested replies | the text |
+| `choose` | one button per option (2–8) | the option |
+| `confirm` | one button labelled `prompt` | `""` |
+| `""` | the defaults: Approve and Decline on a proposal; nothing on a notification | `""` |
+
+On a notification, your answer goes through `answer_notification` and its status moves
+`received → answered`. On a proposal it goes with the approval (`resolve_action(id, "approve",
+answer)`), so a slot picker or an edited draft is one tap. The answer is in the step's `note`, and
+in the row's `note` while it is current.
 **The loop an agent runs**
 
 1. `check_action` before any write elsewhere.
@@ -157,17 +186,26 @@ account (your node's own identity, or your account through a warrant); anything 
    arrives when you decide: `approved` (do it), `retrying` (try the failed one again),
    `undo_requested` (revert it) or `declined` (drop it). Polling `item` works too.
 3. Report with `complete_action(id, "done" | "failed", note)`. It is accepted only while the action is
-   `approved`, `retrying` or `undo_requested`.
+   `approved`, `retrying` or `undo_requested`. If the approval carried an answer, it is the row's
+   `note` (the slot you picked, the text you edited): do exactly that.
+4. Answers to notifications arrive as `NotificationChanged { id, status: "answered" }`. Read the
+   row: `ask.kind` says what to do and `note` holds the answer (reply with that text, vote that
+   option, confirm). Then report with `complete_answer(id, "delivered" | "failed", note)`. A failed
+   delivery goes back to you to answer again.
+5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
 
 An outcome recorded where the rules said `ask` or `refuse` is still stored, with `breach` set, and
 stays in "Needs you" until you keep it or undo it. Events the contract emits: `ActionRecorded`,
-`ActionChanged`, `NotificationRecorded`, `NotificationsSeen`, `SettingsChanged`.
+`ActionChanged`, `NotificationRecorded`, `NotificationChanged`, `NotificationsSeen`,
+`SettingsChanged`.
 
-**The owner's methods**, which the app calls: `resolve_action(id, decision)` with `approve`,
-`decline`, `undo` or `keep`; `set_policy(app_key, agent, notifications)`;
+**The owner's methods**, which the app calls: `resolve_action(id, decision, answer)` with
+`approve`, `decline`, `undo` or `keep` (`answer` is `""` except for approving a proposal with an
+ask); `answer_notification(id, answer)`; `set_policy(app_key, agent, notifications)`;
 `set_guard(category, enabled)`; `set_paused(paused)`; `record_notification(input)`;
 `mark_seen(ids)` and `mark_all_seen()`. An agent kit can call them too, since it writes as you, but
-`resolve_action` is your decision and an agent should never call it for itself.
+`resolve_action` and `answer_notification` are your decisions, and an agent should never call them
+for itself.
 
 ## Trust model, honestly
 

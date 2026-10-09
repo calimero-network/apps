@@ -534,6 +534,183 @@ input:focus-visible {
   color: var(--busy-ink);
 }
 
+/* ── resolving in place ──────────────────────────────────────────────────── */
+
+.resolver {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--ground);
+  border: 1px solid var(--line);
+}
+
+.resolver-prompt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.resolver-options,
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.option {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.option:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: var(--surface);
+}
+
+.reply-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.reply-row textarea {
+  flex: 1 1 260px;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.reply-row textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── a chain's flow ──────────────────────────────────────────────────────── */
+
+.flow {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  position: relative;
+  padding-bottom: 14px;
+}
+
+/* the line joining one step to the next */
+.flow-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 26px;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+
+.flow-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--plain-bg);
+  color: var(--ink-2);
+  border: 2px solid var(--surface);
+}
+
+.actor-agent .flow-dot {
+  background: var(--busy-bg);
+  color: var(--accent);
+}
+
+.actor-you .flow-dot {
+  background: var(--ink);
+}
+
+.tone-wait.actor-agent .flow-dot {
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+}
+
+.tone-bad .flow-dot {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.flow-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.flow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.flow-meta strong {
+  color: var(--ink);
+}
+
+.flow-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.flow-detail {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.flow-about {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.flow-settle {
+  margin-top: 4px;
+}
+
+.detail-settle {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ── detail ──────────────────────────────────────────────────────────────── */
 
 .detail {

@@ -13,7 +13,12 @@ export interface Feed {
   setAppKey: (k: string) => void;
   refresh: () => Promise<void>;
   dismissError: () => void;
-  resolve: (id: string, decision: Decision) => Promise<void>;
+  /** Decide on an action; `answer` is the option or text for a proposal with an ask. */
+  resolve: (id: string, decision: Decision, answer?: string) => Promise<void>;
+  /** Answer a notification in place. */
+  answer: (id: string, answer: string) => Promise<void>;
+  /** Every row in a chain, oldest first. A read: no busy state, no refresh. */
+  loadChain: (chain: string) => Promise<FeedItem[]>;
   markSeen: (ids: string[]) => Promise<void>;
   markAllSeen: () => Promise<void>;
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
@@ -106,7 +111,9 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setAppKey,
     refresh,
     dismissError: useCallback(() => setError(null), []),
-    resolve: useCallback((id, decision) => run((b) => b.resolveAction(id, decision)), [run]),
+    resolve: useCallback((id, decision, answer) => run((b) => b.resolveAction(id, decision, answer)), [run]),
+    answer: useCallback((id, answer) => run((b) => b.answerNotification(id, answer)), [run]),
+    loadChain: useCallback(async (chain) => (backend ? backend.chain(chain) : []), [backend]),
     markSeen: useCallback((ids) => run((b) => b.markSeen(ids)), [run]),
     markAllSeen: useCallback(() => run((b) => b.markAllSeen()), [run]),
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
