@@ -141,5 +141,18 @@ describe("FeedView", () => {
     const chain = await backend.chain(standup!.chain);
     expect(chain.map((i) => i.kind)).toEqual(["action", "message"]);
   });
+
+  it("still shows a feed made before lenses, and says how to get them", async () => {
+    // What a node returns when the feed's contract predates lenses.
+    class OlderFeed extends DemoBackend {
+      override async lenses(): Promise<never> {
+        throw Object.assign(new Error("FunctionCallError"), { data: 'method "lenses" not found' });
+      }
+    }
+    render(<Harness backend={new OlderFeed(true, 0)} />);
+    expect(await cardFor(/Vendor NDA/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Your feed was made by an earlier Hyperfeed");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
 

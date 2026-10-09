@@ -184,7 +184,9 @@ export function ControlsView({ feed, contextId, preview }: { feed: Feed; context
           becomes, and how your answer goes back. Nothing is recorded from an app until you approve its lens, and a
           new app version is learned again.
         </p>
-        {feed.lenses.length === 0 ? (
+        {feed.outdated ? (
+          <p className="notice">Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items. Install the latest Hyperfeed on your node and create a new feed to get them.</p>
+        ) : feed.lenses.length === 0 ? (
           <p className="muted">Nothing learned yet. Chat uses the lens this app ships.</p>
         ) : (
           <ul className="lenses">
