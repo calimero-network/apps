@@ -100,9 +100,33 @@ export interface AgentState {
   updated_at: number;
 }
 
+/**
+ * An agent and when it last said it was running (ms).
+ */
+export interface AgentView {
+  name: string;
+  seen_at: number;
+}
+
 export interface AppCount {
   app: string;
   count: number;
+}
+
+/**
+ * A chain you put away. It stays out of the feed until something new
+ * happens in it, or until `until` passes ("later"); `until` 0 has no return
+ * time. Unarchiving keeps the row with `archived: false`, so the latest
+ * decision wins on every device.
+ */
+export interface Archived {
+  archived: boolean;
+  /**
+   * The chain's latest activity when it was put away: anything newer brings it back.
+   */
+  at: number;
+  until: number;
+  updated_at: number;
 }
 
 /**
@@ -135,6 +159,10 @@ export interface Event_ActionChanged {
 export interface Event_ActionRecorded {
   id: string;
   status: string;
+}
+
+export interface Event_ArchiveChanged {
+  count: number;
 }
 
 export interface Event_LensChanged {
@@ -171,6 +199,10 @@ export interface FeedCounts {
   agent: number;
   notifications: number;
   needs_you: number;
+  /**
+   * Chains put away right now (shown only by the `archived` filter).
+   */
+  archived: number;
 }
 
 /**
@@ -288,6 +320,14 @@ export interface Hyperfeed {
    * How each app version's events become feed items, by `<app>@<application id>`.
    */
   lenses: Record<string, Lens>;
+  /**
+   * Chains you put away, by chain id.
+   */
+  archived: Record<string, Archived>;
+  /**
+   * Agents that report in, by name.
+   */
+  presence: Record<string, Presence>;
 }
 
 /**
@@ -431,11 +471,22 @@ export interface PolicyView {
   notifications: string;
 }
 
+/**
+ * When an agent last said it was running, by its name.
+ */
+export interface Presence {
+  seen_at: number;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
   policies: PolicyView[];
   guards: GuardView[];
+  /**
+   * Every agent that has reported in, most recent first.
+   */
+  agents: AgentView[];
 }
 
 /**
@@ -493,9 +544,17 @@ export interface Verdict {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
+  | {
+    /**
+     * Chains were put away or brought back: re-read the feed.
+     */
+    name: "ArchiveChanged";
+    payload: Event_ArchiveChanged;
+  }
   | {
     /**
      * A lens was proposed, approved or turned down: re-read `lenses`.
@@ -559,6 +618,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * agent_seen
+   *
+   * An agent saying it is running. The feed shows it as live while it
+   * keeps reporting; mero-bot calls this every half minute.
+   *
+   * @intent mutating
+   */
+  public async agentSeen(params: { name: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_seen', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * answer_notification
    *
    * Answer a notification from the feed: the reply to send, the option you
@@ -571,6 +643,21 @@ export class HyperfeedClient {
   public async answerNotification(params: { id: string; answer: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'answer_notification', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * archive
+   *
+   * Pause the agent: every write it wants to make becomes a proposal.
+   * Put chains away: each leaves the feed until something new happens in
+   * it, or until `until` (ms; 0 = no return time) for "later". Returns how
+   * many were put away.
+   *
+   * @intent mutating
+   */
+  public async archive(params: { chains: string[]; until: number }): Promise<number> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'archive', argsJson: params });
+    return response as number;
   }
 
   /**
@@ -825,8 +912,6 @@ export class HyperfeedClient {
   /**
    * set_paused
    *
-   * Pause the agent: every write it wants to make becomes a proposal.
-   *
    * @intent mutating
    */
   public async setPaused(params: { paused: boolean }): Promise<void> {
@@ -855,6 +940,18 @@ export class HyperfeedClient {
   public async settings(): Promise<SettingsView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'settings', argsJson: {} });
     return response as SettingsView;
+  }
+
+  /**
+   * unarchive
+   *
+   * Bring chains back into the feed.
+   *
+   * @intent mutating
+   */
+  public async unarchive(params: { chains: string[] }): Promise<number> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'unarchive', argsJson: params });
+    return response as number;
   }
 
 }
