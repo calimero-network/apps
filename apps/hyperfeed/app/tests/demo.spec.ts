@@ -1,4 +1,22 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+/**
+ * Collects what the page threw, and puts it, with the chat as it stands, on
+ * a failed wait: a chat that stops updating says why.
+ */
+function watch(page: Page) {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.stack ?? e.message));
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  return async (wait: Promise<unknown>) => {
+    try {
+      await wait;
+    } catch (e) {
+      const chat = await page.locator(".chat").evaluate((el) => el.outerHTML.slice(0, 3000)).catch(() => "(no .chat)");
+      throw new Error(`${e instanceof Error ? e.message : String(e)}\nurl: ${page.url()}\npage errors:\n${errors.join("\n") || "(none)"}\nchat:\n${chat}`);
+    }
+  };
+}
 
 /**
  * The node-less shell: `/demo`, the same screens run against `DemoBackend`.
@@ -29,6 +47,7 @@ test("in the demo, a chain expands into its whole flow", async ({ page }) => {
 });
 
 test("in the demo, you ask your agent and the pretend agent answers in the same chain", async ({ page }) => {
+  const explain = watch(page);
   await page.goto("/demo");
   const stream = page.getByRole("main");
   await stream.getByLabel("Ask your agent").fill("What's left before the board meeting?");
@@ -37,7 +56,7 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   await expect(page).toHaveURL(/\/demo\/chat\//);
   const thread = page.getByRole("log");
   await expect(thread).toContainText("What's left before the board meeting?");
-  await expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 });
+  await explain(expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 }));
   // The same chain, in the feed.
   await page.getByRole("link", { name: "Feed", exact: true }).click();
   const answer = page.locator("article.card", { hasText: "pretend agent" });
@@ -46,15 +65,17 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
 });
 
 test("in the demo, the chat page holds your chats with your agent", async ({ page }) => {
+  const explain = watch(page);
   await page.goto("/demo/chat");
   await page.getByLabel("Message your agent").fill("Plan my week");
   await page.getByLabel("Message your agent").press("Enter");
   const thread = page.getByRole("log");
-  await expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 });
+  await explain(expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 }));
   await expect(page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /pretend agent/ })).toBeVisible();
 });
 
 test("on a phone, the chat list and the open chat take turns", async ({ page }) => {
+  const explain = watch(page);
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/demo/chat");
   await page.getByRole("button", { name: "New chat" }).click();
@@ -63,6 +84,6 @@ test("on a phone, the chat list and the open chat take turns", async ({ page }) 
   await expect(page.getByRole("log").getByText("Hi", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Chats" })).toBeHidden();
   await page.getByRole("button", { name: "← Chats" }).click();
-  await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+  await explain(expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible());
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
