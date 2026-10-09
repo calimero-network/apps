@@ -79,17 +79,20 @@ warrant for the real call, and reports the result with `complete_action`.
 ## Notifications: the collector
 
 On a node, the open app lists every context the node is in and subscribes to each one's event
-stream. It decodes each `StateMutation` event and records it in the feed:
+stream. Nearly every event an app emits is bookkeeping (a keystroke in a doc, a cursor, a
+reaction), and your own node emits them for your own edits as well. So **nothing is recorded by
+default**. An event becomes a notification only through a reader written for its app and kind in
+[`app/src/collector.ts`](app/src/collector.ts). The reader reads what the event points at from the
+app itself, drops what you did yourself, and keeps what concerns you:
 
-- A few well-known kinds get a sentence and the "needs you" flag: `MessageSent`, `IssueAssigned`,
-  `QuestionAsked` and others, listed in [`app/src/collector.ts`](app/src/collector.ts).
-- Any other kind is filed under its own name.
-- Bookkeeping events (reads, reactions, presence) are skipped.
-- A chat message (`MessageSent`) comes with a `reply` ask, so you can answer it from the feed and
-  your agent posts the reply.
-- Any other kind is filed under its own name, with its simple fields as the body
-  (`key: launch-date · value: Oct 28`).
-- The app key comes from the installed package (`com.calimero.mero-chat` becomes `chat`).
+| App | Recorded | Not recorded |
+| --- | --- | --- |
+| Chat | a DM to you, a message that mentions you, `@everyone` or `@here` (with a `reply` ask, so your agent posts your answer), and your own role changing | the rest of a channel, your own messages, thread replies, edits, reactions, profiles |
+| Anything else | nothing yet | everything, until it has a reader |
+
+"You" is your node's account id, which is what apps stamp on what you do (`env::account_id()`),
+plus this device's key. The app key comes from the installed package (`com.calimero.mero-chat`
+becomes `chat`). mero-bot carries the same readers and keys.
 
 **Recording each event once.** Core's event carries no delta id, only the context's new root hash,
 and that hash depends only on the state's contents. So the key is the transition,
