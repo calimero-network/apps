@@ -1,0 +1,55 @@
+[package]
+name = "hyperfeed"
+description = "Hyperfeed — one feed for everything your agent did and every notification your apps sent"
+# NOT the release version. Cargo requires a version field; the release workflow
+# ignores it, because the REGISTRY owns the number: it takes the highest
+# published appVersion for this package and increments the patch (0.0.1 when
+# nothing is published).
+version = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+# `cdylib` for the wasm the node loads, `rlib` so `cargo test` can link it.
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero build` / `cargo mero bundle`. None of it can be inherited
+# from the workspace: `scripts/check-app-metadata.sh` asserts the fleet-wide
+# values match `[workspace.metadata.mero-apps]` instead.
+[package.metadata.calimero]
+package = "com.calimero.hyperfeed"
+name = "Hyperfeed"
+description = "One feed for your agent and your apps: every action your agent took on your behalf, with its provenance, beside every notification the apps it uses sent you. Approvals, undo and per-app agent permissions live in a context only you write to."
+author = "Calimero"
+# The slug IS the package id: a deep link resolves by `Application.package`.
+slug = "com.calimero.hyperfeed"
+# REQUIRED: `cargo mero bundle` refuses to run without an icon decision.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["agent", "notifications", "feed", "approvals", "delegated-execution"]
+github = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.mero-apps] in CI.
+min-runtime-version = "0.11.0-rc.83"
+# No `frontend` yet: it doubles as the registered login callback origin, and
+# hyperfeed.vercel.app belongs to someone else's project. Add the URL of our
+# own Vercel project (Root Directory `apps/hyperfeed/app`) once it exists.
+# Shown to an agent by mero-mcp the first time it meets this app: how to report,
+# ask and carry out the user's decisions through the feed.
+guide = "GUIDE.md"
+
+# ⚠️ The dependency tables come AFTER the calimero table on purpose:
+# `scripts/landing/generate.mjs` only finds a calimero table that has another
+# table after it.
+[dependencies]
+calimero-sdk.workspace            = true
+calimero-storage.workspace        = true
+calimero-storage-macros.workspace = true
+
+[dev-dependencies]
+# Enables the native mock host, so `TestHost` drives real CRDT state under
+# `cargo test` with no node and no wasm.
+calimero-storage = { workspace = true, features = ["testing"] }

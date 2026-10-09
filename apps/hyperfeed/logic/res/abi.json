@@ -1,0 +1,1452 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Action": {
+      "kind": "record",
+      "doc": "One thing your agent did, or wants to do, on your behalf.\n\nEverything but `history` and `reviewed` is written once. `history` merges as\na union of steps, and `reviewed` only ever turns on.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "undoable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "intent_hash",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Hex `H(method ‖ args)` from the warrant. The arguments themselves never\nleave the agent: this is enough to match the feed row to the delta."
+        },
+        {
+          "name": "executor",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The relay account that executed the warrant, as the agent was told."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain this belongs to: the id of the row that started it."
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        },
+        {
+          "name": "breach",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why the rules say this needed you, when the agent acted anyway. Empty\nwhen it did not."
+        },
+        {
+          "name": "reviewed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "reviewed_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
+          }
+        }
+      ]
+    },
+    "ActionInput": {
+      "kind": "record",
+      "doc": "What the agent reports for one action.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Short app key, e.g. `chat`, `sign`, `crm`. Policies are keyed by it."
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of the guard categories, or empty for none."
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "undoable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "outcome",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`proposed`, `done` or `failed`."
+        },
+        {
+          "name": "intent_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "executor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What went wrong, for a `failed` outcome."
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain this continues: the id of the row that led to it (a\nnotification, or an earlier action). Empty starts a chain of its own."
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          },
+          "doc": "For a proposal: how you resolve it, beyond approve or decline. A\n`choose` lets you approve with one of the options; a `reply` lets you\nedit the agent's draft before it goes."
+        }
+      ]
+    },
+    "AgentState": {
+      "kind": "record",
+      "doc": "The agent's global switch, stored under the single key `\"main\"`.",
+      "fields": [
+        {
+          "name": "paused",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AppCount": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Ask": {
+      "kind": "record",
+      "doc": "How a row is best resolved in place. See [`ASK_KINDS`].",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`\"\"`, `confirm`, `reply` or `choose`."
+        },
+        {
+          "name": "prompt",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What the control says: \"Reply in #launch\", \"Pick a slot\", \"Join the call\"."
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "`choose`: the options (2 to 8). `reply`: suggested quick replies (up to 8)."
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`reply`: a draft to start from, e.g. the agent's proposed text."
+        }
+      ]
+    },
+    "Event_ActionChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ActionRecorded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NotificationChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NotificationRecorded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NotificationsSeen": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "FeedCounts": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "all",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "needs_you",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "FeedItem": {
+      "kind": "record",
+      "doc": "One row of the feed. Actions and notifications share it so a client renders\none list; a field that does not apply to the row's kind is empty.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain it belongs to, how many rows the chain has, and when anything\nin it last happened (what the feed is ordered and paged by)."
+        },
+        {
+          "name": "chain_len",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "chain_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "needs_you",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The current status and its note: an action's (`pending` … `done`) or a\nnotification's (`received`, `answered`, `delivered`, `failed`)."
+        },
+        {
+          "name": "status_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
+          },
+          "doc": "Every step, oldest first."
+        },
+        {
+          "name": "method",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "intent_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "executor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "undoable",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "breach",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reviewed_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When you kept an action the agent took without asking; 0 if not."
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "FeedPage": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "items",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "FeedItem"
+            }
+          }
+        },
+        {
+          "name": "counts",
+          "type": {
+            "$ref": "FeedCounts"
+          },
+          "doc": "Counts over the whole feed (muted apps excluded), not just this page,\nso the filter tabs stay right while paging."
+        },
+        {
+          "name": "apps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AppCount"
+            }
+          }
+        },
+        {
+          "name": "next_before",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Pass as `before` for the next page; 0 when there is none."
+        }
+      ]
+    },
+    "Guard": {
+      "kind": "record",
+      "doc": "One \"always ask me before\" switch.",
+      "fields": [
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "GuardView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Hyperfeed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The account that created the feed; the only one that writes to it."
+        },
+        {
+          "name": "actions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Action"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Notification"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "policies",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Policy"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "guards",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Guard"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AgentState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Notification": {
+      "kind": "record",
+      "doc": "One notification an app sent you, as your client saw it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The dedupe key the client derived from the source event."
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "needs_you",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        },
+        {
+          "name": "seen",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Step"
+            }
+          },
+          "doc": "`received`, then `answered` (your answer as the note), then\n`delivered` or `failed` (the agent's note)."
+        }
+      ]
+    },
+    "NotificationInput": {
+      "kind": "record",
+      "doc": "What your client saw for one notification.",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Stable for the same event on every device, e.g.\n`<context>:<root hash>:<index>`."
+        },
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "needs_you",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Empty starts a chain of its own, which is usual for a notification."
+        },
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          },
+          "doc": "How to answer it from the feed, if it can be."
+        }
+      ]
+    },
+    "Policy": {
+      "kind": "record",
+      "doc": "Your rules for one app.",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PolicyView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "app",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "SettingsView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "paused",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "policies",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PolicyView"
+            }
+          }
+        },
+        {
+          "name": "guards",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "GuardView"
+            }
+          }
+        }
+      ]
+    },
+    "Step": {
+      "kind": "record",
+      "doc": "One step in a row's history: a status, who said what about it, and when.",
+      "fields": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The note that came with it: the agent's (\"NDA signed\"), or your answer\n(the reply you sent, the option you picked)."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Verdict": {
+      "kind": "record",
+      "doc": "The rules' answer for one prospective action.",
+      "fields": [
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`act`, `ask` or `refuse`."
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "answer_notification",
+      "doc": "Answer a notification from the feed: the reply to send, the option you\npicked, or `\"\"` to confirm. Your agent carries it out in the source app\nand reports with [`Hyperfeed::complete_answer`]. A failed delivery can be\nanswered again.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answer",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "chain",
+      "doc": "Every row in a chain, oldest first: the whole flow, muted apps included.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FeedItem"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "check_action",
+      "doc": "What your rules say about an action before the agent takes it.",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "writes",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Verdict"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "complete_action",
+      "doc": "The agent reports what happened after you approved, asked for a retry,\nor asked for an undo.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "outcome",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "complete_answer",
+      "doc": "The agent reports whether it carried out your answer to a notification:\nsent the reply, cast the vote, accepted the invite.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "outcome",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "feed",
+      "doc": "The feed: one row per chain, newest activity first.\n\nA row is the chain's **lead**: the latest step that needs you if any\ndoes, otherwise the latest row. Its `chain_len` says how many rows the\nchain holds and `needs_you` whether any of them needs you; read them all\nwith [`Hyperfeed::chain`].\n\n`filter` keeps chains holding an action (`agent`), a notification\n(`notifications`), or something that needs you (`needs_you`); `app_key`\nkeeps chains that touch that app; `before` pages by `chain_at` (0 = from\nthe newest). The counts are over chains, for the whole feed.",
+      "params": [
+        {
+          "name": "filter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "before",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "doc": "No arguments: the frontend's context-creation flow sends `{}`. The\ncreator owns the feed.",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "item",
+      "doc": "One row, by id, whichever kind it is.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "mark_all_seen",
+      "doc": "Mark every notification seen.",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "mark_seen",
+      "doc": "Mark notifications seen. Unknown ids are skipped; returns how many\nchanged.",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "record_action",
+      "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped.",
+      "params": [
+        {
+          "name": "input",
+          "type": {
+            "$ref": "ActionInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "record_notification",
+      "doc": "Record a notification your client saw.\n\nEvery device records what it sees, and the same event arrives under the\nsame key on each, so a key already recorded within\n[`DEDUPE_WINDOW_MS`] returns that row and records nothing. The same key\nlater is a new event — the source context came back to a state it had\nbeen in — and is stored as `<key>#1`, `<key>#2`, … Two devices reporting\nthat occurrence derive the same id, so their rows still merge.",
+      "params": [
+        {
+          "name": "input",
+          "type": {
+            "$ref": "NotificationInput"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "resolve_action",
+      "doc": "Approve or decline a proposal, retry or drop a failure, ask for an\nundo, or keep an action the agent took without asking.\n\n`answer` goes with an approval when the proposal has an [`Ask`]: one of\nits options for `choose`, the text to send for `reply` (the agent's\ndraft, edited or not). Every other decision takes `\"\"`.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "decision",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "answer",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_guard",
+      "params": [
+        {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_paused",
+      "doc": "Pause the agent: every write it wants to make becomes a proposal.",
+      "params": [
+        {
+          "name": "paused",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_policy",
+      "params": [
+        {
+          "name": "app_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "notifications",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PolicyView"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "settings",
+      "doc": "Your rules: the pause switch, every app you set a policy for, and\nevery guard (defaults included).",
+      "params": [],
+      "returns": {
+        "$ref": "SettingsView"
+      },
+      "intent": "read_only"
+    }
+  ],
+  "events": [
+    {
+      "name": "ActionChanged",
+      "payload": {
+        "$ref": "Event_ActionChanged"
+      }
+    },
+    {
+      "name": "ActionRecorded",
+      "payload": {
+        "$ref": "Event_ActionRecorded"
+      }
+    },
+    {
+      "name": "NotificationChanged",
+      "payload": {
+        "$ref": "Event_NotificationChanged"
+      }
+    },
+    {
+      "name": "NotificationRecorded",
+      "payload": {
+        "$ref": "Event_NotificationRecorded"
+      }
+    },
+    {
+      "name": "NotificationsSeen",
+      "payload": {
+        "$ref": "Event_NotificationsSeen"
+      }
+    },
+    {
+      "name": "SettingsChanged"
+    }
+  ],
+  "state_root": "Hyperfeed",
+  "state_version": 1
+}

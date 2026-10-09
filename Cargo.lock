@@ -605,6 +605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyperfeed"
+version = "0.0.1"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,169 @@
+import { describe, expect, it } from "vitest";
+import { DemoBackend, NO_ASK } from "./demo";
+import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
+
+// The demo stands in for the contract, so it is held to the cases
+// `logic/src/tests.rs` asserts.
+
+function fresh() {
+  return new DemoBackend(false, 0);
+}
+
+function action(app: string, outcome: string, extra: Partial<ActionInput> = {}): ActionInput {
+  return {
+    app,
+    source_context: "ctx",
+    source_label: "#launch",
+    method: "send_message",
+    category: "",
+    writes: true,
+    undoable: true,
+    title: "Posted your stand-up",
+    body: "",
+    why: "",
+    outcome,
+    intent_hash: "",
+    executor: "",
+    note: "",
+    chain: "",
+    ask: NO_ASK,
+    ...extra,
+  };
+}
+
+function note(key: string, app: string, extra: Partial<NotificationInput> = {}): NotificationInput {
+  return {
+    key,
+    app,
+    source_context: "",
+    source_label: "",
+    from: "",
+    title: "Poll",
+    body: "",
+    event: "",
+    needs_you: false,
+    chain: "",
+    ask: NO_ASK,
+    ...extra,
+  };
+}
+
+const ask = (kind: string, options: string[] = [], draft = ""): Ask => ({ kind, prompt: "", options, draft });
+
+describe("DemoBackend follows the contract's rules", () => {
+  it("asks first in an app with no policy", () => {
+    expect(fresh().verdict("chat", "", true).decision).toBe("ask");
+  });
+
+  it("turns act into ask for a guarded category", async () => {
+    const b = fresh();
+    await b.setPolicy("sign", "act", "feed");
+    expect(b.verdict("sign", "sign", true).decision).toBe("ask");
+    await b.setGuard("sign", false);
+    expect(b.verdict("sign", "sign", true).decision).toBe("act");
+  });
+
+  it("records acting without asking as a breach until kept", async () => {
+    const b = fresh();
+    const item = await b.recordAction(action("chat", "done"));
+    expect(item.breach).toMatch(/^acted without asking/);
+    expect(item.needs_you).toBe(true);
+    const kept = await b.resolveAction(item.id, "keep");
+    expect(kept.needs_you).toBe(false);
+    expect(kept.reviewed_at).toBeGreaterThan(0);
+  });
+
+  it("refuses a proposal where the agent is off", async () => {
+    const b = fresh();
+    await b.setPolicy("crm", "off", "feed");
+    await expect(b.recordAction(action("crm", "proposed"))).rejects.toThrow(/off in crm/);
+  });
+
+  it("keeps every step in the history", async () => {
+    const b = fresh();
+    const p = await b.recordAction(action("chat", "proposed"));
+    const approved = await b.resolveAction(p.id, "approve");
+    expect(approved.history.map((s) => s.status)).toEqual(["pending", "approved"]);
+    await b.setPolicy("chat", "act", "feed");
+    const fixed = await b.recordAction(action("chat", "done", { undoable: false }));
+    await expect(b.resolveAction(fixed.id, "undo")).rejects.toThrow(/cannot undo/);
+  });
+
+  it("records a notification once per key and hides muted apps", async () => {
+    const b = fresh();
+    await b.recordNotification(note("k1", "vote", { needs_you: true }));
+    await b.recordNotification(note("k1", "vote", { needs_you: true }));
+    expect((await b.feed("all", "")).counts.all).toBe(1);
+    expect((await b.feed("needs_you", "")).items).toHaveLength(1);
+    await b.setPolicy("vote", "off", "mute");
+    expect((await b.feed("all", "")).counts.all).toBe(0);
+  });
+});
+
+describe("chains", () => {
+  it("shows one row per chain, led by what needs you", async () => {
+    const b = fresh();
+    await b.setPolicy("sheets", "act", "feed");
+    const mention = await b.recordNotification(note("m", "chat", { needs_you: true }));
+    await b.recordAction(action("sheets", "done", { chain: mention.id }));
+    const nda = await b.recordAction(action("sign", "proposed", { category: "sign", chain: mention.id }));
+    const page = await b.feed("all", "");
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({ id: nda.id, chain: mention.id, chain_len: 3, needs_you: true });
+    const flow = await b.chain(mention.id);
+    expect(flow.map((i) => i.kind)).toEqual(["notification", "action", "action"]);
+  });
+
+  it("filters chains by what they hold", async () => {
+    const b = fresh();
+    await b.setPolicy("sheets", "act", "feed");
+    const mention = await b.recordNotification(note("m", "chat"));
+    await b.recordAction(action("sheets", "done", { chain: mention.id }));
+    expect((await b.feed("agent", "")).items).toHaveLength(1);
+    expect((await b.feed("all", "chat")).items).toHaveLength(1);
+    expect((await b.feed("needs_you", "")).items).toHaveLength(0);
+  });
+});
+
+describe("answers", () => {
+  it("answers a reply in place; the agent delivers it", async () => {
+    const b = fresh();
+    const n = await b.recordNotification(note("m", "chat", { ask: ask("reply", ["On it"]) }));
+    expect(n.needs_you).toBe(true);
+    await b.markSeen([n.id]);
+    expect((await b.chain(n.chain))[0]!.needs_you).toBe(true);
+    await expect(b.answerNotification(n.id, " ")).rejects.toThrow(/empty/);
+    const answered = await b.answerNotification(n.id, "Numbers are in the deck.");
+    expect(answered).toMatchObject({ status: "answered", note: "Numbers are in the deck.", needs_you: false });
+    await expect(b.answerNotification(n.id, "again")).rejects.toThrow(/already answered/);
+  });
+
+  it("checks a choice against its options", async () => {
+    const b = fresh();
+    const n = await b.recordNotification(note("v", "vote", { ask: ask("choose", ["Lisbon", "Berlin"]) }));
+    await expect(b.answerNotification(n.id, "Paris")).rejects.toThrow(/one of/);
+    expect((await b.answerNotification(n.id, "Lisbon")).note).toBe("Lisbon");
+  });
+
+  it("approves a proposal with the option picked", async () => {
+    const b = fresh();
+    const p = await b.recordAction(action("calendar", "proposed", { ask: ask("choose", ["Thu", "Fri"]) }));
+    await expect(b.resolveAction(p.id, "approve")).rejects.toThrow(/one of/);
+    expect((await b.resolveAction(p.id, "approve", "Fri")).note).toBe("Fri");
+  });
+
+  it("refuses an ask on an outcome, and an answer on a notification without one", async () => {
+    const b = fresh();
+    await expect(b.recordAction(action("chat", "done", { ask: ask("confirm") }))).rejects.toThrow(/proposal/);
+    const n = await b.recordNotification(note("k", "kv"));
+    await expect(b.answerNotification(n.id, "")).rejects.toThrow(/nothing to answer/);
+  });
+
+  it("seeds a morning with every kind of ask", async () => {
+    const page = await new DemoBackend(true, 0).feed("all", "");
+    const kinds = new Set(page.items.map((i) => i.ask.kind));
+    expect(kinds).toEqual(new Set(["", "reply", "choose"]));
+    expect(page.items.some((i) => i.chain_len > 1)).toBe(true);
+    expect(page.counts.needs_you).toBeGreaterThan(0);
+  });
+});

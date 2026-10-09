@@ -1,0 +1,13 @@
+{
+  "name": "Hyperfeed",
+  "short_name": "Hyperfeed",
+  "description": "One feed for your agent and your apps: what your agent did on your behalf, beside every notification your apps sent.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#2f4be0",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
