@@ -34,9 +34,11 @@ tags = ["agent", "notifications", "feed", "approvals", "delegated-execution"]
 github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
 min-runtime-version = "0.11.0-rc.83"
-# No `frontend` yet: it doubles as the registered login callback origin, and
-# hyperfeed.vercel.app belongs to someone else's project. Add the URL of our
-# own Vercel project (Root Directory `apps/hyperfeed/app`) once it exists.
+# Doubles as the registered login callback origin, compared by exact origin:
+# without it a hosted login dies on "Login callback destination is not allowed".
+# The Vercel project's own domain (Root Directory `apps/hyperfeed/app`), not
+# `hyperfeed.vercel.app`, which is someone else's project.
+frontend = "https://hyperfeed-two.vercel.app"
 # Shown to an agent by mero-mcp the first time it meets this app: how to report,
 # ask and carry out the user's decisions through the feed.
 guide = "GUIDE.md"
