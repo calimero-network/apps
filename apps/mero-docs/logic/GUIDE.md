@@ -13,8 +13,8 @@ The bundle has two services, and every context runs exactly one of them:
   Folders are core groups: the tree, names, colours, docs contexts and roles all live in core.
 - `docs` holds the documents, comments and document tags of one folder.
 
-`describe_app` and `select_app` show one service's methods at a time: pass `service` to `describe_app` (`registry` or `docs`), or pass a `context` to `select_app` and the service follows from the context.
-mero-mcp generates no per-method tools for a bundle with two services, so run every method with the `call` tool, passing the `app_handle` from `select_app`, the `method` name and its `args` keyed by parameter name.
+`describe_app` and `select_app` show one service's methods at a time: pass `service` (`registry` or `docs`) to `describe_app`, or a `context` to `select_app`.
+Per-method tools may be available; the `call` tool always works, passing the `app_handle` from `select_app`, the `method` name and its `args` keyed by parameter name.
 
 ## Context model
 
@@ -25,12 +25,11 @@ mero-mcp generates no per-method tools for a bundle with two services, so run ev
 - A folder is a group inside the namespace, and its group id is the folder id.
   A subfolder is a group created with `parent` set to the folder's group id.
 - Every folder has exactly one `docs` context, created inside the folder's own group (pass the folder's group id as `group`) with the folder's name.
-  This is the rule agents most often get wrong: one docs context per folder, never one per document, and never a docs context in the root group.
+  This is the rule agents most often get wrong: one docs context per folder, never one per document or in the root group.
 - Documents live inside their folder's docs context.
   Two documents in one folder share a context; documents in different folders never do.
-- A folder's docs context is the one context in the folder's group: nothing else links the two.
 - A folder's name and colour are its group's metadata: `name`, and `color` (`#rrggbb`) in its `data`.
-- A folder's roles are core group roles and capabilities in the folder's group, not registry data.
+- A folder's roles and capabilities are core's, in the folder's group, not registry data.
 - A folder is `open` (every workspace member can join it) or `restricted` (members must be added to the folder's group).
 - People are named by account id, 64 hex characters, as `list_group_members` shows them.
 
@@ -59,18 +58,21 @@ The JSON examples below show only the method's own arguments.
    Every context whose `serviceName` is `docs` is a folder's docs context, and its `groupId` is the folder id.
 3. `select_app` with `context` set to a docs context id to work in that folder's documents.
 
-The web app finds the folder tree by walking core's subgroup listing down from the root group, and reads each folder's name and colour from its group metadata.
+The web app finds the folder tree by walking core's subgroup listing down from the root group.
 `list_contexts` shows only the contexts this node holds, so a folder you have not joined is not in it.
+A folder whose group has not reached this node yet answers `group '<id>' not found`: it is not synced, not removed.
+Wait and retry; never treat it as deleted and never recreate it.
 
 ### Create a folder
 
 Do the steps in this order, and stop at the first failure.
 
 1. `create_group` with `namespace`, `visibility` (`open` or `restricted`) and, for a subfolder, `parent` set to the parent folder's group id.
+   Always pass `visibility`, because the default differs: `open` without a `parent`, `restricted` under one.
    Leave `name` out.
    Keep the returned `groupId`: it is the folder id.
 2. `set_group_metadata` with `group` set to the folder id and `name` set to the folder name.
-   Naming after the visibility is set keeps the name readable to every workspace member of an open folder.
+   Naming after the visibility keeps an open folder's name readable to every workspace member.
    For a colour, also pass `data` set to `{"color": "#3b82f6"}`.
 3. `create_context` with `application`, `group` set to the folder id, `service` set to `docs` and `name` set to the folder name.
    It takes no `args`.
@@ -98,7 +100,7 @@ If a step fails for another reason, the group and context from the earlier steps
 The web editor uses the block kinds `paragraph`, `heading` (attribute `level`, `"1"` to `"3"`), `bulletListItem` and `image`.
 `depth` nests a block under the block above it.
 Set a heading with `set_kind` to `heading` and `set_attr` with `key` `level`.
-`create_doc` and `insert_block` mint a new item on every call, so after a lost response check `list_docs` or `list_blocks` before repeating.
+Reshape blocks with `move_block` (`doc`, `block`, `after`; `null` moves it to the top), `set_depth` (`doc`, `block`, `depth`) and `merge_blocks` (`doc`, `first`, `second`; appends the second block's text to the first and removes the second).
 
 ### Add an image
 
@@ -114,11 +116,12 @@ Leave an image block's text empty.
 - `list_docs` with `include_archived` lists metadata only: title, tag keys, archived flag, creator and timestamps.
   Timestamps are nanoseconds since the Unix epoch.
 - `get_document` returns every block in order with its kind, depth, attributes and formatted `spans`.
-- `get_block` returns one block the same way, or `null`; `get_text` returns one block's plain text; `get_title` returns the title.
+- `get_block` returns one block the same way, or `null`; `get_text` returns one block's plain text; `get_title` returns the title; `get_doc` with `id` returns one document's metadata row.
 - `search_docs` with `query`, `include_archived`, `cursor` and `limit` finds documents by title and body words, best match first.
   Pass `null` as `cursor` and `limit` for the first page of 20, then the returned `next_cursor`.
   The query is at most 256 bytes.
   A node running with search off answers with an error; read `list_docs` and `get_document` instead.
+- In the registry, `save_view` with `id`, `name` and `query` saves a workspace-wide search, and `list_views` lists them.
 
 ### Edit text
 
@@ -163,7 +166,6 @@ A tag is workspace-wide, but the tag list lives in the registry and each documen
 - `add_comment` with `doc_id` and `body`; `list_comments` with `doc_id` returns them with the author's account id and a `created_at`.
 - Only the author can `edit_comment`.
   The author or the folder's moderators can `delete_comment`.
-- `add_comment` mints a new comment on every call, so check `list_comments` before repeating.
 - A member who is Read only on the folder cannot comment.
 
 ### Archive and delete a document
@@ -171,7 +173,7 @@ A tag is workspace-wide, but the tag list lives in the registry and each documen
 - `archive_doc` hides a document from `list_docs`; `unarchive_doc` brings it back.
   Nothing is lost.
 - `delete_doc` removes the document, its body and its comments for good.
-  Only its creator or a moderator (the member who created the folder's docs context) may; `can_delete` on the `list_docs` row says whether you may.
+  Only its creator or a moderator (who created the folder's docs context) may; `can_delete` on the `list_docs` row says so.
 
 ### Rename or recolour a folder
 
@@ -204,7 +206,7 @@ There is no tool to move a folder under another parent.
 ### Make a member Read only on a folder
 
 A Read only member can open the folder's documents but not change them or comment; the node refuses each write.
-Folder roles are core group roles: the node enforces the member's `ReadOnly` role in the folder's group, and nothing about roles is stored in the registry.
+The node enforces the member's `ReadOnly` role in the folder's group, and nothing about roles is stored in the registry.
 
 1. An admin of the folder's group calls `add_group_members` with `group` set to the folder id and `members` set to `[{"identity": "<account id>", "role": "ReadOnly"}]`.
    This adds the row or changes an existing one.
@@ -214,18 +216,27 @@ Folder roles are core group roles: the node enforces the member's `ReadOnly` rol
 
 To end it, do the same steps with `Member`.
 
+### Change a folder's visibility
+
+1. `set_group_visibility` with `group` set to the folder id and `visibility` set to `open` or `restricted`.
+   It needs admin or the manage-visibility capability on the folder's group.
+2. Only the folder's creator can switch a restricted folder to `open`; anyone else is refused.
+   Restricting works for any admin or holder of that capability.
+3. After opening, repeat "Make a member Read only on a folder" for each member who is `ReadOnly` in the parent folder: here and in every `open` sub-folder reached through `open` folders only, parents first.
+   Otherwise Read only no longer covers them.
+4. Restricting removes everyone who only had inherited access, in the folder and its sub-folders, so confirm first.
+
 ## Rules and limits
 
 - Ids (documents, blocks, comments, tokens, anchors) are opaque strings: take them from a result and pass them back unchanged.
 - The registry owner is whoever created the registry context.
-  Only the owner adds and removes managers, with `add_manager` and `remove_manager`.
-- The web app's folder roles are core's: Read only is the `ReadOnly` group role, and a folder Manager also holds group capabilities, which this tool set cannot set.
-- Tags, colours and names have the limits stated on their methods; a value outside them is refused.
+  Only the owner adds and removes managers, with `add_manager` and `remove_manager`; `get_owner` and `list_managers` read them.
+- Group roles are `Admin` (full control), `Member` (what its capabilities allow) and `ReadOnly` (opens documents, cannot edit or comment).
+  A folder Manager also holds group capabilities, which this tool set cannot set.
 - A document title is at most 1024 characters, a block's text at most 100000 and a comment at most 10000; a write that goes past one is refused and nothing is stored.
 - Retrying is safe only where a method says so.
-- `create_doc`, `insert_block`, `split_block` and `add_comment` create a second item on a repeat, so check `list_docs`, `list_blocks` or `list_comments` first.
+- `create_doc`, `insert_block`, `split_block` and `add_comment` create a second item on a repeat, so after a lost response check `list_docs`, `list_blocks` or `list_comments` first.
 - This tool set cannot set the default permissions the web app gives new members, delete a group, or move a group.
   A member invited from here cannot create folders: the node refuses their `create_group` until an admin grants them the permission in the web app.
-- `set_group_metadata` replaces the whole metadata record.
-  On a folder that is the name and `data.color`; on the namespace root it carries the registry pin from Getting started.
-- `delete_doc`, `delete_block`, `delete_comment`, `delete_tag` and `delete_view` cannot be undone: confirm before running them.
+- `set_group_metadata` replaces the whole record: a folder's name and `data.color`, or the namespace root's registry pin.
+- `delete_doc`, `delete_block`, `delete_comment`, `delete_tag` and `delete_view` cannot be undone: confirm first.
