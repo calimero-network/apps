@@ -124,6 +124,12 @@ export function FeedView({ feed, query }: { feed: Feed; query: string }) {
 
         <AskAgent feed={feed} chain="" label="Ask your agent" onPosted={(m) => setSelected(m.id)} />
 
+        {feed.outdated && (
+          <div className="notice" role="status">
+            Your feed was made by an earlier Hyperfeed. It still works, but it can't hold lenses or typed items. Install the latest Hyperfeed on your node and create a new feed to get them.
+          </div>
+        )}
+
         {feed.error && (
           <div className="error" role="alert">
             <span>{feed.error}</span>

@@ -655,6 +655,14 @@ input:focus-visible {
   font-size: 13px;
 }
 
+.notice {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+  font-size: 14px;
+}
+
 /* ── lenses ──────────────────────────────────────────────────────────────── */
 
 .lenses {

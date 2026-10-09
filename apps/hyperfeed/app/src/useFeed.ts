@@ -8,6 +8,11 @@ export interface Feed {
   settings: SettingsView | null;
   /** What your agent learned for each app version, newest first. */
   lenses: LensView[];
+  /**
+   * The feed was made by a Hyperfeed from before lenses: it works, but holds
+   * no lenses or typed rows until it is created again with the latest one.
+   */
+  outdated: boolean;
   error: string | null;
   busy: boolean;
   filter: Filter;
@@ -57,6 +62,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
   const [page, setPage] = useState<FeedPage | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [lenses, setLenses] = useState<LensView[]>([]);
+  const [outdated, setOutdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -76,10 +82,16 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     try {
       do {
         again.current = false;
-        const [p, s, l] = await Promise.all([backend.feed(filter, appKey), backend.settings(), backend.lenses()]);
+        // An older feed has no `lenses`: the rest of it still reads.
+        const lensesOrOld = backend.lenses().catch((e: unknown) => {
+          if (/method "?lenses"? not found/i.test(messageOf(e))) return null;
+          throw e;
+        });
+        const [p, s, l] = await Promise.all([backend.feed(filter, appKey), backend.settings(), lensesOrOld]);
         setPage(p);
         setSettings(s);
-        setLenses(l);
+        setLenses(l ?? []);
+        setOutdated(l === null);
         setError(null);
       } while (again.current);
     } catch (e) {
@@ -119,6 +131,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     page,
     settings,
     lenses,
+    outdated,
     error,
     busy,
     filter,
