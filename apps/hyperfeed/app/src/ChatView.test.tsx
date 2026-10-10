@@ -60,6 +60,27 @@ describe("chat with your agent", () => {
     expect(await screen.findByText(/Is mero-bot running against this feed\?/)).toBeInTheDocument();
   });
 
+  it("hides finished chats until you ask for them, but never the one you have open", async () => {
+    const backend = new DemoBackend(false, 0);
+    const finished = await backend.say("", "What time is it in Tokyo?");
+    backend.agentSay(finished.chain, finished.id, "03:12.");
+    await backend.say("", "Draft the launch post");
+    const { unmount } = render(<Harness backend={backend} />);
+    expect(await within(list()).findByRole("button", { name: /Draft the launch post/ })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /03:12/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(list()).getByRole("button", { name: "Show done chats (1)" }));
+    expect(within(list()).getByRole("button", { name: /03:12/ })).toBeInTheDocument();
+    fireEvent.click(within(list()).getByRole("button", { name: "Hide done chats" }));
+    expect(within(list()).queryByRole("button", { name: /03:12/ })).not.toBeInTheDocument();
+    unmount();
+
+    // Opened (from the feed, say), a finished chat stays in the list.
+    render(<Harness backend={backend} start={finished.chain} />);
+    expect(await within(list()).findByRole("button", { name: /03:12/ })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /Show done chats/ })).not.toBeInTheDocument();
+  });
+
   it("opens a chat from the list, and starts a new one", async () => {
     const backend = new DemoBackend(false, 0);
     const first = await backend.say("", "First question");

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { statusOf, timeLabel } from "./format";
+import { laneOf, statusOf, timeLabel } from "./format";
 
 /**
  * Chats with your agent.
@@ -35,6 +35,8 @@ export function ChatView({
   const [thread, setThread] = useState<FeedItem[]>([]);
   // On a phone one pane shows at a time: New chat opens the empty chat.
   const [composing, setComposing] = useState(false);
+  // Finished chats are out of the way until you ask for them; the open one always shows.
+  const [showDone, setShowDone] = useState(false);
   const { chats: listChats, loadChain, page } = feed;
 
   // `page` changes on every re-read, which follows every event on the feed:
@@ -85,8 +87,8 @@ export function ChatView({
         ) : chats.length === 0 ? (
           <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
         ) : (
-          <ul>
-            {chats.map((c) => (
+          <ChatList chats={chats} open={chain} showDone={showDone} onShowDone={setShowDone}>
+            {(c) => (
               <li key={c.chain}>
                 <button
                   type="button"
@@ -104,8 +106,8 @@ export function ChatView({
                   <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
                 </button>
               </li>
-            ))}
-          </ul>
+            )}
+          </ChatList>
         )}
       </nav>
 
@@ -138,6 +140,39 @@ export function ChatView({
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
     </div>
+  );
+}
+
+/**
+ * The chats, the finished ones hidden unless you ask for them. A chat is
+ * finished when nothing in it is left to you or your agent: your agent's
+ * answer closed it, as the feed's Done lane counts it. The chat you have open
+ * always shows, finished or not.
+ */
+function ChatList({
+  chats,
+  open,
+  showDone,
+  onShowDone,
+  children,
+}: {
+  chats: FeedItem[];
+  open: string;
+  showDone: boolean;
+  onShowDone: (show: boolean) => void;
+  children: (chat: FeedItem) => ReactNode;
+}) {
+  const done = chats.filter((c) => laneOf(c) === "done" && c.chain !== open);
+  const shown = showDone ? chats : chats.filter((c) => !done.includes(c));
+  return (
+    <>
+      {shown.length === 0 ? <p className="chat-hint">Nothing open. Every chat is done.</p> : <ul>{shown.map(children)}</ul>}
+      {done.length > 0 && (
+        <button type="button" className="link small chat-done-toggle" aria-pressed={showDone} onClick={() => onShowDone(!showDone)}>
+          {showDone ? "Hide done chats" : `Show done chats (${done.length})`}
+        </button>
+      )}
+    </>
   );
 }
 
