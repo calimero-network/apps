@@ -3,6 +3,7 @@ import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
 import { canOpen } from "./links";
+import { agentLive, notPickedUp } from "./theme";
 import {
   choicesFor,
   fieldsOf,
@@ -558,7 +559,7 @@ function Row({
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
           {item.note && <p className="note">{answerLine(item)}</p>}
-          <LateHint item={item} />
+          <LateHint item={item} live={agentLive(feed.settings?.agents)} />
           {resolvable(item) && (
             <div className="row-answer">
               <Resolver key={item.id} item={item} feed={feed} />
@@ -735,7 +736,7 @@ export function AskAgent({
 const AGENT_LATE_MS = 10_000;
 
 /** Under a message nothing has picked up: a hint that no agent may be running. */
-function LateHint({ item }: { item: FeedItem }) {
+function LateHint({ item, live }: { item: FeedItem; live: boolean }) {
   const waiting = item.kind === "message" && item.from === "you" && item.status === "waiting";
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -751,7 +752,7 @@ function LateHint({ item }: { item: FeedItem }) {
   if (!waiting || now - item.status_at < AGENT_LATE_MS) return null;
   return (
     <p className="hint" role="status">
-      Nothing has picked this up yet. Is your agent running and connected to this feed?
+      {notPickedUp(live)}
     </p>
   );
 }

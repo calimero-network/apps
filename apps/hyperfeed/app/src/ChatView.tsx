@@ -3,6 +3,7 @@ import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { NewFeedButton, type NewFeed } from "./FeedView";
 import { laneOf, progressLine, statusOf, timeLabel } from "./format";
+import { agentLive, notPickedUp } from "./theme";
 
 /**
  * Chats with your agent.
@@ -136,7 +137,13 @@ export function ChatView({
             )}
           </div>
         )}
-        <Thread items={thread} clock={clock} busy={feed.busy} onAnswer={(a) => void send(a)} />
+        <Thread
+          items={thread}
+          clock={clock}
+          live={agentLive(feed.settings?.agents, clock())}
+          busy={feed.busy}
+          onAnswer={(a) => void send(a)}
+        />
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
     </div>
@@ -179,11 +186,13 @@ function ChatList({
 function Thread({
   items,
   clock,
+  live,
   busy,
   onAnswer,
 }: {
   items: FeedItem[];
   clock: () => number;
+  live: boolean;
   busy: boolean;
   /** Answer your agent's open question: your next message in the chat. */
   onAnswer: (answer: string) => void;
@@ -231,14 +240,14 @@ function Thread({
           </div>
         ),
       )}
-      {last && <Waiting last={last} clock={clock} />}
+      {last && <Waiting last={last} clock={clock} live={live} />}
       <div ref={end} />
     </div>
   );
 }
 
 /** Where your latest message stands while your agent hasn't answered it. */
-function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
+function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; live: boolean }) {
   const [, setTick] = useState(0);
   const now = clock();
   const waiting = last.kind === "message" && last.from === "you" && (last.status === "waiting" || last.status === "thinking");
@@ -264,7 +273,7 @@ function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
   if (now - last.at < UNANSWERED_MS) return <p className="chat-status">Sent · waiting for your agent</p>;
   return (
     <p className="chat-status wait">
-      Your agent hasn't picked this up yet. Is mero-bot running against this feed? It answers once it starts.
+      {notPickedUp(live)}
     </p>
   );
 }
