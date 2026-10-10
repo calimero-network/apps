@@ -87,6 +87,34 @@ test("on a phone, the chat list and the open chat take turns", async ({ page }) 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+for (const [device, size] of [
+  ["a computer", { width: 1280, height: 800 }],
+  ["a phone", { width: 360, height: 740 }],
+] as const) {
+  test(`on ${device}, you delete a chat after confirming, and Undo brings it back`, async ({ page }) => {
+    const explain = watch(page);
+    await page.setViewportSize(size);
+    await page.goto("/demo/chat");
+    await page.getByRole("button", { name: "New chat" }).click();
+    await page.getByLabel("Message your agent").fill("Throwaway question");
+    await page.getByLabel("Message your agent").press("Enter");
+    await expect(page.getByRole("log").getByText("Throwaway question", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Delete chat" }).click();
+    const ask = page.getByRole("group", { name: "Delete this chat?" });
+    await expect(ask).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await ask.getByRole("button", { name: "Delete" }).click();
+
+    const chats = page.getByRole("navigation", { name: "Chats" });
+    await expect(page.getByRole("status").filter({ hasText: "Chat deleted" })).toBeVisible();
+    await expect(chats).toBeVisible();
+    await explain(expect(chats.getByRole("button", { name: /Throwaway question/ })).toHaveCount(0));
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(chats.getByRole("button", { name: /Throwaway question/ })).toBeVisible();
+  });
+}
+
 test("in the demo, the feed is three lanes, light or dark, and done things archive away", async ({ page }) => {
   await page.goto("/demo");
   for (const lane of ["To do", "In progress", "Done"]) await expect(page.getByRole("region", { name: lane })).toBeVisible();

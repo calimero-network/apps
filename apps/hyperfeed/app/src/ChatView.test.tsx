@@ -137,6 +137,66 @@ describe("chat with your agent", () => {
     expect(first.chain).toBeTruthy();
   });
 
+  it("deletes a chat once you confirm, and Undo brings it back", async () => {
+    const backend = new DemoBackend(false, 0);
+    const doomed = await backend.say("", "Old question");
+    await backend.say("", "Keep this one");
+    render(<Harness backend={backend} start={doomed.chain} />);
+    expect(await screen.findByText("Old question", { selector: ".bubble p" })).toBeInTheDocument();
+
+    // It asks first; Cancel leaves the chat alone.
+    fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+    const ask = screen.getByRole("group", { name: "Delete this chat?" });
+    fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: "Delete this chat?" })).not.toBeInTheDocument();
+    expect(within(list()).getByRole("button", { name: /Old question/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("group", { name: "Delete this chat?" })).getByRole("button", { name: "Delete" }));
+    });
+    // Gone from your chats and your feed (archived, so not erased), and you are back at a new chat.
+    expect(await screen.findByRole("heading", { name: "Talk to your agent" })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /Old question/ })).not.toBeInTheDocument();
+    expect(within(list()).getByRole("button", { name: /Keep this one/ })).toBeInTheDocument();
+    expect((await backend.feed("all", "")).items.some((i) => i.chain === doomed.chain)).toBe(false);
+    expect((await backend.feed("archived", "")).items.some((i) => i.chain === doomed.chain)).toBe(true);
+
+    const toast = screen.getByRole("status");
+    expect(toast).toHaveTextContent("Chat deleted");
+    await act(async () => {
+      fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
+    });
+    expect(await within(list()).findByRole("button", { name: /Old question/ })).toBeInTheDocument();
+  });
+
+  it("offers Delete only on a chat you have open", async () => {
+    const backend = new DemoBackend(false, 0);
+    await backend.say("", "A question");
+    render(<Harness backend={backend} />);
+    await within(list()).findByRole("button", { name: /A question/ });
+    expect(screen.queryByRole("button", { name: "Delete chat" })).not.toBeInTheDocument();
+  });
+
+  it("stays on the chat when the feed refuses to delete it", async () => {
+    class NoArchive extends DemoBackend {
+      override async archive(): Promise<never> {
+        throw Object.assign(new Error("FunctionCallError"), { data: 'method "archive" not found' });
+      }
+    }
+    const backend = new NoArchive(false, 0);
+    const kept = await backend.say("", "Still here");
+    render(<Harness backend={backend} start={kept.chain} />);
+    expect(await screen.findByText("Still here", { selector: ".bubble p" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("group", { name: "Delete this chat?" })).getByRole("button", { name: "Delete" }));
+    });
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Still here", { selector: ".bubble p" })).toBeInTheDocument();
+    expect(screen.queryByText("Chat deleted")).not.toBeInTheDocument();
+  });
+
   it("says why a message was not sent, and keeps your words", async () => {
     class NoSay extends DemoBackend {
       override async say(): Promise<never> {

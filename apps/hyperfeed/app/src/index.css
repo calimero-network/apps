@@ -1237,6 +1237,58 @@ thead th {
   align-self: flex-start;
 }
 
+/* ← Chats (on a phone) and Delete chat, above the open chat. */
+.chat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Only the back button, which shows on a phone only: no empty row above a new chat. */
+.chat-head:not(:has(> :not(.chat-back))) {
+  display: none;
+}
+
+.chat-head .chat-back {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* Above the composer, not over Send. */
+.chat .toast {
+  bottom: 140px;
+}
+
+.chat-delete {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.chat-delete:hover {
+  color: var(--bad-ink);
+}
+
+.chat-delete-confirm {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--bad-ink);
+  background: var(--bad-bg);
+  border-radius: 10px;
+  padding: 6px 6px 6px 12px;
+}
+
+.chat-delete-yes {
+  background: var(--bad-ink);
+  border-color: var(--bad-ink);
+  color: #fff;
+}
+
 .chat-thread {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -1378,6 +1430,9 @@ thead th {
   }
   .chat-back {
     display: inline-flex;
+  }
+  .chat-head:not(:has(> :not(.chat-back))) {
+    display: flex;
   }
 }
 
