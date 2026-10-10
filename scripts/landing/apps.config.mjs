@@ -112,6 +112,59 @@ export const APPS = {
       },
     ],
   },
+  'mero-models': {
+    e2eDir: 'e2e',
+    availability: 'web+desktop',
+    overview: {
+      headline: 'A 3D modeller where the scene lives on your nodes.',
+      comparison: {
+        heading: 'Collaborative 3D, without the cloud in the middle',
+        sub: 'Primitives, meshes, materials and lights in a viewport you already know how to drive. The difference is who holds the model.',
+        themLabel: 'A typical cloud 3D tool',
+        rows: [
+          { label: 'Where the model lives', them: 'In the vendor’s cloud', us: 'On every member’s own node, nobody else’s' },
+          { label: 'Editing together', them: 'Through the vendor’s servers', us: 'Peer to peer, merging as a CRDT' },
+          { label: 'Who may change it', them: 'Whatever the vendor’s backend allows', us: 'Editors the scene’s admin names, enforced on every node' },
+          { label: 'Getting your work out', them: 'An export button, while the service lasts', us: 'glTF, OBJ and STL out of the box, and the scene is already on your disk' },
+          { label: 'If the service goes away', them: 'Your models may go with it', us: 'Your node still has every object and every vertex' },
+        ],
+      },
+      closing: {
+        title: 'Start a scene',
+        body: 'Connect a node, or install the desktop app that bundles one, then send the people you build with the link.',
+      },
+    },
+    trust: ['No server holds your models', 'Editing enforced by the contract', 'OBJ · STL · glTF in and out'],
+    explainer: [
+      'A Blender-style modeller in the browser: add primitives, move, rotate and scale them with a gizmo, drop into edit mode to push vertices around and extrude faces, give things materials and lights, and export the result as glTF, OBJ or STL. A scene is a Calimero context, and it replicates between its members’ own nodes.',
+      'Everyone in the scene sees every change as it lands, and sees each other: what the others have selected and where they are looking from streams over ephemeral presence, which never touches storage. Who may change the model is decided by the scene’s admin and enforced by the contract on every node.',
+    ],
+    features: [
+      { icon: 'Cube3D', title: 'A real modeller', body: 'Primitives, meshes, hierarchy, a transform gizmo with snapping, edit mode with extrude and merge, undo and redo, and the shortcuts you already know.' },
+      { icon: 'CloudX', title: 'No server holds the model', body: 'A scene is a context. Every member’s node keeps the whole scene, and edits travel peer to peer.' },
+      { icon: 'Target', title: 'Live together', body: 'See who is in the scene, what they have selected and where their camera is, and jump to their view with one click.' },
+      { icon: 'LockCheck', title: 'Editors, enforced', body: 'Anyone invited can watch; only editors the admin names can change the scene, and every node refuses anyone else’s write.' },
+      { icon: 'Upload', title: 'Bring models in, take them out', body: 'Import OBJ, STL and glTF, export glTF, OBJ and STL, or save the whole scene as a file.' },
+    ],
+    faq: [
+      {
+        q: 'What happens when two people move the same object?',
+        a: 'Each object is one record, and the merge keeps one person’s write whole — the same one on every node. You never end up with a cube that took its position from one person and its colour from the other.',
+      },
+      {
+        q: 'How big can a model be?',
+        a: 'A scene holds up to 2,000 objects, and a single mesh up to 30,000 vertices and 60,000 triangles. An import above that is simplified to fit, and the app says so.',
+      },
+      {
+        q: 'Can someone I invite change my scene?',
+        a: 'Not unless you let them. An invitation lets someone open the scene and watch; the scene’s admin ticks Can edit for the people who may change it, and the contract enforces that on every node, not just in the app.',
+      },
+      {
+        q: 'Does moving the camera send anything?',
+        a: 'Only presence: where you are looking from and what you have selected, over the node’s ephemeral channel. It is never stored and never a transaction. Moving an object is a transaction, sent once when you let go.',
+      },
+    ],
+  },
   'mero-kombat': {
     e2eDir: 'e2e',
     availability: 'web+desktop',

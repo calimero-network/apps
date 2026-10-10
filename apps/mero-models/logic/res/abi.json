@@ -1,0 +1,849 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Environment": {
+      "kind": "record",
+      "doc": "What surrounds the scene: its name, the background and the ambient light.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The scene's name; `\"\"` shows the name it was created with."
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Viewport background, `#rrggbb`."
+        },
+        {
+          "name": "ambient_color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Ambient light colour, `#rrggbb`."
+        },
+        {
+          "name": "ambient_intensity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "Ambient light strength, 0 to 10."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract."
+        }
+      ]
+    },
+    "Material": {
+      "kind": "record",
+      "doc": "How an object's surface looks. A light reads `color` as its light colour.",
+      "fields": [
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Base colour, `#rrggbb`."
+        },
+        {
+          "name": "metalness",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (dielectric) to 1 (metal)."
+        },
+        {
+          "name": "roughness",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (mirror) to 1 (matte)."
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "0 (invisible) to 1 (opaque)."
+        },
+        {
+          "name": "emissive",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Emitted colour, `#rrggbb`; `#000000` for none."
+        },
+        {
+          "name": "wireframe",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Draw the edges only."
+        },
+        {
+          "name": "flat_shading",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Faceted normals instead of smooth ones."
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "doc": "Someone who has opened the scene, as they describe themselves.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member's account id. Filled in from the slot on read; never trusted from storage."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberView": {
+      "kind": "record",
+      "doc": "A member with their effective role.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`admin`, `editor` or `viewer`."
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroModels": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "What `init` was given. `Frozen`: nobody rewrites it. The environment's `name`\noverrides it once an editor sets one."
+        },
+        {
+          "name": "objects",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "SceneObject"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Every object, keyed by id. Writable only by accounts the editor role is\nprojected onto, on every node."
+        },
+        {
+          "name": "meshes",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "MeshData"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Vertex data for `mesh` objects, keyed by the object's id. Guarded like `objects`."
+        },
+        {
+          "name": "environment",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Environment"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "One entry, under [`ENVIRONMENT_KEY`]. Guarded like `objects`."
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            }
+          },
+          "doc": "One profile per account, written only by that account."
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          },
+          "doc": "Admins (the creator) and editors."
+        }
+      ]
+    },
+    "MeshData": {
+      "kind": "record",
+      "doc": "A triangle mesh: the shape of a `mesh` object, in its own local space.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The object this is the shape of."
+        },
+        {
+          "name": "positions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          },
+          "doc": "`x, y, z` per vertex, flattened."
+        },
+        {
+          "name": "indices",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Three vertex indices per triangle, counter-clockwise when seen from outside."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Set by the contract like an object's."
+        }
+      ]
+    },
+    "MeshStamp": {
+      "kind": "record",
+      "doc": "A mesh's identity and size without its vertices, so a client can tell which meshes it\nalready holds before downloading any.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "vertex_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "triangle_count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "SceneInfo": {
+      "kind": "record",
+      "doc": "The scene's header: name, environment, counts, and what the caller may do.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "environment",
+          "type": {
+            "$ref": "Environment"
+          }
+        },
+        {
+          "name": "object_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "mesh_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "me",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The caller's account id."
+        },
+        {
+          "name": "my_role",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`admin`, `editor` or `viewer`."
+        }
+      ]
+    },
+    "SceneObject": {
+      "kind": "record",
+      "doc": "One object in the scene.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Chosen by the caller; use a fresh UUID. Writing an existing id replaces that object."
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Shown in the outliner."
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`OBJECT_KINDS`]. A `mesh` takes its shape from `put_mesh` under the same id."
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The parent object's id, or `\"\"` for a root object. A parent that does not exist, or\na chain that loops, reads as `\"\"`."
+        },
+        {
+          "name": "position",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Position relative to the parent, scene units."
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Euler rotation (XYZ order) relative to the parent, radians."
+        },
+        {
+          "name": "scale",
+          "type": {
+            "$ref": "Vec3"
+          },
+          "doc": "Scale relative to the parent. Primitives are unit-sized, so this is their size."
+        },
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Hidden objects (and their children) are not drawn."
+        },
+        {
+          "name": "material",
+          "type": {
+            "$ref": "Material"
+          },
+          "doc": "Surface, or light colour for a light."
+        },
+        {
+          "name": "segments",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "How finely a curved primitive is tessellated, 3 to 128. Ignored by other kinds."
+        },
+        {
+          "name": "intensity",
+          "type": {
+            "kind": "f64"
+          },
+          "doc": "A light's strength; ignored by other kinds."
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who first created it. Set by the contract; the value sent is ignored."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Creation time, unix milliseconds. Kept from the first write."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Last change, unix milliseconds. The contract moves it past the stored value, so it\nonly ever grows; the value sent is a hint."
+        }
+      ]
+    },
+    "Vec3": {
+      "kind": "record",
+      "doc": "A point or a direction in scene units, or Euler angles in radians.",
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "f64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "clear_scene",
+      "doc": "Remove every object and mesh. Admin only.\n\n# Errors\nFails if the caller is not an admin.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "delete_objects",
+      "doc": "Delete objects and their meshes. Editors only. Ids already gone are fine. Children\nof a deleted object are not deleted — they read as root objects — so delete them in\nthe same call to remove a whole branch. Emits one `ObjectsDeleted` event.\n\n# Errors\nFails, deleting nothing, if the caller is not an editor or the batch is too large.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          },
+          "doc": "at most 200."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "destructive": true
+    },
+    {
+      "name": "get_members",
+      "doc": "Everyone who has joined, with their effective role, oldest first. An admin or\neditor who has never opened the scene is listed too, named by their id.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_meshes",
+      "doc": "Meshes by object id, in the order asked; unknown ids are left out.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MeshData"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_objects",
+      "doc": "Every object in the scene, with each `parent` resolved: a missing parent or a\nloop reads as `\"\"`. Ordered by creation, then id.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SceneObject"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_objects_by_ids",
+      "doc": "Several objects by id, in the order asked; unknown ids are left out. Parents are\nreturned as stored — resolve them against `get_objects`.\n\n# Examples\n```json\n{\"ids\":[\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\"]}\n```",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SceneObject"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_scene",
+      "doc": "The scene's name and environment, its size, and the caller's id and role.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "$ref": "SceneInfo"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "grant_editor",
+      "doc": "Let a member change the scene. Admin only.\n\n# Errors\nFails if the caller is not an admin or `member` is not an account id.\n\n# Examples\n```json\n{\"member\":\"<member id from get_members>\"}\n```",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "their member id (account id). They need not have joined yet."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "init",
+      "doc": "Create a scene. Runs once, when the context is created; the creator becomes its\nonly admin and may grant others the editor role.\n\n# Examples\n```json\n{\"name\":\"Robot\"}\n```",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "the scene's name."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "doc": "Introduce the caller to the scene, or change the name they are shown by. Anyone in\nthe context may; it grants no editing rights.\n\n# Examples\n```json\n{\"name\":\"Ada\",\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "display name, at most 80 characters; empty becomes `\"Guest\"`."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "list_meshes",
+      "doc": "Every stored mesh's id, version and size — no vertices. Compare `updated_at` with\nwhat you hold and fetch only what changed with `get_meshes`.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MeshStamp"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "my_role",
+      "doc": "The caller's effective role: `admin`, `editor` or `viewer`.\n\n# Examples\n```json\n{}\n```",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "put_mesh",
+      "doc": "Set the vertices of a `mesh` object. Editors only. Write the object first, or in the\nsame session: a mesh with no object is stored but drawn by nobody.\n\n# Errors\nFails if the caller is not an editor, the mesh is too large, `positions` is not a\nwhole number of vertices, an index points past the last vertex, or a coordinate is\nnot finite.\n\n# Examples\n```json\n{\"mesh\":{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"positions\":[0,0,0,1,0,0,0,1,0],\"indices\":[0,1,2],\"updated_at\":0},\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "mesh",
+          "type": {
+            "$ref": "MeshData"
+          },
+          "doc": "at most 30 000 vertices and 60 000 triangles; `updated_at` is set by the contract."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "put_objects",
+      "doc": "Add objects, or replace the objects with the same ids. Editors only. Emits one\n`ObjectsChanged` event.\n\nEach object's `created_by` and `created_at` are kept from the first write;\n`updated_at` is the caller's `now`, moved past the stored value.\n\n# Errors\nFails, writing nothing, if the caller is not an editor, the batch is too large, the\nscene would exceed 2000 objects, or an object is malformed (unknown kind, a\nnon-finite number, a bad colour, an object parented to itself).\n\n# Examples\n```json\n{\"objects\":[{\"id\":\"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90\",\"name\":\"Cube\",\"kind\":\"cube\",\"parent\":\"\",\"position\":{\"x\":0,\"y\":0.5,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0},\"scale\":{\"x\":1,\"y\":1,\"z\":1},\"visible\":true,\"material\":{\"color\":\"#c8ccd4\",\"metalness\":0,\"roughness\":0.6,\"opacity\":1,\"emissive\":\"#000000\",\"wireframe\":false,\"flat_shading\":false},\"segments\":32,\"intensity\":0,\"created_by\":\"\",\"created_at\":0,\"updated_at\":0}],\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "objects",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "SceneObject"
+            }
+          },
+          "doc": "at most 200."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "returns_doc": "The ids written, in the order given.",
+      "intent": "mutating"
+    },
+    {
+      "name": "revoke_editor",
+      "doc": "Make a member a viewer again. Admin only; an admin's own role is unaffected.\n\n# Errors\nFails if the caller is not an admin or `member` is not an account id.\n\n# Examples\n```json\n{\"member\":\"<member id from get_members>\"}\n```",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "their member id (account id)."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_environment",
+      "doc": "Rename the scene, or change its background or ambient light. Editors only.\n\n# Errors\nFails if the caller is not an editor, or a colour is not `#rrggbb`.\n\n# Examples\n```json\n{\"environment\":{\"name\":\"Robot\",\"background\":\"#1d1f24\",\"ambient_color\":\"#ffffff\",\"ambient_intensity\":0.4,\"updated_at\":0},\"now\":1727000000000}\n```",
+      "params": [
+        {
+          "name": "environment",
+          "type": {
+            "$ref": "Environment"
+          },
+          "doc": "the whole environment; `updated_at` is set by the contract."
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "the caller's clock, unix milliseconds."
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "EnvironmentChanged",
+      "doc": "The name, background or ambient light changed."
+    },
+    {
+      "name": "MemberChanged",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "A member joined or renamed themselves; the payload is their member id."
+    },
+    {
+      "name": "MeshChanged",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "A mesh's vertices changed; the payload is its object id."
+    },
+    {
+      "name": "ObjectsChanged",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "Objects were added or changed; the payload is their ids."
+    },
+    {
+      "name": "ObjectsDeleted",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "doc": "Objects were deleted; the payload is the ids the call named."
+    },
+    {
+      "name": "RoleChanged",
+      "payload": {
+        "kind": "string"
+      },
+      "doc": "A member's role changed; the payload is the id the caller passed."
+    },
+    {
+      "name": "SceneCleared",
+      "doc": "Every object was removed."
+    }
+  ],
+  "state_root": "MeroModels",
+  "state_version": 1
+}

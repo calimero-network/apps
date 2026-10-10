@@ -13,7 +13,7 @@ one dependency graph, one CI pipeline, and one release process instead of drifti
 places.
 
 > **Status: migration complete.** All **16** migrated apps are here and this repo is the source of
-> truth; apps written since — [mero-chess](apps/mero-chess), [mero-kombat](apps/mero-kombat) — were born in it.
+> truth; apps written since — [mero-chess](apps/mero-chess), [mero-kombat](apps/mero-kombat), [mero-models](apps/mero-models) — were born in it.
 > Fifteen of the sixteen source repositories are archived with a pointer back — several under their
 > older names (`p2p-sheets`, `only-peers-client`, `meropass`, `MeroSign`,
 > `scaffolding-e2e-application`); only [`kv-store`](https://github.com/calimero-network/kv-store)
@@ -51,7 +51,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Eighteen apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
+Twenty-three apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -71,6 +71,7 @@ Start here. These exist to be read, not shipped.
 | --- | --- | --- | --- |
 | [mero-design](apps/mero-design) | [↗](https://mero-design.vercel.app/) | Figma-style infinite canvas — shapes, text, images, SVG blobs, real-time multi-member editing. | `com.calimero.mero-design` |
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | Photoshop-style image editor — layers, folders, masks, adjustments, free transform, collaborative. | `com.calimero.mero-pixart` |
+| [mero-models](apps/mero-models) | — | Blender-style 3D modeller — primitives, meshes, edit mode with extrude, materials and lights, a transform gizmo, undo, OBJ/STL/glTF in and out; co-edited live with presence, editors enforced by the contract. | `com.calimero.mero-models` |
 | [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc, formula autocomplete, live cursors, CSV download. | `com.calimero.mero-sheets` |
 | [mero-calendar](apps/mero-calendar) | [↗](https://mero-calendar.vercel.app) | Shared team calendars in replicated state, plus genuinely private events in node-local storage. | `com.calimero.mero-calendar` |
 | [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
@@ -151,7 +152,7 @@ and a checklist for your own `#[app::state]`. Read it before you design state fo
 ## Layout
 
 ```
-apps/                       seventeen directories, one per application
+apps/                       one directory per application
                             (see Anatomy above for what each contains)
 
 scripts/

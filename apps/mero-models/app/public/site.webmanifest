@@ -1,0 +1,13 @@
+{
+  "name": "Mero Models",
+  "short_name": "Mero Models",
+  "description": "Blender-style 3D modelling with no server. A scene is a Calimero context: objects, meshes and materials replicate peer to peer.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#17181c",
+  "theme_color": "#17181c",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

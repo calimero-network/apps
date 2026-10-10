@@ -1,0 +1,473 @@
+name: Mero Models E2E
+description: >
+  Two nodes share one 3D scene and converge on it.
+
+  Walks the loop a modelling session actually takes: the creator adds a cube
+  and a mesh, a second member opens the scene as a viewer and is refused when
+  they try to change it, the creator grants them the editor role, and from then
+  on both nodes edit the same objects — move, re-parent, delete — and every
+  change is read back on the OTHER node, which is the one assertion a single
+  node cannot make.
+
+  The editor gate is the part that needs a real network: a viewer's write is
+  refused by its own node's `require_editor`, and the role grant has to be
+  projected onto the scene collections' capability maps and replicate before
+  the other node will accept the new editor's deltas.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# Clears merod's default public bootstrap nodes so the two containers find
+# each other instead of dialling the devnet until the join times out.
+e2e_mode: true
+
+nodes:
+  count: 2
+  # Matched to the SDK tag in the root Cargo.toml (asserted by
+  # scripts/check-app-metadata.sh): an older node dies at context creation
+  # with `unknown import`.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  prefix: models-node
+  # mDNS is opt-in since core rc.26 and merobox does not pass the flag.
+  mdns: true
+
+steps:
+  - name: Install application on models-node-1
+    type: install_application
+    node: models-node-1
+    path: dist/com.calimero.mero-models.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Installed on EVERY node: a peer does not serve bytecode to a joiner.
+  - name: Install application on models-node-2
+    type: install_application
+    node: models-node-2
+    path: dist/com.calimero.mero-models.mpk
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # `create_mesh` joins internally and races the KeyDelivery window; 12s is
+  # what scaffolding-e2e's late-joiner scenario found to be enough.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: models-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - models-node-2
+    # `init(name)` takes an argument, so the context cannot be created without
+    # it — an omitted params is a bare 500 at context creation.
+    params: '{"name": "Two nodes"}'
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_models-node-2}})"
+
+  # ─── the creator builds something ─────────────────────────────────────────
+
+  - name: node-1 joins as Ada
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: join
+    args:
+      name: "Ada"
+      now: 1700000001000
+
+  - name: node-1 adds a cube and a mesh object under it
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: put_objects
+    args:
+      now: 1700000002000
+      objects:
+        - id: "cube-1"
+          name: "Body"
+          kind: "cube"
+          parent: ""
+          position: { x: 0, y: 0.5, z: 0 }
+          rotation: { x: 0, y: 0, z: 0 }
+          scale: { x: 1, y: 1, z: 1 }
+          visible: true
+          material: { color: "#c8ccd4", metalness: 0, roughness: 0.6, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: false }
+          segments: 32
+          intensity: 0
+          created_by: ""
+          created_at: 0
+          updated_at: 0
+        - id: "tri-1"
+          name: "Fin"
+          kind: "mesh"
+          parent: "cube-1"
+          position: { x: 0, y: 1, z: 0 }
+          rotation: { x: 0, y: 0, z: 0 }
+          scale: { x: 1, y: 1, z: 1 }
+          visible: true
+          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true }
+          segments: 3
+          intensity: 0
+          created_by: ""
+          created_at: 0
+          updated_at: 0
+
+  - name: node-1 gives the mesh object its vertices
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: put_mesh
+    args:
+      now: 1700000003000
+      mesh:
+        id: "tri-1"
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0]
+        indices: [0, 1, 2]
+        updated_at: 0
+
+  - name: node-1 names the scene and sets its background
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: set_environment
+    args:
+      now: 1700000004000
+      environment:
+        name: "Robot"
+        background: "#101418"
+        ambient_color: "#ffffff"
+        ambient_intensity: 0.5
+        updated_at: 0
+
+  - name: Wait for the scene to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── the second member arrives as a viewer ────────────────────────────────
+
+  - name: node-2 joins as Bea
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: join
+    args:
+      name: "Bea"
+      now: 1700000005000
+
+  - name: node-2 reads the scene
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: get_scene
+    args: {}
+    outputs:
+      n2_scene: result
+      # The account the CONTRACT says node-2 is — the id a grant has to name.
+      n2_account: result.output.me
+
+  - name: Assert node-2 sees the creator's scene, as a viewer
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_scene}}, {"output": {"name": "Robot", "object_count": 2, "mesh_count": 1, "my_role": "viewer"}})'
+      - 'json_subset({{n2_scene}}, {"output": {"environment": {"background": "#101418"}}})'
+
+  - name: node-2 reads the objects
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: get_objects_by_ids
+    args:
+      ids: ["tri-1"]
+    outputs:
+      n2_tri: result
+
+  - name: Assert the hierarchy replicated
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_tri}}, {"output": [{"id": "tri-1", "parent": "cube-1", "kind": "mesh"}]})'
+
+  - name: node-2 lists the meshes without downloading them
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: list_meshes
+    args: {}
+    outputs:
+      n2_stamps: result
+
+  - name: Assert the mesh stamp
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_stamps}}, {"output": [{"id": "tri-1", "vertex_count": 3, "triangle_count": 1}]})'
+
+  - name: node-2 downloads the mesh
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: get_meshes
+    args:
+      ids: ["tri-1"]
+    outputs:
+      n2_mesh: result
+
+  - name: Assert the vertices arrived
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_mesh}}, {"output": [{"id": "tri-1", "indices": [0, 1, 2]}]})'
+
+  - name: node-2 asks its own role
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: my_role
+    args: {}
+    outputs:
+      n2_role_before: result
+
+  - name: Assert node-2 is a viewer
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_role_before}}, {"output": "viewer"})'
+
+  # A viewer's write is refused. The flag alone only marks the step
+  # allowed-to-fail, so the error is captured and asserted.
+  - name: node-2 tries to move the cube before it may
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: delete_objects
+    args:
+      ids: ["cube-1"]
+    expected_failure: true
+    outputs:
+      viewer_error: error
+
+  - name: Assert the viewer was refused
+    type: assert
+    statements:
+      - "is_set({{viewer_error}})"
+
+  - name: node-2 tries to clear the scene
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: clear_scene
+    args: {}
+    expected_failure: true
+    outputs:
+      clear_error: error
+
+  - name: Assert only an admin clears
+    type: assert
+    statements:
+      - "is_set({{clear_error}})"
+
+  # ─── the creator makes them an editor ─────────────────────────────────────
+
+  - name: Wait for node-2's profile to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 grants node-2 the editor role
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: grant_editor
+    args:
+      member: "{{n2_account}}"
+
+  - name: node-1 lists the members
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      n1_members: result
+
+  - name: Assert both members, with their roles
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_members}}, {"output": [{"name": "Ada", "role": "admin"}, {"name": "Bea", "role": "editor"}]})'
+
+  - name: Wait for the grant to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── both edit ────────────────────────────────────────────────────────────
+
+  - name: node-2 moves the fin out from under the cube
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: put_objects
+    args:
+      now: 1700000010000
+      objects:
+        - id: "tri-1"
+          name: "Fin"
+          kind: "mesh"
+          parent: ""
+          position: { x: 3, y: 0, z: 0 }
+          rotation: { x: 0, y: 0, z: 0 }
+          scale: { x: 2, y: 2, z: 2 }
+          visible: true
+          material: { color: "#e07a2f", metalness: 0, roughness: 0.5, opacity: 1, emissive: "#000000", wireframe: false, flat_shading: true }
+          segments: 3
+          intensity: 0
+          created_by: ""
+          created_at: 0
+          updated_at: 0
+
+  - name: Wait for node-2's edit to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads every object
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: get_objects
+    args: {}
+    outputs:
+      n1_objects: result
+
+  # Re-parented and moved by the OTHER node; `created_at` kept from node-1's
+  # first write, whatever node-2 sent.
+  - name: Assert node-1 sees node-2's edit
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_objects}}, {"output": [{"id": "cube-1"}, {"id": "tri-1", "parent": "", "position": {"x": 3.0}, "scale": {"x": 2.0}, "created_at": 1700000002000}]})'
+
+  - name: node-1 deletes the cube
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: delete_objects
+    args:
+      ids: ["cube-1"]
+
+  - name: Wait for the delete to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the scene after the delete
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: get_scene
+    args: {}
+    outputs:
+      n2_after_delete: result
+
+  - name: Assert one object is left and node-2 is an editor
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_after_delete}}, {"output": {"object_count": 1, "mesh_count": 1, "my_role": "editor"}})'
+
+  # ─── and the creator takes it back ────────────────────────────────────────
+
+  - name: node-1 revokes node-2's editor role
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: revoke_editor
+    args:
+      member: "{{n2_account}}"
+
+  - name: node-1 clears the scene
+    type: call
+    node: models-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: clear_scene
+    args: {}
+
+  - name: Wait for the revoke and the clear to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - models-node-1
+      - models-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the scene after the clear
+    type: call
+    node: models-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_models-node-2}}"
+    method: get_scene
+    args: {}
+    outputs:
+      n2_cleared: result
+
+  - name: Assert the scene is empty and node-2 is a viewer again
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_cleared}}, {"output": {"object_count": 0, "mesh_count": 0, "my_role": "viewer"}})'

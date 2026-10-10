@@ -1,0 +1,51 @@
+[package]
+name = "mero-models"
+description = "Mero Models — a collaborative 3D modelling scene on Calimero"
+# NOT the release version. The registry owns the number: the release workflow
+# takes the highest published appVersion for this package and increments it.
+version = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+# `cdylib` for the wasm the node loads; `rlib` so `cargo test` can link it.
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero build` / `cargo mero bundle`. `appVersion` is absent on
+# purpose — the release workflow resolves it from the registry.
+#
+# None of this can be inherited from the workspace: `[package.metadata]` is not
+# on cargo's inheritable list. `scripts/check-app-metadata.sh` asserts the
+# fleet-wide values instead.
+[package.metadata.calimero]
+package = "com.calimero.mero-models"
+name = "Mero Models"
+description = "Blender-style 3D modelling with no server. A scene is a Calimero context: objects, meshes and materials replicate peer to peer between the members' own nodes, and everyone edits the same model at once."
+author = "Calimero"
+# The slug IS the package id: deep links resolve by `Application.package`.
+slug = "com.calimero.mero-models"
+# Required: `cargo mero bundle` refuses to run without an icon decision.
+icon = "../app/public/icon-512.png"
+category = "art-design"
+tags = ["3d", "modelling", "design", "collaboration", "crdt"]
+github = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.mero-apps] in CI.
+min-runtime-version = "0.11.0-rc.83"
+# Also this app's registered login redirect origin, compared by EXACT origin —
+# no trailing slash. Resolves to nothing until the Vercel project
+# `mero-models` (Root Directory `apps/mero-models/app`) exists.
+frontend = "https://mero-models.vercel.app"
+
+# ⚠️ The dependency tables stay AFTER the calimero table: the landing generator
+# finds that table by matching up to the next `[` header.
+[dependencies]
+calimero-sdk.workspace            = true
+calimero-storage.workspace        = true
+calimero-storage-macros.workspace = true
+
+[dev-dependencies]
+# The native mock host, so `TestHost` drives real CRDT state under `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
