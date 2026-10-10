@@ -723,6 +723,72 @@ export const DOCS = {
     ],
   },
 
+  'mero-books': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'The model is the one every set of books shares: a chart of accounts, documents that post to it, and reports that add it up.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'Your team or your practice. Its members are the people who can see and keep the books.' },
+          { term: 'Organisation', def: 'One set of books — a company, or a client you keep the accounts for — and one Calimero context.' },
+          { term: 'Chart of accounts', def: 'The accounts everything is coded to: bank, receivables, sales, expenses, tax and equity. A new organisation starts with a standard chart you can edit.' },
+          { term: 'Draft and approved', def: 'A draft invoice or bill can be edited by anyone. Approving it freezes a write-once copy and posts it to the ledger; after that it can be paid or voided, never edited.' },
+          { term: 'Void', def: 'The reversal of a posted record. Its entries leave the ledger, the record and who voided it stay in the history, and nothing un-voids.' },
+          { term: 'Reconciliation', def: 'Matching each line of your bank statement to the payment or transaction in the books that it records.' },
+          { term: 'Lock date', def: 'Nothing dated on or before it can be posted or voided — for a filed tax period or a closed year.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Create a workspace and an organisation', body: 'A workspace for the team, then an organisation with its currency. Set the financial year end and what tax is called under Settings.' },
+          { title: 'Invoice a customer', body: 'Sales → New invoice. Approve it to give it a number and post it.' },
+          { title: 'Reconcile the bank', body: 'Bank → your account → Import a statement, then accept the matches or code the rest.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Keeping books together',
+        paragraphs: [
+          'Everyone in the workspace sees the same books as they change. Two people editing different fields of one draft both keep their edit.',
+          'Approvals, payments, spend and receive money, journals and voids are written once by the member who posted them, and that member is recorded by the storage layer itself — the audit trail on every document says who did what.',
+          'Importing the same bank statement on two machines produces one set of lines: each line’s id is derived from its content.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Accounts, tax rates, contacts, draft documents and statement lines as maps of per-field registers in the organisation’s context.',
+          'Approvals, payments, bank transactions, journals and voids in write-once collections: no node accepts an edit or a removal of one.',
+          'No balances. The ledger, every report, invoice numbers and whether a statement line is reconciled are derived from the posted records on read.',
+          'Money as integer cents and tax rates as basis points, never floats, so every node computes identical totals.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'An invoice cannot be voided', def: 'It has payments. Remove the payments first, then void it.' },
+          { term: 'Nothing posts for an old date', def: 'The books are locked through that date. Unlock them under Settings if the change is really needed.' },
+          { term: '“Conflicting approvals” on a document', def: 'Two members filed an approval for it, which only a modified node can do. The earliest is used; void and re-enter it if it is wrong.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'The dashboard', body: 'Bank balances, what customers owe, what is overdue and what you owe — derived from the ledger, nothing stored as a total.' },
+      { title: 'An invoice is approved', body: 'Its lines freeze into a write-once record and it takes the next number. Receivables and sales move together.' },
+      { title: 'The bank statement arrives', body: 'Imported lines line up against the payments already recorded; one click reconciles each.' },
+      { title: 'The year-end reports', body: 'Profit and loss, balance sheet and trial balance, which balances by construction.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     docs: [
       {

@@ -1,0 +1,3861 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Account": {
+      "kind": "record",
+      "doc": "One account in the chart of accounts.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "One of `ACCOUNT_TYPES`."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "default_tax_rate_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The tax rate a new line coded to this account starts with."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AccountTransactions": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "opening_balance",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LedgerRow"
+            }
+          }
+        },
+        {
+          "name": "closing_balance",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "AccountView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "class",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "asset, liability, equity, revenue or expense — derived from the type."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_tax_rate_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "system",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "AR, AP, sales tax and retained earnings: the ledger needs them."
+        },
+        {
+          "name": "balance",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "All-time ledger balance, debit positive."
+        }
+      ]
+    },
+    "AgedReport": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`sales` (aged receivables) or `bill` (aged payables)."
+        },
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AgedRow"
+            }
+          }
+        },
+        {
+          "name": "totals",
+          "type": {
+            "$ref": "AgedRow"
+          }
+        }
+      ]
+    },
+    "AgedRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "current",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Not yet due."
+        },
+        {
+          "name": "days_1_30",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "days_31_60",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "days_61_90",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "over_90",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Approval": {
+      "kind": "record",
+      "doc": "An approved invoice or bill, frozen at the moment of approval.",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Line"
+            }
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "BalanceSheet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "assets",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReportSection"
+            }
+          }
+        },
+        {
+          "name": "total_assets",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "liabilities",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReportSection"
+            }
+          }
+        },
+        {
+          "name": "total_liabilities",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "net_assets",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "equity",
+          "type": {
+            "$ref": "ReportSection"
+          }
+        }
+      ]
+    },
+    "BankAccountSummary": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "balance",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "The ledger's balance for the account."
+        },
+        {
+          "name": "statement_balance",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "The sum of every imported statement line."
+        },
+        {
+          "name": "unreconciled",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "BankTransaction": {
+      "kind": "record",
+      "doc": "Spend money or receive money: a bank movement coded straight to accounts,\nwith no invoice behind it (bank fees, a card purchase, interest received).",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`spend` or `receive`."
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Line"
+            }
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "BankTransactionView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "contact_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LineView"
+            }
+          }
+        },
+        {
+          "name": "subtotal",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "tax_total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "recorded_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voided",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Contact": {
+      "kind": "record",
+      "doc": "A customer, a supplier, or both — which one is derived from the documents.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "phone",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ContactView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phone",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "receivable",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Outstanding on approved sales invoices: what they owe you."
+        },
+        {
+          "name": "payable",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Outstanding on approved bills: what you owe them."
+        },
+        {
+          "name": "invoice_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "bill_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Dashboard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "today",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_accounts",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "BankAccountSummary"
+            }
+          }
+        },
+        {
+          "name": "receivables",
+          "type": {
+            "$ref": "DocumentTotals"
+          }
+        },
+        {
+          "name": "payables",
+          "type": {
+            "$ref": "DocumentTotals"
+          }
+        },
+        {
+          "name": "cash_flow",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MonthFlow"
+            }
+          }
+        },
+        {
+          "name": "profit_ytd",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Net profit for the financial year to `today`."
+        },
+        {
+          "name": "income_ytd",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "expenses_ytd",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "DocumentTotals": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "draft_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "draft_total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "awaiting_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "awaiting_total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "overdue_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "overdue_total",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Event_BankTransactionRecorded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ContactChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_InvoiceApproved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_InvoiceDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_InvoiceSaved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_JournalPosted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NoteAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PaymentRecorded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RecordVoided": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_StatementChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "HistoryEntry": {
+      "kind": "record",
+      "doc": "One entry in a record's audit trail, or a note on it. `Authored`: the author\nis the owner stamp, and nobody else can rewrite or remove it.",
+      "fields": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "HistoryView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Invoice": {
+      "kind": "record",
+      "doc": "A sales invoice or a bill while it is a DRAFT. Approving it freezes a copy\ninto `approvals`, and from then on the ledger reads that copy, never this\nrow — so an edit to these registers after approval (which honest nodes\nrefuse, and a patched node could still write) changes nothing posted.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`sales` or `bill`. Fixed at creation."
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "$ref": "Line"
+              }
+            }
+          },
+          "doc": "The lines as one value: a draft is edited as a whole form, and two\npeople re-ordering one invoice's lines should not interleave them."
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Terms or a note printed on the invoice."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "InvoiceDetail": {
+      "kind": "record",
+      "doc": "An invoice with its payments and audit trail (named struct, never a tuple).",
+      "fields": [
+        {
+          "name": "invoice",
+          "type": {
+            "$ref": "InvoiceView"
+          }
+        },
+        {
+          "name": "payments",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PaymentView"
+            }
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "HistoryView"
+            }
+          }
+        }
+      ]
+    },
+    "InvoiceView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "number",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`INV-0007` for an approved sales invoice: its position among approved\nsales invoices, derived on read. Empty for drafts and bills (a bill's\nnumber is the supplier's, in `reference`)."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "draft, awaiting_payment, paid or void. Overdue is the reader's call:\nit depends on today."
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LineView"
+            }
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "subtotal",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "tax_total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "paid",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "amount_due",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "approved_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "approved_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "void_reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "conflicted",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "More than one member filed an approval for this invoice. Only possible\nfrom a patched node; the earliest is used and the UI says so."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Journal": {
+      "kind": "record",
+      "doc": "A manual journal — and a bank transfer, which is a two-line journal.",
+      "fields": [
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "narration",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "JournalLine"
+            }
+          }
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`journal` or `transfer`."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "JournalLine": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "debit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "credit",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "JournalView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "narration",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "JournalLine"
+            }
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "balanced",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "False for a journal that does not balance — only a patched node can\nwrite one. It is left out of the ledger and shown so someone voids it."
+        },
+        {
+          "name": "posted_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voided",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LedgerRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "debit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "credit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "balance",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Running balance, debit positive."
+        }
+      ]
+    },
+    "Line": {
+      "kind": "record",
+      "doc": "A stored document line. `tax_bp` is the rate captured when the line was\nsaved, so changing a tax rate later never rewrites a posted document.",
+      "fields": [
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Thousandths of a unit."
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Minor units per whole unit. Negative for a discount line."
+        },
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_bp",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "LineInput": {
+      "kind": "record",
+      "doc": "A document line as the form sends it. The tax rate is captured from\n`tax_rate_id` on save.",
+      "fields": [
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "LineView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_bp",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "net",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "tax",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "MeroBooks": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Account"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "tax_rates",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TaxRate"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "contacts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Contact"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "invoices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Invoice"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "statement_lines",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StatementLine"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "approvals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Approval"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "payments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Payment"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "bank_transactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BankTransaction"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "journals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Journal"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "voids",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "VoidRecord"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "HistoryEntry"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Audit trail and notes, per record. Each entry is its author's."
+        },
+        {
+          "name": "organisation_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "currency",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fy_end_month",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "invoice_prefix",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "payment_terms_days",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "tax_label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "lock_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "MonthFlow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "month",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`YYYY-MM`."
+        },
+        {
+          "name": "money_in",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "money_out",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Payment": {
+      "kind": "record",
+      "doc": "Money received against an invoice, or paid against a bill.",
+      "fields": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Always positive; the direction comes from the invoice's kind."
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PaymentView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "invoice_kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recorded_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voided",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ProfitAndLoss": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "income",
+          "type": {
+            "$ref": "ReportSection"
+          }
+        },
+        {
+          "name": "cost_of_sales",
+          "type": {
+            "$ref": "ReportSection"
+          }
+        },
+        {
+          "name": "gross_profit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "other_income",
+          "type": {
+            "$ref": "ReportSection"
+          }
+        },
+        {
+          "name": "expenses",
+          "type": {
+            "$ref": "ReportSection"
+          }
+        },
+        {
+          "name": "net_profit",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "ReportRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "ReportSection": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReportRow"
+            }
+          }
+        },
+        {
+          "name": "total",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Settings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "organisation_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "currency",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fy_end_month",
+          "type": {
+            "kind": "u32"
+          },
+          "doc": "The month the financial year ends in, 1..=12."
+        },
+        {
+          "name": "invoice_prefix",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payment_terms_days",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "tax_label",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What tax is called here: Tax, VAT, GST, Sales Tax."
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lock_date",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true,
+          "doc": "Nothing dated on or before it can be posted or voided."
+        }
+      ]
+    },
+    "StatementLine": {
+      "kind": "record",
+      "doc": "One line of a bank statement, imported from the bank's CSV.\n\nThe id is a hash of the line's content (see `statement_line_id`), so two\nmembers importing the same file produce the same rows rather than two\ncopies, and re-importing an overlapping file adds only the new lines.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Signed: money in is positive, money out negative."
+        },
+        {
+          "name": "matched",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The payment or bank transaction it is reconciled against. Whether the\nline counts as reconciled is derived on read: the target must exist,\nbe live, sit in the same bank account and move the same amount."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StatementLineInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "StatementLineView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "matched",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "reconciled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "match_label",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it is matched to, for the reconcile screen (\"INV-0003 · Acme\")."
+        }
+      ]
+    },
+    "TaxRate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Basis points: 2000 is 20%."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "TaxRateView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TaxReport": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TaxRow"
+            }
+          }
+        },
+        {
+          "name": "sales_tax",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "purchases_tax",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "net_tax",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Positive: owed to the tax authority. Negative: a refund is due."
+        }
+      ]
+    },
+    "TaxRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "sales_net",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "sales_tax",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "purchases_net",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "purchases_tax",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "TrialBalance": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TrialBalanceRow"
+            }
+          }
+        },
+        {
+          "name": "total_debit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "total_credit",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "TrialBalanceRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "debit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "credit",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "VoidRecord": {
+      "kind": "record",
+      "doc": "A void: the reversal of a posted record. Any member's void voids it; there\nis no un-void, exactly as on paper.",
+      "fields": [
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "account_transactions",
+      "doc": "One account's general ledger for a period, with opening and closing\nbalances and a running balance on every row.",
+      "params": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AccountTransactions"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "add_note",
+      "params": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "aged_payables",
+      "params": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AgedReport"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "aged_receivables",
+      "params": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AgedReport"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "approve_invoice",
+      "doc": "Approve a draft: freeze it into a write-once approval and post it to the\nledger. A sales invoice gets its number here.",
+      "params": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "balance_sheet",
+      "params": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "BalanceSheet"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "code_statement_line",
+      "doc": "Reconcile a line by creating what it records: spend money for money\nout, receive money for money in, coded to one account, the statement\namount taken as tax-inclusive. Returns the new transaction's id.",
+      "params": [
+        {
+          "name": "statement_line_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_account",
+      "params": [
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_tax_rate_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_bank_transaction",
+      "doc": "Spend money (`kind` = `spend`) or receive money (`receive`) straight\nthrough a bank account, coded to accounts with no invoice behind it.",
+      "params": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LineInput"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_contact",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phone",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_invoice",
+      "doc": "Save a new draft invoice (`kind` = `sales`) or bill (`kind` = `bill`).",
+      "params": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LineInput"
+            }
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_journal",
+      "doc": "Post a manual journal. Its lines must balance — debits equal credits —\nand a journal that does not is left out of the ledger even if a patched\nnode writes one.",
+      "params": [
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "narration",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "JournalLine"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_tax_rate",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_account",
+      "doc": "Delete an account nothing has ever been coded to. One with history is\narchived instead: the ledger has to keep naming it.",
+      "params": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_contact",
+      "doc": "Delete a contact no document names. One with documents stays: the\nledger and the audit trail have to keep naming them.",
+      "params": [
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_invoice",
+      "doc": "Delete a draft. An approved document is voided instead, never deleted.",
+      "params": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_statement_line",
+      "doc": "Remove an unreconciled statement line (a bad import).",
+      "params": [
+        {
+          "name": "statement_line_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_dashboard",
+      "doc": "The home screen: bank balances, what is owed each way, six months of\ncash in and out, and profit for the year to `today` (`YYYY-MM-DD`,\nsupplied by the caller so the read is a pure function of state).",
+      "params": [
+        {
+          "name": "today",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Dashboard"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_invoice",
+      "params": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "InvoiceDetail"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_settings",
+      "params": [],
+      "returns": {
+        "$ref": "Settings"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "import_statement_lines",
+      "doc": "Import statement lines into a bank account. Lines already imported (by\nanyone) are skipped, so an overlapping export is safe to import again.\nReturns how many lines were new.",
+      "params": [
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StatementLineInput"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_accounts",
+      "doc": "The chart, by code, each account with its all-time ledger balance.",
+      "params": [
+        {
+          "name": "include_archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AccountView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_bank_transactions",
+      "params": [
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "BankTransactionView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_contacts",
+      "doc": "Everyone in the address book, by name, with what they owe and are owed.",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ContactView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_history",
+      "doc": "A record's audit trail and notes, oldest first, each with its author.",
+      "params": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "HistoryView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_invoices",
+      "doc": "Sales invoices and/or bills (`kind` = `sales` | `bill` | none for both),\nnewest issue date first.",
+      "params": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "InvoiceView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_journals",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "JournalView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_payments",
+      "doc": "Payments, optionally through one bank account, newest first.",
+      "params": [
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PaymentView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_statement_lines",
+      "doc": "A bank account's statement lines, newest first, each with whether it is\nreconciled (derived: its match must be live and move the same amount).",
+      "params": [
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "StatementLineView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_tax_rates",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "TaxRateView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "profit_and_loss",
+      "params": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ProfitAndLoss"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "reconcile_statement_line",
+      "doc": "Match a statement line to the payment, bank transaction or transfer it\nrecords. The target must move the same amount through the same account,\nand must not already be matched to another line.",
+      "params": [
+        {
+          "name": "statement_line_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "record_payment",
+      "doc": "Record money received against an invoice, or paid against a bill.\nRefused beyond the amount due.",
+      "params": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "record_transfer",
+      "doc": "Move money between two bank accounts: a two-line journal.",
+      "params": [
+        {
+          "name": "from_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_account_archived",
+      "doc": "Archive an account (hide it from pickers, keep its history) or restore it.",
+      "params": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_lock_date",
+      "doc": "Lock the ledger up to and including a date (a filed tax period, a closed\nyear), or unlock them with `None`. Honest nodes refuse to post or void\nanything dated on or before it.",
+      "params": [
+        {
+          "name": "lock_date",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_tax_rate_archived",
+      "params": [
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "tax_report",
+      "params": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TaxReport"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "trial_balance",
+      "params": [
+        {
+          "name": "as_at",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TrialBalance"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "unreconcile_statement_line",
+      "params": [
+        {
+          "name": "statement_line_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_account",
+      "params": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_tax_rate_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_contact",
+      "params": [
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phone",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_invoice",
+      "doc": "Edit a draft. Only fields whose value differs are written, so a\nteammate's concurrent edit to another field survives. Refused once the\ndocument is approved: from then on it is posted.",
+      "params": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LineInput"
+            }
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_settings",
+      "params": [
+        {
+          "name": "organisation_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "currency",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fy_end_month",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "invoice_prefix",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payment_terms_days",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "tax_label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_tax_rate",
+      "doc": "Rename or re-rate. Posted documents keep the rate they were saved with.",
+      "params": [
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "void_record",
+      "doc": "Void a posted record: an approved invoice or bill, a payment, a bank\ntransaction or a journal. Its entries leave the ledger; the record and\nits void stay, attributed, for the audit trail. There is no un-void.",
+      "params": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "AccountsChanged",
+      "doc": "The chart of accounts changed."
+    },
+    {
+      "name": "BankTransactionRecorded",
+      "payload": {
+        "$ref": "Event_BankTransactionRecorded"
+      },
+      "doc": "Spend money or receive money was recorded."
+    },
+    {
+      "name": "ContactChanged",
+      "payload": {
+        "$ref": "Event_ContactChanged"
+      },
+      "doc": "A contact was added, edited or removed."
+    },
+    {
+      "name": "InvoiceApproved",
+      "payload": {
+        "$ref": "Event_InvoiceApproved"
+      },
+      "doc": "An invoice or bill was approved and posted to the ledger."
+    },
+    {
+      "name": "InvoiceDeleted",
+      "payload": {
+        "$ref": "Event_InvoiceDeleted"
+      },
+      "doc": "A draft was deleted."
+    },
+    {
+      "name": "InvoiceSaved",
+      "payload": {
+        "$ref": "Event_InvoiceSaved"
+      },
+      "doc": "A draft invoice or bill was created or edited."
+    },
+    {
+      "name": "JournalPosted",
+      "payload": {
+        "$ref": "Event_JournalPosted"
+      },
+      "doc": "A manual journal or a transfer was posted."
+    },
+    {
+      "name": "NoteAdded",
+      "payload": {
+        "$ref": "Event_NoteAdded"
+      },
+      "doc": "A note was added to a record."
+    },
+    {
+      "name": "PaymentRecorded",
+      "payload": {
+        "$ref": "Event_PaymentRecorded"
+      },
+      "doc": "A payment was recorded against an invoice or bill."
+    },
+    {
+      "name": "RecordVoided",
+      "payload": {
+        "$ref": "Event_RecordVoided"
+      },
+      "doc": "A posted record was voided."
+    },
+    {
+      "name": "SettingsChanged",
+      "doc": "Organisation settings or the lock date changed."
+    },
+    {
+      "name": "StatementChanged",
+      "payload": {
+        "$ref": "Event_StatementChanged"
+      },
+      "doc": "Statement lines were imported, reconciled, unreconciled or removed."
+    },
+    {
+      "name": "TaxRatesChanged",
+      "doc": "The tax rates changed."
+    }
+  ],
+  "state_root": "MeroBooks",
+  "state_version": 1
+}

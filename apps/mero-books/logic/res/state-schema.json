@@ -1,0 +1,944 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Account": {
+      "kind": "record",
+      "doc": "One account in the chart of accounts.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "account_type",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "One of `ACCOUNT_TYPES`."
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "default_tax_rate_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The tax rate a new line coded to this account starts with."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Approval": {
+      "kind": "record",
+      "doc": "An approved invoice or bill, frozen at the moment of approval.",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Line"
+            }
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "BankTransaction": {
+      "kind": "record",
+      "doc": "Spend money or receive money: a bank movement coded straight to accounts,\nwith no invoice behind it (bank fees, a card purchase, interest received).",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`spend` or `receive`."
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Line"
+            }
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Contact": {
+      "kind": "record",
+      "doc": "A customer, a supplier, or both — which one is derived from the documents.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "email",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "phone",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "HistoryEntry": {
+      "kind": "record",
+      "doc": "One entry in a record's audit trail, or a note on it. `Authored`: the author\nis the owner stamp, and nobody else can rewrite or remove it.",
+      "fields": [
+        {
+          "name": "record_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Invoice": {
+      "kind": "record",
+      "doc": "A sales invoice or a bill while it is a DRAFT. Approving it freezes a copy\ninto `approvals`, and from then on the ledger reads that copy, never this\nrow — so an edit to these registers after approval (which honest nodes\nrefuse, and a patched node could still write) changes nothing posted.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`sales` or `bill`. Fixed at creation."
+        },
+        {
+          "name": "contact_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "issue_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "due_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "amounts_are",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "list",
+              "items": {
+                "$ref": "Line"
+              }
+            }
+          },
+          "doc": "The lines as one value: a draft is edited as a whole form, and two\npeople re-ordering one invoice's lines should not interleave them."
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "Terms or a note printed on the invoice."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Journal": {
+      "kind": "record",
+      "doc": "A manual journal — and a bank transfer, which is a two-line journal.",
+      "fields": [
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "narration",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lines",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "JournalLine"
+            }
+          }
+        },
+        {
+          "name": "source",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`journal` or `transfer`."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "JournalLine": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "debit",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "credit",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Line": {
+      "kind": "record",
+      "doc": "A stored document line. `tax_bp` is the rate captured when the line was\nsaved, so changing a tax rate later never rewrites a posted document.",
+      "fields": [
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Thousandths of a unit."
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Minor units per whole unit. Negative for a discount line."
+        },
+        {
+          "name": "account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_rate_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tax_bp",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "MeroBooks": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Account"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "tax_rates",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TaxRate"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "contacts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Contact"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "invoices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Invoice"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "statement_lines",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StatementLine"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "approvals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Approval"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "payments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Payment"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "bank_transactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BankTransaction"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "journals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Journal"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "voids",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "VoidRecord"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "HistoryEntry"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Audit trail and notes, per record. Each entry is its author's."
+        },
+        {
+          "name": "organisation_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "currency",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fy_end_month",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "invoice_prefix",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "payment_terms_days",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "tax_label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tax_number",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "lock_date",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Payment": {
+      "kind": "record",
+      "doc": "Money received against an invoice, or paid against a bill.",
+      "fields": [
+        {
+          "name": "invoice_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Always positive; the direction comes from the invoice's kind."
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StatementLine": {
+      "kind": "record",
+      "doc": "One line of a bank statement, imported from the bank's CSV.\n\nThe id is a hash of the line's content (see `statement_line_id`), so two\nmembers importing the same file produce the same rows rather than two\ncopies, and re-importing an overlapping file adds only the new lines.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bank_account_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "date",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "kind": "i64"
+          },
+          "doc": "Signed: money in is positive, money out negative."
+        },
+        {
+          "name": "matched",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "doc": "The payment or bank transaction it is reconciled against. Whether the\nline counts as reconciled is derived on read: the target must exist,\nbe live, sit in the same bank account and move the same amount."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "TaxRate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "rate_bp",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          },
+          "doc": "Basis points: 2000 is 20%."
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "VoidRecord": {
+      "kind": "record",
+      "doc": "A void: the reversal of a posted record. Any member's void voids it; there\nis no un-void, exactly as on paper.",
+      "fields": [
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroBooks",
+  "state_version": 1
+}

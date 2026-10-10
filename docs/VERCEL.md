@@ -82,6 +82,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `mero-kombat` | `mero-kombat` | `apps/mero-kombat/app` | `dist` | https://mero-kombat.vercel.app ⚠️ not created yet |
 | `mero-docs` | `mero-docs` | `apps/mero-docs/app` | `dist` | https://mero-docs.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
+| `mero-books` | `mero-books` (to create) | `apps/mero-books/app` | `dist` | https://mero-books.vercel.app ⚠️ not created yet |
 | `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
@@ -164,6 +165,7 @@ exceptions, noted below:
 | `mero-kombat` | `com.calimero.mero-kombat` |
 | `mero-docs` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
+| `mero-books` | `com.calimero.mero-books` |
 | `mero-crm` | `com.calimero.mero-crm` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
 | `mero-sign` | `com.calimero.mero-sign` |

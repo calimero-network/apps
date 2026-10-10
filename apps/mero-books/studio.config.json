@@ -1,0 +1,23 @@
+{
+  "appName": "mero-books",
+  "appVersion": "0.1.0",
+  "package": "com.calimero.mero-books",
+  "frontendUrl": "https://mero-books.vercel.app",
+  "metadata": {
+    "name": "mero-books",
+    "description": "Accounting for small businesses — invoices, bills, bank reconciliation and reports, on your own nodes",
+    "author": "Calimero",
+    "route": "/books"
+  },
+  "theme": {
+    "primaryColor": "#13B5EA",
+    "accentColor": "#34D399",
+    "style": "clean-modern"
+  },
+  "services": [
+    {
+      "name": "books",
+      "crate": "mero-books"
+    }
+  ]
+}

@@ -529,6 +529,27 @@ export const APPS = {
     ],
   },
 
+  'mero-books': {
+    displayName: 'Mero Books',
+    e2eDir: 'e2e',
+    // Same light/dark key as the app shell, so the landing choice carries through sign-in.
+    themeStorageKey: 'app:theme',
+    availability: 'web+desktop',
+    trust: ['Double-entry ledger', 'Books on your nodes', 'No per-seat vendor'],
+    explainer: [
+      'Accounting for a small business, with the parts a bookkeeper actually uses every week: invoices and bills, payments against them, spend and receive money, bank statement reconciliation, manual journals, and the reports an accountant asks for at year end. What tools like Xero are used for day to day.',
+      'The books live in a Calimero context your team shares, replicated between your own nodes. Every report is derived from posted transactions on read, and a posted transaction can only be voided, never edited — on every node, not just in the UI.',
+    ],
+    features: [
+      { icon: 'FileCheck', title: 'Invoices and bills', body: 'Line items, tax inclusive or exclusive, numbered on approval, printable, and paid in part or in full.' },
+      { icon: 'Refresh', title: 'Bank reconciliation', body: 'Import your bank’s CSV, accept the suggested matches with one click, or code a line straight to an account.' },
+      { icon: 'BarChart', title: 'Reports', body: 'Profit and loss, balance sheet, trial balance, aged receivables and payables, and the tax return — all exportable.' },
+      { icon: 'Target', title: 'A real ledger', body: 'Double entry under everything, with a chart of accounts, manual journals and a lock date for filed periods.' },
+      { icon: 'Clock', title: 'Know what is owed', body: 'The dashboard shows what customers owe, what is overdue, what you owe suppliers, and cash in and out.' },
+      { icon: 'Shield', title: 'Your numbers stay yours', body: 'Your books replicate between your team’s nodes. There is no vendor database holding your finances.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the

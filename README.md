@@ -51,7 +51,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Eighteen apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
+Nineteen apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -74,6 +74,7 @@ Start here. These exist to be read, not shipped.
 | [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc, formula autocomplete, live cursors, CSV download. | `com.calimero.mero-sheets` |
 | [mero-calendar](apps/mero-calendar) | [↗](https://mero-calendar.vercel.app) | Shared team calendars in replicated state, plus genuinely private events in node-local storage. | `com.calimero.mero-calendar` |
 | [mero-docs](apps/mero-docs) | [↗](https://mero-docs.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
+| [mero-books](apps/mero-books) | — | Small-business accounting, Xero-style — invoices and bills, payments, spend/receive money, bank statement import and reconciliation, manual journals, lock dates, and P&L / balance sheet / trial balance / aged AR & AP / tax reports, all derived from a write-once double-entry ledger. | `com.calimero.mero-books` |
 | [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). | `com.calimero.mero-crm` |
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |

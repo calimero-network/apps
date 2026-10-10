@@ -1,0 +1,958 @@
+# Two-node smoke test for the books service.
+#
+# Exercises every contract method on real nodes, which the in-process TestHost
+# and converge harness cannot:
+#   - the `books` service installed from the bundle and an organisation created
+#   - a sale approved on one node, paid from the other, and both seeing it
+#   - spend money, a transfer, a manual journal and a bank statement
+#     reconciled against them, replicating between peers
+#   - every report agreeing with figures worked out by hand below
+#   - the posted-record and lock-date rules refusing a teammate on a real
+#     signed-delta path
+#
+# The ledger this builds (minor units):
+#   invoice  Dr AR 120000 · Cr Sales 100000 · Cr Tax 20000
+#   payment  Dr Bank 20000 · Cr AR 20000
+#   spend    Dr Bank Fees 1500 · Cr Bank 1500
+#   transfer Dr Savings 5000 · Cr Bank 5000
+#   journal  Dr Bank 100000 · Cr Owner Funds 100000
+#   coded    Dr General Expenses 350 · Cr Bank 350
+# → Bank 113150, AR 100000, Savings 5000; trial balance 220000 each side;
+#   net profit 98150; total assets 218150; liabilities 20000.
+#
+# Usage, after `pnpm logic:build` (or CI's dry-run bundle) has produced
+# `logic/dist/com.calimero.mero-books.mpk`:
+#   cd logic && merobox bootstrap run workflows/smoke.yml
+
+name: books smoke
+description: Verify the books replicate invoices, payments, bank activity and reconciliation across two nodes, that every report agrees, and that posted records and the lock date hold.
+log_level: info
+# ⚠️ REQUIRED. Without it merod's default bootstrap nodes survive and the peers
+# never find each other; see apps/mero-issue-tracker/logic/workflows/smoke.yml.
+e2e_mode: true
+
+nodes:
+  count: 2
+  prefix: books-node
+  # Matched to the SDK tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.83
+  base_port: 12448
+  base_rpc_port: 12548
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  - type: install_application
+    name: Install the books bundle on node 1
+    node: books-node-1
+    dev: true
+    path: dist/com.calimero.mero-books.mpk
+    outputs:
+      app_id: applicationId
+
+  - type: install_application
+    name: Install the books bundle on node 2
+    node: books-node-2
+    dev: true
+    path: dist/com.calimero.mero-books.mpk
+
+  # Container health is not readiness: a cold `create_namespace` 500s otherwise.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - type: create_namespace
+    name: Create the practice namespace on node 1
+    node: books-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - type: create_context
+    name: Create an organisation's books on node 1
+    node: books-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: books
+    outputs:
+      ctx: contextId
+
+  - type: create_namespace_invitation
+    name: Invite node 2
+    node: books-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      invitation: invitation
+
+  # A join races core's KeyDelivery window; 12s matches the rest of the fleet.
+  - type: wait
+    seconds: 12
+
+  - type: join_namespace
+    name: Node 2 joins the namespace
+    node: books-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{invitation}}'
+
+  # --- settings ---
+
+  - type: call
+    name: Read the default settings
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: get_settings
+    args: {}
+    outputs:
+      settings0: result.output
+
+  - type: json_assert
+    name: New books start in USD, a calendar year and INV- numbering
+    statements:
+      - 'json_subset({{settings0}}, {"currency": "USD", "fy_end_month": 12, "invoice_prefix": "INV-", "lock_date": null})'
+
+  - type: call
+    name: Name the organisation and keep the calendar year
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: update_settings
+    args:
+      organisation_name: "Acme Ltd"
+      currency: "usd"
+      fy_end_month: 12
+      invoice_prefix: "INV-"
+      payment_terms_days: 14
+      tax_label: "VAT"
+      tax_number: "GB123"
+
+  # --- tax rates ---
+
+  - type: call
+    name: Add a tax rate
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_tax_rate
+    args:
+      name: "Hospitality"
+      rate_bp: 1200
+    outputs:
+      tax_id: result.output
+
+  - type: call
+    name: Re-rate it
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: update_tax_rate
+    args:
+      tax_rate_id: '{{tax_id}}'
+      name: "Hospitality 12.5%"
+      rate_bp: 1250
+
+  - type: call
+    name: Archive it
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: set_tax_rate_archived
+    args:
+      tax_rate_id: '{{tax_id}}'
+      archived: true
+
+  # --- chart of accounts ---
+
+  - type: call
+    name: Add a savings bank account
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_account
+    args:
+      code: "091"
+      name: "Savings"
+      account_type: "bank"
+      description: ""
+      default_tax_rate_id: null
+    outputs:
+      savings: result.output
+
+  - type: call
+    name: Rename it
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: update_account
+    args:
+      account_id: '{{savings}}'
+      code: "091"
+      name: "Business Savings"
+      account_type: "bank"
+      description: "Instant access"
+      default_tax_rate_id: "tax-none"
+
+  - type: call
+    name: Add a spare account
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_account
+    args:
+      code: "998"
+      name: "Spare"
+      account_type: "expense"
+      description: ""
+      default_tax_rate_id: null
+    outputs:
+      spare_account: result.output
+
+  - type: call
+    name: Delete the unused spare account
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: delete_account
+    args:
+      account_id: '{{spare_account}}'
+
+  - type: call
+    name: Archive the default prepayments account
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: set_account_archived
+    args:
+      account_id: "acc-prepayments"
+      archived: true
+
+  # --- contacts ---
+
+  - type: call
+    name: Add a customer
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_contact
+    args:
+      name: "Northwind"
+      email: "ap@northwind.test"
+      phone: ""
+      address: "1 High Street"
+      tax_number: ""
+    outputs:
+      customer: result.output
+
+  - type: call
+    name: Edit the customer
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: update_contact
+    args:
+      contact_id: '{{customer}}'
+      name: "Northwind Traders"
+      email: "ap@northwind.test"
+      phone: "+44 20 0000"
+      address: "1 High Street"
+      tax_number: "GB999"
+
+  - type: call
+    name: Add a contact by mistake
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_contact
+    args:
+      name: "Typo Ltd"
+      email: ""
+      phone: ""
+      address: ""
+      tax_number: ""
+    outputs:
+      typo: result.output
+
+  - type: call
+    name: Delete the unused contact
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: delete_contact
+    args:
+      contact_id: '{{typo}}'
+
+  # --- a sale ---
+
+  - type: call
+    name: Draft an invoice
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_invoice
+    args:
+      kind: "sales"
+      contact_id: '{{customer}}'
+      reference: "PO-1"
+      issue_date: "2024-03-01"
+      due_date: "2024-03-15"
+      amounts_are: "exclusive"
+      lines:
+        - description: "Consulting"
+          quantity: 1000
+          unit_price: 100000
+          account_id: "acc-sales"
+          tax_rate_id: "tax-standard"
+      notes: ""
+    outputs:
+      inv: result.output
+
+  - type: call
+    name: Edit the draft
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: update_invoice
+    args:
+      invoice_id: '{{inv}}'
+      contact_id: '{{customer}}'
+      reference: "PO-1042"
+      issue_date: "2024-03-01"
+      due_date: "2024-03-15"
+      amounts_are: "exclusive"
+      lines:
+        - description: "Consulting, March"
+          quantity: 1000
+          unit_price: 100000
+          account_id: "acc-sales"
+          tax_rate_id: "tax-standard"
+      notes: "Thank you"
+
+  - type: call
+    name: Draft a second invoice
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_invoice
+    args:
+      kind: "sales"
+      contact_id: '{{customer}}'
+      reference: ""
+      issue_date: "2024-03-02"
+      due_date: "2024-03-02"
+      amounts_are: "none"
+      lines: []
+      notes: ""
+    outputs:
+      scrap: result.output
+
+  - type: call
+    name: Delete the second draft
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: delete_invoice
+    args:
+      invoice_id: '{{scrap}}'
+
+  - type: call
+    name: Approve the invoice
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: approve_invoice
+    args:
+      invoice_id: '{{inv}}'
+
+  - type: wait_for_sync
+    name: Wait for sync after the approval
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 reads the invoice
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: get_invoice
+    args:
+      invoice_id: '{{inv}}'
+    outputs:
+      approved: result.output.invoice
+
+  - type: json_assert
+    name: The approved invoice replicated, numbered and totalled
+    statements:
+      - 'json_subset({{approved}}, {"number": "INV-0001", "status": "awaiting_payment", "reference": "PO-1042", "contact_name": "Northwind Traders", "total": 120000, "amount_due": 120000})'
+
+  - type: call
+    name: Node 2 (a teammate) cannot edit the approved invoice
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: update_invoice
+    args:
+      invoice_id: '{{inv}}'
+      contact_id: '{{customer}}'
+      reference: "PO-1042"
+      issue_date: "2024-03-01"
+      due_date: "2024-03-15"
+      amounts_are: "none"
+      lines: []
+      notes: ""
+    outputs:
+      edit_error: error
+    # `expected_failure` alone can never fail the run (a call that wrongly
+    # SUCCEEDS would still pass), so the captured error is asserted below.
+    expected_failure: true
+
+  - type: assert
+    name: The rejection must actually have happened
+    statements:
+      - "is_set({{edit_error}})"
+
+  # --- payments, bank activity ---
+
+  - type: call
+    name: Node 2 records a part payment
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: record_payment
+    args:
+      invoice_id: '{{inv}}'
+      bank_account_id: "acc-bank"
+      date: "2024-03-10"
+      amount: 20000
+      reference: "BACS"
+    outputs:
+      payment: result.output
+
+  - type: call
+    name: Node 2 spends money on bank fees
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: create_bank_transaction
+    args:
+      kind: "spend"
+      bank_account_id: "acc-bank"
+      contact_id: null
+      date: "2024-03-11"
+      reference: "Monthly fee"
+      amounts_are: "none"
+      lines:
+        - description: "Account fee"
+          quantity: 1000
+          unit_price: 1500
+          account_id: "acc-bank-fees"
+          tax_rate_id: "tax-none"
+    outputs:
+      spend: result.output
+
+  - type: call
+    name: Node 1 transfers to savings
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: record_transfer
+    args:
+      from_account_id: "acc-bank"
+      to_account_id: '{{savings}}'
+      date: "2024-03-12"
+      amount: 5000
+      reference: "To savings"
+
+  - type: call
+    name: Node 1 posts the owner's opening capital
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: create_journal
+    args:
+      date: "2024-03-01"
+      narration: "Capital introduced"
+      lines:
+        - account_id: "acc-bank"
+          description: ""
+          debit: 100000
+          credit: 0
+        - account_id: "acc-owner-funds"
+          description: ""
+          debit: 0
+          credit: 100000
+
+  - type: wait_for_sync
+    name: Wait for sync after the bank activity
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  # --- the bank statement ---
+
+  - type: call
+    name: Node 1 imports the bank statement
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: import_statement_lines
+    args:
+      bank_account_id: "acc-bank"
+      lines:
+        - date: "2024-03-10"
+          description: "NORTHWIND BACS"
+          amount: 20000
+        - date: "2024-03-11"
+          description: "ACCOUNT FEE"
+          amount: -1500
+        - date: "2024-03-13"
+          description: "COFFEE"
+          amount: -350
+        - date: "2024-03-14"
+          description: "DUPLICATE IMPORT"
+          amount: -1
+    outputs:
+      imported: result.output
+
+  - type: json_assert
+    name: Four new lines
+    statements:
+      - 'json_equal({{imported}}, 4)'
+
+  - type: call
+    name: Node 2 imports the same statement
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: import_statement_lines
+    args:
+      bank_account_id: "acc-bank"
+      lines:
+        - date: "2024-03-10"
+          description: "NORTHWIND BACS"
+          amount: 20000
+    outputs:
+      reimported: result.output
+
+  - type: wait_for_sync
+    name: Wait for sync after the imports
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  # Newest first: DUPLICATE (14th), COFFEE (13th), FEE (11th), NORTHWIND (10th).
+  - type: call
+    name: Node 2 lists the statement
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: list_statement_lines
+    args:
+      bank_account_id: "acc-bank"
+    outputs:
+      stmt_all: result.output
+      stmt_bad: result.output.0.id
+      stmt_coffee: result.output.1.id
+      stmt_fee: result.output.2.id
+      stmt_northwind: result.output.3.id
+
+  - type: json_assert
+    name: The same line imported on two nodes is one line
+    statements:
+      - 'json_subset({{stmt_all}}, [{"description": "DUPLICATE IMPORT"}, {"description": "COFFEE"}, {"description": "ACCOUNT FEE"}, {"description": "NORTHWIND BACS"}])'
+
+  - type: call
+    name: Node 2 removes the bad line
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: delete_statement_line
+    args:
+      statement_line_id: '{{stmt_bad}}'
+
+  - type: call
+    name: Node 2 reconciles the receipt with the payment
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: reconcile_statement_line
+    args:
+      statement_line_id: '{{stmt_northwind}}'
+      target_id: '{{payment}}'
+
+  - type: call
+    name: Node 2 reconciles the fee with the spend
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: reconcile_statement_line
+    args:
+      statement_line_id: '{{stmt_fee}}'
+      target_id: '{{spend}}'
+
+  - type: call
+    name: Node 2 unreconciles the fee
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: unreconcile_statement_line
+    args:
+      statement_line_id: '{{stmt_fee}}'
+
+  - type: call
+    name: Node 2 reconciles it again
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: reconcile_statement_line
+    args:
+      statement_line_id: '{{stmt_fee}}'
+      target_id: '{{spend}}'
+
+  - type: call
+    name: Node 2 codes the coffee straight from the statement
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: code_statement_line
+    args:
+      statement_line_id: '{{stmt_coffee}}'
+      contact_id: null
+      account_id: "acc-general"
+      tax_rate_id: "tax-none"
+      description: "Client coffee"
+
+  - type: call
+    name: Node 2 adds a note on the invoice
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: add_note
+    args:
+      record_id: '{{inv}}'
+      body: "Rest promised by month end"
+
+  - type: wait_for_sync
+    name: Wait for sync after reconciling
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  # --- node 1 reads everything back ---
+
+  - type: call
+    name: Node 1 reads the statement
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_statement_lines
+    args:
+      bank_account_id: "acc-bank"
+    outputs:
+      stmt_after: result.output
+
+  - type: json_assert
+    name: Every remaining line is reconciled
+    statements:
+      - 'json_subset({{stmt_after}}, [{"description": "COFFEE", "reconciled": true}, {"description": "ACCOUNT FEE", "reconciled": true}, {"description": "NORTHWIND BACS", "reconciled": true}])'
+
+  - type: call
+    name: Node 1 runs the trial balance
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: trial_balance
+    args:
+      as_at: "2024-12-31"
+    outputs:
+      tb: result.output
+
+  - type: json_assert
+    name: The trial balance balances at the figures worked out above
+    statements:
+      - 'json_subset({{tb}}, {"total_debit": 220000, "total_credit": 220000})'
+
+  - type: call
+    name: Node 1 runs the profit and loss
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: profit_and_loss
+    args:
+      from: "2024-01-01"
+      to: "2024-12-31"
+    outputs:
+      pnl: result.output
+
+  - type: json_assert
+    name: Sales less bank fees and coffee
+    statements:
+      - 'json_subset({{pnl}}, {"gross_profit": 100000, "net_profit": 98150})'
+
+  - type: call
+    name: Node 1 runs the balance sheet
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: balance_sheet
+    args:
+      as_at: "2024-12-31"
+    outputs:
+      bs: result.output
+
+  - type: json_assert
+    name: Assets less liabilities equal equity
+    statements:
+      - 'json_subset({{bs}}, {"total_assets": 218150, "total_liabilities": 20000, "net_assets": 198150})'
+
+  - type: call
+    name: Node 1 runs aged receivables
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: aged_receivables
+    args:
+      as_at: "2024-04-30"
+    outputs:
+      aged_ar: result.output.totals
+
+  - type: json_assert
+    name: 1000.00 outstanding, over 30 days late
+    statements:
+      - 'json_subset({{aged_ar}}, {"days_31_60": 100000, "total": 100000})'
+
+  - type: call
+    name: Node 1 runs aged payables
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: aged_payables
+    args:
+      as_at: "2024-04-30"
+    outputs:
+      aged_ap: result.output.totals
+
+  - type: json_assert
+    name: No bills, nothing owed
+    statements:
+      - 'json_subset({{aged_ap}}, {"total": 0})'
+
+  - type: call
+    name: Node 1 runs the tax report
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: tax_report
+    args:
+      from: "2024-03-01"
+      to: "2024-03-31"
+    outputs:
+      vat: result.output
+
+  - type: json_assert
+    name: VAT collected on the sale, none paid
+    statements:
+      - 'json_subset({{vat}}, {"sales_tax": 20000, "purchases_tax": 0, "net_tax": 20000})'
+
+  - type: call
+    name: Node 1 reads the bank account's ledger
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: account_transactions
+    args:
+      account_id: "acc-bank"
+      from: "2024-03-01"
+      to: "2024-03-31"
+    outputs:
+      bank_ledger: result.output
+
+  - type: json_assert
+    name: The bank closes at 1131.50
+    statements:
+      - 'json_subset({{bank_ledger}}, {"opening_balance": 0, "closing_balance": 113150})'
+
+  - type: call
+    name: Node 1 reads the dashboard
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: get_dashboard
+    args:
+      today: "2024-03-31"
+    outputs:
+      dash: result.output
+
+  - type: json_assert
+    name: Profit to date and the overdue invoice
+    statements:
+      - 'json_subset({{dash}}, {"profit_ytd": 98150, "receivables": {"awaiting_count": 1, "overdue_count": 1, "overdue_total": 100000}})'
+
+  - type: call
+    name: Node 1 lists the invoices
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_invoices
+    args:
+      kind: "sales"
+    outputs:
+      invoices: result.output
+
+  - type: json_assert
+    name: One invoice, part paid
+    statements:
+      - 'json_subset({{invoices}}, [{"number": "INV-0001", "paid": 20000, "amount_due": 100000}])'
+
+  - type: call
+    name: Node 1 lists the payments
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_payments
+    args:
+      bank_account_id: "acc-bank"
+    outputs:
+      payments: result.output
+
+  - type: json_assert
+    name: The teammate's payment is there
+    statements:
+      - 'json_subset({{payments}}, [{"amount": 20000, "invoice_kind": "sales", "voided": false}])'
+
+  - type: call
+    name: Node 1 lists bank transactions
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_bank_transactions
+    args:
+      bank_account_id: null
+    outputs:
+      txns: result.output
+
+  - type: json_assert
+    name: The coded coffee and the fee
+    statements:
+      - 'json_subset({{txns}}, [{"kind": "spend", "total": 350}, {"kind": "spend", "total": 1500}])'
+
+  - type: call
+    name: Node 1 lists journals
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_journals
+    args: {}
+    outputs:
+      journals: result.output
+
+  - type: json_assert
+    name: The transfer and the capital journal, both balanced
+    statements:
+      - 'json_subset({{journals}}, [{"source": "transfer", "balanced": true}, {"source": "journal", "balanced": true, "total": 100000}])'
+
+  - type: call
+    name: Node 1 lists contacts
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_contacts
+    args: {}
+    outputs:
+      contacts: result.output
+
+  - type: json_assert
+    name: The customer owes the balance
+    statements:
+      - 'json_subset({{contacts}}, [{"name": "Northwind Traders", "receivable": 100000, "invoice_count": 1}])'
+
+  - type: call
+    name: Node 1 lists the accounts
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_accounts
+    args:
+      include_archived: false
+    outputs:
+      accounts: result.output.0
+
+  - type: json_assert
+    name: The chart starts with the bank, at its ledger balance
+    statements:
+      - 'json_subset({{accounts}}, {"code": "090", "balance": 113150})'
+
+  - type: call
+    name: Node 1 lists tax rates
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_tax_rates
+    args: {}
+    outputs:
+      rates: result.output
+
+  - type: call
+    name: Node 1 reads the invoice's history
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_history
+    args:
+      record_id: '{{inv}}'
+    outputs:
+      history: result.output
+
+  - type: json_assert
+    name: Created, edited, approved, paid and noted
+    statements:
+      - 'json_subset({{history}}, [{"action": "created"}, {"action": "edited"}, {"action": "approved"}, {"action": "payment"}, {"action": "note", "detail": "Rest promised by month end"}])'
+
+  # --- the lock date ---
+
+  - type: call
+    name: Node 1 locks March
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: set_lock_date
+    args:
+      lock_date: "2024-03-31"
+
+  - type: wait_for_sync
+    name: Wait for sync after locking
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 cannot void the March spend
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: void_record
+    args:
+      record_id: '{{spend}}'
+      reason: "Wrong account"
+    outputs:
+      locked_error: error
+    expected_failure: true
+
+  - type: assert
+    name: The lock must actually have refused it
+    statements:
+      - "is_set({{locked_error}})"
+
+  - type: call
+    name: Node 1 unlocks
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: set_lock_date
+    args:
+      lock_date: null
+
+  - type: wait_for_sync
+    name: Wait for sync after unlocking
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 voids the spend
+    node: books-node-2
+    context_id: '{{ctx}}'
+    method: void_record
+    args:
+      record_id: '{{spend}}'
+      reason: "Wrong account"
+
+  - type: wait_for_sync
+    name: Wait for sync after the void
+    context_id: '{{ctx}}'
+    nodes: [books-node-1, books-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 1 reads the statement after the void
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: list_statement_lines
+    args:
+      bank_account_id: "acc-bank"
+    outputs:
+      stmt_void: result.output
+
+  - type: json_assert
+    name: Voiding the spend unreconciled its line, by derivation alone
+    statements:
+      - 'json_subset({{stmt_void}}, [{"description": "COFFEE", "reconciled": true}, {"description": "ACCOUNT FEE", "reconciled": false}])'
+
+  - type: call
+    name: Node 1 reruns the profit and loss
+    node: books-node-1
+    context_id: '{{ctx}}'
+    method: profit_and_loss
+    args:
+      from: "2024-01-01"
+      to: "2024-12-31"
+    outputs:
+      pnl_after: result.output
+
+  - type: json_assert
+    name: The voided fee left the ledger
+    statements:
+      - 'json_subset({{pnl_after}}, {"net_profit": 99650})'
