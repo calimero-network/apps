@@ -418,6 +418,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "What your agent asked you, by its message's id."
+        },
+        {
+          "name": "progress",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Progress"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your agent's latest step on each message it is working on, by message id."
         }
       ]
     },
@@ -657,6 +671,24 @@
       "fields": [
         {
           "name": "seen_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Progress": {
+      "kind": "record",
+      "doc": "What your agent is doing right now for one of your messages: its latest\nstep, replaced by the next one. Kept beside the message by id, never in its\nhistory, so a long turn adds no rows.",
+      "fields": [
+        {
+          "name": "doing",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
           "type": {
             "kind": "u64"
           }

@@ -142,6 +142,11 @@ export class DemoBackend implements FeedBackend {
       chain_at: last.at,
     };
     stored.needs_you = this.needsYou(stored);
+    // A step shows only while the message is being worked on.
+    if (stored.kind === "message" && stored.status !== "thinking") {
+      stored.doing = "";
+      stored.doing_at = 0;
+    }
     this.items.set(stored.id, stored);
     return copy(stored);
   }
@@ -419,6 +424,19 @@ export class DemoBackend implements FeedBackend {
     const item = this.step(m, status, note);
     this.changed();
     return item;
+  }
+
+  /** What the agent is doing on a message it took up, as `agent_progress` would take it. */
+  agentProgress(id: string, doing: string): FeedItem {
+    const m = this.get(id, "message");
+    if (m.from !== "you") throw new Error(`message ${id} is the agent's own`);
+    if (m.status !== "thinking") throw new Error(`message ${id} is ${m.status}; progress is for a message being worked on`);
+    if (!doing.trim()) throw new Error("doing must not be empty");
+    const stored = this.items.get(id)!;
+    stored.doing = doing;
+    stored.doing_at = Math.max(this.now(), stored.doing_at + 1);
+    this.changed();
+    return copy(stored);
   }
 
   /** The agent's side of a conversation, as `agent_say` would take it. */
@@ -866,5 +884,7 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     item_type: "",
     fields: "",
     reply_call: "",
+    doing: "",
+    doing_at: 0,
   };
 }

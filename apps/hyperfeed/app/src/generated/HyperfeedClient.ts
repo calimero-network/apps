@@ -279,6 +279,14 @@ export interface FeedItem {
    * The call that answers it in its app, or `""`; see [`Typed`].
    */
   reply_call: string;
+  /**
+   * Its latest step while the message is `thinking` ("Editing ChatView.tsx"), or `""`.
+   */
+  doing: string;
+  /**
+   * When that step started; 0 with no step.
+   */
+  doing_at: number;
 }
 
 export interface FeedPage {
@@ -340,6 +348,10 @@ export interface Hyperfeed {
    * What your agent asked you, by its message's id.
    */
   asks: Record<string, Asked>;
+  /**
+   * Your agent's latest step on each message it is working on, by message id.
+   */
+  progress: Record<string, Progress>;
 }
 
 /**
@@ -490,6 +502,16 @@ export interface Presence {
   seen_at: number;
 }
 
+/**
+ * What your agent is doing right now for one of your messages: its latest
+ * step, replaced by the next one. Kept beside the message by id, never in its
+ * history, so a long turn adds no rows.
+ */
+export interface Progress {
+  doing: string;
+  at: number;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
@@ -628,6 +650,20 @@ export class HyperfeedClient {
    */
   public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ask', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * agent_progress
+   *
+   * Your agent says what it is doing on one of your messages it has taken
+   * up (`thinking`): "Running the tests", "Editing ChatView.tsx". Each call
+   * replaces the last, so you see its latest step and nothing piles up.
+   *
+   * @intent mutating
+   */
+  public async agentProgress(params: { id: string; doing: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_progress', argsJson: params });
     return response as FeedItem;
   }
 

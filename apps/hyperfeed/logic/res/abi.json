@@ -759,6 +759,20 @@
             "kind": "string"
           },
           "doc": "The call that answers it in its app, or `\"\"`; see [`Typed`]."
+        },
+        {
+          "name": "doing",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Its latest step while the message is `thinking` (\"Editing ChatView.tsx\"), or `\"\"`."
+        },
+        {
+          "name": "doing_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When that step started; 0 with no step."
         }
       ]
     },
@@ -1002,6 +1016,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "What your agent asked you, by its message's id."
+        },
+        {
+          "name": "progress",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Progress"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your agent's latest step on each message it is working on, by message id."
         }
       ]
     },
@@ -1407,6 +1435,24 @@
         }
       ]
     },
+    "Progress": {
+      "kind": "record",
+      "doc": "What your agent is doing right now for one of your messages: its latest\nstep, replaced by the next one. Kept beside the message by id, never in its\nhistory, so a long turn adds no rows.",
+      "fields": [
+        {
+          "name": "doing",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "SettingsView": {
       "kind": "record",
       "fields": [
@@ -1579,6 +1625,28 @@
           "name": "ask",
           "type": {
             "$ref": "Ask"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "agent_progress",
+      "doc": "Your agent says what it is doing on one of your messages it has taken\nup (`thinking`): \"Running the tests\", \"Editing ChatView.tsx\". Each call\nreplaces the last, so you see its latest step and nothing piles up.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "doing",
+          "type": {
+            "kind": "string"
           }
         }
       ],

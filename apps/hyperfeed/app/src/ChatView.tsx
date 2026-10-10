@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { laneOf, statusOf, timeLabel } from "./format";
+import { laneOf, progressLine, statusOf, timeLabel } from "./format";
 
 /**
  * Chats with your agent.
@@ -241,7 +241,7 @@ function Thread({
 function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
   const [, setTick] = useState(0);
   const now = clock();
-  const waiting = last.kind === "message" && last.from === "you" && last.status === "waiting";
+  const waiting = last.kind === "message" && last.from === "you" && (last.status === "waiting" || last.status === "thinking");
   useEffect(() => {
     if (!waiting) return;
     const t = window.setInterval(() => setTick((n) => n + 1), 5_000);
@@ -249,7 +249,14 @@ function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
   }, [waiting]);
 
   if (last.kind !== "message" || last.from !== "you") return null;
-  if (last.status === "thinking") return <p className="chat-status busy">Your agent is on it…</p>;
+  if (last.status === "thinking") {
+    const doing = progressLine(last, now);
+    return (
+      <p className="chat-status busy" role="status">
+        Your agent is on it…{doing && <span className="chat-doing"> {doing}</span>}
+      </p>
+    );
+  }
   if (last.status === "failed") {
     return <p className="chat-status bad">Your agent couldn't answer{last.note ? `: ${last.note}` : "."}</p>;
   }
