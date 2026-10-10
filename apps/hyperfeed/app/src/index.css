@@ -1924,3 +1924,8 @@ body {
   border: 0;
   border-top: 1px solid var(--line);
 }
+
+.chat-done-toggle {
+  align-self: flex-start;
+  margin-top: 6px;
+}
