@@ -290,6 +290,17 @@ export function FeedView({
   );
 }
 
+/**
+ * What the panel lets the app inside it do. Above all, reach your node: the
+ * app talks to it on localhost or your network, and Chrome blocks that from
+ * a cross-origin frame unless the page around it passes its own permission
+ * on (Local Network Access). Without it the app's login fails with "Failed to
+ * connect", though the same app works in a tab of its own. Chrome named the
+ * permission `local-network-access`, then split it into `local-network` and
+ * `loopback-network`; a browser ignores the names it does not know.
+ */
+export const APP_PANEL_ALLOW = "local-network-access; local-network; loopback-network; clipboard-read; clipboard-write";
+
 /** An app, open beside the feed, at the row it was opened from. */
 function AppPanel({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
   return (
@@ -305,7 +316,7 @@ function AppPanel({ url, title, onClose }: { url: string; title: string; onClose
           </svg>
         </button>
       </header>
-      <iframe title={title} src={url} className="app-panel-frame" allow="clipboard-read; clipboard-write" />
+      <iframe title={title} src={url} className="app-panel-frame" allow={APP_PANEL_ALLOW} />
     </aside>
   );
 }

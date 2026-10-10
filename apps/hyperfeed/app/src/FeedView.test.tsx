@@ -217,6 +217,10 @@ describe("FeedView", () => {
     });
     const panel = await screen.findByRole("complementary", { name: /Sign/ });
     expect(within(panel).getByTitle(/Sign/)).toHaveAttribute("src", expect.stringContaining("https://example.test/sign"));
+    // The app inside must be able to reach your node: Chrome's Local Network Access, passed on to the frame.
+    const allow = within(panel).getByTitle(/Sign/).getAttribute("allow") ?? "";
+    expect(allow).toMatch(/(^|;\s*)local-network-access(;|$)/);
+    expect(allow).toMatch(/(^|;\s*)loopback-network(;|$)/);
     expect(within(panel).getByRole("link", { name: "Open in a tab" })).toHaveAttribute("target", "_blank");
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
