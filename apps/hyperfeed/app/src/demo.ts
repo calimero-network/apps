@@ -2,6 +2,7 @@ import type {
   ActionInput,
   AppCount,
   Ask,
+  Attachment,
   FeedItem,
   FeedPage,
   LensView,
@@ -12,6 +13,7 @@ import type {
   Verdict,
 } from "./generated/HyperfeedClient";
 import { PAGE_SIZE, type AgentMode, type Decision, type FeedBackend, type Filter, type NotificationMode } from "./backend";
+import { MAX_ATTACHMENTS, refuseImage, type BlobStore } from "./attachments";
 import chatLens from "./lens/fixtures/chat.json";
 import voteLens from "./lens/fixtures/vote.json";
 
@@ -397,15 +399,35 @@ export class DemoBackend implements FeedBackend {
     this.changed();
   }
 
-  async say(chain: string, text: string): Promise<FeedItem> {
-    if (!text.trim()) throw new Error("text must not be empty");
+  /** Images live in memory: the demo has no node to keep blobs on. */
+  readonly images: BlobStore = {
+    upload: async (data) => {
+      const blobId = fakeHash(this.nextId++);
+      this.blobs.set(blobId, data);
+      return { blobId, size: data.size };
+    },
+    read: async (blobId) => {
+      const blob = this.blobs.get(blobId);
+      if (!blob) throw new Error(`no blob ${blobId}`);
+      return blob;
+    },
+  };
+  private blobs = new Map<string, Blob>();
+
+  async say(chain: string, text: string, attachments: Attachment[] = []): Promise<FeedItem> {
+    if (!text.trim() && attachments.length === 0) throw new Error("text must not be empty");
     if (new TextEncoder().encode(text).length > MAX_MESSAGE) throw new Error(`text is longer than ${MAX_MESSAGE} bytes`);
+    if (attachments.length > MAX_ATTACHMENTS) throw new Error(`${attachments.length} attachments, limit is ${MAX_ATTACHMENTS}`);
+    for (const a of attachments) {
+      const refused = refuseImage({ name: a.name, type: a.mime, size: a.size }, 0);
+      if (refused) throw new Error(refused);
+    }
     if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
     // Whatever your agent asked you in this chain, your words answer.
     for (const m of [...this.items.values()]) {
       if (chain && m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked") this.step(m, "answered", text.slice(0, 250));
     }
-    const posted = this.post(chain, "you", text, "", "waiting");
+    const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments);
     this.changed();
     if (this.agentDelayMs > 0) {
       setTimeout(() => this.agentAck(posted.id), this.agentDelayMs / 2);
@@ -466,16 +488,26 @@ export class DemoBackend implements FeedBackend {
     return [...this.items.values()].some((i) => i.chain === chain);
   }
 
-  private post(chain: string, from: "you" | "agent", text: string, replyTo: string, status: string, ask: Ask = NO_ASK): FeedItem {
+  private post(
+    chain: string,
+    from: "you" | "agent",
+    text: string,
+    replyTo: string,
+    status: string,
+    ask: Ask = NO_ASK,
+    attachments: Attachment[] = [],
+  ): FeedItem {
     const id = `demo-${this.nextId++}`;
     const t = this.tick();
+    const images = attachments.length;
     return this.put({
       ...blank(id, "message", "", t, chain || id, ask),
-      title: headline(text),
+      title: text || images === 0 ? headline(text) : images === 1 ? "Sent an image" : `Sent ${images} images`,
       body: text,
       from,
       reply_to: replyTo,
       history: [{ status, note: "", at: t }],
+      attachments: attachments.map((a) => ({ ...a })),
     });
   }
 
@@ -847,7 +879,12 @@ function fakeHash(n: number): string {
 }
 
 function copy(item: FeedItem): FeedItem {
-  return { ...item, ask: { ...item.ask, options: [...item.ask.options] }, history: item.history.map((s: Step) => ({ ...s })) };
+  return {
+    ...item,
+    ask: { ...item.ask, options: [...item.ask.options] },
+    history: item.history.map((s: Step) => ({ ...s })),
+    attachments: item.attachments.map((a) => ({ ...a })),
+  };
 }
 
 function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chain: string, ask: Ask): FeedItem {
@@ -886,5 +923,6 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     reply_call: "",
     doing: "",
     doing_at: 0,
+    attachments: [],
   };
 }

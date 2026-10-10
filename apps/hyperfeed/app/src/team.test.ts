@@ -43,6 +43,7 @@ function row(over: Partial<FeedItem>): FeedItem {
     reply_call: "",
     doing: "",
     doing_at: 0,
+    attachments: [],
     ...over,
   };
 }

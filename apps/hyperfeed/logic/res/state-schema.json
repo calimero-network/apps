@@ -232,6 +232,54 @@
         }
       ]
     },
+    "Attachment": {
+      "kind": "record",
+      "doc": "An image on a message: a blob on your node, announced to the feed's\ncontext, and what the client needs to show it before fetching it.",
+      "fields": [
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The file's name as you picked it; may be empty for a pasted image."
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "One of [`IMAGE_TYPES`]."
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Bytes, at most 10 MiB."
+        }
+      ]
+    },
+    "Attachments": {
+      "kind": "record",
+      "doc": "A message's attachments. Kept beside the message, keyed by its id, so\nmessages written before attachments existed keep their layout.",
+      "fields": [
+        {
+          "name": "items",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Attachment"
+            }
+          }
+        }
+      ]
+    },
     "Guard": {
       "kind": "record",
       "doc": "One \"always ask me before\" switch.",
@@ -432,6 +480,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Your agent's latest step on each message it is working on, by message id."
+        },
+        {
+          "name": "attachments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Attachments"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Images on your messages, by the message's id."
         }
       ]
     },

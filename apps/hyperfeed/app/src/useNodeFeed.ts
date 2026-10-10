@@ -3,6 +3,7 @@ import { useContexts, useMero, useSubscription } from "@calimero-network/mero-re
 import type { SubscriptionEventData } from "@calimero-network/mero-react";
 import { HyperfeedClient, type LensView } from "./generated/HyperfeedClient";
 import { nodeBackend, type FeedBackend } from "./backend";
+import type { BlobStore } from "./attachments";
 import { appKeyForPackage } from "./apps";
 import { BUILT_IN, decodePayload, toNotifications, type RawEvent, type SourceContext, type StateMutation } from "./collector";
 import { parseLens, type LensHost, type LensSpec } from "./lens/lens";
@@ -36,10 +37,18 @@ const RECENT = 25;
  */
 export function useNodeFeed(contextId: string): NodeFeed {
   const { mero, admin, applicationId } = useMero();
-  const backend = useMemo(
-    () => (mero ? nodeBackend(new HyperfeedClient(mero, contextId), mero.rpc) : null),
-    [mero, contextId],
-  );
+  const backend = useMemo(() => {
+    if (!mero) return null;
+    // Images are blobs on your node, announced to the feed's context so your
+    // other devices (and your agent) can fetch them by id.
+    const images: BlobStore | null = admin
+      ? {
+          upload: (data) => admin.uploadBlob({ data, contextId }),
+          read: async (blobId) => new Blob([await admin.getBlob(blobId, { contextId })]),
+        }
+      : null;
+    return nodeBackend(new HyperfeedClient(mero, contextId), mero.rpc, images);
+  }, [mero, admin, contextId]);
   const [nudge, setNudge] = useState(0);
 
   // Every context on the node. With no application id, `useContexts` asks the

@@ -159,6 +159,34 @@ export interface Asked {
   ask: Ask;
 }
 
+/**
+ * An image on a message: a blob on your node, announced to the feed's
+ * context, and what the client needs to show it before fetching it.
+ */
+export interface Attachment {
+  blob_id: string;
+  /**
+   * The file's name as you picked it; may be empty for a pasted image.
+   */
+  name: string;
+  /**
+   * One of [`IMAGE_TYPES`].
+   */
+  mime: string;
+  /**
+   * Bytes, at most 10 MiB.
+   */
+  size: number;
+}
+
+/**
+ * A message's attachments. Kept beside the message, keyed by its id, so
+ * messages written before attachments existed keep their layout.
+ */
+export interface Attachments {
+  items: Attachment[];
+}
+
 export interface Event_ActionChanged {
   id: string;
   status: string;
@@ -287,6 +315,10 @@ export interface FeedItem {
    * When that step started; 0 with no step.
    */
   doing_at: number;
+  /**
+   * Images on a message of yours; empty for every other row.
+   */
+  attachments: Attachment[];
 }
 
 export interface FeedPage {
@@ -352,6 +384,10 @@ export interface Hyperfeed {
    * Your agent's latest step on each message it is working on, by message id.
    */
   progress: Record<string, Progress>;
+  /**
+   * Images on your messages, by the message's id.
+   */
+  attachments: Record<string, Attachments>;
 }
 
 /**
@@ -960,6 +996,19 @@ export class HyperfeedClient {
    */
   public async say(params: { chain: string; text: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'say', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * say_with
+   *
+   * [`Self::say`] with images: up to four, each a blob you uploaded to your
+   * node and announced to this context. With an image, `text` may be empty.
+   *
+   * @intent mutating
+   */
+  public async sayWith(params: { chain: string; text: string; attachments: Attachment[] }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'say_with', argsJson: params });
     return response as FeedItem;
   }
 
