@@ -164,9 +164,24 @@ describe("the team view's reading of the feed", () => {
       ],
       NOW,
     );
-    expect(d).toMatchObject({ done: 2, failed: 1, working: 2, answered: 1 });
+    expect(d).toMatchObject({ filed: 1, done: 1, failed: 1, working: 2, answered: 1, waiting: 1 });
+    // What needs you is counted, not listed: it is in the strip on top.
     expect(d.items).toHaveLength(6);
-    expect(digestLine(d)).toBe("Did 2 things · answered 1 message · 2 in progress · 1 failed.");
+    expect(digestLine(d)).toBe("Filed 1 issue, did 1 other thing, answered 1 message, 2 in progress, 1 failed, 1 waiting on you.");
     expect(digestLine(agentDigest([], NOW))).toBe("Nothing yet today.");
+  });
+
+  it("says what kind of work your agent did, and what waits on you from any day", () => {
+    const yesterday = NOW - 86_400_000;
+    const d = agentDigest(
+      [
+        row({ kind: "action", status: "done", method: "mero_issue_tracker_i_create_issue" }),
+        row({ kind: "action", status: "done", method: "create_issue" }),
+        row({ kind: "action", status: "done", app: "mero-bot", method: "Bash" }),
+        row({ kind: "message", from: "agent", status: "said", needs_you: true, at: yesterday, chain_at: yesterday }),
+      ],
+      NOW,
+    );
+    expect(digestLine(d)).toBe("Filed 2 issues, ran 1 command on your computer, 1 waiting on you.");
   });
 });

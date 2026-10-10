@@ -1665,6 +1665,18 @@ body {
   font-size: 13px;
 }
 
+/* Your agent's day: one line, opening into its chains. */
+.lane-digest {
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.lane-agent .lane-digest + .rows {
+  border-top: 1px solid var(--line);
+}
+
 .lane-more {
   margin: 6px 14px 8px;
 }

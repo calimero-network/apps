@@ -141,12 +141,27 @@ export function groupSentence(g: TeamGroup, appName: (key: string) => string): H
 
 /** Your agent's work since the start of today, as one card. */
 export interface AgentDigest {
+  /** Issues it filed. */
+  filed: number;
+  /** Commands it ran on your computer. */
+  ran: number;
+  /** Everything else it carried out. */
   done: number;
   working: number;
   failed: number;
   answered: number;
+  /** Its rows that need you: in the strip on top, only counted here. */
+  waiting: number;
   /** Newest first: the chains it covers, for the expanded card. */
   items: FeedItem[];
+}
+
+/** The app key tools mero-bot runs on your computer are filed under. */
+const LOCAL_APP = "mero-bot";
+
+/** A chain your agent leads: something it did, or a conversation with it. */
+export function isAgent(item: FeedItem): boolean {
+  return item.kind === "action" || item.kind === "message";
 }
 
 function startOfDay(t: number): number {
@@ -157,13 +172,18 @@ function startOfDay(t: number): number {
 
 /**
  * Everything your agent did or said today that does not need you. What needs
- * you is in the strip on top, not counted twice; reads are not counted at all.
+ * you is in the strip on top, not listed twice, only counted as waiting;
+ * reads are not counted at all.
  */
 export function agentDigest(items: FeedItem[], now = Date.now()): AgentDigest {
   const since = startOfDay(now);
-  const d: AgentDigest = { done: 0, working: 0, failed: 0, answered: 0, items: [] };
+  const d: AgentDigest = { filed: 0, ran: 0, done: 0, working: 0, failed: 0, answered: 0, waiting: 0, items: [] };
   for (const item of items) {
-    if (item.kind === "notification" || item.needs_you || isNoise(item)) continue;
+    if (!isAgent(item) || isNoise(item)) continue;
+    if (item.needs_you) {
+      d.waiting++;
+      continue;
+    }
     if ((item.chain_at || item.at) < since) continue;
     d.items.push(item);
     if (item.kind === "message") {
@@ -174,20 +194,29 @@ export function agentDigest(items: FeedItem[], now = Date.now()): AgentDigest {
     }
     if (laneOf(item) === "progress") d.working++;
     else if (item.status === "failed") d.failed++;
-    else if (item.status === "done") d.done++;
+    else if (item.status === "done") {
+      if (/(^|_)create_issue$/.test(item.method)) d.filed++;
+      else if (item.app === LOCAL_APP) d.ran++;
+      else d.done++;
+    }
   }
   d.items.sort((a, b) => (b.chain_at || b.at) - (a.chain_at || a.at));
   return d;
 }
 
-/** The digest's one line: "Did 4 things · answered 3 messages · 1 failed". */
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The digest's one line: "Filed 2 issues, did 1 other thing, 1 waiting on you." */
 export function digestLine(d: AgentDigest): string {
   const parts: string[] = [];
-  if (d.done) parts.push(`did ${d.done} thing${d.done === 1 ? "" : "s"}`);
-  if (d.answered) parts.push(`answered ${d.answered} message${d.answered === 1 ? "" : "s"}`);
+  if (d.filed) parts.push(`filed ${count(d.filed, "issue")}`);
+  if (d.ran) parts.push(`ran ${count(d.ran, "command")} on your computer`);
+  if (d.done) parts.push(`did ${count(d.done, d.filed || d.ran ? "other thing" : "thing")}`);
+  if (d.answered) parts.push(`answered ${count(d.answered, "message")}`);
   if (d.working) parts.push(`${d.working} in progress`);
   if (d.failed) parts.push(`${d.failed} failed`);
+  if (d.waiting) parts.push(`${d.waiting} waiting on you`);
   if (parts.length === 0) return "Nothing yet today.";
-  const s = parts.join(" · ");
+  const s = parts.join(", ");
   return s.charAt(0).toUpperCase() + s.slice(1) + ".";
 }

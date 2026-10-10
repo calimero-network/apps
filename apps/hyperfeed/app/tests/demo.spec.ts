@@ -56,9 +56,11 @@ test("in the demo, you ask your agent and the pretend agent answers in the same 
   const thread = page.getByRole("log");
   await expect(thread).toContainText("What's left before the board meeting?");
   await explain(expect(thread.getByText(/pretend agent/)).toBeVisible({ timeout: 15_000 }));
-  // The same chain, in the feed.
+  // The same chain, in the feed: in your agent's digest.
   await page.getByRole("link", { name: "Feed", exact: true }).click();
-  const answer = page.locator("li.row", { hasText: "pretend agent" });
+  const agent = page.getByRole("region", { name: "Your agent today" });
+  await agent.getByRole("button", { name: /^Show/ }).click();
+  const answer = agent.locator("li.row", { hasText: "pretend agent" });
   await answer.locator(".row-line").click();
   await expect(answer.getByRole("list", { name: "The whole flow" })).toContainText("What's left before the board meeting?");
 });
@@ -124,9 +126,12 @@ test("in the demo, the feed is three lanes, light or dark, and done things archi
   expect(["light", "dark"]).toContain(theme);
   const done = page.getByRole("region", { name: "Done" });
   await done.getByRole("button", { name: "Archive all done" }).click();
-  await expect(done.getByText("Nothing finished yet.")).toBeVisible();
+  await expect(done.getByRole("button", { name: "Archive all done" })).toBeHidden();
   await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
-  await expect(done.locator("li.row").first()).toBeVisible();
+  // The demo's done chain is your agent's stand-up: back in its digest.
+  const agent = page.getByRole("region", { name: "Your agent today" });
+  await agent.getByRole("button", { name: /^Show/ }).click();
+  await expect(agent.locator("li.row", { hasText: "Posted your stand-up" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
