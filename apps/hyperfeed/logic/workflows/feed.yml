@@ -708,12 +708,16 @@ steps:
     outputs:
       pdf_error: error
 
-  - name: Assert the image travels with its message, and a PDF is refused
+  - name: Assert the image travels with its message
     type: json_assert
     statements:
       - 'json_subset({{image_sent}}, {"output": {"kind": "message", "from": "you", "status": "waiting", "title": "Sent an image"}})'
       - 'json_subset({{image_back}}, {"output": {"id": "{{image_id}}", "body": ""}})'
       - 'json_subset({{image_first}}, {"blob_id": "bafyimage01", "name": "deck.png", "mime": "image/png", "size": 48213})'
+
+  - name: Assert the PDF was refused
+    type: assert
+    statements:
       - "is_set({{pdf_error}})"
 
   - name: node-2 tries to record an action in someone else's feed
