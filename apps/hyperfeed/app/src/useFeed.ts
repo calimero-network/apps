@@ -47,8 +47,8 @@ export interface Feed {
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
   setGuard: (category: string, enabled: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
-  /** Put chains away (they come back when something new happens in them); undoable. */
-  archive: (chains: string[], label?: string) => Promise<void>;
+  /** Put chains away (they come back when something new happens in them); undoable. False when the node refused it. */
+  archive: (chains: string[], label?: string) => Promise<boolean>;
   /** Put a chain away until `until` (ms); undoable. */
   later: (chain: string, until: number, label?: string) => Promise<void>;
   unarchive: (chains: string[]) => Promise<void>;
@@ -204,7 +204,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
           await b.archive(chains, 0);
           ok = true;
         });
-        if (!ok) return;
+        if (!ok) return false;
         window.clearTimeout(toastTimer.current);
         setToast({
           text: label ?? (chains.length === 1 ? "Archived" : `Archived ${chains.length}`),
@@ -214,6 +214,7 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
           },
         });
         toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
+        return true;
       },
       [run],
     ),

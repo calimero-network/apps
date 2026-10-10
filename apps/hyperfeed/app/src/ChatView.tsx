@@ -38,7 +38,10 @@ export function ChatView({
   const [composing, setComposing] = useState(false);
   // Finished chats are out of the way until you ask for them; the open one always shows.
   const [showDone, setShowDone] = useState(false);
+  // Delete asks once, in place; opening another chat drops the question.
+  const [confirming, setConfirming] = useState(false);
   const { chats: listChats, loadChain, page } = feed;
+  useEffect(() => setConfirming(false), [chain]);
 
   // `page` changes on every re-read, which follows every event on the feed:
   // the list and the open chat are read again with it.
@@ -68,6 +71,16 @@ export function ChatView({
     },
     [feed, chain, onOpen, loadChain],
   );
+
+  // Deleting a chat archives its chain: it leaves your chats and your feed,
+  // comes back if anything new happens in it, and can be undone.
+  const remove = useCallback(async () => {
+    setConfirming(false);
+    // Refused (the error shows above the chat): stay on it.
+    if (!(await feed.archive([chain], "Chat deleted"))) return;
+    setComposing(false);
+    onOpen("");
+  }, [feed, chain, onOpen]);
 
   return (
     <div className={`chat${chain || composing ? " chat-open" : ""}`}>
@@ -114,16 +127,34 @@ export function ChatView({
 
       <section className="chat-main" aria-label={chain ? "Chat" : "New chat"}>
         {(chain || composing) && (
-          <button
-            type="button"
-            className="link chat-back"
-            onClick={() => {
-              setComposing(false);
-              onOpen("");
-            }}
-          >
-            ← Chats
-          </button>
+          <div className="chat-head">
+            <button
+              type="button"
+              className="link chat-back"
+              onClick={() => {
+                setComposing(false);
+                onOpen("");
+              }}
+            >
+              ← Chats
+            </button>
+            {chain &&
+              (confirming ? (
+                <div className="chat-delete-confirm" role="group" aria-label="Delete this chat?">
+                  <span>Delete this chat? It leaves your chats and your feed, and comes back if anything new happens in it.</span>
+                  <button type="button" className="small chat-delete-yes" disabled={feed.busy} onClick={() => void remove()}>
+                    Delete
+                  </button>
+                  <button type="button" className="small" onClick={() => setConfirming(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="link small chat-delete" onClick={() => setConfirming(true)}>
+                  Delete chat
+                </button>
+              ))}
+          </div>
         )}
         {feed.error && (
           <div className="error" role="alert">
@@ -146,6 +177,15 @@ export function ChatView({
         />
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
+
+      {feed.toast && (
+        <div className="toast" role="status">
+          <span>{feed.toast.text}</span>
+          <button type="button" className="toast-undo" onClick={feed.toast.undo}>
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
