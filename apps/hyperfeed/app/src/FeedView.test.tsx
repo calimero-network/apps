@@ -128,6 +128,25 @@ describe("FeedView", () => {
     expect(within(digest()).queryByRole("button", { name: /Delete the duplicate/ })).not.toBeInTheDocument();
   });
 
+  it("offers no Retry on a failed change to your rules, which only you can make", async () => {
+    const at = Date.now();
+    const failed = (id: string, app: string, method: string, title: string) => ({
+      ...noRow, id, chain: id, kind: "action", app, method, title, status: "failed", needs_you: true, at, chain_at: at,
+      note: "Only you can do this, in Hyperfeed's Controls",
+    });
+    const items: FeedItem[] = [
+      failed("p1", "hyperfeed", "set_policy", "Set mero-bot to Act"),
+      failed("p2", "chat", "send_message", "Post the stand-up"),
+    ];
+    render(<FeedView feed={staticFeed(items)} query="" />);
+    const rule = await openRow(/Set mero-bot to Act/);
+    expect(within(rule).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(within(rule).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    // A failure a retry can fix still offers one.
+    const post = await openRow(/Post the stand-up/);
+    expect(within(post).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
   it("leads the #launch chain with the NDA; once approved, the next thing in the chain leads", async () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} />);
