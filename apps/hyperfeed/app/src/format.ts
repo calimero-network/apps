@@ -15,6 +15,8 @@ export type Tone = "wait" | "bad" | "good" | "busy" | "plain";
 
 export function statusOf(item: FeedItem): { label: string; tone: Tone } {
   if (item.kind === "message") {
+    if (item.from === "agent" && item.status === "asked") return { label: "Asks you", tone: "wait" };
+    if (item.from === "agent" && item.status === "answered") return { label: "You answered", tone: "good" };
     if (item.from === "agent") return { label: item.reply_to ? "Answer" : "Note", tone: "plain" };
     if (item.status === "thinking") return { label: "Your agent is on it", tone: "busy" };
     if (item.status === "answered") return { label: "Answered", tone: "good" };
@@ -69,6 +71,8 @@ export function choicesFor(item: FeedItem): { approve?: string; decline: boolean
 export function resolvable(item: FeedItem): boolean {
   if (!item.ask.kind) return false;
   if (item.kind === "action") return item.status === "pending";
+  // Your agent's question: open until you say something in its chain.
+  if (item.kind === "message") return item.status === "asked";
   return item.status === "received" || item.status === "failed";
 }
 

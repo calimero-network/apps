@@ -136,7 +136,7 @@ export function ChatView({
             )}
           </div>
         )}
-        <Thread items={thread} clock={clock} />
+        <Thread items={thread} clock={clock} busy={feed.busy} onAnswer={(a) => void send(a)} />
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
     </div>
@@ -176,7 +176,18 @@ function ChatList({
   );
 }
 
-function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
+function Thread({
+  items,
+  clock,
+  busy,
+  onAnswer,
+}: {
+  items: FeedItem[];
+  clock: () => number;
+  busy: boolean;
+  /** Answer your agent's open question: your next message in the chat. */
+  onAnswer: (answer: string) => void;
+}) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
   useEffect(() => {
@@ -200,6 +211,18 @@ function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
           <div key={m.id} className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
             <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
             <p>{m.body}</p>
+            {m.status === "asked" && m.ask.kind === "choose" && (
+              <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
+                {m.ask.options.map((o) => (
+                  <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+            {m.status === "asked" && m.ask.kind === "reply" && (
+              <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
+            )}
             <span className="bubble-time">{timeLabel(m.at)}</span>
           </div>
         ) : (

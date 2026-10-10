@@ -77,6 +77,28 @@ describe("FeedView", () => {
     }
   });
 
+  it("puts your agent's question in To do, and one tap answers it", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Say hello in #calimero");
+    backend.agentAsk(q.chain, q.id, "Posted. There are two hellos now: delete the duplicate?", {
+      kind: "choose",
+      prompt: "Delete the duplicate?",
+      options: ["Delete the duplicate", "Keep both"],
+      draft: "",
+    });
+    render(<Harness backend={backend} />);
+    const row = await openRow(/Posted\. There are two hellos now/);
+    expect(lane("To do")).toContainElement(row);
+    expect(within(row).getAllByText("Asks you").length).toBeGreaterThan(0);
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Keep both" }));
+    });
+    const chain = await backend.chain(q.chain);
+    expect(chain.at(-1)).toMatchObject({ from: "you", body: "Keep both", status: "waiting" });
+    expect(chain.find((i) => i.status === "answered" && i.from === "agent")).toMatchObject({ note: "Keep both" });
+    expect(within(lane("To do")).queryByRole("button", { name: /two hellos/ })).not.toBeInTheDocument();
+  });
+
   it("opens a chain's whole flow in place and settles a step from inside it", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const row = await openRow(/Vendor NDA/);

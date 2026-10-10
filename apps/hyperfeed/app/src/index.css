@@ -1929,3 +1929,15 @@ body {
   align-self: flex-start;
   margin-top: 6px;
 }
+
+.bubble-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.bubble-asks {
+  font-size: 12px;
+  color: var(--wait-ink);
+}
