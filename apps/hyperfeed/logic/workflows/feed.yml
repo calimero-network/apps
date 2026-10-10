@@ -462,6 +462,21 @@ steps:
     outputs:
       thinking: result
 
+  - name: The agent reports its latest step while it works
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_progress
+    args: { id: "{{question_id}}", doing: "Reading the deck" }
+    outputs:
+      working: result
+
+  - name: Assert the step shows on the message, not as a step in its history
+    type: json_assert
+    statements:
+      - 'json_subset({{working}}, {"output": {"status": "thinking", "doing": "Reading the deck"}})'
+
   - name: The agent answers in the same chain
     type: call
     node: feed-node-1
@@ -489,6 +504,47 @@ steps:
       - 'json_subset({{thinking}}, {"output": {"status": "thinking"}})'
       - 'json_subset({{answer}}, {"output": {"kind": "message", "from": "agent", "chain": "{{mention_id}}", "reply_to": "{{question_id}}"}})'
       - 'json_subset({{question_after}}, {"output": {"status": "answered"}})'
+
+  - name: The agent asks the owner something back
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ask
+    args:
+      chain: "{{mention_id}}"
+      reply_to: ""
+      text: "Send Maya the deck too?"
+      ask: { kind: "choose", prompt: "Send the deck?", options: ["Send it", "Not now"], draft: "" }
+    outputs:
+      agent_question: result
+      agent_question_id: result.output.id
+
+  - name: The owner answers in the chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say
+    args: { chain: "{{mention_id}}", text: "Send it" }
+    outputs:
+      owner_answer: result
+
+  - name: Owner reads the agent's question after the answer
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{agent_question_id}}" }
+    outputs:
+      agent_question_after: result
+
+  - name: Assert the agent's question went asked, then answered by the owner's words
+    type: json_assert
+    statements:
+      - 'json_subset({{agent_question}}, {"output": {"kind": "message", "from": "agent", "status": "asked", "ask": {"kind": "choose"}}})'
+      - 'json_subset({{agent_question_after}}, {"output": {"status": "answered", "note": "Send it"}})'
 
   # ─── lenses and typed notifications ──────────────────────────────────────
 

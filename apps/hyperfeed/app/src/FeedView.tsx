@@ -9,6 +9,7 @@ import {
   fieldsOf,
   flowOf,
   laneOf,
+  progressLine,
   resolvable,
   statusOf,
   timeLabel,
@@ -291,6 +292,17 @@ export function FeedView({
   );
 }
 
+/**
+ * What the panel lets the app inside it do. Above all, reach your node: the
+ * app talks to it on localhost or your network, and Chrome blocks that from
+ * a cross-origin frame unless the page around it passes its own permission
+ * on (Local Network Access). Without it the app's login fails with "Failed to
+ * connect", though the same app works in a tab of its own. Chrome named the
+ * permission `local-network-access`, then split it into `local-network` and
+ * `loopback-network`; a browser ignores the names it does not know.
+ */
+export const APP_PANEL_ALLOW = "local-network-access; local-network; loopback-network; clipboard-read; clipboard-write";
+
 /** An app, open beside the feed, at the row it was opened from. */
 function AppPanel({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
   return (
@@ -306,7 +318,7 @@ function AppPanel({ url, title, onClose }: { url: string; title: string; onClose
           </svg>
         </button>
       </header>
-      <iframe title={title} src={url} className="app-panel-frame" allow="clipboard-read; clipboard-write" />
+      <iframe title={title} src={url} className="app-panel-frame" allow={APP_PANEL_ALLOW} />
     </aside>
   );
 }
@@ -400,13 +412,18 @@ function Choices({ item, busy, onDecide }: { item: FeedItem; busy: boolean; onDe
  * A reply is a text box (the agent's draft when it wrote one) with suggested
  * replies one tap away; a choice is one button per option; a confirm is one
  * button. On a notification the answer goes to `answer_notification`; on a
- * proposal it approves with that answer. Either way your agent carries it out.
+ * proposal it approves with that answer; on your agent's question it is your
+ * next message in the chain. Either way your agent carries it out.
  */
 export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   const id = useId();
   const [text, setText] = useState(item.ask.draft);
   const isAction = item.kind === "action";
-  const submit = (answer: string) => (isAction ? feed.resolve(item.id, "approve", answer) : feed.answer(item.id, answer));
+  const submit = async (answer: string) => {
+    if (isAction) return feed.resolve(item.id, "approve", answer);
+    if (item.kind === "message") return void (await feed.say(item.chain, answer));
+    return feed.answer(item.id, answer);
+  };
   const { kind, prompt, options } = item.ask;
 
   if (kind === "choose") {
@@ -479,6 +496,7 @@ function answerLine(item: FeedItem): string {
     if (item.status === "answered") return item.ask.kind === "reply" ? `You replied: "${item.note}"` : `You chose "${item.note}"`;
     return item.note;
   }
+  if (item.kind === "message" && item.status === "answered" && item.from === "agent") return `You answered: "${item.note}"`;
   if (item.status === "approved" && item.ask.kind === "choose") return `You picked "${item.note}"`;
   if (item.status === "approved" && item.ask.kind === "reply") return `You approved: "${item.note}"`;
   return item.note;
@@ -528,7 +546,7 @@ function Row({
         <RowBadge item={item} />
         <span className="row-text">
           <span className="row-title">{item.title}</span>
-          <span className="row-where">{whereOf(item)}</span>
+          <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
         </span>
         <Status item={item} />
         {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}

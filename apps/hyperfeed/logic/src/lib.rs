@@ -172,6 +172,9 @@ pub const STATUS_DELIVERED: &str = "delivered";
 pub const STATUS_WAITING: &str = "waiting";
 pub const STATUS_THINKING: &str = "thinking";
 pub const STATUS_SAID: &str = "said";
+/// Your agent's message that asks you something: it needs you until you say
+/// something in its chain, which marks it `answered`.
+pub const STATUS_ASKED: &str = "asked";
 
 /// Who wrote a message.
 pub const FROM_YOU: &str = "you";
@@ -413,6 +416,26 @@ impl Mergeable for Typed {
     }
 }
 
+/// What your agent asked you in a message, kept beside it by the message's
+/// id, so messages written before agents could ask keep their layout.
+#[app::mergeable(id = "hyperfeed::Asked")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Asked {
+    pub ask: Ask,
+}
+
+impl Mergeable for Asked {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 /// How one app version's events become feed items, as your agent learned it
 /// from the app's ABI. Nothing uses a lens until you approve it.
 #[app::mergeable(id = "hyperfeed::Lens")]
@@ -566,6 +589,26 @@ impl Mergeable for Presence {
     }
 }
 
+/// What your agent is doing right now for one of your messages: its latest
+/// step, replaced by the next one. Kept beside the message by id, never in its
+/// history, so a long turn adds no rows.
+#[app::mergeable(id = "hyperfeed::Progress")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Progress {
+    pub doing: String,
+    pub at: u64,
+}
+
+impl Mergeable for Progress {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -690,6 +733,13 @@ pub struct FeedItem {
     pub fields: String,
     /// The call that answers it in its app, or `""`; see [`Typed`].
     pub reply_call: String,
+    // ── a message your agent is working on ──
+    /// Its latest step while the message is `thinking` ("Editing ChatView.tsx"), or `""`.
+    #[serde(default)]
+    pub doing: String,
+    /// When that step started; 0 with no step.
+    #[serde(default)]
+    pub doing_at: u64,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -787,6 +837,10 @@ pub struct Hyperfeed {
     archived: UnorderedMap<String, Archived>,
     /// Agents that report in, by name.
     presence: UnorderedMap<String, Presence>,
+    /// What your agent asked you, by its message's id.
+    asks: UnorderedMap<String, Asked>,
+    /// Your agent's latest step on each message it is working on, by message id.
+    progress: UnorderedMap<String, Progress>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -852,6 +906,8 @@ impl Hyperfeed {
             lenses: UnorderedMap::new(),
             archived: UnorderedMap::new(),
             presence: UnorderedMap::new(),
+            asks: UnorderedMap::new(),
+            progress: UnorderedMap::new(),
         }
     }
 
@@ -1080,6 +1136,8 @@ impl Hyperfeed {
             item_type: String::new(),
             fields: String::new(),
             reply_call: String::new(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
@@ -1125,11 +1183,30 @@ impl Hyperfeed {
             item_type: typed.map(|t| t.item_type.clone()).unwrap_or_default(),
             fields: typed.map(|t| t.fields.clone()).unwrap_or_default(),
             reply_call: typed.map(|t| t.reply_call.clone()).unwrap_or_default(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
-    /// A message as a row. It never needs you: what the agent wants from you
-    /// arrives as a proposal in the same chain.
+    /// A message as a row: what your agent asked you on its own message (an
+    /// agent's message still `asked` needs you), and its latest step while it
+    /// works on one of yours.
+    fn message_row(&self, m: &Message) -> app::Result<FeedItem> {
+        let mut item = Self::message_item(m);
+        if let Some(a) = self.asks.get(&m.id)? {
+            item.ask = a.ask.clone();
+        }
+        item.needs_you = m.from == FROM_AGENT && item.status == STATUS_ASKED;
+        if item.status == STATUS_THINKING {
+            if let Some(p) = self.progress.get(&m.id)? {
+                item.doing = p.doing.clone();
+                item.doing_at = p.at;
+            }
+        }
+        Ok(item)
+    }
+
+    /// A message as a row, without what it asks: see [`Self::message_row`].
     fn message_item(m: &Message) -> FeedItem {
         let now = current(&m.history);
         FeedItem {
@@ -1165,6 +1242,8 @@ impl Hyperfeed {
             item_type: String::new(),
             fields: String::new(),
             reply_call: String::new(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
@@ -1344,7 +1423,7 @@ impl Hyperfeed {
             note,
             at,
         });
-        let item = Self::message_item(&m);
+        let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
         app::emit!(Event::MessageChanged {
             id: &item.id,
@@ -1360,6 +1439,7 @@ impl Hyperfeed {
         text: String,
         reply_to: String,
         status: &str,
+        ask: Option<Ask>,
     ) -> app::Result<FeedItem> {
         let now = now_ms();
         let id = Self::fresh_id();
@@ -1376,7 +1456,10 @@ impl Hyperfeed {
                 at: now,
             }],
         };
-        let item = Self::message_item(&m);
+        if let Some(ask) = ask {
+            self.asks.insert(m.id.clone(), Asked { ask })?;
+        }
+        let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
         app::emit!(Event::MessagePosted {
             id: &item.id,
@@ -1562,6 +1645,33 @@ impl Hyperfeed {
         reply_to: String,
         text: String,
     ) -> app::Result<FeedItem> {
+        self.agent_post(chain, reply_to, text, None)
+    }
+
+    /// [`Self::agent_say`] that leaves something to you: a question to
+    /// `reply` to, or options to `choose` from. The message needs you, in To
+    /// do, until you say something in its chain; your words are its answer.
+    /// Use it whenever the work is not finished without you, so a chain is
+    /// only done when it is.
+    pub fn agent_ask(
+        &mut self,
+        chain: String,
+        reply_to: String,
+        text: String,
+        ask: Ask,
+    ) -> app::Result<FeedItem> {
+        Self::check_ask(&ask)?;
+        Self::check_one_of("ask.kind", &ask.kind, &["reply", "choose"])?;
+        self.agent_post(chain, reply_to, text, Some(ask))
+    }
+
+    fn agent_post(
+        &mut self,
+        chain: String,
+        reply_to: String,
+        text: String,
+        ask: Option<Ask>,
+    ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, true)?;
         Self::check_len("text", &text, MAX_MESSAGE, true)?;
@@ -1588,7 +1698,32 @@ impl Hyperfeed {
                 self.push_message_step(asked, STATUS_ANSWERED, String::new())?;
             }
         }
-        self.post_message(chain, FROM_AGENT, text, reply_to, STATUS_SAID)
+        let status = if ask.is_some() {
+            STATUS_ASKED
+        } else {
+            STATUS_SAID
+        };
+        self.post_message(chain, FROM_AGENT, text, reply_to, status, ask)
+    }
+
+    /// You said something in a chain: whatever your agent asked you there is
+    /// answered by it.
+    fn answer_asks(&mut self, chain: &str, text: &str) -> app::Result<()> {
+        let open: Vec<Message> = self
+            .messages
+            .entries()?
+            .filter(|(_, m)| {
+                m.chain == chain
+                    && m.from == FROM_AGENT
+                    && current(&m.history).status == STATUS_ASKED
+            })
+            .map(|(_, m)| m.clone())
+            .collect();
+        let note: String = text.chars().take(MAX_WHY / 4).collect();
+        for m in open {
+            self.push_message_step(m, STATUS_ANSWERED, note.clone())?;
+        }
+        Ok(())
     }
 
     /// Your messages your agent has not answered yet, oldest first: what an
@@ -1604,8 +1739,8 @@ impl Hyperfeed {
                         STATUS_WAITING | STATUS_THINKING
                     )
             })
-            .map(|(_, m)| Self::message_item(&m))
-            .collect();
+            .map(|(_, m)| self.message_row(&m))
+            .collect::<app::Result<Vec<_>>>()?;
         open.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
         Ok(open)
     }
@@ -1676,7 +1811,10 @@ impl Hyperfeed {
         if !chain.is_empty() && !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
         }
-        self.post_message(chain, FROM_YOU, text, String::new(), STATUS_WAITING)
+        if !chain.is_empty() {
+            self.answer_asks(&chain, &text)?;
+        }
+        self.post_message(chain, FROM_YOU, text, String::new(), STATUS_WAITING, None)
     }
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an
@@ -2013,6 +2151,34 @@ impl Hyperfeed {
         })
     }
 
+    /// Your agent says what it is doing on one of your messages it has taken
+    /// up (`thinking`): "Running the tests", "Editing ChatView.tsx". Each call
+    /// replaces the last, so you see its latest step and nothing piles up.
+    pub fn agent_progress(&mut self, id: String, doing: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("doing", &doing, MAX_TITLE, true)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!("message {id} is the agent's own")));
+        }
+        let status = current(&m.history).status.clone();
+        if status != STATUS_THINKING {
+            return Err(AppError::msg(format!(
+                "message {id} is {status}; progress is for a message being worked on"
+            )));
+        }
+        let at = match self.progress.get(&id)? {
+            Some(p) => now_ms().max(p.at + 1),
+            None => now_ms(),
+        };
+        self.progress.insert(id.clone(), Progress { doing, at })?;
+        app::emit!(Event::MessageChanged {
+            id: &id,
+            status: STATUS_THINKING,
+        });
+        self.message_row(&m)
+    }
+
     /// An agent saying it is running. The feed shows it as live while it
     /// keeps reporting; mero-bot calls this every half minute.
     pub fn agent_seen(&mut self, name: String) -> app::Result<()> {
@@ -2058,11 +2224,9 @@ impl Hyperfeed {
             }
         }
         // A conversation is never muted: you started it.
-        all.extend(
-            self.messages
-                .entries()?
-                .map(|(_, m)| Self::message_item(&m)),
-        );
+        for (_, m) in self.messages.entries()? {
+            all.push(self.message_row(&m)?);
+        }
         Ok(all)
     }
 
@@ -2228,7 +2392,10 @@ impl Hyperfeed {
         if let Some(n) = self.notifications.get(&id)? {
             return Ok(Some(self.notification_row(&n)?));
         }
-        Ok(self.messages.get(&id)?.map(|m| Self::message_item(&m)))
+        match self.messages.get(&id)? {
+            Some(m) => Ok(Some(self.message_row(&m)?)),
+            None => Ok(None),
+        }
     }
 
     /// Every lens, newest first: what your agent learned for each app version,

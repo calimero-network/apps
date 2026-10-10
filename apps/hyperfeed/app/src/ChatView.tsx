@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { statusOf, timeLabel } from "./format";
+import { laneOf, progressLine, statusOf, timeLabel } from "./format";
 import { agentLive, notPickedUp } from "./theme";
 
 /**
@@ -36,6 +36,8 @@ export function ChatView({
   const [thread, setThread] = useState<FeedItem[]>([]);
   // On a phone one pane shows at a time: New chat opens the empty chat.
   const [composing, setComposing] = useState(false);
+  // Finished chats are out of the way until you ask for them; the open one always shows.
+  const [showDone, setShowDone] = useState(false);
   const { chats: listChats, loadChain, page } = feed;
 
   // `page` changes on every re-read, which follows every event on the feed:
@@ -86,8 +88,8 @@ export function ChatView({
         ) : chats.length === 0 ? (
           <p className="chat-hint">No chats yet. Ask your agent anything and it answers here.</p>
         ) : (
-          <ul>
-            {chats.map((c) => (
+          <ChatList chats={chats} open={chain} showDone={showDone} onShowDone={setShowDone}>
+            {(c) => (
               <li key={c.chain}>
                 <button
                   type="button"
@@ -105,8 +107,8 @@ export function ChatView({
                   <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
                 </button>
               </li>
-            ))}
-          </ul>
+            )}
+          </ChatList>
         )}
       </nav>
 
@@ -135,14 +137,66 @@ export function ChatView({
             )}
           </div>
         )}
-        <Thread items={thread} clock={clock} live={agentLive(feed.settings?.agents, clock())} />
+        <Thread
+          items={thread}
+          clock={clock}
+          live={agentLive(feed.settings?.agents, clock())}
+          busy={feed.busy}
+          onAnswer={(a) => void send(a)}
+        />
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
     </div>
   );
 }
 
-function Thread({ items, clock, live }: { items: FeedItem[]; clock: () => number; live: boolean }) {
+/**
+ * The chats, the finished ones hidden unless you ask for them. A chat is
+ * finished when nothing in it is left to you or your agent: your agent's
+ * answer closed it, as the feed's Done lane counts it. The chat you have open
+ * always shows, finished or not.
+ */
+function ChatList({
+  chats,
+  open,
+  showDone,
+  onShowDone,
+  children,
+}: {
+  chats: FeedItem[];
+  open: string;
+  showDone: boolean;
+  onShowDone: (show: boolean) => void;
+  children: (chat: FeedItem) => ReactNode;
+}) {
+  const done = chats.filter((c) => laneOf(c) === "done" && c.chain !== open);
+  const shown = showDone ? chats : chats.filter((c) => !done.includes(c));
+  return (
+    <>
+      {shown.length === 0 ? <p className="chat-hint">Nothing open. Every chat is done.</p> : <ul>{shown.map(children)}</ul>}
+      {done.length > 0 && (
+        <button type="button" className="link small chat-done-toggle" aria-pressed={showDone} onClick={() => onShowDone(!showDone)}>
+          {showDone ? "Hide done chats" : `Show done chats (${done.length})`}
+        </button>
+      )}
+    </>
+  );
+}
+
+function Thread({
+  items,
+  clock,
+  live,
+  busy,
+  onAnswer,
+}: {
+  items: FeedItem[];
+  clock: () => number;
+  live: boolean;
+  busy: boolean;
+  /** Answer your agent's open question: your next message in the chat. */
+  onAnswer: (answer: string) => void;
+}) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
   useEffect(() => {
@@ -166,6 +220,18 @@ function Thread({ items, clock, live }: { items: FeedItem[]; clock: () => number
           <div key={m.id} className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
             <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
             <p>{m.body}</p>
+            {m.status === "asked" && m.ask.kind === "choose" && (
+              <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
+                {m.ask.options.map((o) => (
+                  <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
+                    {o}
+                  </button>
+                ))}
+              </div>
+            )}
+            {m.status === "asked" && m.ask.kind === "reply" && (
+              <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
+            )}
             <span className="bubble-time">{timeLabel(m.at)}</span>
           </div>
         ) : (
@@ -184,7 +250,7 @@ function Thread({ items, clock, live }: { items: FeedItem[]; clock: () => number
 function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; live: boolean }) {
   const [, setTick] = useState(0);
   const now = clock();
-  const waiting = last.kind === "message" && last.from === "you" && last.status === "waiting";
+  const waiting = last.kind === "message" && last.from === "you" && (last.status === "waiting" || last.status === "thinking");
   useEffect(() => {
     if (!waiting) return;
     const t = window.setInterval(() => setTick((n) => n + 1), 5_000);
@@ -192,7 +258,14 @@ function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; l
   }, [waiting]);
 
   if (last.kind !== "message" || last.from !== "you") return null;
-  if (last.status === "thinking") return <p className="chat-status busy">Your agent is on it…</p>;
+  if (last.status === "thinking") {
+    const doing = progressLine(last, now);
+    return (
+      <p className="chat-status busy" role="status">
+        Your agent is on it…{doing && <span className="chat-doing"> {doing}</span>}
+      </p>
+    );
+  }
   if (last.status === "failed") {
     return <p className="chat-status bad">Your agent couldn't answer{last.note ? `: ${last.note}` : "."}</p>;
   }

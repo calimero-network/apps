@@ -15,6 +15,8 @@ export type Tone = "wait" | "bad" | "good" | "busy" | "plain";
 
 export function statusOf(item: FeedItem): { label: string; tone: Tone } {
   if (item.kind === "message") {
+    if (item.from === "agent" && item.status === "asked") return { label: "Asks you", tone: "wait" };
+    if (item.from === "agent" && item.status === "answered") return { label: "You answered", tone: "good" };
     if (item.from === "agent") return { label: item.reply_to ? "Answer" : "Note", tone: "plain" };
     if (item.status === "thinking") return { label: "Your agent is on it", tone: "busy" };
     if (item.status === "answered") return { label: "Answered", tone: "good" };
@@ -69,6 +71,8 @@ export function choicesFor(item: FeedItem): { approve?: string; decline: boolean
 export function resolvable(item: FeedItem): boolean {
   if (!item.ask.kind) return false;
   if (item.kind === "action") return item.status === "pending";
+  // Your agent's question: open until you say something in its chain.
+  if (item.kind === "message") return item.status === "asked";
   return item.status === "received" || item.status === "failed";
 }
 
@@ -188,6 +192,17 @@ export function dayLabel(at: number, now = Date.now()): string {
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
   return new Date(at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+}
+
+/**
+ * Your agent's latest step on a message it is working on, with how long ago
+ * it started: "Running the tests · 12 s ago". Empty when there is none.
+ */
+export function progressLine(item: FeedItem, now = Date.now()): string {
+  if (item.kind !== "message" || item.status !== "thinking" || !item.doing) return "";
+  const secs = Math.max(0, Math.round((now - item.doing_at) / 1000));
+  const ago = secs < 5 ? "just now" : secs < 60 ? `${secs} s ago` : `${Math.floor(secs / 60)} min ago`;
+  return `${item.doing} · ${ago}`;
 }
 
 /** "just now", "4 min", "14:02". */

@@ -70,6 +70,55 @@ describe("chat with your agent", () => {
     expect(await screen.findByText(/Your agent is connected but hasn't picked this up yet/)).toBeInTheDocument();
   });
 
+  it("hides finished chats until you ask for them, but never the one you have open", async () => {
+    const backend = new DemoBackend(false, 0);
+    const finished = await backend.say("", "What time is it in Tokyo?");
+    backend.agentSay(finished.chain, finished.id, "03:12.");
+    await backend.say("", "Draft the launch post");
+    const { unmount } = render(<Harness backend={backend} />);
+    expect(await within(list()).findByRole("button", { name: /Draft the launch post/ })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /03:12/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(list()).getByRole("button", { name: "Show done chats (1)" }));
+    expect(within(list()).getByRole("button", { name: /03:12/ })).toBeInTheDocument();
+    fireEvent.click(within(list()).getByRole("button", { name: "Hide done chats" }));
+    expect(within(list()).queryByRole("button", { name: /03:12/ })).not.toBeInTheDocument();
+    unmount();
+
+    // Opened (from the feed, say), a finished chat stays in the list.
+    render(<Harness backend={backend} start={finished.chain} />);
+    expect(await within(list()).findByRole("button", { name: /03:12/ })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /Show done chats/ })).not.toBeInTheDocument();
+  });
+
+  it("answers your agent's question from its options in the chat", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Clean up #calimero");
+    backend.agentAsk(q.chain, q.id, "Two hellos there. Delete one?", { kind: "choose", prompt: "Delete one?", options: ["Delete it", "Keep both"], draft: "" });
+    render(<Harness backend={backend} start={q.chain} />);
+    const options = await screen.findByRole("group", { name: "Delete one?" });
+    await act(async () => {
+      fireEvent.click(within(options).getByRole("button", { name: "Delete it" }));
+    });
+    expect(await within(thread()).findByText("Delete it")).toBeInTheDocument();
+    expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
+  });
+
+  it("shows your agent's latest step while it works, not a log", async () => {
+    let now = Date.now();
+    const backend = new DemoBackend(false, 0, () => now);
+    const q = await backend.say("", "Fix the chat list");
+    backend.agentAck(q.id);
+    backend.agentProgress(q.id, "Reading ChatView.tsx");
+    now += 3_000;
+    backend.agentProgress(q.id, "Running the tests");
+    now += 12_000;
+    render(<Harness backend={backend} start={q.chain} clock={() => now} />);
+    const status = await screen.findByText(/Your agent is on it…/);
+    expect(status).toHaveTextContent("Your agent is on it… Running the tests · 12 s ago");
+    expect(within(thread()).queryByText(/Reading ChatView/)).not.toBeInTheDocument();
+  });
+
   it("opens a chat from the list, and starts a new one", async () => {
     const backend = new DemoBackend(false, 0);
     const first = await backend.say("", "First question");

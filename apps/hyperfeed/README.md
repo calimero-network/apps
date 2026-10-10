@@ -259,7 +259,9 @@ in the row's `note` while it is current.
 5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
 6. You talk to your agent with `say`, which arrives as `MessagePosted { id, chain, from: "you" }`.
    Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
-   then answer with `agent_say(chain, id, text)`, which marks it `answered`. If you cannot, give up
+   then answer with `agent_say(chain, id, text)`, which marks it `answered`. When your answer leaves
+   something to the user, use `agent_ask(chain, id, text, ask)` (a `choose` or `reply` ask): your
+   message is `asked` and needs them until they say something in the chain, which answers it. If you cannot, give up
    with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the
    same `chain`. An agent that was away reads `open_questions()` when it starts.
    The app's Chat page (`/chat`) is these chains as chats: New chat is `say("", text)`, every

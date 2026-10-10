@@ -828,6 +828,144 @@ fn a_question_into_a_chain_that_does_not_exist_is_refused() {
     assert!(r.is_err(), "an oversized message is refused");
 }
 
+fn choose(options: &[&str]) -> Ask {
+    Ask {
+        kind: "choose".to_owned(),
+        prompt: "Delete the duplicate?".to_owned(),
+        options: options.iter().map(|o| (*o).to_owned()).collect(),
+        draft: String::new(),
+    }
+}
+
+#[test]
+fn an_agent_question_needs_you_until_you_answer_it_in_the_chain() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Say hello in #calimero");
+    let asked = app
+        .call(|s| {
+            s.agent_ask(
+                q.chain.clone(),
+                q.id.clone(),
+                "Posted. There are two hellos now: delete the duplicate?".to_owned(),
+                choose(&["Delete the duplicate", "Keep both"]),
+            )
+        })
+        .unwrap();
+    assert_eq!(asked.status, STATUS_ASKED);
+    assert!(asked.needs_you, "an open question is yours to answer");
+    assert_eq!(asked.ask.options, vec!["Delete the duplicate", "Keep both"]);
+    assert_eq!(
+        app.view(|s| s.item(q.id.clone())).unwrap().unwrap().status,
+        STATUS_ANSWERED,
+        "your message is answered, even though you are asked back"
+    );
+
+    // The chain is not done: its question leads it, in what needs you.
+    let page = feed(&app, "needs_you");
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, asked.id);
+    assert_eq!(page.counts.needs_you, 1);
+
+    // Your answer is a message in the chain: it settles the question and goes to your agent.
+    let answer = say(&mut app, &q.chain, "Delete the duplicate");
+    assert_eq!(answer.status, STATUS_WAITING);
+    let settled = app.view(|s| s.item(asked.id.clone())).unwrap().unwrap();
+    assert_eq!(settled.status, STATUS_ANSWERED);
+    assert_eq!(settled.note, "Delete the duplicate");
+    assert!(!settled.needs_you);
+    assert_eq!(feed(&app, "needs_you").counts.needs_you, 0);
+    assert_eq!(
+        app.view(|s| s.open_questions()).unwrap().len(),
+        1,
+        "your answer waits for your agent"
+    );
+}
+
+#[test]
+fn an_agent_question_is_a_reply_or_a_choice() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "hi");
+    let ask_with = |app: &mut TestHost<Hyperfeed>, ask: Ask| {
+        app.call(|s| s.agent_ask(q.chain.clone(), String::new(), "?".to_owned(), ask))
+    };
+    assert!(
+        ask_with(&mut app, Ask::default()).is_err(),
+        "asking needs a way to answer"
+    );
+    let confirm = Ask {
+        kind: "confirm".to_owned(),
+        ..Ask::default()
+    };
+    assert!(
+        ask_with(&mut app, confirm).is_err(),
+        "a confirm has no way to say no"
+    );
+    assert!(
+        ask_with(&mut app, choose(&["only one"])).is_err(),
+        "a choice needs two options"
+    );
+    let reply = Ask {
+        kind: "reply".to_owned(),
+        prompt: "Which channel?".to_owned(),
+        ..Ask::default()
+    };
+    assert_eq!(ask_with(&mut app, reply).unwrap().status, STATUS_ASKED);
+}
+
+#[test]
+fn a_plain_answer_is_finished_work() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "What time is it in Tokyo?");
+    let said = app
+        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "03:12.".to_owned()))
+        .unwrap();
+    assert_eq!(said.status, STATUS_SAID);
+    assert!(!said.needs_you);
+    assert_eq!(feed(&app, "needs_you").items.len(), 0);
+}
+
+#[test]
+fn your_agent_shows_its_latest_step_while_it_works_without_adding_rows() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the chat list");
+    let early = app.call(|s| s.agent_progress(q.id.clone(), "Reading ChatView.tsx".to_owned()));
+    assert!(
+        early.is_err(),
+        "nothing to show before your agent has taken it up"
+    );
+
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| s.agent_progress(q.id.clone(), "Reading ChatView.tsx".to_owned()))
+        .unwrap();
+    let row = app
+        .call(|s| s.agent_progress(q.id.clone(), "Running the tests".to_owned()))
+        .unwrap();
+    assert_eq!(
+        row.doing, "Running the tests",
+        "the latest step replaces the last"
+    );
+    assert!(row.doing_at > 0);
+    assert_eq!(
+        row.history.len(),
+        2,
+        "steps are not history: waiting, thinking"
+    );
+    let open = app.view(|s| s.open_questions()).unwrap();
+    assert_eq!(open[0].doing, "Running the tests");
+
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned()))
+        .unwrap();
+    let answered = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(answered.doing, "", "an answered message shows no step");
+    assert!(app
+        .call(|s| s.agent_progress(q.id.clone(), "Still going".to_owned()))
+        .is_err());
+    assert!(app
+        .call(|s| s.agent_progress(q.id.clone(), " ".to_owned()))
+        .is_err());
+}
+
 #[test]
 fn the_agent_picks_a_question_up_and_answers_it() {
     let mut app = TestHost::new(Hyperfeed::init);
