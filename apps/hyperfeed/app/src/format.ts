@@ -51,6 +51,32 @@ export function statusOf(item: FeedItem): { label: string; tone: Tone } {
   return { label, tone };
 }
 
+/** Your decisions in Hyperfeed: the contract takes them from you only, never from your agent. */
+const OWNER_METHODS = new Set([
+  "resolve_action",
+  "answer_notification",
+  "say",
+  "decide_lens",
+  "set_policy",
+  "set_guard",
+  "set_paused",
+  "mark_seen",
+  "mark_all_seen",
+]);
+
+/** The ones that change your rules: no other app has methods by these names. */
+const RULE_METHODS = new Set(["set_policy", "set_guard", "set_paused"]);
+
+/**
+ * An action your agent can never carry out, approved or not: one of your own
+ * decisions in Hyperfeed (a change to your rules, above all). Retrying it can
+ * only fail again; you make it yourself, in Controls.
+ */
+export function onlyYouCan(item: FeedItem): boolean {
+  const method = item.method.trim().toLowerCase().replace(/^hyperfeed_/, "");
+  return RULE_METHODS.has(method) || (item.app === "hyperfeed" && OWNER_METHODS.has(method));
+}
+
 /**
  * Which plain buttons a row offers, straight from the contract's transitions.
  * A proposal with an ask is approved through its resolver instead (pick an
@@ -60,7 +86,8 @@ export function choicesFor(item: FeedItem): { approve?: string; decline: boolean
   if (item.kind !== "action") return { decline: false, undo: false, keep: false };
   const pending = item.status === "pending";
   return {
-    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" ? "Retry" : undefined,
+    // No Retry where a retry can only fail the same way.
+    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" && !onlyYouCan(item) ? "Retry" : undefined,
     decline: pending || item.status === "failed",
     undo: item.status === "done" && item.undoable,
     keep: item.breach !== "",
