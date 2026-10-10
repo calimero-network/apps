@@ -667,6 +667,55 @@ steps:
       - 'json_subset({{feed_2}}, {"output": {"counts": {"all": 4, "needs_you": 0}}})'
       - 'json_subset({{settings_2}}, {"output": {"paused": true}})'
 
+  # Images: the owner sends a screenshot with no text. Only the blob's id,
+  # name, type and size are stored; the bytes stay a blob on the node.
+  - name: Owner sends an image with no text
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say_with
+    args:
+      chain: "{{mention_id}}"
+      text: ""
+      attachments: [{ blob_id: "bafyimage01", name: "deck.png", mime: "image/png", size: 48213 }]
+    outputs:
+      image_sent: result
+      image_id: result.output.id
+
+  - name: Owner reads the image message back
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: item
+    args: { id: "{{image_id}}" }
+    outputs:
+      image_back: result
+      image_first: result.output.attachments.0
+
+  - name: Owner tries to send a PDF as an image
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say_with
+    args:
+      chain: "{{mention_id}}"
+      text: "the contract"
+      attachments: [{ blob_id: "bafypdf01", name: "contract.pdf", mime: "application/pdf", size: 1200 }]
+    expected_failure: true
+    outputs:
+      pdf_error: error
+
+  - name: Assert the image travels with its message, and a PDF is refused
+    type: json_assert
+    statements:
+      - 'json_subset({{image_sent}}, {"output": {"kind": "message", "from": "you", "status": "waiting", "title": "Sent an image"}})'
+      - 'json_subset({{image_back}}, {"output": {"id": "{{image_id}}", "body": ""}})'
+      - 'json_subset({{image_first}}, {"blob_id": "bafyimage01", "name": "deck.png", "mime": "image/png", "size": 48213})'
+      - "is_set({{pdf_error}})"
+
   - name: node-2 tries to record an action in someone else's feed
     type: call
     node: feed-node-2
