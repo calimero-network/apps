@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { appLook } from "./apps";
@@ -17,6 +17,7 @@ import {
   typedFacts,
   type Lane,
 } from "./format";
+import { agentDigest, digestLine, isAgent } from "./team";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -53,10 +54,12 @@ export function NewFeedButton({ newFeed }: { newFeed: NewFeed }) {
 /**
  * The feed as three lanes: what needs you, what is underway, what is done.
  *
- * One row per chain. The row you are on opens in place with everything about
- * it (the thread, the answer, the actions); nothing is shown twice. Done rows
- * are archived out of the way, one at a time or all at once, and come back on
- * their own when something new happens in them.
+ * One row per chain, except your agent's: what it did and said that does not
+ * need you is one digest card after To do, which opens into its chains. The
+ * row you are on opens in place with everything about it (the thread, the
+ * answer, the actions); nothing is shown twice. Done rows are archived out of
+ * the way, one at a time or all at once, and come back on their own when
+ * something new happens in them.
  */
 export function FeedView({
   feed,
@@ -77,6 +80,7 @@ export function FeedView({
   const archivedView = feed.filter === "archived";
   const [open, setOpen] = useState<string | null>(null);
   const [allDone, setAllDone] = useState(false);
+  const [digestShown, setDigestShown] = useState(false);
   const [panel, setPanel] = useState<{ url: string; title: string } | null>(null);
 
   const items = useMemo(() => {
@@ -88,18 +92,29 @@ export function FeedView({
     );
   }, [page, query]);
 
-  const lanes = useMemo(() => {
+  // Your agent's chains that need you stay in To do; the rest go in its digest.
+  const { lanes, agent } = useMemo(() => {
     const by: Record<Lane, FeedItem[]> = { todo: [], progress: [], done: [] };
-    for (const i of items) by[laneOf(i)].push(i);
-    return by;
+    const agent: FeedItem[] = [];
+    for (const i of items) {
+      const lane = laneOf(i);
+      if (lane !== "todo" && isAgent(i)) agent.push(i);
+      else by[lane].push(i);
+    }
+    return { lanes: by, agent };
   }, [items]);
+  const digest = useMemo(() => agentDigest(items), [items]);
+  // "Archive all done" takes your agent's finished chains too.
+  const doneChains = useMemo(() => [...lanes.done, ...agent.filter((i) => laneOf(i) === "done")], [lanes, agent]);
+  // A chain of the agent's you open (a message you just sent, say) opens the digest with it.
+  const digestOpen = digestShown || agent.some((i) => i.chain === open);
 
   // The rows in the order the keys move through them.
   const order = useMemo(() => {
     if (archivedView) return items;
     const done = allDone ? lanes.done : lanes.done.slice(0, DONE_SHOWN);
-    return [...lanes.todo, ...lanes.progress, ...done];
-  }, [archivedView, items, lanes, allDone]);
+    return [...lanes.todo, ...(digestOpen ? agent : []), ...lanes.progress, ...done];
+  }, [archivedView, items, lanes, agent, digestOpen, allDone]);
 
   // Opening a notification is reading it.
   const { markSeen } = feed;
@@ -226,17 +241,17 @@ export function FeedView({
             {LANES.map((lane) => {
               const rows = lanes[lane.id];
               const shown = lane.id === "done" && !allDone ? rows.slice(0, DONE_SHOWN) : rows;
-              return (
+              const section = (
                 <section key={lane.id} className={`lane lane-${lane.id}`} aria-label={lane.label}>
                   <header className="lane-head">
                     <h2>{lane.label}</h2>
                     <span className="lane-count">{rows.length}</span>
-                    {lane.id === "done" && rows.length > 0 && (
+                    {lane.id === "done" && doneChains.length > 0 && (
                       <button
                         type="button"
                         className="link small lane-action"
                         disabled={feed.busy}
-                        onClick={() => void feed.archive(rows.map((r) => r.chain), `Archived ${rows.length} done`)}
+                        onClick={() => void feed.archive(doneChains.map((r) => r.chain), `Archived ${doneChains.length} done`)}
                       >
                         Archive all done
                       </button>
@@ -265,6 +280,30 @@ export function FeedView({
                   )}
                 </section>
               );
+              if (lane.id !== "todo") return section;
+              return [
+                section,
+                <AgentDigestCard
+                  key="agent"
+                  line={digestLine(digest)}
+                  chains={agent}
+                  expanded={digestOpen}
+                  onToggle={() => {
+                    if (digestOpen && agent.some((i) => i.chain === open)) setOpen(null);
+                    setDigestShown(!digestOpen);
+                  }}
+                  renderRow={(item) => (
+                    <Row
+                      key={item.chain}
+                      item={item}
+                      lane={laneOf(item)}
+                      expanded={open === item.chain}
+                      onToggle={() => setOpen(open === item.chain ? null : item.chain)}
+                      {...rowProps}
+                    />
+                  )}
+                />,
+              ];
             })}
             <footer className="feed-foot">
               <button type="button" className="link small" onClick={() => feed.setFilter("archived")}>
@@ -329,6 +368,49 @@ export function Badge({ app, size = "md" }: { app: string; size?: "sm" | "md" })
     <span className={`badge badge-${size}`} style={{ background: look.color }} aria-hidden="true">
       {look.letters}
     </span>
+  );
+}
+
+/**
+ * Your agent's day as one card: what it did, what is underway, and how many of
+ * its rows wait on you (those are in To do, not here). It opens into its
+ * chains, each a row like any other.
+ */
+function AgentDigestCard({
+  line,
+  chains,
+  expanded,
+  onToggle,
+  renderRow,
+}: {
+  line: string;
+  chains: FeedItem[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderRow: (item: FeedItem) => ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section className="lane lane-agent" aria-label="Your agent today">
+      <header className="lane-head">
+        <span className="badge badge-sm badge-agent" aria-hidden="true">
+          <Spark />
+        </span>
+        <h2>Your agent today</h2>
+        <span className="lane-count">{chains.length}</span>
+        {chains.length > 0 && (
+          <button type="button" className="link small lane-action" aria-expanded={expanded} aria-controls={id} onClick={onToggle}>
+            {expanded ? "Hide" : `Show ${chains.length === 1 ? "it" : `all ${chains.length}`}`}
+          </button>
+        )}
+      </header>
+      <p className="lane-digest">{line}</p>
+      {expanded && (
+        <ul id={id} className="rows">
+          {chains.map(renderRow)}
+        </ul>
+      )}
+    </section>
   );
 }
 

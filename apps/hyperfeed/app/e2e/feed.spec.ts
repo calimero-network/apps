@@ -123,9 +123,9 @@ test("you create your feed and answer a notification in place", async ({ page })
   // ── you talk to your agent about it ────────────────────────────────────────
   await card.getByLabel("Talk to your agent about this").fill("Who else asked for the numbers?");
   await card.getByRole("button", { name: "Send" }).last().click();
-  // One row per chain: your question now leads Maya's, in progress.
+  // One row per chain: your question now leads Maya's, a conversation with your agent, in its digest.
   const talk = page.locator("li.row", { hasText: "Who else asked for the numbers?" });
-  await expect(page.getByRole("region", { name: "In progress" })).toContainText("Who else asked for the numbers?");
+  await expect(page.getByRole("region", { name: "Your agent today" })).toContainText("Who else asked for the numbers?");
   await expect(talk.getByText("Sent · waiting for your agent")).toBeVisible();
 
   // ── your agent picks it up and answers, in the same chain ──────────────────
@@ -252,8 +252,8 @@ test("you see when your agent is there, and archive what is done", async ({ page
   await mero.rpc.execute({ contextId, method: "agent_seen", argsJson: { name: "mero-bot@e2e" } });
   await expect(page.getByText("Agent live")).toBeVisible({ timeout: 25_000 });
 
+  // What is done here is your agent's: in its digest, and archived with the rest.
   const done = page.getByRole("region", { name: "Done" });
-  await expect(done.locator("li.row").first()).toBeVisible();
   await done.getByRole("button", { name: "Archive all done" }).click();
   await expect(done.getByText("Nothing finished yet.")).toBeVisible();
   const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
