@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FeedItem, FeedPage, LensView, SettingsView } from "./generated/HyperfeedClient";
+import type { Attachment, FeedItem, FeedPage, LensView, SettingsView } from "./generated/HyperfeedClient";
 import { fillReplyCall } from "./lens/lens";
 import type { AgentMode, Decision, FeedBackend, Filter, NotificationMode } from "./backend";
+import type { BlobStore } from "./attachments";
 
 export interface Feed {
   page: FeedPage | null;
@@ -34,7 +35,9 @@ export interface Feed {
    * Talk to your agent about a chain ("" starts a new one). Resolves to your
    * message, so the caller can open its chain; null when the node refused it.
    */
-  say: (chain: string, text: string) => Promise<FeedItem | null>;
+  say: (chain: string, text: string, attachments?: Attachment[]) => Promise<FeedItem | null>;
+  /** Where images on your messages are kept; null when this feed can't hold them. */
+  images: BlobStore | null;
   /**
    * Your chats with your agent, newest first: the chains whose latest row is a
    * message. Each comes as that latest message. A read, like `loadChain`.
@@ -178,15 +181,16 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
       [run],
     ),
     say: useCallback(
-      async (chain, text) => {
+      async (chain, text, attachments) => {
         let posted: FeedItem | null = null;
         await run(async (b) => {
-          posted = await b.say(chain, text);
+          posted = await b.say(chain, text, attachments);
         });
         return posted;
       },
       [run],
     ),
+    images: backend?.images ?? null,
     chats: useCallback(
       async () => (backend ? (await backend.feed("agent", "")).items.filter((i) => i.kind === "message") : []),
       [backend],

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { ChatView, UNANSWERED_MS } from "./ChatView";
@@ -226,6 +226,71 @@ describe("chat with your agent", () => {
       const [asked] = await backend.chain((await backend.feed("agent", "")).items[0]!.chain);
       await act(async () => void backend.agentSay(asked!.chain, asked!.id, "Yes."));
       expect(await within(thread()).findByText("Yes.")).toBeInTheDocument();
+    });
+  });
+
+  describe("with images", () => {
+    // jsdom has no object URLs; the page only hands them to <img>.
+    const { createObjectURL, revokeObjectURL } = URL;
+    beforeEach(() => {
+      let n = 0;
+      URL.createObjectURL = () => `blob:test/${n++}`;
+      URL.revokeObjectURL = () => undefined;
+    });
+    afterEach(() => {
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    });
+
+    const png = (name: string, bytes = 1024) => new File([new Uint8Array(bytes)], name, { type: "image/png" });
+    const attach = async (...files: File[]) => {
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Attach images", { selector: "input" }), { target: { files } });
+      });
+    };
+
+    it("sends a picked image with your message, and shows it in the chat", async () => {
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      await attach(png("error.png"));
+      expect(screen.getByRole("img", { name: "error.png" })).toBeInTheDocument();
+
+      await say("What is this error?");
+      const [asked] = (await backend.feed("agent", "")).items;
+      expect(asked!.attachments).toEqual([expect.objectContaining({ name: "error.png", mime: "image/png", size: 1024 })]);
+      // Stored as a blob, read back for the bubble.
+      expect(await within(thread()).findByRole("img", { name: "error.png" })).toBeInTheDocument();
+      expect(within(thread()).getByRole("link", { name: /Open error\.png full size/ })).toHaveAttribute("target", "_blank");
+      expect(screen.queryByRole("button", { name: /Remove error\.png/ })).not.toBeInTheDocument();
+    });
+
+    it("sends an image on its own", async () => {
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      await attach(png("diagram.png"));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      });
+      const [asked] = (await backend.feed("agent", "")).items;
+      expect(asked).toMatchObject({ body: "", title: "Sent an image" });
+    });
+
+    it("turns away what is not an image, or too big, before uploading anything", async () => {
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      await attach(new File(["%PDF"], "spec.pdf", { type: "application/pdf" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("spec.pdf isn't a PNG, JPEG, WebP or GIF image.");
+      await attach(png("huge.png", 10 * 1024 * 1024 + 1));
+      expect(screen.getByRole("alert")).toHaveTextContent("huge.png is 10.0 MB; the limit is 10 MB.");
+      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    });
+
+    it("can take an image back before sending", async () => {
+      render(<Harness backend={new DemoBackend(false, 0)} />);
+      await attach(png("a.png"), png("b.png"));
+      fireEvent.click(screen.getByRole("button", { name: "Remove a.png" }));
+      expect(screen.queryByRole("img", { name: "a.png" })).not.toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "b.png" })).toBeInTheDocument();
     });
   });
 });

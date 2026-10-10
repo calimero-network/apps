@@ -1380,8 +1380,94 @@ thead th {
 
 .chat-composer {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-row {
+  display: flex;
   gap: 10px;
   align-items: flex-end;
+}
+
+.composer-attach {
+  font-size: 18px;
+  line-height: 1;
+  padding: 10px;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+}
+
+.composer-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.composer-refused {
+  font-size: 13px;
+  color: var(--bad-ink);
+}
+
+.bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bubble-image {
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  max-width: 240px;
+}
+
+.bubble-image img {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  object-fit: cover;
+}
+
+.bubble-image.loading {
+  width: 120px;
+  height: 90px;
+  background: rgba(127, 127, 127, 0.2);
+}
+
+.bubble-image.missing {
+  font-size: 13px;
+  opacity: 0.8;
 }
 
 .chat-composer textarea {

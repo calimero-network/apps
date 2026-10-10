@@ -33,7 +33,7 @@ same warrant path it uses everywhere else.
 | Row | Written by | Holds |
 | --- | --- | --- |
 | **Action** | your agent | app, source context, method, guard category, title, why, the warrant's intent hash, the executing relay, its chain and ask, every status step, and a *breach* note when the rules say it should have asked |
-| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said` |
+| **Message** | you, or your agent | what you said to your agent about a chain (or about anything, which starts a chain of its own), and its answers. Yours steps `waiting → thinking → answered` (or `failed`); the agent's are `said`. Yours may carry up to four **images** (PNG, JPEG, WebP or GIF, 10 MB each): blobs on your node announced to the feed's context, of which the feed keeps only the id, name, type and size, beside the message by id |
 | **Notification** | your client, or your agent | app, source context, sender, title, event kind, and whether it needs you. Keyed by the state transition that produced it, so each of your devices records the same event once (see [the collector](#notifications-the-collector)). A notification a lens made also carries its **item type**, the type's **fields**, and the **reply call** that answers it in its app, kept beside it by id |
 | **Lens** | your agent proposes, you approve | for one app version: which of its events become feed items, of which type, and how your answer goes back. JSON, up to 32 kB; `proposed`, `approved` or `rejected` |
 | **Policy** | you | per app: the agent mode (`act` / `ask` / `read` / `off`) and notification routing (`push` / `feed` / `mute`) |
@@ -257,7 +257,9 @@ in the row's `note` while it is current.
    option, confirm). Then report with `complete_answer(id, "delivered" | "failed", note)`. A failed
    delivery goes back to you to answer again.
 5. Record what you do as a result with `chain` set to the row that led to it, so the flow stays one thread.
-6. You talk to your agent with `say`, which arrives as `MessagePosted { id, chain, from: "you" }`.
+6. You talk to your agent with `say`, or `say_with` when you attach images, which arrives as `MessagePosted { id, chain, from: "you" }`.
+   A message with images lists them in `attachments`; fetch each by `blob_id` from the node (with the
+   feed's context id) and look at it before answering.
    Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
    then answer with `agent_say(chain, id, text)`, which marks it `answered`. When your answer leaves
    something to the user, use `agent_ask(chain, id, text, ask)` (a `choose` or `reply` ask): your
@@ -346,8 +348,9 @@ feed** is there too. mero-bot follows you to a feed once you write in it.
 ## Upgrading
 
 Feeds made by an earlier version are not migrated: delete the old feed and create a new one. The
-state layout changed twice (conversations, then lenses), and the prototype does not carry old
-rows over.
+state layout changed three times (conversations, then lenses, then images on messages), and the
+prototype does not carry old rows over. An older feed still chats in text; attaching an image there
+says the feed is too old.
 
 ## Not done yet
 

@@ -1,5 +1,7 @@
+import type { BlobStore } from "./attachments";
 import type {
   ActionInput,
+  Attachment,
   FeedItem,
   FeedPage,
   HyperfeedClient,
@@ -39,8 +41,13 @@ export interface FeedBackend {
   decideLens(appKey: string, applicationId: string, decision: "approve" | "reject"): Promise<LensView>;
   /** Every row in a chain, oldest first. */
   chain(chain: string): Promise<FeedItem[]>;
-  /** Talk to your agent about a chain, or about anything with `chain` "" (a new chain). */
-  say(chain: string, text: string): Promise<FeedItem>;
+  /**
+   * Talk to your agent about a chain, or about anything with `chain` "" (a new
+   * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
+   */
+  say(chain: string, text: string, attachments?: Attachment[]): Promise<FeedItem>;
+  /** Where images on your messages are kept; null when this feed can't hold them. */
+  readonly images: BlobStore | null;
   markSeen(ids: string[]): Promise<number>;
   markAllSeen(): Promise<number>;
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
@@ -61,9 +68,10 @@ export interface AppRpc {
   execute<T>(params: { contextId: string; method: string; argsJson?: Record<string, unknown> }): Promise<T>;
 }
 
-export function nodeBackend(client: HyperfeedClient, rpc: AppRpc): FeedBackend {
+export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobStore | null = null): FeedBackend {
   return {
     kind: "node",
+    images,
     feed: (filter, appKey) => client.feed({ filter, app_key: appKey, limit: PAGE_SIZE, before: 0 }),
     settings: () => client.settings(),
     resolveAction: (id, decision, answer = "") => client.resolveAction({ id, decision, answer }),
@@ -74,7 +82,9 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc): FeedBackend {
     decideLens: (appKey, applicationId, decision) =>
       client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
     chain: (chain) => client.chain({ chain }),
-    say: (chain, text) => client.say({ chain, text }),
+    // Text alone keeps to `say`, which every feed has; only images need `say_with`.
+    say: (chain, text, attachments = []) =>
+      attachments.length ? client.sayWith({ chain, text, attachments }) : client.say({ chain, text }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
     setPolicy: (appKey, agent, notifications) =>

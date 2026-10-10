@@ -106,6 +106,10 @@ const MAX_FIELDS: usize = 4_000;
 const MAX_LENS: usize = 32_000;
 /// One message to or from your agent: a question, an instruction, an answer.
 const MAX_MESSAGE: usize = 2_000;
+/// Images on one message of yours. The bytes are node blobs; the feed keeps
+/// only what points at them.
+const MAX_ATTACHMENTS: usize = 4;
+const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -198,6 +202,9 @@ pub const ITEM_TYPES: &[&str] = &[
     "status",
     "other",
 ];
+
+/// What an attachment may be: images your agent can look at.
+pub const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 /// A lens waits for you, then is in use or turned down.
 pub const LENS_PROPOSED: &str = "proposed";
@@ -427,6 +434,45 @@ pub struct Asked {
 }
 
 impl Mergeable for Asked {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// An image on a message: a blob on your node, announced to the feed's
+/// context, and what the client needs to show it before fetching it.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Attachment {
+    pub blob_id: String,
+    /// The file's name as you picked it; may be empty for a pasted image.
+    pub name: String,
+    /// One of [`IMAGE_TYPES`].
+    pub mime: String,
+    /// Bytes, at most 10 MiB.
+    pub size: u64,
+}
+
+/// A message's attachments. Kept beside the message, keyed by its id, so
+/// messages written before attachments existed keep their layout.
+#[app::mergeable(id = "hyperfeed::Attachments")]
+#[derive(
+    AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Attachments {
+    pub items: Vec<Attachment>,
+}
+
+impl Mergeable for Attachments {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Written once with its message, never changed.
         if borsh::to_vec(other).unwrap_or_default() > borsh::to_vec(self).unwrap_or_default() {
@@ -740,6 +786,10 @@ pub struct FeedItem {
     /// When that step started; 0 with no step.
     #[serde(default)]
     pub doing_at: u64,
+    // ── messages with images ──
+    /// Images on a message of yours; empty for every other row.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -841,6 +891,8 @@ pub struct Hyperfeed {
     asks: UnorderedMap<String, Asked>,
     /// Your agent's latest step on each message it is working on, by message id.
     progress: UnorderedMap<String, Progress>,
+    /// Images on your messages, by the message's id.
+    attachments: UnorderedMap<String, Attachments>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -908,6 +960,7 @@ impl Hyperfeed {
             presence: UnorderedMap::new(),
             asks: UnorderedMap::new(),
             progress: UnorderedMap::new(),
+            attachments: UnorderedMap::new(),
         }
     }
 
@@ -1138,6 +1191,7 @@ impl Hyperfeed {
             reply_call: String::new(),
             doing: String::new(),
             doing_at: 0,
+            attachments: Vec::new(),
         }
     }
 
@@ -1185,12 +1239,13 @@ impl Hyperfeed {
             reply_call: typed.map(|t| t.reply_call.clone()).unwrap_or_default(),
             doing: String::new(),
             doing_at: 0,
+            attachments: Vec::new(),
         }
     }
 
     /// A message as a row: what your agent asked you on its own message (an
-    /// agent's message still `asked` needs you), and its latest step while it
-    /// works on one of yours.
+    /// agent's message still `asked` needs you), its latest step while it
+    /// works on one of yours, and the images on one of yours.
     fn message_row(&self, m: &Message) -> app::Result<FeedItem> {
         let mut item = Self::message_item(m);
         if let Some(a) = self.asks.get(&m.id)? {
@@ -1201,6 +1256,17 @@ impl Hyperfeed {
             if let Some(p) = self.progress.get(&m.id)? {
                 item.doing = p.doing.clone();
                 item.doing_at = p.at;
+            }
+        }
+        if let Some(a) = self.attachments.get(&m.id)? {
+            item.attachments = a.items.clone();
+            if item.body.is_empty() {
+                let n = item.attachments.len();
+                item.title = if n == 1 {
+                    "Sent an image".to_owned()
+                } else {
+                    format!("Sent {n} images")
+                };
             }
         }
         Ok(item)
@@ -1244,7 +1310,37 @@ impl Hyperfeed {
             reply_call: String::new(),
             doing: String::new(),
             doing_at: 0,
+            attachments: Vec::new(),
         }
+    }
+
+    /// Images on a message of yours: blobs on your node, of a type your agent
+    /// can look at, within their limits.
+    fn check_attachments(attachments: &[Attachment]) -> app::Result<()> {
+        if attachments.len() > MAX_ATTACHMENTS {
+            return Err(AppError::msg(format!(
+                "{} attachments, limit is {MAX_ATTACHMENTS}",
+                attachments.len()
+            )));
+        }
+        for (i, a) in attachments.iter().enumerate() {
+            let at = format!("attachments[{i}]");
+            Self::check_len(&format!("{at}.blob_id"), &a.blob_id, MAX_HASH, true)?;
+            if !a.blob_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return Err(AppError::msg(format!(
+                    "{at}.blob_id must be letters and digits"
+                )));
+            }
+            Self::check_len(&format!("{at}.name"), &a.name, MAX_SHORT, false)?;
+            Self::check_one_of(&format!("{at}.mime"), &a.mime, IMAGE_TYPES)?;
+            if a.size == 0 || a.size > MAX_IMAGE_BYTES {
+                return Err(AppError::msg(format!(
+                    "{at}.size is {} bytes, must be 1 to {MAX_IMAGE_BYTES}",
+                    a.size
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn check_ask(ask: &Ask) -> app::Result<()> {
@@ -1432,6 +1528,8 @@ impl Hyperfeed {
         Ok(item)
     }
 
+    // One row of a message, whoever writes it: each argument is a column of it.
+    #[allow(clippy::too_many_arguments)]
     fn post_message(
         &mut self,
         chain: String,
@@ -1440,6 +1538,7 @@ impl Hyperfeed {
         reply_to: String,
         status: &str,
         ask: Option<Ask>,
+        attachments: Vec<Attachment>,
     ) -> app::Result<FeedItem> {
         let now = now_ms();
         let id = Self::fresh_id();
@@ -1458,6 +1557,10 @@ impl Hyperfeed {
         };
         if let Some(ask) = ask {
             self.asks.insert(m.id.clone(), Asked { ask })?;
+        }
+        if !attachments.is_empty() {
+            self.attachments
+                .insert(m.id.clone(), Attachments { items: attachments })?;
         }
         let item = self.message_row(&m)?;
         self.messages.insert(m.id.clone(), m)?;
@@ -1703,7 +1806,7 @@ impl Hyperfeed {
         } else {
             STATUS_SAID
         };
-        self.post_message(chain, FROM_AGENT, text, reply_to, status, ask)
+        self.post_message(chain, FROM_AGENT, text, reply_to, status, ask, Vec::new())
     }
 
     /// You said something in a chain: whatever your agent asked you there is
@@ -1805,16 +1908,36 @@ impl Hyperfeed {
     /// anything (`chain` empty, which starts a new chain). Your agent picks it
     /// up, answers in the chain, and may propose or act there under your rules.
     pub fn say(&mut self, chain: String, text: String) -> app::Result<FeedItem> {
+        self.say_with(chain, text, Vec::new())
+    }
+
+    /// [`Self::say`] with images: up to four, each a blob you uploaded to your
+    /// node and announced to this context. With an image, `text` may be empty.
+    pub fn say_with(
+        &mut self,
+        chain: String,
+        text: String,
+        attachments: Vec<Attachment>,
+    ) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_len("chain", &chain, MAX_KEY, false)?;
-        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        Self::check_len("text", &text, MAX_MESSAGE, attachments.is_empty())?;
+        Self::check_attachments(&attachments)?;
         if !chain.is_empty() && !self.chain_exists(&chain)? {
             return Err(AppError::msg(format!("no chain {chain}")));
         }
         if !chain.is_empty() {
             self.answer_asks(&chain, &text)?;
         }
-        self.post_message(chain, FROM_YOU, text, String::new(), STATUS_WAITING, None)
+        self.post_message(
+            chain,
+            FROM_YOU,
+            text,
+            String::new(),
+            STATUS_WAITING,
+            None,
+            attachments,
+        )
     }
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an

@@ -837,6 +837,15 @@ fn choose(options: &[&str]) -> Ask {
     }
 }
 
+fn image(blob_id: &str) -> Attachment {
+    Attachment {
+        blob_id: blob_id.to_owned(),
+        name: "screenshot.png".to_owned(),
+        mime: "image/png".to_owned(),
+        size: 48_213,
+    }
+}
+
 #[test]
 fn an_agent_question_needs_you_until_you_answer_it_in_the_chain() {
     let mut app = TestHost::new(Hyperfeed::init);
@@ -964,6 +973,85 @@ fn your_agent_shows_its_latest_step_while_it_works_without_adding_rows() {
     assert!(app
         .call(|s| s.agent_progress(q.id.clone(), " ".to_owned()))
         .is_err());
+}
+
+#[test]
+fn a_message_carries_its_images_wherever_it_is_read() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = app
+        .call(|s| {
+            s.say_with(
+                String::new(),
+                "What is this error?".to_owned(),
+                vec![image(&"ab".repeat(32)), image(&"cd".repeat(32))],
+            )
+        })
+        .unwrap();
+    assert_eq!(q.attachments.len(), 2);
+    assert_eq!(q.attachments[0].blob_id, "ab".repeat(32));
+
+    let read = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(read.attachments, q.attachments);
+    let open = app.view(|s| s.open_questions()).unwrap();
+    assert_eq!(
+        open[0].attachments, q.attachments,
+        "the agent sees the images it is asked about"
+    );
+    let flow = app.view(|s| s.chain(q.chain.clone())).unwrap();
+    assert_eq!(flow[0].attachments, q.attachments);
+
+    // The agent picking it up keeps the images on the row.
+    let thinking = app
+        .call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    assert_eq!(thinking.attachments, q.attachments);
+}
+
+#[test]
+fn an_image_alone_is_a_message() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = app
+        .call(|s| s.say_with(String::new(), String::new(), vec![image(&"ab".repeat(32))]))
+        .unwrap();
+    assert_eq!(q.title, "Sent an image");
+    assert_eq!(q.body, "");
+    let r = app.call(|s| s.say_with(String::new(), String::new(), Vec::new()));
+    assert!(r.is_err(), "no text and no image is still empty");
+}
+
+#[test]
+fn attachments_outside_their_limits_are_refused() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let mut try_one =
+        |a: Attachment| app.call(|s| s.say_with(String::new(), "look".to_owned(), vec![a]));
+    let pdf = Attachment {
+        mime: "application/pdf".to_owned(),
+        ..image("ab")
+    };
+    assert!(try_one(pdf).is_err(), "only images");
+    let huge = Attachment {
+        size: MAX_IMAGE_BYTES + 1,
+        ..image("ab")
+    };
+    assert!(try_one(huge).is_err(), "at most 10 MiB");
+    let empty = Attachment {
+        size: 0,
+        ..image("ab")
+    };
+    assert!(try_one(empty).is_err(), "an empty file is no image");
+    assert!(
+        try_one(image("../etc")).is_err(),
+        "a blob id is letters and digits"
+    );
+    assert!(try_one(image("")).is_err(), "a blob id is required");
+    let r = app.call(|s| {
+        s.say_with(
+            String::new(),
+            "look".to_owned(),
+            vec![image("ab"); MAX_ATTACHMENTS + 1],
+        )
+    });
+    assert!(r.is_err(), "at most four");
 }
 
 #[test]

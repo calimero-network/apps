@@ -73,6 +73,7 @@ Watch the feed's events, or read with `item`:
 The user talks to you from the feed, about one chain or about anything.
 
 - `MessagePosted` with `from: "you"`: read the message with `item`, and the chain it is in with `chain`.
+- A message may carry images in `attachments` (`blob_id`, `name`, `mime`, `size`), and then its `body` may be empty. Each is a blob on the node, announced to this feed's context: fetch it by `blob_id` and look at it before you answer.
 - Take it up at once with `agent_ack` (`status: "thinking"`), so the user sees you are on it.
 - While you work, report your latest step with `agent_progress` (`id`, `doing`: "Running the tests", "Editing ChatView.tsx"). Each call replaces the last, so send one when your step changes, not a log.
 - Answer with `agent_say`: the message's `chain`, its `id` as `reply_to`, and your answer as `text`.
