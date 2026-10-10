@@ -546,7 +546,7 @@ function Row({
               <Resolver key={item.id} item={item} feed={feed} />
             </div>
           )}
-          {item.chain_len > 1 && <Flow chain={item.chain} lead={item.id} feed={feed} />}
+          {/* The decision comes before the flow: a long history must not push Approve out of reach. */}
           <div className="actions">
             <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
             {openable && (
@@ -580,6 +580,7 @@ function Row({
               </>
             )}
           </div>
+          {item.chain_len > 1 && <Flow chain={item.chain} lead={item.id} feed={feed} />}
           <AskAgent
             key={item.chain}
             feed={feed}

@@ -67,6 +67,16 @@ describe("FeedView", () => {
     expect(nda?.status).toBe("approved");
   });
 
+  it("puts Approve and Decline above a chain's flow, not after its whole history", async () => {
+    render(<Harness backend={new DemoBackend(true, 0)} />);
+    const row = await openRow(/Vendor NDA/);
+    const flow = within(row).getByRole("list", { name: "The whole flow" });
+    for (const name of ["Approve", "Decline"]) {
+      const button = within(row).getAllByRole("button", { name }).find((b) => !flow.contains(b))!;
+      expect(button.compareDocumentPosition(flow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it("opens a chain's whole flow in place and settles a step from inside it", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const row = await openRow(/Vendor NDA/);
