@@ -371,14 +371,14 @@ function whereOf(item: FeedItem): string {
   return `${who}${app}`;
 }
 
-function Status({ item }: { item: FeedItem }) {
+export function Status({ item }: { item: FeedItem }) {
   const s = statusOf(item);
   return <span className={`pill pill-${s.tone}`}>{s.label}</span>;
 }
 
 type Decide = (d: "approve" | "decline" | "undo" | "keep") => void;
 
-function Choices({ item, busy, onDecide }: { item: FeedItem; busy: boolean; onDecide: Decide }) {
+export function Choices({ item, busy, onDecide }: { item: FeedItem; busy: boolean; onDecide: Decide }) {
   const c = choicesFor(item);
   return (
     <>

@@ -4,6 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { FeedView } from "./FeedView";
 import { ControlsView } from "./ControlsView";
 import { ChatView } from "./ChatView";
+import { TeamView } from "./TeamView";
 import { FeedPicker, FeedSwitcher } from "./FeedPicker";
 import { DemoBackend } from "./demo";
 import { useFeed, type Feed } from "./useFeed";
@@ -192,12 +193,53 @@ function Screen({
   const navigate = useNavigate();
   const { chain = "" } = useParams();
   const openChat = (c: string) => navigate(c ? `${base}/chat/${encodeURIComponent(c)}` : `${base}/chat`);
+  const [view, setView] = useFeedView();
   if (page === "chat") return <ChatView feed={feed} chain={chain} onOpen={openChat} newFeed={newFeed} />;
-  return page === "feed" ? (
-    <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} />
-  ) : (
-    <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />
+  if (page !== "feed") return <ControlsView feed={feed} contextId={contextId} preview={preview} newFeed={newFeed} />;
+  return (
+    <>
+      <div className="view-switch" role="group" aria-label="How the feed is laid out">
+        {(
+          [
+            ["lanes", "Lanes"],
+            ["team", "Team"],
+          ] as const
+        ).map(([v, label]) => (
+          <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => setView(v)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {view === "team" ? (
+        <TeamView feed={feed} query={query} onChat={openChat} />
+      ) : (
+        <FeedView feed={feed} query={query} newFeed={newFeed} onChat={openChat} openLink={openLink} />
+      )}
+    </>
   );
+}
+
+type FeedLayout = "lanes" | "team";
+const VIEW_KEY = "hyperfeed:view";
+
+/** Lanes or Team, remembered in this browser. Lanes until you pick Team. */
+function useFeedView(): [FeedLayout, (v: FeedLayout) => void] {
+  const [view, setView] = useState<FeedLayout>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "team" ? "team" : "lanes";
+    } catch {
+      return "lanes";
+    }
+  });
+  const pick = useCallback((v: FeedLayout) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Private mode: it holds for this visit.
+    }
+  }, []);
+  return [view, pick];
 }
 
 function Shell({
