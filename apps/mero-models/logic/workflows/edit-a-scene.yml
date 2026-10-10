@@ -206,13 +206,20 @@ steps:
     method: get_objects_by_ids
     args:
       ids: ["tri-1"]
+    # Fields by path: merobox's json_subset matches a LIST element only when
+    # the whole element is equal, so a partial object inside an array never
+    # matches.
     outputs:
-      n2_tri: result
+      n2_tri_id: result.output.0.id
+      n2_tri_parent: result.output.0.parent
+      n2_tri_kind: result.output.0.kind
 
   - name: Assert the hierarchy replicated
-    type: json_assert
+    type: assert
     statements:
-      - 'json_subset({{n2_tri}}, {"output": [{"id": "tri-1", "parent": "cube-1", "kind": "mesh"}]})'
+      - "{{n2_tri_id}} == tri-1"
+      - "{{n2_tri_parent}} == cube-1"
+      - "{{n2_tri_kind}} == mesh"
 
   - name: node-2 lists the meshes without downloading them
     type: call
@@ -222,12 +229,16 @@ steps:
     method: list_meshes
     args: {}
     outputs:
-      n2_stamps: result
+      n2_stamp_id: result.output.0.id
+      n2_stamp_vertices: result.output.0.vertex_count
+      n2_stamp_triangles: result.output.0.triangle_count
 
   - name: Assert the mesh stamp
-    type: json_assert
+    type: assert
     statements:
-      - 'json_subset({{n2_stamps}}, {"output": [{"id": "tri-1", "vertex_count": 3, "triangle_count": 1}]})'
+      - "{{n2_stamp_id}} == tri-1"
+      - "{{n2_stamp_vertices}} == 3"
+      - "{{n2_stamp_triangles}} == 1"
 
   - name: node-2 downloads the mesh
     type: call
@@ -238,12 +249,17 @@ steps:
     args:
       ids: ["tri-1"]
     outputs:
-      n2_mesh: result
+      n2_mesh_id: result.output.0.id
+      n2_mesh_indices: result.output.0.indices
 
   - name: Assert the vertices arrived
+    type: assert
+    statements:
+      - "{{n2_mesh_id}} == tri-1"
+  - name: Assert the triangle is intact
     type: json_assert
     statements:
-      - 'json_subset({{n2_mesh}}, {"output": [{"id": "tri-1", "indices": [0, 1, 2]}]})'
+      - 'json_equal({{n2_mesh_indices}}, [0, 1, 2])'
 
   - name: node-2 asks its own role
     type: call
@@ -323,13 +339,20 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: get_members
     args: {}
+    # Oldest first: Ada joined before Bea.
     outputs:
-      n1_members: result
+      n1_m0_name: result.output.0.name
+      n1_m0_role: result.output.0.role
+      n1_m1_name: result.output.1.name
+      n1_m1_role: result.output.1.role
 
   - name: Assert both members, with their roles
-    type: json_assert
+    type: assert
     statements:
-      - 'json_subset({{n1_members}}, {"output": [{"name": "Ada", "role": "admin"}, {"name": "Bea", "role": "editor"}]})'
+      - "{{n1_m0_name}} == Ada"
+      - "{{n1_m0_role}} == admin"
+      - "{{n1_m1_name}} == Bea"
+      - "{{n1_m1_role}} == editor"
 
   - name: Wait for the grant to reach node-2
     type: wait_for_sync
@@ -384,15 +407,31 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: get_objects
     args: {}
+    # Ordered by creation, then id: both were created in one call, and
+    # "cube-1" sorts before "tri-1".
     outputs:
-      n1_objects: result
+      n1_o0_id: result.output.0.id
+      n1_o1_id: result.output.1.id
+      n1_o1_parent: result.output.1.parent
+      n1_o1_x: result.output.1.position.x
+      n1_o1_scale: result.output.1.scale.x
+      n1_o1_created: result.output.1.created_at
 
   # Re-parented and moved by the OTHER node; `created_at` kept from node-1's
   # first write, whatever node-2 sent.
   - name: Assert node-1 sees node-2's edit
+    type: assert
+    statements:
+      - "{{n1_o0_id}} == cube-1"
+      - "{{n1_o1_id}} == tri-1"
+      - "{{n1_o1_x}} == 3.0"
+      - "{{n1_o1_scale}} == 2.0"
+      - "{{n1_o1_created}} == 1700000002000"
+
+  - name: Assert the fin left the cube
     type: json_assert
     statements:
-      - 'json_subset({{n1_objects}}, {"output": [{"id": "cube-1"}, {"id": "tri-1", "parent": "", "position": {"x": 3.0}, "scale": {"x": 2.0}, "created_at": 1700000002000}]})'
+      - 'json_equal({{n1_o1_parent}}, "")'
 
   - name: node-1 deletes the cube
     type: call
