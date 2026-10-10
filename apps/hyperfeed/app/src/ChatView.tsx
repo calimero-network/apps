@@ -3,6 +3,7 @@ import type { FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { NewFeedButton, type NewFeed } from "./FeedView";
 import { statusOf, timeLabel } from "./format";
+import { agentLive, notPickedUp } from "./theme";
 
 /**
  * Chats with your agent.
@@ -134,14 +135,14 @@ export function ChatView({
             )}
           </div>
         )}
-        <Thread items={thread} clock={clock} />
+        <Thread items={thread} clock={clock} live={agentLive(feed.settings?.agents, clock())} />
         <Composer key={chain} busy={feed.busy} fresh={!chain} onSend={send} />
       </section>
     </div>
   );
 }
 
-function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
+function Thread({ items, clock, live }: { items: FeedItem[]; clock: () => number; live: boolean }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
   useEffect(() => {
@@ -173,14 +174,14 @@ function Thread({ items, clock }: { items: FeedItem[]; clock: () => number }) {
           </div>
         ),
       )}
-      {last && <Waiting last={last} clock={clock} />}
+      {last && <Waiting last={last} clock={clock} live={live} />}
       <div ref={end} />
     </div>
   );
 }
 
 /** Where your latest message stands while your agent hasn't answered it. */
-function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
+function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; live: boolean }) {
   const [, setTick] = useState(0);
   const now = clock();
   const waiting = last.kind === "message" && last.from === "you" && last.status === "waiting";
@@ -199,7 +200,7 @@ function Waiting({ last, clock }: { last: FeedItem; clock: () => number }) {
   if (now - last.at < UNANSWERED_MS) return <p className="chat-status">Sent · waiting for your agent</p>;
   return (
     <p className="chat-status wait">
-      Your agent hasn't picked this up yet. Is mero-bot running against this feed? It answers once it starts.
+      {notPickedUp(live)}
     </p>
   );
 }

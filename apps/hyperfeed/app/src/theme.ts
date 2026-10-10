@@ -31,3 +31,19 @@ export function useTheme(): [Theme, () => void] {
 
 /** How recently an agent must have reported in to count as running. */
 export const AGENT_LIVE_MS = 90_000;
+
+/** Whether any agent has reported in to this feed recently enough to count as running. */
+export function agentLive(agents: { seen_at: number }[] | undefined, now = Date.now()): boolean {
+  return (agents ?? []).some((a) => now - a.seen_at < AGENT_LIVE_MS);
+}
+
+/**
+ * What to tell you about a message nothing has picked up, from what the feed
+ * knows instead of a guess: no agent has reported in, or one has but has not
+ * reached your message yet.
+ */
+export function notPickedUp(live: boolean): string {
+  return live
+    ? "Your agent is connected but hasn't picked this up yet. It checks for waiting messages every 30 seconds."
+    : "mero-bot isn't connected to this feed: no agent has reported in for 90 seconds. Start it, or restart it if its login expired, and it answers this.";
+}

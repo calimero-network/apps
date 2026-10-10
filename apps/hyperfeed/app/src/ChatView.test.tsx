@@ -48,7 +48,7 @@ describe("chat with your agent", () => {
     expect(within(list()).getAllByRole("button", { name: /Shorter, please/ })).toHaveLength(1);
   });
 
-  it("asks whether your agent is running when nothing picks your message up", async () => {
+  it("says mero-bot isn't connected when nothing picks your message up and no agent reports in", async () => {
     let now = Date.now();
     const backend = new DemoBackend(false, 0, () => now);
     const fresh = await backend.say("", "Anyone there?");
@@ -57,7 +57,17 @@ describe("chat with your agent", () => {
     unmount();
     now += UNANSWERED_MS + 1_000;
     render(<Harness backend={backend} start={fresh.chain} clock={() => now} />);
-    expect(await screen.findByText(/Is mero-bot running against this feed\?/)).toBeInTheDocument();
+    expect(await screen.findByText(/mero-bot isn't connected to this feed/)).toBeInTheDocument();
+  });
+
+  it("says your agent is connected but behind when one reports in", async () => {
+    let now = Date.now();
+    // A demo agent that reports in but never answers: its delay is longer than the test.
+    const backend = new DemoBackend(false, 10 * 60_000, () => now);
+    const fresh = await backend.say("", "Anyone there?");
+    now += UNANSWERED_MS + 1_000;
+    render(<Harness backend={backend} start={fresh.chain} clock={() => now} />);
+    expect(await screen.findByText(/Your agent is connected but hasn't picked this up yet/)).toBeInTheDocument();
   });
 
   it("opens a chat from the list, and starts a new one", async () => {
