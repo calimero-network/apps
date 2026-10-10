@@ -1941,3 +1941,7 @@ body {
   font-size: 12px;
   color: var(--wait-ink);
 }
+
+.chat-doing {
+  color: var(--muted);
+}

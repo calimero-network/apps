@@ -74,6 +74,7 @@ The user talks to you from the feed, about one chain or about anything.
 
 - `MessagePosted` with `from: "you"`: read the message with `item`, and the chain it is in with `chain`.
 - Take it up at once with `agent_ack` (`status: "thinking"`), so the user sees you are on it.
+- While you work, report your latest step with `agent_progress` (`id`, `doing`: "Running the tests", "Editing ChatView.tsx"). Each call replaces the last, so send one when your step changes, not a log.
 - Answer with `agent_say`: the message's `chain`, its `id` as `reply_to`, and your answer as `text`.
 - If your answer leaves something to the user (a question, a choice of next steps, "want me to…?"), answer with `agent_ask` instead: the same arguments plus an `ask` of kind `choose` (2 to 8 `options`) or `reply` (a `prompt`). The chain then stays in the user's To do until they answer, and their answer arrives as their next message in the chain. Use `agent_say` only when the work is done.
 - If they want something done, do it the way you do anything: `check_action` first, then act or propose, with `chain` set to the message's chain so it shows in the same conversation.

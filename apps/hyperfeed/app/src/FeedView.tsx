@@ -8,6 +8,7 @@ import {
   fieldsOf,
   flowOf,
   laneOf,
+  progressLine,
   resolvable,
   statusOf,
   timeLabel,
@@ -544,7 +545,7 @@ function Row({
         <RowBadge item={item} />
         <span className="row-text">
           <span className="row-title">{item.title}</span>
-          <span className="row-where">{whereOf(item)}</span>
+          <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
         </span>
         <Status item={item} />
         {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}

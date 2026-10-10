@@ -925,6 +925,48 @@ fn a_plain_answer_is_finished_work() {
 }
 
 #[test]
+fn your_agent_shows_its_latest_step_while_it_works_without_adding_rows() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the chat list");
+    let early = app.call(|s| s.agent_progress(q.id.clone(), "Reading ChatView.tsx".to_owned()));
+    assert!(
+        early.is_err(),
+        "nothing to show before your agent has taken it up"
+    );
+
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    app.call(|s| s.agent_progress(q.id.clone(), "Reading ChatView.tsx".to_owned()))
+        .unwrap();
+    let row = app
+        .call(|s| s.agent_progress(q.id.clone(), "Running the tests".to_owned()))
+        .unwrap();
+    assert_eq!(
+        row.doing, "Running the tests",
+        "the latest step replaces the last"
+    );
+    assert!(row.doing_at > 0);
+    assert_eq!(
+        row.history.len(),
+        2,
+        "steps are not history: waiting, thinking"
+    );
+    let open = app.view(|s| s.open_questions()).unwrap();
+    assert_eq!(open[0].doing, "Running the tests");
+
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned()))
+        .unwrap();
+    let answered = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(answered.doing, "", "an answered message shows no step");
+    assert!(app
+        .call(|s| s.agent_progress(q.id.clone(), "Still going".to_owned()))
+        .is_err());
+    assert!(app
+        .call(|s| s.agent_progress(q.id.clone(), " ".to_owned()))
+        .is_err());
+}
+
+#[test]
 fn the_agent_picks_a_question_up_and_answers_it() {
     let mut app = TestHost::new(Hyperfeed::init);
     let mention = app

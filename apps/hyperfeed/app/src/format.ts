@@ -194,6 +194,17 @@ export function dayLabel(at: number, now = Date.now()): string {
   return new Date(at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
 }
 
+/**
+ * Your agent's latest step on a message it is working on, with how long ago
+ * it started: "Running the tests · 12 s ago". Empty when there is none.
+ */
+export function progressLine(item: FeedItem, now = Date.now()): string {
+  if (item.kind !== "message" || item.status !== "thinking" || !item.doing) return "";
+  const secs = Math.max(0, Math.round((now - item.doing_at) / 1000));
+  const ago = secs < 5 ? "just now" : secs < 60 ? `${secs} s ago` : `${Math.floor(secs / 60)} min ago`;
+  return `${item.doing} · ${ago}`;
+}
+
 /** "just now", "4 min", "14:02". */
 export function timeLabel(at: number, now = Date.now()): string {
   const mins = Math.floor((now - at) / 60_000);

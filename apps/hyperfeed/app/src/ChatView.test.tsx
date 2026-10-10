@@ -94,6 +94,21 @@ describe("chat with your agent", () => {
     expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
   });
 
+  it("shows your agent's latest step while it works, not a log", async () => {
+    let now = Date.now();
+    const backend = new DemoBackend(false, 0, () => now);
+    const q = await backend.say("", "Fix the chat list");
+    backend.agentAck(q.id);
+    backend.agentProgress(q.id, "Reading ChatView.tsx");
+    now += 3_000;
+    backend.agentProgress(q.id, "Running the tests");
+    now += 12_000;
+    render(<Harness backend={backend} start={q.chain} clock={() => now} />);
+    const status = await screen.findByText(/Your agent is on it…/);
+    expect(status).toHaveTextContent("Your agent is on it… Running the tests · 12 s ago");
+    expect(within(thread()).queryByText(/Reading ChatView/)).not.toBeInTheDocument();
+  });
+
   it("opens a chat from the list, and starts a new one", async () => {
     const backend = new DemoBackend(false, 0);
     const first = await backend.say("", "First question");

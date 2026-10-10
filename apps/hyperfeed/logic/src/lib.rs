@@ -589,6 +589,26 @@ impl Mergeable for Presence {
     }
 }
 
+/// What your agent is doing right now for one of your messages: its latest
+/// step, replaced by the next one. Kept beside the message by id, never in its
+/// history, so a long turn adds no rows.
+#[app::mergeable(id = "hyperfeed::Progress")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Progress {
+    pub doing: String,
+    pub at: u64,
+}
+
+impl Mergeable for Progress {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -713,6 +733,13 @@ pub struct FeedItem {
     pub fields: String,
     /// The call that answers it in its app, or `""`; see [`Typed`].
     pub reply_call: String,
+    // ── a message your agent is working on ──
+    /// Its latest step while the message is `thinking` ("Editing ChatView.tsx"), or `""`.
+    #[serde(default)]
+    pub doing: String,
+    /// When that step started; 0 with no step.
+    #[serde(default)]
+    pub doing_at: u64,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -812,6 +839,8 @@ pub struct Hyperfeed {
     presence: UnorderedMap<String, Presence>,
     /// What your agent asked you, by its message's id.
     asks: UnorderedMap<String, Asked>,
+    /// Your agent's latest step on each message it is working on, by message id.
+    progress: UnorderedMap<String, Progress>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -878,6 +907,7 @@ impl Hyperfeed {
             archived: UnorderedMap::new(),
             presence: UnorderedMap::new(),
             asks: UnorderedMap::new(),
+            progress: UnorderedMap::new(),
         }
     }
 
@@ -1106,6 +1136,8 @@ impl Hyperfeed {
             item_type: String::new(),
             fields: String::new(),
             reply_call: String::new(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
@@ -1151,17 +1183,26 @@ impl Hyperfeed {
             item_type: typed.map(|t| t.item_type.clone()).unwrap_or_default(),
             fields: typed.map(|t| t.fields.clone()).unwrap_or_default(),
             reply_call: typed.map(|t| t.reply_call.clone()).unwrap_or_default(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
-    /// A message as a row, with what it asks you: an agent's message that is
-    /// still `asked` needs you; any other message does not.
+    /// A message as a row: what your agent asked you on its own message (an
+    /// agent's message still `asked` needs you), and its latest step while it
+    /// works on one of yours.
     fn message_row(&self, m: &Message) -> app::Result<FeedItem> {
         let mut item = Self::message_item(m);
         if let Some(a) = self.asks.get(&m.id)? {
             item.ask = a.ask.clone();
         }
         item.needs_you = m.from == FROM_AGENT && item.status == STATUS_ASKED;
+        if item.status == STATUS_THINKING {
+            if let Some(p) = self.progress.get(&m.id)? {
+                item.doing = p.doing.clone();
+                item.doing_at = p.at;
+            }
+        }
         Ok(item)
     }
 
@@ -1201,6 +1242,8 @@ impl Hyperfeed {
             item_type: String::new(),
             fields: String::new(),
             reply_call: String::new(),
+            doing: String::new(),
+            doing_at: 0,
         }
     }
 
@@ -1696,8 +1739,8 @@ impl Hyperfeed {
                         STATUS_WAITING | STATUS_THINKING
                     )
             })
-            .map(|(_, m)| Self::message_item(&m))
-            .collect();
+            .map(|(_, m)| self.message_row(&m))
+            .collect::<app::Result<Vec<_>>>()?;
         open.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
         Ok(open)
     }
@@ -2106,6 +2149,34 @@ impl Hyperfeed {
             Some(a) => a.archived && chain_at <= a.at && (a.until == 0 || now < a.until),
             None => false,
         })
+    }
+
+    /// Your agent says what it is doing on one of your messages it has taken
+    /// up (`thinking`): "Running the tests", "Editing ChatView.tsx". Each call
+    /// replaces the last, so you see its latest step and nothing piles up.
+    pub fn agent_progress(&mut self, id: String, doing: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("doing", &doing, MAX_TITLE, true)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!("message {id} is the agent's own")));
+        }
+        let status = current(&m.history).status.clone();
+        if status != STATUS_THINKING {
+            return Err(AppError::msg(format!(
+                "message {id} is {status}; progress is for a message being worked on"
+            )));
+        }
+        let at = match self.progress.get(&id)? {
+            Some(p) => now_ms().max(p.at + 1),
+            None => now_ms(),
+        };
+        self.progress.insert(id.clone(), Progress { doing, at })?;
+        app::emit!(Event::MessageChanged {
+            id: &id,
+            status: STATUS_THINKING,
+        });
+        self.message_row(&m)
     }
 
     /// An agent saying it is running. The feed shows it as live while it

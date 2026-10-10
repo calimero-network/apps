@@ -462,6 +462,21 @@ steps:
     outputs:
       thinking: result
 
+  - name: The agent reports its latest step while it works
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_progress
+    args: { id: "{{question_id}}", doing: "Reading the deck" }
+    outputs:
+      working: result
+
+  - name: Assert the step shows on the message, not as a step in its history
+    type: json_assert
+    statements:
+      - 'json_subset({{working}}, {"output": {"status": "thinking", "doing": "Reading the deck"}})'
+
   - name: The agent answers in the same chain
     type: call
     node: feed-node-1
