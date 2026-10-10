@@ -220,6 +220,18 @@
         }
       ]
     },
+    "Asked": {
+      "kind": "record",
+      "doc": "What your agent asked you in a message, kept beside it by the message's\nid, so messages written before agents could ask keep their layout.",
+      "fields": [
+        {
+          "name": "ask",
+          "type": {
+            "$ref": "Ask"
+          }
+        }
+      ]
+    },
     "Guard": {
       "kind": "record",
       "doc": "One \"always ask me before\" switch.",
@@ -392,6 +404,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Agents that report in, by name."
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Asked"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "What your agent asked you, by its message's id."
         }
       ]
     },

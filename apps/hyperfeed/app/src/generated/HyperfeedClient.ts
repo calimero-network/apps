@@ -151,6 +151,14 @@ export interface Ask {
   draft: string;
 }
 
+/**
+ * What your agent asked you in a message, kept beside it by the message's
+ * id, so messages written before agents could ask keep their layout.
+ */
+export interface Asked {
+  ask: Ask;
+}
+
 export interface Event_ActionChanged {
   id: string;
   status: string;
@@ -328,6 +336,10 @@ export interface Hyperfeed {
    * Agents that report in, by name.
    */
   presence: Record<string, Presence>;
+  /**
+   * What your agent asked you, by its message's id.
+   */
+  asks: Record<string, Asked>;
 }
 
 /**
@@ -600,6 +612,22 @@ export class HyperfeedClient {
    */
   public async agentAck(params: { id: string; status: string; note: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ack', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * agent_ask
+   *
+   * [`Self::agent_say`] that leaves something to you: a question to
+   * `reply` to, or options to `choose` from. The message needs you, in To
+   * do, until you say something in its chain; your words are its answer.
+   * Use it whenever the work is not finished without you, so a chain is
+   * only done when it is.
+   *
+   * @intent mutating
+   */
+  public async agentAsk(params: { chain: string; reply_to: string; text: string; ask: Ask }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_ask', argsJson: params });
     return response as FeedItem;
   }
 

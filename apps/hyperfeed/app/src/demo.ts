@@ -120,8 +120,8 @@ export class DemoBackend implements FeedBackend {
   }
 
   private needsYou(item: FeedItem): boolean {
-    // What the agent wants from you in a conversation arrives as a proposal.
-    if (item.kind === "message") return false;
+    // In a conversation, only your agent's open question needs you.
+    if (item.kind === "message") return item.from === "agent" && item.status === "asked";
     if (item.kind === "notification") {
       if (item.ask.kind) return item.status === "received" || item.status === "failed";
       return (this.flagged.get(item.id) ?? false) && !item.seen;
@@ -396,6 +396,10 @@ export class DemoBackend implements FeedBackend {
     if (!text.trim()) throw new Error("text must not be empty");
     if (new TextEncoder().encode(text).length > MAX_MESSAGE) throw new Error(`text is longer than ${MAX_MESSAGE} bytes`);
     if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    // Whatever your agent asked you in this chain, your words answer.
+    for (const m of [...this.items.values()]) {
+      if (chain && m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked") this.step(m, "answered", text.slice(0, 250));
+    }
     const posted = this.post(chain, "you", text, "", "waiting");
     this.changed();
     if (this.agentDelayMs > 0) {
@@ -418,8 +422,10 @@ export class DemoBackend implements FeedBackend {
   }
 
   /** The agent's side of a conversation, as `agent_say` would take it. */
-  agentSay(chain: string, replyTo: string, text: string): FeedItem {
+  agentSay(chain: string, replyTo: string, text: string, ask?: Ask): FeedItem {
     if (!text.trim()) throw new Error("text must not be empty");
+    if (ask && ask.kind !== "reply" && ask.kind !== "choose") throw new Error("ask.kind must be one of reply, choose");
+    if (ask?.kind === "choose" && ask.options.length < 2) throw new Error("a choose ask needs at least 2 options");
     if (!replyTo) {
       if (!this.chainExists(chain)) throw new Error(`no chain ${chain}`);
     } else {
@@ -428,20 +434,25 @@ export class DemoBackend implements FeedBackend {
       if (asked.chain !== chain) throw new Error(`message ${replyTo} is in chain ${asked.chain}, not ${chain}`);
       if (asked.status !== "answered") this.step(asked, "answered");
     }
-    const said = this.post(chain, "agent", text, replyTo, "said");
+    const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask);
     this.changed();
     return said;
+  }
+
+  /** The agent asks you something back, as `agent_ask` would take it. */
+  agentAsk(chain: string, replyTo: string, text: string, ask: Ask): FeedItem {
+    return this.agentSay(chain, replyTo, text, ask);
   }
 
   private chainExists(chain: string): boolean {
     return [...this.items.values()].some((i) => i.chain === chain);
   }
 
-  private post(chain: string, from: "you" | "agent", text: string, replyTo: string, status: string): FeedItem {
+  private post(chain: string, from: "you" | "agent", text: string, replyTo: string, status: string, ask: Ask = NO_ASK): FeedItem {
     const id = `demo-${this.nextId++}`;
     const t = this.tick();
     return this.put({
-      ...blank(id, "message", "", t, chain || id, NO_ASK),
+      ...blank(id, "message", "", t, chain || id, ask),
       title: headline(text),
       body: text,
       from,

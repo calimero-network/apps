@@ -81,6 +81,19 @@ describe("chat with your agent", () => {
     expect(within(list()).queryByRole("button", { name: /Show done chats/ })).not.toBeInTheDocument();
   });
 
+  it("answers your agent's question from its options in the chat", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Clean up #calimero");
+    backend.agentAsk(q.chain, q.id, "Two hellos there. Delete one?", { kind: "choose", prompt: "Delete one?", options: ["Delete it", "Keep both"], draft: "" });
+    render(<Harness backend={backend} start={q.chain} />);
+    const options = await screen.findByRole("group", { name: "Delete one?" });
+    await act(async () => {
+      fireEvent.click(within(options).getByRole("button", { name: "Delete it" }));
+    });
+    expect(await within(thread()).findByText("Delete it")).toBeInTheDocument();
+    expect(within(thread()).queryByRole("group", { name: "Delete one?" })).not.toBeInTheDocument();
+  });
+
   it("opens a chat from the list, and starts a new one", async () => {
     const backend = new DemoBackend(false, 0);
     const first = await backend.say("", "First question");

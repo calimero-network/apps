@@ -410,13 +410,18 @@ function Choices({ item, busy, onDecide }: { item: FeedItem; busy: boolean; onDe
  * A reply is a text box (the agent's draft when it wrote one) with suggested
  * replies one tap away; a choice is one button per option; a confirm is one
  * button. On a notification the answer goes to `answer_notification`; on a
- * proposal it approves with that answer. Either way your agent carries it out.
+ * proposal it approves with that answer; on your agent's question it is your
+ * next message in the chain. Either way your agent carries it out.
  */
 export function Resolver({ item, feed }: { item: FeedItem; feed: Feed }) {
   const id = useId();
   const [text, setText] = useState(item.ask.draft);
   const isAction = item.kind === "action";
-  const submit = (answer: string) => (isAction ? feed.resolve(item.id, "approve", answer) : feed.answer(item.id, answer));
+  const submit = async (answer: string) => {
+    if (isAction) return feed.resolve(item.id, "approve", answer);
+    if (item.kind === "message") return void (await feed.say(item.chain, answer));
+    return feed.answer(item.id, answer);
+  };
   const { kind, prompt, options } = item.ask;
 
   if (kind === "choose") {
@@ -489,6 +494,7 @@ function answerLine(item: FeedItem): string {
     if (item.status === "answered") return item.ask.kind === "reply" ? `You replied: "${item.note}"` : `You chose "${item.note}"`;
     return item.note;
   }
+  if (item.kind === "message" && item.status === "answered" && item.from === "agent") return `You answered: "${item.note}"`;
   if (item.status === "approved" && item.ask.kind === "choose") return `You picked "${item.note}"`;
   if (item.status === "approved" && item.ask.kind === "reply") return `You approved: "${item.note}"`;
   return item.note;
