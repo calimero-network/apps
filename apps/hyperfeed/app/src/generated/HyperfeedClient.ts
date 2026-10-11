@@ -90,6 +90,13 @@ export interface ActionInput {
    * edit the agent's draft before it goes.
    */
   ask: Ask;
+  /**
+   * For an outcome: the id of a proposal in the same app you approved with
+   * "Allow for this session" (see [`SESSION_GRANT`]) in the last 12 hours.
+   * Under the app's Ask mode, it is recorded without a breach. Older agents
+   * omit it.
+   */
+  grant: string;
 }
 
 /**
@@ -940,7 +947,8 @@ export class HyperfeedClient {
    * Record an action: a proposal for you to approve, or an outcome.
    *
    * A proposal the rules refuse is an error. An outcome the rules say
-   * needed you is recorded with a breach, never dropped.
+   * needed you is recorded with a breach, never dropped, unless the app's
+   * mode alone asked for you and its `grant` is a session you allowed.
    *
    * @intent mutating
    */

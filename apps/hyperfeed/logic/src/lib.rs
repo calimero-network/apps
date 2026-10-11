@@ -29,6 +29,11 @@
 //!   **breach**, and stays in "Needs you" until you keep or undo it. Refusing it
 //!   would hide the one thing you most need to see.
 //!
+//! Answering a proposal "Allow for this session" lets the agent go on without
+//! asking in that app: what it does next carries the proposal's id as its
+//! `grant`, and for 12 hours the app's Ask mode is satisfied by it. A pause, a
+//! guard, Read only and Off are not.
+//!
 //! Approving a proposal does not perform it. The agent watches this context for
 //! [`Event::ActionChanged`] and reports the result with
 //! [`Hyperfeed::complete_action`]; the warrant it signs then is the authority,
@@ -126,6 +131,14 @@ pub const DEDUPE_WINDOW_MS: u64 = 10_000;
 /// the new one by time. Only a context that keeps returning to the same state
 /// gets anywhere near it.
 const MAX_OCCURRENCES: u32 = 64;
+
+/// The answer that allows a proposal for the rest of a session, not just once.
+/// An agent passes the proposal's id as the `grant` of what it runs afterwards.
+pub const SESSION_GRANT: &str = "Allow for this session";
+
+/// How long "Allow for this session" counts, from when you allowed it. An agent
+/// that keeps running past it asks you again.
+pub const GRANT_WINDOW_MS: u64 = 12 * 60 * 60 * 1_000;
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 
@@ -686,6 +699,12 @@ pub struct ActionInput {
     /// `choose` lets you approve with one of the options; a `reply` lets you
     /// edit the agent's draft before it goes.
     pub ask: Ask,
+    /// For an outcome: the id of a proposal in the same app you approved with
+    /// "Allow for this session" (see [`SESSION_GRANT`]) in the last 12 hours.
+    /// Under the app's Ask mode, it is recorded without a breach. Older agents
+    /// omit it.
+    #[serde(default)]
+    pub grant: String,
 }
 
 /// What your client saw for one notification.
@@ -1130,6 +1149,29 @@ impl Hyperfeed {
             return Ok(answer("ask", format!("your agent asks first in {app}")));
         }
         Ok(answer("act", format!("your agent may act in {app}")))
+    }
+
+    /// Whether `grant` lets an outcome in `app` stand without asking: the
+    /// app's mode is Ask, nothing else (a pause, a guard) needs you, and
+    /// `grant` is a proposal in that app you allowed for the session within
+    /// [`GRANT_WINDOW_MS`].
+    fn granted(&self, grant: &str, app: &str, category: &str, now: u64) -> app::Result<bool> {
+        if grant.is_empty()
+            || self.policy_for(app)?.agent != "ask"
+            || self.is_paused()?
+            || self.guard_on(category)?
+        {
+            return Ok(false);
+        }
+        let Some(proposal) = self.actions.get(grant)? else {
+            return Ok(false);
+        };
+        Ok(proposal.app == app
+            && proposal.history.iter().any(|s| {
+                s.status == STATUS_APPROVED
+                    && s.note == SESSION_GRANT
+                    && now.saturating_sub(s.at) <= GRANT_WINDOW_MS
+            }))
     }
 
     fn action_needs_you(a: &Action) -> bool {
@@ -1589,7 +1631,8 @@ impl Hyperfeed {
     /// Record an action: a proposal for you to approve, or an outcome.
     ///
     /// A proposal the rules refuse is an error. An outcome the rules say
-    /// needed you is recorded with a breach, never dropped.
+    /// needed you is recorded with a breach, never dropped, unless the app's
+    /// mode alone asked for you and its `grant` is a session you allowed.
     pub fn record_action(&mut self, input: ActionInput) -> app::Result<FeedItem> {
         self.require_owner()?;
         Self::check_app(&input.app)?;
@@ -1610,14 +1653,25 @@ impl Hyperfeed {
                 "an ask belongs on a proposal; a done or failed action has nothing to answer",
             ));
         }
+        Self::check_len("grant", &input.grant, MAX_KEY, false)?;
+        if !input.grant.is_empty() && input.outcome == "proposed" {
+            return Err(AppError::msg(
+                "a grant belongs on a done or failed action; a proposal waits for you",
+            ));
+        }
 
+        let now = now_ms();
         let verdict = self.verdict(&input.app, &input.category, input.writes)?;
+        // An unknown or stale grant is not an error: the outcome still happened,
+        // and is recorded with its breach.
+        let granted = self.granted(&input.grant, &input.app, &input.category, now)?;
         let (status, breach) = match (input.outcome.as_str(), verdict.decision.as_str()) {
             ("proposed", "refuse") => {
                 return Err(AppError::msg(format!("not allowed: {}", verdict.reason)))
             }
             ("proposed", _) => (STATUS_PENDING, String::new()),
             (outcome, "act") => (outcome_status(outcome), String::new()),
+            (outcome, "ask") if granted => (outcome_status(outcome), String::new()),
             (outcome, "ask") => (
                 outcome_status(outcome),
                 format!("acted without asking: {}", verdict.reason),
@@ -1628,7 +1682,6 @@ impl Hyperfeed {
             ),
         };
 
-        let now = now_ms();
         let id = Self::fresh_id();
         let action = Action {
             chain: Self::chain_of(&input.chain, &id)?,

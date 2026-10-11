@@ -52,6 +52,9 @@ export function headline(text: string): string {
 type Listener = () => void;
 
 const MINUTE = 60_000;
+/** Mirrors the contract's `SESSION_GRANT` and `GRANT_WINDOW_MS`. */
+const SESSION_GRANT = "Allow for this session";
+const GRANT_WINDOW_MS = 12 * 60 * MINUTE;
 
 export class DemoBackend implements FeedBackend {
   readonly kind = "demo" as const;
@@ -119,6 +122,15 @@ export class DemoBackend implements FeedBackend {
     if (this.guardOn(category)) return answer("ask", `"${category}" always needs you`);
     if (mode === "ask") return answer("ask", `your agent asks first in ${app}`);
     return answer("act", `your agent may act in ${app}`);
+  }
+
+  /** Mirrors `Hyperfeed::granted`: a session you allowed in this app, under its Ask mode alone. */
+  private granted(grant: string, app: string, category: string): boolean {
+    if (!grant || this.policy(app).agent !== "ask" || this.paused || this.guardOn(category)) return false;
+    const proposal = this.items.get(grant);
+    if (proposal?.kind !== "action" || proposal.app !== app) return false;
+    const now = this.now();
+    return proposal.history.some((s) => s.status === "approved" && s.note === SESSION_GRANT && now - s.at <= GRANT_WINDOW_MS);
   }
 
   private needsYou(item: FeedItem): boolean {
@@ -595,6 +607,9 @@ export class DemoBackend implements FeedBackend {
     if (input.ask.kind && input.outcome !== "proposed") {
       throw new Error("an ask belongs on a proposal; a done or failed action has nothing to answer");
     }
+    if (input.grant && input.outcome === "proposed") {
+      throw new Error("a grant belongs on a done or failed action; a proposal waits for you");
+    }
     const verdict = this.verdict(input.app, input.category, input.writes);
     let status: string;
     let breach = "";
@@ -603,7 +618,8 @@ export class DemoBackend implements FeedBackend {
       status = "pending";
     } else {
       status = input.outcome === "failed" ? "failed" : "done";
-      if (verdict.decision === "ask") breach = `acted without asking: ${verdict.reason}`;
+      const granted = this.granted(input.grant, input.app, input.category);
+      if (verdict.decision === "ask" && !granted) breach = `acted without asking: ${verdict.reason}`;
       if (verdict.decision === "refuse") breach = `acted where it may not: ${verdict.reason}`;
     }
     const id = `demo-${this.nextId++}`;
@@ -845,6 +861,7 @@ function action(input: Partial<ActionInput>): ActionInput {
     note: "",
     chain: "",
     ask: NO_ASK,
+    grant: "",
     ...input,
   };
 }
