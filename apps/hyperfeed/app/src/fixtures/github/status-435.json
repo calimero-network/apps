@@ -1,0 +1,144 @@
+{
+  "state": "success",
+  "total_count": 23,
+  "statuses": [
+    {
+      "context": "Vercel – merraria",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/merraria/iUkKxFi7eAEWuac9mN7wZMcc4FS6"
+    },
+    {
+      "context": "Vercel – mero-blocks",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-blocks/27d8QqA3htLnZscbY129cGU6cqZ8"
+    },
+    {
+      "context": "Vercel – mero-pass",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-pass/BdmAaYeT5BfExsbL6q4sksiGerw1"
+    },
+    {
+      "context": "Vercel – battleships",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/battleships/6ACAZ3aHeGceYzwgWD6tfuSN7gJ8"
+    },
+    {
+      "context": "Vercel – app",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/app/9N9Mk7AAM9X5VZF1MvfR6pN39FgR"
+    },
+    {
+      "context": "Vercel – mero-updates",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-updates/8LuteM6j2YKpHHrUCu8nvgKvmVLg"
+    },
+    {
+      "context": "Vercel – mero-forum",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-forum/DSbMV3wtP1nydapUDwbrkCMTixD6"
+    },
+    {
+      "context": "Vercel – mero-crm",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-crm/A1CwFuzzEGq3WV9eGCq4fqQLUiLq"
+    },
+    {
+      "context": "Vercel – mero-kombat",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-kombat/6wNthLwVv8DBX1GLUsVwi8M4GDJs"
+    },
+    {
+      "context": "Vercel – mero-sheets",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-sheets/8kxxNGkGBsrv927SdnJuoT5NS1qC"
+    },
+    {
+      "context": "Vercel – mero-chess",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-chess/DPzFgu8jV4wwmGNYrqMRrd1oxn6g"
+    },
+    {
+      "context": "Vercel – mero-calendar",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-calendar/HH4Gwybpk66Yu9jHeit7n8YKtGBe"
+    },
+    {
+      "context": "Vercel – mero-kv-store",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-kv-store/DHpXNRG9FUVVT7R8UxYSog2XFo9d"
+    },
+    {
+      "context": "Vercel – hyperfeed",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/hyperfeed/9c69ERe4zGqMKnBNVyxiNQRY8rxK"
+    },
+    {
+      "context": "Vercel – scaffolding-e2e-application",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/scaffolding-e2e-application/Bz7s1QNG8TTNVSawF6Zm7BMe6hwF"
+    },
+    {
+      "context": "Vercel – mero-vote",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-vote/J7P1WETPT34V1JLvgLQWqc4UmnVJ"
+    },
+    {
+      "context": "Vercel – mero-design",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-design/AP9fbbdifne53tZgHg8gCkiwrZ4g"
+    },
+    {
+      "context": "Vercel – mero-issue-tracker-app",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-issue-tracker-app/5pkWMcSpGCuWuwyxnZNAZFWhb1Zr"
+    },
+    {
+      "context": "Vercel – mero-stream-neon",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-stream-neon/F1nfjqn6mP1fQcsviXozsu45xaND"
+    },
+    {
+      "context": "Vercel – mero-chat-pwa",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-chat-pwa/BcLWQxfgpDUCAtbpWkWJXepp7YVb"
+    },
+    {
+      "context": "Vercel – mero-pixart",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-pixart/4MgvfzMWxpkMYcitsqFMq9gv6kdd"
+    },
+    {
+      "context": "Vercel – mero-docs",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-docs/8QnSKEnKmUicqpwz1nsgtm2zbwUG"
+    },
+    {
+      "context": "Vercel – mero-sign",
+      "state": "success",
+      "description": "Deployment has completed",
+      "target_url": "https://vercel.com/calimero-network/mero-sign/FnZSmGpyou5DdoHzgrAtgzE1s8HV"
+    }
+  ]
+}

@@ -1,9 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { ChatView, UNANSWERED_MS } from "./ChatView";
 import { DemoBackend } from "./demo";
 import { useFeed } from "./useFeed";
+import { clearGithubCache } from "./github";
+import { REFRESH_RUNNING_MS } from "./RefCards";
+import merged435 from "./fixtures/github/pull-435-merged.json";
+import headsSessionGrant from "./fixtures/github/pulls-head-session-grant.json";
+import {
+  fakeGitHub,
+  greenRuns,
+  jobs,
+  openPr,
+  openStacked,
+  pendingRuns,
+  prRoutes,
+  PR_URL,
+  rateLimited,
+  redRuns,
+  run,
+  RUN_URL,
+} from "./test/github";
 
 function Harness({ backend, start = "", clock }: { backend: DemoBackend; start?: string; clock?: () => number }) {
   const [nudge, setNudge] = useState(0);
@@ -24,6 +42,15 @@ async function say(text: string) {
 }
 
 describe("chat with your agent", () => {
+  // No test reaches the real GitHub: links to it find nothing unless a test says otherwise.
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fakeGitHub([]));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearGithubCache();
+  });
+
   it("starts a chat, keeps it going, and shows your agent's answers", async () => {
     const backend = new DemoBackend(false, 0);
     render(<Harness backend={backend} />);
@@ -349,6 +376,123 @@ describe("chat with your agent", () => {
       render(<Harness backend={backend} />);
       await say("Plain words with a 2 * 3 = 6 sum");
       expect(await within(thread()).findByText("Plain words with a 2 * 3 = 6 sum", { selector: ".bubble p" })).toBeInTheDocument();
+    });
+  });
+
+  describe("cards for the PRs and CI runs a message links to", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+      clearGithubCache();
+    });
+
+    async function agentLinks(text: string, routes: Parameters<typeof fakeGitHub>[0]) {
+      const github = fakeGitHub(routes);
+      vi.stubGlobal("fetch", github);
+      const backend = new DemoBackend(false, 0);
+      const q = await backend.say("", "status?");
+      backend.agentSay(q.chain, q.id, text);
+      render(<Harness backend={backend} start={q.chain} />);
+      return { backend, chain: q.chain, github };
+    }
+    const card = () => screen.findByRole("group", { name: "Pull request calimero-network/apps#435" });
+
+    it("shows a PR's title, repo, base, checks and state, and Merge asks your agent in the chat", async () => {
+      const { backend, chain, github } = await agentLinks(`Opened ${PR_URL}, all green.`, prRoutes(openPr(), greenRuns()));
+      const pr = await card();
+      expect(within(pr).getByRole("link", { name: /a failure no retry can fix offers Archive/ })).toHaveAttribute("href", PR_URL);
+      expect(pr).toHaveTextContent("calimero-network/apps#435");
+      expect(pr).toHaveTextContent("into main");
+      expect(within(pr).getByText("Open")).toBeInTheDocument();
+      expect(within(pr).getByText("Checks passed (34)")).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(within(pr).getByRole("button", { name: "Merge" }));
+      });
+      // A request to your agent, in this chat; nothing sent to GitHub but reads.
+      const sent = await backend.chain(chain);
+      expect(sent[sent.length - 1]).toMatchObject({ from: "you", body: `merge PR ${PR_URL}` });
+      expect(github.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
+    });
+
+    it("offers Merge when green while checks run, and sends that request", async () => {
+      const { backend, chain } = await agentLinks(`CI is running on ${PR_URL}`, prRoutes(openPr(), pendingRuns()));
+      const pr = await card();
+      expect(within(pr).getByText("Checks running: 2 of 34 left")).toBeInTheDocument();
+      expect(within(pr).queryByRole("button", { name: "Merge" })).not.toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(within(pr).getByRole("button", { name: "Merge when green" }));
+      });
+      const sent = await backend.chain(chain);
+      expect(sent[sent.length - 1]).toMatchObject({ body: `merge PR ${PR_URL} when green` });
+    });
+
+    it("names the failing job and won't merge on red", async () => {
+      await agentLinks(`E2E broke on ${PR_URL}`, prRoutes(openPr(), redRuns()));
+      const pr = await card();
+      expect(within(pr).getAllByText("Checks failed: App metadata, E2E (hyperfeed / feed)").length).toBeGreaterThan(0);
+      expect(within(pr).getByRole("button", { name: "Merge" })).toBeDisabled();
+    });
+
+    it("says to retarget a PR whose base PR merged, instead of merging into the dead branch", async () => {
+      const url = "https://github.com/calimero-network/apps/pull/433";
+      const { backend, chain } = await agentLinks(`Stacked: ${url}`, prRoutes(openStacked(), greenRuns(), undefined, headsSessionGrant));
+      const pr = await screen.findByRole("group", { name: "Pull request calimero-network/apps#433" });
+      expect(pr).toHaveTextContent("into fix/hyperfeed-session-grant");
+      expect(within(pr).queryByRole("button", { name: /^Merge/ })).not.toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(within(pr).getByRole("button", { name: "Base merged: retarget to main" }));
+      });
+      const sent = await backend.chain(chain);
+      expect(sent[sent.length - 1]).toMatchObject({ body: `retarget PR ${url} to main` });
+    });
+
+    it("shows a merged PR as merged, with nothing to do", async () => {
+      await agentLinks(`Merged ${PR_URL}`, prRoutes(merged435, greenRuns()));
+      const pr = await card();
+      expect(within(pr).getByText("Merged")).toBeInTheDocument();
+      expect(within(pr).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("falls back to the plain link when GitHub's rate limit is used up, or the repo is private", async () => {
+      const secret = "https://github.com/calimero-network/secret/pull/1";
+      const { github } = await agentLinks(`See ${PR_URL} and ${secret}`, [
+        [/\/apps\//, rateLimited(Math.floor(Date.now() / 1000) + 600)],
+      ]);
+      // Both were asked for, and neither answered: the links in the message stand alone.
+      await waitFor(() => expect(github.mock.calls.length).toBeGreaterThanOrEqual(2));
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      expect(within(thread()).getByRole("link", { name: PR_URL })).toHaveAttribute("target", "_blank");
+      expect(within(thread()).getByRole("link", { name: secret })).toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: /Pull request/ })).not.toBeInTheDocument();
+    });
+
+    it("reads an open PR again while it is on screen", async () => {
+      // Fake timers that still move on their own, so the waits below work.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+      const routes = prRoutes(openPr(), pendingRuns());
+      await agentLinks(`Watching ${PR_URL}`, routes);
+      expect(await within(await card()).findByText("Checks running: 2 of 34 left")).toBeInTheDocument();
+      // CI finishes: the next read finds it green.
+      routes[1]![1] = greenRuns();
+      await act(async () => {
+        vi.advanceTimersByTime(REFRESH_RUNNING_MS);
+      });
+      expect(await within(await card()).findByText("Checks passed (34)")).toBeInTheDocument();
+      expect(within(await card()).getByRole("button", { name: "Merge" })).toBeEnabled();
+    });
+
+    it("shows a CI run's result and the jobs that failed", async () => {
+      await agentLinks(`CI failed: ${RUN_URL}`, [
+        [/\/jobs/, jobs()],
+        [/\/actions\/runs\/38114772344$/, run()],
+      ]);
+      const ci = await screen.findByRole("group", { name: "Actions run calimero-network/apps run 38114772344" });
+      expect(ci).toHaveTextContent("CI: feat(hyperfeed): live Working… block, streamed answer, and Stop in chat");
+      expect(ci).toHaveTextContent("on feat/hyperfeed-live-work");
+      expect(within(ci).getByText("Failed: App metadata, E2E (hyperfeed / feed)")).toBeInTheDocument();
     });
   });
 

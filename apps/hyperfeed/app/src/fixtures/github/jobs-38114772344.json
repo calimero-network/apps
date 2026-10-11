@@ -1,0 +1,65 @@
+{
+  "total_count": 10,
+  "jobs": [
+    {
+      "name": "Detect changes",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397372907"
+    },
+    {
+      "name": "Frontend (typecheck, test, build)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397410591"
+    },
+    {
+      "name": "App metadata",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397410599"
+    },
+    {
+      "name": "Build WASM (hyperfeed)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397410632"
+    },
+    {
+      "name": "Rust (fmt, clippy, test)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397410634"
+    },
+    {
+      "name": "Conformance",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397411589"
+    },
+    {
+      "name": "E2E (hyperfeed / feed)",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397625613"
+    },
+    {
+      "name": "Browser E2E (hyperfeed)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397625724"
+    },
+    {
+      "name": "Journey (${{ matrix.app }} on ${{ matrix.leg }} ${{ matrix.merod }})",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397626176"
+    },
+    {
+      "name": "Browser E2E rich (mero-docs)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344/job/114397626585"
+    }
+  ]
+}

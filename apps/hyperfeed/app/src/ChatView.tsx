@@ -5,6 +5,7 @@ import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore 
 import { NewFeedButton, type NewFeed } from "./FeedView";
 import { laneOf, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
+import { RefCards } from "./RefCards";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 
@@ -285,6 +286,8 @@ function Thread({
               {m.status === "asked" && m.ask.kind === "reply" && (
                 <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
               )}
+              {/* PRs and CI runs it links to, as cards; Merge asks your agent in this chat. */}
+              {m.body && <RefCards text={m.body} busy={busy} onSend={onAnswer} />}
               <span className="bubble-time">{timeLabel(m.at)}</span>
             </div>
             <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />

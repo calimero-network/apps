@@ -1,0 +1,10 @@
+{
+  "id": 38114772344,
+  "name": "CI",
+  "display_title": "feat(hyperfeed): live Working… block, streamed answer, and Stop in chat",
+  "head_branch": "feat/hyperfeed-live-work",
+  "status": "completed",
+  "conclusion": "failure",
+  "html_url": "https://github.com/calimero-network/apps/actions/runs/38114772344",
+  "run_number": 1361
+}
