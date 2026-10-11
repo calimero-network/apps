@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
-import { setContextId, useCreateContext, useCreateNamespace } from "@calimero-network/mero-react";
+import { setContextId, useCreateContext, useCreateNamespace, useMero } from "@calimero-network/mero-react";
+import { nameProblem, readFeedNames, suggestName, type FeedName, type NamesAdmin } from "./feeds";
 
 /** rc.25 renamed `groupId` → `namespaceId`; read both. */
 function namespaceIdOf(ns: unknown): string | undefined {
@@ -37,33 +38,49 @@ export function useOpenFeed(sessionFeed: string | null): string | null {
  * Make a feed with the Hyperfeed installed now, in a namespace of its own, and
  * open it. Also how a feed made by an earlier Hyperfeed is replaced: an old
  * feed keeps the code it was created with.
+ *
+ * The name goes on the namespace and the context both, so admin tools show
+ * it too. Without one, the feed gets the first free of "My feed", "My feed 2"…
  */
 export function useNewFeed(applicationId: string | null) {
   const { createNamespace } = useCreateNamespace();
   const { createContext } = useCreateContext();
+  const { admin } = useMero();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  async function create() {
-    if (!applicationId) return;
+  /** True once the feed is made and open. */
+  async function create(name?: string): Promise<boolean> {
+    if (!applicationId) return false;
     setBusy(true);
     setFailed(null);
     try {
-      const ns = await createNamespace({ applicationId });
+      const given = name?.trim() || (await defaultName(admin as unknown as NamesAdmin | null, applicationId));
+      const problem = nameProblem(given);
+      if (problem) throw new Error(problem);
+      const ns = await createNamespace({ applicationId, name: given });
       const namespaceId = namespaceIdOf(ns);
       if (!namespaceId) throw new Error("namespace created but no id came back");
       // `init` takes no arguments.
       const init = Array.from(new TextEncoder().encode("{}"));
-      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: init });
+      const ctx = await createContext({ applicationId, groupId: namespaceId, initializationParams: init, name: given });
       const id = (ctx as { contextId?: string } | null)?.contextId;
       if (!id) throw new Error("context created but no contextId came back");
       openFeed(id);
+      return true;
     } catch (e) {
       setFailed(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   return { create, busy, failed, ready: Boolean(applicationId) };
+}
+
+/** The name a feed made without one gets: the first free of "My feed", "My feed 2"… */
+async function defaultName(admin: NamesAdmin | null, applicationId: string): Promise<string> {
+  const names = admin ? await readFeedNames(admin, applicationId).catch((): Record<string, FeedName> => ({})) : {};
+  return suggestName(Object.values(names).map((n) => n.name));
 }

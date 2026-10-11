@@ -38,7 +38,7 @@ const LANES: { id: Lane; label: string; empty: string }[] = [
 
 /** Making a feed with the Hyperfeed installed now: only on a node. */
 export interface NewFeed {
-  create: () => Promise<void>;
+  create: () => Promise<unknown>;
   busy: boolean;
   failed: string | null;
 }

@@ -1,9 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
-import { short } from "./format";
 import { openFeed, useNewFeed } from "./newFeed";
 import { HyperfeedClient } from "./generated/HyperfeedClient";
-import { confirmText, deleteFeed, factsLine, isEmpty, orderFeeds, type FeedAdmin, type FeedFacts } from "./feeds";
+import {
+  confirmText,
+  deleteFeed,
+  factsLine,
+  feedLabel,
+  hint,
+  isEmpty,
+  NAME_MAX,
+  nameProblem,
+  orderFeeds,
+  readFeedNames,
+  renameFeed,
+  suggestName,
+  type FeedAdmin,
+  type FeedFacts,
+  type FeedName,
+  type NamesAdmin,
+} from "./feeds";
 
 /** Your feeds on this node: only this Hyperfeed's, never another app's contexts. */
 function useFeeds(applicationId: string | null) {
@@ -38,6 +54,98 @@ function useFeedFacts(ids: string[], open: boolean) {
   return facts;
 }
 
+/** Every feed's name: read once on mount, and again whenever `tick` moves. */
+function useFeedNames(applicationId: string | null, tick: unknown) {
+  const { admin } = useMero();
+  const [names, setNames] = useState<Record<string, FeedName> | null>(null);
+  const [again, setAgain] = useState(0);
+  useEffect(() => {
+    if (!admin || !applicationId) return;
+    let live = true;
+    readFeedNames(admin as unknown as NamesAdmin, applicationId).then(
+      (n) => live && setNames(n),
+      () => live && setNames((n) => n ?? {}),
+    );
+    return () => {
+      live = false;
+    };
+  }, [admin, applicationId, tick, again]);
+  const reread = useCallback(() => setAgain((a) => a + 1), []);
+  return { names, reread, admin };
+}
+
+/** A feed's name, then its short id as a hint; just the id while names are read. */
+function FeedTitle({ id, names }: { id: string; names: Record<string, FeedName> | null }) {
+  if (!names) return <span className="mono">{hint(id)}</span>;
+  return (
+    <>
+      <span className={`switcher-name ${names[id]?.name ? "" : "unnamed"}`}>{names[id]?.name || "Unnamed feed"}</span>
+      <span className="mono switcher-hint"> · {hint(id)}</span>
+    </>
+  );
+}
+
+/** A name to type, checked as you type: for a new feed, or a rename. */
+function NameForm({
+  label,
+  initial,
+  submit,
+  busyText,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  label: string;
+  initial: string;
+  submit: string;
+  busyText: string;
+  busy: boolean;
+  onSubmit: (name: string) => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState(initial);
+  const problem = nameProblem(name);
+  return (
+    <form
+      className="name-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!problem && !busy) onSubmit(name.trim());
+      }}
+    >
+      <label>
+        <span>{label}</span>
+        <input
+          type="text"
+          value={name}
+          maxLength={NAME_MAX}
+          required
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            // Escape cancels the name, not the whole menu.
+            if (e.key === "Escape" && onCancel) {
+              e.stopPropagation();
+              onCancel();
+            }
+          }}
+        />
+      </label>
+      {problem && name !== initial && <span className="name-problem">{problem}</span>}
+      <div className="row">
+        <button type="submit" className="primary small" disabled={Boolean(problem) || busy}>
+          {busy ? busyText : submit}
+        </button>
+        {onCancel && (
+          <button type="button" className="ghost small" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
 /**
  * Delete a feed you are not in, with its namespace. Mero-bot and the
  * collector stop on their own: they follow the contexts the node lists.
@@ -68,15 +176,43 @@ function useDeleteFeed(onDeleted: () => void) {
 /**
  * The open feed's name in the header, and every other feed one click away:
  * switching keeps you signed in and opens the feed in place. Each feed says
- * how much it holds, and any but the open one can be deleted, after a
- * confirm that names what goes.
+ * its name, with its short id as a hint, and how much it holds; any can be
+ * renamed, and any but the open one deleted, after a confirm that names
+ * what goes. A new feed is named as it is made.
  */
 export function FeedSwitcher({ applicationId, current }: { applicationId: string | null; current: string }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameFailed, setRenameFailed] = useState<string | null>(null);
   const { contexts, loading, refetch } = useFeeds(applicationId);
   const { create, busy, failed } = useNewFeed(applicationId);
+  const { names, reread, admin } = useFeedNames(applicationId, open);
   const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) return;
+    setNaming(false);
+    setRenaming(null);
+    setRenameFailed(null);
+  }, [open]);
+
+  const rename = async (id: string, name: string) => {
+    if (!admin) return;
+    setRenameBusy(true);
+    setRenameFailed(null);
+    try {
+      await renameFeed(admin as unknown as NamesAdmin, id, names?.[id]?.namespace ?? null, name);
+      setRenaming(null);
+      reread();
+    } catch (e) {
+      setRenameFailed(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -116,7 +252,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
         title="Switch feed"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="mono">{short(current)}</span>
+        <FeedTitle id={current} names={names} />
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -126,7 +262,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
           <div className="switcher-label">Your feeds{loading ? " · looking…" : ""}</div>
           {ids.map((id) =>
             confirming === id ? (
-              <div key={id} className="switcher-confirm" role="alertdialog" aria-label={`Delete feed ${short(id)}`}>
+              <div key={id} className="switcher-confirm" role="alertdialog" aria-label={`Delete feed ${feedLabel(names?.[id]?.name, id)}`}>
                 <p>{confirmText(facts[id])}</p>
                 <div className="row">
                   <button type="button" className="danger small" disabled={del.busy !== null} onClick={() => void del.remove(id)}>
@@ -136,6 +272,19 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
                     Cancel
                   </button>
                 </div>
+              </div>
+            ) : renaming === id ? (
+              <div key={id} className="switcher-rename" role="group" aria-label={`Rename feed ${feedLabel(names?.[id]?.name, id)}`}>
+                <NameForm
+                  label="Name"
+                  initial={names?.[id]?.name ?? ""}
+                  submit="Save"
+                  busyText="Saving…"
+                  busy={renameBusy}
+                  onSubmit={(name) => void rename(id, name)}
+                  onCancel={() => setRenaming(null)}
+                />
+                {renameFailed && <pre className="err">{renameFailed}</pre>}
               </div>
             ) : (
               <div key={id} className={`switcher-feed ${isEmpty(facts[id]) ? "empty" : ""}`}>
@@ -150,13 +299,32 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
                   }}
                 >
                   <span className="switcher-id">
-                    <span className="mono">{short(id)}</span>
+                    <span className="switcher-title">
+                      <FeedTitle id={id} names={names} />
+                    </span>
                     <span className="switcher-facts">{factsLine(facts[id])}</span>
                   </span>
                   {id === current && <span className="switcher-check">Open</span>}
                 </button>
+                {names && admin && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="switcher-delete switcher-rename-button"
+                    aria-label={`Rename feed ${feedLabel(names[id]?.name, id)}`}
+                    title="Rename this feed"
+                    onClick={() => {
+                      setRenameFailed(null);
+                      setRenaming(id);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
+                    </svg>
+                  </button>
+                )}
                 {id !== current && del.ready && (
-                  <button type="button" role="menuitem" className="switcher-delete" aria-label={`Delete feed ${short(id)}`} title="Delete this feed" onClick={() => setConfirming(id)}>
+                  <button type="button" role="menuitem" className="switcher-delete" aria-label={`Delete feed ${feedLabel(names?.[id]?.name, id)}`} title="Delete this feed" onClick={() => setConfirming(id)}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
                     </svg>
@@ -167,9 +335,29 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
           )}
           {del.failed && <pre className="err">{del.failed}</pre>}
           <hr />
-          <button type="button" role="menuitem" disabled={busy || !applicationId} onClick={() => void create()}>
-            {busy ? "Creating…" : "Create a new feed"}
-          </button>
+          {naming ? (
+            <div className="switcher-rename" role="group" aria-label="Name your new feed">
+              <NameForm
+                label="Name"
+                initial={suggestName(Object.values(names ?? {}).map((f) => f.name))}
+                submit="Create"
+                busyText="Creating…"
+                busy={busy}
+                onSubmit={(name) =>
+                  void create(name).then((made) => {
+                    if (!made) return;
+                    setNaming(false);
+                    reread();
+                  })
+                }
+                onCancel={() => setNaming(false)}
+              />
+            </div>
+          ) : (
+            <button type="button" role="menuitem" disabled={busy || !applicationId} onClick={() => setNaming(true)}>
+              Create a new feed
+            </button>
+          )}
           {failed && <pre className="err">{failed}</pre>}
         </div>
       )}
@@ -187,6 +375,7 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
 export function FeedPicker({ applicationId }: { applicationId: string | null }) {
   const { contexts, loading, error, refetch } = useFeeds(applicationId);
   const { create, busy, failed } = useNewFeed(applicationId);
+  const { names } = useFeedNames(applicationId, contexts.length);
 
   return (
     <section className="center-card">
@@ -208,19 +397,26 @@ export function FeedPicker({ applicationId }: { applicationId: string | null }) 
           {contexts.map((c) => (
             <li key={c.contextId}>
               <button type="button" className="ghost" onClick={() => openFeed(c.contextId)}>
-                Open feed <span className="mono">{short(c.contextId)}</span>
+                Open feed <FeedTitle id={c.contextId} names={names} />
               </button>
             </li>
           ))}
         </ul>
       )}
+      {/* Always offered: a feed made by an earlier Hyperfeed is replaced by a new one. */}
+      {!loading && applicationId && (
+        <NameForm
+          // Remade once names are read, so the suggestion skips a taken one.
+          key={names ? "named" : "reading"}
+          label="Feed name"
+          initial={suggestName(Object.values(names ?? {}).map((f) => f.name))}
+          submit={contexts.length === 0 ? "Create my feed" : "Create a new feed"}
+          busyText="Creating…"
+          busy={busy}
+          onSubmit={(name) => void create(name)}
+        />
+      )}
       <div className="row">
-        {/* Always offered: a feed made by an earlier Hyperfeed is replaced by a new one. */}
-        {!loading && applicationId && (
-          <button type="button" className={contexts.length === 0 ? "primary" : "ghost"} disabled={busy} onClick={() => void create()}>
-            {busy ? "Creating…" : contexts.length === 0 ? "Create my feed" : "Create a new feed"}
-          </button>
-        )}
         <button type="button" className="ghost" disabled={loading} onClick={() => void refetch()}>
           Refresh
         </button>
