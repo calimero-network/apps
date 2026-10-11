@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { agentDigest, digestLine, groupSentence, headlineOf, isNoise, line, teamGroups } from "./team";
+import { agentDigest, digestLine, digestSince, groupSentence, headlineOf, isNoise, line, teamGroups } from "./team";
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
 const appName = (k: string) => ({ issues: "Issues", chat: "Chat" })[k] ?? k;
@@ -170,6 +170,17 @@ describe("the team view's reading of the feed", () => {
     expect(d.items).toHaveLength(6);
     expect(digestLine(d)).toBe("Filed 1 issue, did 1 other thing, answered 1 message, 2 in progress, 1 failed, 1 waiting on you.");
     expect(digestLine(agentDigest([], NOW))).toBe("Nothing yet today.");
+  });
+
+  it("still counts the evening's work just after midnight", () => {
+    const halfPast = new Date(2026, 9, 11, 0, 30).getTime();
+    const lastNight = halfPast - 20 * 60_000;
+    const d = agentDigest([row({ kind: "action", status: "done", method: "send_message", at: lastNight, chain_at: lastNight })], halfPast);
+    expect(digestLine(d)).toBe("Did 1 thing.");
+    // Later in the day, today starts at midnight.
+    const afternoon = new Date(2026, 9, 11, 15, 0).getTime();
+    expect(digestSince(afternoon)).toBe(new Date(2026, 9, 11).getTime());
+    expect(digestSince(halfPast)).toBe(halfPast - 12 * 60 * 60 * 1000);
   });
 
   it("says what kind of work your agent did, and what waits on you from any day", () => {
