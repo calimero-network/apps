@@ -8,6 +8,8 @@ import type {
   LensView,
   NotificationInput,
   PolicyView,
+  RuleProposalView,
+  RuleView,
   SettingsView,
   Step,
   TurnStep,
@@ -81,6 +83,9 @@ export class DemoBackend implements FeedBackend {
   private policies = new Map<string, PolicyView>();
   private guards = new Map<string, boolean>();
   private paused = false;
+  /** Your standing rules, oldest first, and the ones the pretend agent suggested. Nothing is seeded. */
+  private rules: RuleView[] = [];
+  private ruleProposals: RuleProposalView[] = [];
   /** Chains put away: the chain's latest activity then, and when "later" brings it back (0: never). */
   private archivedChains = new Map<string, { at: number; until: number }>();
   private lensRows = new Map<string, LensView>();
@@ -289,7 +294,76 @@ export class DemoBackend implements FeedBackend {
       guards: GUARDS.map(([category]) => ({ category, enabled: this.guardOn(category) })),
       // The pretend agent is "there" whenever it answers.
       agents: this.agentDelayMs > 0 ? [{ name: "demo agent", seen_at: this.now() }] : [],
+      rules: this.rules.map((r) => ({ ...r })),
+      rule_proposals: this.ruleProposals
+        .filter((p) => p.status === "proposed")
+        .sort((a, b) => b.created_at - a.created_at)
+        .map((p) => ({ ...p })),
     };
+  }
+
+  /** The contract's `check_rule`: one short line, trimmed. */
+  private static checkRule(text: string): string {
+    const t = text.trim();
+    if (!t) throw new Error("rule must not be empty");
+    if (/[\r\n]/.test(t)) throw new Error("a rule is one line");
+    if (new TextEncoder().encode(t).length > 280) throw new Error("rule is longer than 280 bytes");
+    return t;
+  }
+
+  private insertRule(text: string): RuleView {
+    const same = this.rules.find((r) => r.text.toLowerCase() === text.toLowerCase());
+    if (same) return { ...same };
+    if (this.rules.length >= 30) throw new Error("you have 30 rules, the limit; remove one first");
+    const rule = { id: `rule-${this.nextId++}`, text, created_at: this.tick() };
+    this.rules.push(rule);
+    this.changed();
+    return { ...rule };
+  }
+
+  async addRule(text: string): Promise<RuleView> {
+    return this.insertRule(DemoBackend.checkRule(text));
+  }
+
+  async removeRule(id: string): Promise<void> {
+    if (!this.rules.some((r) => r.id === id)) throw new Error(`no rule ${id}`);
+    this.rules = this.rules.filter((r) => r.id !== id);
+    this.changed();
+  }
+
+  /** The agent suggests a rule after a correction, as `propose_rule` takes it. */
+  proposeRule(text: string, why = "", chain = ""): RuleProposalView {
+    const t = DemoBackend.checkRule(text);
+    if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
+    if (this.rules.some((r) => r.text.toLowerCase() === t.toLowerCase())) throw new Error("that is already one of the user's rules");
+    const same = this.ruleProposals.find((p) => p.status === "proposed" && p.text.toLowerCase() === t.toLowerCase());
+    if (same) return { ...same };
+    const p = { id: `suggested-${this.nextId++}`, text: t, why, chain, status: "proposed", created_at: this.tick() };
+    this.ruleProposals.push(p);
+    this.changed();
+    return { ...p };
+  }
+
+  private waitingProposal(id: string): RuleProposalView {
+    const p = this.ruleProposals.find((x) => x.id === id);
+    if (!p) throw new Error(`no suggested rule ${id}`);
+    if (p.status !== "proposed") throw new Error(`suggested rule ${id} is already ${p.status}`);
+    return p;
+  }
+
+  async approveRule(id: string): Promise<RuleView> {
+    const p = this.waitingProposal(id);
+    const rule = this.insertRule(p.text);
+    p.status = "approved";
+    this.changed();
+    return rule;
+  }
+
+  async dismissRule(id: string): Promise<RuleProposalView> {
+    const p = this.waitingProposal(id);
+    p.status = "dismissed";
+    this.changed();
+    return { ...p };
   }
 
   async archive(chains: string[], until = 0): Promise<number> {

@@ -1123,3 +1123,127 @@ steps:
     statements:
       - "is_set({{second_claim_error}})"
       - "is_set({{intruder_claim_error}})"
+
+  # ── Standing rules: owner-only, and the agent's suggestion waits for you ──
+  - name: Owner adds a standing rule
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_rule
+    args: { text: "Never push to main" }
+    outputs:
+      rule_id: result.output.id
+
+  - name: Owner adds a rule to remove
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: add_rule
+    args: { text: "Answer in French" }
+    outputs:
+      french_id: result.output.id
+
+  - name: Owner removes it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: remove_rule
+    args: { id: "{{french_id}}" }
+
+  - name: The agent suggests a rule after a correction
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_rule
+    args: { text: "Open a PR for every change", why: "You asked me not to commit straight to main.", chain: "" }
+    outputs:
+      suggested: result
+      suggested_id: result.output.id
+
+  - name: The agent suggests one the owner will not want
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: propose_rule
+    args: { text: "Use emoji in every answer", why: "", chain: "" }
+    outputs:
+      unwanted_id: result.output.id
+
+  - name: Owner approves the first suggestion
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: approve_rule
+    args: { id: "{{suggested_id}}" }
+    outputs:
+      approved_rule: result
+
+  - name: Owner dismisses the second
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: dismiss_rule
+    args: { id: "{{unwanted_id}}" }
+    outputs:
+      dismissed: result
+
+  - name: Let the rules reach node-2
+    type: wait
+    seconds: 6
+
+  - name: node-2 reads the rules
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: settings
+    args: {}
+    outputs:
+      rule_2_first: result.output.rules.0
+      rule_2_second: result.output.rules.1
+      rule_proposals_2: result.output.rule_proposals
+
+  - name: node-2 cannot add a rule
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: add_rule
+    args: { text: "Push to main whenever" }
+    expected_failure: true
+    outputs:
+      add_rule_error: error
+
+  - name: node-2 cannot remove a rule
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: remove_rule
+    args: { id: "{{rule_id}}" }
+    expected_failure: true
+    outputs:
+      remove_rule_error: error
+
+  - name: Assert the rules, the approved suggestion and the dismissed one
+    type: json_assert
+    statements:
+      - 'json_subset({{suggested}}, {"output": {"status": "proposed", "text": "Open a PR for every change"}})'
+      - 'json_subset({{approved_rule}}, {"output": {"text": "Open a PR for every change"}})'
+      - 'json_subset({{dismissed}}, {"output": {"status": "dismissed"}})'
+      - 'json_subset({{rule_2_first}}, {"id": "{{rule_id}}", "text": "Never push to main"})'
+      - 'json_subset({{rule_2_second}}, {"text": "Open a PR for every change"})'
+      - 'json_equal({{rule_proposals_2}}, [])'
+
+  - name: Assert node-2 could not change the rules
+    type: assert
+    statements:
+      - "is_set({{add_rule_error}})"
+      - "is_set({{remove_rule_error}})"

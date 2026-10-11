@@ -2977,3 +2977,50 @@ body {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ── standing rules ──────────────────────────────────────────────────────── */
+
+.rules,
+.rule-suggestions {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rule-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--wait-ink);
+  border-radius: 8px;
+}
+
+.rule-suggestion-head {
+  font-size: 12px;
+  color: var(--wait-ink);
+}
+
+.rule-add {
+  display: flex;
+  gap: 6px;
+}
+
+.rule-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-rules {
+  margin: 0 12px 8px;
+}

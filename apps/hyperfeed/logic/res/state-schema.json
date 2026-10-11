@@ -602,6 +602,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Which agent session works on each chain, by chain id."
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Rule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your standing rules, by id."
+        },
+        {
+          "name": "rule_proposals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleProposal"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Rules your agent suggested, by id."
         }
       ]
     },
@@ -899,6 +927,81 @@
         },
         {
           "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Rule": {
+      "kind": "record",
+      "doc": "One of your standing rules: a short line your agent keeps to on every\nturn (\"Never push to main\", \"Answer in English\"). Only you add or remove\none; removing keeps the row with `removed`, so the latest decision wins on\nevery device.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleProposal": {
+      "kind": "record",
+      "doc": "A rule your agent suggested after you corrected it. It changes nothing\nuntil you approve it, which adds it as your own rule.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why your agent suggests it: the correction that led to it."
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain where you corrected it, or `\"\"`."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`]."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
           "type": {
             "kind": "u64"
           }

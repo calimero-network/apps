@@ -176,6 +176,25 @@ describe("chat with your agent", () => {
     await waitFor(() => expect(screen.queryByLabelText("Working on this chat")).not.toBeInTheDocument());
   });
 
+  it("offers a rule your agent suggested in this chat with one-tap Approve", async () => {
+    const backend = new DemoBackend(false, 0);
+    const q = await backend.say("", "Push the fix to main");
+    backend.agentSay(q.chain, q.id, "Pushed.");
+    const other = await backend.say("", "Something else");
+    backend.proposeRule("Open a PR instead of pushing to main", "You said not to push to main.", q.chain);
+    const { unmount } = render(<Harness backend={backend} start={other.chain} />);
+    await within(await screen.findByRole("log")).findByText("Something else");
+    expect(screen.queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument();
+    unmount();
+    render(<Harness backend={backend} start={q.chain} />);
+    const suggestion = await screen.findByRole("listitem", { name: "Suggested rule: Open a PR instead of pushing to main" });
+    await act(async () => {
+      fireEvent.click(within(suggestion).getByRole("button", { name: "Approve" }));
+    });
+    expect((await backend.settings()).rules.map((r) => r.text)).toEqual(["Open a PR instead of pushing to main"]);
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument());
+  });
+
   it("shows your agent's latest step while it works, not a log", async () => {
     let now = Date.now();
     const backend = new DemoBackend(false, 0, () => now);

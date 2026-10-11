@@ -488,6 +488,14 @@ export interface Hyperfeed {
    * Which agent session works on each chain, by chain id.
    */
   leases: Record<string, Lease>;
+  /**
+   * Your standing rules, by id.
+   */
+  rules: Record<string, Rule>;
+  /**
+   * Rules your agent suggested, by id.
+   */
+  rule_proposals: Record<string, RuleProposal>;
 }
 
 /**
@@ -688,6 +696,62 @@ export interface Progress {
   at: number;
 }
 
+/**
+ * One of your standing rules: a short line your agent keeps to on every
+ * turn ("Never push to main", "Answer in English"). Only you add or remove
+ * one; removing keeps the row with `removed`, so the latest decision wins on
+ * every device.
+ */
+export interface Rule {
+  text: string;
+  created_at: number;
+  removed: boolean;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested after you corrected it. It changes nothing
+ * until you approve it, which adds it as your own rule.
+ */
+export interface RuleProposal {
+  text: string;
+  /**
+   * Why your agent suggests it: the correction that led to it.
+   */
+  why: string;
+  /**
+   * The chain where you corrected it, or `""`.
+   */
+  chain: string;
+  /**
+   * [`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`].
+   */
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+/**
+ * A rule your agent suggested, as settings shows it.
+ */
+export interface RuleProposalView {
+  id: string;
+  text: string;
+  why: string;
+  chain: string;
+  status: string;
+  created_at: number;
+}
+
+/**
+ * One of your standing rules, as settings shows it.
+ */
+export interface RuleView {
+  id: string;
+  text: string;
+  created_at: number;
+}
+
 export interface SettingsView {
   owner: string;
   paused: boolean;
@@ -697,6 +761,14 @@ export interface SettingsView {
    * Every agent that has reported in, most recent first.
    */
   agents: AgentView[];
+  /**
+   * Your standing rules, oldest first: your agent keeps to each on every turn.
+   */
+  rules: RuleView[];
+  /**
+   * Rules your agent suggested that wait for you, newest first.
+   */
+  rule_proposals: RuleProposalView[];
 }
 
 /**
@@ -877,6 +949,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * add_rule
+   *
+   * Add a standing rule: one short line your agent keeps to on every turn.
+   * Only you add rules; the same rule twice is kept once.
+   *
+   * @intent mutating
+   */
+  public async addRule(params: { text: string }): Promise<RuleView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'add_rule', argsJson: params });
+    return response as RuleView;
+  }
+
+  /**
    * agent_ack
    *
    * The agent takes up one of your messages (`thinking`), or gives up on it
@@ -1008,6 +1093,19 @@ export class HyperfeedClient {
   }
 
   /**
+   * approve_rule
+   *
+   * Approve a rule your agent suggested: it becomes one of your rules,
+   * added by you.
+   *
+   * @intent mutating
+   */
+  public async approveRule(params: { id: string }): Promise<RuleView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'approve_rule', argsJson: params });
+    return response as RuleView;
+  }
+
+  /**
    * archive
    *
    * Pause the agent: every write it wants to make becomes a proposal.
@@ -1113,6 +1211,18 @@ export class HyperfeedClient {
   public async decideLens(params: { app_key: string; application_id: string; decision: string }): Promise<LensView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'decide_lens', argsJson: params });
     return response as LensView;
+  }
+
+  /**
+   * dismiss_rule
+   *
+   * Turn down a rule your agent suggested.
+   *
+   * @intent mutating
+   */
+  public async dismissRule(params: { id: string }): Promise<RuleProposalView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'dismiss_rule', argsJson: params });
+    return response as RuleProposalView;
   }
 
   /**
@@ -1229,6 +1339,22 @@ export class HyperfeedClient {
   }
 
   /**
+   * propose_rule
+   *
+   * Your agent suggests a standing rule after you corrected it: `text` is
+   * the rule, `why` the correction, `chain` where it happened. It waits
+   * for you in Controls and in the chat; nothing changes until you approve
+   * it. A rule you already have, or one already waiting, is not suggested
+   * twice.
+   *
+   * @intent mutating
+   */
+  public async proposeRule(params: { text: string; why: string; chain: string }): Promise<RuleProposalView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'propose_rule', argsJson: params });
+    return response as RuleProposalView;
+  }
+
+  /**
    * record_action
    *
    * Record an action: a proposal for you to approve, or an outcome.
@@ -1274,6 +1400,18 @@ export class HyperfeedClient {
   public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
     return response as boolean;
+  }
+
+  /**
+   * remove_rule
+   *
+   * Remove one of your standing rules.
+   *
+   * @intent mutating
+   */
+  public async removeRule(params: { id: string }): Promise<void> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'remove_rule', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -1370,8 +1508,9 @@ export class HyperfeedClient {
   /**
    * settings
    *
-   * Your rules: the pause switch, every app you set a policy for, and
-   * every guard (defaults included).
+   * Your rules: the pause switch, every app you set a policy for, every
+   * guard (defaults included), your standing rules, and the rules your
+   * agent suggested that wait for you.
    *
    * @intent read_only
    */

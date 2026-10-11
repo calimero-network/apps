@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { AgentMode, NotificationMode } from "./backend";
 import type { Feed } from "./useFeed";
 import { Badge, NewFeedButton, type NewFeed } from "./FeedView";
 import { DEFAULT_APPS, appLook } from "./apps";
 import { GUARD_LABELS, TYPE_LABELS } from "./format";
-import type { LensView } from "./generated/HyperfeedClient";
+import type { LensView, RuleProposalView } from "./generated/HyperfeedClient";
 import type { Preview, PreviewRow } from "./preview";
 
 const AGENT_OPTIONS: { id: AgentMode; label: string }[] = [
@@ -148,6 +148,8 @@ export function ControlsView({
           </button>
         </section>
 
+        <StandingRules feed={feed} />
+
         <section className="panel" aria-labelledby="h-guards">
           <h2 id="h-guards">Always ask me before</h2>
           <p className="muted">These override "Act" in every app.</p>
@@ -211,6 +213,91 @@ export function ControlsView({
       </section>
 
     </div>
+  );
+}
+
+/**
+ * Your standing rules: short lines your agent keeps to on every turn. Only you
+ * add or remove them. One your agent suggests after you corrected it waits
+ * here with one-tap Approve, which adds it as yours.
+ */
+function StandingRules({ feed }: { feed: Feed }) {
+  const id = useId();
+  const [text, setText] = useState("");
+  const rules = feed.settings?.rules ?? [];
+  const suggested = feed.settings?.rule_proposals ?? [];
+  const add = async () => {
+    const t = text.trim();
+    if (!t) return;
+    await feed.addRule(t);
+    setText("");
+  };
+  return (
+    <section className="panel" aria-labelledby="h-rules">
+      <h2 id="h-rules">Standing rules</h2>
+      <p className="muted">Short lines your agent keeps to on every turn. Only you can change them.</p>
+      {suggested.length > 0 && (
+        <ul className="rule-suggestions" aria-label="Rules your agent suggests">
+          {suggested.map((p) => (
+            <RuleSuggestion key={p.id} proposal={p} feed={feed} />
+          ))}
+        </ul>
+      )}
+      {rules.length === 0 ? (
+        <p className="muted">No rules yet. Add one your agent should always keep to, like "Never push to main".</p>
+      ) : (
+        <ul className="rules" aria-label="Your standing rules">
+          {rules.map((r) => (
+            <li key={r.id} className="rule">
+              <span>{r.text}</span>
+              <button type="button" className="ghost small" disabled={feed.busy} aria-label={`Remove "${r.text}"`} onClick={() => void feed.removeRule(r.id)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="rule-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void add();
+        }}
+      >
+        <label htmlFor={`${id}-rule`} className="sr-only">
+          New rule
+        </label>
+        <input
+          id={`${id}-rule`}
+          value={text}
+          maxLength={280}
+          placeholder="Add a rule…"
+          onChange={(e) => setText(e.target.value)}
+        />
+        <button type="submit" className="primary small" disabled={feed.busy || !text.trim()}>
+          Add
+        </button>
+      </form>
+    </section>
+  );
+}
+
+/** A rule your agent suggested: one tap adds it as your own, or dismisses it. */
+export function RuleSuggestion({ proposal, feed }: { proposal: RuleProposalView; feed: Feed }) {
+  return (
+    <li className="rule-suggestion" aria-label={`Suggested rule: ${proposal.text}`}>
+      <span className="rule-suggestion-head">Your agent suggests a rule</span>
+      <strong>{proposal.text}</strong>
+      {proposal.why && <span className="muted small-text">{proposal.why}</span>}
+      <div className="actions">
+        <button type="button" className="primary small" disabled={feed.busy} onClick={() => void feed.approveRule(proposal.id)}>
+          Approve
+        </button>
+        <button type="button" className="ghost small" disabled={feed.busy} onClick={() => void feed.dismissRule(proposal.id)}>
+          Dismiss
+        </button>
+      </div>
+    </li>
   );
 }
 

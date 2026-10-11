@@ -54,6 +54,11 @@ export interface Feed {
   setPolicy: (appKey: string, agent: AgentMode, notifications: NotificationMode) => Promise<void>;
   setGuard: (category: string, enabled: boolean) => Promise<void>;
   setPaused: (paused: boolean) => Promise<void>;
+  /** Your standing rules: add one, remove one, or approve or dismiss one your agent suggested. */
+  addRule: (text: string) => Promise<void>;
+  removeRule: (id: string) => Promise<void>;
+  approveRule: (id: string) => Promise<void>;
+  dismissRule: (id: string) => Promise<void>;
   /** Put chains away (they come back when something new happens in them); undoable. False when the node refused it. */
   archive: (chains: string[], label?: string) => Promise<boolean>;
   /** Put a chain away until `until` (ms); undoable. */
@@ -207,6 +212,10 @@ export function useFeed(backend: FeedBackend | null, nudge: number): Feed {
     setPolicy: useCallback((k, agent, notifications) => run((b) => b.setPolicy(k, agent, notifications)), [run]),
     setGuard: useCallback((category, enabled) => run((b) => b.setGuard(category, enabled)), [run]),
     setPaused: useCallback((paused) => run((b) => b.setPaused(paused)), [run]),
+    addRule: useCallback((text) => run((b) => b.addRule(text)), [run]),
+    removeRule: useCallback((id) => run((b) => b.removeRule(id)), [run]),
+    approveRule: useCallback((id) => run((b) => b.approveRule(id)), [run]),
+    dismissRule: useCallback((id) => run((b) => b.dismissRule(id)), [run]),
     archive: useCallback(
       async (chains, label) => {
         let ok = false;

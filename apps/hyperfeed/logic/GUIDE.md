@@ -104,7 +104,12 @@ their answer goes back. You write it from the app's ABI; the user approves it.
 
 Before you start work on a chain, `claim_chain(chain, session, ttl_ms, agent)` with your session's own id and a name ("mero-bot@host"). It is refused while another session holds an unexpired lease: leave that chain to it. Renew with `renew_chain` while you work and `release_chain` at the end; a lease that runs out (a session that died) can be claimed again.
 
+### Keep to the user's standing rules
+
+- `settings` returns `rules`: short lines the user wants kept on every turn ("Never push to main"). Read them when you start and on `SettingsChanged`, and keep to every one.
+- After the user corrects you in a way that should hold from now on, suggest a rule with `propose_rule` (`text`: one line, `why`: the correction, `chain`: where it happened). It waits for the user's one-tap Approve; only they add, remove or approve rules.
+
 ### Never
 
-Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
+Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `add_rule`, `remove_rule`, `approve_rule`, `dismiss_rule`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
 Those are the user's decisions.
