@@ -259,12 +259,18 @@ test("you see when your agent is there, and archive what is done", async ({ page
   const done = page.getByRole("region", { name: "Done" });
   await done.getByRole("button", { name: "Archive all done" }).click();
   await expect(done.getByText("Nothing finished yet.")).toBeVisible();
-  const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
-    contextId,
-    method: "feed",
-    argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
-  });
-  expect(page1.counts.archived).toBeGreaterThan(0);
+  // The lane can read empty before the archive lands (your agent's rows are
+  // in its digest), so wait for the node rather than read it once.
+  await expect
+    .poll(async () => {
+      const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
+        contextId,
+        method: "feed",
+        argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+      });
+      return page1.counts.archived;
+    })
+    .toBeGreaterThan(0);
   await page.getByRole("button", { name: /^Archived · \d+/ }).click();
   await expect(page.getByRole("region", { name: "Archived" }).locator("li.row").first()).toBeVisible();
 });
@@ -319,11 +325,10 @@ test("you delete a feed you no longer use, with its namespace", async ({ page })
   await confirm.getByRole("button", { name: "Delete" }).click();
 
   await expect(page.getByRole("menuitemradio")).toHaveCount(before.length - 1, { timeout: 30_000 });
-  const after = (await node().admin.getContexts()).contexts.map((c) => c.id);
-  expect(after).not.toContain(other);
+  // The node can still list it for a moment after the switcher drops it.
+  await expect.poll(async () => (await node().admin.getContexts()).contexts.map((c) => c.id)).not.toContain(other);
   if (group) {
-    const namespaces = await node().admin.listNamespaces();
-    expect(JSON.stringify(namespaces)).not.toContain(group);
+    await expect.poll(async () => JSON.stringify(await node().admin.listNamespaces())).not.toContain(group);
   }
   // Still in the feed you had open.
   await expect(switcher).toHaveText(open!);
