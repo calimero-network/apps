@@ -781,7 +781,7 @@ fn keeping_a_breach_is_stamped() {
 // ── talking to your agent ───────────────────────────────────────────────────
 
 fn say(app: &mut TestHost<Hyperfeed>, chain: &str, text: &str) -> FeedItem {
-    app.call(|s| s.say(chain.to_owned(), text.to_owned()))
+    app.call(|s| s.say(chain.to_owned(), text.to_owned(), None))
         .expect("say")
 }
 
@@ -821,11 +821,11 @@ fn a_question_from_nowhere_starts_its_own_chain() {
 #[test]
 fn a_question_into_a_chain_that_does_not_exist_is_refused() {
     let mut app = TestHost::new(Hyperfeed::init);
-    let r = app.call(|s| s.say("nope".to_owned(), "hi".to_owned()));
+    let r = app.call(|s| s.say("nope".to_owned(), "hi".to_owned(), None));
     assert!(r.is_err());
-    let r = app.call(|s| s.say(String::new(), "  ".to_owned()));
+    let r = app.call(|s| s.say(String::new(), "  ".to_owned(), None));
     assert!(r.is_err(), "an empty message is refused");
-    let r = app.call(|s| s.say(String::new(), "x".repeat(MAX_MESSAGE + 1)));
+    let r = app.call(|s| s.say(String::new(), "x".repeat(MAX_MESSAGE + 1), None));
     assert!(r.is_err(), "an oversized message is refused");
 }
 
@@ -858,6 +858,7 @@ fn an_agent_question_needs_you_until_you_answer_it_in_the_chain() {
                 q.id.clone(),
                 "Posted. There are two hellos now: delete the duplicate?".to_owned(),
                 choose(&["Delete the duplicate", "Keep both"]),
+                None,
             )
         })
         .unwrap();
@@ -896,7 +897,7 @@ fn an_agent_question_is_a_reply_or_a_choice() {
     let mut app = TestHost::new(Hyperfeed::init);
     let q = say(&mut app, "", "hi");
     let ask_with = |app: &mut TestHost<Hyperfeed>, ask: Ask| {
-        app.call(|s| s.agent_ask(q.chain.clone(), String::new(), "?".to_owned(), ask))
+        app.call(|s| s.agent_ask(q.chain.clone(), String::new(), "?".to_owned(), ask, None))
     };
     assert!(
         ask_with(&mut app, Ask::default()).is_err(),
@@ -927,7 +928,7 @@ fn a_plain_answer_is_finished_work() {
     let mut app = TestHost::new(Hyperfeed::init);
     let q = say(&mut app, "", "What time is it in Tokyo?");
     let said = app
-        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "03:12.".to_owned()))
+        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "03:12.".to_owned(), None))
         .unwrap();
     assert_eq!(said.status, STATUS_SAID);
     assert!(!said.needs_you);
@@ -964,7 +965,7 @@ fn your_agent_shows_its_latest_step_while_it_works_without_adding_rows() {
     let open = app.view(|s| s.open_questions()).unwrap();
     assert_eq!(open[0].doing, "Running the tests");
 
-    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned()))
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned(), None))
         .unwrap();
     let answered = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
     assert_eq!(answered.doing, "", "an answered message shows no step");
@@ -985,6 +986,7 @@ fn a_message_carries_its_images_wherever_it_is_read() {
                 String::new(),
                 "What is this error?".to_owned(),
                 vec![image(&"ab".repeat(32)), image(&"cd".repeat(32))],
+                None,
             )
         })
         .unwrap();
@@ -1012,11 +1014,18 @@ fn a_message_carries_its_images_wherever_it_is_read() {
 fn an_image_alone_is_a_message() {
     let mut app = TestHost::new(Hyperfeed::init);
     let q = app
-        .call(|s| s.say_with(String::new(), String::new(), vec![image(&"ab".repeat(32))]))
+        .call(|s| {
+            s.say_with(
+                String::new(),
+                String::new(),
+                vec![image(&"ab".repeat(32))],
+                None,
+            )
+        })
         .unwrap();
     assert_eq!(q.title, "Sent an image");
     assert_eq!(q.body, "");
-    let r = app.call(|s| s.say_with(String::new(), String::new(), Vec::new()));
+    let r = app.call(|s| s.say_with(String::new(), String::new(), Vec::new(), None));
     assert!(r.is_err(), "no text and no image is still empty");
 }
 
@@ -1024,7 +1033,7 @@ fn an_image_alone_is_a_message() {
 fn attachments_outside_their_limits_are_refused() {
     let mut app = TestHost::new(Hyperfeed::init);
     let mut try_one =
-        |a: Attachment| app.call(|s| s.say_with(String::new(), "look".to_owned(), vec![a]));
+        |a: Attachment| app.call(|s| s.say_with(String::new(), "look".to_owned(), vec![a], None));
     let pdf = Attachment {
         mime: "application/pdf".to_owned(),
         ..image("ab")
@@ -1050,6 +1059,7 @@ fn attachments_outside_their_limits_are_refused() {
             String::new(),
             "look".to_owned(),
             vec![image("ab"); MAX_ATTACHMENTS + 1],
+            None,
         )
     });
     assert!(r.is_err(), "at most four");
@@ -1103,7 +1113,7 @@ fn your_agent_attaches_its_steps_and_draft_to_your_message_without_adding_rows()
         "the turn adds no rows to the feed"
     );
 
-    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned()))
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Fixed.".to_owned(), None))
         .unwrap();
     let answered = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
     assert_eq!(answered.steps.len(), 2, "the steps stay with the message");
@@ -1161,7 +1171,7 @@ fn stopping_a_message_not_taken_up_yet_closes_it() {
     assert!(app.view(|s| s.open_questions()).unwrap().is_empty());
 
     let note = app
-        .call(|s| s.agent_say(q.chain.clone(), String::new(), "Okay.".to_owned()))
+        .call(|s| s.agent_say(q.chain.clone(), String::new(), "Okay.".to_owned(), None))
         .unwrap();
     assert!(
         app.call(|s| s.stop(note.id.clone())).is_err(),
@@ -1188,6 +1198,7 @@ fn the_agent_picks_a_question_up_and_answers_it() {
                 mention.chain.clone(),
                 q.id.clone(),
                 "Here is a more formal draft.".to_owned(),
+                None,
             )
         })
         .unwrap();
@@ -1219,6 +1230,7 @@ fn the_agent_picks_a_question_up_and_answers_it() {
             mention.chain.clone(),
             q.id.clone(),
             "One more thing.".to_owned(),
+            None,
         )
     })
     .unwrap();
@@ -1231,7 +1243,14 @@ fn an_answer_leads_a_chain_that_needs_nothing() {
     let mut app = TestHost::new(Hyperfeed::init);
     let q = say(&mut app, "", "Summarise my morning");
     let a = app
-        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Quiet morning.".to_owned()))
+        .call(|s| {
+            s.agent_say(
+                q.chain.clone(),
+                q.id.clone(),
+                "Quiet morning.".to_owned(),
+                None,
+            )
+        })
         .unwrap();
     let page = feed(&app, "all");
     assert_eq!(page.items[0].id, a.id);
@@ -1266,21 +1285,21 @@ fn answers_are_checked_against_the_question() {
     let other = say(&mut app, "", "second");
     // Wrong chain for that question.
     assert!(app
-        .call(|s| s.agent_say(other.chain.clone(), q.id.clone(), "hi".to_owned()))
+        .call(|s| s.agent_say(other.chain.clone(), q.id.clone(), "hi".to_owned(), None))
         .is_err());
     // An agent message is not a question.
     let a = app
-        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned()))
+        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned(), None))
         .unwrap();
     assert!(app
-        .call(|s| s.agent_say(q.chain.clone(), a.id.clone(), "hi".to_owned()))
+        .call(|s| s.agent_say(q.chain.clone(), a.id.clone(), "hi".to_owned(), None))
         .is_err());
     assert!(app
         .call(|s| s.agent_ack(a.id.clone(), STATUS_THINKING.to_owned(), String::new()))
         .is_err());
     // An unprompted note needs a chain that exists.
     assert!(app
-        .call(|s| s.agent_say("nope".to_owned(), String::new(), "hi".to_owned()))
+        .call(|s| s.agent_say("nope".to_owned(), String::new(), "hi".to_owned(), None))
         .is_err());
     let note = app
         .call(|s| {
@@ -1288,6 +1307,7 @@ fn answers_are_checked_against_the_question() {
                 q.chain.clone(),
                 String::new(),
                 "Done, booked it.".to_owned(),
+                None,
             )
         })
         .unwrap();
@@ -1302,8 +1322,15 @@ fn a_proposal_from_a_conversation_lands_in_its_chain() {
     proposal.chain = q.chain.clone();
     proposal.ask = ask("choose", "Pick a slot", &["12:30", "13:15"], "");
     app.call(|s| s.record_action(proposal)).unwrap();
-    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Two slots work.".to_owned()))
-        .unwrap();
+    app.call(|s| {
+        s.agent_say(
+            q.chain.clone(),
+            q.id.clone(),
+            "Two slots work.".to_owned(),
+            None,
+        )
+    })
+    .unwrap();
     let page = feed(&app, "needs_you");
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].kind, KIND_ACTION, "the proposal leads");
@@ -1315,12 +1342,15 @@ fn only_the_owner_talks_to_the_agent() {
     let mut app = TestHost::new(Hyperfeed::init);
     let q = say(&mut app, "", "hello");
     assert!(app
-        .call_as_account(STRANGER, STRANGER, |s| s
-            .say(String::new(), "hi".to_owned()))
+        .call_as_account(STRANGER, STRANGER, |s| s.say(
+            String::new(),
+            "hi".to_owned(),
+            None
+        ))
         .is_err());
     assert!(app
         .call_as_account(STRANGER, STRANGER, |s| {
-            s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned())
+            s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned(), None)
         })
         .is_err());
     assert!(app
@@ -1341,7 +1371,7 @@ fn messages_emit_posted_and_changed() {
         .unwrap();
     let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
     assert_eq!(kinds, vec!["MessageChanged".to_owned()]);
-    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned()))
+    app.call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "hi".to_owned(), None))
         .unwrap();
     let kinds: Vec<String> = app.take_events().into_iter().map(|e| e.kind).collect();
     assert_eq!(
@@ -1357,6 +1387,151 @@ fn a_long_message_is_titled_by_its_first_line() {
     let h = headline(&long);
     assert!(h.len() <= MAX_TITLE);
     assert!(h.ends_with('…'));
+}
+
+// ── headlines for long answers ───────────────────────────────────────────────
+
+fn agent_say_long(
+    app: &mut TestHost<Hyperfeed>,
+    q: &FeedItem,
+    text: &str,
+    headline: Option<&str>,
+) -> app::Result<FeedItem> {
+    app.call(|s| {
+        s.agent_say(
+            q.chain.clone(),
+            q.id.clone(),
+            text.to_owned(),
+            headline.map(str::to_owned),
+        )
+    })
+}
+
+#[test]
+fn a_headline_lets_an_answer_run_long_and_titles_its_row() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Give me ten ideas for the feed");
+    let body = "An idea worth having.\n".repeat(1_400); // ~30 KB
+    assert!(body.len() > MAX_MESSAGE && body.len() <= MAX_LONG_MESSAGE);
+    let said = agent_say_long(&mut app, &q, &body, Some("Ten ideas for the feed")).unwrap();
+    assert_eq!(said.headline, "Ten ideas for the feed");
+    assert_eq!(
+        said.title, "Ten ideas for the feed",
+        "the row shows the headline"
+    );
+    assert_eq!(said.body, body, "the whole answer is kept");
+
+    // Read back anywhere: the item, the chain and the feed carry it.
+    let item = app.view(|s| s.item(said.id.clone())).unwrap().unwrap();
+    assert_eq!(item.headline, "Ten ideas for the feed");
+    assert_eq!(item.body.len(), body.len());
+    let flow = app.view(|s| s.chain(q.chain.clone())).unwrap();
+    assert_eq!(flow.last().unwrap().headline, "Ten ideas for the feed");
+    let lead = &feed(&app, "all").items[0];
+    assert_eq!(lead.title, "Ten ideas for the feed");
+}
+
+#[test]
+fn a_headline_has_its_own_limits() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "hi");
+    let h80 = "é".repeat(MAX_HEADLINE); // 80 characters, 160 bytes
+    assert!(agent_say_long(&mut app, &q, "ok", Some(&h80)).is_ok());
+    let h81 = "a".repeat(MAX_HEADLINE + 1);
+    assert!(
+        agent_say_long(&mut app, &q, "ok", Some(&h81)).is_err(),
+        "a headline is at most 80 characters"
+    );
+    assert!(
+        agent_say_long(&mut app, &q, "ok", Some("two\nlines")).is_err(),
+        "a headline is one line"
+    );
+    let too_long = "x".repeat(MAX_LONG_MESSAGE + 1);
+    assert!(
+        agent_say_long(&mut app, &q, &too_long, Some("Report")).is_err(),
+        "a long answer still has a limit"
+    );
+    assert!(
+        agent_say_long(&mut app, &q, "", Some("Only a headline")).is_err(),
+        "an answer still needs text"
+    );
+}
+
+#[test]
+fn without_a_headline_the_old_limit_and_title_hold() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "hi");
+    let over = "x".repeat(MAX_MESSAGE + 1);
+    assert!(
+        agent_say_long(&mut app, &q, &over, None).is_err(),
+        "no headline, no long text"
+    );
+    assert!(
+        agent_say_long(&mut app, &q, &over, Some("  ")).is_err(),
+        "a blank headline is no headline"
+    );
+    let said = agent_say_long(&mut app, &q, "First line.\nSecond line.", Some("")).unwrap();
+    assert_eq!(said.headline, "", "a blank headline is not kept");
+    assert_eq!(
+        said.title, "First line.",
+        "titled by its first line, as before"
+    );
+    let exact = "x".repeat(MAX_MESSAGE);
+    assert!(agent_say_long(&mut app, &q, &exact, None).is_ok());
+}
+
+#[test]
+fn your_message_and_an_agent_question_take_a_headline_too() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let log = "error: something broke\n".repeat(200); // ~4.6 KB
+    let q = app
+        .call(|s| s.say(String::new(), log.clone(), Some("The CI log".to_owned())))
+        .unwrap();
+    assert_eq!(q.title, "The CI log");
+    assert!(app
+        .call(|s| s.say(String::new(), log.clone(), None))
+        .is_err());
+    let with_image = app
+        .call(|s| {
+            s.say_with(
+                q.chain.clone(),
+                log.clone(),
+                vec![image(&"ab".repeat(32))],
+                Some("The log, and a screenshot".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(with_image.headline, "The log, and a screenshot");
+
+    let asked = app
+        .call(|s| {
+            s.agent_ask(
+                q.chain.clone(),
+                q.id.clone(),
+                "Here is what failed and why.\n".repeat(150),
+                choose(&["Fix it", "Leave it"]),
+                Some("Two tests fail: fix them?".to_owned()),
+            )
+        })
+        .unwrap();
+    assert_eq!(asked.title, "Two tests fail: fix them?");
+    assert_eq!(asked.status, STATUS_ASKED);
+}
+
+#[test]
+fn a_long_answer_streams_as_a_long_draft() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Write me a report");
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    let draft = "A paragraph of the report.\n".repeat(400); // ~10 KB
+    let row = app
+        .call(|s| s.agent_work(q.id.clone(), Vec::new(), draft.clone()))
+        .unwrap();
+    assert_eq!(row.draft, draft);
+    assert!(app
+        .call(|s| s.agent_work(q.id.clone(), Vec::new(), "x".repeat(MAX_LONG_MESSAGE + 1)))
+        .is_err());
 }
 
 // ── typed notifications and lenses ───────────────────────────────────────────
@@ -1575,7 +1750,7 @@ fn an_archived_chain_leaves_the_feed_until_something_new_happens_in_it() {
     assert_eq!(archived.items[0].chain, n.chain);
 
     // You say something in it: it is back.
-    app.call(|s| s.say(n.chain.clone(), "About this…".to_owned()))
+    app.call(|s| s.say(n.chain.clone(), "About this…".to_owned(), None))
         .unwrap();
     assert_eq!(feed(&app, "all").items.len(), 2);
     assert!(feed(&app, "archived").items.is_empty());
@@ -1856,7 +2031,7 @@ fn your_message_leads_its_chain_until_it_is_answered() {
 
     next_ms();
     let a = app
-        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Done.".to_owned()))
+        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Done.".to_owned(), None))
         .unwrap();
     assert_ne!(a.id, step.id);
     assert_eq!(

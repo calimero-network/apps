@@ -304,6 +304,18 @@
         }
       ]
     },
+    "Headline": {
+      "kind": "record",
+      "doc": "A message's headline: one line for the feed row, its text behind \"more\".\nKept beside the message, keyed by its id, so messages written before\nheadlines keep their layout.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Hyperfeed": {
       "kind": "record",
       "fields": [
@@ -522,6 +534,20 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Your requests to stop a turn, by message id."
+        },
+        {
+          "name": "headlines",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Headline"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Headlines of messages written with one, by the message's id."
         }
       ]
     },

@@ -117,7 +117,7 @@ export function ChatView({
                 >
                   <span className="chat-item-text">
                     {c.from === "agent" ? "" : "You: "}
-                    {c.body || c.title}
+                    {c.headline || c.body || c.title}
                   </span>
                   <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
                 </button>

@@ -261,7 +261,10 @@ in the row's `note` while it is current.
    A message with images lists them in `attachments`; fetch each by `blob_id` from the node (with the
    feed's context id) and look at it before answering.
    Take it up with `agent_ack(id, "thinking", "")` (that is how the feed knows an agent is there),
-   then answer with `agent_say(chain, id, text)`, which marks it `answered`. When your answer leaves
+   then answer with `agent_say(chain, id, text, headline?)`, which marks it `answered`. A long answer
+   takes a `headline` (one line, at most 80 characters): the row shows it with the text behind "More",
+   and the text may run to 32 KB instead of 2000 bytes. Without one the app titles the row by the
+   answer's first sentence. When your answer leaves
    something to the user, use `agent_ask(chain, id, text, ask)` (a `choose` or `reply` ask): your
    message is `asked` and needs them until they say something in the chain, which answers it. If you cannot, give up
    with `agent_ack(id, "failed", why)`. A proposal or action the conversation leads to goes in the

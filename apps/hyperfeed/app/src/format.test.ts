@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { choicesFor, localCommand, plainMethod, rowTitle, stepsOf } from "./format";
+import { choicesFor, firstSentence, headlineOfMessage, localCommand, plainMethod, rowTitle, saysMore, stepsOf } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
   ({
@@ -12,6 +12,45 @@ const row = (patch: Partial<FeedItem>): FeedItem =>
   }) as FeedItem;
 
 const appName = (key: string) => (key === "issue-tracker" ? "Issue tracker" : key);
+
+describe("headlines", () => {
+  const message = (patch: Partial<FeedItem>) => row({ kind: "message", from: "agent", status: "said", ...patch });
+
+  it("derives a headline from the first sentence, at most 80 characters", () => {
+    expect(firstSentence("The deploy is green. Three things changed:\n- a\n- b")).toBe("The deploy is green. Three things changed:");
+    expect(firstSentence("Everything you asked for has been checked twice over today. Then more.")).toBe(
+      "Everything you asked for has been checked twice over today.",
+    );
+    expect(firstSentence("## Results\n\nAll **good**.")).toBe("Results");
+    expect(firstSentence("- **Ship it** now")).toBe("Ship it now");
+    expect(firstSentence("Posted. There are two hellos now: delete the duplicate?")).toBe(
+      "Posted. There are two hellos now: delete the duplicate?",
+    );
+    const long = firstSentence("word ".repeat(40));
+    expect([...long].length).toBeLessThanOrEqual(80);
+    expect(long.endsWith("…")).toBe(true);
+    expect(long).not.toMatch(/ …$/);
+    expect(firstSentence("v1.2 is out")).toBe("v1.2 is out");
+    expect(firstSentence("")).toBe("");
+  });
+
+  it("uses the headline a message was written with, and derives one when it has none", () => {
+    const body = "Here are ten ideas.\n1. One\n2. Two";
+    expect(headlineOfMessage(message({ headline: "Ten ideas for the feed", title: "Ten ideas for the feed", body }))).toBe("Ten ideas for the feed");
+    expect(headlineOfMessage(message({ headline: "", title: "Here are ten ideas.", body }))).toBe("Here are ten ideas.");
+    // Rows from feeds made before headlines have no field at all.
+    expect(headlineOfMessage(message({ headline: undefined as unknown as string, title: "Hi", body: "Hi" }))).toBe("Hi");
+    expect(rowTitle(message({ headline: "Ten ideas", body }), appName)).toBe("Ten ideas");
+    expect(headlineOfMessage(row({ title: "Posted the stand-up" }))).toBe("Posted the stand-up");
+  });
+
+  it("says a message says more only when its body goes past its headline", () => {
+    expect(saysMore(message({ body: "Done." }))).toBe(false);
+    expect(saysMore(message({ body: "Done. Two more lines\nhere." }))).toBe(true);
+    expect(saysMore(message({ headline: "Report", body: "Report" }))).toBe(false);
+    expect(saysMore(row({ body: "anything" }))).toBe(false);
+  });
+});
 
 describe("plainMethod", () => {
   it("says a method as a person would", () => {

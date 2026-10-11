@@ -480,6 +480,12 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+.more-text {
+  white-space: pre-wrap;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .quote {
   margin-top: 4px;
   padding: 10px 12px;

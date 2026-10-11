@@ -85,8 +85,11 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
       client.decideLens({ app_key: appKey, application_id: applicationId, decision }),
     chain: (chain) => client.chain({ chain }),
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
+    // No `headline` key: a feed made before headlines refuses any argument it does not know.
     say: (chain, text, attachments = []) =>
-      attachments.length ? client.sayWith({ chain, text, attachments }) : client.say({ chain, text }),
+      attachments.length
+        ? client.sayWith({ chain, text, attachments } as Parameters<HyperfeedClient["sayWith"]>[0])
+        : client.say({ chain, text } as Parameters<HyperfeedClient["say"]>[0]),
     stop: (id) => client.stop({ id }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
