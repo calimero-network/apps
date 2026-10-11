@@ -133,23 +133,33 @@ describe("FeedView", () => {
     expect(within(digest()).queryByRole("button", { name: /Delete the duplicate/ })).not.toBeInTheDocument();
   });
 
-  it("offers no Retry on a failed change to your rules, which only you can make", async () => {
+  it("offers only Archive on a failure no retry can fix: a change only you can make, or a method that does not exist", async () => {
     const at = Date.now();
-    const failed = (id: string, app: string, method: string, title: string) => ({
-      ...noRow, id, chain: id, kind: "action", app, method, title, status: "failed", needs_you: true, at, chain_at: at,
-      note: "Only you can do this, in Hyperfeed's Controls",
+    const failed = (id: string, app: string, method: string, title: string, note: string) => ({
+      ...noRow, id, chain: id, kind: "action", app, method, title, status: "failed", needs_you: true, at, chain_at: at, note,
     });
     const items: FeedItem[] = [
-      failed("p1", "hyperfeed", "set_policy", "Set mero-bot to Act"),
-      failed("p2", "chat", "send_message", "Post the stand-up"),
+      failed("p1", "hyperfeed", "set_policy", "Set mero-bot to Act", "Only you can do this, in Hyperfeed's Controls"),
+      failed("p2", "chat", "pin_message", "Pin the stand-up", 'FunctionCallError: method "pin_message" not found'),
+      failed("p3", "chat", "send_message", "Post the stand-up", "the node did not answer"),
     ];
     render(<FeedView feed={staticFeed(items)} query="" />);
+    // Right on the card, before it is opened: Archive, and nothing that leads nowhere.
+    for (const title of [/Set mero-bot to Act/, /Pin the stand-up/]) {
+      const card = await rowFor(title);
+      expect(within(card).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+      expect(within(card).queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: "Archive" })).toBeInTheDocument();
+    }
     const rule = await openRow(/Set mero-bot to Act/);
-    expect(within(rule).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
-    expect(within(rule).getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(within(rule).getAllByRole("button", { name: /^Archive/ })).toHaveLength(1);
+    expect(rule).toHaveTextContent("Retrying can't help");
+    const pin = await openRow(/Pin the stand-up/);
+    expect(pin).toHaveTextContent("Chat has no pin_message.");
     // A failure a retry can fix still offers one.
     const post = await openRow(/Post the stand-up/);
     expect(within(post).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(post).getByRole("button", { name: "Decline" })).toBeInTheDocument();
   });
 
   it("says a command on your computer in one line, with the command folded behind Details", async () => {

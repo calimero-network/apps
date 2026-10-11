@@ -304,6 +304,13 @@ words, and an agent should never call them for itself. The agent's side of lense
 
 ## Running it
 
+Building the contract needs **cargo-mero 0.11.0-rc.83 or newer**: the core tag the workspace's
+`calimero-sdk` is pinned to in the root `Cargo.toml`, and the one CI installs
+(`.github/actions/install-cargo-mero`). An older cargo-mero writes an ABI the SDK no longer
+matches. Install that one with
+`cargo install --locked --git https://github.com/calimero-network/core.git --tag 0.11.0-rc.83 cargo-mero`,
+and check with `cargo mero --version`. When core is bumped, this moves with it.
+
 ```bash
 cargo test -p hyperfeed
 cargo mero bundle --manifest-path apps/hyperfeed/logic/Cargo.toml --dev --app-version 0.0.0 --output dist/com.calimero.hyperfeed.mpk

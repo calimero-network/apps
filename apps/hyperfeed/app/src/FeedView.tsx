@@ -10,6 +10,7 @@ import {
   flowOf,
   laneOf,
   localCommand,
+  noRetryLine,
   progressLine,
   resolvable,
   rowTitle,
@@ -766,6 +767,7 @@ function Row({
   // In the new feed, your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
   const root = useChainRoot(people && mayAnswer(item) ? item.chain : "", feed.loadChain);
   const chat = people && answersYou(item, root) ? root : null;
+  const noRetry = noRetryLine(item, appName);
   return (
     <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
       <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
@@ -787,7 +789,7 @@ function Row({
         )}
       </button>
       {/* On a card the answer is always there: the reason the strip exists. */}
-      {card && <Settle item={item} feed={feed} />}
+      {card && <Settle item={item} feed={feed} onArchive={onArchive} />}
       {expanded && (
         <div id={bodyId} className="row-body">
           {command ? (
@@ -799,6 +801,7 @@ function Row({
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
           {item.note && <p className="note">{answerLine(item)}</p>}
+          {noRetry && <p className="note">{noRetry}</p>}
           <LateHint item={item} live={agentLive(feed.settings?.agents)} />
           {!card && resolvable(item) && (
             <div className="row-answer">
@@ -832,10 +835,13 @@ function Row({
                     <kbd>S</kbd>
                   </button>
                 )}
-                <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
-                  Archive
-                  <kbd>E</kbd>
-                </button>
+                {/* A card that can only be archived already carries Archive. */}
+                {!(card && noRetry) && (
+                  <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+                    Archive
+                    <kbd>E</kbd>
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -933,10 +939,13 @@ function NeedHead({ item, people = false }: { item: FeedItem; people?: boolean }
   );
 }
 
-/** What settles a card, right on it: the reply, the options, Approve and Decline. */
-function Settle({ item, feed }: { item: FeedItem; feed: Feed }) {
+/**
+ * What settles a card, right on it: the reply, the options, Approve and
+ * Decline; or, for a failure no retry can fix, Archive.
+ */
+function Settle({ item, feed, onArchive }: { item: FeedItem; feed: Feed; onArchive: (item: FeedItem) => void }) {
   const c = choicesFor(item);
-  const decides = Boolean(c.approve) || c.decline || c.keep || c.undo;
+  const decides = Boolean(c.approve) || c.decline || c.keep || c.undo || c.archive;
   if (!resolvable(item) && !decides) return null;
   return (
     <div className="need-settle">
@@ -944,6 +953,11 @@ function Settle({ item, feed }: { item: FeedItem; feed: Feed }) {
       {decides && (
         <div className="actions">
           <Choices item={item} busy={feed.busy} onDecide={(d) => void feed.resolve(item.id, d)} />
+          {c.archive && (
+            <button type="button" className="ghost small" disabled={feed.busy} onClick={() => onArchive(item)}>
+              Archive
+            </button>
+          )}
         </div>
       )}
     </div>

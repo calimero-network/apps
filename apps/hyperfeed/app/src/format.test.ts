@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { localCommand, plainMethod, rowTitle, stepsOf } from "./format";
+import { choicesFor, localCommand, plainMethod, rowTitle, stepsOf } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
   ({
@@ -39,6 +39,35 @@ describe("rowTitle", () => {
       "Set the summary of an issue in Issue tracker",
     );
     expect(rowTitle(row({ kind: "notification", method: "", title: "Xabi commented" }), appName)).toBe("Xabi commented");
+  });
+});
+
+describe("choicesFor a failed action", () => {
+  const failed = (patch: Partial<FeedItem>) => choicesFor(row({ status: "failed", ...patch }));
+
+  it("offers Retry and Decline when a retry could work", () => {
+    expect(failed({ app: "chat", method: "send_message", note: "timed out" })).toMatchObject({ approve: "Retry", decline: true, archive: false });
+  });
+
+  it("offers only Archive for a decision only you can make", () => {
+    for (const [app, method] of [["hyperfeed", "set_guard"], ["hyperfeed", "hyperfeed_set_policy"], ["other", "set_policy"], ["hyperfeed", "say"]]) {
+      expect(failed({ app, method })).toMatchObject({ approve: undefined, decline: false, archive: true });
+    }
+  });
+
+  it("offers only Archive for a method the app does not have", () => {
+    expect(failed({ app: "hyperfeed", method: "rename_everything" })).toMatchObject({ approve: undefined, decline: false, archive: true });
+    for (const note of ['method "pin" not found', "Unknown method: pin", "no such method pin", "MethodNotFound"]) {
+      expect(failed({ app: "chat", method: "pin", note })).toMatchObject({ approve: undefined, archive: true });
+    }
+    // Hyperfeed's own methods the agent may call are known: a retry of one can work.
+    expect(failed({ app: "hyperfeed", method: "record_action" }).approve).toBe("Retry");
+    // "not found" about something else is not a missing method.
+    expect(failed({ app: "chat", method: "send_message", note: "channel not found" }).approve).toBe("Retry");
+  });
+
+  it("leaves a pending proposal to Approve and Decline", () => {
+    expect(choicesFor(row({ status: "pending", app: "hyperfeed", method: "nope" }))).toMatchObject({ approve: "Approve", decline: true, archive: false });
   });
 });
 

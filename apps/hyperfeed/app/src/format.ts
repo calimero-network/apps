@@ -1,4 +1,4 @@
-import type { FeedItem } from "./generated/HyperfeedClient";
+import { HyperfeedClient, type FeedItem } from "./generated/HyperfeedClient";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Waiting for you",
@@ -73,8 +73,50 @@ const RULE_METHODS = new Set(["set_policy", "set_guard", "set_paused"]);
  * only fail again; you make it yourself, in Controls.
  */
 export function onlyYouCan(item: FeedItem): boolean {
-  const method = item.method.trim().toLowerCase().replace(/^hyperfeed_/, "");
+  const method = bareMethod(item);
   return RULE_METHODS.has(method) || (item.app === "hyperfeed" && OWNER_METHODS.has(method));
+}
+
+function bareMethod(item: FeedItem): string {
+  return item.method.trim().toLowerCase().replace(/^hyperfeed_/, "");
+}
+
+/** Hyperfeed's own methods, as the contract names them: `set_policy`, `say` … */
+const HYPERFEED_METHODS = new Set(
+  Object.getOwnPropertyNames(HyperfeedClient.prototype)
+    .filter((n) => n !== "constructor")
+    .map((n) => n.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)),
+);
+
+/** How a node, or the tool in front of it, says an app has no such method. */
+const NO_SUCH_METHOD = /\bmethod\b[^\n]{0,120}\bnot found\b|\bunknown method\b|\bno such method\b|\bmethod not found\b|\bMethodNotFound\b/i;
+
+/**
+ * A failure that names a method the app does not have: one of Hyperfeed's
+ * that does not exist, or any app's the node said it could not find. Retrying
+ * calls the same method, so it fails the same way.
+ */
+export function unknownMethod(item: FeedItem): boolean {
+  if (item.kind !== "action") return false;
+  const method = bareMethod(item);
+  if (item.app === "hyperfeed" && method && !HYPERFEED_METHODS.has(method)) return true;
+  return NO_SUCH_METHOD.test(item.note);
+}
+
+/**
+ * A failed action no retry can fix: one only you can make, or a call to a
+ * method that does not exist. It offers Archive only: Retry would fail the
+ * same way every time, and there is nothing to decline.
+ */
+export function retryCannotHelp(item: FeedItem): boolean {
+  return item.kind === "action" && item.status === "failed" && (onlyYouCan(item) || unknownMethod(item));
+}
+
+/** Why a failed row offers no Retry, as one line; "" when it does. */
+export function noRetryLine(item: FeedItem, appName: (key: string) => string): string {
+  if (!retryCannotHelp(item)) return "";
+  if (onlyYouCan(item)) return "Only you can do this, in Controls. Retrying can't help, so archive it when you're done.";
+  return `${appName(item.app)} has no ${item.method}. Retrying can't help, so archive it.`;
 }
 
 /** Method verbs said otherwise: a `get_issue` reads an issue. */
@@ -124,17 +166,19 @@ export function localCommand(item: FeedItem): string {
 /**
  * Which plain buttons a row offers, straight from the contract's transitions.
  * A proposal with an ask is approved through its resolver instead (pick an
- * option, edit and send), so it offers no bare Approve.
+ * option, edit and send), so it offers no bare Approve. A failure no retry can
+ * fix offers neither Retry nor Decline: `archive` says Archive is its way out.
  */
-export function choicesFor(item: FeedItem): { approve?: string; decline: boolean; undo: boolean; keep: boolean } {
-  if (item.kind !== "action") return { decline: false, undo: false, keep: false };
+export function choicesFor(item: FeedItem): { approve?: string; decline: boolean; undo: boolean; keep: boolean; archive: boolean } {
+  if (item.kind !== "action") return { decline: false, undo: false, keep: false, archive: false };
   const pending = item.status === "pending";
+  const deadEnd = retryCannotHelp(item);
   return {
-    // No Retry where a retry can only fail the same way.
-    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" && !onlyYouCan(item) ? "Retry" : undefined,
-    decline: pending || item.status === "failed",
+    approve: pending && !item.ask.kind ? "Approve" : item.status === "failed" && !deadEnd ? "Retry" : undefined,
+    decline: pending || (item.status === "failed" && !deadEnd),
     undo: item.status === "done" && item.undoable,
     keep: item.breach !== "",
+    archive: deadEnd,
   };
 }
 
