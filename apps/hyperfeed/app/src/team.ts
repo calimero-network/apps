@@ -164,10 +164,14 @@ export function isAgent(item: FeedItem): boolean {
   return item.kind === "action" || item.kind === "message";
 }
 
-function startOfDay(t: number): number {
-  const d = new Date(t);
+/** However early in the day, "today" reaches back at least this far: just after midnight is not a blank slate. */
+const DAY_AT_LEAST_MS = 12 * 60 * 60 * 1000;
+
+/** The start of "today" for the digest: midnight, or 12 hours ago when that is earlier. */
+export function digestSince(now: number): number {
+  const d = new Date(now);
   d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return Math.min(d.getTime(), now - DAY_AT_LEAST_MS);
 }
 
 /**
@@ -176,7 +180,7 @@ function startOfDay(t: number): number {
  * reads are not counted at all.
  */
 export function agentDigest(items: FeedItem[], now = Date.now()): AgentDigest {
-  const since = startOfDay(now);
+  const since = digestSince(now);
   const d: AgentDigest = { filed: 0, ran: 0, done: 0, working: 0, failed: 0, answered: 0, waiting: 0, items: [] };
   for (const item of items) {
     if (!isAgent(item) || isNoise(item)) continue;
