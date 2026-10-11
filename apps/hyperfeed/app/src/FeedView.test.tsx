@@ -258,6 +258,58 @@ describe("FeedView", () => {
     expect(within(lane("Done")).getByRole("button", { name: /Said hi/ })).toBeInTheDocument();
   });
 
+  it("moves a chain from In progress to Needs you when your reply in it fails to go out", async () => {
+    const backend = new DemoBackend(false, 0);
+    await backend.setPolicy("sheets", "act", "feed");
+    const mention = await backend.recordNotification({
+      key: "chat:m:0", app: "chat", source_context: "ctx", source_label: "#launch", from: "Maya", title: "Can you share the numbers?",
+      body: "", event: "MessageSent", needs_you: true, chain: "", ask: { kind: "reply", prompt: "Reply in #launch", options: [], draft: "" },
+      item_type: "", fields: "", reply_call: "",
+    });
+    await backend.answerNotification(mention.id, "Sharing them now");
+    await backend.recordAction({
+      app: "sheets", source_context: "ctx", source_label: "", method: "update", category: "", writes: true, undoable: false,
+      title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+      chain: mention.chain, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "",
+    });
+    render(<Harness backend={backend} />);
+    const row = await rowFor(/can you share the numbers/i);
+    expect(lane("In progress")).toContainElement(row);
+
+    // The reply fails to go out: the chain needs you, though the sheet step is done.
+    await act(async () => {
+      await backend.completeAnswer(mention.id, "failed", "The channel is read-only");
+    });
+    expect(needs()).toContainElement(await rowFor(/can you share the numbers/i));
+  });
+
+  it("keeps a chain in progress while something in it is still running, though a newer step is done", async () => {
+    const backend = new DemoBackend(false, 0);
+    await backend.setPolicy("sheets", "act", "feed");
+    const mention = await backend.recordNotification({
+      key: "chat:m:0", app: "chat", source_context: "ctx", source_label: "#launch", from: "Maya", title: "Can you send the numbers?",
+      body: "", event: "MessageSent", needs_you: true, chain: "", ask: { kind: "reply", prompt: "Reply", options: [], draft: "" },
+      item_type: "", fields: "", reply_call: "",
+    });
+    await backend.answerNotification(mention.id, "Sending them now");
+    await backend.recordAction({
+      app: "sheets", source_context: "", source_label: "", method: "update", category: "", writes: true, undoable: false,
+      title: "Pulled the numbers into a sheet", body: "", why: "", outcome: "done", intent_hash: "", executor: "", note: "",
+      chain: mention.id, ask: { kind: "", prompt: "", options: [], draft: "" }, grant: "",
+    });
+    render(<Harness backend={backend} />);
+    // Your reply is still being delivered: the chain is in progress, not done.
+    const progress = await screen.findByRole("region", { name: "In progress" });
+    expect(await within(progress).findByRole("button", { name: /Can you send the numbers/ })).toBeInTheDocument();
+    expect(within(lane("Done")).queryByRole("button", { name: /Can you send the numbers/ })).not.toBeInTheDocument();
+    await act(async () => {
+      await backend.completeAnswer(mention.id, "delivered", "Sent");
+    });
+    // Everything in it settled: its latest row, your agent's, leads it out of In progress.
+    await waitFor(() => expect(within(lane("In progress")).queryByRole("button", { name: /Can you send the numbers/ })).not.toBeInTheDocument());
+    expect(digest()).toHaveTextContent("Did 1 thing");
+  });
+
   it("puts Approve and Decline above a chain's flow, not after its whole history", async () => {
     render(<Harness backend={new DemoBackend(true, 0)} />);
     const row = await openRow(/Vendor NDA/);

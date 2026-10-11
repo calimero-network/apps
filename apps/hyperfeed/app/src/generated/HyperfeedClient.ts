@@ -837,9 +837,12 @@ export class HyperfeedClient {
    * The feed: one row per chain, newest activity first.
    *
    * A row is the chain's **lead**: the latest step that needs you if any
-   * does, otherwise the latest row. Its `chain_len` says how many rows the
-   * chain holds and `needs_you` whether any of them needs you; read them all
-   * with [`Hyperfeed::chain`].
+   * does, otherwise the latest still underway (an action approved, retrying
+   * or being undone; your message waiting or being answered; your answer
+   * being delivered), otherwise the latest row. So a chain is settled only
+   * when everything in it is. Its `chain_len` says how many rows the chain
+   * holds and `needs_you` whether any of them needs you; read them all with
+   * [`Hyperfeed::chain`].
    *
    * `filter` keeps chains holding an action (`agent`), a notification
    * (`notifications`), or something that needs you (`needs_you`); `app_key`
