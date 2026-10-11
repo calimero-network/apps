@@ -239,6 +239,13 @@
             "$ref": "Ask"
           },
           "doc": "For a proposal: how you resolve it, beyond approve or decline. A\n`choose` lets you approve with one of the options; a `reply` lets you\nedit the agent's draft before it goes."
+        },
+        {
+          "name": "grant",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "For an outcome: the id of a proposal in the same app you approved with\n\"Allow for this session\" (see [`SESSION_GRANT`]) in the last 12 hours.\nUnder the app's Ask mode, it is recorded without a breach. Older agents\nomit it."
         }
       ]
     },
@@ -2095,7 +2102,7 @@
     },
     {
       "name": "record_action",
-      "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped.",
+      "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped, unless the app's\nmode alone asked for you and its `grant` is a session you allowed.",
       "params": [
         {
           "name": "input",

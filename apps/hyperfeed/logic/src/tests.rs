@@ -25,6 +25,7 @@ fn action(app: &str, outcome: &str) -> ActionInput {
         note: String::new(),
         chain: String::new(),
         ask: Ask::default(),
+        grant: String::new(),
     }
 }
 
@@ -1523,4 +1524,128 @@ fn an_agent_reporting_in_shows_in_settings() {
     assert!(app
         .call_as_account(STRANGER, STRANGER, |s| s.agent_seen("x".to_owned()))
         .is_err());
+}
+
+// ── Allow for this session ───────────────────────────────────────────────────
+
+/// A tool on your computer the agent proposed, answered with `answer`.
+fn allowed(app: &mut TestHost<Hyperfeed>, app_key: &str, answer: &str) -> FeedItem {
+    let mut input = action(app_key, "proposed");
+    input.method = "Bash".to_owned();
+    input.ask = choose(&["Allow once", SESSION_GRANT]);
+    let proposal = app.call(|s| s.record_action(input)).unwrap();
+    app.call(|s| s.resolve_action(proposal.id.clone(), "approve".to_owned(), answer.to_owned()))
+        .unwrap()
+}
+
+/// What the agent ran afterwards, carrying `grant`.
+fn ran_under(app: &mut TestHost<Hyperfeed>, app_key: &str, grant: &str) -> FeedItem {
+    let mut input = action(app_key, "done");
+    input.grant = grant.to_owned();
+    app.call(|s| s.record_action(input)).unwrap()
+}
+
+#[test]
+fn a_session_you_allowed_is_not_acting_without_asking() {
+    let mut app = TestHost::new(Hyperfeed::init); // "mero-bot" defaults to ask
+    let grant = allowed(&mut app, "mero-bot", SESSION_GRANT);
+
+    let ran = ran_under(&mut app, "mero-bot", &grant.id);
+    assert_eq!(ran.status, STATUS_DONE);
+    assert!(ran.breach.is_empty(), "{}", ran.breach);
+    assert!(!ran.needs_you);
+
+    // The grant still counts once the proposal itself is done.
+    app.call(|s| s.complete_action(grant.id.clone(), "done".to_owned(), String::new()))
+        .unwrap();
+    assert!(ran_under(&mut app, "mero-bot", &grant.id).breach.is_empty());
+
+    // A failure is recorded as one, without a breach: it needs you as a failure.
+    let mut failed = action("mero-bot", "failed");
+    failed.grant = grant.id.clone();
+    let failed = app.call(|s| s.record_action(failed)).unwrap();
+    assert_eq!(failed.status, STATUS_FAILED);
+    assert!(failed.breach.is_empty());
+
+    // Without the grant it is what it always was.
+    let bare = ran_under(&mut app, "mero-bot", "");
+    assert!(bare.breach.starts_with("acted without asking"));
+}
+
+#[test]
+fn a_grant_counts_only_in_its_app_for_the_session_and_once_allowed() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let grant = allowed(&mut app, "mero-bot", SESSION_GRANT);
+
+    // Another app: the session was allowed for tools on this computer only.
+    assert!(!ran_under(&mut app, "chat", &grant.id).breach.is_empty());
+
+    // "Allow once" is one command, not a session.
+    let once = allowed(&mut app, "mero-bot", "Allow once");
+    assert!(!ran_under(&mut app, "mero-bot", &once.id).breach.is_empty());
+
+    // A proposal still waiting on you, or one that does not exist.
+    let mut waiting = action("mero-bot", "proposed");
+    waiting.ask = choose(&["Allow once", SESSION_GRANT]);
+    let waiting = app.call(|s| s.record_action(waiting)).unwrap();
+    assert!(!ran_under(&mut app, "mero-bot", &waiting.id)
+        .breach
+        .is_empty());
+    assert!(!ran_under(&mut app, "mero-bot", "nope").breach.is_empty());
+
+    // Allowed more than 12 hours ago.
+    app.call(|s| {
+        let mut a = s.actions.get(&grant.id)?.expect("recorded").clone();
+        for step in &mut a.history {
+            step.at -= GRANT_WINDOW_MS + 1;
+        }
+        // Remove first: an insert over a live key merges the histories.
+        s.actions.remove(&grant.id)?;
+        s.actions.insert(grant.id.clone(), a).map(|_| ())
+    })
+    .unwrap();
+    let stale = ran_under(&mut app, "mero-bot", &grant.id);
+    assert!(stale.breach.starts_with("acted without asking"));
+}
+
+#[test]
+fn a_grant_does_not_lift_a_pause_a_guard_read_only_or_off() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let grant = allowed(&mut app, "mero-bot", SESSION_GRANT);
+
+    app.call(|s| s.set_paused(true)).unwrap();
+    let paused = ran_under(&mut app, "mero-bot", &grant.id);
+    assert!(paused.breach.contains("paused"), "{}", paused.breach);
+    app.call(|s| s.set_paused(false)).unwrap();
+
+    let mut guarded = action("mero-bot", "done");
+    guarded.category = "delete".to_owned();
+    guarded.grant = grant.id.clone();
+    let guarded = app.call(|s| s.record_action(guarded)).unwrap();
+    assert!(
+        guarded.breach.contains("always needs you"),
+        "{}",
+        guarded.breach
+    );
+
+    for mode in ["read", "off"] {
+        app.call(|s| s.set_policy("mero-bot".to_owned(), mode.to_owned(), "feed".to_owned()))
+            .unwrap();
+        let ran = ran_under(&mut app, "mero-bot", &grant.id);
+        assert!(
+            ran.breach.starts_with("acted where it may not"),
+            "{}",
+            ran.breach
+        );
+    }
+}
+
+#[test]
+fn a_grant_belongs_on_an_outcome() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let grant = allowed(&mut app, "mero-bot", SESSION_GRANT);
+    let mut proposal = action("mero-bot", "proposed");
+    proposal.grant = grant.id.clone();
+    let err = app.call(|s| s.record_action(proposal)).unwrap_err();
+    assert!(format!("{err:?}").contains("grant"), "{err:?}");
 }

@@ -27,6 +27,7 @@ function action(app: string, outcome: string, extra: Partial<ActionInput> = {}):
     note: "",
     chain: "",
     ask: NO_ASK,
+    grant: "",
     ...extra,
   };
 }
@@ -125,6 +126,42 @@ describe("chains", () => {
     expect((await b.feed("agent", "")).items).toHaveLength(1);
     expect((await b.feed("all", "chat")).items).toHaveLength(1);
     expect((await b.feed("needs_you", "")).items).toHaveLength(0);
+  });
+});
+
+describe("allow for this session", () => {
+  const SESSION = "Allow for this session";
+  const allowed = async (b: DemoBackend, app: string, answer: string) => {
+    const p = await b.recordAction(action(app, "proposed", { ask: ask("choose", ["Allow once", SESSION]) }));
+    return b.resolveAction(p.id, "approve", answer);
+  };
+
+  it("records what runs under it without a breach", async () => {
+    const b = fresh();
+    const grant = await allowed(b, "mero-bot", SESSION);
+    const ran = await b.recordAction(action("mero-bot", "done", { grant: grant.id }));
+    expect(ran).toMatchObject({ breach: "", needs_you: false });
+    expect((await b.recordAction(action("mero-bot", "done"))).breach).toMatch(/acted without asking/);
+  });
+
+  it("does not count in another app, for Allow once, or past a pause or a guard", async () => {
+    const b = fresh();
+    const grant = await allowed(b, "mero-bot", SESSION);
+    const once = await allowed(b, "mero-bot", "Allow once");
+    expect((await b.recordAction(action("chat", "done", { grant: grant.id }))).breach).not.toBe("");
+    expect((await b.recordAction(action("mero-bot", "done", { grant: once.id }))).breach).not.toBe("");
+    expect((await b.recordAction(action("mero-bot", "done", { grant: grant.id, category: "delete" }))).breach).toMatch(/always needs you/);
+    await b.setPaused(true);
+    expect((await b.recordAction(action("mero-bot", "done", { grant: grant.id }))).breach).toMatch(/paused/);
+    await expect(b.recordAction(action("mero-bot", "proposed", { grant: grant.id }))).rejects.toThrow(/grant/);
+  });
+
+  it("lasts 12 hours", async () => {
+    let now = 1_000_000;
+    const b = new DemoBackend(false, 0, () => now);
+    const grant = await allowed(b, "mero-bot", SESSION);
+    now += 12 * 60 * 60_000 + 1_000;
+    expect((await b.recordAction(action("mero-bot", "done", { grant: grant.id }))).breach).toMatch(/acted without asking/);
   });
 });
 
