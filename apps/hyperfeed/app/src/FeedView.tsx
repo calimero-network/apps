@@ -9,8 +9,10 @@ import {
   fieldsOf,
   flowOf,
   laneOf,
+  localCommand,
   progressLine,
   resolvable,
+  rowTitle,
   statusOf,
   timeLabel,
   TYPE_LABELS,
@@ -662,6 +664,16 @@ function answerLine(item: FeedItem): string {
   return item.note;
 }
 
+/** The command a row for a tool on your computer ran: one line says it, the rest is here when you want it. */
+function CommandDetails({ command }: { command: string }) {
+  return (
+    <details className="row-details">
+      <summary>Details</summary>
+      <pre>{command}</pre>
+    </details>
+  );
+}
+
 /** The body, when it says more than the title it starts with. */
 function extraBody(item: FeedItem): string {
   const body = item.body.trim();
@@ -699,13 +711,14 @@ function Row({
     if (expanded) ref.current?.scrollIntoView?.({ block: "nearest" });
   }, [expanded]);
   const body = extraBody(item);
+  const command = localCommand(item);
   const openable = Boolean(onOpenApp) && canOpen(item);
   return (
     <li ref={ref} className={`row ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
       <button type="button" className="row-line" aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
         <RowBadge item={item} />
         <span className="row-text">
-          <span className="row-title">{item.title}</span>
+          <span className="row-title">{rowTitle(item, appName)}</span>
           <span className="row-where">{progressLine(item) ? `Working: ${progressLine(item)}` : whereOf(item)}</span>
         </span>
         <Status item={item} />
@@ -714,7 +727,11 @@ function Row({
       </button>
       {expanded && (
         <div id={bodyId} className="row-body">
-          {body && (item.kind === "action" ? <p>{body}</p> : <p className="quote">{body}</p>)}
+          {command ? (
+            <CommandDetails command={command} />
+          ) : (
+            body && (item.kind === "action" ? <p>{body}</p> : <p className="quote">{body}</p>)
+          )}
           <Typed item={item} />
           {item.breach && <p className="breach">Your agent {item.breach}.</p>}
           {item.why && item.kind === "action" && <p className="why">Why: {item.why}</p>}
@@ -818,6 +835,7 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
             </div>
             <p className={s.first ? "flow-title" : ""}>{s.text}</p>
             {s.detail && <p className="flow-detail">{s.detail}</p>}
+            {s.first && localCommand(s.item) && <CommandDetails command={localCommand(s.item)} />}
             {s.item.id !== lead && s.item.needs_you && lastStepOf.get(s.item.id) === s.key && (
               <div className="flow-settle">
                 {resolvable(s.item) && <Resolver key={s.item.id} item={s.item} feed={feed} />}
