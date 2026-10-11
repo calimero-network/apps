@@ -493,7 +493,8 @@ steps:
   - name: Assert the steps and the draft show on the message, with no row of their own
     type: json_assert
     statements:
-      - 'json_subset({{worked}}, {"output": {"status": "thinking", "draft": "Q3 revenue", "steps": [{"id": "t1", "status": "done"}]}})'
+      - 'json_subset({{worked}}, {"output": {"status": "thinking", "draft": "Q3 revenue"}})'
+      - 'json_subset({{worked}}, {"output": {"steps": [{"id": "t1", "title": "Reading the deck", "status": "done", "at": 1}]}})'
 
   - name: The agent answers in the same chain
     type: call
@@ -563,6 +564,53 @@ steps:
     statements:
       - 'json_subset({{agent_question}}, {"output": {"kind": "message", "from": "agent", "status": "asked", "ask": {"kind": "choose"}}})'
       - 'json_subset({{agent_question_after}}, {"output": {"status": "answered", "note": "Send it"}})'
+
+  # Stop: the owner asks something, the agent takes it up, the owner presses
+  # Stop. The request is kept on the message for the agent, which ends its
+  # turn and closes the message "Stopped by you".
+  - name: Owner asks for something long
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: say
+    args: { chain: "{{mention_id}}", text: "Rewrite the whole deck" }
+    outputs:
+      long_id: result.output.id
+
+  - name: The agent takes the long one up
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ack
+    args: { id: "{{long_id}}", status: "thinking", note: "" }
+
+  - name: The owner presses Stop
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: stop
+    args: { id: "{{long_id}}" }
+    outputs:
+      stop_asked: result
+
+  - name: The agent ends its turn, stopped by the owner
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_ack
+    args: { id: "{{long_id}}", status: "failed", note: "Stopped by you" }
+    outputs:
+      stopped: result
+
+  - name: Assert the stop was kept for the agent, and the message closed stopped by you
+    type: json_assert
+    statements:
+      - 'json_subset({{stop_asked}}, {"output": {"status": "thinking"}})'
+      - 'json_subset({{stopped}}, {"output": {"status": "failed", "note": "Stopped by you"}})'
 
   # ─── lenses and typed notifications ──────────────────────────────────────
 
