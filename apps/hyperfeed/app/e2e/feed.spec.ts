@@ -39,7 +39,7 @@ async function login(page: Page) {
 async function openFeed(page: Page) {
   await login(page);
   await page.getByRole("button", { name: /^Open feed / }).first().click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
 }
 
 /** A feed's short id, the hint beside its name (src/feeds.ts `hint`). */
@@ -49,7 +49,7 @@ const hint = (id: string) => id.slice(0, 8);
 async function openRow(page: Page, text: string) {
   const row = page.locator("li.row", { hasText: text });
   await expect(row).toBeVisible();
-  const line = row.locator(".row-line");
+  const line = row.locator(".row-line, .need-line");
   if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
   return row;
 }
@@ -77,7 +77,7 @@ test("you create your feed and answer a notification in place", async ({ page })
   await expect(name).toHaveValue("My feed");
   await name.fill("Inbox");
   await page.getByRole("button", { name: "Create my feed" }).click();
-  await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Nothing needs you.")).toBeVisible();
 
   // ── an app's notification arrives ──────────────────────────────────────────
@@ -114,7 +114,7 @@ test("you create your feed and answer a notification in place", async ({ page })
   // The feed's own event refreshes the page; no reload.
   const card = await openRow(page, "Mentioned you");
   await expect(card.getByText("Can your agent pull the numbers?")).toBeVisible();
-  await expect(page.getByRole("region", { name: "To do" })).toContainText("Mentioned you");
+  await expect(page.getByRole("region", { name: "Needs you" })).toContainText("Mentioned you");
 
   // ── you answer it where it is ──────────────────────────────────────────────
   await card.getByLabel("Reply in #launch").fill("Numbers are in the deck.");
@@ -268,12 +268,18 @@ test("you see when your agent is there, and archive what is done", async ({ page
   const done = page.getByRole("region", { name: "Done" });
   await done.getByRole("button", { name: "Archive all done" }).click();
   await expect(done.getByText("Nothing finished yet.")).toBeVisible();
-  const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
-    contextId,
-    method: "feed",
-    argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
-  });
-  expect(page1.counts.archived).toBeGreaterThan(0);
+  // The lane can read empty before the archive lands (your agent's rows are
+  // in its digest), so wait for the node rather than read it once.
+  await expect
+    .poll(async () => {
+      const page1 = await mero.rpc.execute<{ counts: { archived: number } }>({
+        contextId,
+        method: "feed",
+        argsJson: { filter: "all", app_key: "", limit: 50, before: 0 },
+      });
+      return page1.counts.archived;
+    })
+    .toBeGreaterThan(0);
   await page.getByRole("button", { name: /^Archived · \d+/ }).click();
   await expect(page.getByRole("region", { name: "Archived" }).locator("li.row").first()).toBeVisible();
 });
@@ -342,11 +348,10 @@ test("you delete a feed you no longer use, with its namespace", async ({ page })
   await confirm.getByRole("button", { name: "Delete" }).click();
 
   await expect(page.getByRole("menuitemradio")).toHaveCount(before.length - 1, { timeout: 30_000 });
-  const after = (await node().admin.getContexts()).contexts.map((c) => c.id);
-  expect(after).not.toContain(other);
+  // The node can still list it for a moment after the switcher drops it.
+  await expect.poll(async () => (await node().admin.getContexts()).contexts.map((c) => c.id)).not.toContain(other);
   if (group) {
-    const namespaces = await node().admin.listNamespaces();
-    expect(JSON.stringify(namespaces)).not.toContain(group);
+    await expect.poll(async () => JSON.stringify(await node().admin.listNamespaces())).not.toContain(group);
   }
   // Still in the feed you had open.
   await expect(switcher).toHaveText(open!);
