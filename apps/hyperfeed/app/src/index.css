@@ -2375,6 +2375,89 @@ body {
   background: var(--surface);
 }
 
+.switcher-name {
+  color: var(--ink);
+}
+
+.switcher-name.unnamed {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.switcher-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.switcher-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.switcher-menu .switcher-rename-button:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* Naming a feed: a new one, or a rename in place of its row. */
+.switcher-rename {
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--sunken);
+}
+
+.name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.name-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.name-form input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.name-problem {
+  color: var(--bad-ink);
+  font-size: 11px;
+}
+
+.name-form .row {
+  gap: 6px;
+}
+
+.switcher-menu .name-form button {
+  justify-content: center;
+}
+
+.switcher-menu .name-form .primary,
+.switcher-menu .name-form .primary:hover:not(:disabled) {
+  background: var(--accent-solid);
+  color: #fff;
+}
+
+.switcher-menu .name-form .ghost {
+  background: var(--surface);
+}
+
 .switcher-menu hr {
   width: 100%;
   margin: 4px 0;
