@@ -1,6 +1,7 @@
 import type { FeedItem } from "./generated/HyperfeedClient";
 import { flowOf, laneOf, progressLine, type Tone } from "./format";
 import { headlineOf, isAgent, line } from "./team";
+import { milestonesOf, type Milestone } from "./milestones";
 
 /**
  * A task: something you asked your agent to do, told as one post. The goal
@@ -21,6 +22,8 @@ export interface TaskPost {
   status: { label: string; tone: Tone };
   /** The latest step, as one line: what your agent is doing now, or the last thing that happened. */
   live: string;
+  /** Its story in milestones: "Filed → PR #12 → CI green → Merged"; [] when there is none yet. */
+  track: Milestone[];
   at: number;
 }
 
@@ -75,6 +78,7 @@ export function taskOf(rows: FeedItem[], lead: FeedItem, appName: (key: string) 
     apps,
     status: taskStatus(lead),
     live: liveLine(rows, appName, now),
+    track: milestonesOf(rows, lead),
     at: lead.chain_at || lead.at,
   };
 }

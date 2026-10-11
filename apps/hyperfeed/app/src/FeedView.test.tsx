@@ -576,5 +576,36 @@ describe("FeedView", () => {
       await openDigest();
       expect(await within(digest()).findByRole("button", { name: /You approved Book 20 minutes with Maya/ })).toBeInTheDocument();
     });
+  
+    it("tells a task in milestones, on its post and in its chain, with the whole flow behind More", async () => {
+      const backend = new DemoBackend(true, 0);
+      render(<Harness backend={backend} people />);
+      await rowFor(/Vendor NDA/);
+      const asked = await act(async () => backend.say("", "Fix the digest card"));
+      await act(async () => {
+        backend.agentAck(asked.id);
+        backend.agentSay(asked.chain, asked.id, "Opened PR #436; CI is green.");
+      });
+      const tasks = await screen.findByRole("region", { name: "Your tasks" });
+      const post = await within(tasks).findByRole("article", { name: "Fix the digest card" });
+      expect(await within(post).findByRole("list", { name: "Milestones: Filed → PR #436 → CI green → Done" })).toBeInTheDocument();
+
+      await openDigest();
+      const row = await openRow(/You asked your agent Fix the digest card/);
+      expect(await within(row).findByRole("list", { name: "Milestones: Filed → PR #436 → CI green → Done" })).toBeInTheDocument();
+      expect(within(row).queryByRole("list", { name: "The whole flow" })).not.toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(within(row).getByRole("button", { name: "More" }));
+      });
+      expect(await within(row).findByRole("list", { name: "The whole flow" })).toHaveTextContent("Opened PR #436");
+    });
+
+    it("shows a chain with no story to tell as its flow, as before", async () => {
+      render(<Harness backend={new DemoBackend(true, 0)} people />);
+      await rowFor(/Vendor NDA/);
+      const row = await openRow(/Vendor NDA/);
+      expect(await within(row).findByRole("list", { name: "The whole flow" })).toBeInTheDocument();
+      expect(within(row).queryByRole("button", { name: "More" })).not.toBeInTheDocument();
+    });
   });
 });
