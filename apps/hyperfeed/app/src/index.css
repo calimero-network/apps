@@ -1848,6 +1848,130 @@ body {
   gap: 4px;
 }
 
+/* What needs you: a strip of cards on top, each with its buttons on it. */
+.needs-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.needs-head {
+  padding: 0 2px;
+  border-bottom: 0;
+}
+
+.needs-head .lane-count {
+  background: var(--wait-bg);
+  color: var(--wait-ink);
+}
+
+.needs-clear {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--good-bg);
+  color: var(--good-ink);
+  font-size: 14px;
+}
+
+.needs-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+
+.row.need {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  padding-bottom: 12px;
+  border: 1px solid var(--wait-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.row.need + .row.need {
+  border-top-color: var(--wait-line);
+}
+
+/* Opened, a card takes the strip's whole width for its flow. */
+.row.need.open {
+  grid-column: 1 / -1;
+}
+
+.need-line {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.need-line > .badge {
+  flex: none;
+}
+
+.need-line .pill {
+  flex: none;
+  font-size: 11px;
+}
+
+.need-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.need-sentence {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.need-sentence strong {
+  color: var(--ink);
+}
+
+.need-object {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.need-where {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.need-settle {
+  padding: 0 14px 0 50px;
+}
+
+.need-settle .actions {
+  margin-top: 8px;
+}
+
+.row.need .row-body {
+  padding: 12px 14px 0 50px;
+}
+
 /* Your agent's day: one line, opening into its chains. */
 .lane-digest {
   margin: 0;

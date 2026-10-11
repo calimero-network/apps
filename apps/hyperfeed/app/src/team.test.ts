@@ -64,11 +64,20 @@ describe("the team view's reading of the feed", () => {
       object: "Send the deck to Maya",
       person: false,
     });
+    // An older action titled with its bare method reads in plain words on its card too.
+    expect(headlineOf(row({ kind: "action", status: "pending", method: "set_summary", title: "set summary on the node" }), appName).object).toBe(
+      "Set the summary on the node",
+    );
     // The title already names the subject: it is not said twice.
     expect(
       headlineOf(row({ from: "Tomás", title: "Assigned HF-31 to you", fields: JSON.stringify({ from: "Tomás", what: "HF-31" }) }), appName),
     ).toMatchObject({ verb: "assigned HF-31 to you", object: "" });
     expect(headlineOf(row({ title: "Build failed" }), appName).who).toBe("Issues");
+    expect(headlineOf(row({ kind: "message", from: "agent", status: "asked", body: "Delete the duplicate?" }), appName)).toMatchObject({
+      who: "Your agent",
+      verb: "asks you",
+      object: "Delete the duplicate?",
+    });
   });
 
   it("keeps a card's text to its first line", () => {
