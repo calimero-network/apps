@@ -78,7 +78,7 @@ test("you create your feed and answer a notification in place", async ({ page })
   await name.fill("Inbox");
   await page.getByRole("button", { name: "Create my feed" }).click();
   await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Nothing needs you.")).toBeVisible();
+  await expect(page.getByText("You're clear. Nothing is waiting on you.")).toBeVisible();
 
   // ── an app's notification arrives ──────────────────────────────────────────
   const mero = node();
@@ -298,7 +298,7 @@ test("you switch between your feeds without signing in again", async ({ page }) 
   await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("My feed");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(switcher).not.toHaveText(`Inbox · ${hint(first)}`, { timeout: 60_000 });
-  await expect(page.getByText("Nothing needs you.")).toBeVisible();
+  await expect(page.getByText("You're clear. Nothing is waiting on you.")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Archived · \d+/ })).toHaveCount(0);
   const second = (await node().admin.getContexts()).contexts.map((c) => c.id).find((id) => id !== first)!;
   await expect(switcher).toHaveText(`My feed · ${hint(second)}`);
