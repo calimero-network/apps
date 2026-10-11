@@ -22,6 +22,7 @@ import {
 import { agentDigest, digestLine, headlineOf, isAgent } from "./team";
 import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
+import { milestonesOf, trackLine, type Milestone } from "./milestones";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -253,6 +254,7 @@ export function FeedView({
             <TaskPosts
               feed={feed}
               candidates={candidates}
+              people={people}
               onOpen={(chain) => {
                 if (onChat) return onChat(chain);
                 setOpen(chain);
@@ -460,7 +462,18 @@ const TASKS_READ = 6;
  * is on it, where it stands, and the latest step, live. A post opens its chain.
  * Only a chain you started is a task, so the newest few candidates are read.
  */
-function TaskPosts({ feed, candidates, onOpen }: { feed: Feed; candidates: FeedItem[]; onOpen: (chain: string) => void }) {
+function TaskPosts({
+  feed,
+  candidates,
+  onOpen,
+  people = false,
+}: {
+  feed: Feed;
+  candidates: FeedItem[];
+  onOpen: (chain: string) => void;
+  /** The new feed: each post tells its story in milestones. */
+  people?: boolean;
+}) {
   const [tasks, setTasks] = useState<TaskPost[]>([]);
   const { loadChain, page } = feed;
   useEffect(() => {
@@ -479,13 +492,13 @@ function TaskPosts({ feed, candidates, onOpen }: { feed: Feed; candidates: FeedI
   return (
     <section className="tasks" aria-label="Your tasks">
       {tasks.map((t) => (
-        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} />
+        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} people={people} />
       ))}
     </section>
   );
 }
 
-function TaskCard({ task, onOpen }: { task: TaskPost; onOpen: () => void }) {
+function TaskCard({ task, onOpen, people = false }: { task: TaskPost; onOpen: () => void; people?: boolean }) {
   return (
     <article className={`task tone-${task.status.tone}`} aria-label={task.goal}>
       <button type="button" className="task-line" onClick={onOpen}>
@@ -507,6 +520,7 @@ function TaskCard({ task, onOpen }: { task: TaskPost; onOpen: () => void }) {
           <span className="row-time">{timeLabel(task.at)}</span>
         </span>
         <span className="task-goal">{task.goal}</span>
+        {people && task.track.length > 0 && <Track track={task.track} />}
         {task.live && <span className="task-live">{task.live}</span>}
         {task.apps.length > 0 && (
           <span className="task-apps" aria-label={`In ${task.apps.map(appName).join(", ")}`}>
@@ -825,7 +839,8 @@ function Row({
               </>
             )}
           </div>
-          {item.chain_len > 1 && <Flow chain={item.chain} lead={item.id} feed={feed} />}
+          {item.chain_len > 1 &&
+            (people ? <Story chain={item.chain} lead={item} feed={feed} /> : <Flow chain={item.chain} lead={item.id} feed={feed} />)}
           <AskAgent
             key={item.chain}
             feed={feed}
@@ -935,12 +950,8 @@ function Settle({ item, feed }: { item: FeedItem; feed: Feed }) {
   );
 }
 
-/**
- * A chain's whole flow, oldest first: what arrived, what the agent did, what
- * you decided, and what came of it. Anything in it still waiting on you can be
- * settled from right here.
- */
-function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }) {
+/** Every row in a chain, oldest first, re-read whenever the feed changes. */
+function useChain(chain: string, feed: Feed): { items: FeedItem[] | null; failed: string | null } {
   const [items, setItems] = useState<FeedItem[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const { loadChain, page } = feed;
@@ -954,6 +965,57 @@ function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }
     };
     // `page` is the point: re-read the flow whenever the feed changes.
   }, [chain, loadChain, page]);
+  return { items, failed };
+}
+
+/**
+ * A track of milestones: "Filed → PR #12 → CI green → Merged". Spans, not a
+ * list element, so it can sit inside a task post's button.
+ */
+function Track({ track }: { track: Milestone[] }) {
+  return (
+    <span className="track" role="list" aria-label={`Milestones: ${trackLine(track)}`}>
+      {track.map((m) => (
+        <span key={m.kind} role="listitem" className={`track-step tone-${m.tone}`}>
+          <span>{m.label}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * In the new feed, an open chain tells its story in milestones, with the
+ * whole flow behind "More". A chain with no story to tell shows its flow.
+ */
+function Story({ chain, lead, feed }: { chain: string; lead: FeedItem; feed: Feed }) {
+  const [more, setMore] = useState(false);
+  const id = useId();
+  const { items } = useChain(chain, feed);
+  const track = items ? milestonesOf(items, lead) : [];
+  if (items && track.length === 0) return <Flow chain={chain} lead={lead.id} feed={feed} />;
+  return (
+    <div className="story">
+      {track.length > 0 && <Track track={track} />}
+      <button type="button" className="link small" aria-expanded={more} aria-controls={id} onClick={() => setMore((v) => !v)}>
+        {more ? "Less" : "More"}
+      </button>
+      {more && (
+        <div id={id}>
+          <Flow chain={chain} lead={lead.id} feed={feed} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A chain's whole flow, oldest first: what arrived, what the agent did, what
+ * you decided, and what came of it. Anything in it still waiting on you can be
+ * settled from right here.
+ */
+function Flow({ chain, lead, feed }: { chain: string; lead: string; feed: Feed }) {
+  const { items, failed } = useChain(chain, feed);
 
   if (failed) return <p className="err">{failed}</p>;
   if (!items) return <p className="muted">Loading the flow…</p>;

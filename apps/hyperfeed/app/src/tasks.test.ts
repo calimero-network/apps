@@ -34,6 +34,14 @@ describe("taskOf", () => {
     expect(t.apps).toEqual(["mero-bot", "mero-issue-tracker"]);
     expect(t.status).toEqual({ label: "Working", tone: "busy" });
     expect(t.live).toBe("Running the tests in apps · 12 s ago");
+    // No PR, CI or merge yet: no milestones to tell.
+    expect(t.track).toEqual([]);
+  });
+
+  it("carries the chain's milestones once there is a PR", () => {
+    const pr = row({ id: "m1", kind: "message", from: "agent", body: "Opened PR #436", title: "Opened PR #436", status: "said", at: NOW - 10_000, history: [{ status: "said", note: "", at: NOW - 10_000 }] });
+    const t = taskOf([ask, pr], { ...ask, chain_at: NOW - 10_000 }, appName, NOW)!;
+    expect(t.track.map((m) => m.label)).toEqual(["Filed", "PR #436", "Working"]);
   });
 
   it("falls back to the last step once your agent is done", () => {
