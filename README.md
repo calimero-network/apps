@@ -164,6 +164,7 @@ scripts/
   check-vercel-output.sh    vercel.json names the directory the build wrote
   check-registry-sync.py    published wasm vs what this tree builds (manual)
   lockfile-fanout.py        which apps a lockfile change can actually affect
+  vercel-ignore-build.py    Vercel skips an app's deploy when a push does not reach it
   tests/                    unit tests for the gates above
 
 docs/
