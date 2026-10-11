@@ -237,6 +237,10 @@ export interface Event_NotificationsSeen {
   count: number;
 }
 
+export interface Event_StopRequested {
+  id: string;
+}
+
 export interface FeedCounts {
   all: number;
   agent: number;
@@ -326,6 +330,18 @@ export interface FeedItem {
    * Images on a message of yours; empty for every other row.
    */
   attachments: Attachment[];
+  /**
+   * What your agent did for it, step by step; empty for every other row.
+   */
+  steps: TurnStep[];
+  /**
+   * The answer your agent has written so far, while the message is `thinking`; `""` otherwise.
+   */
+  draft: string;
+  /**
+   * When you asked your agent to stop working on it; 0 if you did not.
+   */
+  stop_at: number;
 }
 
 export interface FeedPage {
@@ -395,6 +411,14 @@ export interface Hyperfeed {
    * Images on your messages, by the message's id.
    */
   attachments: Record<string, Attachments>;
+  /**
+   * Your agent's turn on each of your messages it worked on, by message id.
+   */
+  work: Record<string, Work>;
+  /**
+   * Your requests to stop a turn, by message id.
+   */
+  stops: Record<string, StopRequest>;
 }
 
 /**
@@ -580,6 +604,37 @@ export interface Step {
 }
 
 /**
+ * You asked your agent to stop working on one of your messages.
+ */
+export interface StopRequest {
+  at: number;
+}
+
+/**
+ * One step of your agent's turn on a message of yours: a tool it ran, a file
+ * it edited, a write it made. Shown in the message's work block, never as a
+ * row of its own.
+ */
+export interface TurnStep {
+  /**
+   * The agent's own id for the step, unique within the turn.
+   */
+  id: string;
+  /**
+   * What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
+   */
+  title: string;
+  /**
+   * `running`, `waiting` (on your approval), `done` or `failed`.
+   */
+  status: string;
+  /**
+   * When the step started.
+   */
+  at: number;
+}
+
+/**
  * What a lens made of a notification: its type, the fields its card shows,
  * and the call that answers it in its app. Kept beside the notification, keyed
  * by its id, so rows recorded before lenses existed keep their layout.
@@ -611,6 +666,21 @@ export interface Verdict {
   decision: string;
   reason: string;
 }
+
+/**
+ * Your agent's turn on one of your messages, as it goes: its steps, and the
+ * answer it has written so far. Kept beside the message by id and replaced
+ * whole by each report, so a long turn adds no rows.
+ */
+export interface Work {
+  steps: TurnStep[];
+  /**
+   * The answer so far, while the agent writes it; `""` before it starts.
+   */
+  draft: string;
+  at: number;
+}
+
 
 
 
@@ -651,6 +721,14 @@ export type AbiEvent =
   | { name: "NotificationRecorded"; payload: Event_NotificationRecorded }
   | { name: "NotificationsSeen"; payload: Event_NotificationsSeen }
   | { name: "SettingsChanged" }
+  | {
+    /**
+     * You asked your agent to stop working on message `id`: it ends the turn
+     * and marks the message failed, "Stopped by you".
+     */
+    name: "StopRequested";
+    payload: Event_StopRequested;
+  }
 ;
 
 
@@ -735,6 +813,25 @@ export class HyperfeedClient {
   public async agentSeen(params: { name: string }): Promise<void> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_seen', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * agent_work
+   *
+   * Your agent reports its turn on one of your messages: every step so far
+   * (each with its own `id`, a `title` in words, a `status` of `running`,
+   * `waiting`, `done` or `failed`, and when it started) and the answer it
+   * has written so far as `draft`. Each call replaces the last, so the
+   * turn never adds rows: send it whenever a step starts or ends, and
+   * every few seconds while the answer is being written. The steps stay
+   * on the message after the turn; the draft shows only while it is
+   * `thinking`.
+   *
+   * @intent mutating
+   */
+  public async agentWork(params: { id: string; steps: TurnStep[]; draft: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_work', argsJson: params });
+    return response as FeedItem;
   }
 
   /**
@@ -1064,6 +1161,22 @@ export class HyperfeedClient {
   public async settings(): Promise<SettingsView> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'settings', argsJson: {} });
     return response as SettingsView;
+  }
+
+  /**
+   * stop
+   *
+   * You ask your agent to stop working on one of your messages. One it has
+   * not taken up yet is closed at once, "Stopped by you"; one it is working
+   * on (`thinking`) keeps the request, and your agent ends its turn and
+   * marks the message failed, "Stopped by you". Asking twice changes
+   * nothing.
+   *
+   * @intent mutating
+   */
+  public async stop(params: { id: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'stop', argsJson: params });
+    return response as FeedItem;
   }
 
   /**

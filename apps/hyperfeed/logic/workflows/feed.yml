@@ -477,6 +477,24 @@ steps:
     statements:
       - 'json_subset({{working}}, {"output": {"status": "thinking", "doing": "Reading the deck"}})'
 
+  - name: The agent attaches its steps and the answer so far to the message
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: agent_work
+    args:
+      id: "{{question_id}}"
+      steps: [{ id: "t1", title: "Reading the deck", status: "done", at: 1 }]
+      draft: "Q3 revenue"
+    outputs:
+      worked: result
+
+  - name: Assert the steps and the draft show on the message, with no row of their own
+    type: json_assert
+    statements:
+      - 'json_subset({{worked}}, {"output": {"status": "thinking", "draft": "Q3 revenue", "steps": [{"id": "t1", "status": "done"}]}})'
+
   - name: The agent answers in the same chain
     type: call
     node: feed-node-1

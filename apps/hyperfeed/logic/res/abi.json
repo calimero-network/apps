@@ -571,6 +571,17 @@
         }
       ]
     },
+    "Event_StopRequested": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "FeedCounts": {
       "kind": "record",
       "fields": [
@@ -838,6 +849,30 @@
             }
           },
           "doc": "Images on a message of yours; empty for every other row."
+        },
+        {
+          "name": "steps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TurnStep"
+            }
+          },
+          "doc": "What your agent did for it, step by step; empty for every other row."
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The answer your agent has written so far, while the message is `thinking`; `\"\"` otherwise."
+        },
+        {
+          "name": "stop_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When you asked your agent to stop working on it; 0 if you did not."
         }
       ]
     },
@@ -1109,6 +1144,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Images on your messages, by the message's id."
+        },
+        {
+          "name": "work",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Work"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your agent's turn on each of your messages it worked on, by message id."
+        },
+        {
+          "name": "stops",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StopRequest"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your requests to stop a turn, by message id."
         }
       ]
     },
@@ -1602,6 +1665,52 @@
         }
       ]
     },
+    "StopRequest": {
+      "kind": "record",
+      "doc": "You asked your agent to stop working on one of your messages.",
+      "fields": [
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "TurnStep": {
+      "kind": "record",
+      "doc": "One step of your agent's turn on a message of yours: a tool it ran, a file\nit edited, a write it made. Shown in the message's work block, never as a\nrow of its own.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The agent's own id for the step, unique within the turn."
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "What it is doing, in words: \"Editing ChatView.tsx\", \"Running the tests\"."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "`running`, `waiting` (on your approval), `done` or `failed`."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the step started."
+        }
+      ]
+    },
     "Typed": {
       "kind": "record",
       "doc": "What a lens made of a notification: its type, the fields its card shows,\nand the call that answers it in its app. Kept beside the notification, keyed\nby its id, so rows recorded before lenses existed keep their layout.",
@@ -1644,6 +1753,34 @@
           "name": "reason",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Work": {
+      "kind": "record",
+      "doc": "Your agent's turn on one of your messages, as it goes: its steps, and the\nanswer it has written so far. Kept beside the message by id and replaced\nwhole by each report, so a long turn adds no rows.",
+      "fields": [
+        {
+          "name": "steps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TurnStep"
+            }
+          }
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The answer so far, while the agent writes it; `\"\"` before it starts."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -1775,6 +1912,37 @@
       ],
       "returns": {
         "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "agent_work",
+      "doc": "Your agent reports its turn on one of your messages: every step so far\n(each with its own `id`, a `title` in words, a `status` of `running`,\n`waiting`, `done` or `failed`, and when it started) and the answer it\nhas written so far as `draft`. Each call replaces the last, so the\nturn never adds rows: send it whenever a step starts or ends, and\nevery few seconds while the answer is being written. The steps stay\non the message after the turn; the draft shows only while it is\n`thinking`.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "steps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TurnStep"
+            }
+          }
+        },
+        {
+          "name": "draft",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
       },
       "intent": "mutating"
     },
@@ -2286,6 +2454,22 @@
       "intent": "read_only"
     },
     {
+      "name": "stop",
+      "doc": "You ask your agent to stop working on one of your messages. One it has\nnot taken up yet is closed at once, \"Stopped by you\"; one it is working\non (`thinking`) keeps the request, and your agent ends its turn and\nmarks the message failed, \"Stopped by you\". Asking twice changes\nnothing.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "unarchive",
       "doc": "Bring chains back into the feed.",
       "params": [
@@ -2365,6 +2549,13 @@
     },
     {
       "name": "SettingsChanged"
+    },
+    {
+      "name": "StopRequested",
+      "payload": {
+        "$ref": "Event_StopRequested"
+      },
+      "doc": "You asked your agent to stop working on message `id`: it ends the turn\nand marks the message failed, \"Stopped by you\"."
     }
   ],
   "state_root": "Hyperfeed",

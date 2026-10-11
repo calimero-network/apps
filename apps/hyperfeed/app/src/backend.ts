@@ -48,6 +48,8 @@ export interface FeedBackend {
   say(chain: string, text: string, attachments?: Attachment[]): Promise<FeedItem>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
   readonly images: BlobStore | null;
+  /** Ask your agent to stop working on one of your messages. */
+  stop(id: string): Promise<FeedItem>;
   markSeen(ids: string[]): Promise<number>;
   markAllSeen(): Promise<number>;
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
@@ -85,6 +87,7 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     // Text alone keeps to `say`, which every feed has; only images need `say_with`.
     say: (chain, text, attachments = []) =>
       attachments.length ? client.sayWith({ chain, text, attachments }) : client.say({ chain, text }),
+    stop: (id) => client.stop({ id }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
     setPolicy: (appKey, agent, notifications) =>

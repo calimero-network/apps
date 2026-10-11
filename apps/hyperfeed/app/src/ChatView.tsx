@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { laneOf, progressLine, statusOf, timeLabel } from "./format";
+import { laneOf, statusOf, timeLabel } from "./format";
 import { agentLive, notPickedUp } from "./theme";
+import { WorkBlock } from "./WorkBlock";
 
 /**
  * Chats with your agent.
@@ -176,6 +177,7 @@ export function ChatView({
           busy={feed.busy}
           images={feed.images}
           onAnswer={(a) => void send(a, [])}
+          onStop={(id) => void feed.stop(id)}
         />
         <Composer key={chain} busy={feed.busy} fresh={!chain} images={feed.images} onSend={send} />
       </section>
@@ -232,6 +234,7 @@ function Thread({
   busy,
   images,
   onAnswer,
+  onStop,
 }: {
   items: FeedItem[];
   clock: () => number;
@@ -240,6 +243,8 @@ function Thread({
   images: BlobStore | null;
   /** Answer your agent's open question: your next message in the chat. */
   onAnswer: (answer: string) => void;
+  /** Ask your agent to stop working on one of your messages. */
+  onStop: (id: string) => void;
 }) {
   const end = useRef<HTMLDivElement>(null);
   const last = items[items.length - 1];
@@ -261,24 +266,27 @@ function Thread({
     <div className="chat-thread" role="log" aria-live="polite">
       {items.map((m) =>
         m.kind === "message" ? (
-          <div key={m.id} className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
-            <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
-            {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
-            {m.body && <p>{m.body}</p>}
-            {m.status === "asked" && m.ask.kind === "choose" && (
-              <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
-                {m.ask.options.map((o) => (
-                  <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            {m.status === "asked" && m.ask.kind === "reply" && (
-              <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
-            )}
-            <span className="bubble-time">{timeLabel(m.at)}</span>
-          </div>
+          <Fragment key={m.id}>
+            <div className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
+              <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
+              {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
+              {m.body && <p>{m.body}</p>}
+              {m.status === "asked" && m.ask.kind === "choose" && (
+                <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
+                  {m.ask.options.map((o) => (
+                    <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {m.status === "asked" && m.ask.kind === "reply" && (
+                <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
+              )}
+              <span className="bubble-time">{timeLabel(m.at)}</span>
+            </div>
+            <WorkBlock item={m} clock={clock} busy={busy} onStop={onStop} />
+          </Fragment>
         ) : (
           <div key={m.id} className="chat-event">
             {m.title} · {statusOf(m).label}
@@ -303,14 +311,9 @@ function Waiting({ last, clock, live }: { last: FeedItem; clock: () => number; l
   }, [waiting]);
 
   if (last.kind !== "message" || last.from !== "you") return null;
-  if (last.status === "thinking") {
-    const doing = progressLine(last, now);
-    return (
-      <p className="chat-status busy" role="status">
-        Your agent is on it…{doing && <span className="chat-doing"> {doing}</span>}
-      </p>
-    );
-  }
+  // Its work block, under the message, shows where it is.
+  if (last.status === "thinking") return null;
+  if (last.status === "failed" && last.stop_at > 0) return <p className="chat-status">Stopped by you.</p>;
   if (last.status === "failed") {
     return <p className="chat-status bad">Your agent couldn't answer{last.note ? `: ${last.note}` : "."}</p>;
   }

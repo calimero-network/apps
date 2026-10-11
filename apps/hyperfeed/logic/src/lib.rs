@@ -194,6 +194,11 @@ pub const STATUS_SAID: &str = "said";
 /// something in its chain, which marks it `answered`.
 pub const STATUS_ASKED: &str = "asked";
 
+/// The statuses of a step in your agent's turn on a message. See [`TurnStep`].
+pub const STEP_STATUSES: [&str; 4] = ["running", "waiting", "done", "failed"];
+/// The note on a message whose turn you stopped.
+pub const STOPPED_BY_YOU: &str = "Stopped by you";
+
 /// Who wrote a message.
 pub const FROM_YOU: &str = "you";
 pub const FROM_AGENT: &str = "agent";
@@ -669,6 +674,68 @@ impl Mergeable for Progress {
     }
 }
 
+/// One step of your agent's turn on a message of yours: a tool it ran, a file
+/// it edited, a write it made. Shown in the message's work block, never as a
+/// row of its own.
+#[derive(
+    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TurnStep {
+    /// The agent's own id for the step, unique within the turn.
+    pub id: String,
+    /// What it is doing, in words: "Editing ChatView.tsx", "Running the tests".
+    pub title: String,
+    /// `running`, `waiting` (on your approval), `done` or `failed`.
+    pub status: String,
+    /// When the step started.
+    pub at: u64,
+}
+
+/// Your agent's turn on one of your messages, as it goes: its steps, and the
+/// answer it has written so far. Kept beside the message by id and replaced
+/// whole by each report, so a long turn adds no rows.
+#[app::mergeable(id = "hyperfeed::Work")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Work {
+    pub steps: Vec<TurnStep>,
+    /// The answer so far, while the agent writes it; `""` before it starts.
+    pub draft: String,
+    pub at: u64,
+}
+
+impl Mergeable for Work {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.at;
+        lww(self, at, other, other.at);
+        Ok(())
+    }
+}
+
+/// You asked your agent to stop working on one of your messages.
+#[app::mergeable(id = "hyperfeed::StopRequest")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct StopRequest {
+    pub at: u64,
+}
+
+impl Mergeable for StopRequest {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // The first request stands: a second one changes nothing.
+        self.at = match (self.at, other.at) {
+            (0, b) => b,
+            (a, 0) => a,
+            (a, b) => a.min(b),
+        };
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -810,6 +877,16 @@ pub struct FeedItem {
     /// Images on a message of yours; empty for every other row.
     #[serde(default)]
     pub attachments: Vec<Attachment>,
+    // ── your agent's turn on a message of yours ──
+    /// What your agent did for it, step by step; empty for every other row.
+    #[serde(default)]
+    pub steps: Vec<TurnStep>,
+    /// The answer your agent has written so far, while the message is `thinking`; `""` otherwise.
+    #[serde(default)]
+    pub draft: String,
+    /// When you asked your agent to stop working on it; 0 if you did not.
+    #[serde(default)]
+    pub stop_at: u64,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -913,6 +990,10 @@ pub struct Hyperfeed {
     progress: UnorderedMap<String, Progress>,
     /// Images on your messages, by the message's id.
     attachments: UnorderedMap<String, Attachments>,
+    /// Your agent's turn on each of your messages it worked on, by message id.
+    work: UnorderedMap<String, Work>,
+    /// Your requests to stop a turn, by message id.
+    stops: UnorderedMap<String, StopRequest>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -956,6 +1037,11 @@ pub enum Event<'a> {
     ArchiveChanged {
         count: u32,
     },
+    /// You asked your agent to stop working on message `id`: it ends the turn
+    /// and marks the message failed, "Stopped by you".
+    StopRequested {
+        id: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -981,6 +1067,8 @@ impl Hyperfeed {
             asks: UnorderedMap::new(),
             progress: UnorderedMap::new(),
             attachments: UnorderedMap::new(),
+            work: UnorderedMap::new(),
+            stops: UnorderedMap::new(),
         }
     }
 
@@ -1235,6 +1323,9 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
         }
     }
 
@@ -1283,6 +1374,9 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
         }
     }
 
@@ -1300,6 +1394,17 @@ impl Hyperfeed {
                 item.doing = p.doing.clone();
                 item.doing_at = p.at;
             }
+        }
+        // The steps stay with the message once the turn is over; the draft
+        // only while it is written, after which the answer is its own row.
+        if let Some(w) = self.work.get(&m.id)? {
+            item.steps = w.steps.clone();
+            if item.status == STATUS_THINKING {
+                item.draft = w.draft.clone();
+            }
+        }
+        if let Some(s) = self.stops.get(&m.id)? {
+            item.stop_at = s.at;
         }
         if let Some(a) = self.attachments.get(&m.id)? {
             item.attachments = a.items.clone();
@@ -1354,6 +1459,9 @@ impl Hyperfeed {
             doing: String::new(),
             doing_at: 0,
             attachments: Vec::new(),
+            steps: Vec::new(),
+            draft: String::new(),
+            stop_at: 0,
         }
     }
 
@@ -2354,6 +2462,93 @@ impl Hyperfeed {
             status: STATUS_THINKING,
         });
         self.message_row(&m)
+    }
+
+    /// Your agent reports its turn on one of your messages: every step so far
+    /// (each with its own `id`, a `title` in words, a `status` of `running`,
+    /// `waiting`, `done` or `failed`, and when it started) and the answer it
+    /// has written so far as `draft`. Each call replaces the last, so the
+    /// turn never adds rows: send it whenever a step starts or ends, and
+    /// every few seconds while the answer is being written. The steps stay
+    /// on the message after the turn; the draft shows only while it is
+    /// `thinking`.
+    pub fn agent_work(
+        &mut self,
+        id: String,
+        steps: Vec<TurnStep>,
+        draft: String,
+    ) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        if steps.len() > MAX_HISTORY {
+            return Err(AppError::msg(format!(
+                "{} steps, limit is {MAX_HISTORY}",
+                steps.len()
+            )));
+        }
+        for s in &steps {
+            Self::check_len("step id", &s.id, MAX_KEY, true)?;
+            Self::check_len("step title", &s.title, MAX_TITLE, true)?;
+            Self::check_one_of("step status", &s.status, &STEP_STATUSES)?;
+        }
+        Self::check_len("draft", &draft, MAX_MESSAGE, false)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!("message {id} is the agent's own")));
+        }
+        let status = current(&m.history).status.clone();
+        if status == STATUS_WAITING {
+            return Err(AppError::msg(format!(
+                "message {id} is waiting; take it up with agent_ack first"
+            )));
+        }
+        let at = match self.work.get(&id)? {
+            Some(w) => now_ms().max(w.at + 1),
+            None => now_ms(),
+        };
+        self.work.insert(id.clone(), Work { steps, draft, at })?;
+        app::emit!(Event::MessageChanged {
+            id: &id,
+            status: &status,
+        });
+        self.message_row(&m)
+    }
+
+    /// You ask your agent to stop working on one of your messages. One it has
+    /// not taken up yet is closed at once, "Stopped by you"; one it is working
+    /// on (`thinking`) keeps the request, and your agent ends its turn and
+    /// marks the message failed, "Stopped by you". Asking twice changes
+    /// nothing.
+    pub fn stop(&mut self, id: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_YOU {
+            return Err(AppError::msg(format!(
+                "message {id} is the agent's own; stop one of yours"
+            )));
+        }
+        let status = current(&m.history).status.clone();
+        match status.as_str() {
+            STATUS_WAITING => {
+                self.stops
+                    .insert(id.clone(), StopRequest { at: now_ms() })?;
+                self.push_message_step(m, STATUS_FAILED, STOPPED_BY_YOU.to_owned())
+            }
+            STATUS_THINKING => {
+                if self.stops.get(&id)?.is_none() {
+                    self.stops
+                        .insert(id.clone(), StopRequest { at: now_ms() })?;
+                    app::emit!(Event::StopRequested { id: &id });
+                    app::emit!(Event::MessageChanged {
+                        id: &id,
+                        status: STATUS_THINKING,
+                    });
+                }
+                self.message_row(&m)
+            }
+            _ => Err(AppError::msg(format!(
+                "message {id} is {status}; there is no turn to stop"
+            ))),
+        }
     }
 
     /// An agent saying it is running. The feed shows it as live while it
