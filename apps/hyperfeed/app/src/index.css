@@ -2514,6 +2514,37 @@ body {
   box-shadow: var(--shadow);
 }
 
+/* The new feed's switch, beside Lanes and Team: a pill that fills when on. */
+.people-toggle {
+  margin: 0 0 12px 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.people-toggle.on {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: #fff;
+}
+
+/* A people-first row: who in bold, what they did plain, what it was about after. */
+.people-sentence {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.people-sentence strong,
+.people-what {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .team {
   display: flex;
   flex-direction: column;

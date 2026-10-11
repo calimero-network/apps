@@ -21,6 +21,7 @@ import {
 } from "./format";
 import { agentDigest, digestLine, headlineOf, isAgent } from "./team";
 import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
+import { answersYou, mayAnswer, placeOf, sentenceOf, useChainRoot, type Sentence } from "./people";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -73,10 +74,13 @@ export function FeedView({
   newFeed,
   onChat,
   openLink,
+  people = false,
 }: {
   feed: Feed;
   query: string;
   newFeed?: NewFeed;
+  /** The new feed: each row said as who did what ("Agent in Chat posted your stand-up"). */
+  people?: boolean;
   /** Open a chat with your agent; without it, a new conversation opens in place. */
   onChat?: (chain: string) => void;
   /** The signed-in address that shows a row in its app; without it, rows have no Open. */
@@ -192,6 +196,7 @@ export function FeedView({
 
   const rowProps = {
     feed,
+    people,
     onChat,
     onOpenApp: openLink ? openApp : undefined,
     onArchive: archive,
@@ -721,6 +726,7 @@ function Row({
   onOpenApp,
   onArchive,
   onLater,
+  people = false,
 }: {
   item: FeedItem;
   lane: Lane;
@@ -729,6 +735,7 @@ function Row({
   expanded: boolean;
   onToggle: () => void;
   feed: Feed;
+  people?: boolean;
   onChat?: (chain: string) => void;
   onOpenApp?: (item: FeedItem) => void;
   onArchive: (item: FeedItem) => void;
@@ -742,11 +749,16 @@ function Row({
   const body = extraBody(item);
   const command = localCommand(item);
   const openable = Boolean(onOpenApp) && canOpen(item);
+  // In the new feed, your agent's answer in a chat you started reads as that chat: the answer stays in its thread.
+  const root = useChainRoot(people && mayAnswer(item) ? item.chain : "", feed.loadChain);
+  const chat = people && answersYou(item, root) ? root : null;
   return (
     <li ref={ref} className={`row ${card ? "need" : ""} ${expanded ? "open" : ""} ${item.needs_you ? "needs" : ""}`}>
       <button type="button" className={card ? "need-line" : "row-line"} aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
         {card ? (
-          <NeedHead item={item} />
+          <NeedHead item={item} people={people} />
+        ) : people ? (
+          <PeopleLine item={item} chat={chat} />
         ) : (
           <>
             <RowBadge item={item} />
@@ -826,13 +838,60 @@ function Row({
   );
 }
 
+/** A sentence's face: a teammate's initials, an app's badge, you or your agent. */
+function Face({ s, item, size }: { s: Sentence; item: FeedItem; size: "sm" | "md" }) {
+  if (s.actor === "person") {
+    return (
+      <span className={`badge badge-${size} badge-person`} title={s.who} aria-hidden="true">
+        {s.initials}
+      </span>
+    );
+  }
+  if (s.actor === "app") return <Badge app={item.app} size={size} />;
+  return (
+    <span className={`badge badge-${size} ${s.actor === "you" ? "badge-you" : "badge-agent"}`} aria-hidden="true">
+      {s.actor === "you" ? "You" : <Spark />}
+    </span>
+  );
+}
+
+/**
+ * A row in the new feed: who did what, as one sentence, with where under it.
+ * `chat` is the message of yours that started the chain when the row is your
+ * agent's answer to it: the row is that conversation, and the answer is in its thread.
+ */
+function PeopleLine({ item, chat }: { item: FeedItem; chat: FeedItem | null }) {
+  const shown = chat ?? item;
+  const s = sentenceOf(shown, appName);
+  const working = progressLine(item);
+  const place = placeOf(shown, appName);
+  return (
+    <>
+      <Face s={s} item={shown} size="md" />
+      <span className="row-text">
+        <span className="row-title people-sentence">
+          <strong>{s.who}</strong> {s.verb}
+          {s.what && <span className="people-what"> {s.what}</span>}
+        </span>
+        <span className="row-where">{working ? `Working: ${working}` : chat ? `Agent replied${place ? ` · ${place}` : ""}` : place || whereOf(shown)}</span>
+      </span>
+      <Status item={chat ? { ...chat, status: "answered" } : item} />
+      {item.chain_len > 1 && <span className="row-steps">{item.chain_len}</span>}
+      <span className="row-time">{timeLabel(item.chain_at || item.at)}</span>
+    </>
+  );
+}
+
 /** A card's head: who wants what, as a sentence, with where and when under it. */
-function NeedHead({ item }: { item: FeedItem }) {
+function NeedHead({ item, people = false }: { item: FeedItem; people?: boolean }) {
   const h = headlineOf(item, appName);
+  const s = people ? sentenceOf(item, appName) : null;
   const working = progressLine(item);
   return (
     <>
-      {h.person ? (
+      {s ? (
+        <Face s={s} item={item} size="sm" />
+      ) : h.person ? (
         <span className="badge badge-sm badge-person" title={h.who} aria-hidden="true">
           {h.initials}
         </span>
@@ -845,8 +904,8 @@ function NeedHead({ item }: { item: FeedItem }) {
       )}
       <span className="need-text">
         <span className="need-sentence">
-          <strong>{h.who}</strong> {h.verb}
-          {h.object && <span className="need-object">{h.object}</span>}
+          <strong>{s ? s.who : h.who}</strong> {s ? s.verb : h.verb}
+          {(s ? s.what : h.object) && <span className="need-object">{s ? s.what : h.object}</span>}
         </span>
         <span className="need-where">
           {working

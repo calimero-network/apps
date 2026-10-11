@@ -10,15 +10,17 @@ function Harness({
   backend,
   newFeed,
   openLink,
+  people,
 }: {
   backend: DemoBackend;
   newFeed?: NewFeed;
   openLink?: (item: FeedItem) => Promise<string | null>;
+  people?: boolean;
 }) {
   const [nudge, setNudge] = useState(0);
   useEffect(() => backend.subscribe(() => setNudge((n) => n + 1)), [backend]);
   const feed = useFeed(backend, nudge);
-  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} />;
+  return <FeedView feed={feed} query="" newFeed={newFeed} openLink={openLink} people={people} />;
 }
 
 const stream = () => screen.getByRole("main");
@@ -534,5 +536,45 @@ describe("FeedView", () => {
       fireEvent.click(within(post).getByRole("button"));
     });
     expect(await within(digest()).findByRole("button", { name: /Fix the agent digest card/, expanded: true })).toBeInTheDocument();
+  });
+
+  describe("the new feed", () => {
+    it("says each row as who did what", async () => {
+      render(<Harness backend={new DemoBackend(true, 0)} people />);
+      await rowFor(/Vendor NDA/);
+      // A card in the strip: your agent, where, and what it wants to do.
+      expect(await within(needs()).findByRole("button", { name: /Agent in Sign prepared "Vendor NDA/ })).toBeInTheDocument();
+      expect(within(needs()).getByRole("button", { name: /Tomás Reid assigned HF-31 to you/ })).toBeInTheDocument();
+      await openDigest();
+      expect(await within(digest()).findByRole("button", { name: /Agent in Chat posted your stand-up/ })).toBeInTheDocument();
+    });
+
+    it("keeps your agent's answer in the chat thread, not as a row of its own", async () => {
+      const backend = new DemoBackend(true, 0);
+      render(<Harness backend={backend} people />);
+      await rowFor(/Vendor NDA/);
+      const asked = await act(async () => backend.say("", "What's left before the board meeting?"));
+      await act(async () => {
+        backend.agentSay(asked.chain, asked.id, "Two slides and the KPIs.");
+      });
+      await openDigest();
+      const row = await rowFor(/You asked your agent What's left before the board meeting/);
+      expect(row).toHaveTextContent("Agent replied");
+      expect(row).toHaveTextContent("Answered");
+      // The answer is not a row's headline: it is in the thread.
+      expect(within(stream()).queryByRole("button", { name: /^Agent replied Two slides/ })).not.toBeInTheDocument();
+      const open = await openRow(/You asked your agent What's left/);
+      expect(await within(open).findByRole("list", { name: "The whole flow" })).toHaveTextContent("Two slides and the KPIs.");
+    });
+
+    it("leads with you when your decision was the last thing that happened", async () => {
+      const at = Date.now();
+      const items: FeedItem[] = [
+        { ...noRow, id: "a1", chain: "a1", kind: "action", app: "calendar", status: "approved", title: "Book 20 minutes with Maya", at, chain_at: at },
+      ];
+      render(<FeedView feed={staticFeed(items)} query="" people />);
+      await openDigest();
+      expect(await within(digest()).findByRole("button", { name: /You approved Book 20 minutes with Maya/ })).toBeInTheDocument();
+    });
   });
 });
