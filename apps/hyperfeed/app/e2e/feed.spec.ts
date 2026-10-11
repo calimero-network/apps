@@ -32,10 +32,13 @@ async function login(page: Page) {
   await page.goto(`/#${params.toString()}`);
 }
 
-/** Sign in again and open the feed the first test created. */
+/**
+ * Sign in again and open a feed: the first test's, or, once the switcher test
+ * has made a second, the first one the picker lists.
+ */
 async function openFeed(page: Page) {
   await login(page);
-  await page.getByRole("button", { name: /^Open feed / }).click();
+  await page.getByRole("button", { name: /^Open feed / }).first().click();
   await expect(page.getByRole("region", { name: "To do" })).toBeVisible({ timeout: 60_000 });
 }
 
