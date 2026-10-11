@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DemoBackend, NO_ASK } from "./demo";
 import type { ActionInput, Ask, NotificationInput } from "./generated/HyperfeedClient";
 
@@ -162,6 +162,36 @@ describe("allow for this session", () => {
     const grant = await allowed(b, "mero-bot", SESSION);
     now += 12 * 60 * 60_000 + 1_000;
     expect((await b.recordAction(action("mero-bot", "done", { grant: grant.id }))).breach).toMatch(/acted without asking/);
+  });
+});
+
+describe("a chain still underway", () => {
+  it("is led by what is still running, not by a newer step that is done", async () => {
+    vi.useFakeTimers();
+    const b = new DemoBackend(false, 1_000);
+    await b.setPolicy("sheets", "act", "feed");
+    const p = await b.recordAction(action("chat", "proposed"));
+    await b.resolveAction(p.id, "approve");
+    const later = await b.recordAction(action("sheets", "done", { chain: p.chain }));
+    expect((await b.feed("all", "")).items[0]).toMatchObject({ id: p.id, status: "approved", needs_you: false });
+    // The pretend agent reports it done.
+    await vi.advanceTimersByTimeAsync(1_000);
+    vi.useRealTimers();
+    expect((await b.feed("all", "")).items[0]!.id).toBe(later.id);
+  });
+
+  it("is led by your message until it is answered, and by your answer until it is delivered", async () => {
+    const b = fresh();
+    await b.setPolicy("sheets", "act", "feed");
+    const q = await b.say("", "Pull the numbers");
+    await b.recordAction(action("sheets", "done", { chain: q.chain }));
+    expect((await b.feed("all", "")).items[0]!.id).toBe(q.id);
+
+    const n = await b.recordNotification(note("m", "chat", { ask: ask("reply", ["On it"]) }));
+    await b.answerNotification(n.id, "On it");
+    await b.recordAction(action("sheets", "done", { chain: n.chain }));
+    const row = (await b.feed("all", "")).items.find((i) => i.chain === n.chain);
+    expect(row).toMatchObject({ id: n.id, status: "answered" });
   });
 });
 

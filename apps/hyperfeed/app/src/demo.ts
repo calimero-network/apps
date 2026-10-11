@@ -208,7 +208,8 @@ export class DemoBackend implements FeedBackend {
       const byTime = (a: FeedItem, b: FeedItem) => a.at - b.at || (a.id < b.id ? -1 : 1);
       const sorted = [...items].sort(byTime);
       const needing = sorted.filter((i) => i.needs_you);
-      const lead = copy(needing[needing.length - 1] ?? sorted[sorted.length - 1]!);
+      const running = sorted.filter(underway);
+      const lead = copy(needing[needing.length - 1] ?? running[running.length - 1] ?? sorted[sorted.length - 1]!);
       lead.chain_len = items.length;
       lead.chain_at = Math.max(...items.map((i) => i.chain_at));
       lead.needs_you = needing.length > 0;
@@ -841,6 +842,13 @@ export class DemoBackend implements FeedBackend {
       action({ ...idea, why: "Simulated: what your agent might do next.", outcome: verdict.decision === "act" ? "done" : "proposed" }),
     );
   }
+}
+
+/** Mirrors the contract's `underway`: a row still being carried, which leads its chain over settled ones. */
+function underway(i: FeedItem): boolean {
+  if (i.kind === "action") return ["approved", "retrying", "undo_requested"].includes(i.status);
+  if (i.kind === "message") return i.from === "you" && (i.status === "waiting" || i.status === "thinking");
+  return i.kind === "notification" && i.status === "answered";
 }
 
 function action(input: Partial<ActionInput>): ActionInput {

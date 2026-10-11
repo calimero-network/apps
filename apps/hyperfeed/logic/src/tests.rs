@@ -1649,3 +1649,121 @@ fn a_grant_belongs_on_an_outcome() {
     let err = app.call(|s| s.record_action(proposal)).unwrap_err();
     assert!(format!("{err:?}").contains("grant"), "{err:?}");
 }
+
+// ── A chain is settled only when everything in it is ─────────────────────────
+
+/// Rows are ordered by the millisecond they were made in: wait for the next.
+fn next_ms() {
+    std::thread::sleep(std::time::Duration::from_millis(2));
+}
+
+/// A step in `chain` that settled at once.
+fn done_in(app: &mut TestHost<Hyperfeed>, chain: &str) -> FeedItem {
+    next_ms();
+    let mut input = action("sheets", "done");
+    input.chain = chain.to_owned();
+    app.call(|s| s.record_action(input)).unwrap()
+}
+
+fn lead(app: &TestHost<Hyperfeed>, chain: &str) -> FeedItem {
+    feed(app, "all")
+        .items
+        .into_iter()
+        .find(|r| r.chain == chain)
+        .expect("the chain")
+}
+
+#[test]
+fn an_approved_action_leads_its_chain_until_it_settles() {
+    let mut app = acting_in("sheets"); // "chat" still asks
+    let proposal = app
+        .call(|s| s.record_action(action("chat", "proposed")))
+        .unwrap();
+    let chain = proposal.chain.clone();
+    app.call(|s| s.resolve_action(proposal.id.clone(), "approve".to_owned(), String::new()))
+        .unwrap();
+    let later = done_in(&mut app, &chain);
+
+    let row = lead(&app, &chain);
+    assert_eq!(
+        row.id, proposal.id,
+        "what is still running leads, not {}",
+        later.id
+    );
+    assert_eq!(row.status, STATUS_APPROVED);
+    assert!(!row.needs_you);
+
+    // It fails: now it needs you, and still leads.
+    app.call(|s| s.complete_action(proposal.id.clone(), "failed".to_owned(), String::new()))
+        .unwrap();
+    assert!(lead(&app, &chain).needs_you);
+
+    // A retry is underway again; once it is done, the latest row leads.
+    app.call(|s| s.resolve_action(proposal.id.clone(), "approve".to_owned(), String::new()))
+        .unwrap();
+    let row = lead(&app, &chain);
+    assert_eq!(
+        (row.id.as_str(), row.status.as_str()),
+        (proposal.id.as_str(), STATUS_RETRYING)
+    );
+    app.call(|s| s.complete_action(proposal.id.clone(), "done".to_owned(), String::new()))
+        .unwrap();
+    assert_eq!(lead(&app, &chain).id, later.id);
+}
+
+#[test]
+fn an_undo_being_done_leads_its_chain() {
+    let mut app = acting_in("sheets");
+    app.call(|s| s.set_policy("chat".to_owned(), "act".to_owned(), "feed".to_owned()))
+        .unwrap();
+    let posted = app
+        .call(|s| s.record_action(action("sheets", "done")))
+        .unwrap();
+    app.call(|s| s.resolve_action(posted.id.clone(), "undo".to_owned(), String::new()))
+        .unwrap();
+    done_in(&mut app, &posted.chain);
+    let row = lead(&app, &posted.chain);
+    assert_eq!(
+        (row.id.as_str(), row.status.as_str()),
+        (posted.id.as_str(), STATUS_UNDO_REQUESTED)
+    );
+}
+
+#[test]
+fn your_message_leads_its_chain_until_it_is_answered() {
+    let mut app = acting_in("sheets");
+    let q = say(&mut app, "", "Pull the numbers into a sheet");
+    let step = done_in(&mut app, &q.chain);
+    assert_eq!(lead(&app, &q.chain).id, q.id, "waiting");
+
+    app.call(|s| s.agent_ack(q.id.clone(), STATUS_THINKING.to_owned(), String::new()))
+        .unwrap();
+    assert_eq!(lead(&app, &q.chain).id, q.id, "thinking");
+
+    next_ms();
+    let a = app
+        .call(|s| s.agent_say(q.chain.clone(), q.id.clone(), "Done.".to_owned()))
+        .unwrap();
+    assert_ne!(a.id, step.id);
+    assert_eq!(
+        lead(&app, &q.chain).id,
+        a.id,
+        "answered: the latest row leads"
+    );
+}
+
+#[test]
+fn an_answer_being_delivered_leads_its_chain() {
+    let mut app = acting_in("sheets");
+    let mut input = notification("chat:a>b:0", "chat", true);
+    input.ask = ask("reply", "Reply in #launch", &[], "");
+    let mention = app.call(|s| s.record_notification(input)).unwrap();
+    app.call(|s| s.answer_notification(mention.id.clone(), "On it".to_owned()))
+        .unwrap();
+    done_in(&mut app, &mention.chain);
+    let row = lead(&app, &mention.chain);
+    assert_eq!(
+        (row.id.as_str(), row.status.as_str()),
+        (mention.id.as_str(), STATUS_ANSWERED)
+    );
+}
