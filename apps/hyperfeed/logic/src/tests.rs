@@ -2233,6 +2233,154 @@ fn answering_a_question_from_its_buttons_goes_to_your_agent() {
         .is_err());
 }
 
+// ── standing rules ───────────────────────────────────────────────────────────
+
+fn rules(app: &TestHost<Hyperfeed>) -> Vec<String> {
+    app.view(|s| s.settings())
+        .unwrap()
+        .rules
+        .into_iter()
+        .map(|r| r.text)
+        .collect()
+}
+
+#[test]
+fn a_new_feed_has_no_standing_rules() {
+    let app = TestHost::new(Hyperfeed::init);
+    let settings = app.view(|s| s.settings()).unwrap();
+    assert!(settings.rules.is_empty(), "nothing is seeded");
+    assert!(settings.rule_proposals.is_empty());
+}
+
+#[test]
+fn you_add_and_remove_standing_rules() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let first = app
+        .call(|s| s.add_rule("  Never push to main  ".to_owned()))
+        .unwrap();
+    assert_eq!(first.text, "Never push to main", "trimmed");
+    app.call(|s| s.add_rule("Answer in English".to_owned()))
+        .unwrap();
+    assert_eq!(rules(&app), vec!["Never push to main", "Answer in English"]);
+    // The same rule twice is kept once.
+    let again = app
+        .call(|s| s.add_rule("never push to MAIN".to_owned()))
+        .unwrap();
+    assert_eq!(again.id, first.id);
+    assert_eq!(rules(&app).len(), 2);
+
+    app.call(|s| s.remove_rule(first.id.clone())).unwrap();
+    assert_eq!(rules(&app), vec!["Answer in English"]);
+    assert!(
+        app.call(|s| s.remove_rule(first.id.clone())).is_err(),
+        "already removed"
+    );
+    assert!(app.call(|s| s.remove_rule("nope".to_owned())).is_err());
+}
+
+#[test]
+fn a_rule_is_one_short_line() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    assert!(app.call(|s| s.add_rule("   ".to_owned())).is_err());
+    assert!(app.call(|s| s.add_rule("two\nlines".to_owned())).is_err());
+    assert!(app.call(|s| s.add_rule("x".repeat(MAX_RULE + 1))).is_err());
+    assert!(app.call(|s| s.add_rule("x".repeat(MAX_RULE))).is_ok());
+    for i in 1..MAX_RULES {
+        app.call(|s| s.add_rule(format!("rule {i}"))).unwrap();
+    }
+    assert!(
+        app.call(|s| s.add_rule("one too many".to_owned())).is_err(),
+        "every rule goes into every prompt, so they stay few"
+    );
+}
+
+#[test]
+fn only_the_owner_changes_standing_rules() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let rule = app
+        .call(|s| s.add_rule("Never push to main".to_owned()))
+        .unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .add_rule("Push anywhere".to_owned()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.remove_rule(rule.id.clone()))
+        .is_err());
+    let proposal = app
+        .call(|s| {
+            s.propose_rule(
+                "Ask before deleting".to_owned(),
+                String::new(),
+                String::new(),
+            )
+        })
+        .unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.propose_rule(
+            "Be loud".to_owned(),
+            String::new(),
+            String::new()
+        ))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.approve_rule(proposal.id.clone()))
+        .is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.dismiss_rule(proposal.id.clone()))
+        .is_err());
+    assert_eq!(rules(&app), vec!["Never push to main"]);
+}
+
+#[test]
+fn a_suggested_rule_waits_until_you_approve_it() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Push the fix");
+    let proposal = app
+        .call(|s| {
+            s.propose_rule(
+                "Open a PR instead of pushing to main".to_owned(),
+                "You told me not to push to main.".to_owned(),
+                q.chain.clone(),
+            )
+        })
+        .unwrap();
+    assert_eq!(proposal.status, RULE_PROPOSED);
+    assert_eq!(proposal.chain, q.chain);
+    let settings = app.view(|s| s.settings()).unwrap();
+    assert!(settings.rules.is_empty(), "a suggestion changes nothing");
+    assert_eq!(settings.rule_proposals, vec![proposal.clone()]);
+    // Suggested twice, it waits once.
+    let again = app
+        .call(|s| {
+            s.propose_rule(
+                "open a PR instead of pushing to main".to_owned(),
+                String::new(),
+                String::new(),
+            )
+        })
+        .unwrap();
+    assert_eq!(again.id, proposal.id);
+
+    let rule = app.call(|s| s.approve_rule(proposal.id.clone())).unwrap();
+    assert_eq!(rule.text, "Open a PR instead of pushing to main");
+    let settings = app.view(|s| s.settings()).unwrap();
+    assert_eq!(rules(&app), vec!["Open a PR instead of pushing to main"]);
+    assert!(settings.rule_proposals.is_empty());
+    assert!(
+        app.call(|s| s.approve_rule(proposal.id.clone())).is_err(),
+        "approved once"
+    );
+    // A rule you already have is not suggested.
+    assert!(app
+        .call(|s| s.propose_rule(
+            "Open a PR instead of pushing to main".to_owned(),
+            String::new(),
+            String::new()
+        ))
+        .is_err());
+}
+
 #[test]
 fn an_answer_that_reaches_a_replaced_question_is_flagged() {
     let mut app = TestHost::new(Hyperfeed::init);
@@ -2405,4 +2553,21 @@ fn leases_are_checked_and_owner_only() {
         .unwrap();
     assert_eq!(lease.agent, "");
     assert!(claim(&mut app, &other.chain, "studio", 60_000).is_err());
+}
+
+#[test]
+fn a_suggested_rule_can_be_dismissed() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let proposal = app
+        .call(|s| s.propose_rule("Use emoji".to_owned(), String::new(), String::new()))
+        .unwrap();
+    let dismissed = app.call(|s| s.dismiss_rule(proposal.id.clone())).unwrap();
+    assert_eq!(dismissed.status, RULE_DISMISSED);
+    let settings = app.view(|s| s.settings()).unwrap();
+    assert!(settings.rules.is_empty());
+    assert!(settings.rule_proposals.is_empty());
+    assert!(app.call(|s| s.approve_rule(proposal.id.clone())).is_err());
+    assert!(app
+        .call(|s| s.propose_rule("x".to_owned(), String::new(), "no-chain".to_owned()))
+        .is_err());
 }

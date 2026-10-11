@@ -1305,6 +1305,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Which agent session works on each chain, by chain id."
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Rule"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Your standing rules, by id."
+        },
+        {
+          "name": "rule_proposals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleProposal"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Rules your agent suggested, by id."
         }
       ]
     },
@@ -1805,6 +1833,147 @@
         }
       ]
     },
+    "Rule": {
+      "kind": "record",
+      "doc": "One of your standing rules: a short line your agent keeps to on every\nturn (\"Never push to main\", \"Answer in English\"). Only you add or remove\none; removing keeps the row with `removed`, so the latest decision wins on\nevery device.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "removed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleProposal": {
+      "kind": "record",
+      "doc": "A rule your agent suggested after you corrected it. It changes nothing\nuntil you approve it, which adds it as your own rule.",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Why your agent suggests it: the correction that led to it."
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The chain where you corrected it, or `\"\"`."
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "[`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`]."
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleProposalView": {
+      "kind": "record",
+      "doc": "A rule your agent suggested, as settings shows it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleView": {
+      "kind": "record",
+      "doc": "One of your standing rules, as settings shows it.",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "SettingsView": {
       "kind": "record",
       "fields": [
@@ -1847,6 +2016,26 @@
             }
           },
           "doc": "Every agent that has reported in, most recent first."
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "RuleView"
+            }
+          },
+          "doc": "Your standing rules, oldest first: your agent keeps to each on every turn."
+        },
+        {
+          "name": "rule_proposals",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "RuleProposalView"
+            }
+          },
+          "doc": "Rules your agent suggested that wait for you, newest first."
         }
       ]
     },
@@ -2016,6 +2205,22 @@
     }
   },
   "methods": [
+    {
+      "name": "add_rule",
+      "doc": "Add a standing rule: one short line your agent keeps to on every turn.\nOnly you add rules; the same rule twice is kept once.",
+      "params": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "RuleView"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "agent_ack",
       "doc": "The agent takes up one of your messages (`thinking`), or gives up on it\n(`failed`, with why). Taking it up is how you know an agent is there.",
@@ -2234,6 +2439,22 @@
       "intent": "mutating"
     },
     {
+      "name": "approve_rule",
+      "doc": "Approve a rule your agent suggested: it becomes one of your rules,\nadded by you.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "RuleView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "archive",
       "doc": "Pause the agent: every write it wants to make becomes a proposal.\nPut chains away: each leaves the feed until something new happens in\nit, or until `until` (ms; 0 = no return time) for \"later\". Returns how\nmany were put away.",
       "params": [
@@ -2441,6 +2662,22 @@
       "intent": "mutating"
     },
     {
+      "name": "dismiss_rule",
+      "doc": "Turn down a rule your agent suggested.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "RuleProposalView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "feed",
       "doc": "The feed: one row per chain, newest activity first.\n\nA row is the chain's **lead**: the latest step that needs you if any\ndoes, otherwise the latest still underway (an action approved, retrying\nor being undone; your message waiting or being answered; your answer\nbeing delivered), otherwise the latest row. So a chain is settled only\nwhen everything in it is. Its `chain_len` says how many rows the chain\nholds and `needs_you` whether any of them needs you; read them all with\n[`Hyperfeed::chain`].\n\n`filter` keeps chains holding an action (`agent`), a notification\n(`notifications`), or something that needs you (`needs_you`); `app_key`\nkeeps chains that touch that app; `before` pages by `chain_at` (0 = from\nthe newest). The counts are over chains, for the whole feed.",
       "params": [
@@ -2585,6 +2822,34 @@
       "intent": "mutating"
     },
     {
+      "name": "propose_rule",
+      "doc": "Your agent suggests a standing rule after you corrected it: `text` is\nthe rule, `why` the correction, `chain` where it happened. It waits\nfor you in Controls and in the chat; nothing changes until you approve\nit. A rule you already have, or one already waiting, is not suggested\ntwice.",
+      "params": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "why",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "RuleProposalView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "record_action",
       "doc": "Record an action: a proposal for you to approve, or an outcome.\n\nA proposal the rules refuse is an error. An outcome the rules say\nneeded you is recorded with a breach, never dropped, unless the app's\nmode alone asked for you and its `grant` is a session you allowed.",
       "params": [
@@ -2635,6 +2900,22 @@
       ],
       "returns": {
         "kind": "bool"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_rule",
+      "doc": "Remove one of your standing rules.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -2826,7 +3107,7 @@
     },
     {
       "name": "settings",
-      "doc": "Your rules: the pause switch, every app you set a policy for, and\nevery guard (defaults included).",
+      "doc": "Your rules: the pause switch, every app you set a policy for, every\nguard (defaults included), your standing rules, and the rules your\nagent suggested that wait for you.",
       "params": [],
       "returns": {
         "$ref": "SettingsView"

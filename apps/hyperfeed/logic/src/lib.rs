@@ -126,6 +126,13 @@ const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 /// renews while it works, so a session that dies lets go within one lease.
 pub const MIN_LEASE_MS: u64 = 1_000;
 pub const MAX_LEASE_MS: u64 = 10 * 60 * 1_000;
+
+/// One standing rule: a short line your agent keeps to on every turn.
+const MAX_RULE: usize = 280;
+/// Standing rules in force at once: each one goes into every turn's prompt.
+const MAX_RULES: usize = 30;
+/// Rules your agent suggested that wait for you at once.
+const MAX_RULE_PROPOSALS: usize = 20;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -239,6 +246,11 @@ pub const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/webp", "ima
 pub const LENS_PROPOSED: &str = "proposed";
 pub const LENS_APPROVED: &str = "approved";
 pub const LENS_REJECTED: &str = "rejected";
+
+/// A rule your agent suggested waits for you, then is added or dismissed.
+pub const RULE_PROPOSED: &str = "proposed";
+pub const RULE_APPROVED: &str = "approved";
+pub const RULE_DISMISSED: &str = "dismissed";
 
 pub const KIND_ACTION: &str = "action";
 pub const KIND_NOTIFICATION: &str = "notification";
@@ -791,6 +803,29 @@ impl Mergeable for Superseded {
     }
 }
 
+/// One of your standing rules: a short line your agent keeps to on every
+/// turn ("Never push to main", "Answer in English"). Only you add or remove
+/// one; removing keeps the row with `removed`, so the latest decision wins on
+/// every device.
+#[app::mergeable(id = "hyperfeed::Rule")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Rule {
+    pub text: String,
+    pub created_at: u64,
+    pub removed: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Rule {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
 /// The question of your agent's that one of your messages answers, when you
 /// answered it from its buttons. Kept beside your message by its id.
 #[app::mergeable(id = "hyperfeed::Answers")]
@@ -832,6 +867,32 @@ pub struct Lease {
 }
 
 impl Mergeable for Lease {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
+/// A rule your agent suggested after you corrected it. It changes nothing
+/// until you approve it, which adds it as your own rule.
+#[app::mergeable(id = "hyperfeed::RuleProposal")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleProposal {
+    pub text: String,
+    /// Why your agent suggests it: the correction that led to it.
+    pub why: String,
+    /// The chain where you corrected it, or `""`.
+    pub chain: String,
+    /// [`RULE_PROPOSED`], [`RULE_APPROVED`] or [`RULE_DISMISSED`].
+    pub status: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for RuleProposal {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         let at = self.updated_at;
         lww(self, at, other, other.updated_at);
@@ -1085,6 +1146,33 @@ pub struct SettingsView {
     pub guards: Vec<GuardView>,
     /// Every agent that has reported in, most recent first.
     pub agents: Vec<AgentView>,
+    /// Your standing rules, oldest first: your agent keeps to each on every turn.
+    #[serde(default)]
+    pub rules: Vec<RuleView>,
+    /// Rules your agent suggested that wait for you, newest first.
+    #[serde(default)]
+    pub rule_proposals: Vec<RuleProposalView>,
+}
+
+/// One of your standing rules, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleView {
+    pub id: String,
+    pub text: String,
+    pub created_at: u64,
+}
+
+/// A rule your agent suggested, as settings shows it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleProposalView {
+    pub id: String,
+    pub text: String,
+    pub why: String,
+    pub chain: String,
+    pub status: String,
+    pub created_at: u64,
 }
 
 /// A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
@@ -1146,6 +1234,11 @@ pub struct Hyperfeed {
     answers: UnorderedMap<String, Answers>,
     /// Which agent session works on each chain, by chain id.
     leases: UnorderedMap<String, Lease>,
+
+    /// Your standing rules, by id.
+    rules: UnorderedMap<String, Rule>,
+    /// Rules your agent suggested, by id.
+    rule_proposals: UnorderedMap<String, RuleProposal>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1229,6 +1322,9 @@ impl Hyperfeed {
             superseded: UnorderedMap::new(),
             answers: UnorderedMap::new(),
             leases: UnorderedMap::new(),
+
+            rules: UnorderedMap::new(),
+            rule_proposals: UnorderedMap::new(),
         }
     }
 
@@ -3056,6 +3152,206 @@ impl Hyperfeed {
             .map(|l| Self::lease_view(&chain, &l)))
     }
 
+    /// A standing rule's text: one short line, trimmed.
+    fn check_rule(text: &str) -> app::Result<String> {
+        let text = text.trim();
+        Self::check_len("rule", text, MAX_RULE, true)?;
+        if text.contains(['\n', '\r']) {
+            return Err(AppError::msg("a rule is one line"));
+        }
+        Ok(text.to_owned())
+    }
+
+    /// Your rules in force, oldest first.
+    fn active_rules(&self) -> app::Result<Vec<RuleView>> {
+        let mut out: Vec<RuleView> = self
+            .rules
+            .entries()?
+            .filter(|(_, r)| !r.removed)
+            .map(|(id, r)| RuleView {
+                id,
+                text: r.text,
+                created_at: r.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    fn insert_rule(&mut self, text: String) -> app::Result<RuleView> {
+        let rules = self.active_rules()?;
+        if let Some(same) = rules.iter().find(|r| r.text.eq_ignore_ascii_case(&text)) {
+            return Ok(same.clone());
+        }
+        if rules.len() >= MAX_RULES {
+            return Err(AppError::msg(format!(
+                "you have {MAX_RULES} rules, the limit; remove one first"
+            )));
+        }
+        let now = now_ms();
+        let id = Self::fresh_id();
+        self.rules.insert(
+            id.clone(),
+            Rule {
+                text: text.clone(),
+                created_at: now,
+                removed: false,
+                updated_at: now,
+            },
+        )?;
+        app::emit!(Event::SettingsChanged);
+        Ok(RuleView {
+            id,
+            text,
+            created_at: now,
+        })
+    }
+
+    /// Add a standing rule: one short line your agent keeps to on every turn.
+    /// Only you add rules; the same rule twice is kept once.
+    pub fn add_rule(&mut self, text: String) -> app::Result<RuleView> {
+        self.require_owner()?;
+        let text = Self::check_rule(&text)?;
+        self.insert_rule(text)
+    }
+
+    /// Remove one of your standing rules.
+    pub fn remove_rule(&mut self, id: String) -> app::Result<()> {
+        self.require_owner()?;
+        let mut rule = self
+            .rules
+            .get(&id)?
+            .map(|r| r.clone())
+            .filter(|r| !r.removed)
+            .ok_or_else(|| AppError::msg(format!("no rule {id}")))?;
+        rule.removed = true;
+        rule.updated_at = now_ms().max(rule.updated_at + 1);
+        self.rules.insert(id, rule)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(())
+    }
+
+    /// Your agent suggests a standing rule after you corrected it: `text` is
+    /// the rule, `why` the correction, `chain` where it happened. It waits
+    /// for you in Controls and in the chat; nothing changes until you approve
+    /// it. A rule you already have, or one already waiting, is not suggested
+    /// twice.
+    pub fn propose_rule(
+        &mut self,
+        text: String,
+        why: String,
+        chain: String,
+    ) -> app::Result<RuleProposalView> {
+        self.require_owner()?;
+        let text = Self::check_rule(&text)?;
+        Self::check_len("why", &why, MAX_WHY, false)?;
+        Self::check_len("chain", &chain, MAX_KEY, false)?;
+        if !chain.is_empty() && !self.chain_exists(&chain)? {
+            return Err(AppError::msg(format!("no chain {chain}")));
+        }
+        if self
+            .active_rules()?
+            .iter()
+            .any(|r| r.text.eq_ignore_ascii_case(&text))
+        {
+            return Err(AppError::msg("that is already one of the user's rules"));
+        }
+        let waiting = self.waiting_rule_proposals()?;
+        if let Some(same) = waiting.iter().find(|p| p.text.eq_ignore_ascii_case(&text)) {
+            return Ok(same.clone());
+        }
+        if waiting.len() >= MAX_RULE_PROPOSALS {
+            return Err(AppError::msg(format!(
+                "{MAX_RULE_PROPOSALS} suggested rules already wait for the user"
+            )));
+        }
+        let now = now_ms();
+        let id = Self::fresh_id();
+        let proposal = RuleProposal {
+            text,
+            why,
+            chain,
+            status: RULE_PROPOSED.to_owned(),
+            created_at: now,
+            updated_at: now,
+        };
+        let view = Self::rule_proposal_view(id.clone(), &proposal);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(view)
+    }
+
+    /// Approve a rule your agent suggested: it becomes one of your rules,
+    /// added by you.
+    pub fn approve_rule(&mut self, id: String) -> app::Result<RuleView> {
+        self.require_owner()?;
+        let mut proposal = self.waiting_rule_proposal(&id)?;
+        let rule = self.insert_rule(proposal.text.clone())?;
+        proposal.status = RULE_APPROVED.to_owned();
+        proposal.updated_at = now_ms().max(proposal.updated_at + 1);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(rule)
+    }
+
+    /// Turn down a rule your agent suggested.
+    pub fn dismiss_rule(&mut self, id: String) -> app::Result<RuleProposalView> {
+        self.require_owner()?;
+        let mut proposal = self.waiting_rule_proposal(&id)?;
+        proposal.status = RULE_DISMISSED.to_owned();
+        proposal.updated_at = now_ms().max(proposal.updated_at + 1);
+        let view = Self::rule_proposal_view(id.clone(), &proposal);
+        self.rule_proposals.insert(id, proposal)?;
+        app::emit!(Event::SettingsChanged);
+        Ok(view)
+    }
+
+    fn waiting_rule_proposal(&self, id: &str) -> app::Result<RuleProposal> {
+        let proposal = self
+            .rule_proposals
+            .get(id)?
+            .map(|p| p.clone())
+            .ok_or_else(|| AppError::msg(format!("no suggested rule {id}")))?;
+        if proposal.status != RULE_PROPOSED {
+            return Err(AppError::msg(format!(
+                "suggested rule {id} is already {}",
+                proposal.status
+            )));
+        }
+        Ok(proposal)
+    }
+
+    /// Rules your agent suggested that wait for you, newest first.
+    fn waiting_rule_proposals(&self) -> app::Result<Vec<RuleProposalView>> {
+        let mut out: Vec<RuleProposalView> = self
+            .rule_proposals
+            .entries()?
+            .filter(|(_, p)| p.status == RULE_PROPOSED)
+            .map(|(id, p)| Self::rule_proposal_view(id, &p))
+            .collect();
+        out.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    fn rule_proposal_view(id: String, p: &RuleProposal) -> RuleProposalView {
+        RuleProposalView {
+            id,
+            text: p.text.clone(),
+            why: p.why.clone(),
+            chain: p.chain.clone(),
+            status: p.status.clone(),
+            created_at: p.created_at,
+        }
+    }
+
     /// An agent saying it is running. The feed shows it as live while it
     /// keeps reporting; mero-bot calls this every half minute.
     pub fn agent_seen(&mut self, name: String) -> app::Result<()> {
@@ -3302,8 +3598,9 @@ impl Hyperfeed {
         Ok(out)
     }
 
-    /// Your rules: the pause switch, every app you set a policy for, and
-    /// every guard (defaults included).
+    /// Your rules: the pause switch, every app you set a policy for, every
+    /// guard (defaults included), your standing rules, and the rules your
+    /// agent suggested that wait for you.
     pub fn settings(&self) -> app::Result<SettingsView> {
         let mut policies: Vec<PolicyView> = self
             .policies
@@ -3337,6 +3634,8 @@ impl Hyperfeed {
             policies,
             guards,
             agents,
+            rules: self.active_rules()?,
+            rule_proposals: self.waiting_rule_proposals()?,
         })
     }
 }

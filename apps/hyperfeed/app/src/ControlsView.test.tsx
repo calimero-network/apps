@@ -48,3 +48,57 @@ describe("Controls: what your feed reads from each app", () => {
     ]);
   });
 });
+
+describe("Controls: standing rules", () => {
+  const section = () => screen.findByRole("region", { name: "Standing rules" });
+
+  it("starts with none, then adds and removes your rules", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} />);
+    const rules = await section();
+    expect(within(rules).getByText(/No rules yet/)).toBeInTheDocument();
+    fireEvent.change(within(rules).getByLabelText("New rule"), { target: { value: "Never push to main" } });
+    await act(async () => {
+      fireEvent.click(within(rules).getByRole("button", { name: "Add" }));
+    });
+    const list = await within(rules).findByRole("list", { name: "Your standing rules" });
+    expect(within(list).getByText("Never push to main")).toBeInTheDocument();
+    expect(within(rules).getByLabelText("New rule")).toHaveValue("");
+    expect((await backend.settings()).rules.map((r) => r.text)).toEqual(["Never push to main"]);
+    await act(async () => {
+      fireEvent.click(within(list).getByRole("button", { name: 'Remove "Never push to main"' }));
+    });
+    expect(await within(rules).findByText(/No rules yet/)).toBeInTheDocument();
+    expect((await backend.settings()).rules).toEqual([]);
+  });
+
+  it("approves a rule your agent suggested with one tap, as your own", async () => {
+    const backend = new DemoBackend(true, 0);
+    backend.proposeRule("Open a PR instead of pushing to main", "You told me not to push to main.");
+    render(<Harness backend={backend} />);
+    const rules = await section();
+    const suggestion = within(rules).getByRole("listitem", { name: "Suggested rule: Open a PR instead of pushing to main" });
+    expect(suggestion).toHaveTextContent("You told me not to push to main.");
+    await act(async () => {
+      fireEvent.click(within(suggestion).getByRole("button", { name: "Approve" }));
+    });
+    const list = await within(rules).findByRole("list", { name: "Your standing rules" });
+    expect(within(list).getByText("Open a PR instead of pushing to main")).toBeInTheDocument();
+    expect(within(rules).queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument();
+    const settings = await backend.settings();
+    expect(settings.rules.map((r) => r.text)).toEqual(["Open a PR instead of pushing to main"]);
+    expect(settings.rule_proposals).toEqual([]);
+  });
+
+  it("dismisses a suggested rule without adding it", async () => {
+    const backend = new DemoBackend(true, 0);
+    backend.proposeRule("Use emoji in every answer");
+    render(<Harness backend={backend} />);
+    const rules = await section();
+    await act(async () => {
+      fireEvent.click(within(rules).getByRole("button", { name: "Dismiss" }));
+    });
+    expect(within(rules).queryByRole("list", { name: "Rules your agent suggests" })).not.toBeInTheDocument();
+    expect((await backend.settings()).rules).toEqual([]);
+  });
+});

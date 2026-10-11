@@ -3,6 +3,7 @@ import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
+import { RuleSuggestion } from "./ControlsView";
 import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards } from "./RefCards";
@@ -189,6 +190,16 @@ export function ChatView({
           onPick={(m, o) => void feed.answerAsk(m, o)}
           onStop={(id) => void feed.stop(id)}
         />
+        {/* A rule your agent suggested after you corrected it here: one tap makes it yours. */}
+        {chain && (feed.settings?.rule_proposals ?? []).some((p) => p.chain === chain) && (
+          <ul className="rule-suggestions chat-rules" aria-label="Rules your agent suggests">
+            {(feed.settings?.rule_proposals ?? [])
+              .filter((p) => p.chain === chain)
+              .map((p) => (
+                <RuleSuggestion key={p.id} proposal={p} feed={feed} />
+              ))}
+          </ul>
+        )}
         <Composer key={chain} busy={feed.busy} fresh={!chain} images={feed.images} onSend={send} />
       </section>
 

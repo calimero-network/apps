@@ -8,6 +8,8 @@ import type {
   LensView,
   NotificationInput,
   PolicyView,
+  RuleProposalView,
+  RuleView,
   SettingsView,
 } from "./generated/HyperfeedClient";
 
@@ -61,6 +63,12 @@ export interface FeedBackend {
   setPolicy(appKey: string, agent: AgentMode, notifications: NotificationMode): Promise<PolicyView>;
   setGuard(category: string, enabled: boolean): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
+  /** Add one of your standing rules: a short line your agent keeps to on every turn. */
+  addRule(text: string): Promise<RuleView>;
+  removeRule(id: string): Promise<void>;
+  /** Approve a rule your agent suggested: it becomes your own rule. */
+  approveRule(id: string): Promise<RuleView>;
+  dismissRule(id: string): Promise<RuleProposalView>;
   /** Put chains away until something new happens in them, or until `until` (ms) for "later". */
   archive(chains: string[], until?: number): Promise<number>;
   unarchive(chains: string[]): Promise<number>;
@@ -108,6 +116,10 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
       client.setPolicy({ app_key: appKey, agent, notifications }),
     setGuard: (category, enabled) => client.setGuard({ category, enabled }),
     setPaused: (paused) => client.setPaused({ paused }),
+    addRule: (text) => client.addRule({ text }),
+    removeRule: (id) => client.removeRule({ id }),
+    approveRule: (id) => client.approveRule({ id }),
+    dismissRule: (id) => client.dismissRule({ id }),
     archive: (chains, until = 0) => client.archive({ chains, until }),
     unarchive: (chains) => client.unarchive({ chains }),
     recordNotification: (input) => client.recordNotification({ input }),
