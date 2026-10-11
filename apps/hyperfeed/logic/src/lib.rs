@@ -763,6 +763,50 @@ impl Mergeable for StopRequest {
     }
 }
 
+/// A question that a newer one in its chain replaced: your agent asked
+/// again, or an app sent a new question, before you answered this one. Kept
+/// beside the row by its id. Its buttons go; an answer that still reaches it
+/// goes to your agent marked as answering an old question.
+#[app::mergeable(id = "hyperfeed::Superseded")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Superseded {
+    /// The newer question's id.
+    pub by: String,
+    pub at: u64,
+}
+
+impl Mergeable for Superseded {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // The first replacement stands, on every device.
+        if (other.at, &other.by) < (self.at, &self.by) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// The question of your agent's that one of your messages answers, when you
+/// answered it from its buttons. Kept beside your message by its id.
+#[app::mergeable(id = "hyperfeed::Answers")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Answers {
+    pub ask: String,
+}
+
+impl Mergeable for Answers {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Written once with its message, never changed.
+        if other.ask > self.ask {
+            self.ask = other.ask.clone();
+        }
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -920,6 +964,20 @@ pub struct FeedItem {
     /// is the message's first line and a client may derive a shorter one.
     #[serde(default)]
     pub headline: String,
+    // ── questions a newer one replaced ──
+    /// On a question (your agent's, or a notification's) that a newer one in
+    /// its chain replaced before you answered it: the newer one's id. Its
+    /// buttons are gone. `""` otherwise.
+    #[serde(default)]
+    pub superseded_by: String,
+    /// On a message of yours sent from a question's buttons: that question's
+    /// id. `""` otherwise.
+    #[serde(default)]
+    pub answers: String,
+    /// Whether the question it answers had been replaced by a newer one: your
+    /// agent confirms against where things stand now before acting on it.
+    #[serde(default)]
+    pub answers_superseded: bool,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1029,6 +1087,11 @@ pub struct Hyperfeed {
     stops: UnorderedMap<String, StopRequest>,
     /// Headlines of messages written with one, by the message's id.
     headlines: UnorderedMap<String, Headline>,
+    /// Questions a newer one in their chain replaced, by the question's id.
+    superseded: UnorderedMap<String, Superseded>,
+    /// The question each of your messages sent from its buttons answers, by
+    /// your message's id.
+    answers: UnorderedMap<String, Answers>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1105,6 +1168,8 @@ impl Hyperfeed {
             work: UnorderedMap::new(),
             stops: UnorderedMap::new(),
             headlines: UnorderedMap::new(),
+            superseded: UnorderedMap::new(),
+            answers: UnorderedMap::new(),
         }
     }
 
@@ -1363,13 +1428,24 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
         }
     }
 
     /// A notification as a row, with what a lens made of it.
     fn notification_row(&self, n: &Notification) -> app::Result<FeedItem> {
         let typed = self.typed.get(&n.id)?.map(|t| t.clone());
-        Ok(Self::notification_item(n, typed.as_ref()))
+        let mut item = Self::notification_item(n, typed.as_ref());
+        if let Some(s) = self.superseded.get(&n.id)? {
+            item.superseded_by = s.by.clone();
+            // A replaced question no longer waits on you.
+            if item.status == STATUS_RECEIVED {
+                item.needs_you = false;
+            }
+        }
+        Ok(item)
     }
 
     fn notification_item(n: &Notification, typed: Option<&Typed>) -> FeedItem {
@@ -1415,6 +1491,9 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
         }
     }
 
@@ -1427,6 +1506,14 @@ impl Hyperfeed {
             item.ask = a.ask.clone();
         }
         item.needs_you = m.from == FROM_AGENT && item.status == STATUS_ASKED;
+        if let Some(s) = self.superseded.get(&m.id)? {
+            item.superseded_by = s.by.clone();
+            item.needs_you = false;
+        }
+        if let Some(a) = self.answers.get(&m.id)? {
+            item.answers = a.ask.clone();
+            item.answers_superseded = self.superseded.get(&a.ask)?.is_some();
+        }
         if item.status == STATUS_THINKING {
             if let Some(p) = self.progress.get(&m.id)? {
                 item.doing = p.doing.clone();
@@ -1505,6 +1592,9 @@ impl Hyperfeed {
             draft: String::new(),
             stop_at: 0,
             headline: String::new(),
+            superseded_by: String::new(),
+            answers: String::new(),
+            answers_superseded: false,
         }
     }
 
@@ -2051,12 +2141,9 @@ impl Hyperfeed {
                 self.push_message_step(asked, STATUS_ANSWERED, String::new())?;
             }
         }
-        let status = if ask.is_some() {
-            STATUS_ASKED
-        } else {
-            STATUS_SAID
-        };
-        self.post_message(
+        let asks = ask.is_some();
+        let status = if asks { STATUS_ASKED } else { STATUS_SAID };
+        let item = self.post_message(
             chain,
             FROM_AGENT,
             text,
@@ -2065,22 +2152,66 @@ impl Hyperfeed {
             ask,
             Vec::new(),
             headline,
-        )
+        )?;
+        if asks {
+            self.supersede_asks(&item.chain, &item.id)?;
+        }
+        Ok(item)
+    }
+
+    /// A new question in `chain` (`by`) replaces the ones there you have not
+    /// answered yet: your agent's open questions, and notifications still
+    /// waiting for your answer. Their buttons go, and they stop needing you.
+    fn supersede_asks(&mut self, chain: &str, by: &str) -> app::Result<()> {
+        let mut open: Vec<String> = Vec::new();
+        for (id, m) in self.messages.entries()? {
+            if id != by
+                && m.chain == chain
+                && m.from == FROM_AGENT
+                && current(&m.history).status == STATUS_ASKED
+            {
+                open.push(id);
+            }
+        }
+        for (id, n) in self.notifications.entries()? {
+            if id != by
+                && n.chain == chain
+                && !n.ask.kind.is_empty()
+                && current(&n.history).status == STATUS_RECEIVED
+            {
+                open.push(id);
+            }
+        }
+        let at = now_ms();
+        for id in open {
+            if self.superseded.get(&id)?.is_some() {
+                continue;
+            }
+            self.superseded.insert(
+                id,
+                Superseded {
+                    by: by.to_owned(),
+                    at,
+                },
+            )?;
+        }
+        Ok(())
     }
 
     /// You said something in a chain: whatever your agent asked you there is
-    /// answered by it.
+    /// answered by it. A question a newer one replaced is not: your words
+    /// answer the question in front of you.
     fn answer_asks(&mut self, chain: &str, text: &str) -> app::Result<()> {
-        let open: Vec<Message> = self
-            .messages
-            .entries()?
-            .filter(|(_, m)| {
-                m.chain == chain
-                    && m.from == FROM_AGENT
-                    && current(&m.history).status == STATUS_ASKED
-            })
-            .map(|(_, m)| m.clone())
-            .collect();
+        let mut open: Vec<Message> = Vec::new();
+        for (id, m) in self.messages.entries()? {
+            if m.chain == chain
+                && m.from == FROM_AGENT
+                && current(&m.history).status == STATUS_ASKED
+                && self.superseded.get(&id)?.is_none()
+            {
+                open.push(m.clone());
+            }
+        }
         let note: String = text.chars().take(MAX_WHY / 4).collect();
         for m in open {
             self.push_message_step(m, STATUS_ANSWERED, note.clone())?;
@@ -2207,6 +2338,51 @@ impl Hyperfeed {
             attachments,
             headline,
         )
+    }
+
+    /// Answer one question your agent asked, from its buttons: `text` is the
+    /// option you picked, or your reply. It is your next message in the
+    /// question's chain, and goes to your agent like any other.
+    ///
+    /// A question a newer one replaced can still be answered (a screen that
+    /// had not caught up yet, another device): it is marked answered, the
+    /// newer question stays open, and your message carries
+    /// `answers_superseded`, so your agent confirms against where things
+    /// stand now before acting on it.
+    pub fn answer_ask(&mut self, id: String, text: String) -> app::Result<FeedItem> {
+        self.require_owner()?;
+        Self::check_len("text", &text, MAX_MESSAGE, true)?;
+        let m = self.get_message(&id)?;
+        if m.from != FROM_AGENT || self.asks.get(&id)?.is_none() {
+            return Err(AppError::msg(format!("message {id} asks you nothing")));
+        }
+        let status = current(&m.history).status.clone();
+        if status != STATUS_ASKED {
+            return Err(AppError::msg(format!("message {id} is already {status}")));
+        }
+        let chain = m.chain.clone();
+        if self.superseded.get(&id)?.is_some() {
+            let note: String = text.chars().take(MAX_WHY / 4).collect();
+            self.push_message_step(m, STATUS_ANSWERED, note)?;
+        } else {
+            self.answer_asks(&chain, &text)?;
+        }
+        let item = self.post_message(
+            chain,
+            FROM_YOU,
+            text,
+            String::new(),
+            STATUS_WAITING,
+            None,
+            Vec::new(),
+            None,
+        )?;
+        self.answers
+            .insert(item.id.clone(), Answers { ask: id.clone() })?;
+        let mut item = item;
+        item.answers = id.clone();
+        item.answers_superseded = self.superseded.get(&id)?.is_some();
+        Ok(item)
     }
 
     /// Approve or decline a proposal, retry or drop a failure, ask for an
@@ -2357,7 +2533,11 @@ impl Hyperfeed {
         if let Some(t) = typed {
             self.typed.insert(n.id.clone(), t)?;
         }
+        let asks = !n.ask.kind.is_empty();
         self.notifications.insert(n.id.clone(), n)?;
+        if asks {
+            self.supersede_asks(&item.chain, &item.id)?;
+        }
         app::emit!(Event::NotificationRecorded { id: &item.id });
         Ok(item)
     }

@@ -285,6 +285,18 @@
         }
       ]
     },
+    "Answers": {
+      "kind": "record",
+      "doc": "The question of your agent's that one of your messages answers, when you\nanswered it from its buttons. Kept beside your message by its id.",
+      "fields": [
+        {
+          "name": "ask",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "AppCount": {
       "kind": "record",
       "fields": [
@@ -880,6 +892,27 @@
             "kind": "string"
           },
           "doc": "The headline the message was written with, which is also its `title`;\n`\"\"` when it has none, and for every other row. Without one, `title`\nis the message's first line and a client may derive a shorter one."
+        },
+        {
+          "name": "superseded_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "On a question (your agent's, or a notification's) that a newer one in\nits chain replaced before you answered it: the newer one's id. Its\nbuttons are gone. `\"\"` otherwise."
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "On a message of yours sent from a question's buttons: that question's\nid. `\"\"` otherwise."
+        },
+        {
+          "name": "answers_superseded",
+          "type": {
+            "kind": "bool"
+          },
+          "doc": "Whether the question it answers had been replaced by a newer one: your\nagent confirms against where things stand now before acting on it."
         }
       ]
     },
@@ -1205,6 +1238,34 @@
             "crdt_type": "unordered_map"
           },
           "doc": "Headlines of messages written with one, by the message's id."
+        },
+        {
+          "name": "superseded",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Superseded"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Questions a newer one in their chain replaced, by the question's id."
+        },
+        {
+          "name": "answers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Answers"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "The question each of your messages sent from its buttons answers, by\nyour message's id."
         }
       ]
     },
@@ -1710,6 +1771,25 @@
         }
       ]
     },
+    "Superseded": {
+      "kind": "record",
+      "doc": "A question that a newer one in its chain replaced: your agent asked\nagain, or an app sent a new question, before you answered this one. Kept\nbeside the row by its id. Its buttons go; an answer that still reaches it\ngoes to your agent marked as answering an old question.",
+      "fields": [
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The newer question's id."
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "TurnStep": {
       "kind": "record",
       "doc": "One step of your agent's turn on a message of yours: a tool it ran, a file\nit edited, a write it made. Shown in the message's work block, never as a\nrow of its own.",
@@ -1983,6 +2063,28 @@
         },
         {
           "name": "draft",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FeedItem"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "answer_ask",
+      "doc": "Answer one question your agent asked, from its buttons: `text` is the\noption you picked, or your reply. It is your next message in the\nquestion's chain, and goes to your agent like any other.\n\nA question a newer one replaced can still be answered (a screen that\nhad not caught up yet, another device): it is marked answered, the\nnewer question stays open, and your message carries\n`answers_superseded`, so your agent confirms against where things\nstand now before acting on it.",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
           "type": {
             "kind": "string"
           }

@@ -319,3 +319,34 @@ describe("answers", () => {
   });
 });
 
+
+describe("stale questions", () => {
+  const choose = (...options: string[]) => ({ kind: "choose", prompt: "", options, draft: "" });
+
+  it("replaces your agent's open question with its newer one, as the contract does", async () => {
+    const b = new DemoBackend(false, 0);
+    const q = await b.say("", "Tidy up #launch");
+    const first = b.agentAsk(q.chain, q.id, "Delete the duplicate?", choose("Delete", "Keep"));
+    const second = b.agentAsk(q.chain, "", "Archive the channel?", choose("Archive", "Leave it"));
+    const chain = await b.chain(q.chain);
+    expect(chain.find((i) => i.id === first.id)).toMatchObject({ status: "asked", needs_you: false, superseded_by: second.id });
+    expect(chain.find((i) => i.id === second.id)).toMatchObject({ needs_you: true, superseded_by: "" });
+    // A plain answer goes to the question in front of you.
+    await b.say(q.chain, "Archive");
+    const after = await b.chain(q.chain);
+    expect(after.find((i) => i.id === second.id)!.status).toBe("answered");
+    expect(after.find((i) => i.id === first.id)!.status).toBe("asked");
+  });
+
+  it("flags an answer that still reaches a replaced question", async () => {
+    const b = new DemoBackend(false, 0);
+    const q = await b.say("", "Tidy up #launch");
+    const first = b.agentAsk(q.chain, q.id, "Delete the duplicate?", choose("Delete", "Keep"));
+    const second = b.agentAsk(q.chain, "", "Archive the channel?", choose("Archive", "Leave it"));
+    const late = await b.answerAsk(first.id, q.chain, "Delete");
+    expect(late).toMatchObject({ from: "you", answers: first.id, answers_superseded: true });
+    const chain = await b.chain(q.chain);
+    expect(chain.find((i) => i.id === second.id)).toMatchObject({ status: "asked", needs_you: true });
+    await expect(b.answerAsk(first.id, q.chain, "Keep")).rejects.toThrow(/already answered/);
+  });
+});

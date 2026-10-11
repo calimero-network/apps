@@ -150,9 +150,10 @@ export class DemoBackend implements FeedBackend {
 
   private needsYou(item: FeedItem): boolean {
     // In a conversation, only your agent's open question needs you.
-    if (item.kind === "message") return item.from === "agent" && item.status === "asked";
+    // A question a newer one replaced no longer waits on you.
+    if (item.kind === "message") return item.from === "agent" && item.status === "asked" && !item.superseded_by;
     if (item.kind === "notification") {
-      if (item.ask.kind) return item.status === "received" || item.status === "failed";
+      if (item.ask.kind) return (item.status === "received" && !item.superseded_by) || item.status === "failed";
       return (this.flagged.get(item.id) ?? false) && !item.seen;
     }
     return item.status === "pending" || item.status === "failed" || item.breach !== "";
@@ -453,17 +454,58 @@ export class DemoBackend implements FeedBackend {
       if (refused) throw new Error(refused);
     }
     if (chain && !this.chainExists(chain)) throw new Error(`no chain ${chain}`);
-    // Whatever your agent asked you in this chain, your words answer.
-    for (const m of [...this.items.values()]) {
-      if (chain && m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked") this.step(m, "answered", text.slice(0, 250));
-    }
+    if (chain) this.answerAsks(chain, text);
     const posted = this.post(chain, "you", text, "", "waiting", NO_ASK, attachments);
     this.changed();
-    if (this.agentDelayMs > 0) {
-      setTimeout(() => this.agentAck(posted.id), this.agentDelayMs / 2);
-      setTimeout(() => this.agentAnswers(posted.id), this.agentDelayMs * 2);
-    }
+    this.agentTakesUp(posted.id);
     return posted;
+  }
+
+  /** Whatever your agent asked you in this chain, your words answer; not a question a newer one replaced. */
+  private answerAsks(chain: string, text: string) {
+    for (const m of [...this.items.values()]) {
+      if (m.chain === chain && m.kind === "message" && m.from === "agent" && m.status === "asked" && !m.superseded_by) {
+        this.step(m, "answered", text.slice(0, 250));
+      }
+    }
+  }
+
+  private agentTakesUp(id: string) {
+    if (this.agentDelayMs > 0) {
+      setTimeout(() => this.agentAck(id), this.agentDelayMs / 2);
+      setTimeout(() => this.agentAnswers(id), this.agentDelayMs * 2);
+    }
+  }
+
+  /**
+   * You answer one of your agent's questions from its buttons, as `answer_ask`
+   * takes it. A question a newer one replaced can still be answered: your
+   * message is then flagged, and the newer question stays open.
+   */
+  async answerAsk(id: string, _chain: string, text: string): Promise<FeedItem> {
+    if (!text.trim()) throw new Error("text must not be empty");
+    checkMessage(text);
+    const m = this.items.get(id);
+    if (!m || m.kind !== "message" || m.from !== "agent" || !m.ask.kind) throw new Error(`message ${id} asks you nothing`);
+    if (m.status !== "asked") throw new Error(`message ${id} is already ${m.status}`);
+    const stale = Boolean(m.superseded_by);
+    if (stale) this.step(m, "answered", text.slice(0, 250));
+    else this.answerAsks(m.chain, text);
+    const posted = this.put({ ...this.post(m.chain, "you", text, "", "waiting"), answers: id, answers_superseded: stale });
+    this.changed();
+    this.agentTakesUp(posted.id);
+    return posted;
+  }
+
+  /** A new question in `chain` replaces the ones there you have not answered yet (the contract's `supersede_asks`). */
+  private supersede(chain: string, by: string) {
+    for (const i of [...this.items.values()]) {
+      if (i.id === by || i.chain !== chain || i.superseded_by) continue;
+      const open =
+        (i.kind === "message" && i.from === "agent" && i.status === "asked") ||
+        (i.kind === "notification" && i.ask.kind !== "" && i.status === "received");
+      if (open) this.put({ ...i, superseded_by: by });
+    }
   }
 
   /** The agent's side of a conversation, as `agent_ack` would take it. */
@@ -536,6 +578,7 @@ export class DemoBackend implements FeedBackend {
       if (asked.status !== "answered") this.step(asked, "answered");
     }
     const said = this.post(chain, "agent", text, replyTo, ask ? "asked" : "said", ask, [], kept);
+    if (ask) this.supersede(said.chain, said.id);
     this.changed();
     return said;
   }
@@ -650,6 +693,7 @@ export class DemoBackend implements FeedBackend {
       seen: false,
       history: [{ status: "received", note: "", at: t }],
     });
+    if (item.ask.kind) this.supersede(item.chain, item.id);
     this.changed();
     return item;
   }
@@ -1002,5 +1046,8 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     steps: [],
     draft: "",
     stop_at: 0, headline: "",
+    superseded_by: "",
+    answers: "",
+    answers_superseded: false,
   };
 }

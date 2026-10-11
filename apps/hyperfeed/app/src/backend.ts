@@ -46,6 +46,12 @@ export interface FeedBackend {
    * chain). With images (uploaded with {@link FeedBackend.images}), `text` may be empty.
    */
   say(chain: string, text: string, attachments?: Attachment[]): Promise<FeedItem>;
+  /**
+   * Answer one of your agent's questions from its buttons: your next message
+   * in its chain (`chain`), marked as answering that question. A feed made
+   * before `answer_ask` takes it as a plain message in the chain.
+   */
+  answerAsk(id: string, chain: string, text: string): Promise<FeedItem>;
   /** Where images on your messages are kept; null when this feed can't hold them. */
   readonly images: BlobStore | null;
   /** Ask your agent to stop working on one of your messages. */
@@ -90,6 +96,11 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
       attachments.length
         ? client.sayWith({ chain, text, attachments } as Parameters<HyperfeedClient["sayWith"]>[0])
         : client.say({ chain, text } as Parameters<HyperfeedClient["say"]>[0]),
+    answerAsk: (id, chain, text) =>
+      client.answerAsk({ id, text }).catch((e: unknown) => {
+        if (!lacksMethod(e, "answer_ask")) throw e;
+        return client.say({ chain, text } as Parameters<HyperfeedClient["say"]>[0]);
+      }),
     stop: (id) => client.stop({ id }),
     markSeen: (ids) => client.markSeen({ ids }),
     markAllSeen: () => client.markAllSeen(),
@@ -102,4 +113,14 @@ export function nodeBackend(client: HyperfeedClient, rpc: AppRpc, images: BlobSt
     recordNotification: (input) => client.recordNotification({ input }),
     recordAction: (input) => client.recordAction({ input }),
   };
+}
+
+/**
+ * Whether a call failed because the feed's contract has no such method: a feed
+ * made before it. The node answers `{ type: "FunctionCallError", data: 'method "x" not found' }`.
+ */
+export function lacksMethod(e: unknown, method: string): boolean {
+  const data = (e as { data?: unknown } | null)?.data;
+  const said = `${String(e)} ${typeof data === "string" ? data : JSON.stringify(data ?? "")}`;
+  return new RegExp(`${method}.*not found|not found.*${method}`, "i").test(said);
 }

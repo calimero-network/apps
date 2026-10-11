@@ -3,7 +3,7 @@ import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { laneOf, statusOf, timeLabel } from "./format";
+import { laneOf, REPLACED, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards } from "./RefCards";
 import { agentLive, notPickedUp } from "./theme";
@@ -179,6 +179,7 @@ export function ChatView({
           busy={feed.busy}
           images={feed.images}
           onAnswer={(a) => void send(a, [])}
+          onPick={(m, o) => void feed.answerAsk(m, o)}
           onStop={(id) => void feed.stop(id)}
         />
         <Composer key={chain} busy={feed.busy} fresh={!chain} images={feed.images} onSend={send} />
@@ -236,6 +237,7 @@ function Thread({
   busy,
   images,
   onAnswer,
+  onPick,
   onStop,
 }: {
   items: FeedItem[];
@@ -245,6 +247,8 @@ function Thread({
   images: BlobStore | null;
   /** Answer your agent's open question: your next message in the chat. */
   onAnswer: (answer: string) => void;
+  /** Tap one of your agent's options: the answer to that question. */
+  onPick: (question: FeedItem, option: string) => void;
   /** Ask your agent to stop working on one of your messages. */
   onStop: (id: string) => void;
 }) {
@@ -274,16 +278,18 @@ function Thread({
               {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
               {/* The body as markdown, built as elements: no HTML from the message reaches the page. */}
               {m.body && <Markdown className="bubble-body" text={m.body} />}
-              {m.status === "asked" && m.ask.kind === "choose" && (
+              {/* A newer question replaced it: no buttons, so nothing answers the old one by mistake. */}
+              {m.status === "asked" && m.superseded_by && <span className="bubble-asks bubble-replaced">{REPLACED}</span>}
+              {m.status === "asked" && !m.superseded_by && m.ask.kind === "choose" && (
                 <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
                   {m.ask.options.map((o) => (
-                    <button key={o} type="button" className="option small" disabled={busy} onClick={() => onAnswer(o)}>
+                    <button key={o} type="button" className="option small" disabled={busy} onClick={() => onPick(m, o)}>
                       {o}
                     </button>
                   ))}
                 </div>
               )}
-              {m.status === "asked" && m.ask.kind === "reply" && (
+              {m.status === "asked" && !m.superseded_by && m.ask.kind === "reply" && (
                 <span className="bubble-asks">{m.ask.prompt || "Your agent is waiting for your answer"} · reply below</span>
               )}
               {/* PRs and CI runs it links to, as cards; Merge asks your agent in this chat. */}

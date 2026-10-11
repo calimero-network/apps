@@ -115,6 +115,14 @@ export interface AgentView {
   seen_at: number;
 }
 
+/**
+ * The question of your agent's that one of your messages answers, when you
+ * answered it from its buttons. Kept beside your message by its id.
+ */
+export interface Answers {
+  ask: string;
+}
+
 export interface AppCount {
   app: string;
   count: number;
@@ -348,6 +356,22 @@ export interface FeedItem {
    * is the message's first line and a client may derive a shorter one.
    */
   headline: string;
+  /**
+   * On a question (your agent's, or a notification's) that a newer one in
+   * its chain replaced before you answered it: the newer one's id. Its
+   * buttons are gone. `""` otherwise.
+   */
+  superseded_by: string;
+  /**
+   * On a message of yours sent from a question's buttons: that question's
+   * id. `""` otherwise.
+   */
+  answers: string;
+  /**
+   * Whether the question it answers had been replaced by a newer one: your
+   * agent confirms against where things stand now before acting on it.
+   */
+  answers_superseded: boolean;
 }
 
 export interface FeedPage {
@@ -438,6 +462,15 @@ export interface Hyperfeed {
    * Headlines of messages written with one, by the message's id.
    */
   headlines: Record<string, Headline>;
+  /**
+   * Questions a newer one in their chain replaced, by the question's id.
+   */
+  superseded: Record<string, Superseded>;
+  /**
+   * The question each of your messages sent from its buttons answers, by
+   * your message's id.
+   */
+  answers: Record<string, Answers>;
 }
 
 /**
@@ -626,6 +659,20 @@ export interface Step {
  * You asked your agent to stop working on one of your messages.
  */
 export interface StopRequest {
+  at: number;
+}
+
+/**
+ * A question that a newer one in its chain replaced: your agent asked
+ * again, or an app sent a new question, before you answered this one. Kept
+ * beside the row by its id. Its buttons go; an answer that still reaches it
+ * goes to your agent marked as answering an old question.
+ */
+export interface Superseded {
+  /**
+   * The newer question's id.
+   */
+  by: string;
   at: number;
 }
 
@@ -857,6 +904,26 @@ export class HyperfeedClient {
    */
   public async agentWork(params: { id: string; steps: TurnStep[]; draft: string }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'agent_work', argsJson: params });
+    return response as FeedItem;
+  }
+
+  /**
+   * answer_ask
+   *
+   * Answer one question your agent asked, from its buttons: `text` is the
+   * option you picked, or your reply. It is your next message in the
+   * question's chain, and goes to your agent like any other.
+   *
+   * A question a newer one replaced can still be answered (a screen that
+   * had not caught up yet, another device): it is marked answered, the
+   * newer question stays open, and your message carries
+   * `answers_superseded`, so your agent confirms against where things
+   * stand now before acting on it.
+   *
+   * @intent mutating
+   */
+  public async answerAsk(params: { id: string; text: string }): Promise<FeedItem> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'answer_ask', argsJson: params });
     return response as FeedItem;
   }
 
