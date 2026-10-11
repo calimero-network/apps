@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "outputDirectory": "dist",
+  "ignoreCommand": "python3 ../../../scripts/vercel-ignore-build.py",
   "rewrites": [
     {
       "source": "/(.*)",

@@ -36,6 +36,12 @@ import json
 c=json.load(open('$cfg'))
 print(any(r.get('destination')=='/index.html' for r in c.get('rewrites') or []))")"
 
+  # Without the ignore step Vercel rebuilds this app on every push to the repo,
+  # whatever it touched (scripts/vercel-ignore-build.py).
+  has_ignore="$(python3 -c "
+import json
+print(json.load(open('$cfg')).get('ignoreCommand') == 'python3 ../../../scripts/vercel-ignore-build.py')")"
+
   if (( BUILD )); then
     pnpm --filter "./$d" build >/tmp/vercel-check-$app.log 2>&1 || {
       printf '  %-19s BUILD FAILED (see /tmp/vercel-check-%s.log)\n' "$app" "$app"; fail=1; continue; }
@@ -50,6 +56,7 @@ print(any(r.get('destination')=='/index.html' for r in c.get('rewrites') or []))
   printf '  %-19s outputDirectory=%-6s index.html ✓  %4s files  spa-rewrite=%s\n' \
     "$app" "$out" "$n" "$has_spa"
   [[ "$has_spa" == "True" ]] || { echo "      ^ missing SPA rewrite"; fail=1; }
+  [[ "$has_ignore" == "True" ]] || { echo "      ^ missing ignoreCommand (scripts/vercel-ignore-build.py)"; fail=1; }
 done
 
 exit $fail

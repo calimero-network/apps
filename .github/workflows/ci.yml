@@ -456,6 +456,11 @@ jobs:
       - name: Assert the app scope picks the apps a change reaches, and only those
         run: python3 scripts/tests/ci-scope-test.py
 
+      # Vercel's ignore step reuses that scope. Too narrow and a changed app
+      # never deploys; too broad and every push rebuilds every Vercel project.
+      - name: Assert Vercel skips only the apps a change does not reach
+        run: python3 scripts/tests/vercel-ignore-build-test.py
+
       # A consumer job cannot run where its artifact's producer is gated off —
       # GitHub skips a job whose `needs:` was skipped, whatever its own `if:`
       # says. That failure is silent, so the gates are asserted here.
