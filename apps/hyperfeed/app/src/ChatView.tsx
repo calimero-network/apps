@@ -3,7 +3,7 @@ import type { Attachment, FeedItem } from "./generated/HyperfeedClient";
 import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
-import { laneOf, REPLACED, statusOf, timeLabel } from "./format";
+import { heldLine, laneOf, REPLACED, statusOf, timeLabel } from "./format";
 import { Markdown } from "./markdown";
 import { RefCards } from "./RefCards";
 import { agentLive, notPickedUp } from "./theme";
@@ -122,6 +122,8 @@ export function ChatView({
                     {c.headline || c.body || c.title}
                   </span>
                   <span className="chat-item-meta">{timeLabel(c.chain_at)}</span>
+                  {/* Which agent session is on this chat now, maybe on another machine. */}
+                  {heldLine(c, clock()) && <span className="chat-item-held">{heldLine(c, clock())}</span>}
                 </button>
               </li>
             )}
@@ -142,6 +144,11 @@ export function ChatView({
             >
               ← Chats
             </button>
+            {chain && heldLine(lastMessage(thread), clock()) && (
+              <span className="chat-held" aria-label="Working on this chat">
+                {heldLine(lastMessage(thread), clock())}
+              </span>
+            )}
             {chain &&
               (confirming ? (
                 <div className="chat-delete-confirm" role="group" aria-label="Delete this chat?">
@@ -550,4 +557,9 @@ function Composer({
       </div>
     </form>
   );
+}
+
+/** The chat's latest message: it carries who is working on the chain. */
+function lastMessage(thread: FeedItem[]): FeedItem | undefined {
+  return [...thread].reverse().find((m) => m.kind === "message");
 }

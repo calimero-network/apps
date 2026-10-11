@@ -2970,3 +2970,10 @@ body {
   align-items: flex-start;
   gap: 6px;
 }
+
+/* Who is working on a chat right now. */
+.chat-item-held,
+.chat-held {
+  font-size: 12px;
+  color: var(--muted);
+}

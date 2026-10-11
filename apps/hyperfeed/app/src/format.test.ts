@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "./generated/HyperfeedClient";
-import { choicesFor, firstSentence, headlineOfMessage, localCommand, plainMethod, rowTitle, saysMore, stepsOf } from "./format";
+import { choicesFor, firstSentence, heldLine, headlineOfMessage, localCommand, plainMethod, rowTitle, saysMore, stepsOf } from "./format";
 
 const row = (patch: Partial<FeedItem>): FeedItem =>
   ({
@@ -122,5 +122,15 @@ describe("localCommand", () => {
   it("is folded away rather than told in the flow", () => {
     expect(stepsOf(row({ ...local, title: "Bundle the contract in apps" }), "mero-bot")[0]!.detail).toBe("");
     expect(stepsOf(row({ app: "chat", title: "Post it", body: "Shipped it" }), "Chat")[0]!.detail).toBe("Shipped it");
+  });
+});
+
+describe("heldLine", () => {
+  it("says which agent is on a chain, and for how long", () => {
+    const now = 10 * 60_000;
+    expect(heldLine({ held_by: "mero-bot@studio", held_since: now - 2 * 60_000 }, now)).toBe("mero-bot on studio · 2 min");
+    expect(heldLine({ held_by: "mero-bot@studio", held_since: now - 5_000 }, now)).toBe("mero-bot on studio · just now");
+    expect(heldLine({ held_by: "", held_since: 0 }, now)).toBe("");
+    expect(heldLine(undefined, now)).toBe("");
   });
 });

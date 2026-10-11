@@ -216,6 +216,10 @@ export interface Event_ArchiveChanged {
   count: number;
 }
 
+export interface Event_ChainLeaseChanged {
+  chain: string;
+}
+
 export interface Event_LensChanged {
   app: string;
   status: string;
@@ -372,6 +376,15 @@ export interface FeedItem {
    * agent confirms against where things stand now before acting on it.
    */
   answers_superseded: boolean;
+  /**
+   * On a message: the agent whose session holds its chain right now
+   * ("mero-bot@studio"), or `""` when nobody does.
+   */
+  held_by: string;
+  /**
+   * Since when that session has held the chain; 0 when nobody does.
+   */
+  held_since: number;
 }
 
 export interface FeedPage {
@@ -471,6 +484,50 @@ export interface Hyperfeed {
    * your message's id.
    */
   answers: Record<string, Answers>;
+  /**
+   * Which agent session works on each chain, by chain id.
+   */
+  leases: Record<string, Lease>;
+}
+
+/**
+ * Which agent session is working on a chain, until when. A session claims a
+ * chain before it starts a turn there, renews the lease while it works, and
+ * releases it at the end; another session is refused the chain until then,
+ * or until the lease runs out (the session died). Kept by chain id.
+ */
+export interface Lease {
+  /**
+   * The session's own id: unique per running agent process.
+   */
+  session: string;
+  /**
+   * Who it is, in words: "mero-bot@studio".
+   */
+  agent: string;
+  /**
+   * When this session took the chain; kept while it renews.
+   */
+  claimed_at: number;
+  /**
+   * When the lease runs out; 0 once released.
+   */
+  expires_at: number;
+  updated_at: number;
+}
+
+/**
+ * A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
+ */
+export interface LeaseView {
+  chain: string;
+  session: string;
+  agent: string;
+  claimed_at: number;
+  /**
+   * 0 once released.
+   */
+  expires_at: number;
 }
 
 /**
@@ -758,6 +815,7 @@ export interface Work {
 
 
 
+
 export type AbiEvent =
   | { name: "ActionChanged"; payload: Event_ActionChanged }
   | { name: "ActionRecorded"; payload: Event_ActionRecorded }
@@ -767,6 +825,13 @@ export type AbiEvent =
      */
     name: "ArchiveChanged";
     payload: Event_ArchiveChanged;
+  }
+  | {
+    /**
+     * An agent session took a chain, or let it go: re-read who is on it.
+     */
+    name: "ChainLeaseChanged";
+    payload: Event_ChainLeaseChanged;
   }
   | {
     /**
@@ -970,6 +1035,18 @@ export class HyperfeedClient {
   }
 
   /**
+   * chain_lease
+   *
+   * Who holds `chain` right now: a lease that has not run out, or none.
+   *
+   * @intent read_only
+   */
+  public async chainLease(params: { chain: string }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'chain_lease', argsJson: params });
+    return response as LeaseView;
+  }
+
+  /**
    * check_action
    *
    * What your rules say about an action before the agent takes it.
@@ -979,6 +1056,23 @@ export class HyperfeedClient {
   public async checkAction(params: { app_key: string; category: string; writes: boolean }): Promise<Verdict> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'check_action', argsJson: params });
     return response as Verdict;
+  }
+
+  /**
+   * claim_chain
+   *
+   * An agent session takes `chain` for `ttl_ms` before it starts a turn
+   * there: one turn per chain at a time, across machines. Refused while
+   * another session holds an unexpired lease; a lease that ran out (its
+   * session died) can be taken. Claiming a chain the session already
+   * holds renews it. `agent` names it for the chat ("mero-bot@studio");
+   * older agents omit it.
+   *
+   * @intent mutating
+   */
+  public async claimChain(params: { chain: string; session: string; ttl_ms: number; agent: string | null }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'claim_chain', argsJson: params });
+    return response as LeaseView;
   }
 
   /**
@@ -1167,6 +1261,33 @@ export class HyperfeedClient {
   public async recordNotification(params: { input: NotificationInput }): Promise<FeedItem> {
     const response = await this._transport.execute({ contextId: this._contextId, method: 'record_notification', argsJson: params });
     return response as FeedItem;
+  }
+
+  /**
+   * release_chain
+   *
+   * The session lets `chain` go at the end of its turn. Returns whether it
+   * held it: letting go of a chain it does not hold changes nothing.
+   *
+   * @intent mutating
+   */
+  public async releaseChain(params: { chain: string; session: string }): Promise<boolean> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'release_chain', argsJson: params });
+    return response as boolean;
+  }
+
+  /**
+   * renew_chain
+   *
+   * The session holding `chain` keeps it for another `ttl_ms` while it
+   * works. Refused once another session has it, or when this one never
+   * did or released it: it should stop, not carry on beside the other.
+   *
+   * @intent mutating
+   */
+  public async renewChain(params: { chain: string; session: string; ttl_ms: number }): Promise<LeaseView> {
+    const response = await this._transport.execute({ contextId: this._contextId, method: 'renew_chain', argsJson: params });
+    return response as LeaseView;
   }
 
   /**

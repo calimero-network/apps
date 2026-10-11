@@ -1035,3 +1035,91 @@ steps:
     type: assert
     statements:
       - "is_set({{unarchive_error}})"
+
+  # ── Chain leases: one agent session per chain, across machines ──────────
+  - name: A session claims the mention's chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "studio-1", ttl_ms: 120000, agent: "mero-bot@studio" }
+    outputs:
+      lease: result
+
+  - name: A second session is refused the chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "laptop-1", ttl_ms: 120000, agent: "mero-bot@laptop" }
+    expected_failure: true
+    outputs:
+      second_claim_error: error
+
+  - name: The holder renews its lease
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: renew_chain
+    args: { chain: "{{mention_id}}", session: "studio-1", ttl_ms: 120000 }
+    outputs:
+      renewed: result
+
+  - name: Owner reads who holds the chain
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: chain_lease
+    args: { chain: "{{mention_id}}" }
+    outputs:
+      held: result
+
+  - name: The holder releases it
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: release_chain
+    args: { chain: "{{mention_id}}", session: "studio-1" }
+    outputs:
+      released: result.output
+
+  - name: The second session claims it once released
+    type: call
+    node: feed-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{owner_key}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "laptop-1", ttl_ms: 120000, agent: "mero-bot@laptop" }
+    outputs:
+      second_lease: result
+
+  - name: node-2 cannot claim a chain
+    type: call
+    node: feed-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_feed-node-2}}"
+    method: claim_chain
+    args: { chain: "{{mention_id}}", session: "intruder", ttl_ms: 120000, agent: "x" }
+    expected_failure: true
+    outputs:
+      intruder_claim_error: error
+
+  - name: Assert the lease rules
+    type: json_assert
+    statements:
+      - 'json_subset({{lease}}, {"output": {"chain": "{{mention_id}}", "session": "studio-1", "agent": "mero-bot@studio"}})'
+      - 'json_subset({{renewed}}, {"output": {"session": "studio-1"}})'
+      - 'json_subset({{held}}, {"output": {"session": "studio-1", "agent": "mero-bot@studio"}})'
+      - 'json_equal({{released}}, true)'
+      - 'json_subset({{second_lease}}, {"output": {"session": "laptop-1"}})'
+
+  - name: Assert the refused claims
+    type: assert
+    statements:
+      - "is_set({{second_claim_error}})"
+      - "is_set({{intruder_claim_error}})"

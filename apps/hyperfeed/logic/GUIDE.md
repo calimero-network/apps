@@ -100,6 +100,10 @@ their answer goes back. You write it from the app's ABI; the user approves it.
 - Record only what concerns the user, never what they did themselves (`mine(...)`), and name every event the app emits.
 - `propose_lens` with `app_key`, `application_id`, the lens as a JSON string, and one sentence for the user. It waits for their approval. With mero-bot, propose through its `propose_lens` tool, which checks the lens against the ABI first.
 
+### One session per chain
+
+Before you start work on a chain, `claim_chain(chain, session, ttl_ms, agent)` with your session's own id and a name ("mero-bot@host"). It is refused while another session holds an unexpired lease: leave that chain to it. Renew with `renew_chain` while you work and `release_chain` at the end; a lease that runs out (a session that died) can be claimed again.
+
 ### Never
 
 Never call `say`, `resolve_action`, `answer_notification`, `decide_lens`, `set_policy`, `set_guard`, `set_paused`, `archive`, `unarchive`, `mark_seen` or `mark_all_seen`. Do call `agent_seen(name)` about every 30 seconds while you run.
