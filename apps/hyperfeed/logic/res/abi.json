@@ -487,6 +487,17 @@
         }
       ]
     },
+    "Event_ChainLeaseChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_LensChanged": {
       "kind": "record",
       "fields": [
@@ -913,6 +924,20 @@
             "kind": "bool"
           },
           "doc": "Whether the question it answers had been replaced by a newer one: your\nagent confirms against where things stand now before acting on it."
+        },
+        {
+          "name": "held_by",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "On a message: the agent whose session holds its chain right now\n(\"mero-bot@studio\"), or `\"\"` when nobody does."
+        },
+        {
+          "name": "held_since",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "Since when that session has held the chain; 0 when nobody does."
         }
       ]
     },
@@ -1266,6 +1291,97 @@
             "crdt_type": "unordered_map"
           },
           "doc": "The question each of your messages sent from its buttons answers, by\nyour message's id."
+        },
+        {
+          "name": "leases",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Lease"
+            },
+            "crdt_type": "unordered_map"
+          },
+          "doc": "Which agent session works on each chain, by chain id."
+        }
+      ]
+    },
+    "Lease": {
+      "kind": "record",
+      "doc": "Which agent session is working on a chain, until when. A session claims a\nchain before it starts a turn there, renews the lease while it works, and\nreleases it at the end; another session is refused the chain until then,\nor until the lease runs out (the session died). Kept by chain id.",
+      "fields": [
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The session's own id: unique per running agent process."
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "Who it is, in words: \"mero-bot@studio\"."
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When this session took the chain; kept while it renews."
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "When the lease runs out; 0 once released."
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LeaseView": {
+      "kind": "record",
+      "doc": "A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.",
+      "fields": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "expires_at",
+          "type": {
+            "kind": "u64"
+          },
+          "doc": "0 once released."
         }
       ]
     },
@@ -2162,6 +2278,22 @@
       "intent": "read_only"
     },
     {
+      "name": "chain_lease",
+      "doc": "Who holds `chain` right now: a lease that has not run out, or none.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LeaseView"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "check_action",
       "doc": "What your rules say about an action before the agent takes it.",
       "params": [
@@ -2188,6 +2320,41 @@
         "$ref": "Verdict"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "claim_chain",
+      "doc": "An agent session takes `chain` for `ttl_ms` before it starts a turn\nthere: one turn per chain at a time, across machines. Refused while\nanother session holds an unexpired lease; a lease that ran out (its\nsession died) can be taken. Claiming a chain the session already\nholds renews it. `agent` names it for the chat (\"mero-bot@studio\");\nolder agents omit it.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "agent",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "LeaseView"
+      },
+      "intent": "mutating"
     },
     {
       "name": "complete_action",
@@ -2450,6 +2617,56 @@
       "intent": "mutating"
     },
     {
+      "name": "release_chain",
+      "doc": "The session lets `chain` go at the end of its turn. Returns whether it\nheld it: letting go of a chain it does not hold changes nothing.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "renew_chain",
+      "doc": "The session holding `chain` keeps it for another `ttl_ms` while it\nworks. Refused once another session has it, or when this one never\ndid or released it: it should stop, not carry on beside the other.",
+      "params": [
+        {
+          "name": "chain",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "session",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ttl_ms",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LeaseView"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "resolve_action",
       "doc": "Approve or decline a proposal, retry or drop a failure, ask for an\nundo, or keep an action the agent took without asking.\n\n`answer` goes with an approval when the proposal has an [`Ask`]: one of\nits options for `choose`, the text to send for `reply` (the agent's\ndraft, edited or not). Every other decision takes `\"\"`.",
       "params": [
@@ -2671,6 +2888,13 @@
         "$ref": "Event_ArchiveChanged"
       },
       "doc": "Chains were put away or brought back: re-read the feed."
+    },
+    {
+      "name": "ChainLeaseChanged",
+      "payload": {
+        "$ref": "Event_ChainLeaseChanged"
+      },
+      "doc": "An agent session took a chain, or let it go: re-read who is on it."
     },
     {
       "name": "LensChanged",

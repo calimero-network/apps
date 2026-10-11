@@ -122,6 +122,10 @@ const MAX_LONG_MESSAGE: usize = 32_000;
 /// only what points at them.
 const MAX_ATTACHMENTS: usize = 4;
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
+/// The shortest and longest lease a session may take on a chain at once. It
+/// renews while it works, so a session that dies lets go within one lease.
+pub const MIN_LEASE_MS: u64 = 1_000;
+pub const MAX_LEASE_MS: u64 = 10 * 60 * 1_000;
 const DEFAULT_PAGE: u32 = 50;
 const MAX_PAGE: u32 = 200;
 
@@ -807,6 +811,34 @@ impl Mergeable for Answers {
     }
 }
 
+/// Which agent session is working on a chain, until when. A session claims a
+/// chain before it starts a turn there, renews the lease while it works, and
+/// releases it at the end; another session is refused the chain until then,
+/// or until the lease runs out (the session died). Kept by chain id.
+#[app::mergeable(id = "hyperfeed::Lease")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Lease {
+    /// The session's own id: unique per running agent process.
+    pub session: String,
+    /// Who it is, in words: "mero-bot@studio".
+    pub agent: String,
+    /// When this session took the chain; kept while it renews.
+    pub claimed_at: u64,
+    /// When the lease runs out; 0 once released.
+    pub expires_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Lease {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let at = self.updated_at;
+        lww(self, at, other, other.updated_at);
+        Ok(())
+    }
+}
+
 // ── Inputs and views ─────────────────────────────────────────────────────────
 
 /// What the agent reports for one action.
@@ -978,6 +1010,14 @@ pub struct FeedItem {
     /// agent confirms against where things stand now before acting on it.
     #[serde(default)]
     pub answers_superseded: bool,
+    // ── who is on the chain ──
+    /// On a message: the agent whose session holds its chain right now
+    /// ("mero-bot@studio"), or `""` when nobody does.
+    #[serde(default)]
+    pub held_by: String,
+    /// Since when that session has held the chain; 0 when nobody does.
+    #[serde(default)]
+    pub held_since: u64,
 }
 
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1047,6 +1087,18 @@ pub struct SettingsView {
     pub agents: Vec<AgentView>,
 }
 
+/// A session's lease on a chain, as [`Hyperfeed::claim_chain`] returns it.
+#[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LeaseView {
+    pub chain: String,
+    pub session: String,
+    pub agent: String,
+    pub claimed_at: u64,
+    /// 0 once released.
+    pub expires_at: u64,
+}
+
 /// An agent and when it last said it was running (ms).
 #[derive(AbiType, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -1092,6 +1144,8 @@ pub struct Hyperfeed {
     /// The question each of your messages sent from its buttons answers, by
     /// your message's id.
     answers: UnorderedMap<String, Answers>,
+    /// Which agent session works on each chain, by chain id.
+    leases: UnorderedMap<String, Lease>,
 }
 
 /// Every event is a nudge to re-read the feed; none carries the row itself.
@@ -1140,6 +1194,10 @@ pub enum Event<'a> {
     StopRequested {
         id: &'a str,
     },
+    /// An agent session took a chain, or let it go: re-read who is on it.
+    ChainLeaseChanged {
+        chain: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -1170,6 +1228,7 @@ impl Hyperfeed {
             headlines: UnorderedMap::new(),
             superseded: UnorderedMap::new(),
             answers: UnorderedMap::new(),
+            leases: UnorderedMap::new(),
         }
     }
 
@@ -1431,6 +1490,8 @@ impl Hyperfeed {
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
         }
     }
 
@@ -1494,6 +1555,8 @@ impl Hyperfeed {
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
         }
     }
 
@@ -1530,6 +1593,12 @@ impl Hyperfeed {
         }
         if let Some(s) = self.stops.get(&m.id)? {
             item.stop_at = s.at;
+        }
+        if let Some(l) = self.leases.get(&m.chain)? {
+            if l.expires_at > now_ms() {
+                item.held_by = l.agent.clone();
+                item.held_since = l.claimed_at;
+            }
         }
         if let Some(h) = self.headlines.get(&m.id)? {
             item.headline = h.text.clone();
@@ -1595,6 +1664,8 @@ impl Hyperfeed {
             superseded_by: String::new(),
             answers: String::new(),
             answers_superseded: false,
+            held_by: String::new(),
+            held_since: 0,
         }
     }
 
@@ -2837,6 +2908,152 @@ impl Hyperfeed {
                 "message {id} is {status}; there is no turn to stop"
             ))),
         }
+    }
+
+    fn check_lease(chain: &str, session: &str, ttl_ms: u64) -> app::Result<()> {
+        Self::check_len("chain", chain, MAX_KEY, true)?;
+        Self::check_len("session", session, MAX_KEY, true)?;
+        if !(MIN_LEASE_MS..=MAX_LEASE_MS).contains(&ttl_ms) {
+            return Err(AppError::msg(format!(
+                "ttl_ms must be {MIN_LEASE_MS} to {MAX_LEASE_MS}, got {ttl_ms}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn lease_view(chain: &str, l: &Lease) -> LeaseView {
+        LeaseView {
+            chain: chain.to_owned(),
+            session: l.session.clone(),
+            agent: l.agent.clone(),
+            claimed_at: l.claimed_at,
+            expires_at: l.expires_at,
+        }
+    }
+
+    /// Why `session` may not have `chain` now: another session holds a lease
+    /// on it that has not run out.
+    fn held_by_other(
+        chain: &str,
+        session: &str,
+        lease: Option<&Lease>,
+        now: u64,
+    ) -> app::Result<()> {
+        match lease {
+            Some(l) if l.session != session && l.expires_at > now => {
+                let who = if l.agent.is_empty() {
+                    "another session"
+                } else {
+                    &l.agent
+                };
+                Err(AppError::msg(format!(
+                    "chain {chain} is held by {who} for {} s more",
+                    (l.expires_at - now).div_ceil(1_000)
+                )))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// An agent session takes `chain` for `ttl_ms` before it starts a turn
+    /// there: one turn per chain at a time, across machines. Refused while
+    /// another session holds an unexpired lease; a lease that ran out (its
+    /// session died) can be taken. Claiming a chain the session already
+    /// holds renews it. `agent` names it for the chat ("mero-bot@studio");
+    /// older agents omit it.
+    pub fn claim_chain(
+        &mut self,
+        chain: String,
+        session: String,
+        ttl_ms: u64,
+        agent: Option<String>,
+    ) -> app::Result<LeaseView> {
+        self.require_owner()?;
+        Self::check_lease(&chain, &session, ttl_ms)?;
+        let agent = agent.unwrap_or_default();
+        Self::check_len("agent", &agent, MAX_SHORT, false)?;
+        let now = now_ms();
+        let prior = self.leases.get(&chain)?.map(|l| l.clone());
+        Self::held_by_other(&chain, &session, prior.as_ref(), now)?;
+        let still_mine = prior
+            .as_ref()
+            .filter(|l| l.session == session && l.expires_at > now)
+            .map(|l| l.claimed_at);
+        let updated_at = prior.as_ref().map_or(now, |l| now.max(l.updated_at + 1));
+        let lease = Lease {
+            claimed_at: still_mine.unwrap_or(now),
+            session,
+            agent,
+            expires_at: now + ttl_ms,
+            updated_at,
+        };
+        let view = Self::lease_view(&chain, &lease);
+        let fresh = still_mine.is_none();
+        self.leases.insert(chain.clone(), lease)?;
+        if fresh {
+            app::emit!(Event::ChainLeaseChanged { chain: &chain });
+        }
+        Ok(view)
+    }
+
+    /// The session holding `chain` keeps it for another `ttl_ms` while it
+    /// works. Refused once another session has it, or when this one never
+    /// did or released it: it should stop, not carry on beside the other.
+    pub fn renew_chain(
+        &mut self,
+        chain: String,
+        session: String,
+        ttl_ms: u64,
+    ) -> app::Result<LeaseView> {
+        self.require_owner()?;
+        Self::check_lease(&chain, &session, ttl_ms)?;
+        let now = now_ms();
+        let mut lease = self
+            .leases
+            .get(&chain)?
+            .map(|l| l.clone())
+            .ok_or_else(|| AppError::msg(format!("chain {chain} is not claimed")))?;
+        Self::held_by_other(&chain, &session, Some(&lease), now)?;
+        if lease.session != session || lease.expires_at == 0 {
+            return Err(AppError::msg(format!(
+                "this session does not hold chain {chain}; claim it again"
+            )));
+        }
+        lease.expires_at = now + ttl_ms;
+        lease.updated_at = now.max(lease.updated_at + 1);
+        let view = Self::lease_view(&chain, &lease);
+        self.leases.insert(chain, lease)?;
+        Ok(view)
+    }
+
+    /// The session lets `chain` go at the end of its turn. Returns whether it
+    /// held it: letting go of a chain it does not hold changes nothing.
+    pub fn release_chain(&mut self, chain: String, session: String) -> app::Result<bool> {
+        self.require_owner()?;
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        Self::check_len("session", &session, MAX_KEY, true)?;
+        let Some(mut lease) = self.leases.get(&chain)?.map(|l| l.clone()) else {
+            return Ok(false);
+        };
+        if lease.session != session || lease.expires_at == 0 {
+            return Ok(false);
+        }
+        lease.expires_at = 0;
+        lease.updated_at = now_ms().max(lease.updated_at + 1);
+        self.leases.insert(chain.clone(), lease)?;
+        app::emit!(Event::ChainLeaseChanged { chain: &chain });
+        Ok(true)
+    }
+
+    /// Who holds `chain` right now: a lease that has not run out, or none.
+    pub fn chain_lease(&self, chain: String) -> app::Result<Option<LeaseView>> {
+        Self::check_len("chain", &chain, MAX_KEY, true)?;
+        let now = now_ms();
+        Ok(self
+            .leases
+            .get(&chain)?
+            .filter(|l| l.expires_at > now)
+            .map(|l| Self::lease_view(&chain, &l)))
     }
 
     /// An agent saying it is running. The feed shows it as live while it

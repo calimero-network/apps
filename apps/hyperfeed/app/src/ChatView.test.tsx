@@ -162,6 +162,20 @@ describe("chat with your agent", () => {
     expect(chain.find((i) => i.id === first.id)).toMatchObject({ status: "asked", needs_you: false, superseded_by: expect.any(String) });
   });
 
+  it("shows which agent session is on a chat, and lets go when it is done", async () => {
+    let now = Date.now();
+    const backend = new DemoBackend(false, 0, () => now);
+    const q = await backend.say("", "Fix the digest card");
+    backend.claimChain(q.chain, "s1", 120_000, "mero-bot@studio");
+    now += 2 * 60_000 + 1_000;
+    render(<Harness backend={backend} start={q.chain} clock={() => now} />);
+    const held = await screen.findByLabelText("Working on this chat");
+    expect(held).toHaveTextContent("mero-bot on studio · 2 min");
+    expect(within(list()).getByText("mero-bot on studio · 2 min")).toBeInTheDocument();
+    await act(async () => void backend.releaseChain(q.chain, "s1"));
+    await waitFor(() => expect(screen.queryByLabelText("Working on this chat")).not.toBeInTheDocument());
+  });
+
   it("shows your agent's latest step while it works, not a log", async () => {
     let now = Date.now();
     const backend = new DemoBackend(false, 0, () => now);

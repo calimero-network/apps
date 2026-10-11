@@ -478,3 +478,16 @@ export function laneOf(item: FeedItem): Lane {
 
 /** What a question a newer one replaced says where its buttons were. */
 export const REPLACED = "Replaced by a newer question";
+
+/**
+ * Who is working on a chat's chain right now, from its message's lease:
+ * "mero-bot on studio · 2 min". "" when nobody holds it.
+ */
+export function heldLine(item: Pick<FeedItem, "held_by" | "held_since"> | undefined, now = Date.now()): string {
+  const who = item?.held_by?.trim();
+  if (!who) return "";
+  const at = who.lastIndexOf("@");
+  const name = at > 0 ? `${who.slice(0, at)} on ${who.slice(at + 1)}` : who;
+  const mins = Math.max(0, Math.floor((now - (item?.held_since ?? now)) / 60_000));
+  return `${name} · ${mins < 1 ? "just now" : mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h`}`;
+}

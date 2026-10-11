@@ -508,6 +508,39 @@ export class DemoBackend implements FeedBackend {
     }
   }
 
+  /** Agent sessions' leases on chains, as `claim_chain` keeps them. */
+  private leases = new Map<string, { session: string; agent: string; claimed_at: number; expires_at: number }>();
+
+  /** A session takes a chain before a turn there, as `claim_chain` takes it: refused while another holds it unexpired. */
+  claimChain(chain: string, session: string, ttlMs: number, agent = "") {
+    const now = this.now();
+    const prior = this.leases.get(chain);
+    if (prior && prior.session !== session && prior.expires_at > now) throw new Error(`chain ${chain} is held by ${prior.agent || "another session"}`);
+    const lease = { session, agent, claimed_at: prior?.session === session && prior.expires_at > now ? prior.claimed_at : now, expires_at: now + ttlMs };
+    this.leases.set(chain, lease);
+    this.markHeld(chain, agent, lease.claimed_at);
+    return { chain, ...lease };
+  }
+
+  /** The session lets the chain go, as `release_chain` does. */
+  releaseChain(chain: string, session: string): boolean {
+    const lease = this.leases.get(chain);
+    if (!lease || lease.session !== session || lease.expires_at === 0) return false;
+    lease.expires_at = 0;
+    this.markHeld(chain, "", 0);
+    return true;
+  }
+
+  private markHeld(chain: string, agent: string, since: number) {
+    for (const i of this.items.values()) {
+      if (i.chain === chain && i.kind === "message") {
+        i.held_by = agent;
+        i.held_since = since;
+      }
+    }
+    this.changed();
+  }
+
   /** The agent's side of a conversation, as `agent_ack` would take it. */
   agentAck(id: string, status: "thinking" | "failed" = "thinking", note = ""): FeedItem {
     const m = this.get(id, "message");
@@ -1048,6 +1081,6 @@ function blank(id: string, kind: FeedItem["kind"], app: string, at: number, chai
     stop_at: 0, headline: "",
     superseded_by: "",
     answers: "",
-    answers_superseded: false,
+    answers_superseded: false, held_by: "", held_since: 0,
   };
 }

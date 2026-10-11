@@ -2271,3 +2271,138 @@ fn an_answer_that_reaches_a_replaced_question_is_flagged() {
     );
     assert!(current.needs_you);
 }
+
+// ── chain leases ─────────────────────────────────────────────────────────────
+
+fn claim(
+    app: &mut TestHost<Hyperfeed>,
+    chain: &str,
+    session: &str,
+    ttl_ms: u64,
+) -> app::Result<LeaseView> {
+    app.call(|s| {
+        s.claim_chain(
+            chain.to_owned(),
+            session.to_owned(),
+            ttl_ms,
+            Some(format!("mero-bot@{session}")),
+        )
+    })
+}
+
+#[test]
+fn a_second_session_is_refused_a_chain_another_holds() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the digest card");
+    let lease = claim(&mut app, &q.chain, "studio", 60_000).unwrap();
+    assert_eq!(lease.session, "studio");
+    assert_eq!(lease.agent, "mero-bot@studio");
+    assert!(lease.expires_at > lease.claimed_at);
+
+    let refused = claim(&mut app, &q.chain, "laptop", 60_000).unwrap_err();
+    assert!(
+        format!("{refused:?}").contains("held by mero-bot@studio"),
+        "{refused:?}"
+    );
+    assert!(app
+        .call(|s| s.renew_chain(q.chain.clone(), "laptop".to_owned(), 60_000))
+        .is_err());
+    assert!(
+        !app.call(|s| s.release_chain(q.chain.clone(), "laptop".to_owned()))
+            .unwrap(),
+        "letting go of what it does not hold changes nothing"
+    );
+    // Another chain is free.
+    let other = say(&mut app, "", "Something else");
+    assert!(claim(&mut app, &other.chain, "laptop", 60_000).is_ok());
+
+    // The chat shows who is on it.
+    let row = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(row.held_by, "mero-bot@studio");
+    assert_eq!(row.held_since, lease.claimed_at);
+}
+
+#[test]
+fn the_holder_renews_and_releases_and_then_another_session_may_claim() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the digest card");
+    let first = claim(&mut app, &q.chain, "studio", 60_000).unwrap();
+    next_ms();
+    let renewed = app
+        .call(|s| s.renew_chain(q.chain.clone(), "studio".to_owned(), 60_000))
+        .unwrap();
+    assert!(renewed.expires_at > first.expires_at);
+    assert_eq!(renewed.claimed_at, first.claimed_at, "held since the claim");
+    // Claiming again is renewing.
+    let again = claim(&mut app, &q.chain, "studio", 60_000).unwrap();
+    assert_eq!(again.claimed_at, first.claimed_at);
+
+    assert!(app
+        .call(|s| s.release_chain(q.chain.clone(), "studio".to_owned()))
+        .unwrap());
+    assert_eq!(app.view(|s| s.chain_lease(q.chain.clone())).unwrap(), None);
+    let row = app.view(|s| s.item(q.id.clone())).unwrap().unwrap();
+    assert_eq!(row.held_by, "");
+    assert!(
+        app.call(|s| s.renew_chain(q.chain.clone(), "studio".to_owned(), 60_000))
+            .is_err(),
+        "released is released: claim it again"
+    );
+    let taken = claim(&mut app, &q.chain, "laptop", 60_000).unwrap();
+    assert_eq!(taken.session, "laptop");
+    assert_eq!(
+        app.view(|s| s.chain_lease(q.chain.clone())).unwrap(),
+        Some(taken)
+    );
+}
+
+#[test]
+fn an_expired_lease_can_be_reclaimed() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "Fix the digest card");
+    claim(&mut app, &q.chain, "studio", MIN_LEASE_MS).unwrap();
+    assert!(claim(&mut app, &q.chain, "laptop", 60_000).is_err());
+    // The studio's session died: its lease runs out.
+    std::thread::sleep(std::time::Duration::from_millis(MIN_LEASE_MS + 50));
+    assert_eq!(app.view(|s| s.chain_lease(q.chain.clone())).unwrap(), None);
+    assert_eq!(
+        app.view(|s| s.item(q.id.clone())).unwrap().unwrap().held_by,
+        ""
+    );
+    let taken = claim(&mut app, &q.chain, "laptop", 60_000).unwrap();
+    assert_eq!(taken.session, "laptop");
+    // The dead session cannot carry on beside it.
+    assert!(app
+        .call(|s| s.renew_chain(q.chain.clone(), "studio".to_owned(), 60_000))
+        .is_err());
+}
+
+#[test]
+fn leases_are_checked_and_owner_only() {
+    let mut app = TestHost::new(Hyperfeed::init);
+    let q = say(&mut app, "", "hi");
+    assert!(claim(&mut app, "", "studio", 60_000).is_err());
+    assert!(claim(&mut app, &q.chain, "", 60_000).is_err());
+    assert!(claim(&mut app, &q.chain, "studio", MIN_LEASE_MS - 1).is_err());
+    assert!(claim(&mut app, &q.chain, "studio", MAX_LEASE_MS + 1).is_err());
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s.claim_chain(
+            q.chain.clone(),
+            "x".to_owned(),
+            60_000,
+            None
+        ))
+        .is_err());
+    claim(&mut app, &q.chain, "studio", 60_000).unwrap();
+    assert!(app
+        .call_as_account(STRANGER, STRANGER, |s| s
+            .release_chain(q.chain.clone(), "studio".to_owned()))
+        .is_err());
+    // An older agent names nothing: the lease still holds.
+    let other = say(&mut app, "", "other");
+    let lease = app
+        .call(|s| s.claim_chain(other.chain.clone(), "old".to_owned(), 60_000, None))
+        .unwrap();
+    assert_eq!(lease.agent, "");
+    assert!(claim(&mut app, &other.chain, "studio", 60_000).is_err());
+}
