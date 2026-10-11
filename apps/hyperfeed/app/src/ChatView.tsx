@@ -4,6 +4,7 @@ import type { Feed } from "./useFeed";
 import { IMAGE_TYPES, MAX_ATTACHMENTS, refuseImage, uploadImage, type BlobStore } from "./attachments";
 import { NewFeedButton, type NewFeed } from "./FeedView";
 import { laneOf, statusOf, timeLabel } from "./format";
+import { Markdown } from "./markdown";
 import { agentLive, notPickedUp } from "./theme";
 import { WorkBlock } from "./WorkBlock";
 
@@ -270,7 +271,8 @@ function Thread({
             <div className={`bubble ${m.from === "agent" ? "from-agent" : "from-you"}`}>
               <span className="sr-only">{m.from === "agent" ? "Your agent:" : "You:"}</span>
               {m.attachments?.length > 0 && <BubbleImages attachments={m.attachments} store={images} />}
-              {m.body && <p>{m.body}</p>}
+              {/* The body as markdown, built as elements: no HTML from the message reaches the page. */}
+              {m.body && <Markdown className="bubble-body" text={m.body} />}
               {m.status === "asked" && m.ask.kind === "choose" && (
                 <div className="bubble-options" role="group" aria-label={m.ask.prompt || "Your answer"}>
                   {m.ask.options.map((o) => (

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { ChatView, UNANSWERED_MS } from "./ChatView";
@@ -277,6 +277,79 @@ describe("chat with your agent", () => {
     await say("testing this");
     expect(await screen.findByRole("alert")).toHaveTextContent(/made by an earlier Hyperfeed/);
     expect(screen.getByLabelText("Message your agent")).toHaveValue("testing this");
+  });
+
+  describe("renders markdown in the bubbles", () => {
+    async function answered(text: string) {
+      const backend = new DemoBackend(false, 0);
+      const q = await backend.say("", "status?");
+      backend.agentSay(q.chain, q.id, text);
+      render(<Harness backend={backend} start={q.chain} />);
+      await screen.findByText("status?", { selector: ".bubble p" });
+      return backend;
+    }
+
+    it("shows a list as a list, with bold, italic and inline code", async () => {
+      await answered("Three PRs:\n\n- **#433** merged\n- *#434* waiting on `e2e`\n- #435 open");
+      const list = await within(thread()).findByRole("list");
+      const items = within(list).getAllByRole("listitem");
+      expect(items.map((li) => li.textContent)).toEqual(["#433 merged", "#434 waiting on e2e", "#435 open"]);
+      expect(within(items[0]!).getByText("#433").tagName).toBe("STRONG");
+      expect(within(items[1]!).getByText("#434").tagName).toBe("EM");
+      expect(within(items[1]!).getByText("e2e").tagName).toBe("CODE");
+      expect(within(thread()).getByText("Three PRs:").tagName).toBe("P");
+      expect(within(thread()).queryByText(/\*\*/)).not.toBeInTheDocument();
+    });
+
+    it("shows a fenced code block in monospace, and copies it", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      try {
+        await answered("Run this:\n\n```sh\npnpm test\npnpm typecheck\n```\nThen tell me.");
+        const code = await within(thread()).findByText(/pnpm test/, { selector: "pre code" });
+        expect(code.textContent).toBe("pnpm test\npnpm typecheck");
+        expect(within(thread()).getByText("Then tell me.")).toBeInTheDocument();
+        await act(async () => {
+          fireEvent.click(within(thread()).getByRole("button", { name: "Copy code" }));
+        });
+        expect(writeText).toHaveBeenCalledWith("pnpm test\npnpm typecheck");
+        expect(within(thread()).getByRole("button", { name: "Copied" })).toBeInTheDocument();
+      } finally {
+        if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+        else delete (navigator as { clipboard?: unknown }).clipboard;
+      }
+    });
+
+    it("opens links in a new tab, and leaves a javascript: link as text", async () => {
+      await answered("See [the PR](https://github.com/calimero-network/apps/pull/434) and https://example.com/a_b. Not [this](javascript:alert(1)).");
+      const pr = await within(thread()).findByRole("link", { name: "the PR" });
+      expect(pr).toHaveAttribute("href", "https://github.com/calimero-network/apps/pull/434");
+      expect(pr).toHaveAttribute("target", "_blank");
+      expect(pr).toHaveAttribute("rel", "noopener noreferrer");
+      // A bare URL is a link too, without the full stop after it.
+      expect(within(thread()).getByRole("link", { name: "https://example.com/a_b" })).toHaveAttribute("href", "https://example.com/a_b");
+      expect(within(thread()).queryByRole("link", { name: "this" })).not.toBeInTheDocument();
+      expect(within(thread()).getAllByRole("link")).toHaveLength(2);
+    });
+
+    it("shows a script tag as the characters it is, and never runs it", async () => {
+      const ran = vi.fn();
+      (window as unknown as { pwned: () => void }).pwned = ran;
+      await answered('<script>window.pwned()</script> and <img src=x onerror="window.pwned()"> and **<b>bold</b>**');
+      const body = await within(thread()).findByText(/<script>window\.pwned\(\)<\/script>/);
+      expect(body.closest(".bubble")!.querySelector("script, img, b")).toBeNull();
+      expect(body.closest(".bubble")).toHaveTextContent('<img src=x onerror="window.pwned()">');
+      expect(within(thread()).getByText("<b>bold</b>").tagName).toBe("STRONG");
+      expect(ran).not.toHaveBeenCalled();
+    });
+
+    it("keeps your own message's text, markdown or not", async () => {
+      const backend = new DemoBackend(false, 0);
+      render(<Harness backend={backend} />);
+      await say("Plain words with a 2 * 3 = 6 sum");
+      expect(await within(thread()).findByText("Plain words with a 2 * 3 = 6 sum", { selector: ".bubble p" })).toBeInTheDocument();
+    });
   });
 
   describe("in a browser whose scrollIntoView returns a promise", () => {
