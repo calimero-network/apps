@@ -1,0 +1,21 @@
+{
+  "number": 435,
+  "html_url": "https://github.com/calimero-network/apps/pull/435",
+  "state": "closed",
+  "draft": false,
+  "title": "fix(hyperfeed): a failure no retry can fix offers Archive, not a Retry that fails again",
+  "merged": true,
+  "merged_at": "2026-10-11T05:02:23Z",
+  "mergeable_state": "unknown",
+  "head": {
+    "ref": "fix/hyperfeed-no-dead-retry",
+    "sha": "d6e652c079cd9eb1ef2a5f8db8f1e17832ea9cf3"
+  },
+  "base": {
+    "ref": "main",
+    "repo": {
+      "full_name": "calimero-network/apps",
+      "default_branch": "main"
+    }
+  }
+}

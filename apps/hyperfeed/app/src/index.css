@@ -1398,6 +1398,98 @@ thead th {
   border-bottom-left-radius: 4px;
 }
 
+.ref-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.bubble.from-you .ref-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.ref-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.ref-card-title {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.ref-card-title:hover {
+  text-decoration: underline;
+}
+
+.ref-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  align-items: center;
+}
+
+.ref-state {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--good-bg);
+  color: var(--good-ink);
+}
+
+.ref-state.merged {
+  background: var(--busy-bg);
+  color: var(--busy-ink);
+}
+
+.ref-state.closed {
+  background: var(--plain-bg);
+  color: var(--muted);
+}
+
+.ref-checks {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.ref-checks.green {
+  color: var(--good-ink);
+}
+
+.ref-checks.red {
+  color: var(--bad-ink);
+}
+
+.ref-checks.pending {
+  color: var(--wait-ink);
+}
+
+.ref-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ref-why,
+.ref-stale {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .bubble-time {
   font-size: 11px;
   opacity: 0.75;

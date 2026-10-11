@@ -1,0 +1,21 @@
+{
+  "number": 433,
+  "html_url": "https://github.com/calimero-network/apps/pull/433",
+  "state": "closed",
+  "draft": false,
+  "title": "fix(hyperfeed): a chain stays in progress while something in it is still running",
+  "merged": true,
+  "merged_at": "2026-10-11T04:11:13Z",
+  "mergeable_state": "unknown",
+  "head": {
+    "ref": "fix/hyperfeed-chain-underway",
+    "sha": "05acb3699610d23270f7037a7683d72d73c02d0b"
+  },
+  "base": {
+    "ref": "fix/hyperfeed-session-grant",
+    "repo": {
+      "full_name": "calimero-network/apps",
+      "default_branch": "main"
+    }
+  }
+}
