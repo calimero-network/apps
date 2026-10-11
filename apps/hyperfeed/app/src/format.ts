@@ -77,6 +77,50 @@ export function onlyYouCan(item: FeedItem): boolean {
   return RULE_METHODS.has(method) || (item.app === "hyperfeed" && OWNER_METHODS.has(method));
 }
 
+/** Method verbs said otherwise: a `get_issue` reads an issue. */
+const VERBS: Record<string, string> = { get: "Read", view: "Read", lookup: "Look up" };
+/** Verbs that name one known thing: "Set the summary", not "Set a summary". */
+const THE = new Set(["set", "get", "read", "view", "edit", "update", "change", "clear", "describe", "lookup", "rename"]);
+
+/**
+ * A method as a person says it: `set_summary` is "Set the summary",
+ * `create_issue` "Create an issue", `list_issues` "List issues". The same
+ * words mero-bot titles your agent's rows with.
+ */
+export function plainMethod(method: string): string {
+  const [verb, ...rest] = method.trim().toLowerCase().split(/[_\s]+/).filter(Boolean);
+  if (!verb) return "";
+  const said = VERBS[verb] ?? `${verb.charAt(0).toUpperCase()}${verb.slice(1)}`;
+  if (rest.length === 0) return said;
+  const thing = rest.join(" ");
+  const plural = verb === "list" || /[^s]s$/.test(thing);
+  const article = plural ? "" : THE.has(verb) ? "the " : /^[aeiou]/.test(thing) ? "an " : "a ";
+  return `${said} ${article}${thing}`;
+}
+
+/**
+ * A row's title. Your agent's older rows were titled with the bare method
+ * ("set summary in issue-tracker"): those are said in plain words, "Set the
+ * summary in Issue tracker". Every other title is the row's own.
+ */
+export function rowTitle(item: FeedItem, appName: (key: string) => string): string {
+  if (item.kind !== "action" || !item.method) return item.title;
+  const bare = item.method.replace(/_/g, " ");
+  if (item.title === `${bare} on the node`) return `${plainMethod(item.method)} on the node`;
+  if (item.title === `${bare} in ${item.app}`) return `${plainMethod(item.method)} in ${appName(item.app)}`;
+  return item.title;
+}
+
+/**
+ * The command behind a row for a tool your agent ran on your computer, or ""
+ * for any other row. The title already says what and where; the command is
+ * folded away behind Details.
+ */
+export function localCommand(item: FeedItem): string {
+  if (item.kind !== "action" || item.app !== "mero-bot" || item.source_label !== "This computer") return "";
+  return item.body.trim();
+}
+
 /**
  * Which plain buttons a row offers, straight from the contract's transitions.
  * A proposal with an ask is approved through its resolver instead (pick an
@@ -166,8 +210,10 @@ export function stepsOf(item: FeedItem, appName: string): FlowStep[] {
       return;
     }
     if (i === 0) {
-      const text = step.status === "pending" ? `Proposed: ${item.title}` : step.status === "failed" ? `Tried: ${item.title}` : item.title;
-      add(i, "agent", "Your agent", text, step.status === "failed" ? note : item.body, step.at, step.status === "failed" ? "bad" : step.status === "pending" ? "wait" : "good");
+      const title = rowTitle(item, () => appName);
+      const text = step.status === "pending" ? `Proposed: ${title}` : step.status === "failed" ? `Tried: ${title}` : title;
+      // A command is folded away, not told in the flow.
+      add(i, "agent", "Your agent", text, step.status === "failed" ? note : localCommand(item) ? "" : item.body, step.at, step.status === "failed" ? "bad" : step.status === "pending" ? "wait" : "good");
       return;
     }
     switch (step.status) {

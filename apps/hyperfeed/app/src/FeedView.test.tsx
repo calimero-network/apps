@@ -149,6 +149,60 @@ describe("FeedView", () => {
     expect(within(post).getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("says a command on your computer in one line, with the command folded behind Details", async () => {
+    const at = Date.now();
+    const command = "$ export PATH=$HOME/.cargo/bin:$PATH\ncargo mero bundle --manifest-path logic/Cargo.toml";
+    const items: FeedItem[] = [
+      {
+        ...noRow, id: "l1", chain: "l1", kind: "action", app: "mero-bot", source_label: "This computer", method: "Bash", status: "pending",
+        needs_you: true, title: "Bundle the hyperfeed contract in apps-hyperfeed-images", body: command, at, chain_at: at,
+      },
+      { ...noRow, id: "c1", chain: "c1", kind: "action", app: "chat", method: "send_message", status: "pending", needs_you: true, title: "Post the stand-up", body: "Shipped the fold", at, chain_at: at },
+    ];
+    render(<FeedView feed={staticFeed(items)} query="" />);
+    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/);
+    const details = within(row).getByText("Details").closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("cargo mero bundle");
+    expect(within(row).getByRole("button", { name: /Bundle the hyperfeed contract/ })).not.toHaveTextContent("cargo");
+    // Any other row's body is shown as it is.
+    const post = await openRow(/Post the stand-up/);
+    expect(within(post).queryByText("Details")).not.toBeInTheDocument();
+    expect(within(post).getByText("Shipped the fold")).toBeInTheDocument();
+  });
+
+  it("says an older row titled with a bare method in plain words", async () => {
+    const at = Date.now();
+    const items: FeedItem[] = [
+      { ...noRow, id: "s1", chain: "s1", kind: "action", app: "issue-tracker", method: "set_summary", status: "pending", needs_you: true, title: "set summary in issue-tracker", at, chain_at: at },
+    ];
+    render(<FeedView feed={staticFeed(items)} query="" />);
+    expect(await rowFor(/Set the summary in Issue Tracker/)).toBeInTheDocument();
+  });
+
+  it("titles a command in one line and folds the command behind Details", async () => {
+    const at = Date.now();
+    const command = "$ export PATH=$HOME/.cargo/bin:$PATH\ncargo mero bundle --manifest-path logic/Cargo.toml";
+    const items: FeedItem[] = [
+      {
+        ...noRow, id: "l1", chain: "l1", kind: "action", app: "mero-bot", source_label: "This computer", method: "Bash", status: "pending",
+        needs_you: true, title: "Bundle the hyperfeed contract in apps-hyperfeed-images", body: command, at, chain_at: at,
+      },
+      {
+        ...noRow, id: "l2", chain: "l2", kind: "action", app: "issue-tracker", method: "set_summary", status: "pending",
+        needs_you: true, title: "set summary in issue-tracker", body: "issue_id: 7", at, chain_at: at,
+      },
+    ];
+    render(<FeedView feed={staticFeed(items)} query="" />);
+    const row = await openRow(/Bundle the hyperfeed contract in apps-hyperfeed-images/);
+    const details = within(row).getByText("Details").closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details).toHaveTextContent("cargo mero bundle");
+    expect(within(row).queryByText(command, { selector: "p" })).not.toBeInTheDocument();
+    // An older row titled with the bare method is said in plain words.
+    expect(await rowFor(/Set the summary in Issue Tracker/)).toBeInTheDocument();
+  });
+
   it("leads the #launch chain with the NDA; once approved, the next thing in the chain leads", async () => {
     const backend = new DemoBackend(true, 0);
     render(<Harness backend={backend} />);
