@@ -113,8 +113,11 @@ test("you create your feed and answer a notification in place", async ({ page })
 
   // The feed's own event refreshes the page; no reload.
   const card = await openRow(page, "Mentioned you");
-  await expect(card.getByText("Can your agent pull the numbers?")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Needs you" })).toContainText("Mentioned you");
+  // A card says it twice: once in its head (one line), once in full when opened.
+  await expect(card.locator(".need-object")).toHaveText("Can your agent pull the numbers?");
+  await expect(card.locator("p.quote")).toHaveText("Can your agent pull the numbers?");
+  // The card says who wants what as a sentence, from the title.
+  await expect(page.getByRole("region", { name: "Needs you" })).toContainText("Maya mentioned you");
 
   // ── you answer it where it is ──────────────────────────────────────────────
   await card.getByLabel("Reply in #launch").fill("Numbers are in the deck.");
