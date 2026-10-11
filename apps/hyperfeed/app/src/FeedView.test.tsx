@@ -54,10 +54,12 @@ function staticFeed(items: FeedItem[]): Feed {
   } as unknown as Feed;
 }
 
-/** A chain's row, by its title. */
+/** A chain's row, by its title: a task post may share it, but it is not a row. */
 async function rowFor(title: RegExp) {
-  const line = await within(stream()).findByRole("button", { name: title });
-  return line.closest("li")!;
+  const lines = await within(stream()).findAllByRole("button", { name: title });
+  const rows = lines.map((l) => l.closest("li")).filter((li): li is HTMLLIElement => li !== null);
+  if (rows.length !== 1) throw new Error(`${rows.length} rows match ${title}`);
+  return rows[0]!;
 }
 
 /** Open a row in place, as clicking it does. */
@@ -415,5 +417,26 @@ describe("FeedView", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.click(within(notice).getByRole("button", { name: "Create a new feed" }));
     expect(created).toBe(1);
+  });
+  it("puts what you asked your agent on top as a task post, with its live step", async () => {
+    const backend = new DemoBackend(true, 0);
+    render(<Harness backend={backend} />);
+    await rowFor(/Vendor NDA/);
+    const asked = await act(async () => backend.say("", "Fix the agent digest card"));
+    await act(async () => {
+      backend.agentAck(asked.id);
+      backend.agentProgress(asked.id, "Running the tests in apps");
+    });
+    const tasks = await screen.findByRole("region", { name: "Your tasks" });
+    const post = await within(tasks).findByRole("article", { name: "Fix the agent digest card" });
+    await waitFor(() => expect(post).toHaveTextContent("Running the tests in apps"));
+    expect(post).toHaveTextContent("Working");
+    // On top: before anything that needs you.
+    expect(tasks.compareDocumentPosition(lane("To do")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // It opens its chain in place.
+    await act(async () => {
+      fireEvent.click(within(post).getByRole("button"));
+    });
+    expect(await within(digest()).findByRole("button", { name: /Fix the agent digest card/, expanded: true })).toBeInTheDocument();
   });
 });

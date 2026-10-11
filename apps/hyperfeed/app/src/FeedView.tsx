@@ -18,6 +18,7 @@ import {
   type Lane,
 } from "./format";
 import { agentDigest, digestLine, isAgent } from "./team";
+import { TASKS_SHOWN, taskCandidates, taskOf, type TaskPost } from "./tasks";
 
 const appName = (key: string) => appLook(key).name;
 
@@ -104,6 +105,7 @@ export function FeedView({
     return { lanes: by, agent };
   }, [items]);
   const digest = useMemo(() => agentDigest(items), [items]);
+  const candidates = useMemo(() => taskCandidates(items), [items]);
   // "Archive all done" takes your agent's finished chains too.
   const doneChains = useMemo(() => [...lanes.done, ...agent.filter((i) => laneOf(i) === "done")], [lanes, agent]);
   // A chain of the agent's you open (a message you just sent, say) opens the digest with it.
@@ -238,6 +240,14 @@ export function FeedView({
         {page && !archivedView && (
           <>
             {query && items.length === 0 && <div className="empty">Nothing matches that search.</div>}
+            <TaskPosts
+              feed={feed}
+              candidates={candidates}
+              onOpen={(chain) => {
+                if (onChat) return onChat(chain);
+                setOpen(chain);
+              }}
+            />
             {LANES.map((lane) => {
               const rows = lanes[lane.id];
               const shown = lane.id === "done" && !allDone ? rows.slice(0, DONE_SHOWN) : rows;
@@ -411,6 +421,74 @@ function AgentDigestCard({
         </ul>
       )}
     </section>
+  );
+}
+
+/** How many of the newest candidates are read to find the tasks on top. */
+const TASKS_READ = 6;
+
+/**
+ * What you asked your agent to do, as posts on top of the feed: the goal, who
+ * is on it, where it stands, and the latest step, live. A post opens its chain.
+ * Only a chain you started is a task, so the newest few candidates are read.
+ */
+function TaskPosts({ feed, candidates, onOpen }: { feed: Feed; candidates: FeedItem[]; onOpen: (chain: string) => void }) {
+  const [tasks, setTasks] = useState<TaskPost[]>([]);
+  const { loadChain, page } = feed;
+  useEffect(() => {
+    let live = true;
+    const read = candidates.slice(0, TASKS_READ);
+    Promise.all(read.map((lead) => loadChain(lead.chain).then((rows) => taskOf(rows, lead, appName), () => null)))
+      .then((all) => live && setTasks(all.filter((t): t is TaskPost => t !== null).slice(0, TASKS_SHOWN)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // `page` is the point: re-read the tasks whenever the feed changes.
+  }, [candidates, loadChain, page]);
+
+  if (tasks.length === 0) return null;
+  return (
+    <section className="tasks" aria-label="Your tasks">
+      {tasks.map((t) => (
+        <TaskCard key={t.chain} task={t} onOpen={() => onOpen(t.chain)} />
+      ))}
+    </section>
+  );
+}
+
+function TaskCard({ task, onOpen }: { task: TaskPost; onOpen: () => void }) {
+  return (
+    <article className={`task tone-${task.status.tone}`} aria-label={task.goal}>
+      <button type="button" className="task-line" onClick={onOpen}>
+        <span className="task-head">
+          <span className="task-faces" aria-label={["You", "your agent", ...task.people.map((p) => p.name)].join(", ")}>
+            <span className="badge badge-sm badge-you" aria-hidden="true">
+              You
+            </span>
+            <span className="badge badge-sm badge-agent" aria-hidden="true">
+              <Spark />
+            </span>
+            {task.people.map((p) => (
+              <span key={p.name} className="badge badge-sm badge-person" title={p.name} aria-hidden="true">
+                {p.initials}
+              </span>
+            ))}
+          </span>
+          <span className={`pill pill-${task.status.tone}`}>{task.status.label}</span>
+          <span className="row-time">{timeLabel(task.at)}</span>
+        </span>
+        <span className="task-goal">{task.goal}</span>
+        {task.live && <span className="task-live">{task.live}</span>}
+        {task.apps.length > 0 && (
+          <span className="task-apps" aria-label={`In ${task.apps.map(appName).join(", ")}`}>
+            {task.apps.map((a) => (
+              <Badge key={a} app={a} size="sm" />
+            ))}
+          </span>
+        )}
+      </button>
+    </article>
   );
 }
 
