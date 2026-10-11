@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { useApplicationContexts } from "@calimero-network/mero-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useApplicationContexts, useMero } from "@calimero-network/mero-react";
 import { short } from "./format";
 import { openFeed, useNewFeed } from "./newFeed";
+import { HyperfeedClient } from "./generated/HyperfeedClient";
+import { confirmText, deleteFeed, factsLine, isEmpty, orderFeeds, type FeedAdmin, type FeedFacts } from "./feeds";
 
 /** Your feeds on this node: only this Hyperfeed's, never another app's contexts. */
 function useFeeds(applicationId: string | null) {
@@ -12,12 +14,66 @@ function useFeeds(applicationId: string | null) {
   return { contexts, loading, error, refetch };
 }
 
+/** How much each feed holds and when it last moved, read while the switcher is open. */
+function useFeedFacts(ids: string[], open: boolean) {
+  const { mero } = useMero();
+  const [facts, setFacts] = useState<Record<string, FeedFacts>>({});
+  const key = ids.join(",");
+  useEffect(() => {
+    if (!open || !mero) return;
+    let live = true;
+    for (const id of key.split(",").filter(Boolean)) {
+      new HyperfeedClient(mero, id)
+        .feed({ filter: "all", app_key: "", limit: 1, before: 0 })
+        .then(
+          (p) => ({ rows: p.counts.all + p.counts.archived, at: p.items[0]?.chain_at ?? 0 }),
+          () => ({ rows: null, at: 0 }),
+        )
+        .then((f) => live && setFacts((all) => ({ ...all, [id]: f })));
+    }
+    return () => {
+      live = false;
+    };
+  }, [open, mero, key]);
+  return facts;
+}
+
+/**
+ * Delete a feed you are not in, with its namespace. Mero-bot and the
+ * collector stop on their own: they follow the contexts the node lists.
+ */
+function useDeleteFeed(onDeleted: () => void) {
+  const { admin } = useMero();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const remove = useCallback(
+    async (id: string) => {
+      if (!admin) return;
+      setBusy(id);
+      setFailed(null);
+      try {
+        await deleteFeed(admin as unknown as FeedAdmin, id);
+        onDeleted();
+      } catch (e) {
+        setFailed(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [admin, onDeleted],
+  );
+  return { remove, busy, failed, ready: Boolean(admin) };
+}
+
 /**
  * The open feed's name in the header, and every other feed one click away:
- * switching keeps you signed in and opens the feed in place.
+ * switching keeps you signed in and opens the feed in place. Each feed says
+ * how much it holds, and any but the open one can be deleted, after a
+ * confirm that names what goes.
  */
 export function FeedSwitcher({ applicationId, current }: { applicationId: string | null; current: string }) {
   const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const { contexts, loading, refetch } = useFeeds(applicationId);
   const { create, busy, failed } = useNewFeed(applicationId);
   const root = useRef<HTMLDivElement>(null);
@@ -41,7 +97,14 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
   }, [open]);
 
   // The open feed is listed even before the node reports it.
-  const ids = contexts.some((c) => c.contextId === current) ? contexts.map((c) => c.contextId) : [current, ...contexts.map((c) => c.contextId)];
+  const listed = contexts.some((c) => c.contextId === current) ? contexts.map((c) => c.contextId) : [current, ...contexts.map((c) => c.contextId)];
+  const facts = useFeedFacts(listed, open);
+  const ids = orderFeeds(listed, current, facts);
+  const onDeleted = useCallback(() => {
+    setConfirming(null);
+    void refetch();
+  }, [refetch]);
+  const del = useDeleteFeed(onDeleted);
 
   return (
     <div className="switcher" ref={root}>
@@ -61,22 +124,48 @@ export function FeedSwitcher({ applicationId, current }: { applicationId: string
       {open && (
         <div className="switcher-menu" role="menu" aria-label="Your feeds">
           <div className="switcher-label">Your feeds{loading ? " · looking…" : ""}</div>
-          {ids.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={id === current}
-              className={id === current ? "on" : ""}
-              onClick={() => {
-                setOpen(false);
-                if (id !== current) openFeed(id);
-              }}
-            >
-              <span className="mono">{short(id)}</span>
-              {id === current && <span className="switcher-check">Open</span>}
-            </button>
-          ))}
+          {ids.map((id) =>
+            confirming === id ? (
+              <div key={id} className="switcher-confirm" role="alertdialog" aria-label={`Delete feed ${short(id)}`}>
+                <p>{confirmText(facts[id])}</p>
+                <div className="row">
+                  <button type="button" className="danger small" disabled={del.busy !== null} onClick={() => void del.remove(id)}>
+                    {del.busy === id ? "Deleting…" : "Delete"}
+                  </button>
+                  <button type="button" className="ghost small" disabled={del.busy !== null} onClick={() => setConfirming(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={id} className={`switcher-feed ${isEmpty(facts[id]) ? "empty" : ""}`}>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={id === current}
+                  className={id === current ? "on" : ""}
+                  onClick={() => {
+                    setOpen(false);
+                    if (id !== current) openFeed(id);
+                  }}
+                >
+                  <span className="switcher-id">
+                    <span className="mono">{short(id)}</span>
+                    <span className="switcher-facts">{factsLine(facts[id])}</span>
+                  </span>
+                  {id === current && <span className="switcher-check">Open</span>}
+                </button>
+                {id !== current && del.ready && (
+                  <button type="button" role="menuitem" className="switcher-delete" aria-label={`Delete feed ${short(id)}`} title="Delete this feed" onClick={() => setConfirming(id)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ),
+          )}
+          {del.failed && <pre className="err">{del.failed}</pre>}
           <hr />
           <button type="button" role="menuitem" disabled={busy || !applicationId} onClick={() => void create()}>
             {busy ? "Creating…" : "Create a new feed"}
