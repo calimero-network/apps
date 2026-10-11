@@ -296,3 +296,32 @@ test("you switch between your feeds without signing in again", async ({ page }) 
   await page.reload();
   await expect(page.getByTitle("Switch feed")).toHaveText(short(first), { timeout: 60_000 });
 });
+
+test("you delete a feed you no longer use, with its namespace", async ({ page }) => {
+  await openFeed(page);
+  const before = (await node().admin.getContexts()).contexts.map((c) => c.id);
+  expect(before.length).toBeGreaterThanOrEqual(2);
+  const open = await page.getByTitle("Switch feed").textContent();
+  const other = before.find((id) => short(id) !== open)!;
+  const group = await node().admin.getContextGroup(other);
+
+  const switcher = page.getByTitle("Switch feed");
+  await switcher.click();
+  // The open feed has no Delete; the other one does, and says what it holds.
+  await expect(page.getByRole("menuitem", { name: `Delete feed ${open}` })).toHaveCount(0);
+  await expect(page.getByRole("menuitemradio").filter({ hasText: short(other) })).toContainText(/Empty|\d+ rows?/);
+  await page.getByRole("menuitem", { name: `Delete feed ${short(other)}` }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("This can't be undone.");
+  await confirm.getByRole("button", { name: "Delete" }).click();
+
+  await expect(page.getByRole("menuitemradio")).toHaveCount(before.length - 1, { timeout: 30_000 });
+  const after = (await node().admin.getContexts()).contexts.map((c) => c.id);
+  expect(after).not.toContain(other);
+  if (group) {
+    const namespaces = await node().admin.listNamespaces();
+    expect(JSON.stringify(namespaces)).not.toContain(group);
+  }
+  // Still in the feed you had open.
+  await expect(switcher).toHaveText(open!);
+});

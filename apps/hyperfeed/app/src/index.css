@@ -2071,6 +2071,70 @@ body {
   font-size: 11px;
 }
 
+/* A feed: its id and what it holds, and Delete beside any but the open one. */
+.switcher-feed {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.switcher-menu .switcher-feed > button[role="menuitemradio"] {
+  flex: 1;
+  height: 40px;
+}
+
+.switcher-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.switcher-facts {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.switcher-feed.empty .switcher-facts {
+  color: var(--wait-ink);
+}
+
+.switcher-menu .switcher-delete {
+  width: 30px;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted);
+}
+
+.switcher-menu .switcher-delete:hover:not(:disabled) {
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+}
+
+.switcher-confirm {
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+  font-size: 13px;
+}
+
+.switcher-confirm p {
+  margin: 0 0 8px;
+}
+
+.switcher-confirm .row {
+  gap: 6px;
+}
+
+.switcher-menu .switcher-confirm .danger {
+  background: var(--bad-ink);
+  color: #fff;
+}
+
+.switcher-menu .switcher-confirm .ghost {
+  background: var(--surface);
+}
+
 .switcher-menu hr {
   width: 100%;
   margin: 4px 0;
